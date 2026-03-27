@@ -10,6 +10,22 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.7.0',
+      date: '2026-03-27',
+      title: 'Notification Channels & SSO Authentication',
+      changes: [
+        { type: 'feature', text: 'Notification channels — Discord, Slack, Telegram, Ntfy, Gotify, Email (SMTP), Custom Webhook' },
+        { type: 'feature', text: 'Channel management UI in Settings — add, test, delete notification channels' },
+        { type: 'feature', text: 'Per-channel test notification — verify configuration with one click' },
+        { type: 'feature', text: 'SSO header authentication — Authelia, Authentik, Caddy forward_auth, Traefik support' },
+        { type: 'feature', text: 'Auto-create SSO users from X-Forwarded-User/X-Forwarded-Groups headers' },
+        { type: 'feature', text: 'SSO group-to-role mapping — admin, operator, viewer roles from SSO groups' },
+        { type: 'security', text: 'Channel credentials encrypted at rest (AES-256-GCM)' },
+        { type: 'security', text: 'SSO disabled by default — requires ENABLE_SSO_HEADERS=true environment variable' },
+        { type: 'improvement', text: 'Notification providers API — dynamic form fields for each provider type' },
+      ],
+    },
+    {
       version: '2.6.0',
       date: '2026-03-27',
       title: 'Intelligence Foundations — Health Score, Status Insights, Footprint',

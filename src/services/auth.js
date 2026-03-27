@@ -163,6 +163,22 @@ class AuthService {
     if (result.changes > 0) log.debug('Cleaned sessions', { count: result.changes });
   }
 
+  /** Find or create SSO user (for header-based auth) */
+  findOrCreateSsoUser(username, role, email) {
+    const db = getDb();
+    let user = db.prepare('SELECT id, username, role, is_active FROM users WHERE username = ?').get(username);
+    if (user) {
+      if (!user.is_active) return null;
+      return { id: user.id, username: user.username, role: user.role, sso: true };
+    }
+    // Auto-create SSO user (no password — SSO-only)
+    const r = db.prepare(
+      'INSERT INTO users (username, email, password_hash, role, is_active) VALUES (?, ?, ?, ?, 1)'
+    ).run(username, email || null, 'SSO_NO_PASSWORD', role || 'viewer');
+    log.info('SSO user created', { username, role });
+    return { id: Number(r.lastInsertRowid), username, role: role || 'viewer', sso: true };
+  }
+
   /** Change password */
   async changePassword(userId, currentPassword, newPassword) {
     const db = getDb();

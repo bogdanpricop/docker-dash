@@ -269,6 +269,14 @@ const Api = {
   getRemoteStatus(id) { return this.get(`/git/stacks/${id}/remote-status`); },
   pushToGit(id, data) { return this.post(`/git/stacks/${id}/push`, data); },
 
+  // ─── Notification Channels ──────────────────────
+  getNotificationProviders() { return this.get('/notification-channels/providers'); },
+  getNotificationChannels() { return this.get('/notification-channels'); },
+  createNotificationChannel(data) { return this.post('/notification-channels', data); },
+  updateNotificationChannel(id, data) { return this.put(`/notification-channels/${id}`, data); },
+  deleteNotificationChannel(id) { return this.delete(`/notification-channels/${id}`); },
+  testNotificationChannel(id) { return this.post(`/notification-channels/${id}/test`); },
+
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },
   getHost(id) { return this.get(`/hosts/${id}`); },

@@ -24,6 +24,7 @@ const SettingsPage = {
         ${isAdmin ? `<button class="tab" data-tab="webhooks">${i18n.t('pages.settings.tabWebhooks')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="registries">Registries</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="git-credentials"><i class="fab fa-git-alt" style="margin-right:4px"></i> Git</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="notifications"><i class="fas fa-bell" style="margin-right:4px"></i> Notifications</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="general">${i18n.t('pages.settings.tabGeneral')}</button>` : ''}
       </div>
       <div id="settings-content"></div>
@@ -53,6 +54,7 @@ const SettingsPage = {
       else if (this._tab === 'webhooks') await this._renderWebhooks(el);
       else if (this._tab === 'registries') await this._renderRegistries(el);
       else if (this._tab === 'git-credentials') await this._renderGitCredentials(el);
+      else if (this._tab === 'notifications') await this._renderNotificationChannels(el);
       else if (this._tab === 'general') await this._renderGeneral(el);
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
@@ -472,6 +474,122 @@ const SettingsPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
+  async _renderNotificationChannels(el) {
+    try {
+      const [channels, providers] = await Promise.all([
+        Api.getNotificationChannels(),
+        Api.getNotificationProviders(),
+      ]);
+
+      const providerIcons = { discord: 'fab fa-discord', slack: 'fab fa-slack', telegram: 'fab fa-telegram', ntfy: 'fas fa-bell', gotify: 'fas fa-bell', email: 'fas fa-envelope', webhook: 'fas fa-globe' };
+
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-bell" style="margin-right:8px"></i>Notification Channels</h3>
+            <button class="btn btn-sm btn-primary" id="nc-create"><i class="fas fa-plus"></i> Add Channel</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            ${channels.length === 0 ? '<div class="empty-msg">No notification channels configured. Add Discord, Telegram, Slack, or other channels to receive alerts.</div>' : `
+            <table class="data-table">
+              <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
+              <tbody>${channels.map(c => `
+                <tr>
+                  <td style="text-align:left"><i class="${providerIcons[c.provider] || 'fas fa-bell'}" style="margin-right:8px;color:var(--accent)"></i><strong>${Utils.escapeHtml(c.name)}</strong></td>
+                  <td><span class="badge badge-info">${c.provider}</span></td>
+                  <td>${c.is_active ? '<span class="text-green">Active</span>' : '<span class="text-muted">Inactive</span>'}</td>
+                  <td>
+                    <div class="action-btns">
+                      <button class="action-btn" data-action="test-nc" data-id="${c.id}" title="Test"><i class="fas fa-paper-plane"></i></button>
+                      <button class="action-btn danger" data-action="delete-nc" data-id="${c.id}" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}</tbody>
+            </table>`}
+          </div>
+        </div>
+      `;
+
+      el.querySelector('#nc-create')?.addEventListener('click', async () => {
+        const providerOptions = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+        const result = await Modal.form(`
+          <div class="form-group">
+            <label>Name *</label>
+            <input type="text" id="nc-name" class="form-control" placeholder="e.g. Team Discord" required>
+          </div>
+          <div class="form-group">
+            <label>Provider *</label>
+            <select id="nc-provider" class="form-control">${providerOptions}</select>
+          </div>
+          <div id="nc-fields"></div>
+        `, {
+          title: 'Add Notification Channel',
+          width: '480px',
+          onSubmit: (content) => {
+            const name = content.querySelector('#nc-name').value.trim();
+            const provider = content.querySelector('#nc-provider').value;
+            if (!name) { Toast.warning('Name is required'); return false; }
+            const config = {};
+            content.querySelectorAll('[data-config-key]').forEach(input => {
+              config[input.dataset.configKey] = input.value;
+            });
+            return { name, provider, config };
+          },
+          onOpen: (content) => {
+            const renderFields = () => {
+              const pid = content.querySelector('#nc-provider').value;
+              const prov = providers.find(p => p.id === pid);
+              const fieldsEl = content.querySelector('#nc-fields');
+              fieldsEl.innerHTML = (prov?.fields || []).map(f => `
+                <div class="form-group">
+                  <label>${f.label}${f.required ? ' *' : ''}</label>
+                  <input type="${f.type || 'text'}" data-config-key="${f.key}" class="form-control"
+                    placeholder="${f.placeholder || ''}" ${f.required ? 'required' : ''}>
+                </div>
+              `).join('');
+            };
+            content.querySelector('#nc-provider').addEventListener('change', renderFields);
+            renderFields();
+          },
+        });
+
+        if (result) {
+          try {
+            await Api.createNotificationChannel(result);
+            Toast.success('Notification channel created');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+
+      el.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const id = parseInt(btn.dataset.id);
+        if (btn.dataset.action === 'test-nc') {
+          Toast.info('Sending test notification...');
+          try {
+            const res = await Api.testNotificationChannel(id);
+            if (res.ok) Toast.success('Test notification sent');
+            else Toast.error('Test failed: ' + (res.error || 'Unknown error'));
+          } catch (err) { Toast.error(err.message); }
+        } else if (btn.dataset.action === 'delete-nc') {
+          const ok = await Modal.confirm('Delete this notification channel?', { danger: true });
+          if (!ok) return;
+          try {
+            await Api.deleteNotificationChannel(id);
+            Toast.success('Channel deleted');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+    } catch (err) {
+      el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+    }
+  },
+
   async _renderGitCredentials(el) {
     try {
       const creds = await Api.getGitCredentials();
@@ -666,7 +784,7 @@ const SettingsPage = {
           <p class="text-muted">${i18n.t('pages.settings.generalDesc')} ${i18n.t('pages.settings.currentEnv')}: <strong>${location.hostname.includes('dev') ? 'DEV' : location.hostname.includes('staging') ? 'STAGING' : 'PRODUCTION'}</strong></p>
           <hr class="divider">
           <table class="info-table">
-            <tr><td>${i18n.t('pages.settings.appVersion')}</td><td><a href="#/whatsnew" style="color:var(--accent);text-decoration:none">v2.6.0 <i class="fas fa-bullhorn" style="font-size:10px"></i></a></td></tr>
+            <tr><td>${i18n.t('pages.settings.appVersion')}</td><td><a href="#/whatsnew" style="color:var(--accent);text-decoration:none">v2.7.0 <i class="fas fa-bullhorn" style="font-size:10px"></i></a></td></tr>
             <tr><td>${i18n.t('pages.settings.webSocket')}</td><td>${WS.isConnected ? `<span class="text-green">${i18n.t('pages.settings.wsConnected')}</span>` : `<span class="text-red">${i18n.t('pages.settings.wsDisconnected')}</span>`}</td></tr>
           </table>
         </div>

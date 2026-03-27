@@ -24,19 +24,34 @@ function extractToken(req) {
 function requireAuth(req, res, next) {
   const { token, source } = extractToken(req);
 
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
+  let user = null;
+
+  if (token) {
+    if (source === 'apikey') {
+      user = apiKeys.validate(token);
+    } else {
+      user = authService.validateSession(token);
+    }
   }
 
-  let user;
-  if (source === 'apikey') {
-    user = apiKeys.validate(token);
-  } else {
-    user = authService.validateSession(token);
+  // SSO header-based auth (Authelia, Authentik, Caddy forward_auth, Traefik)
+  if (!user && config.features.ssoHeaders) {
+    const ssoUser = req.headers['x-forwarded-user'] || req.headers['remote-user'];
+    if (ssoUser) {
+      const ssoGroups = (req.headers['x-forwarded-groups'] || '').split(',').map(g => g.trim()).filter(Boolean);
+      const ssoEmail = req.headers['x-forwarded-email'] || '';
+      // Map SSO groups to Docker Dash roles
+      let role = 'viewer';
+      if (ssoGroups.includes('admin') || ssoGroups.includes('docker-dash-admin')) role = 'admin';
+      else if (ssoGroups.includes('operator') || ssoGroups.includes('docker-dash-operator')) role = 'operator';
+      // Auto-create or find SSO user
+      user = authService.findOrCreateSsoUser(ssoUser, role, ssoEmail);
+      req.ssoAuth = true;
+    }
   }
 
   if (!user) {
-    return res.status(401).json({ error: 'Invalid or expired session' });
+    return res.status(401).json({ error: 'Authentication required' });
   }
 
   req.user = user;
