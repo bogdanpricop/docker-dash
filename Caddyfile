@@ -1,43 +1,19 @@
 # Docker Dash — Caddy HTTPS Reverse Proxy
-#
-# For internal networks (192.168.x.x), Caddy uses self-signed certificates.
-# For public domains, Caddy auto-provisions Let's Encrypt certificates.
-#
-# Usage:
-#   docker compose --profile tls up -d
-#   Access: https://192.168.13.20:8443
-#
-# To use a real domain, change the address below:
-#   my-docker-dash.example.com {
+# Usage: docker compose --profile tls up -d
+# Access: https://192.168.13.20:8443 (self-signed cert)
 
-:443 {
-    # Reverse proxy to Docker Dash app
+https://192.168.13.20 {
     reverse_proxy docker-dash:8101
 
-    # TLS — auto self-signed for IP addresses, Let's Encrypt for domains
-    tls internal
+    tls internal {
+        on_demand
+    }
 
-    # Security headers (supplement Helmet.js)
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
     }
 
-    # WebSocket support
-    @websocket {
-        header Connection *Upgrade*
-        header Upgrade websocket
-    }
-    reverse_proxy @websocket docker-dash:8101
-
-    # Compress responses
     encode gzip zstd
-
-    # Logging
-    log {
-        output stderr
-        format console
-    }
 }
