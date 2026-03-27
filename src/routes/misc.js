@@ -203,6 +203,34 @@ router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => 
   }
 });
 
+// ─── Database Backup ────────────────────────────────────────
+
+router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const db = getDb();
+    const path = require('path');
+    const fs = require('fs');
+    const backupDir = process.env.DATA_DIR || '/data';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const backupPath = path.join(backupDir, `backup-${ts}.db`);
+
+    // Use better-sqlite3's backup API (safe, non-blocking for WAL mode)
+    db.backup(backupPath).then(() => {
+      const stat = fs.statSync(backupPath);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'database_backup', details: JSON.stringify({ path: backupPath, size: stat.size }),
+        ip: getClientIp(req),
+      });
+      res.json({ ok: true, path: backupPath, size: stat.size, timestamp: ts });
+    }).catch(err => {
+      res.status(500).json({ error: 'Backup failed: ' + err.message });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Global Search ──────────────────────────────────────────
 
 router.get('/search', requireAuth, async (req, res) => {

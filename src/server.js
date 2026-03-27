@@ -30,7 +30,7 @@ app.use(helmet({
   },
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '2mb' })); // Reduced from 10mb — increase per-route if needed
 
 // Request timeout — prevent hanging requests (5 min default)
 app.use((req, res, next) => {
@@ -41,8 +41,9 @@ app.use((req, res, next) => {
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Trust proxy (for Cloudflare/nginx)
-app.set('trust proxy', true);
+// Trust proxy — set to specific proxy IPs or 'loopback' for security
+// 'true' trusts ALL proxies (allows IP spoofing). Use specific IPs in production.
+app.set('trust proxy', config.app.env === 'production' ? 'loopback' : true);
 
 // Request logging (dev only)
 if (config.app.env === 'development') {
@@ -130,6 +131,27 @@ app.use((err, req, res, _next) => {
 const server = http.createServer(app);
 
 async function start() {
+  // ─── Security Validation ─────────────────────────────────
+  const isProduction = config.app.env === 'production';
+  const weakSecrets = ['change-me-in-production-', 'generate-a-random-string-here', ''];
+  const weakEncKeys = ['change-me-to-a-random-32-char-hex', ''];
+
+  if (isProduction) {
+    const secret = config.app.secret || '';
+    if (weakSecrets.some(w => secret.startsWith(w)) || secret.length < 32) {
+      log.error('SECURITY: APP_SECRET is weak or default! Set a random 64+ char string in .env');
+      log.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+    }
+    const encKey = config.security.encryptionKey || '';
+    if (weakEncKeys.some(w => encKey === w) || encKey.length < 16) {
+      log.error('SECURITY: ENCRYPTION_KEY is weak or default! Set a random 32+ char hex string in .env');
+      log.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    }
+    if (config.admin.defaultPassword === 'admin') {
+      log.warn('SECURITY: Default admin password is "admin". Change it immediately after first login.');
+    }
+  }
+
   // Initialize DB (runs migrations)
   getDb();
   log.info('Database initialized');

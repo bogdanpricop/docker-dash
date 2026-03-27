@@ -144,7 +144,7 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
     await authService.resetPassword(parseInt(req.params.id), password);
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'reset_password',
       targetType: 'user', targetId: req.params.id, ip: getClientIp(req) });
