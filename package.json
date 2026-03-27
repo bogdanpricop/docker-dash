@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "helmet": "^8.0.0",
     "node-cron": "^3.0.3",
     "nodemailer": "^7.0.7",
+    "simple-git": "^3.27.0",
     "ssh2": "^1.16.0",
     "ws": "^8.18.0"
   },

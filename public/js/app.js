@@ -22,6 +22,7 @@ const App = {
     hosts:      () => HostsPage,
     about:      () => AboutPage,
     whatsnew:   () => WhatsNewPage,
+    'git-stacks': () => GitStacksPage,
     settings:   () => SettingsPage,
     profile:    () => ProfilePage,
   },

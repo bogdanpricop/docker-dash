@@ -69,6 +69,12 @@ function purgeAllOldData() {
     if (r.changes) deleted.password_reset_tokens = r.changes;
   } catch (e) { log.error('password_reset_tokens cleanup failed', e.message); }
 
+  // Git deployments (keep 90 days)
+  try {
+    const r = db.prepare(`DELETE FROM git_deployments WHERE started_at < datetime('now', '-90 days')`).run();
+    if (r.changes) deleted.git_deployments = r.changes;
+  } catch (e) { /* table may not exist */ }
+
   // Expired sessions
   try { authService.cleanSessions(); } catch (e) { log.error('Session cleanup failed', e.message); }
 
@@ -154,6 +160,12 @@ function startAll() {
     } catch (e) { log.error('Schedule check failed', e.message); }
   }));
 
+  // Git deployment history cleanup
+  try {
+    const gitPolling = require('../services/gitPolling');
+    gitPolling.startAll();
+  } catch (e) { log.error('Git polling startup failed', e.message); }
+
   // Run initial purge on startup (in case the app was down for a while)
   setTimeout(purgeAllOldData, 30000);
 
@@ -191,6 +203,7 @@ function cronMatchesNow(cronExpr, now) {
 function stopAll() {
   jobs.forEach(j => j.stop());
   jobs.length = 0;
+  try { require('../services/gitPolling').stopAll(); } catch {}
 }
 
 module.exports = { startAll, stopAll };

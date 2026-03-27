@@ -27,7 +27,7 @@ const Api = {
   _appendHostId(path) {
     if (this._currentHostId === 0) return path;
     // Skip host parameter for auth, settings, hosts, and other non-Docker endpoints
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -237,6 +237,32 @@ const Api = {
   getRegistryCatalog(id) { return this.get(`/registries/${id}/catalog`); },
   getRegistryTags(id, repo) { return this.get(`/registries/${id}/tags/${repo}`); },
   getImageConfig(id) { return this.get(`/images/${encodeURIComponent(id)}/config`); },
+
+  // ─── Git ─────────────────────────────────────────
+  getGitCredentials() { return this.get('/git/credentials'); },
+  createGitCredential(data) { return this.post('/git/credentials', data); },
+  updateGitCredential(id, data) { return this.put(`/git/credentials/${id}`, data); },
+  deleteGitCredential(id) { return this.delete(`/git/credentials/${id}`); },
+  getGitStacks() { return this.get('/git/stacks'); },
+  getGitStack(id) { return this.get(`/git/stacks/${id}`); },
+  createGitStack(data) { return this.post('/git/stacks', data); },
+  updateGitStack(id, data) { return this.put(`/git/stacks/${id}`, data); },
+  deleteGitStack(id, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.delete(`/git/stacks/${id}${qs ? '?' + qs : ''}`);
+  },
+  deployGitStack(id, data) { return this.post(`/git/stacks/${id}/deploy`, data); },
+  checkGitStack(id) { return this.post(`/git/stacks/${id}/check`); },
+  testGitConnection(data) { return this.post('/git/test-connection', data); },
+  getGitDeployments(id, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.get(`/git/stacks/${id}/deployments${qs ? '?' + qs : ''}`);
+  },
+  regenerateWebhook(id) { return this.post(`/git/stacks/${id}/webhook/regenerate`); },
+  getWebhookUrl(id) { return this.get(`/git/stacks/${id}/webhook-url`); },
+  updateAutoDeployConfig(id, data) { return this.put(`/git/stacks/${id}/auto-deploy`, data); },
+  getGitDiff(id) { return this.get(`/git/stacks/${id}/diff`); },
+  rollbackGitStack(stackId, deploymentId) { return this.post(`/git/stacks/${stackId}/rollback/${deploymentId}`); },
 
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },

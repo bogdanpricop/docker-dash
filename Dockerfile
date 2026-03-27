@@ -5,7 +5,7 @@ FROM node:20-alpine AS base
 RUN apk update && apk upgrade --no-cache
 
 # System tools + Docker CLI + gcompat (glibc compat for Docker Scout)
-RUN apk add --no-cache tini wget curl docker-cli gcompat
+RUN apk add --no-cache tini wget curl docker-cli gcompat git openssh-client
 
 # Install Trivy vulnerability scanner (latest stable)
 RUN wget -qO - https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin

@@ -73,6 +73,10 @@ module.exports = {
     fromName: env('SMTP_FROM_NAME', 'Docker Dash'),
     fromEmail: env('SMTP_FROM_EMAIL', 'noreply@example.com'),
   },
+  git: {
+    deploymentRetentionDays: int('GIT_DEPLOYMENT_RETENTION_DAYS', 90),
+    pollingMinIntervalSeconds: int('GIT_POLLING_MIN_INTERVAL', 60),
+  },
   admin: {
     defaultPassword: env('ADMIN_PASSWORD', 'admin'),
     defaultUsername: env('ADMIN_USERNAME', 'admin'),

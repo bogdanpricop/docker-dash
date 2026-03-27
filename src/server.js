@@ -52,6 +52,10 @@ if (config.app.env === 'development') {
 const { rateLimit } = require('./middleware/rateLimit');
 const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs);
 
+// Git webhook receiver — public, no auth, separate rate limit
+const webhookReceiverLimiter = rateLimit(30, 60 * 1000);
+app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/containers', apiLimiter, require('./routes/containers'));
 app.use('/api/images', apiLimiter, require('./routes/images'));
@@ -63,6 +67,7 @@ app.use('/api/alerts', apiLimiter, require('./routes/alerts'));
 app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
+app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────

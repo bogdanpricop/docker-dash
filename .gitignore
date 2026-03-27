@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+plans/
 
 # Environment (contains secrets)
 .env
@@ -20,6 +21,7 @@ node_modules/
 Thumbs.db
 desktop.ini
 nul
+CAPTURE_GUIDE.md
 
 # IDE
 .vscode/
