@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.9.0',
+      date: '2026-03-27',
+      title: 'Smart Monitoring — Uptime Reports, Trends, Cost Estimation',
+      changes: [
+        { type: 'feature', text: 'Container Uptime Report — uptime %, restart count, hours tracked, first/last seen for every container' },
+        { type: 'feature', text: 'Resource Usage Trends — 7-day hourly averages with linear regression trend analysis' },
+        { type: 'feature', text: 'CPU/Memory Forecasting — 24h projection, trend direction (increasing/stable/decreasing)' },
+        { type: 'feature', text: 'Memory exhaustion prediction — "will exceed limit in N hours" warning based on growth rate' },
+        { type: 'feature', text: 'Per-Container Cost Estimation — input your VPS monthly cost, see breakdown by container (CPU + memory weighted)' },
+        { type: 'improvement', text: 'Three new API endpoints: /stats/uptime, /stats/trends/:id, /stats/cost' },
+      ],
+    },
+    {
       version: '2.8.0',
       date: '2026-03-27',
       title: 'Developer Tools — Run Converter, AI Diagnostics, Proxy Labels',

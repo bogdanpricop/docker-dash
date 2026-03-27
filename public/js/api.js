@@ -170,6 +170,10 @@ const Api = {
     return this.get(`/stats/container/${id}?range=${range}`);
   },
 
+  getUptimeReport() { return this.get('/stats/uptime'); },
+  getResourceTrends(id) { return this.get(`/stats/trends/${id}`); },
+  getCostEstimation(monthlyCost) { return this.get(`/stats/cost?monthly_cost=${monthlyCost}`); },
+
   // ─── Alerts ──────────────────────────────────────
   getAlertRules() { return this.get('/alerts/rules'); },
   createAlertRule(data) { return this.post('/alerts/rules', data); },

@@ -20,4 +20,161 @@ router.get('/container/:id', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Uptime Report ────────────────────────────────────
+
+router.get('/uptime', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const hostId = req.hostId || 0;
+
+    // Get all containers with their event history
+    const containers = db.prepare(`
+      SELECT DISTINCT container_name, container_id
+      FROM container_stats WHERE host_id = ?
+      ORDER BY container_name
+    `).all(hostId);
+
+    const results = containers.map(c => {
+      // Count restarts from docker events
+      const restarts = db.prepare(`
+        SELECT COUNT(*) AS cnt FROM docker_events
+        WHERE actor_name = ? AND action = 'start' AND host_id = ?
+      `).get(c.container_name, hostId)?.cnt || 0;
+
+      // Get first and last seen
+      const first = db.prepare(
+        'SELECT MIN(recorded_at) AS t FROM container_stats WHERE container_id = ? AND host_id = ?'
+      ).get(c.container_id, hostId)?.t;
+      const last = db.prepare(
+        'SELECT MAX(recorded_at) AS t FROM container_stats WHERE container_id = ? AND host_id = ?'
+      ).get(c.container_id, hostId)?.t;
+
+      // Count total data points vs expected (rough uptime calc)
+      const totalPoints = db.prepare(
+        'SELECT COUNT(*) AS cnt FROM container_stats WHERE container_id = ? AND host_id = ?'
+      ).get(c.container_id, hostId)?.cnt || 0;
+
+      const hoursTracked = first && last ? (new Date(last) - new Date(first)) / 3600000 : 0;
+      const expectedPoints = hoursTracked * (3600000 / (require('../config').stats.collectIntervalMs || 10000));
+      const uptimePct = expectedPoints > 0 ? Math.min(100, (totalPoints / expectedPoints) * 100) : 0;
+
+      return {
+        container_name: c.container_name,
+        container_id: c.container_id,
+        restarts: Math.max(0, restarts - 1), // First start isn't a restart
+        uptime_pct: Math.round(uptimePct * 10) / 10,
+        first_seen: first,
+        last_seen: last,
+        hours_tracked: Math.round(hoursTracked * 10) / 10,
+      };
+    });
+
+    res.json(results);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Resource Trends ──────────────────────────────────
+
+router.get('/trends/:id', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const hostId = req.hostId || 0;
+    const containerId = req.params.id;
+
+    // Get hourly averages for the last 7 days
+    const hourly = db.prepare(`
+      SELECT cpu_avg AS cpu, mem_avg AS mem, mem_limit, bucket AS time
+      FROM container_stats_1h
+      WHERE container_id = ? AND host_id = ?
+      AND bucket >= datetime('now', '-7 days')
+      ORDER BY bucket ASC
+    `).all(containerId, hostId);
+
+    if (hourly.length < 2) {
+      return res.json({ trend: 'insufficient_data', data: hourly, forecast: null });
+    }
+
+    // Simple linear regression on CPU and memory
+    const cpuTrend = _linearRegression(hourly.map((h, i) => [i, h.cpu]));
+    const memTrend = _linearRegression(hourly.map((h, i) => [i, h.mem]));
+
+    // Forecast: project 24h ahead
+    const nextIdx = hourly.length + 24;
+    const memLimit = hourly[hourly.length - 1]?.mem_limit || 0;
+    const forecastCpu = Math.max(0, cpuTrend.slope * nextIdx + cpuTrend.intercept);
+    const forecastMem = Math.max(0, memTrend.slope * nextIdx + memTrend.intercept);
+
+    // Estimate when memory limit will be hit
+    let memExhaustedHours = null;
+    if (memLimit > 0 && memTrend.slope > 0) {
+      const currentMem = hourly[hourly.length - 1].mem;
+      memExhaustedHours = Math.round((memLimit - currentMem) / memTrend.slope);
+      if (memExhaustedHours < 0 || memExhaustedHours > 8760) memExhaustedHours = null; // cap at 1 year
+    }
+
+    res.json({
+      data: hourly,
+      trend: cpuTrend.slope > 0.1 ? 'increasing' : cpuTrend.slope < -0.1 ? 'decreasing' : 'stable',
+      cpu: { slope: cpuTrend.slope, current: hourly[hourly.length - 1]?.cpu || 0, forecast24h: Math.round(forecastCpu * 10) / 10 },
+      memory: { slope: memTrend.slope, current: hourly[hourly.length - 1]?.mem || 0, forecast24h: Math.round(forecastMem), limit: memLimit, exhaustedInHours: memExhaustedHours },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Cost Estimation ──────────────────────────────────
+
+router.get('/cost', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const hostId = req.hostId || 0;
+    const monthlyCost = parseFloat(req.query.monthly_cost || '0');
+
+    if (monthlyCost <= 0) {
+      return res.json({ error: 'Set monthly_cost query param (your VPS/server monthly cost in USD)' });
+    }
+
+    const overview = statsService.getOverview(hostId);
+    const totalCpu = Math.max(overview.totals.cpu, 1);
+    const totalMem = Math.max(overview.totals.memory, 1);
+
+    const containers = overview.containers.map(c => {
+      const cpuShare = c.cpu_percent / totalCpu;
+      const memShare = c.mem_usage / totalMem;
+      const weightedShare = (cpuShare + memShare) / 2;
+      const estimatedCost = monthlyCost * weightedShare;
+
+      return {
+        container_name: c.container_name,
+        cpu_percent: c.cpu_percent,
+        mem_usage: c.mem_usage,
+        cpu_share: Math.round(cpuShare * 1000) / 10,
+        mem_share: Math.round(memShare * 1000) / 10,
+        estimated_monthly_cost: Math.round(estimatedCost * 100) / 100,
+      };
+    });
+
+    containers.sort((a, b) => b.estimated_monthly_cost - a.estimated_monthly_cost);
+
+    res.json({
+      monthly_total: monthlyCost,
+      containers,
+      unallocated: Math.round((monthlyCost - containers.reduce((s, c) => s + c.estimated_monthly_cost, 0)) * 100) / 100,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+function _linearRegression(points) {
+  const n = points.length;
+  if (n < 2) return { slope: 0, intercept: 0 };
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (const [x, y] of points) {
+    sumX += x; sumY += y; sumXY += x * y; sumX2 += x * x;
+  }
+  const denom = n * sumX2 - sumX * sumX;
+  if (denom === 0) return { slope: 0, intercept: sumY / n };
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  return { slope, intercept };
+}
+
 module.exports = router;
