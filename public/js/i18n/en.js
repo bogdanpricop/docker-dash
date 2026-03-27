@@ -625,6 +625,27 @@ i18n.register('en', 'EN', 'English', {
       browser: 'Browser', language: 'Language', theme: 'Theme',
       themeLight: 'Light', themeDark: 'Dark',
     },
+    // ── Security ──────────────────────────────────
+    security: {
+      title: 'Security', subtitle: 'Vulnerability scanning and image security',
+      tabOverview: 'Overview', tabScanHistory: 'Scan History', tabRecommendations: 'Recommendations',
+      scanImage: 'Scan Image', scanAll: 'Scan All', scanning: 'Scanning...',
+      lastScanned: 'Last Scanned', neverScanned: 'Never Scanned',
+      critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', total: 'Total',
+      fixable: 'Fixable', noVulns: 'No vulnerabilities found',
+      scannerDetected: 'Scanner detected', noScannerDetected: 'No scanner detected',
+      trivyAvailable: 'Trivy available', scoutAvailable: 'Scout available',
+      imagesScanned: 'Images Scanned', imagesUnscanned: 'Images Unscanned',
+      scanResults: 'Scan Results', vulnerability: 'Vulnerability',
+      package: 'Package', installedVersion: 'Installed', fixedVersion: 'Fixed In',
+      severity: 'Severity', description: 'Description',
+      recommendations: 'Recommendations', priority: 'Priority',
+      aiRemediation: 'AI-Assisted Remediation', generatePrompt: 'Generate Remediation Prompt',
+      copyPrompt: 'Copy Prompt', deleteScan: 'Delete Scan', deleteSelected: 'Delete Selected',
+      confirmDeleteScans: 'Delete selected scan results?',
+      noScans: 'No scan history. Scan an image to see results here.',
+      scanSuccess: 'Scan complete', scanFailed: 'Scan failed',
+    },
     // ── Git Stacks ───────────────────────────────
     gitStacks: {
       title: 'Git Stacks',

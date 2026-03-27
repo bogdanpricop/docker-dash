@@ -625,6 +625,19 @@ i18n.register('de', 'DE', 'Deutsch', {
       browser: 'Browser', language: 'Sprache', theme: 'Design',
       themeLight: 'Hell', themeDark: 'Dunkel',
     },
+    // ── Security ──────────────────────────────────
+    security: {
+      title: 'Sicherheit', subtitle: 'Schwachstellenscans und Image-Sicherheit',
+      tabOverview: 'Ubersicht', tabScanHistory: 'Scan-Verlauf', tabRecommendations: 'Empfehlungen',
+      scanImage: 'Image scannen', scanAll: 'Alle scannen', scanning: 'Wird gescannt...',
+      lastScanned: 'Zuletzt gescannt', neverScanned: 'Nie gescannt',
+      critical: 'Kritisch', high: 'Hoch', medium: 'Mittel', low: 'Niedrig', total: 'Gesamt',
+      fixable: 'Behebbar', noVulns: 'Keine Schwachstellen gefunden',
+      scanResults: 'Scan-Ergebnisse', vulnerability: 'Schwachstelle',
+      recommendations: 'Empfehlungen', priority: 'Prioritat',
+      noScans: 'Kein Verlauf. Scannen Sie ein Image, um Ergebnisse zu sehen.',
+      scanSuccess: 'Scan abgeschlossen', scanFailed: 'Scan fehlgeschlagen',
+    },
     // ── Git Stacks ───────────────────────────────
     gitStacks: {
       title: 'Git Stacks',

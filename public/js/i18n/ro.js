@@ -603,6 +603,19 @@ i18n.register('ro', 'RO', 'Română', {
       browser: 'Browser', language: 'Limba', theme: 'Tema',
       themeLight: 'Deschisa', themeDark: 'Inchisa',
     },
+    // ── Security ──────────────────────────────────
+    security: {
+      title: 'Securitate', subtitle: 'Scanare vulnerabilitati si securitatea imaginilor',
+      tabOverview: 'Prezentare', tabScanHistory: 'Istoric Scanari', tabRecommendations: 'Recomandari',
+      scanImage: 'Scaneaza Imagine', scanAll: 'Scaneaza Toate', scanning: 'Se scaneaza...',
+      lastScanned: 'Ultima Scanare', neverScanned: 'Nescanat',
+      critical: 'Critice', high: 'Ridicate', medium: 'Medii', low: 'Scazute', total: 'Total',
+      fixable: 'Reparabile', noVulns: 'Nicio vulnerabilitate gasita',
+      scanResults: 'Rezultate Scanare', vulnerability: 'Vulnerabilitate',
+      recommendations: 'Recomandari', priority: 'Prioritate',
+      noScans: 'Niciun istoric. Scaneaza o imagine pentru a vedea rezultate.',
+      scanSuccess: 'Scanare completa', scanFailed: 'Scanare esuata',
+    },
     // ── Git Stacks ───────────────────────────────
     gitStacks: {
       title: 'Git Stacks',
