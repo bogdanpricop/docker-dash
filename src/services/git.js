@@ -215,7 +215,7 @@ class GitService {
     const sets = [];
     const params = [];
     const allowed = ['branch', 'compose_path', 'credential_id', 'env_overrides',
-      'force_redeploy', 're_pull_images', 'tls_skip_verify', 'additional_files'];
+      'force_redeploy', 're_pull_images', 'tls_skip_verify', 'additional_files', 'custom_ca_cert'];
 
     for (const key of allowed) {
       if (data[key] !== undefined) {
@@ -263,9 +263,11 @@ class GitService {
       fs.rmSync(repoDir, { recursive: true, force: true });
     }
 
-    // Clean up SSH key
+    // Clean up SSH key and CA cert
     const keyPath = path.join(REPOS_BASE, '.ssh-keys', `key-${id}`);
     if (fs.existsSync(keyPath)) fs.unlinkSync(keyPath);
+    const certPath = path.join(REPOS_BASE, `ca-${id}.pem`);
+    if (fs.existsSync(certPath)) fs.unlinkSync(certPath);
 
     getDb().prepare('DELETE FROM git_stacks WHERE id = ?').run(id);
     log.info('Git stack deleted', { id, stack_name: stack.stack_name });
@@ -543,6 +545,108 @@ class GitService {
     }
   }
 
+  // ─── Push to Git ───────────────────────────────────
+
+  async getRemoteStatus(stackId) {
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+
+    const repoDir = this._getRepoDir(stackId);
+    if (!fs.existsSync(repoDir)) throw new Error('Repository not cloned yet');
+
+    const git = this._getGit(repoDir, stack);
+    await git.fetch('origin', stack.branch);
+
+    const localHead = (await git.revparse(['HEAD'])).trim();
+    const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
+
+    let localAhead = 0, localBehind = 0, remoteCommits = [];
+
+    if (localHead !== remoteHead) {
+      try {
+        const behindLog = await git.log({ from: 'HEAD', to: `origin/${stack.branch}` });
+        localBehind = behindLog.all.length;
+        remoteCommits = behindLog.all.map(c => ({
+          hash: c.hash.substring(0, 7), message: c.message, author: c.author_name, date: c.date,
+        }));
+      } catch {}
+      try {
+        const aheadLog = await git.log({ from: `origin/${stack.branch}`, to: 'HEAD' });
+        localAhead = aheadLog.all.length;
+      } catch {}
+    }
+
+    return {
+      localHead: localHead.substring(0, 7),
+      remoteHead: remoteHead.substring(0, 7),
+      isUpToDate: localHead === remoteHead,
+      localAhead, localBehind, remoteCommits,
+    };
+  }
+
+  async pushToGit(stackId, { commitMessage, files, author, forcePush = false }) {
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+
+    const repoDir = this._getRepoDir(stackId);
+    if (!fs.existsSync(repoDir)) throw new Error('Repository not cloned yet');
+
+    const git = this._getGit(repoDir, stack);
+
+    // Check remote status
+    if (!forcePush) {
+      await git.fetch('origin', stack.branch);
+      const localHead = (await git.revparse(['HEAD'])).trim();
+      const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
+
+      if (localHead !== remoteHead) {
+        // Check if remote is ahead
+        try {
+          const behindLog = await git.log({ from: localHead, to: remoteHead });
+          if (behindLog.all.length > 0) {
+            throw Object.assign(new Error('Remote has newer changes. Pull first or force push.'), { status: 409 });
+          }
+        } catch (err) {
+          if (err.status === 409) throw err;
+        }
+      }
+    }
+
+    // Write files
+    const writtenFiles = [];
+    for (const [filePath, content] of Object.entries(files)) {
+      this._validateComposePath(filePath);
+      const fullPath = path.join(repoDir, filePath);
+      const dir = path.dirname(fullPath);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fullPath, content, 'utf8');
+      writtenFiles.push(filePath);
+    }
+
+    // Stage, commit, push
+    await git.add(writtenFiles);
+    const authorStr = author || 'Docker Dash <noreply@docker-dash.local>';
+    await git.commit(commitMessage || 'Update from Docker Dash', writtenFiles, { '--author': authorStr });
+
+    if (forcePush) {
+      await git.push('origin', stack.branch, ['--force-with-lease']);
+    } else {
+      await git.push('origin', stack.branch);
+    }
+
+    // Update stack commit info
+    const logResult = await git.log({ n: 1 });
+    const latest = logResult.latest;
+    const db = getDb();
+    db.prepare(`
+      UPDATE git_stacks SET last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?, updated_at = ?
+      WHERE id = ?
+    `).run(latest.hash.substring(0, 7), latest.message.substring(0, 200), latest.author_name, now(), stackId);
+
+    log.info('Pushed to Git', { stackId, commit: latest.hash.substring(0, 7) });
+    return { ok: true, commitHash: latest.hash.substring(0, 7) };
+  }
+
   // ─── Internal Helpers ────────────────────────────────
 
   _getRepoDir(stackId) {
@@ -553,6 +657,11 @@ class GitService {
     const env = {};
     if (stack.tls_skip_verify) {
       env.GIT_SSL_NO_VERIFY = 'true';
+    } else if (stack.custom_ca_cert) {
+      // Write CA cert to temp file and point Git to it
+      const certPath = path.join(REPOS_BASE, `ca-${stack.id}.pem`);
+      fs.writeFileSync(certPath, stack.custom_ca_cert, 'utf8');
+      env.GIT_SSL_CAINFO = certPath;
     }
     if (stack.credential_id) {
       const cred = this.getCredential(stack.credential_id);

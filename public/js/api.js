@@ -266,6 +266,8 @@ const Api = {
   getGitEnv(id) { return this.get(`/git/stacks/${id}/env`); },
   updateGitEnv(id, variables) { return this.put(`/git/stacks/${id}/env`, { variables }); },
   importGitEnv(id, content, sensitiveKeys) { return this.post(`/git/stacks/${id}/env/import`, { content, sensitiveKeys }); },
+  getRemoteStatus(id) { return this.get(`/git/stacks/${id}/remote-status`); },
+  pushToGit(id, data) { return this.post(`/git/stacks/${id}/push`, data); },
 
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },

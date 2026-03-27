@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.5.0',
+      date: '2026-03-27',
+      title: 'Push to Git & Custom TLS Certificates (Phase 4)',
+      changes: [
+        { type: 'feature', text: 'Push changes back to Git — edit compose files in Docker Dash, commit and push to the source repository' },
+        { type: 'feature', text: 'Remote status check — see if remote has newer commits before pushing (conflict detection)' },
+        { type: 'feature', text: 'Force push with lease — safely overwrite remote when conflicts are detected' },
+        { type: 'feature', text: 'Compose editor dialog — edit compose YAML with commit message input, accessible from stack detail' },
+        { type: 'feature', text: 'Custom CA certificate support — provide PEM certificates for self-hosted Git servers (alternative to skip TLS)' },
+        { type: 'security', text: 'CA cert temp files cleaned up on stack deletion' },
+        { type: 'improvement', text: 'Git push audit logging — every push recorded in audit trail with commit hash' },
+      ],
+    },
+    {
       version: '2.4.0',
       date: '2026-03-27',
       title: 'Multi-File Compose & Env Var Management (Phase 4)',

@@ -252,6 +252,39 @@ router.post('/stacks/:id/rollback/:deploymentId', requireAuth, requireRole('admi
   }
 });
 
+// ─── Push to Git ──────────────────────────────────────
+
+router.get('/stacks/:id/remote-status', requireAuth, async (req, res) => {
+  try {
+    const result = await gitService.getRemoteStatus(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.post('/stacks/:id/push', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const { commitMessage, files, forcePush } = req.body;
+    if (!files || Object.keys(files).length === 0) {
+      return res.status(400).json({ error: 'No files to push' });
+    }
+    const author = `${req.user.username} <${req.user.username}@docker-dash.local>`;
+    const result = await gitService.pushToGit(parseInt(req.params.id), {
+      commitMessage, files, author, forcePush,
+    });
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'git_stack_push', targetType: 'git_stack',
+      targetId: req.params.id, details: JSON.stringify({ commitHash: result.commitHash }),
+      ip: getClientIp(req),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 // ─── Env Var Management ──────────────────────────────
 
 router.get('/stacks/:id/env', requireAuth, (req, res) => {

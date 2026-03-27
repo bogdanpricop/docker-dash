@@ -222,6 +222,7 @@ const GitStacksPage = {
           </h2>
           <div class="page-actions">
             <button class="btn btn-sm btn-secondary" id="gs-back"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-sm btn-secondary" id="gs-edit-push"><i class="fas fa-edit"></i> Edit</button>
             <button class="btn btn-sm btn-secondary" id="gs-diff"><i class="fas fa-code-branch"></i> Diff</button>
             <button class="btn btn-sm btn-secondary" id="gs-check"><i class="fas fa-search"></i> Check</button>
             <button class="btn btn-sm btn-primary" id="gs-redeploy" ${stack.status === 'deploying' || stack.status === 'cloning' ? 'disabled' : ''}>
@@ -277,6 +278,7 @@ const GitStacksPage = {
 
       container.querySelector('#gs-back').addEventListener('click', () => { location.hash = '#/git-stacks'; });
       container.querySelector('#gs-check').addEventListener('click', () => this._checkUpdates(stack));
+      container.querySelector('#gs-edit-push').addEventListener('click', () => this._editAndPush(stack));
       container.querySelector('#gs-diff').addEventListener('click', () => this._showDiff(stack));
       container.querySelector('#gs-redeploy').addEventListener('click', () => this._redeploy(stack));
       container.querySelector('#gs-delete').addEventListener('click', () => this._deleteStack(stack));
@@ -540,6 +542,69 @@ const GitStacksPage = {
         Toast.success('Git stack deleted');
         location.hash = '#/git-stacks';
       } catch (err) { Toast.error(err.message); }
+    }
+  },
+
+  // ─── Edit & Push ─────────────────────────────────
+
+  async _editAndPush(stack) {
+    // Read current compose file content from the detail
+    const composeFile = stack.compose_path || 'docker-compose.yml';
+
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>File: <span class="mono">${Utils.escapeHtml(composeFile)}</span></label>
+        <textarea id="ep-content" class="form-control" rows="18"
+          style="font-family:var(--mono);font-size:12px;resize:vertical"
+          placeholder="Loading compose file..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Commit Message *</label>
+        <input type="text" id="ep-message" class="form-control" placeholder="fix: update service configuration" required>
+      </div>
+      <div id="ep-remote-status" style="margin-bottom:8px"></div>
+    `, {
+      title: '<i class="fas fa-edit" style="margin-right:8px"></i> Edit & Push to Git',
+      width: '700px',
+      confirmText: 'Commit & Push',
+      onSubmit: (content) => {
+        const fileContent = content.querySelector('#ep-content').value;
+        const message = content.querySelector('#ep-message').value.trim();
+        if (!message) { Toast.warning('Commit message is required'); return false; }
+        if (!fileContent.trim()) { Toast.warning('File content cannot be empty'); return false; }
+        return { files: { [composeFile]: fileContent }, commitMessage: message };
+      },
+      onOpen: async (content) => {
+        // Check remote status
+        const statusEl = content.querySelector('#ep-remote-status');
+        try {
+          const status = await Api.getRemoteStatus(stack.id);
+          if (!status.isUpToDate && status.localBehind > 0) {
+            statusEl.innerHTML = `<div style="color:var(--yellow);font-size:13px"><i class="fas fa-exclamation-triangle"></i> Remote is ${status.localBehind} commit(s) ahead. Consider pulling first.</div>`;
+          }
+        } catch {}
+      },
+    });
+
+    if (result) {
+      try {
+        const res = await Api.pushToGit(stack.id, result);
+        Toast.success(`Pushed to Git (${res.commitHash})`);
+        this._renderDetail(document.getElementById('page-content'));
+      } catch (err) {
+        if (err.message?.includes('newer changes')) {
+          const force = await Modal.confirm('Remote has newer changes. Force push? This will overwrite remote.', { danger: true, confirmText: 'Force Push' });
+          if (force) {
+            try {
+              const res = await Api.pushToGit(stack.id, { ...result, forcePush: true });
+              Toast.success(`Force pushed to Git (${res.commitHash})`);
+              this._renderDetail(document.getElementById('page-content'));
+            } catch (e) { Toast.error(e.message); }
+          }
+        } else {
+          Toast.error(err.message);
+        }
+      }
     }
   },
 
