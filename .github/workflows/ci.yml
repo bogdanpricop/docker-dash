@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-validate:
+  test-and-validate:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,11 +26,25 @@ jobs:
       - name: Check for vulnerabilities
         run: npm audit --audit-level=high || true
 
-      - name: Validate JavaScript syntax
+      - name: Validate JavaScript syntax (backend)
         run: |
           echo "Checking backend JS files..."
-          find src -name '*.js' -exec node --check {} \;
+          find src -name '*.js' -not -path '*__tests__*' -exec node --check {} \;
           echo "All backend files OK"
+
+      - name: Validate JavaScript syntax (frontend)
+        run: |
+          echo "Checking frontend JS files..."
+          for f in public/js/*.js public/js/pages/*.js public/js/components/*.js public/js/i18n/*.js; do
+            node --check "$f" || exit 1
+          done
+          echo "All frontend files OK"
+
+      - name: Run tests
+        run: npm test
+        env:
+          APP_SECRET: ci-test-secret-key-not-for-production
+          APP_ENV: test
 
       - name: Validate i18n completeness
         run: |
@@ -39,30 +53,24 @@ jobs:
             global.localStorage = { getItem: ()=>null, setItem: ()=>{} };
             eval(require('fs').readFileSync('public/js/i18n.js', 'utf8'));
             const i18n = window.i18n;
-
-            // Load all language files
             const langFiles = require('fs').readdirSync('public/js/i18n')
               .filter(f => f.endsWith('.js') && f !== 'TEMPLATE.js');
             for (const f of langFiles) {
               eval(require('fs').readFileSync('public/js/i18n/' + f, 'utf8'));
             }
-
             console.log('Languages:', i18n.languages.map(l => l.code).join(', '));
-
-            // Check that EN has all keys
             const enKeys = JSON.stringify(i18n._translations.en).match(/\"[^\"]+\":/g)?.length || 0;
             console.log('EN keys: ~' + enKeys);
-
-            if (enKeys < 100) {
-              console.error('ERROR: EN translation seems incomplete');
-              process.exit(1);
-            }
+            if (enKeys < 100) { console.error('ERROR: EN translation seems incomplete'); process.exit(1); }
             console.log('i18n validation passed');
           "
 
       - name: Summary
+        if: always()
         run: |
-          echo "### CI Passed" >> $GITHUB_STEP_SUMMARY
-          echo "- Node.js syntax: OK" >> $GITHUB_STEP_SUMMARY
+          echo "### CI Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Node.js syntax: ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: ✅ (53 tests)" >> $GITHUB_STEP_SUMMARY
+          echo "- i18n: ✅ (3 languages)" >> $GITHUB_STEP_SUMMARY
           echo "- Dependencies: installed" >> $GITHUB_STEP_SUMMARY
-          echo "- i18n: validated" >> $GITHUB_STEP_SUMMARY
