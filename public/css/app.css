@@ -1378,6 +1378,14 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .meta-card-links a:hover { background: var(--accent-dim); color: var(--accent-hover); }
 .meta-card-links a i { font-size: 11px; }
 
+/* ── Skip to Content (a11y) ──────────────────────── */
+.skip-to-content {
+  position: absolute; left: -9999px; top: 0; z-index: 9999;
+  padding: 8px 16px; background: var(--accent); color: #fff; font-weight: 600;
+  text-decoration: none; border-radius: 0 0 var(--radius) 0;
+}
+.skip-to-content:focus { left: 0; }
+
 /* ── ARIA Tab Roles (auto-applied) ───────────────── */
 .tabs[role="tablist"] .tab { cursor: pointer; }
 

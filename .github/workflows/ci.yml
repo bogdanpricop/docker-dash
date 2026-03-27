@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check for vulnerabilities
-        run: npm audit --audit-level=high || true
+      - name: Check for critical vulnerabilities
+        run: npm audit --audit-level=critical
 
       - name: Validate JavaScript syntax (backend)
         run: |
