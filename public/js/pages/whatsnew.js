@@ -10,6 +10,23 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.1.0',
+      date: '2026-03-27',
+      title: 'Automation & Status — Maintenance Windows, Smart Restart, Status Page',
+      changes: [
+        { type: 'feature', text: 'Scheduled Maintenance Windows — define cron schedule, target containers/stacks, actions (pull/scan/update)' },
+        { type: 'feature', text: 'Maintenance CRUD API — create, update, enable/disable, delete maintenance windows' },
+        { type: 'feature', text: 'Smart Restart with Backoff — exponential backoff (5s→15s→45s→120s) based on restart frequency' },
+        { type: 'feature', text: 'Crash-loop detection — if >10 restarts in 1 hour, suggests rollback instead of restart' },
+        { type: 'feature', text: 'Public Status Page — unauthenticated /api/status-page/public endpoint' },
+        { type: 'feature', text: 'Status page shows selected containers as services with operational/degraded/down/maintenance status' },
+        { type: 'feature', text: 'Overall system status: operational / degraded / major_outage' },
+        { type: 'feature', text: 'Status page admin — enable/disable, custom title, add/remove containers' },
+        { type: 'security', text: 'Status page disabled by default — must be explicitly enabled by admin' },
+        { type: 'improvement', text: 'Block-on-critical option for maintenance windows (skip update if vulns found)' },
+      ],
+    },
+    {
       version: '3.0.0',
       date: '2026-03-27',
       title: 'Safe Operations — Deploy Previews, Safe-Pull, Troubleshooting',

@@ -480,6 +480,70 @@ function generateRunCommand(data) {
   return cmd;
 }
 
+// ─── Smart Restart with Backoff ───────────────────────
+
+router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+    const image = inspect.Config.Image;
+
+    // Get restart history from events
+    const db = require('../db').getDb();
+    const recentRestarts = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM docker_events
+      WHERE actor_name = ? AND action = 'start'
+      AND event_time > datetime('now', '-1 hour') AND host_id = ?
+    `).get(name, req.hostId || 0)?.cnt || 0;
+
+    // Exponential backoff: 0s, 5s, 15s, 45s, 120s (max)
+    const backoffSeconds = Math.min(120, Math.floor(5 * Math.pow(3, Math.min(recentRestarts, 4))));
+
+    if (recentRestarts > 10) {
+      // Too many restarts — suggest rollback
+      return res.json({
+        ok: false,
+        action: 'rollback_suggested',
+        message: `Container "${name}" has restarted ${recentRestarts} times in the last hour. Likely crash-looping.`,
+        recentRestarts,
+        suggestion: 'Consider rolling back to a previous image version.',
+      });
+    }
+
+    if (backoffSeconds > 0 && recentRestarts > 2) {
+      // Apply backoff delay
+      await new Promise(resolve => setTimeout(resolve, backoffSeconds * 1000));
+    }
+
+    // Restart
+    if (inspect.State.Running) {
+      await container.restart({ t: 10 });
+    } else {
+      await container.start();
+    }
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'container_smart_restart', targetType: 'container', targetId: name,
+      details: JSON.stringify({ recentRestarts, backoffSeconds }),
+      ip: getClientIp(req),
+    });
+
+    res.json({
+      ok: true,
+      action: 'restarted',
+      backoffApplied: backoffSeconds > 0 && recentRestarts > 2,
+      backoffSeconds,
+      recentRestarts,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Deploy Preview ───────────────────────────────────
 
 router.get('/:id/deploy-preview', requireAuth, async (req, res) => {

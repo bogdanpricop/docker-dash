@@ -69,6 +69,8 @@ app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
+app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
+app.use('/api/status-page', require('./routes/statusPage'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────

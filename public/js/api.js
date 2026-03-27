@@ -160,6 +160,20 @@ const Api = {
   getDeployPreview(id) { return this.get(`/containers/${id}/deploy-preview`); },
   safeUpdateContainer(id) { return this.post(`/containers/${id}/safe-update`); },
   diagnoseContainer(id) { return this.get(`/containers/${id}/diagnose`); },
+  smartRestart(id) { return this.post(`/containers/${id}/smart-restart`); },
+
+  // ─── Maintenance Windows ──────────────────────────
+  getMaintenanceWindows() { return this.get('/maintenance'); },
+  createMaintenanceWindow(data) { return this.post('/maintenance', data); },
+  updateMaintenanceWindow(id, data) { return this.put(`/maintenance/${id}`, data); },
+  deleteMaintenanceWindow(id) { return this.delete(`/maintenance/${id}`); },
+
+  // ─── Status Page ──────────────────────────────────
+  getStatusPagePublic() { return this.get('/status-page/public'); },
+  getStatusPageConfig() { return this.get('/status-page/config'); },
+  updateStatusPageConfig(data) { return this.put('/status-page/config', data); },
+  addStatusPageItem(data) { return this.post('/status-page/items', data); },
+  removeStatusPageItem(id) { return this.delete(`/status-page/items/${id}`); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },
