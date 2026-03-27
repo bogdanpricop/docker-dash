@@ -48,8 +48,9 @@ class DockerService {
   _parseHostRow(row) {
     let tlsConfig = null;
     let sshConfig = null;
-    try { tlsConfig = row.tls_config ? JSON.parse(row.tls_config) : null; } catch {}
-    try { sshConfig = row.ssh_config ? JSON.parse(row.ssh_config) : null; } catch {}
+    const { tryParseJson } = require('../utils/helpers');
+    tlsConfig = tryParseJson(row.tls_config);
+    sshConfig = tryParseJson(row.ssh_config);
     return {
       id: row.id,
       name: row.name,

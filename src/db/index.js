@@ -4,6 +4,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const config = require('../config');
+const log = require('../utils/logger')('db');
 
 let db = null;
 
@@ -42,13 +43,13 @@ function runMigrations(db) {
 
   for (const file of files) {
     if (applied.has(file)) continue;
-    console.log(`[DB] Running migration: ${file}`);
+    log.info(`Running migration: ${file}`);
     const migration = require(path.join(migrationsDir, file));
     db.transaction(() => {
       migration.up(db);
       db.prepare('INSERT INTO _migrations (name) VALUES (?)').run(file);
     })();
-    console.log(`[DB] ✓ ${file}`);
+    log.info(`Migration applied: ${file}`);
   }
 }
 

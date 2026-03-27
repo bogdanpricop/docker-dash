@@ -3,16 +3,16 @@
 const { Router } = require('express');
 const { getDb } = require('../db');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
-const { now } = require('../utils/helpers');
+const { now, tryParseJson } = require('../utils/helpers');
 
 const router = Router();
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
   res.json(getDb().prepare('SELECT * FROM maintenance_windows ORDER BY name').all().map(r => ({
     ...r,
-    target_names: JSON.parse(r.target_names || '[]'),
-    actions: JSON.parse(r.actions || '[]'),
-    notify_channels: JSON.parse(r.notify_channels || '[]'),
+    target_names: tryParseJson(r.target_names, []),
+    actions: tryParseJson(r.actions, []),
+    notify_channels: tryParseJson(r.notify_channels, []),
   })));
 });
 

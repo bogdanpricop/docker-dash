@@ -10,6 +10,22 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.8.0',
+      date: '2026-03-27',
+      title: 'Tech Debt Payoff — Security Hardening & Code Quality',
+      changes: [
+        { type: 'security', text: 'Input validation middleware — validateId, validateBody, sanitizeBody with prototype pollution protection' },
+        { type: 'security', text: 'Git deploy/push rate limiting — max 5 operations per minute per IP' },
+        { type: 'security', text: 'Enhanced central error handler — sanitizes file paths and credentials from error messages' },
+        { type: 'security', text: '5xx errors no longer leak internal details to clients' },
+        { type: 'security', text: 'SSH key cleanup on startup — removes stale keys older than 24h' },
+        { type: 'fix', text: 'Unguarded JSON.parse replaced with safe tryParseJson across all routes' },
+        { type: 'fix', text: 'console.log in database migrations replaced with structured logger' },
+        { type: 'improvement', text: 'New utility functions: sanitizeShellArg, safeParseInt, safeJsonParse' },
+        { type: 'improvement', text: 'Dead code removed from migration service and container routes' },
+      ],
+    },
+    {
       version: '3.7.0',
       date: '2026-03-27',
       title: 'Event Notifications, Global Search, Dependency Graph',

@@ -14,6 +14,25 @@ const REPOS_BASE = path.join(process.env.DATA_DIR || '/data', 'repos');
 class GitService {
   constructor() {
     fs.mkdirSync(REPOS_BASE, { recursive: true });
+    // Cleanup stale SSH keys on startup (H9 fix)
+    this._cleanupSshKeys();
+  }
+
+  _cleanupSshKeys() {
+    const keyDir = path.join(REPOS_BASE, '.ssh-keys');
+    if (!fs.existsSync(keyDir)) return;
+    try {
+      const files = fs.readdirSync(keyDir);
+      for (const file of files) {
+        const keyPath = path.join(keyDir, file);
+        const stat = fs.statSync(keyPath);
+        // Remove keys older than 24h (stale from crashed processes)
+        if (Date.now() - stat.mtimeMs > 86400000) {
+          fs.unlinkSync(keyPath);
+          log.debug('Cleaned up stale SSH key', { file });
+        }
+      }
+    } catch { /* cleanup is best-effort */ }
   }
 
   // ─── Credential Operations ──────────────────────────────

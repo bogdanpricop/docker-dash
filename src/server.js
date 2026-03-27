@@ -93,10 +93,29 @@ app.get('*', (req, res) => {
   }
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  log.error('Unhandled error', { message: err.message, stack: err.stack?.substring(0, 500) });
-  res.status(500).json({ error: 'Internal server error' });
+// Central error handler — sanitize errors before sending to client
+app.use((err, req, res, _next) => {
+  const status = err.status || err.statusCode || 500;
+  const isOperational = status < 500; // 4xx errors are operational (user's fault)
+
+  // Log server errors fully, operational errors briefly
+  if (isOperational) {
+    log.warn('Request error', { status, message: err.message, path: req.path });
+  } else {
+    log.error('Server error', { message: err.message, stack: err.stack?.substring(0, 500), path: req.path });
+  }
+
+  // Never expose internal details for 500 errors
+  const clientMessage = isOperational ? err.message : 'Internal server error';
+
+  // Remove any potential credential/path leaks from error messages
+  const sanitized = clientMessage
+    .replace(/\/home\/[^\s]+/g, '[path]')
+    .replace(/\/data\/[^\s]+/g, '[path]')
+    .replace(/https?:\/\/[^@\s]+@/g, 'https://***@')
+    .substring(0, 500);
+
+  res.status(status).json({ error: sanitized });
 });
 
 // ─── Server Startup ─────────────────────────────────────────

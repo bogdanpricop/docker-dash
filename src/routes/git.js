@@ -5,8 +5,12 @@ const gitService = require('../services/git');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
+const { rateLimit } = require('../middleware/rateLimit');
 
 const router = Router();
+
+// Stricter rate limit for git deploy/push operations (5 per minute per IP)
+const gitDeployLimiter = rateLimit(5, 60 * 1000);
 
 // ─── Git Credentials CRUD ──────────────────────────────
 
@@ -139,7 +143,7 @@ router.delete('/stacks/:id', requireAuth, requireRole('admin'), writeable, async
 
 // ─── Deploy & Check ──────────────────────────────────
 
-router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'), writeable, gitDeployLimiter, async (req, res) => {
   try {
     await gitService.deployStack(parseInt(req.params.id), { force: req.body?.force });
     auditService.log({
@@ -263,7 +267,7 @@ router.get('/stacks/:id/remote-status', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/stacks/:id/push', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+router.post('/stacks/:id/push', requireAuth, requireRole('admin'), writeable, gitDeployLimiter, async (req, res) => {
   try {
     const { commitMessage, files, forcePush } = req.body;
     if (!files || Object.keys(files).length === 0) {
