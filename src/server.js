@@ -31,6 +31,13 @@ app.use(helmet({
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+// Request timeout — prevent hanging requests (5 min default)
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000);
+  next();
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

@@ -1,10 +1,12 @@
 'use strict';
 
 const { Router } = require('express');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
 const dockerService = require('../services/docker');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable, requireFeature } = require('../middleware/auth');
-const { getClientIp, sanitizeId } = require('../utils/helpers');
+const { getClientIp, sanitizeId, sanitizeShellArg, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 
 const { extractHostId } = require('../middleware/hostId');
@@ -354,12 +356,10 @@ router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writea
 
     if (project && workingDir) {
       // Use docker compose for stack containers — sanitize labels to prevent injection
-      const { execFileSync } = require('child_process');
-      const { sanitizeShellArg } = require('../utils/helpers');
       const safeDir = sanitizeShellArg(workingDir);
       const service = sanitizeShellArg(inspect.Config.Labels?.['com.docker.compose.service'] || '');
 
-      if (!safeDir || !require('fs').existsSync(safeDir)) {
+      if (!safeDir || !fs.existsSync(safeDir)) {
         return res.status(400).json({ error: 'Invalid compose working directory' });
       }
 
@@ -534,7 +534,7 @@ router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'),
     const image = inspect.Config.Image;
 
     // Get restart history from events
-    const db = require('../db').getDb();
+    const db = getDb();
     const recentRestarts = db.prepare(`
       SELECT COUNT(*) AS cnt FROM docker_events
       WHERE actor_name = ? AND action = 'start'
@@ -612,11 +612,11 @@ router.get('/:id/deploy-preview', requireAuth, async (req, res) => {
     let updateAvailable = false;
     try {
       // Use docker CLI to check remote digest without pulling
-      const { execSync } = require('child_process');
-      const manifest = execSync(`docker manifest inspect ${imageName} 2>/dev/null || echo "UNAVAILABLE"`, {
+      const safeImage = sanitizeShellArg(imageName);
+      const manifest = execFileSync('docker', ['manifest', 'inspect', safeImage], {
         timeout: 15000, encoding: 'utf8',
       });
-      if (!manifest.includes('UNAVAILABLE')) {
+      if (manifest && !manifest.includes('UNAVAILABLE')) {
         const parsed = JSON.parse(manifest);
         remoteDigest = (parsed.config?.digest || parsed.digest || '').substring(0, 19);
         updateAvailable = remoteDigest && remoteDigest !== currentDigest;
@@ -680,11 +680,10 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
     let scanPassed = true;
     let scanSummary = null;
     try {
-      const { execSync } = require('child_process');
-      const scanResult = execSync(
-        `trivy image --severity CRITICAL,HIGH --format json --quiet ${image} 2>/dev/null`,
-        { timeout: 120000, encoding: 'utf8' }
-      );
+      const safeImg = sanitizeShellArg(image);
+      const scanResult = execFileSync('trivy', ['image', '--severity', 'CRITICAL,HIGH', '--format', 'json', '--quiet', safeImg], {
+        timeout: 120000, encoding: 'utf8',
+      });
       const parsed = JSON.parse(scanResult);
       const results = parsed.Results || [];
       let critical = 0, high = 0;
@@ -814,7 +813,7 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
 
     // Step 5: Mounts/Volumes
     const mounts = inspect.Mounts || [];
-    const missingMounts = mounts.filter(m => m.Type === 'bind' && !require('fs').existsSync(m.Source));
+    const missingMounts = mounts.filter(m => m.Type === 'bind' && !fs.existsSync(m.Source));
     steps.push({
       step: 5, title: 'Volumes & Mounts',
       status: missingMounts.length > 0 ? 'error' : 'ok',
@@ -831,7 +830,7 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
     steps.push({
       step: 6, title: 'Resource Limits',
       status: memLimit === 0 ? 'info' : 'ok',
-      detail: memLimit > 0 ? `Memory limit: ${require('../utils/helpers').formatBytes(memLimit)}` : 'No memory limit set (unlimited)',
+      detail: memLimit > 0 ? `Memory limit: ${formatBytes(memLimit)}` : 'No memory limit set (unlimited)',
       suggestion: memLimit === 0 ? 'Consider setting a memory limit to prevent OOM kills on the host.' : null,
     });
 

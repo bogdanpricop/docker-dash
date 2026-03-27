@@ -412,7 +412,8 @@ class GitService {
   _completeDeployment(deploymentId, status, errorMessage = null) {
     const db = getDb();
     const deployment = db.prepare('SELECT started_at FROM git_deployments WHERE id = ?').get(deploymentId);
-    const durationMs = deployment ? Date.now() - new Date(deployment.started_at + 'Z').getTime() : null;
+    const startedAt = deployment?.started_at;
+    const durationMs = startedAt ? Date.now() - new Date(startedAt.endsWith('Z') ? startedAt : startedAt + 'Z').getTime() : null;
     db.prepare(`
       UPDATE git_deployments SET status = ?, error_message = ?, finished_at = datetime('now'), duration_ms = ?
       WHERE id = ?

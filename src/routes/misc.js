@@ -5,11 +5,16 @@ const { favorites, notifications, apiKeys } = require('../services/misc');
 const auditService = require('../services/audit');
 const settingsService = require('../services/settings');
 const statsService = require('../services/stats');
-const { requireAuth, requireRole } = require('../middleware/auth');
-const { getClientIp } = require('../utils/helpers');
+const { requireAuth, optionalAuth, requireRole } = require('../middleware/auth');
+const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
+const config = require('../config');
+const dockerService = require('../services/docker');
 
 const router = Router();
+
+// Cache package version at startup
+const _pkgVersion = require('../../package.json').version;
 
 // ─── Health ─────────────────────────────────────────────────
 
@@ -24,7 +29,7 @@ router.get('/health', (req, res) => {
 
 // ─── Prometheus Metrics ─────────────────────────────────────
 
-router.get('/metrics', (req, res) => {
+router.get('/metrics', optionalAuth, (req, res) => {
   try {
     const db = getDb();
     const overview = statsService.getOverview();
@@ -206,7 +211,7 @@ router.get('/search', requireAuth, async (req, res) => {
     if (!q || q.length < 2) return res.json({ results: [], query: q });
 
     const query = q.toLowerCase();
-    const dockerService = require('../services/docker');
+    // dockerService imported at top
     const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
     const results = [];
 
@@ -233,7 +238,7 @@ router.get('/search', requireAuth, async (req, res) => {
           if (tag.toLowerCase().includes(query)) {
             results.push({
               type: 'image', id: (img.Id || img.id || '').substring(7, 19),
-              name: tag, detail: `Size: ${require('../utils/helpers').formatBytes(img.Size || img.size)}`,
+              name: tag, detail: `Size: ${formatBytes(img.Size || img.size)}`,
               url: `#/images`, icon: 'fas fa-layer-group',
             });
             break;
@@ -346,7 +351,7 @@ router.put('/dashboard/preferences', requireAuth, (req, res) => {
 
 router.get('/dependencies', requireAuth, async (req, res) => {
   try {
-    const dockerService = require('../services/docker');
+    // dockerService imported at top
     const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
     const docker = dockerService.getDocker(hostId);
 
@@ -477,7 +482,7 @@ router.get('/compare', (req, res) => {
 
   const summary = {
     dockerDash: { exclusive: features.filter(f => f.dockerDash === true && !f.portainerCE && !f.dockge && !f.dockhand).length },
-    version: require('../../package.json').version,
+    version: _pkgVersion,
   };
 
   res.json({ features, summary });
@@ -487,12 +492,14 @@ router.get('/compare', (req, res) => {
 
 router.get('/watchtower', requireAuth, async (req, res) => {
   try {
-    const dockerService = require('../services/docker');
+    // dockerService imported at top
     const containers = await dockerService.listContainers(req.query.hostId || 0);
     const watchtower = containers.filter(c => {
       const image = (c.Image || c.image || '').toLowerCase();
       const name = ((c.Names || c.names || [])[0] || '').toLowerCase();
-      return image.includes('watchtower') || name.includes('watchtower');
+      const labels = c.Labels || c.labels || {};
+      return image.includes('watchtower') || name.includes('watchtower')
+        || labels['com.centurylinklabs.watchtower'] !== undefined;
     });
 
     if (watchtower.length === 0) {
