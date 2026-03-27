@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.10.0',
+      date: '2026-03-27',
+      title: 'Image Intelligence & Audit Analytics',
+      changes: [
+        { type: 'feature', text: 'Image Freshness Dashboard — freshness score (0-100) based on age + vulnerability count' },
+        { type: 'feature', text: 'Images sorted by freshness (stalest first) with age in days, size, and last scan results' },
+        { type: 'feature', text: 'Audit Log Analytics — top users, top actions, most actioned targets, activity heatmap' },
+        { type: 'feature', text: 'Daily and hourly activity charts for audit trail visualization' },
+        { type: 'improvement', text: 'New API endpoints: /images/freshness, /audit/analytics' },
+      ],
+    },
+    {
       version: '2.9.0',
       date: '2026-03-27',
       title: 'Smart Monitoring — Uptime Reports, Trends, Cost Estimation',

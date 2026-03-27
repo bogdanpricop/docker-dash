@@ -302,6 +302,8 @@ const Api = {
   getFootprint() { return this.get('/footprint'); },
   getFavorites() { return this.get('/favorites'); },
   toggleFavorite(containerId) { return this.post(`/favorites/${containerId}`); },
+  getImageFreshness() { return this.get('/images/freshness'); },
+  getAuditAnalytics(days = 7) { return this.get(`/audit/analytics?days=${days}`); },
   getAuditLog(page = 1, limit = 50) {
     return this.get(`/audit?page=${page}&limit=${limit}`);
   },

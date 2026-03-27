@@ -667,4 +667,64 @@ router.post('/build', requireAuth, requireRole('admin'), writeable, async (req, 
   }
 });
 
+// ─── Image Freshness Dashboard ────────────────────────
+
+router.get('/freshness', requireAuth, async (req, res) => {
+  try {
+    const hostId = req.hostId || 0;
+    const images = await dockerService.listImages(hostId);
+    const db = getDb();
+
+    const results = images.map(img => {
+      const repoTags = img.RepoTags || img.repoTags || [];
+      const name = repoTags[0] || '<none>';
+      const created = img.Created || img.created;
+      const createdDate = new Date(typeof created === 'number' ? created * 1000 : created);
+      const ageDays = Math.floor((Date.now() - createdDate.getTime()) / 86400000);
+
+      // Get latest scan for this image
+      const scan = db.prepare(`
+        SELECT summary_critical, summary_high, summary_medium, summary_low, summary_total, scanned_at
+        FROM scan_results WHERE image_name = ? AND host_id = ?
+        ORDER BY scanned_at DESC LIMIT 1
+      `).get(name.split(':')[0], hostId);
+
+      // Freshness score: 100 = brand new, decays with age and vulns
+      let freshness = 100;
+      if (ageDays > 365) freshness -= 40;
+      else if (ageDays > 180) freshness -= 25;
+      else if (ageDays > 90) freshness -= 15;
+      else if (ageDays > 30) freshness -= 5;
+
+      if (scan) {
+        if (scan.summary_critical > 0) freshness -= 30;
+        else if (scan.summary_high > 5) freshness -= 20;
+        else if (scan.summary_high > 0) freshness -= 10;
+      }
+
+      return {
+        name,
+        id: (img.Id || img.id || '').replace('sha256:', '').substring(0, 12),
+        size: img.Size || img.size || 0,
+        created: createdDate.toISOString(),
+        age_days: ageDays,
+        freshness: Math.max(0, Math.min(100, freshness)),
+        scan: scan ? {
+          critical: scan.summary_critical,
+          high: scan.summary_high,
+          medium: scan.summary_medium,
+          low: scan.summary_low,
+          total: scan.summary_total,
+          scanned_at: scan.scanned_at,
+        } : null,
+      };
+    });
+
+    results.sort((a, b) => a.freshness - b.freshness); // Stalest first
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

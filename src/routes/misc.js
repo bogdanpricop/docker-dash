@@ -144,6 +144,60 @@ router.get('/audit', requireAuth, requireRole('admin'), (req, res) => {
   }));
 });
 
+// ─── Audit Analytics ────────────────────────────────────────
+
+router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days) || 7;
+
+    // Top users by action count
+    const topUsers = db.prepare(`
+      SELECT username, COUNT(*) AS action_count
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY username ORDER BY action_count DESC LIMIT 10
+    `).all(days);
+
+    // Top actions
+    const topActions = db.prepare(`
+      SELECT action, COUNT(*) AS count
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY action ORDER BY count DESC LIMIT 15
+    `).all(days);
+
+    // Most actioned containers/targets
+    const topTargets = db.prepare(`
+      SELECT target_id, target_type, COUNT(*) AS count
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+        AND target_id IS NOT NULL AND target_id != ''
+      GROUP BY target_id, target_type ORDER BY count DESC LIMIT 10
+    `).all(days);
+
+    // Activity by hour (heatmap data)
+    const hourly = db.prepare(`
+      SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY hour ORDER BY hour
+    `).all(days);
+
+    // Activity by day
+    const daily = db.prepare(`
+      SELECT date(created_at) AS day, COUNT(*) AS count
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+      GROUP BY day ORDER BY day
+    `).all(days);
+
+    // Total counts
+    const total = db.prepare(
+      "SELECT COUNT(*) AS cnt FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')"
+    ).get(days)?.cnt || 0;
+
+    res.json({ days, total, topUsers, topActions, topTargets, hourly, daily });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Settings ───────────────────────────────────────────────
 
 router.get('/settings', requireAuth, requireRole('admin'), (req, res) => {
