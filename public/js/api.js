@@ -263,6 +263,9 @@ const Api = {
   updateAutoDeployConfig(id, data) { return this.put(`/git/stacks/${id}/auto-deploy`, data); },
   getGitDiff(id) { return this.get(`/git/stacks/${id}/diff`); },
   rollbackGitStack(stackId, deploymentId) { return this.post(`/git/stacks/${stackId}/rollback/${deploymentId}`); },
+  getGitEnv(id) { return this.get(`/git/stacks/${id}/env`); },
+  updateGitEnv(id, variables) { return this.put(`/git/stacks/${id}/env`, { variables }); },
+  importGitEnv(id, content, sensitiveKeys) { return this.post(`/git/stacks/${id}/env/import`, { content, sensitiveKeys }); },
 
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },

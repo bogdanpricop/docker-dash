@@ -215,16 +215,24 @@ class GitService {
     const sets = [];
     const params = [];
     const allowed = ['branch', 'compose_path', 'credential_id', 'env_overrides',
-      'force_redeploy', 're_pull_images', 'tls_skip_verify'];
+      'force_redeploy', 're_pull_images', 'tls_skip_verify', 'additional_files'];
 
     for (const key of allowed) {
       if (data[key] !== undefined) {
         sets.push(`${key} = ?`);
-        if (key === 'env_overrides') params.push(JSON.stringify(data[key]));
+        if (key === 'env_overrides' || key === 'additional_files')
+          params.push(typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key]));
         else if (['force_redeploy', 're_pull_images', 'tls_skip_verify'].includes(key))
           params.push(data[key] ? 1 : 0);
         else params.push(data[key]);
       }
+    }
+
+    // Validate additional_files paths
+    if (data.additional_files) {
+      const files = Array.isArray(data.additional_files) ? data.additional_files : JSON.parse(data.additional_files);
+      for (const f of files) this._validateComposePath(f);
+      if (files.length > 10) throw new Error('Maximum 10 compose files allowed');
     }
 
     if (sets.length === 0) return;
@@ -760,29 +768,117 @@ class GitService {
 
     const repoDir = this._getRepoDir(stackId);
     const envPath = path.join(repoDir, '.env.override');
-    const content = Object.entries(overrides)
-      .map(([k, v]) => `${k}=${v}`)
-      .join('\n') + '\n';
-    fs.writeFileSync(envPath, content, 'utf8');
+    const lines = [];
+    for (const [k, v] of Object.entries(overrides)) {
+      if (typeof v === 'object' && v !== null) {
+        // Structured format: decrypt sensitive values
+        const val = v.sensitive ? decrypt(v.value) : v.value;
+        lines.push(`${k}=${val}`);
+      } else {
+        lines.push(`${k}=${v}`);
+      }
+    }
+    fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
   }
 
   async _composeUp(stackId, stack) {
     const repoDir = this._getRepoDir(stackId);
-    const composePath = path.join(repoDir, stack.compose_path);
     const envFile = path.join(repoDir, '.env.override');
     const hasEnvOverride = fs.existsSync(envFile);
 
+    // Build compose file flags (multi-file support)
+    let composeFiles = [];
+    if (stack.additional_files) {
+      const parsed = typeof stack.additional_files === 'string'
+        ? JSON.parse(stack.additional_files) : stack.additional_files;
+      if (Array.isArray(parsed) && parsed.length > 0) composeFiles = parsed;
+    }
+    if (composeFiles.length === 0) composeFiles = [stack.compose_path];
+
+    // Validate all files exist
+    for (const f of composeFiles) {
+      const full = path.join(repoDir, f);
+      if (!fs.existsSync(full)) throw new Error(`Compose file not found: ${f}`);
+    }
+
+    const fileFlags = composeFiles.map(f => `-f "${path.join(repoDir, f)}"`).join(' ');
+
     let cmd = `cd "${repoDir}"`;
     if (stack.re_pull_images) {
-      cmd += ` && docker compose -f "${composePath}" -p "${stack.stack_name}" pull`;
+      cmd += ` && docker compose ${fileFlags} -p "${stack.stack_name}" pull`;
     }
-    cmd += ` && docker compose -f "${composePath}" -p "${stack.stack_name}"`;
+    cmd += ` && docker compose ${fileFlags} -p "${stack.stack_name}"`;
     if (hasEnvOverride) {
       cmd += ` --env-file "${envFile}"`;
     }
     cmd += ' up -d --remove-orphans';
 
     this._exec(cmd);
+  }
+
+  // ─── Env Var Management ──────────────────────────────
+
+  getEnvOverrides(stackId) {
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+
+    const overrides = stack.env_overrides || {};
+    const result = [];
+    for (const [key, val] of Object.entries(overrides)) {
+      if (typeof val === 'object' && val !== null) {
+        // Structured format: { value, sensitive }
+        result.push({
+          key,
+          value: val.sensitive ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : val.value,
+          sensitive: !!val.sensitive,
+          source: 'override',
+        });
+      } else {
+        // Simple key=value (legacy format)
+        result.push({ key, value: String(val), sensitive: false, source: 'override' });
+      }
+    }
+    return { variables: result };
+  }
+
+  updateEnvOverrides(stackId, variables) {
+    const db = getDb();
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+
+    const overrides = {};
+    for (const v of variables) {
+      if (!v.key || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(v.key)) continue;
+      if (v.sensitive) {
+        overrides[v.key] = { value: encrypt(v.value), sensitive: true };
+      } else {
+        overrides[v.key] = { value: v.value, sensitive: false };
+      }
+    }
+
+    db.prepare('UPDATE git_stacks SET env_overrides = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(overrides), now(), stackId);
+  }
+
+  importEnvFile(stackId, content, sensitiveKeys = []) {
+    const variables = [];
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.substring(0, eqIdx).trim();
+      let value = trimmed.substring(eqIdx + 1).trim();
+      // Remove surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        variables.push({ key, value, sensitive: sensitiveKeys.includes(key) });
+      }
+    }
+    return variables;
   }
 
   _exec(cmd) {

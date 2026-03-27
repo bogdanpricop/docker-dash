@@ -252,6 +252,36 @@ router.post('/stacks/:id/rollback/:deploymentId', requireAuth, requireRole('admi
   }
 });
 
+// ─── Env Var Management ──────────────────────────────
+
+router.get('/stacks/:id/env', requireAuth, (req, res) => {
+  try {
+    res.json(gitService.getEnvOverrides(parseInt(req.params.id)));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.put('/stacks/:id/env', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    gitService.updateEnvOverrides(parseInt(req.params.id), req.body.variables || []);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.post('/stacks/:id/env/import', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { content, sensitiveKeys } = req.body;
+    if (!content) return res.status(400).json({ error: 'content is required' });
+    const variables = gitService.importEnvFile(parseInt(req.params.id), content, sensitiveKeys || []);
+    res.json({ variables });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 // ─── Test Connection ──────────────────────────────────
 
 router.post('/test-connection', requireAuth, requireRole('admin'), async (req, res) => {

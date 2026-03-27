@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.4.0',
+      date: '2026-03-27',
+      title: 'Multi-File Compose & Env Var Management (Phase 4)',
+      changes: [
+        { type: 'feature', text: 'Multi-file compose support — specify multiple YAML files (docker compose -f file1.yml -f file2.yml)' },
+        { type: 'feature', text: 'Environment variable override management — per-stack overrides with sensitive value encryption' },
+        { type: 'feature', text: 'Import .env file — paste .env content and mark sensitive keys, auto-parsed and stored' },
+        { type: 'feature', text: 'Sensitive env vars — AES-256-GCM encrypted at rest, masked in API responses' },
+        { type: 'improvement', text: 'Compose files validated at deploy time — all files must exist in the repo' },
+        { type: 'improvement', text: 'Env var precedence: DB overrides > repo .env > compose environment section' },
+      ],
+    },
+    {
       version: '2.3.0',
       date: '2026-03-27',
       title: 'Git Auto-Deploy, Diff View & Rollback (Phase 2+3)',
