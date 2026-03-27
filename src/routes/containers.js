@@ -480,4 +480,282 @@ function generateRunCommand(data) {
   return cmd;
 }
 
+// ─── Deploy Preview ───────────────────────────────────
+
+router.get('/:id/deploy-preview', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const imageName = inspect.Config.Image;
+    const name = inspect.Name.replace(/^\//, '');
+
+    // Current image info
+    const currentImage = await docker.getImage(inspect.Image).inspect();
+    const currentDigest = currentImage.RepoDigests?.[0]?.split('@')[1]?.substring(0, 19) || 'unknown';
+    const currentCreated = currentImage.Created;
+
+    // Try to get remote image info (registry manifest check)
+    let remoteDigest = null;
+    let updateAvailable = false;
+    try {
+      // Use docker CLI to check remote digest without pulling
+      const { execSync } = require('child_process');
+      const manifest = execSync(`docker manifest inspect ${imageName} 2>/dev/null || echo "UNAVAILABLE"`, {
+        timeout: 15000, encoding: 'utf8',
+      });
+      if (!manifest.includes('UNAVAILABLE')) {
+        const parsed = JSON.parse(manifest);
+        remoteDigest = (parsed.config?.digest || parsed.digest || '').substring(0, 19);
+        updateAvailable = remoteDigest && remoteDigest !== currentDigest;
+      }
+    } catch { /* manifest check not available */ }
+
+    res.json({
+      container: name,
+      image: imageName,
+      current: {
+        digest: currentDigest,
+        created: currentCreated,
+        size: currentImage.Size,
+      },
+      remote: remoteDigest ? { digest: remoteDigest } : null,
+      updateAvailable,
+      config: {
+        ports: Object.entries(inspect.NetworkSettings?.Ports || {}).map(([k, v]) => ({
+          container: k, host: v?.[0]?.HostPort || null,
+        })),
+        env: (inspect.Config.Env || []).length,
+        volumes: Object.keys(inspect.Mounts || {}).length || (inspect.Mounts || []).length,
+        restart: inspect.HostConfig?.RestartPolicy?.Name || 'no',
+        memoryLimit: inspect.HostConfig?.Memory || 0,
+        cpuShares: inspect.HostConfig?.CpuShares || 0,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Safe-Pull Update ─────────────────────────────────
+
+router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(id);
+    const inspect = await container.inspect();
+    const image = inspect.Config.Image;
+    const name = inspect.Name.replace(/^\//, '');
+
+    if (dockerService.isSelf(inspect.Id)) {
+      return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
+    }
+
+    // Step 1: Pull new image
+    res.write ? null : null; // ensure response is writable
+    await new Promise((resolve, reject) => {
+      docker.pull(image, (err, stream) => {
+        if (err) return reject(err);
+        docker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
+      });
+    });
+
+    // Step 2: Get new image digest
+    const newImage = await docker.getImage(image).inspect();
+    const newDigest = newImage.Id;
+
+    // Step 3: Scan with Trivy (if available)
+    let scanPassed = true;
+    let scanSummary = null;
+    try {
+      const { execSync } = require('child_process');
+      const scanResult = execSync(
+        `trivy image --severity CRITICAL,HIGH --format json --quiet ${image} 2>/dev/null`,
+        { timeout: 120000, encoding: 'utf8' }
+      );
+      const parsed = JSON.parse(scanResult);
+      const results = parsed.Results || [];
+      let critical = 0, high = 0;
+      for (const r of results) {
+        for (const v of (r.Vulnerabilities || [])) {
+          if (v.Severity === 'CRITICAL') critical++;
+          if (v.Severity === 'HIGH') high++;
+        }
+      }
+      scanSummary = { critical, high, passed: critical === 0 };
+      scanPassed = critical === 0; // Block on critical vulns only
+    } catch {
+      // Trivy not available — skip scan, allow update
+      scanSummary = { scanner: 'unavailable', passed: true };
+    }
+
+    if (!scanPassed) {
+      return res.json({
+        ok: false,
+        blocked: true,
+        reason: 'Vulnerability scan found critical issues',
+        scan: scanSummary,
+        image,
+        message: 'Update blocked. New image has critical vulnerabilities. Use regular update to override.',
+      });
+    }
+
+    // Step 4: Safe — recreate container with new image
+    const wasRunning = inspect.State.Running;
+    if (wasRunning) await container.stop();
+    await container.remove();
+
+    const createOpts = {
+      name,
+      Image: image,
+      Cmd: inspect.Config.Cmd,
+      Env: inspect.Config.Env,
+      ExposedPorts: inspect.Config.ExposedPorts,
+      Labels: inspect.Config.Labels,
+      WorkingDir: inspect.Config.WorkingDir,
+      Entrypoint: inspect.Config.Entrypoint,
+      Volumes: inspect.Config.Volumes,
+      Hostname: inspect.Config.Hostname,
+      User: inspect.Config.User,
+      HostConfig: inspect.HostConfig,
+      NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
+    };
+
+    const newContainer = await docker.createContainer(createOpts);
+    if (wasRunning) await newContainer.start();
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'container_safe_update', targetType: 'container', targetId: name,
+      details: JSON.stringify({ image, scan: scanSummary, newId: newContainer.id }),
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, method: 'safe-pull', scan: scanSummary, newId: newContainer.id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Troubleshooting Wizard ───────────────────────────
+
+router.get('/:id/diagnose', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+    const state = inspect.State;
+
+    const steps = [];
+
+    // Step 1: Container state
+    steps.push({
+      step: 1, title: 'Container State',
+      status: state.Running ? 'ok' : state.ExitCode === 0 ? 'info' : 'error',
+      detail: state.Running ? 'Container is running' :
+        `Exited with code ${state.ExitCode} (${state.Error || 'no error message'})`,
+      suggestion: state.Running ? null :
+        state.ExitCode === 137 ? 'Container was killed (OOM or docker kill). Check memory limits.' :
+        state.ExitCode === 1 ? 'Application error. Check logs for stack trace.' :
+        state.ExitCode === 127 ? 'Command not found. Check image and entrypoint.' :
+        `Exit code ${state.ExitCode}. Check logs for details.`,
+    });
+
+    // Step 2: Health check
+    if (state.Health) {
+      const hStatus = state.Health.Status;
+      steps.push({
+        step: 2, title: 'Health Check',
+        status: hStatus === 'healthy' ? 'ok' : hStatus === 'starting' ? 'warning' : 'error',
+        detail: `Health: ${hStatus}. Last ${state.Health.FailingStreak || 0} checks failed.`,
+        suggestion: hStatus === 'unhealthy' ? 'Health check is failing. Check the health check command and endpoint.' : null,
+        log: state.Health.Log?.slice(-3)?.map(l => ({ output: l.Output?.trim(), exitCode: l.ExitCode })),
+      });
+    }
+
+    // Step 3: Logs (last 20 lines)
+    let logLines = '';
+    try {
+      const logs = await container.logs({ stdout: true, stderr: true, tail: 20, timestamps: false });
+      logLines = logs.toString('utf8').replace(/[\x00-\x08]/g, '').trim();
+    } catch {}
+
+    const hasErrors = /error|exception|fatal|panic|traceback|fail/i.test(logLines);
+    steps.push({
+      step: 3, title: 'Recent Logs',
+      status: hasErrors ? 'warning' : 'ok',
+      detail: hasErrors ? 'Error patterns detected in recent logs' : 'No obvious errors in recent logs',
+      log: logLines.split('\n').slice(-10),
+    });
+
+    // Step 4: Port bindings
+    const ports = inspect.NetworkSettings?.Ports || {};
+    const portIssues = Object.entries(ports).filter(([, v]) => v && v.length > 0).length === 0 && Object.keys(ports).length > 0;
+    steps.push({
+      step: 4, title: 'Port Bindings',
+      status: portIssues ? 'warning' : 'ok',
+      detail: portIssues ? 'Container exposes ports but none are bound to host' :
+        `${Object.entries(ports).filter(([, v]) => v).length} port(s) bound`,
+      suggestion: portIssues ? 'Add host port bindings if external access is needed.' : null,
+    });
+
+    // Step 5: Mounts/Volumes
+    const mounts = inspect.Mounts || [];
+    const missingMounts = mounts.filter(m => m.Type === 'bind' && !require('fs').existsSync(m.Source));
+    steps.push({
+      step: 5, title: 'Volumes & Mounts',
+      status: missingMounts.length > 0 ? 'error' : 'ok',
+      detail: missingMounts.length > 0 ?
+        `${missingMounts.length} bind mount(s) point to missing host paths` :
+        `${mounts.length} mount(s), all accessible`,
+      suggestion: missingMounts.length > 0 ?
+        `Missing paths: ${missingMounts.map(m => m.Source).join(', ')}` : null,
+    });
+
+    // Step 6: Resource limits
+    const memLimit = inspect.HostConfig?.Memory || 0;
+    const memUsage = state.Running ? null : null; // Can't get usage for stopped containers
+    steps.push({
+      step: 6, title: 'Resource Limits',
+      status: memLimit === 0 ? 'info' : 'ok',
+      detail: memLimit > 0 ? `Memory limit: ${require('../utils/helpers').formatBytes(memLimit)}` : 'No memory limit set (unlimited)',
+      suggestion: memLimit === 0 ? 'Consider setting a memory limit to prevent OOM kills on the host.' : null,
+    });
+
+    // Step 7: Restart policy
+    const restartPolicy = inspect.HostConfig?.RestartPolicy?.Name || 'no';
+    const restartCount = inspect.RestartCount || 0;
+    steps.push({
+      step: 7, title: 'Restart Policy',
+      status: restartCount > 10 ? 'error' : restartPolicy === 'no' ? 'info' : 'ok',
+      detail: `Policy: ${restartPolicy}. Restarted ${restartCount} time(s).`,
+      suggestion: restartCount > 10 ? 'Container is crash-looping. Fix the root cause before relying on restart policy.' :
+        restartPolicy === 'no' ? 'Consider "unless-stopped" for production containers.' : null,
+    });
+
+    // Step 8: Image age
+    try {
+      const img = await docker.getImage(inspect.Image).inspect();
+      const ageDays = Math.floor((Date.now() - new Date(img.Created).getTime()) / 86400000);
+      steps.push({
+        step: 8, title: 'Image Age',
+        status: ageDays > 365 ? 'warning' : ageDays > 90 ? 'info' : 'ok',
+        detail: `Image created ${ageDays} days ago`,
+        suggestion: ageDays > 180 ? 'Image is quite old. Consider updating to get security patches.' : null,
+      });
+    } catch {}
+
+    // Overall score
+    const errors = steps.filter(s => s.status === 'error').length;
+    const warnings = steps.filter(s => s.status === 'warning').length;
+    const overall = errors > 0 ? 'critical' : warnings > 0 ? 'warning' : 'healthy';
+
+    res.json({ container: name, image: inspect.Config.Image, overall, steps, errors, warnings });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

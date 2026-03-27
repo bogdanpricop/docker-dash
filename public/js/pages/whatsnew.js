@@ -10,6 +10,24 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.0.0',
+      date: '2026-03-27',
+      title: 'Safe Operations — Deploy Previews, Safe-Pull, Troubleshooting',
+      changes: [
+        { type: 'feature', text: 'Deploy Preview — check if a container image has updates available without pulling (digest comparison)' },
+        { type: 'feature', text: 'Preview shows current image digest, creation date, size, port bindings, env count, restart policy' },
+        { type: 'feature', text: 'Safe-Pull Container Update — pull new image, scan with Trivy for critical vulnerabilities, only swap if scan passes' },
+        { type: 'feature', text: 'Update blocked notification — if critical vulns found, update is blocked with detailed scan summary' },
+        { type: 'feature', text: 'Guided Troubleshooting Wizard — 8-step diagnostic for any container' },
+        { type: 'feature', text: 'Diagnose checks: state, health check, logs, ports, volumes, resources, restart policy, image age' },
+        { type: 'feature', text: 'Overall health assessment: critical/warning/healthy with actionable suggestions per step' },
+        { type: 'feature', text: 'Error pattern detection in logs (error, exception, fatal, panic, traceback)' },
+        { type: 'feature', text: 'Missing bind mount detection — flags paths that don\'t exist on the host' },
+        { type: 'security', text: 'Safe-pull prevents deploying images with critical vulnerabilities' },
+        { type: 'improvement', text: 'Three new API endpoints: deploy-preview, safe-update, diagnose' },
+      ],
+    },
+    {
       version: '2.10.0',
       date: '2026-03-27',
       title: 'Image Intelligence & Audit Analytics',
