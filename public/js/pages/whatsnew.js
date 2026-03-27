@@ -10,6 +10,21 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.3.0',
+      date: '2026-03-27',
+      title: 'Mobile UI, Resource Recommendations, Competitive Positioning',
+      changes: [
+        { type: 'feature', text: 'Mobile-Responsive UI — hamburger menu, touch-friendly buttons (40px min), scrollable tables, overlay sidebar' },
+        { type: 'feature', text: 'iOS zoom prevention — form inputs set to 16px on mobile' },
+        { type: 'feature', text: 'Resource Recommendations — smart analysis of 24h stats with actionable advice' },
+        { type: 'feature', text: 'Detects: over-provisioned memory, memory pressure, no memory limit, high CPU, idle containers' },
+        { type: 'feature', text: 'Comparison API — /api/compare returns feature matrix vs Portainer, Dockge, Dockhand (29 features)' },
+        { type: 'feature', text: 'Exclusive feature count — shows how many features only Docker Dash has' },
+        { type: 'improvement', text: 'Small phone (480px) optimizations: compact headers, stacked card layouts' },
+        { type: 'improvement', text: 'Sidebar auto-closes on navigation (mobile)' },
+      ],
+    },
+    {
       version: '3.2.0',
       date: '2026-03-27',
       title: 'Community & Growth — Templates, Log Search, Watchtower Migration',

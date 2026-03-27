@@ -163,6 +163,110 @@ router.get('/cost', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Resource Recommendations ─────────────────────────
+
+router.get('/recommendations', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const hostId = req.hostId || 0;
+
+    // Get 24h average stats per container
+    const stats = db.prepare(`
+      SELECT container_id, container_name,
+        AVG(cpu_percent) AS avg_cpu, MAX(cpu_percent) AS max_cpu,
+        AVG(mem_usage) AS avg_mem, MAX(mem_usage) AS max_mem,
+        AVG(mem_limit) AS mem_limit, COUNT(*) AS samples
+      FROM container_stats
+      WHERE host_id = ? AND recorded_at >= datetime('now', '-24 hours')
+      GROUP BY container_id
+      HAVING samples >= 10
+    `).all(hostId);
+
+    const recommendations = [];
+
+    for (const s of stats) {
+      const recs = [];
+      const avgMemPct = s.mem_limit > 0 ? (s.avg_mem / s.mem_limit) * 100 : 0;
+      const maxMemPct = s.mem_limit > 0 ? (s.max_mem / s.mem_limit) * 100 : 0;
+
+      // Over-provisioned memory (using <20% of limit consistently)
+      if (s.mem_limit > 0 && avgMemPct < 20 && s.mem_limit > 128 * 1024 * 1024) {
+        const suggested = Math.max(128 * 1024 * 1024, Math.ceil(s.max_mem * 1.5));
+        recs.push({
+          type: 'memory_over_provisioned',
+          severity: 'info',
+          message: `Using only ${avgMemPct.toFixed(0)}% of memory limit. Consider reducing from ${(s.mem_limit / 1024 / 1024).toFixed(0)}MB to ${(suggested / 1024 / 1024).toFixed(0)}MB.`,
+          current: s.mem_limit,
+          suggested,
+        });
+      }
+
+      // Memory pressure (consistently >85% of limit)
+      if (s.mem_limit > 0 && avgMemPct > 85) {
+        const suggested = Math.ceil(s.max_mem * 1.3);
+        recs.push({
+          type: 'memory_pressure',
+          severity: 'warning',
+          message: `Using ${avgMemPct.toFixed(0)}% of memory limit (peak: ${maxMemPct.toFixed(0)}%). Risk of OOM kill. Consider increasing to ${(suggested / 1024 / 1024).toFixed(0)}MB.`,
+          current: s.mem_limit,
+          suggested,
+        });
+      }
+
+      // No memory limit set (risky for production)
+      if (s.mem_limit === 0 && s.avg_mem > 100 * 1024 * 1024) {
+        const suggested = Math.ceil(s.max_mem * 1.5);
+        recs.push({
+          type: 'no_memory_limit',
+          severity: 'warning',
+          message: `No memory limit set. Average usage: ${(s.avg_mem / 1024 / 1024).toFixed(0)}MB. Set a limit of ${(suggested / 1024 / 1024).toFixed(0)}MB to prevent host OOM.`,
+          suggested,
+        });
+      }
+
+      // High CPU (consistently >80%)
+      if (s.avg_cpu > 80) {
+        recs.push({
+          type: 'high_cpu',
+          severity: 'warning',
+          message: `Average CPU: ${s.avg_cpu.toFixed(1)}% (peak: ${s.max_cpu.toFixed(1)}%). May need more CPU or optimization.`,
+        });
+      }
+
+      // Idle container (< 1% CPU and < 50MB memory consistently)
+      if (s.avg_cpu < 1 && s.avg_mem < 50 * 1024 * 1024) {
+        recs.push({
+          type: 'idle',
+          severity: 'info',
+          message: `Container appears idle (CPU: ${s.avg_cpu.toFixed(1)}%, Memory: ${(s.avg_mem / 1024 / 1024).toFixed(0)}MB). Consider stopping if not needed.`,
+        });
+      }
+
+      if (recs.length > 0) {
+        recommendations.push({
+          container_id: s.container_id,
+          container_name: s.container_name,
+          avg_cpu: Math.round(s.avg_cpu * 10) / 10,
+          avg_mem: s.avg_mem,
+          mem_limit: s.mem_limit,
+          recommendations: recs,
+        });
+      }
+    }
+
+    // Sort: warnings first, then info
+    recommendations.sort((a, b) => {
+      const aMax = Math.max(...a.recommendations.map(r => r.severity === 'warning' ? 1 : 0));
+      const bMax = Math.max(...b.recommendations.map(r => r.severity === 'warning' ? 1 : 0));
+      return bMax - aMax;
+    });
+
+    res.json({ recommendations, analyzed: stats.length, period: '24h' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 function _linearRegression(points) {
   const n = points.length;
   if (n < 2) return { slope: 0, intercept: 0 };

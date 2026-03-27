@@ -587,6 +587,37 @@ const App = {
     if (localStorage.getItem('sidebar-collapsed') === 'true') {
       sidebar.classList.add('collapsed');
     }
+
+    // Mobile: add hamburger header + overlay
+    if (window.innerWidth <= 768) {
+      if (!document.querySelector('.mobile-header')) {
+        const header = document.createElement('div');
+        header.className = 'mobile-header';
+        header.innerHTML = `<i class="fas fa-bars mobile-hamburger" id="mobile-menu-btn"></i><span class="mobile-title">Docker Dash</span>`;
+        document.querySelector('.main-content')?.prepend(header);
+
+        const overlay = document.createElement('div');
+        overlay.className = 'sidebar-overlay';
+        overlay.id = 'sidebar-overlay';
+        document.body.appendChild(overlay);
+
+        document.getElementById('mobile-menu-btn')?.addEventListener('click', () => {
+          sidebar.classList.toggle('mobile-open');
+          overlay.style.display = sidebar.classList.contains('mobile-open') ? 'block' : 'none';
+        });
+        overlay.addEventListener('click', () => {
+          sidebar.classList.remove('mobile-open');
+          overlay.style.display = 'none';
+        });
+        // Close sidebar on nav click
+        sidebar.querySelectorAll('.nav-item').forEach(item => {
+          item.addEventListener('click', () => {
+            sidebar.classList.remove('mobile-open');
+            overlay.style.display = 'none';
+          });
+        });
+      }
+    }
   },
 
   // ─── Notifications ────────────────────────────

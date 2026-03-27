@@ -198,6 +198,50 @@ router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => 
   }
 });
 
+// ─── Comparison Data (for marketing/about pages) ────────────
+
+router.get('/compare', (req, res) => {
+  // Public endpoint — no auth required (for embedding in docs/README)
+  const features = [
+    { feature: 'Container CRUD', dockerDash: true, portainerCE: true, dockge: 'compose only', dockhand: true },
+    { feature: 'Image Management', dockerDash: true, portainerCE: true, dockge: false, dockhand: true },
+    { feature: 'Volume Management', dockerDash: true, portainerCE: true, dockge: false, dockhand: true },
+    { feature: 'Network Management', dockerDash: true, portainerCE: true, dockge: false, dockhand: true },
+    { feature: 'Network Topology', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Real-time Stats', dockerDash: true, portainerCE: true, dockge: 'basic', dockhand: true },
+    { feature: 'Terminal (xterm.js)', dockerDash: true, portainerCE: true, dockge: true, dockhand: true },
+    { feature: 'Vulnerability Scanning', dockerDash: 'Trivy + Scout', portainerCE: false, dockge: false, dockhand: 'Grype + Trivy' },
+    { feature: 'Safe-Pull Updates', dockerDash: true, portainerCE: false, dockge: false, dockhand: true },
+    { feature: 'Multi-Host (agentless)', dockerDash: true, portainerCE: 'agent required', dockge: 'agent', dockhand: true },
+    { feature: 'Git Integration', dockerDash: true, portainerCE: 'BE only', dockge: false, dockhand: false },
+    { feature: 'Webhooks + Polling', dockerDash: true, portainerCE: 'BE only', dockge: false, dockhand: false },
+    { feature: 'Deployment Rollback', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Audit Log', dockerDash: true, portainerCE: 'BE only', dockge: false, dockhand: false },
+    { feature: 'Alerts', dockerDash: '7 channels', portainerCE: 'BE only', dockge: false, dockhand: false },
+    { feature: 'SSO (Authelia/Authentik)', dockerDash: true, portainerCE: 'BE only', dockge: false, dockhand: false },
+    { feature: 'Health Score', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Resource Forecasting', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Cost Estimation', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'App Templates', dockerDash: '20 built-in', portainerCE: '500+ community', dockge: false, dockhand: false },
+    { feature: 'Troubleshooting Wizard', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Public Status Page', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Maintenance Windows', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'i18n', dockerDash: 'EN/RO/DE', portainerCE: 'partial', dockge: false, dockhand: false },
+    { feature: 'Command Palette', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
+    { feature: 'Build Step', dockerDash: 'none', portainerCE: 'Angular', dockge: 'required', dockhand: 'required' },
+    { feature: 'Container Size', dockerDash: '~80MB', portainerCE: '~250MB', dockge: '~100MB', dockhand: '~80MB' },
+    { feature: 'RAM Usage', dockerDash: '~50MB', portainerCE: '~200MB', dockge: '~50MB', dockhand: '~60MB' },
+    { feature: 'License', dockerDash: 'MIT', portainerCE: 'Zlib', dockge: 'MIT', dockhand: 'BSL 1.1' },
+  ];
+
+  const summary = {
+    dockerDash: { exclusive: features.filter(f => f.dockerDash === true && !f.portainerCE && !f.dockge && !f.dockhand).length },
+    version: require('../../package.json').version,
+  };
+
+  res.json({ features, summary });
+});
+
 // ─── Watchtower Detection ───────────────────────────────────
 
 router.get('/watchtower', requireAuth, async (req, res) => {

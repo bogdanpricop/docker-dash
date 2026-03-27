@@ -184,6 +184,8 @@ const Api = {
 
   // ─── Watchtower ───────────────────────────────────
   detectWatchtower() { return this.get('/watchtower'); },
+  getResourceRecommendations() { return this.get('/stats/recommendations'); },
+  getComparison() { return this.get('/compare'); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },
