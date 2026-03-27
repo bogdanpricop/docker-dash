@@ -230,17 +230,8 @@ class MigrationService {
 
     // Keep: RestartPolicy, Memory, CPU, PortBindings, NetworkMode
     // Sanitize: Binds — warn about host-specific paths
-    if (sanitized.Binds) {
-      sanitized.Binds = sanitized.Binds.filter(bind => {
-        // Keep named volumes (no / prefix in source)
-        const source = bind.split(':')[0];
-        if (!source.startsWith('/') && !source.startsWith('\\')) return true;
-        // Keep common paths
-        if (source.startsWith('/var/run/docker.sock')) return true;
-        // Flag host-specific binds but keep them (user should check)
-        return true;
-      });
-    }
+    // Note: host-specific bind mounts are kept but flagged in the preview.
+    // Named volumes are safe to migrate; host paths may not exist on destination.
 
     // Remove host-specific fields
     delete sanitized.CgroupParent;

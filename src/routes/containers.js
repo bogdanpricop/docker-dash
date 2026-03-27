@@ -118,12 +118,18 @@ router.get('/:id/logs', requireAuth, async (req, res) => {
       lines = lines.filter(l => l.toLowerCase().includes(q));
     }
 
-    // Regex search
+    // Regex search (with length limit to prevent ReDoS)
     if (regex) {
       try {
+        if (regex.length > 200) throw new Error('Regex too long');
         const re = new RegExp(regex, 'i');
+        // Test on first line to detect catastrophic backtracking
+        const testLine = lines[0] || '';
+        const start = Date.now();
+        re.test(testLine);
+        if (Date.now() - start > 100) throw new Error('Regex too slow');
         lines = lines.filter(l => re.test(l));
-      } catch { /* invalid regex, skip */ }
+      } catch { /* invalid/dangerous regex, skip */ }
     }
 
     // Log level filter (ERROR, WARN, INFO, DEBUG)
@@ -347,18 +353,25 @@ router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writea
     const workingDir = inspect.Config.Labels?.['com.docker.compose.project.working_dir'];
 
     if (project && workingDir) {
-      // Use docker compose for stack containers
-      const { execSync } = require('child_process');
-      const service = inspect.Config.Labels?.['com.docker.compose.service'] || '';
-      const pullCmd = service
-        ? `cd "${workingDir}" && docker compose pull ${service} 2>&1`
-        : `cd "${workingDir}" && docker compose pull 2>&1`;
-      const upCmd = service
-        ? `cd "${workingDir}" && docker compose up -d ${service} 2>&1`
-        : `cd "${workingDir}" && docker compose up -d 2>&1`;
+      // Use docker compose for stack containers — sanitize labels to prevent injection
+      const { execFileSync } = require('child_process');
+      const { sanitizeShellArg } = require('../utils/helpers');
+      const safeDir = sanitizeShellArg(workingDir);
+      const service = sanitizeShellArg(inspect.Config.Labels?.['com.docker.compose.service'] || '');
 
-      execSync(pullCmd, { timeout: 120000, encoding: 'utf8' });
-      const output = execSync(upCmd, { timeout: 60000, encoding: 'utf8' });
+      if (!safeDir || !require('fs').existsSync(safeDir)) {
+        return res.status(400).json({ error: 'Invalid compose working directory' });
+      }
+
+      const pullArgs = service
+        ? ['compose', 'pull', service]
+        : ['compose', 'pull'];
+      const upArgs = service
+        ? ['compose', 'up', '-d', service]
+        : ['compose', 'up', '-d'];
+
+      execFileSync('docker', pullArgs, { cwd: safeDir, timeout: 120000, encoding: 'utf8' });
+      const output = execFileSync('docker', upArgs, { cwd: safeDir, timeout: 60000, encoding: 'utf8' });
 
       auditService.log({
         userId: req.user.id, username: req.user.username,
@@ -542,9 +555,15 @@ router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'),
       });
     }
 
-    if (backoffSeconds > 0 && recentRestarts > 2) {
-      // Apply backoff delay
-      await new Promise(resolve => setTimeout(resolve, backoffSeconds * 1000));
+    if (recentRestarts > 2 && backoffSeconds > 5) {
+      // Return backoff info — don't block the event loop
+      return res.json({
+        ok: false,
+        action: 'backoff',
+        message: `Backoff active: wait ${backoffSeconds}s before retrying (${recentRestarts} restarts in 1h)`,
+        retryAfterSeconds: backoffSeconds,
+        recentRestarts,
+      });
     }
 
     // Restart
@@ -646,7 +665,6 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
     }
 
     // Step 1: Pull new image
-    res.write ? null : null; // ensure response is writable
     await new Promise((resolve, reject) => {
       docker.pull(image, (err, stream) => {
         if (err) return reject(err);

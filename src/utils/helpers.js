@@ -39,4 +39,22 @@ function now() {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 
-module.exports = { formatBytes, paginate, sanitizeId, getClientIp, tryParseJson, now };
+/** Sanitize a string for safe use in shell commands */
+function sanitizeShellArg(str) {
+  if (!str || typeof str !== 'string') return '';
+  // Remove shell metacharacters that could enable injection
+  return str.replace(/[;&|`$(){}!#<>\\'"]/g, '').trim();
+}
+
+/** Safe parseInt that returns null on NaN */
+function safeParseInt(val) {
+  const n = parseInt(val, 10);
+  return isNaN(n) ? null : n;
+}
+
+/** Safe JSON.parse with fallback */
+function safeJsonParse(str, fallback = null) {
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+module.exports = { formatBytes, paginate, sanitizeId, getClientIp, tryParseJson, now, sanitizeShellArg, safeParseInt, safeJsonParse };
