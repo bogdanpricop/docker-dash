@@ -287,6 +287,7 @@ const Api = {
 
   // ─── Misc ────────────────────────────────────────
   health() { return this.get('/health'); },
+  getFootprint() { return this.get('/footprint'); },
   getFavorites() { return this.get('/favorites'); },
   toggleFavorite(containerId) { return this.post(`/favorites/${containerId}`); },
   getAuditLog(page = 1, limit = 50) {

@@ -176,6 +176,104 @@ const Utils = {
     Chart.defaults.elements.point.hoverRadius = 4;
     Chart.defaults.scales.linear = Chart.defaults.scales.linear || {};
   },
+  // ─── Plain-English Container Status ──────────────
+  exitCodeMessage(exitCode) {
+    const codes = {
+      0: 'Exited normally (success)',
+      1: 'Application error (general failure)',
+      2: 'Shell misuse or missing command',
+      126: 'Command not executable (permission denied)',
+      127: 'Command not found (missing binary)',
+      128: 'Invalid exit signal',
+      130: 'Terminated by Ctrl+C (SIGINT)',
+      137: 'Killed by system — out of memory (OOM) or docker kill (SIGKILL)',
+      139: 'Segmentation fault (SIGSEGV) — application crash',
+      143: 'Graceful shutdown (SIGTERM) — docker stop',
+      255: 'Exit status out of range',
+    };
+    if (exitCode >= 129 && exitCode <= 165) {
+      const sig = exitCode - 128;
+      const signals = { 1:'SIGHUP',2:'SIGINT',3:'SIGQUIT',6:'SIGABRT',9:'SIGKILL',11:'SIGSEGV',15:'SIGTERM' };
+      return codes[exitCode] || `Killed by signal ${signals[sig] || sig} (exit ${exitCode})`;
+    }
+    return codes[exitCode] || `Exit code ${exitCode}`;
+  },
+
+  containerStatusMessage(state, exitCode, health, restartCount) {
+    const messages = [];
+    if (state === 'running') {
+      if (health === 'unhealthy') messages.push('Running but health check failing');
+      else if (health === 'starting') messages.push('Starting up (health check pending)');
+      else messages.push('Running normally');
+    } else if (state === 'exited') {
+      messages.push(this.exitCodeMessage(exitCode || 0));
+    } else if (state === 'restarting') {
+      messages.push('Restarting — may be crash-looping');
+    } else if (state === 'paused') {
+      messages.push('Paused — container frozen, not using CPU');
+    } else if (state === 'dead') {
+      messages.push('Dead — failed to stop cleanly, may need force removal');
+    } else if (state === 'created') {
+      messages.push('Created but never started');
+    }
+    if (restartCount > 5) messages.push(`Restarted ${restartCount} times — possible instability`);
+    return messages.join('. ');
+  },
+
+  // ─── Container Health Score (0-100) ────────────────
+  containerHealthScore({ state, exitCode, health, restartCount, cpuPercent, memPercent, imageAge, vulnCount }) {
+    let score = 100;
+
+    // State penalty
+    if (state === 'exited') score -= (exitCode === 0 ? 30 : 50);
+    else if (state === 'dead') score -= 70;
+    else if (state === 'restarting') score -= 40;
+    else if (state === 'paused') score -= 10;
+    else if (state === 'created') score -= 20;
+
+    // Health check
+    if (health === 'unhealthy') score -= 30;
+    else if (health === 'starting') score -= 5;
+
+    // Restarts
+    if (restartCount > 20) score -= 25;
+    else if (restartCount > 10) score -= 15;
+    else if (restartCount > 3) score -= 8;
+
+    // Resource usage
+    if (cpuPercent > 90) score -= 15;
+    else if (cpuPercent > 70) score -= 5;
+    if (memPercent > 95) score -= 20;
+    else if (memPercent > 85) score -= 10;
+    else if (memPercent > 70) score -= 3;
+
+    // Image age (days)
+    if (imageAge > 365) score -= 10;
+    else if (imageAge > 180) score -= 5;
+
+    // Vulnerabilities
+    if (vulnCount > 50) score -= 15;
+    else if (vulnCount > 10) score -= 8;
+    else if (vulnCount > 0) score -= 3;
+
+    return Math.max(0, Math.min(100, score));
+  },
+
+  healthScoreColor(score) {
+    if (score >= 80) return '#3fb950';
+    if (score >= 60) return '#d29922';
+    if (score >= 40) return '#db6d28';
+    return '#f85149';
+  },
+
+  healthScoreLabel(score) {
+    if (score >= 90) return 'Excellent';
+    if (score >= 75) return 'Good';
+    if (score >= 50) return 'Fair';
+    if (score >= 25) return 'Poor';
+    return 'Critical';
+  },
+
   copyToClipboard(text) {
     if (navigator.clipboard && window.isSecureContext) {
       return navigator.clipboard.writeText(text);

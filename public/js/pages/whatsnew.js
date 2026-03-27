@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.6.0',
+      date: '2026-03-27',
+      title: 'Intelligence Foundations — Health Score, Status Insights, Footprint',
+      changes: [
+        { type: 'feature', text: 'Plain-English container status — exit codes (137=OOM, 143=SIGTERM, etc.) mapped to human-readable messages' },
+        { type: 'feature', text: 'Container Health Score (0-100) — composite score from state, health checks, restarts, CPU/memory, image age, vulnerabilities' },
+        { type: 'feature', text: 'Health score color coding and labels (Excellent/Good/Fair/Poor/Critical)' },
+        { type: 'feature', text: 'Container status context — explains why a container is in its current state with actionable info' },
+        { type: 'feature', text: 'Self-reporting resource footprint — /api/footprint shows Docker Dash memory, uptime, DB size, Node.js version' },
+        { type: 'improvement', text: 'Utility functions for exit code interpretation reusable across all container views' },
+      ],
+    },
+    {
       version: '2.5.0',
       date: '2026-03-27',
       title: 'Push to Git & Custom TLS Certificates (Phase 4)',

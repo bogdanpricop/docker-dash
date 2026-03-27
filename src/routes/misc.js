@@ -52,6 +52,33 @@ router.get('/metrics', (req, res) => {
   }
 });
 
+// ─── Resource Footprint (self-reporting) ────────────────────
+
+router.get('/footprint', requireAuth, (req, res) => {
+  const mem = process.memoryUsage();
+  const uptime = process.uptime();
+  const db = getDb();
+  let dbSize = 0;
+  try {
+    const stat = db.pragma('page_count')[0].page_count * db.pragma('page_size')[0].page_size;
+    dbSize = stat;
+  } catch {}
+
+  res.json({
+    memory: {
+      rss: mem.rss,
+      heapUsed: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      external: mem.external,
+    },
+    uptime: Math.floor(uptime),
+    pid: process.pid,
+    nodeVersion: process.version,
+    dbSizeBytes: dbSize,
+    cpuUsage: process.cpuUsage(),
+  });
+});
+
 // ─── Favorites ──────────────────────────────────────────────
 
 router.get('/favorites', requireAuth, (req, res) => {
