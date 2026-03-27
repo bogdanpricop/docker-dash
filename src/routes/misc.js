@@ -198,6 +198,116 @@ router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => 
   }
 });
 
+// ─── Global Search ──────────────────────────────────────────
+
+router.get('/search', requireAuth, async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ results: [], query: q });
+
+    const query = q.toLowerCase();
+    const dockerService = require('../services/docker');
+    const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
+    const results = [];
+
+    // Search containers
+    try {
+      const containers = await dockerService.listContainers(hostId);
+      for (const c of containers) {
+        if (c.name?.toLowerCase().includes(query) || c.image?.toLowerCase().includes(query)) {
+          results.push({
+            type: 'container', id: c.id, name: c.name,
+            detail: `${c.image} (${c.state})`,
+            url: `#/containers/${c.id}`, icon: 'fas fa-cube',
+          });
+        }
+      }
+    } catch {}
+
+    // Search images
+    try {
+      const images = await dockerService.listImages(hostId);
+      for (const img of images) {
+        const tags = img.RepoTags || img.repoTags || [];
+        for (const tag of tags) {
+          if (tag.toLowerCase().includes(query)) {
+            results.push({
+              type: 'image', id: (img.Id || img.id || '').substring(7, 19),
+              name: tag, detail: `Size: ${require('../utils/helpers').formatBytes(img.Size || img.size)}`,
+              url: `#/images`, icon: 'fas fa-layer-group',
+            });
+            break;
+          }
+        }
+      }
+    } catch {}
+
+    // Search volumes
+    try {
+      const docker = dockerService.getDocker(hostId);
+      const volData = await docker.listVolumes();
+      for (const vol of (volData.Volumes || [])) {
+        if (vol.Name.toLowerCase().includes(query)) {
+          results.push({
+            type: 'volume', id: vol.Name, name: vol.Name,
+            detail: vol.Driver || 'local',
+            url: `#/volumes`, icon: 'fas fa-database',
+          });
+        }
+      }
+    } catch {}
+
+    // Search networks
+    try {
+      const docker = dockerService.getDocker(hostId);
+      const networks = await docker.listNetworks();
+      for (const net of networks) {
+        if (net.Name?.toLowerCase().includes(query)) {
+          results.push({
+            type: 'network', id: net.Id?.substring(0, 12), name: net.Name,
+            detail: `${net.Driver} — ${Object.keys(net.Containers || {}).length} containers`,
+            url: `#/networks`, icon: 'fas fa-network-wired',
+          });
+        }
+      }
+    } catch {}
+
+    // Search Git stacks
+    try {
+      const db = getDb();
+      const stacks = db.prepare(
+        "SELECT id, stack_name, repo_url, branch, status FROM git_stacks WHERE stack_name LIKE ? OR repo_url LIKE ? LIMIT 10"
+      ).all(`%${query}%`, `%${query}%`);
+      for (const s of stacks) {
+        results.push({
+          type: 'git-stack', id: s.id, name: s.stack_name,
+          detail: `${s.repo_url} (${s.status})`,
+          url: `#/git-stacks/${s.id}`, icon: 'fab fa-git-alt',
+        });
+      }
+    } catch {}
+
+    // Search audit log
+    try {
+      const db = getDb();
+      const audits = db.prepare(
+        "SELECT id, username, action, target_id, created_at FROM audit_log WHERE action LIKE ? OR target_id LIKE ? OR username LIKE ? ORDER BY created_at DESC LIMIT 5"
+      ).all(`%${query}%`, `%${query}%`, `%${query}%`);
+      for (const a of audits) {
+        results.push({
+          type: 'audit', id: a.id, name: `${a.username}: ${a.action}`,
+          detail: `${a.target_id || ''} — ${a.created_at}`,
+          url: `#/system`, icon: 'fas fa-clipboard-list',
+        });
+      }
+    } catch {}
+
+    res.json({ results: results.slice(0, 30), query: q, total: results.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Dashboard Preferences ──────────────────────────────────
 
 router.get('/dashboard/preferences', requireAuth, (req, res) => {
@@ -230,6 +340,103 @@ router.put('/dashboard/preferences', requireAuth, (req, res) => {
     JSON.stringify(hidden_widgets || [])
   );
   res.json({ ok: true });
+});
+
+// ─── Container Dependency Graph ─────────────────────────────
+
+router.get('/dependencies', requireAuth, async (req, res) => {
+  try {
+    const dockerService = require('../services/docker');
+    const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
+    const docker = dockerService.getDocker(hostId);
+
+    const containers = await docker.listContainers({ all: true });
+    const networks = await docker.listNetworks();
+
+    const nodes = [];
+    const edges = [];
+    const networkMap = {};
+
+    // Build network membership map
+    for (const net of networks) {
+      if (['bridge', 'host', 'none'].includes(net.Name)) continue;
+      const members = Object.entries(net.Containers || {}).map(([id, info]) => ({
+        id: id.substring(0, 12),
+        name: info.Name,
+        ipv4: info.IPv4Address?.split('/')[0],
+      }));
+      networkMap[net.Name] = members;
+    }
+
+    // Build nodes
+    for (const c of containers) {
+      const name = c.Names?.[0]?.replace(/^\//, '') || '';
+      const stack = c.Labels?.['com.docker.compose.project'];
+      const service = c.Labels?.['com.docker.compose.service'];
+
+      // Detect dependencies from env vars (DB_HOST, REDIS_URL, etc.)
+      const envDeps = [];
+      // We can't read env from list, but we can infer from links and networks
+
+      nodes.push({
+        id: c.Id.substring(0, 12),
+        name,
+        image: c.Image,
+        state: c.State,
+        stack,
+        service,
+        networks: Object.keys(c.NetworkSettings?.Networks || {}),
+        ports: (c.Ports || []).filter(p => p.PublicPort).map(p => `${p.PublicPort}→${p.PrivatePort}`),
+      });
+    }
+
+    // Build edges: containers on same network can communicate
+    for (const [netName, members] of Object.entries(networkMap)) {
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          edges.push({
+            source: members[i].id,
+            target: members[j].id,
+            network: netName,
+            type: 'network',
+          });
+        }
+      }
+    }
+
+    // Detect depends_on from compose labels (same stack = likely dependent)
+    const stacks = {};
+    for (const node of nodes) {
+      if (node.stack) {
+        if (!stacks[node.stack]) stacks[node.stack] = [];
+        stacks[node.stack].push(node);
+      }
+    }
+
+    // Detect link patterns: if container A has env like DB_HOST=containerB
+    // This is heuristic — we can improve with inspect, but list is faster
+
+    res.json({
+      nodes,
+      edges,
+      stacks: Object.entries(stacks).map(([name, members]) => ({
+        name,
+        containers: members.map(m => m.id),
+      })),
+      networks: Object.entries(networkMap).map(([name, members]) => ({
+        name,
+        members: members.length,
+      })),
+      summary: {
+        totalContainers: nodes.length,
+        totalEdges: edges.length,
+        totalStacks: Object.keys(stacks).length,
+        totalNetworks: Object.keys(networkMap).length,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Comparison Data (for marketing/about pages) ────────────

@@ -209,6 +209,10 @@ const Api = {
   exportBundleCompose(bundle) { return this.post('/bundles/export/compose', bundle); },
   importBundle(data) { return this.post('/bundles/import', data); },
   previewImport(bundle) { return this.post('/bundles/import/preview', { bundle }); },
+
+  // ─── Search & Graph ───────────────────────────────
+  globalSearch(q) { return this.get(`/search?q=${encodeURIComponent(q)}`); },
+  getDependencyGraph() { return this.get('/dependencies'); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },

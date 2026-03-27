@@ -10,6 +10,22 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.7.0',
+      date: '2026-03-27',
+      title: 'Event Notifications, Global Search, Dependency Graph',
+      changes: [
+        { type: 'feature', text: 'Event-Driven Notifications — container crash, OOM kill, health check failure automatically sent to Discord/Slack/Telegram' },
+        { type: 'feature', text: 'Smart event filtering — only important events (die, oom, kill, unhealthy) trigger notifications, with 1-min cooldown' },
+        { type: 'feature', text: 'Event-specific messages — exit code 137 explains OOM, exit code 1 suggests checking logs' },
+        { type: 'feature', text: 'Workflow evaluation on events — IF-THEN rules evaluated on container crash/unhealthy/restart' },
+        { type: 'feature', text: 'Global Search API — search across containers, images, volumes, networks, Git stacks, audit log' },
+        { type: 'feature', text: 'Search returns up to 30 results with type icons, links, and detail previews' },
+        { type: 'feature', text: 'Container Dependency Graph — network-based relationship mapping between containers' },
+        { type: 'feature', text: 'Dependency graph shows stack groupings, network edges, and per-container ports' },
+        { type: 'improvement', text: 'Event notifier hooks into existing Docker event stream (zero overhead)' },
+      ],
+    },
+    {
       version: '3.6.0',
       date: '2026-03-27',
       title: 'Stack Export/Import — Portable Infrastructure Bundles',

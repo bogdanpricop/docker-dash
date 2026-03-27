@@ -264,8 +264,15 @@ class WsServer {
             hostId,
           });
 
-          // Broadcast
+          // Broadcast to WebSocket clients
           this.broadcastAll('event', data);
+
+          // Send notifications for important events (crash, OOM, health fail)
+          try {
+            const eventNotifier = require('../services/eventNotifier');
+            eventNotifier.processEvent(data);
+            eventNotifier.evaluateWorkflows(data);
+          } catch { /* notifier not critical */ }
         } catch { /* malformed event */ }
       });
 
