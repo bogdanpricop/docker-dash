@@ -1,0 +1,18 @@
+# DEV override — mount source for live reload
+# Usage: docker compose up (automatically uses this file)
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      target: development
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+      # Mount source for hot-reload (node --watch)
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+    command: ["node", "--watch", "src/server.js"]
+    environment:
+      - NODE_ENV=development

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+/data/
+
+# Claude AI settings (may contain automation history with credentials)
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+nul
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Deploy scripts (may contain server credentials)
+deploy*.py
+deploy*.sh
+
+# Logs
+*.log
+npm-debug.log*
+
+# Archives
+*.tar.gz
+*.zip
+
+# Temporary
+tmp/
+temp/

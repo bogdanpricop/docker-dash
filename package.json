@@ -1,0 +1,30 @@
+{
+  "name": "docker-dash",
+  "version": "2.1.0",
+  "description": "Full-featured Docker management dashboard",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.7.0",
+    "cookie-parser": "^1.4.7",
+    "dockerode": "^4.0.4",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^7.0.7",
+    "ssh2": "^1.16.0",
+    "ws": "^8.18.0"
+  },
+  "overrides": {
+    "cross-spawn": "^7.0.5",
+    "glob": "^10.5.0",
+    "minimatch": "^9.0.7",
+    "tar": "^7.5.11",
+    "brace-expansion": "^2.0.2",
+    "diff": "^5.2.2"
+  }
+}

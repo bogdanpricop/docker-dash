@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for vulnerabilities
+        run: npm audit --audit-level=high || true
+
+      - name: Validate JavaScript syntax
+        run: |
+          echo "Checking backend JS files..."
+          find src -name '*.js' -exec node --check {} \;
+          echo "All backend files OK"
+
+      - name: Validate i18n completeness
+        run: |
+          node -e "
+            global.window = {};
+            global.localStorage = { getItem: ()=>null, setItem: ()=>{} };
+            eval(require('fs').readFileSync('public/js/i18n.js', 'utf8'));
+            const i18n = window.i18n;
+
+            // Load all language files
+            const langFiles = require('fs').readdirSync('public/js/i18n')
+              .filter(f => f.endsWith('.js') && f !== 'TEMPLATE.js');
+            for (const f of langFiles) {
+              eval(require('fs').readFileSync('public/js/i18n/' + f, 'utf8'));
+            }
+
+            console.log('Languages:', i18n.languages.map(l => l.code).join(', '));
+
+            // Check that EN has all keys
+            const enKeys = JSON.stringify(i18n._translations.en).match(/\"[^\"]+\":/g)?.length || 0;
+            console.log('EN keys: ~' + enKeys);
+
+            if (enKeys < 100) {
+              console.error('ERROR: EN translation seems incomplete');
+              process.exit(1);
+            }
+            console.log('i18n validation passed');
+          "
+
+      - name: Summary
+        run: |
+          echo "### CI Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Node.js syntax: OK" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependencies: installed" >> $GITHUB_STEP_SUMMARY
+          echo "- i18n: validated" >> $GITHUB_STEP_SUMMARY

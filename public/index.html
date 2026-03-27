@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Docker Dash</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐳</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
+<link rel="stylesheet" href="/css/app.css?v=5.4">
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-screen hidden">
+    <div class="login-card">
+      <div class="login-logo">🐳 <span>Docker Dash</span></div>
+      <form id="login-form" autocomplete="on">
+        <div class="form-group">
+          <label for="login-user">Username</label>
+          <input type="text" id="login-user" name="username" autocomplete="username" placeholder="Enter username" required>
+        </div>
+        <div class="form-group">
+          <label for="login-pass">Password</label>
+          <input type="password" id="login-pass" name="password" autocomplete="current-password" placeholder="Enter password" required>
+        </div>
+        <div id="login-error" class="login-error hidden"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="login-btn">
+          <i class="fas fa-sign-in-alt"></i> Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App Shell -->
+  <div id="app-shell" class="app-shell hidden">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-logo">🐳</span>
+        <div class="sidebar-title-group">
+          <span class="sidebar-title">Docker Dash</span>
+          <span class="sidebar-version" id="sidebar-version">v2.1.0</span>
+        </div>
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+      <div class="host-selector" id="host-selector" style="display:none">
+        <select id="host-select" class="form-control form-control-sm" title="Docker Host">
+          <option value="0">Local</option>
+        </select>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <a href="#/" class="nav-item" data-page="dashboard">
+          <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+        </a>
+        <a href="#/containers" class="nav-item" data-page="containers">
+          <i class="fas fa-cube"></i><span>Containers</span>
+        </a>
+        <a href="#/images" class="nav-item" data-page="images">
+          <i class="fas fa-layer-group"></i><span>Images</span>
+        </a>
+        <a href="#/volumes" class="nav-item" data-page="volumes">
+          <i class="fas fa-database"></i><span>Volumes</span>
+        </a>
+        <a href="#/networks" class="nav-item" data-page="networks">
+          <i class="fas fa-network-wired"></i><span>Networks</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a href="#/security" class="nav-item" data-page="security">
+          <i class="fas fa-shield-alt"></i><span>Security</span>
+        </a>
+        <a href="#/alerts" class="nav-item" data-page="alerts">
+          <i class="fas fa-bell"></i><span>Alerts</span>
+          <span class="nav-badge hidden" id="alert-badge">0</span>
+        </a>
+        <a href="#/system" class="nav-item" data-page="system">
+          <i class="fas fa-server"></i><span>System</span>
+        </a>
+        <a href="#/firewall" class="nav-item" data-page="firewall">
+          <i class="fas fa-shield-alt"></i><span>Firewall</span>
+        </a>
+        <div class="nav-divider"></div>
+        <a href="#/hosts" class="nav-item" data-page="hosts">
+          <i class="fas fa-server"></i><span>Hosts</span>
+        </a>
+        <a href="#/about" class="nav-item" data-page="about">
+          <i class="fas fa-info-circle"></i><span>About</span>
+        </a>
+        <a href="#/settings" class="nav-item" data-page="settings">
+          <i class="fas fa-cog"></i><span>Settings</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info" id="user-info">
+          <i class="fas fa-user-circle"></i>
+          <span id="username-display">admin</span>
+        </div>
+        <button class="btn-icon notif-bell" id="notif-bell" title="Notifications">
+          <i class="fas fa-bell"></i>
+          <span class="notif-count hidden" id="notif-count">0</span>
+        </button>
+        <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme">
+          <i class="fas fa-sun" id="theme-icon"></i>
+        </button>
+        <div style="position:relative">
+          <button class="btn-icon lang-toggle" id="lang-toggle" title="Language">
+            <span class="lang-code" id="lang-code">EN</span>
+          </button>
+          <div class="lang-dropdown hidden" id="lang-dropdown"></div>
+        </div>
+        <button class="btn-icon" id="logout-btn" title="Logout">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+      <!-- Notification Dropdown -->
+      <div class="notif-dropdown hidden" id="notif-dropdown">
+        <div class="notif-dropdown-header">
+          <span>Notifications</span>
+          <button class="btn-xs" id="notif-read-all">Mark all read</button>
+        </div>
+        <div class="notif-dropdown-body" id="notif-list">
+          <div class="empty-msg" style="padding:24px;font-size:12px">No notifications</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-content">
+      <div id="page-content"></div>
+    </main>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Modal Overlay -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal-content" class="modal-content"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0/lib/addon-fit.min.js"></script>
+  <script src="/js/i18n.js?v=5.5"></script>
+  <!-- Language files: add new languages here (order doesn't matter) -->
+  <script src="/js/i18n/en.js?v=5.5"></script>
+  <script src="/js/i18n/ro.js?v=5.5"></script>
+  <script src="/js/i18n/de.js?v=5.5"></script>
+  <script src="/js/utils.js?v=5.4"></script>
+  <script src="/js/api.js?v=5.4"></script>
+  <script src="/js/ws.js?v=5.4"></script>
+  <script src="/js/components/toast.js?v=5.4"></script>
+  <script src="/js/components/modal.js?v=5.4"></script>
+  <script src="/js/components/table.js?v=5.4"></script>
+  <script src="/js/pages/dashboard.js?v=5.4"></script>
+  <script src="/js/pages/containers.js?v=5.4"></script>
+  <script src="/js/pages/images.js?v=5.4"></script>
+  <script src="/js/pages/security.js?v=5.4"></script>
+  <script src="/js/pages/volumes.js?v=5.4"></script>
+  <script src="/js/pages/networks.js?v=5.4"></script>
+  <script src="/js/pages/alerts.js?v=5.4"></script>
+  <script src="/js/pages/system.js?v=5.4"></script>
+  <script src="/js/pages/settings.js?v=5.4"></script>
+  <script src="/js/pages/firewall.js?v=5.4"></script>
+  <script src="/js/pages/hosts.js?v=5.4"></script>
+  <script src="/js/pages/about.js?v=5.4"></script>
+  <script src="/js/pages/whatsnew.js?v=5.4"></script>
+  <script src="/js/pages/profile.js?v=5.4"></script>
+  <script src="/js/app.js?v=5.4"></script>
+</body>
+</html>

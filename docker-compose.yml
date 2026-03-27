@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docker-dash
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-3456}:${APP_PORT:-3456}"
+    volumes:
+      # Docker socket — read-only for security
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent data (SQLite DB, stats)
+      - docker-dash-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8101/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Security: no privilege escalation, but needs docker socket
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  docker-dash-data:
+    name: docker-dash-data
