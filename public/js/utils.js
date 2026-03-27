@@ -164,8 +164,9 @@ const Utils = {
   // Chart.js defaults
   configureChartDefaults() {
     if (typeof Chart === 'undefined') return;
-    Chart.defaults.color = '#545d68';
-    Chart.defaults.borderColor = 'rgba(48,54,61,0.3)';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    Chart.defaults.color = isLight ? '#64748b' : '#6e7681';
+    Chart.defaults.borderColor = isLight ? 'rgba(0,0,0,0.1)' : 'rgba(48,54,61,0.3)';
     Chart.defaults.font.family = "'JetBrains Mono', monospace";
     Chart.defaults.font.size = 11;
     Chart.defaults.plugins.legend.display = false;

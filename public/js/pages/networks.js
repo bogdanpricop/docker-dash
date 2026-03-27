@@ -51,6 +51,7 @@ const NetworksPage = {
     container.querySelector('#net-refresh').addEventListener('click', () => this._load());
 
     await this._load();
+    this._refreshTimer = setInterval(() => this._load(), 30000);
   },
 
   _initTable(container) {
@@ -542,7 +543,9 @@ const NetworksPage = {
     Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
   },
 
-  destroy() {},
+  destroy() {
+    if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+  },
 };
 
 window.NetworksPage = NetworksPage;

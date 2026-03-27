@@ -26,6 +26,8 @@ const Toast = {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
     toast.innerHTML = `
       <i class="fas ${icons[type] || icons.info}"></i>
       <span class="toast-msg">${Utils.escapeHtml(message)}</span>

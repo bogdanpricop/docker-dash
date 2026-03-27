@@ -164,6 +164,58 @@ const App = {
 
     // Start router
     this._initRouter();
+
+    // Show welcome modal for first-time users (once per user)
+    this._showWelcomeIfNeeded();
+  },
+
+  _showWelcomeIfNeeded() {
+    const key = `dd-welcome-shown-${this.user?.id || 0}`;
+    if (localStorage.getItem(key)) return;
+    // Don't show if setup wizard was just completed
+    if (this._securityFlags?.setupRequired || this._securityFlags?.mustChangePassword) return;
+
+    setTimeout(() => {
+      const html = `
+        <div class="modal-header">
+          <h3 style="margin:0">Welcome to Docker Dash</h3>
+          <button class="modal-close-btn" id="welcome-x"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="line-height:1.7">
+          <p>Here are some tips to get started:</p>
+          <div style="display:flex;flex-direction:column;gap:12px;margin:16px 0">
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="fas fa-keyboard" style="font-size:20px;color:var(--accent);min-width:28px;text-align:center"></i>
+              <div><strong>Ctrl+K</strong> — Command palette. Search and navigate anywhere instantly.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="fas fa-moon" style="font-size:20px;color:var(--accent);min-width:28px;text-align:center"></i>
+              <div><strong>Theme toggle</strong> — Switch dark/light mode from the sidebar footer.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="fas fa-globe" style="font-size:20px;color:var(--accent);min-width:28px;text-align:center"></i>
+              <div><strong>Language</strong> — Change language from the sidebar footer (EN/RO/DE).</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="fas fa-toolbox" style="font-size:20px;color:var(--accent);min-width:28px;text-align:center"></i>
+              <div><strong>Tools</strong> — System > Tools tab has docker run converter, AI diagnostics, and proxy label generator.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <i class="fab fa-git-alt" style="font-size:20px;color:var(--accent);min-width:28px;text-align:center"></i>
+              <div><strong>Git Stacks</strong> — Deploy and auto-update Docker Compose stacks from Git repositories.</div>
+            </div>
+          </div>
+          <p class="text-muted text-sm">Check <a href="#/whatsnew" style="color:var(--accent)">What's New</a> for the full changelog, or visit <a href="#/settings" style="color:var(--accent)">Settings</a> to configure notifications and credentials.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="welcome-ok">Get Started</button>
+        </div>
+      `;
+      Modal.open(html, { width: '520px' });
+      const close = () => { Modal.close(); localStorage.setItem(key, '1'); };
+      Modal._content.querySelector('#welcome-x')?.addEventListener('click', close);
+      Modal._content.querySelector('#welcome-ok')?.addEventListener('click', close);
+    }, 1000);
   },
 
   _initThemeToggle() {
@@ -549,6 +601,31 @@ const App = {
       this._currentPage = page;
       this._currentPageName = pageName;
       await page.render(container, params);
+
+      // Enhance accessibility: add ARIA roles to tabs and icon-only buttons
+      document.querySelectorAll('.tabs').forEach(t => {
+        t.setAttribute('role', 'tablist');
+        t.querySelectorAll('.tab').forEach(tab => tab.setAttribute('role', 'tab'));
+      });
+      document.querySelectorAll('.action-btn:not([aria-label])').forEach(btn => {
+        const title = btn.getAttribute('title');
+        if (title) btn.setAttribute('aria-label', title);
+        else {
+          const icon = btn.querySelector('i');
+          if (icon) {
+            const cls = icon.className;
+            if (cls.includes('fa-edit')) btn.setAttribute('aria-label', 'Edit');
+            else if (cls.includes('fa-trash')) btn.setAttribute('aria-label', 'Delete');
+            else if (cls.includes('fa-play')) btn.setAttribute('aria-label', 'Start');
+            else if (cls.includes('fa-stop')) btn.setAttribute('aria-label', 'Stop');
+            else if (cls.includes('fa-sync')) btn.setAttribute('aria-label', 'Restart');
+            else if (cls.includes('fa-plug')) btn.setAttribute('aria-label', 'Test');
+            else if (cls.includes('fa-paper-plane')) btn.setAttribute('aria-label', 'Send');
+            else if (cls.includes('fa-undo')) btn.setAttribute('aria-label', 'Rollback');
+            else if (cls.includes('fa-copy')) btn.setAttribute('aria-label', 'Copy');
+          }
+        }
+      });
     } catch (err) {
       console.error(`Error loading page ${pageName}:`, err);
       container.innerHTML = `<div class="empty-msg">

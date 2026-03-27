@@ -53,6 +53,7 @@ const VolumesPage = {
     container.querySelector('#vol-refresh').addEventListener('click', () => this._load());
 
     await this._load();
+    this._refreshTimer = setInterval(() => this._load(), 30000);
   },
 
   async _load() {
@@ -170,7 +171,9 @@ const VolumesPage = {
     Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
   },
 
-  destroy() {},
+  destroy() {
+    if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+  },
 };
 
 window.VolumesPage = VolumesPage;

@@ -1378,6 +1378,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .meta-card-links a:hover { background: var(--accent-dim); color: var(--accent-hover); }
 .meta-card-links a i { font-size: 11px; }
 
+/* ── ARIA Tab Roles (auto-applied) ───────────────── */
+.tabs[role="tablist"] .tab { cursor: pointer; }
+
 /* ── Sidebar Section Labels ──────────────────────── */
 .nav-section-label {
   padding: 8px 16px 4px; font-size: 10px; text-transform: uppercase;
