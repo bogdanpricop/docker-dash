@@ -197,6 +197,11 @@ const Api = {
   // ─── Dashboard Preferences ────────────────────────
   getDashboardPrefs() { return this.get('/dashboard/preferences'); },
   saveDashboardPrefs(data) { return this.put('/dashboard/preferences', data); },
+
+  // ─── Migration ────────────────────────────────────
+  previewMigration(data) { return this.post('/migrate/preview', data); },
+  migrateContainer(data) { return this.post('/migrate/container', data); },
+  migrateStack(data) { return this.post('/migrate/stack', data); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },

@@ -10,6 +10,24 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.5.0',
+      date: '2026-03-27',
+      title: 'Cross-Host Migration with Zero-Downtime',
+      changes: [
+        { type: 'feature', text: 'Cross-host container migration — move containers between Docker hosts with full config preservation' },
+        { type: 'feature', text: 'Zero-downtime migration — destination starts before source stops, verified healthy before cutover' },
+        { type: 'feature', text: 'Stack migration — migrate all containers in a compose stack at once' },
+        { type: 'feature', text: 'Migration preview (dry run) — check for name conflicts, missing bind mounts, image availability before migrating' },
+        { type: 'feature', text: 'Auto-pull images on destination — no need to pre-pull, migration handles it' },
+        { type: 'feature', text: 'Name conflict resolution — auto-renames if container name exists on destination' },
+        { type: 'feature', text: 'Migration labels — migrated containers tagged with source host, timestamp, original name' },
+        { type: 'feature', text: 'Host bind mount warnings — flags paths that may not exist on destination' },
+        { type: 'feature', text: 'Health check verification — waits up to 30s for healthy status on destination before stopping source' },
+        { type: 'security', text: 'Admin-only operation with full audit logging' },
+        { type: 'improvement', text: 'Step-by-step progress reporting (inspect → pull → create → start → verify → stop source)' },
+      ],
+    },
+    {
       version: '3.4.0',
       date: '2026-03-27',
       title: 'Workflow Automation, Dashboard Prefs, Complete README',
