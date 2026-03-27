@@ -26,6 +26,7 @@ const SystemPage = {
         <button class="tab" data-tab="backup">${i18n.t('pages.system.tabBackup')}</button>
         <button class="tab" data-tab="stacks"><i class="fas fa-layer-group" style="margin-right:4px"></i> Stacks</button>
         <button class="tab" data-tab="database"><i class="fas fa-database" style="margin-right:4px"></i> Database</button>
+        <button class="tab" data-tab="tools"><i class="fas fa-toolbox" style="margin-right:4px"></i> Tools</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
         <button class="tab" data-tab="audit">${i18n.t('pages.system.tabAudit')}</button>
       </div>
@@ -58,6 +59,7 @@ const SystemPage = {
       else if (this._tab === 'backup') this._renderBackup(el);
       else if (this._tab === 'stacks') await this._renderStacks(el);
       else if (this._tab === 'database') await this._renderDatabase(el);
+      else if (this._tab === 'tools') this._renderTools(el);
       else if (this._tab === 'prune') this._renderPrune(el);
       else if (this._tab === 'audit') await this._renderAudit(el);
     } catch (err) {
@@ -599,6 +601,266 @@ DB_PASS=secret"></textarea>
       });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+    }
+  },
+
+  // ─── Tools Tab ─────────────────────────────────────
+  _renderTools(el) {
+    el.innerHTML = `
+      <div class="info-grid" style="margin-top:0">
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-terminal" style="margin-right:8px"></i>docker run → Compose</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">Paste a <code>docker run</code> command to convert it to docker-compose YAML.</p>
+            <textarea id="tool-run-input" class="form-control" rows="4" style="font-family:var(--mono);font-size:12px"
+              placeholder="docker run -d --name myapp -p 8080:80 -v data:/app/data -e NODE_ENV=production --restart unless-stopped nginx:alpine"></textarea>
+            <button class="btn btn-sm btn-primary" id="tool-run-convert" style="margin-top:8px"><i class="fas fa-exchange-alt"></i> Convert</button>
+            <div id="tool-run-output" style="margin-top:12px;display:none">
+              <textarea id="tool-run-yaml" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px" readonly></textarea>
+              <button class="btn btn-sm btn-secondary" id="tool-run-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-tags" style="margin-right:8px"></i>Reverse Proxy Labels</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">Generate Traefik or Caddy labels for a container.</p>
+            <div class="form-group">
+              <label>Proxy Type</label>
+              <select id="tool-proxy-type" class="form-control"><option value="traefik">Traefik v2</option><option value="caddy">Caddy</option></select>
+            </div>
+            <div style="display:flex;gap:8px">
+              <div class="form-group" style="flex:1"><label>Domain</label><input type="text" id="tool-proxy-domain" class="form-control" placeholder="app.example.com"></div>
+              <div class="form-group" style="flex:1"><label>Container Port</label><input type="number" id="tool-proxy-port" class="form-control" value="80"></div>
+            </div>
+            <div class="form-group"><label><input type="checkbox" id="tool-proxy-tls" checked> Enable HTTPS (Let's Encrypt)</label></div>
+            <button class="btn btn-sm btn-primary" id="tool-proxy-gen"><i class="fas fa-magic"></i> Generate</button>
+            <div id="tool-proxy-output" style="margin-top:12px;display:none">
+              <textarea id="tool-proxy-labels" class="form-control" rows="10" style="font-family:var(--mono);font-size:12px" readonly></textarea>
+              <button class="btn btn-sm btn-secondary" id="tool-proxy-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-robot" style="margin-right:8px"></i>AI Log Analysis</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">Generate a diagnostic prompt from container logs for ChatGPT/Claude.</p>
+            <div class="form-group">
+              <label>Container</label>
+              <select id="tool-ai-container" class="form-control"><option value="">Loading...</option></select>
+            </div>
+            <div class="form-group"><label>Log lines (last N)</label><input type="number" id="tool-ai-lines" class="form-control" value="50" min="10" max="200"></div>
+            <button class="btn btn-sm btn-primary" id="tool-ai-gen"><i class="fas fa-magic"></i> Generate Prompt</button>
+            <div id="tool-ai-output" style="margin-top:12px;display:none">
+              <textarea id="tool-ai-prompt" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" readonly></textarea>
+              <button class="btn btn-sm btn-secondary" id="tool-ai-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy to Clipboard</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Load containers for AI tool
+    Api.getContainers().then(containers => {
+      const sel = el.querySelector('#tool-ai-container');
+      if (sel) sel.innerHTML = containers.map(c => {
+        const name = Utils.containerName(c.Names || c.names);
+        return `<option value="${c.Id || c.id}">${Utils.escapeHtml(name)} (${c.State || c.state})</option>`;
+      }).join('');
+    }).catch(() => {});
+
+    // docker run → Compose converter
+    el.querySelector('#tool-run-convert').addEventListener('click', () => {
+      const input = el.querySelector('#tool-run-input').value.trim();
+      if (!input) { Toast.warning('Paste a docker run command'); return; }
+      try {
+        const yaml = this._dockerRunToCompose(input);
+        el.querySelector('#tool-run-yaml').value = yaml;
+        el.querySelector('#tool-run-output').style.display = '';
+      } catch (err) { Toast.error('Parse error: ' + err.message); }
+    });
+    el.querySelector('#tool-run-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(el.querySelector('#tool-run-yaml').value);
+      Toast.success('Copied!');
+    });
+
+    // Proxy label generator
+    el.querySelector('#tool-proxy-gen').addEventListener('click', () => {
+      const type = el.querySelector('#tool-proxy-type').value;
+      const domain = el.querySelector('#tool-proxy-domain').value.trim();
+      const port = el.querySelector('#tool-proxy-port').value;
+      const tls = el.querySelector('#tool-proxy-tls').checked;
+      if (!domain) { Toast.warning('Enter a domain'); return; }
+      const labels = this._generateProxyLabels(type, domain, port, tls);
+      el.querySelector('#tool-proxy-labels').value = labels;
+      el.querySelector('#tool-proxy-output').style.display = '';
+    });
+    el.querySelector('#tool-proxy-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(el.querySelector('#tool-proxy-labels').value);
+      Toast.success('Copied!');
+    });
+
+    // AI log analysis
+    el.querySelector('#tool-ai-gen').addEventListener('click', async () => {
+      const containerId = el.querySelector('#tool-ai-container').value;
+      const lines = parseInt(el.querySelector('#tool-ai-lines').value) || 50;
+      if (!containerId) { Toast.warning('Select a container'); return; }
+      try {
+        const [logs, inspect] = await Promise.all([
+          Api.getContainerLogs(containerId, lines),
+          Api.getContainer(containerId),
+        ]);
+        const name = Utils.containerName(inspect.Name || inspect.name);
+        const image = inspect.Config?.Image || inspect.config?.Image || '';
+        const state = inspect.State?.Status || inspect.state?.Status || '';
+        const exitCode = inspect.State?.ExitCode ?? '';
+        const logText = typeof logs === 'string' ? logs : (logs.logs || logs.stdout || '');
+
+        const prompt = `I have a Docker container that needs diagnosis. Please analyze the following information and provide:
+1. What the likely issue is
+2. Recommended fixes (most likely first)
+3. Any preventive measures
+
+**Container:** ${name}
+**Image:** ${image}
+**State:** ${state}${exitCode !== '' ? ` (exit code: ${exitCode})` : ''}
+**Status Message:** ${Utils.containerStatusMessage(state, exitCode)}
+
+**Last ${lines} log lines:**
+\`\`\`
+${logText.substring(0, 3000)}
+\`\`\`
+
+**Container Config:**
+- Restart Policy: ${inspect.HostConfig?.RestartPolicy?.Name || 'none'}
+- Memory Limit: ${inspect.HostConfig?.Memory ? Utils.formatBytes(inspect.HostConfig.Memory) : 'unlimited'}
+- CPU Shares: ${inspect.HostConfig?.CpuShares || 'default'}
+- Ports: ${Utils.formatPorts(inspect.NetworkSettings?.Ports ? Object.entries(inspect.NetworkSettings.Ports).map(([k,v]) => ({ private: k.split('/')[0], public: v?.[0]?.HostPort, type: k.split('/')[1] })) : [])}`;
+
+        el.querySelector('#tool-ai-prompt').value = prompt;
+        el.querySelector('#tool-ai-output').style.display = '';
+      } catch (err) { Toast.error(err.message); }
+    });
+    el.querySelector('#tool-ai-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(el.querySelector('#tool-ai-prompt').value);
+      Toast.success('Copied! Paste into ChatGPT or Claude.');
+    });
+  },
+
+  _dockerRunToCompose(cmd) {
+    // Parse docker run command into compose YAML
+    const args = this._parseDockerArgs(cmd);
+    const svc = { image: args.image || 'unknown' };
+
+    if (args.name) svc.container_name = args.name;
+    if (args.ports.length) svc.ports = args.ports;
+    if (args.volumes.length) svc.volumes = args.volumes;
+    if (Object.keys(args.env).length) svc.environment = args.env;
+    if (args.restart) svc.restart = args.restart;
+    if (args.network) svc.networks = [args.network];
+    if (args.hostname) svc.hostname = args.hostname;
+    if (args.workdir) svc.working_dir = args.workdir;
+    if (args.entrypoint) svc.entrypoint = args.entrypoint;
+    if (args.command) svc.command = args.command;
+    if (args.labels.length) {
+      svc.labels = {};
+      args.labels.forEach(l => { const [k, ...v] = l.split('='); svc.labels[k] = v.join('='); });
+    }
+
+    const name = (args.name || 'app').replace(/[^a-z0-9-]/g, '-');
+    let yaml = `services:\n  ${name}:\n`;
+    for (const [key, val] of Object.entries(svc)) {
+      if (typeof val === 'string') {
+        yaml += `    ${key}: ${val}\n`;
+      } else if (Array.isArray(val)) {
+        yaml += `    ${key}:\n`;
+        val.forEach(v => { yaml += `      - "${v}"\n`; });
+      } else if (typeof val === 'object') {
+        yaml += `    ${key}:\n`;
+        for (const [k, v] of Object.entries(val)) {
+          yaml += `      ${k}: "${v}"\n`;
+        }
+      }
+    }
+    return yaml;
+  },
+
+  _parseDockerArgs(cmd) {
+    // Tokenize respecting quotes
+    const tokens = [];
+    let current = '';
+    let inQuote = false;
+    let quoteChar = '';
+    for (const ch of cmd) {
+      if (inQuote) {
+        if (ch === quoteChar) { inQuote = false; } else { current += ch; }
+      } else if (ch === '"' || ch === "'") {
+        inQuote = true; quoteChar = ch;
+      } else if (ch === ' ' || ch === '\t') {
+        if (current) { tokens.push(current); current = ''; }
+      } else { current += ch; }
+    }
+    if (current) tokens.push(current);
+
+    // Skip "docker run" prefix
+    let i = 0;
+    while (i < tokens.length && (tokens[i] === 'docker' || tokens[i] === 'run')) i++;
+
+    const result = { ports: [], volumes: [], env: {}, labels: [], name: '', image: '', restart: '', network: '', hostname: '', workdir: '', entrypoint: '', command: '' };
+    let imageFound = false;
+
+    while (i < tokens.length) {
+      const t = tokens[i];
+      if (imageFound) {
+        result.command = tokens.slice(i).join(' ');
+        break;
+      }
+      if (t === '-d' || t === '--detach') { i++; continue; }
+      if (t === '-it' || t === '-i' || t === '-t') { i++; continue; }
+      if (t === '--rm') { i++; continue; }
+      if (t === '-p' || t === '--publish') { result.ports.push(tokens[++i]); i++; continue; }
+      if (t === '-v' || t === '--volume') { result.volumes.push(tokens[++i]); i++; continue; }
+      if (t === '-e' || t === '--env') { const kv = tokens[++i]; const eq = kv.indexOf('='); if (eq > 0) result.env[kv.substring(0, eq)] = kv.substring(eq + 1); i++; continue; }
+      if (t === '-l' || t === '--label') { result.labels.push(tokens[++i]); i++; continue; }
+      if (t === '--name') { result.name = tokens[++i]; i++; continue; }
+      if (t === '--restart') { result.restart = tokens[++i]; i++; continue; }
+      if (t === '--network' || t === '--net') { result.network = tokens[++i]; i++; continue; }
+      if (t === '-h' || t === '--hostname') { result.hostname = tokens[++i]; i++; continue; }
+      if (t === '-w' || t === '--workdir') { result.workdir = tokens[++i]; i++; continue; }
+      if (t === '--entrypoint') { result.entrypoint = tokens[++i]; i++; continue; }
+      if (t.startsWith('-')) { if (t.includes('=')) { i++; } else { i += 2; } continue; } // skip unknown flags
+      result.image = t;
+      imageFound = true;
+      i++;
+    }
+    return result;
+  },
+
+  _generateProxyLabels(type, domain, port, tls) {
+    if (type === 'traefik') {
+      const router = domain.replace(/[^a-z0-9]/g, '-');
+      let labels = `labels:\n`;
+      labels += `  - "traefik.enable=true"\n`;
+      labels += `  - "traefik.http.routers.${router}.rule=Host(\\\`${domain}\\\`)"\n`;
+      if (tls) {
+        labels += `  - "traefik.http.routers.${router}.entrypoints=websecure"\n`;
+        labels += `  - "traefik.http.routers.${router}.tls.certresolver=letsencrypt"\n`;
+      } else {
+        labels += `  - "traefik.http.routers.${router}.entrypoints=web"\n`;
+      }
+      labels += `  - "traefik.http.services.${router}.loadbalancer.server.port=${port}"\n`;
+      return labels;
+    } else {
+      // Caddy labels (via caddy-docker-proxy)
+      let labels = `labels:\n`;
+      labels += `  caddy: "${domain}"\n`;
+      labels += `  caddy.reverse_proxy: "{{upstreams ${port}}}"\n`;
+      if (tls) {
+        labels += `  caddy.tls: "internal"  # or remove for Let's Encrypt auto\n`;
+      }
+      return labels;
     }
   },
 

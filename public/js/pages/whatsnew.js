@@ -10,6 +10,21 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '2.8.0',
+      date: '2026-03-27',
+      title: 'Developer Tools — Run Converter, AI Diagnostics, Proxy Labels',
+      changes: [
+        { type: 'feature', text: 'docker run → Compose converter — paste any docker run command, get docker-compose YAML' },
+        { type: 'feature', text: 'Supports: ports, volumes, env vars, labels, restart policy, network, hostname, entrypoint, command' },
+        { type: 'feature', text: 'AI-Powered Log Analysis — generate diagnostic prompts from container logs + config for ChatGPT/Claude' },
+        { type: 'feature', text: 'Includes container state, exit code meaning, restart policy, resource limits, and last N log lines' },
+        { type: 'feature', text: 'Traefik v2 label generator — input domain + port, get ready-to-use router/service labels with TLS' },
+        { type: 'feature', text: 'Caddy label generator — caddy-docker-proxy compatible labels' },
+        { type: 'improvement', text: 'New "Tools" tab in System page — all developer utilities in one place' },
+        { type: 'improvement', text: 'Copy-to-clipboard for all generated outputs' },
+      ],
+    },
+    {
       version: '2.7.0',
       date: '2026-03-27',
       title: 'Notification Channels & SSO Authentication',
