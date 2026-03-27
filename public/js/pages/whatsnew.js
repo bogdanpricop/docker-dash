@@ -10,6 +10,21 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.2.0',
+      date: '2026-03-27',
+      title: 'Community & Growth — Templates, Log Search, Watchtower Migration',
+      changes: [
+        { type: 'feature', text: 'Enhanced Log Search — regex pattern matching, log level filtering (ERROR/WARN/INFO/DEBUG)' },
+        { type: 'feature', text: 'Log statistics — error/warning count summary in log response' },
+        { type: 'feature', text: 'App Template Marketplace — 20 curated one-click templates (Nginx, PostgreSQL, Redis, Grafana, Traefik, Nextcloud, Gitea, n8n, Vaultwarden, Pi-hole, and more)' },
+        { type: 'feature', text: 'Template categories: Web Server, Database, Monitoring, Reverse Proxy, Cloud Storage, Development, Automation, Security, IoT, CMS' },
+        { type: 'feature', text: 'Template search and category filter' },
+        { type: 'feature', text: 'Watchtower Detection — auto-detect running Watchtower containers' },
+        { type: 'feature', text: 'Watchtower migration advisory — step-by-step guide to switch to Docker Dash native safe-pull updates' },
+        { type: 'improvement', text: 'Log download preserves search/filter results' },
+      ],
+    },
+    {
       version: '3.1.0',
       date: '2026-03-27',
       title: 'Automation & Status — Maintenance Windows, Smart Restart, Status Page',

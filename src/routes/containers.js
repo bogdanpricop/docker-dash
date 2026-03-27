@@ -103,10 +103,10 @@ router.get('/:id/inspect', requireAuth, async (req, res) => {
   }
 });
 
-// Container logs
+// Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, async (req, res) => {
   try {
-    const { tail, since, until, search, download } = req.query;
+    const { tail, since, until, search, regex, level, download } = req.query;
     let lines = await dockerService.getContainerLogs(req.params.id, {
       tail: parseInt(tail) || 100,
       since, until,
@@ -118,6 +118,35 @@ router.get('/:id/logs', requireAuth, async (req, res) => {
       lines = lines.filter(l => l.toLowerCase().includes(q));
     }
 
+    // Regex search
+    if (regex) {
+      try {
+        const re = new RegExp(regex, 'i');
+        lines = lines.filter(l => re.test(l));
+      } catch { /* invalid regex, skip */ }
+    }
+
+    // Log level filter (ERROR, WARN, INFO, DEBUG)
+    if (level) {
+      const levels = level.split(',').map(l => l.trim().toLowerCase());
+      const patterns = {
+        error: /\b(error|fatal|panic|exception|critical)\b/i,
+        warn: /\b(warn|warning)\b/i,
+        info: /\b(info)\b/i,
+        debug: /\b(debug|trace)\b/i,
+      };
+      lines = lines.filter(line => {
+        return levels.some(lvl => patterns[lvl]?.test(line));
+      });
+    }
+
+    // Log stats summary
+    const stats = {
+      total: lines.length,
+      errors: lines.filter(l => /\b(error|fatal|panic|exception)\b/i.test(l)).length,
+      warnings: lines.filter(l => /\b(warn|warning)\b/i.test(l)).length,
+    };
+
     // Download as file
     if (download === 'true') {
       const name = req.params.id.substring(0, 12);
@@ -127,7 +156,7 @@ router.get('/:id/logs', requireAuth, async (req, res) => {
       return res.send(lines.join('\n'));
     }
 
-    res.json({ lines });
+    res.json({ lines, stats });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

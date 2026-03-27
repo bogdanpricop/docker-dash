@@ -198,6 +198,49 @@ router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => 
   }
 });
 
+// ─── Watchtower Detection ───────────────────────────────────
+
+router.get('/watchtower', requireAuth, async (req, res) => {
+  try {
+    const dockerService = require('../services/docker');
+    const containers = await dockerService.listContainers(req.query.hostId || 0);
+    const watchtower = containers.filter(c => {
+      const image = (c.Image || c.image || '').toLowerCase();
+      const name = ((c.Names || c.names || [])[0] || '').toLowerCase();
+      return image.includes('watchtower') || name.includes('watchtower');
+    });
+
+    if (watchtower.length === 0) {
+      return res.json({ detected: false });
+    }
+
+    const wt = watchtower[0];
+    const name = ((wt.Names || wt.names || [])[0] || '').replace(/^\//, '');
+    const state = wt.State || wt.state;
+
+    // Count containers Watchtower is monitoring
+    const monitoredCount = containers.filter(c => {
+      const labels = c.Labels || c.labels || {};
+      return labels['com.centurylinklabs.watchtower.enable'] !== 'false';
+    }).length;
+
+    res.json({
+      detected: true,
+      container: { name, state, image: wt.Image || wt.image },
+      monitored_count: monitoredCount,
+      advisory: 'Docker Dash now offers native safe-pull updates with vulnerability scanning. Consider migrating from Watchtower for more control.',
+      migration_steps: [
+        'Docker Dash safe-update scans for vulnerabilities before swapping images (Watchtower does not)',
+        'Use maintenance windows for scheduled updates with scan-before-deploy',
+        'Set up notification channels (Discord/Slack/Telegram) for update alerts',
+        'Once migrated, stop Watchtower: docker stop ' + name,
+      ],
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Settings ───────────────────────────────────────────────
 
 router.get('/settings', requireAuth, requireRole('admin'), (req, res) => {

@@ -174,6 +174,16 @@ const Api = {
   updateStatusPageConfig(data) { return this.put('/status-page/config', data); },
   addStatusPageItem(data) { return this.post('/status-page/items', data); },
   removeStatusPageItem(id) { return this.delete(`/status-page/items/${id}`); },
+
+  // ─── Templates ────────────────────────────────────
+  getTemplates(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.get(`/templates${qs ? '?' + qs : ''}`);
+  },
+  getTemplate(id) { return this.get(`/templates/${id}`); },
+
+  // ─── Watchtower ───────────────────────────────────
+  detectWatchtower() { return this.get('/watchtower'); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },
