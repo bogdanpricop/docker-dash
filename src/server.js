@@ -45,15 +45,27 @@ app.use(cookieParser());
 // 'true' trusts ALL proxies (allows IP spoofing). Use specific IPs in production.
 app.set('trust proxy', config.app.env === 'production' ? 'loopback' : true);
 
-// Request logging (dev only)
-if (config.app.env === 'development') {
-  app.use((req, res, next) => {
-    if (!req.url.startsWith('/api/health') && !req.url.startsWith('/ws')) {
-      log.debug(`${req.method} ${req.url}`);
+// Request latency tracking + logging
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/health') || req.url.startsWith('/ws') || !req.url.startsWith('/api')) {
+    return next();
+  }
+  const start = Date.now();
+  const origEnd = res.end;
+  res.end = function(...args) {
+    const duration = Date.now() - start;
+    // Log slow requests (>2s) as warnings
+    if (duration > 2000) {
+      log.warn('Slow request', { method: req.method, url: req.url, duration: `${duration}ms`, status: res.statusCode });
+    } else if (config.app.env === 'development') {
+      log.debug(`${req.method} ${req.url} ${res.statusCode} ${duration}ms`);
     }
-    next();
-  });
-}
+    // Expose latency header for debugging
+    res.setHeader('X-Response-Time', `${duration}ms`);
+    origEnd.apply(this, args);
+  };
+  next();
+});
 
 // ─── API Routes ─────────────────────────────────────────────
 

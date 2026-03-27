@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     build:
@@ -10,7 +8,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${APP_PORT:-3456}:${APP_PORT:-3456}"
+      - "${APP_PORT:-8101}:${APP_PORT:-8101}"
     volumes:
       # Docker socket — read-only for security
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -31,6 +29,25 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # Optional HTTPS reverse proxy — enable by setting ENABLE_TLS=true in .env
+  # Access via https://192.168.13.20:8443 (self-signed cert for internal network)
+  caddy:
+    image: caddy:2-alpine
+    container_name: docker-dash-caddy
+    restart: unless-stopped
+    ports:
+      - "${TLS_PORT:-8443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    profiles:
+      - tls
+
 volumes:
   docker-dash-data:
     name: docker-dash-data
+  caddy-data:
+  caddy-config:
