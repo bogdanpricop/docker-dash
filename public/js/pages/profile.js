@@ -51,7 +51,7 @@ const ProfilePage = {
               </div>
               <div class="form-group">
                 <label>${i18n.t('pages.profile.newPassword')}</label>
-                <input type="password" id="profile-pw-new" required minlength="6" autocomplete="new-password">
+                <input type="password" id="profile-pw-new" required minlength="8" autocomplete="new-password">
               </div>
               <div class="form-group">
                 <label>${i18n.t('pages.profile.confirmPassword')}</label>
@@ -96,7 +96,7 @@ const ProfilePage = {
         errEl.classList.remove('hidden');
         return;
       }
-      if (newPassword.length < 6) {
+      if (newPassword.length < 8) {
         errEl.textContent = i18n.t('pages.profile.passwordTooShort');
         errEl.classList.remove('hidden');
         return;

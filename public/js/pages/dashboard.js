@@ -26,6 +26,8 @@ const DashboardPage = {
         </div>
       </div>
 
+      <div id="dash-error" style="display:none;margin-bottom:12px"></div>
+
       <!-- Summary Cards -->
       <div class="stat-cards" id="stat-cards">
         <div class="stat-card">
@@ -164,6 +166,15 @@ const DashboardPage = {
       this._renderEvents();
     } catch (err) {
       console.error('Dashboard load error:', err);
+      // Show user-facing error banner
+      const banner = document.getElementById('dash-error');
+      if (banner) {
+        banner.style.display = 'block';
+        banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:center;gap:8px">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>Failed to load dashboard data. <button class="btn btn-sm" style="margin-left:8px" onclick="DashboardPage._load()">Retry</button></span>
+        </div>`;
+      }
     }
   },
 
