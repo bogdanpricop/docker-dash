@@ -73,6 +73,7 @@ app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/workflows', apiLimiter, require('./routes/workflows'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
+app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
 app.use('/api/status-page', require('./routes/statusPage'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 

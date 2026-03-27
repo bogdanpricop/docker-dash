@@ -10,6 +10,26 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.6.0',
+      date: '2026-03-27',
+      title: 'Stack Export/Import — Portable Infrastructure Bundles',
+      changes: [
+        { type: 'feature', text: 'Stack Export — export entire compose stack as a portable JSON bundle (config, env, volumes, ports, labels)' },
+        { type: 'feature', text: 'Container Export — export single container config as a bundle' },
+        { type: 'feature', text: 'Stack Import — upload a bundle and deploy on any host with one click' },
+        { type: 'feature', text: 'Import Preview — validate bundle contents before importing (images, volumes, ports, env count)' },
+        { type: 'feature', text: 'Generate Compose — auto-generate docker-compose.yml from any bundle' },
+        { type: 'feature', text: 'Download bundle as .json file for sharing/backup' },
+        { type: 'feature', text: 'Auto-pull images on import — no need to pre-pull' },
+        { type: 'feature', text: 'Name conflict resolution — auto-renames on import if container exists' },
+        { type: 'feature', text: 'Import labels — imported containers tagged with source info and timestamp' },
+        { type: 'feature', text: 'Volume auto-creation on import' },
+        { type: 'feature', text: 'Optional name prefix for imported containers' },
+        { type: 'improvement', text: 'Compose internal labels stripped from export (clean bundles)' },
+        { type: 'security', text: 'Admin-only import with full audit logging' },
+      ],
+    },
+    {
       version: '3.5.0',
       date: '2026-03-27',
       title: 'Cross-Host Migration with Zero-Downtime',

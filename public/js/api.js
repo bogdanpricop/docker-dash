@@ -202,6 +202,13 @@ const Api = {
   previewMigration(data) { return this.post('/migrate/preview', data); },
   migrateContainer(data) { return this.post('/migrate/container', data); },
   migrateStack(data) { return this.post('/migrate/stack', data); },
+
+  // ─── Stack Bundles (Export/Import) ────────────────
+  exportStack(name) { return this.get(`/bundles/export/stack/${encodeURIComponent(name)}`); },
+  exportContainer(id) { return this.get(`/bundles/export/container/${id}`); },
+  exportBundleCompose(bundle) { return this.post('/bundles/export/compose', bundle); },
+  importBundle(data) { return this.post('/bundles/import', data); },
+  previewImport(bundle) { return this.post('/bundles/import/preview', { bundle }); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },
