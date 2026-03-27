@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '3.4.0',
+      date: '2026-03-27',
+      title: 'Workflow Automation, Dashboard Prefs, Complete README',
+      changes: [
+        { type: 'feature', text: 'Workflow Automation — IF-THEN rules: CPU high → restart, container crash → notify, unhealthy → alert, crash loop → stop' },
+        { type: 'feature', text: '5 workflow templates: auto-restart on crash, notify on high CPU/memory, stop on crash loop, alert on unhealthy' },
+        { type: 'feature', text: 'Workflow actions: notify (all channels), restart, stop, webhook call' },
+        { type: 'feature', text: 'Cooldown system — prevents rule from triggering repeatedly' },
+        { type: 'feature', text: 'Dashboard preferences — save widget order and hidden widgets per user' },
+        { type: 'improvement', text: 'README completely rewritten with all v2-v3 features (60+ features documented)' },
+        { type: 'improvement', text: 'New sections: Git Integration, Developer Tools, Monitoring & Intelligence' },
+      ],
+    },
+    {
       version: '3.3.0',
       date: '2026-03-27',
       title: 'Mobile UI, Resource Recommendations, Competitive Positioning',

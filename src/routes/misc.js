@@ -198,6 +198,40 @@ router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => 
   }
 });
 
+// ─── Dashboard Preferences ──────────────────────────────────
+
+router.get('/dashboard/preferences', requireAuth, (req, res) => {
+  const db = getDb();
+  const prefs = db.prepare('SELECT * FROM dashboard_preferences WHERE user_id = ?').get(req.user.id);
+  if (!prefs) {
+    return res.json({
+      widget_order: ['containers', 'cpu', 'memory', 'events'],
+      hidden_widgets: [],
+    });
+  }
+  res.json({
+    widget_order: JSON.parse(prefs.widget_order),
+    hidden_widgets: JSON.parse(prefs.hidden_widgets),
+  });
+});
+
+router.put('/dashboard/preferences', requireAuth, (req, res) => {
+  const db = getDb();
+  const { widget_order, hidden_widgets } = req.body;
+  db.prepare(`
+    INSERT INTO dashboard_preferences (user_id, widget_order, hidden_widgets, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET widget_order = ?, hidden_widgets = ?, updated_at = datetime('now')
+  `).run(
+    req.user.id,
+    JSON.stringify(widget_order || []),
+    JSON.stringify(hidden_widgets || []),
+    JSON.stringify(widget_order || []),
+    JSON.stringify(hidden_widgets || [])
+  );
+  res.json({ ok: true });
+});
+
 // ─── Comparison Data (for marketing/about pages) ────────────
 
 router.get('/compare', (req, res) => {

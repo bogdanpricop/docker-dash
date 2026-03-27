@@ -186,6 +186,17 @@ const Api = {
   detectWatchtower() { return this.get('/watchtower'); },
   getResourceRecommendations() { return this.get('/stats/recommendations'); },
   getComparison() { return this.get('/compare'); },
+
+  // ─── Workflows ────────────────────────────────────
+  getWorkflows() { return this.get('/workflows'); },
+  getWorkflowTemplates() { return this.get('/workflows/templates'); },
+  createWorkflow(data) { return this.post('/workflows', data); },
+  updateWorkflow(id, data) { return this.put(`/workflows/${id}`, data); },
+  deleteWorkflow(id) { return this.delete(`/workflows/${id}`); },
+
+  // ─── Dashboard Preferences ────────────────────────
+  getDashboardPrefs() { return this.get('/dashboard/preferences'); },
+  saveDashboardPrefs(data) { return this.put('/dashboard/preferences', data); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },
   getStack(name) { return this.get(`/system/stacks/${encodeURIComponent(name)}`); },

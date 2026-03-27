@@ -48,17 +48,34 @@
 - **Volume Management** — Create, remove, inspect with real disk usage sizes
 - **Network Management** — Create, remove, connect/disconnect containers, inspect IPAM config
 
-### Monitoring & Visualization
+### Monitoring & Intelligence
 - **Real-time Dashboard** — Live CPU/memory time-series charts (WebSocket-powered, 10s interval)
-- **Container Stats** — Per-container CPU, memory, network I/O, block I/O, PIDs
+- **Container Health Score** — Composite 0-100 score (state, health checks, restarts, CPU/memory, vulns, image age)
+- **Resource Trends & Forecasting** — 7-day linear regression with 24h CPU/memory projection
+- **Memory Exhaustion Prediction** — "will exceed limit in N hours" warning
+- **Plain-English Status** — Exit codes mapped to human-readable messages (137=OOM, 143=SIGTERM, etc.)
 - **Network Topology** — Interactive canvas map with drag, zoom, pan, hover highlighting
-- **Health Checks** — Monitor container health status with event history
+- **Uptime Reports** — Per-container uptime %, restart count, first/last seen
+- **Cost Estimation** — Input VPS cost, see per-container breakdown (CPU+memory weighted)
+- **Image Freshness Dashboard** — Freshness score based on age + vulnerability count
+- **Audit Log Analytics** — Top users, top actions, activity heatmap by hour/day
 
 ### Security
 - **Vulnerability Scanning** — Integrated Trivy + Docker Scout with automatic detection
+- **Safe-Pull Updates** — Pull new image → scan for vulns → only swap if clean (blocks critical CVEs)
 - **Security Dashboard** — Scan history, per-image status, AI-assisted remediation prompts
-- **Smart Classification** — Distinguishes npm, OS, and third-party binary vulnerabilities
+- **Guided Troubleshooting** — 8-step diagnostic wizard (state, health, logs, ports, volumes, resources)
 - **First-login Setup Wizard** — Forces password change, recommends disabling default admin
+
+### Git Integration (GitOps)
+- **Deploy from Git** — Clone repos, select branch, compose file path, deploy with one click
+- **Auto-Deploy** — Webhook receiver (GitHub, GitLab, Gitea, Bitbucket) + polling-based updates
+- **Deployment History** — Full audit trail with commit hash, trigger type, duration, rollback
+- **Diff View** — See exactly what changed before redeploying
+- **Push to Git** — Edit compose in UI, commit and push back to repository
+- **Git Credentials** — Token, basic auth, SSH key (AES-256-GCM encrypted)
+- **Multi-file Compose** — Multiple YAML override files per stack
+- **Environment Overrides** — Per-stack env vars with sensitive value encryption
 
 ### Multi-Host
 - **TCP + TLS** — Connect remote Docker hosts over the network with mutual TLS
@@ -69,17 +86,33 @@
 ### Operations
 - **Compose/Stacks** — List, view, edit YAML, manage environment variables, deploy
 - **Terminal** — Full xterm.js terminal with shell selection (`sh`, `bash`, `zsh`, `ash`)
-- **Alerts** — CPU/memory threshold rules with email (SMTP) and webhook notifications
+- **Alerts** — CPU/memory threshold rules with 7 notification channels
+- **Notifications** — Discord, Slack, Telegram, Ntfy, Gotify, Email (SMTP), Custom Webhook
+- **Workflow Automation** — IF-THEN rules (CPU high → restart, container crash → notify, etc.)
+- **Maintenance Windows** — Scheduled pull/scan/update with block-on-critical
 - **Schedules** — Cron-based container actions (start/stop/restart on schedule)
 - **Firewall** — View and manage UFW rules (Linux)
 
+### Developer Tools
+- **docker run → Compose** — Paste any docker run command, get docker-compose YAML
+- **AI Log Analysis** — Generate diagnostic prompts for ChatGPT/Claude from container logs
+- **Traefik/Caddy Labels** — Generate reverse proxy labels from domain + port
+- **App Templates** — 20 curated one-click templates (Nginx, PostgreSQL, Redis, Grafana, and more)
+- **Deploy Preview** — Check for image updates via digest comparison before pulling
+- **Resource Recommendations** — Smart advice: over-provisioned, memory pressure, idle containers
+
 ### Platform
 - **Multi-user** — Admin, operator, viewer roles with session management
+- **SSO Authentication** — Authelia, Authentik, Caddy forward_auth, Traefik (header-based)
 - **Audit Log** — Every action logged with user, timestamp, IP address
+- **Public Status Page** — Unauthenticated status page for selected services
 - **Container Metadata** — Custom labels, descriptions, links, categories, owner, notes
-- **Dark/Light Theme** — System-aware with manual toggle
+- **Dark/Light Theme** — System-aware with manual toggle + mobile responsive UI
 - **i18n** — English, Romanian, German (easily extensible — [add your language](public/js/i18n/README.md))
 - **Command Palette** — Ctrl+K quick navigation
+- **Watchtower Detection** — Auto-detect and migrate from Watchtower to native safe-pull
+- **Prometheus Metrics** — `/api/metrics` endpoint for Grafana integration
+- **Self-Reporting Footprint** — Docker Dash memory, uptime, DB size at `/api/footprint`
 
 ## Quick Start
 
