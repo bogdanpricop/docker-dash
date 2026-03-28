@@ -467,6 +467,7 @@ const ContainersPage = {
       <button class="btn btn-sm btn-accent" data-act="update"><i class="fas fa-arrow-circle-up"></i> Update</button>
       <button class="btn btn-sm btn-accent" data-act="safe-update" title="Scan for vulnerabilities before updating"><i class="fas fa-shield-alt"></i> Safe Update</button>
       <button class="btn btn-sm btn-secondary" data-act="diagnose" title="Run troubleshooting wizard"><i class="fas fa-stethoscope"></i> Diagnose</button>
+      <button class="btn btn-sm btn-secondary" data-act="rename"><i class="fas fa-pencil-alt"></i> Rename</button>
       <button class="btn btn-sm btn-secondary" data-act="clone"><i class="fas fa-clone"></i> Clone</button>
       <button class="btn btn-sm btn-secondary" data-act="export"><i class="fas fa-file-export"></i> Export</button>
       <button class="btn btn-sm btn-danger" data-act="remove"><i class="fas fa-trash"></i> ${i18n.t('common.remove')}</button>
@@ -476,6 +477,7 @@ const ContainersPage = {
       btn.addEventListener('click', () => {
         if (btn.dataset.act === 'export') return this._exportDialog();
         if (btn.dataset.act === 'update') return this._updateContainer(this._detailId, info.image);
+        if (btn.dataset.act === 'rename') return this._renameContainer(this._detailId, info.name);
         if (btn.dataset.act === 'safe-update') return this._safeUpdateContainer(this._detailId, info.name, info.image);
         if (btn.dataset.act === 'diagnose') return this._diagnoseContainer(this._detailId, info.name);
         if (btn.dataset.act === 'clone') return this._cloneContainer(this._detailId, info.name, info.image);
@@ -574,6 +576,32 @@ const ContainersPage = {
       await this._loadDetail();
     } catch (err) {
       Toast.error('Update failed: ' + err.message);
+    }
+  },
+
+  async _renameContainer(id, currentName) {
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>New Name</label>
+        <input type="text" id="rename-input" class="form-control" value="${Utils.escapeHtml(currentName)}" required>
+      </div>
+    `, {
+      title: 'Rename Container',
+      width: '400px',
+      onSubmit: (content) => {
+        const newName = content.querySelector('#rename-input').value.trim();
+        if (!newName) { Toast.warning('Name cannot be empty'); return false; }
+        if (newName === currentName) { Toast.info('Name unchanged'); return false; }
+        return { name: newName };
+      },
+    });
+
+    if (result) {
+      try {
+        await Api.renameContainer(id, result.name);
+        Toast.success('Container renamed to "' + result.name + '"');
+        await this._loadDetail();
+      } catch (err) { Toast.error(err.message); }
     }
   },
 
