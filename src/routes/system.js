@@ -369,14 +369,24 @@ router.post('/firewall/rule', requireAuth, requireRole('admin'), writeable, (req
       return res.status(400).json({ error: 'Invalid action. Use: allow, deny, limit, reject' });
     }
 
-    // Build UFW command
-    let cmd = `ufw ${action}`;
-    if (direction === 'out') cmd += ' out';
-    if (from) cmd += ` from ${from}`;
-    cmd += ` ${port}`;
-    if (proto && proto !== 'any') cmd += `/${proto}`;
+    // Strict input validation — prevent command injection
+    if (!/^\d{1,5}(:\d{1,5})?$/.test(String(port))) {
+      return res.status(400).json({ error: 'Port must be a number or range (e.g., 80 or 8000:9000)' });
+    }
+    if (from && !/^[\d./]+$/.test(from)) {
+      return res.status(400).json({ error: 'From must be an IP address or CIDR (e.g., 192.168.1.0/24)' });
+    }
+    if (proto && !['tcp', 'udp', 'any'].includes(proto)) {
+      return res.status(400).json({ error: 'Protocol must be tcp, udp, or any' });
+    }
 
-    const result = runCmd(`${cmd} 2>&1`);
+    // Build UFW args array (no shell interpolation)
+    const args = [action];
+    if (direction === 'out') args.push('out');
+    if (from) { args.push('from', from); }
+    args.push(proto && proto !== 'any' ? `${port}/${proto}` : String(port));
+
+    const result = execFileSync('ufw', args, { timeout: 10000, encoding: 'utf8' }).trim();
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -395,7 +405,7 @@ router.delete('/firewall/rule/:number', requireAuth, requireRole('admin'), write
     const num = parseInt(req.params.number);
     if (!num || num < 1) return res.status(400).json({ error: 'Invalid rule number' });
 
-    const result = runCmd(`echo y | ufw delete ${num} 2>&1`);
+    const result = execFileSync('ufw', ['--force', 'delete', String(num)], { timeout: 10000, encoding: 'utf8' }).trim();
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -464,15 +474,10 @@ router.post('/compose/:stack/:action', requireAuth, requireRole('admin', 'operat
 
     if (!workingDir) return res.status(400).json({ error: 'Cannot determine compose working directory' });
 
-    let cmd;
-    switch (action) {
-      case 'up': cmd = `cd "${workingDir}" && docker compose up -d`; break;
-      case 'down': cmd = `cd "${workingDir}" && docker compose down`; break;
-      case 'restart': cmd = `cd "${workingDir}" && docker compose restart`; break;
-      case 'pull': cmd = `cd "${workingDir}" && docker compose pull`; break;
-    }
+    const composeArgs = { up: ['up', '-d'], down: ['down'], restart: ['restart'], pull: ['pull'] };
+    const args = ['compose', ...(composeArgs[action] || [])];
 
-    const output = execSync(cmd, { timeout: 120000, encoding: 'utf8' });
+    const output = execFileSync('docker', args, { cwd: workingDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe' });
 
     auditService.log({
       userId: req.user.id, username: req.user.username,

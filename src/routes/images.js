@@ -457,11 +457,12 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
     // Ensure persistent config directory exists
     if (!fs.existsSync(DOCKER_CONFIG_DIR)) fs.mkdirSync(DOCKER_CONFIG_DIR, { recursive: true });
 
-    // Run docker login — requires shell for stdin pipe (execSync intentional)
-    const result = execSync(
-      `echo "${password.replace(/"/g, '\\"')}" | docker login -u "${username.replace(/"/g, '\\"')}" --password-stdin 2>&1`,
-      { timeout: 30000, encoding: 'utf8', env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR } }
-    );
+    // Run docker login via execFileSync with stdin pipe (no shell interpolation)
+    const result = execFileSync('docker', ['login', '-u', username, '--password-stdin'], {
+      timeout: 30000, encoding: 'utf8', input: password,
+      env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
 
     const success = result.includes('Login Succeeded') || result.includes('Succeeded');
 
