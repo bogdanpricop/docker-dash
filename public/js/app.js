@@ -24,6 +24,7 @@ const App = {
     whatsnew:   () => WhatsNewPage,
     'git-stacks': () => GitStacksPage,
     compare:    () => ComparePage,
+    insights:   () => InsightsPage,
     settings:   () => SettingsPage,
     profile:    () => ProfilePage,
   },
