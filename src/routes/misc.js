@@ -709,7 +709,7 @@ router.get('/compare', (req, res) => {
     { feature: 'i18n', dockerDash: 'EN/RO/DE', portainerCE: 'partial', dockge: false, dockhand: false },
     { feature: 'Command Palette', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
     { feature: 'Mobile Responsive', dockerDash: true, portainerCE: true, dockge: true, dockhand: true },
-    { feature: 'Test Suite', dockerDash: '104 tests', portainerCE: true, dockge: false, dockhand: false },
+    { feature: 'Test Suite', dockerDash: '335 tests', portainerCE: true, dockge: false, dockhand: false },
     { feature: 'CI/CD Pipeline', dockerDash: 'GitHub Actions', portainerCE: true, dockge: false, dockhand: false },
     { feature: 'Build Step', dockerDash: 'none', portainerCE: 'Angular', dockge: 'required', dockhand: 'required' },
     { feature: 'Container Size', dockerDash: '~80MB', portainerCE: '~250MB', dockge: '~100MB', dockhand: '~80MB' },

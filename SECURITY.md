@@ -86,7 +86,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 
 ## Testing
 
-- **104 tests** across 8 test files (100% passing)
+- **335 tests** across 22 test files (100% passing)
 - Unit tests: crypto round-trip, input validation, shell sanitization, git patterns
 - Integration tests: auth flow (login, session, logout, SSO), API endpoints (supertest)
 - **CI pipeline** — GitHub Actions runs tests + syntax check + npm audit on every push

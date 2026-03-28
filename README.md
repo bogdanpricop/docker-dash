@@ -8,7 +8,7 @@
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
-    <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-104%20passing%20(100%25)-brightgreen" alt="Tests"></a>
+    <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-335%20passing%20(100%25)-brightgreen" alt="Tests"></a>
     <a href="SECURITY.md#security-audit-history"><img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
     <img src="https://img.shields.io/badge/Docker-~80MB-blue" alt="Image Size">
@@ -295,7 +295,7 @@ docker-dash/
 | App Templates | 30 built-in | 500+ community | No | No |
 | i18n | 11 languages | Partial | No | No |
 | Command Palette + Shortcuts | Yes | No | No | No |
-| Test Suite | 104 tests (100%) | Yes | No | No |
+| Test Suite | 335 tests (100%) | Yes | No | No |
 | Build Step | **None** | Angular | Required | Required |
 | Container Size | **~80MB** | ~250MB | ~100MB | ~80MB |
 | RAM Usage | **~50MB** | ~200MB | ~50MB | ~60MB |
@@ -353,7 +353,7 @@ These are conscious design decisions documented in [SECURITY.md](SECURITY.md):
 
 ### Test Coverage
 
-- **104 tests** across 8 test files (100% passing)
+- **335 tests** across 22 test files (100% passing)
 - Unit tests: crypto, helpers, validation, git patterns
 - Integration tests: auth flow, API endpoints
 - CI runs on every push via GitHub Actions
