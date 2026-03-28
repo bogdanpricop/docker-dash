@@ -107,6 +107,56 @@ const TEMPLATES = [
     description: 'Real-time Docker log viewer (7MB)',
     compose: `services:\n  dozzle:\n    image: amir20/dozzle:latest\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock:ro\n    ports:\n      - "8080:8080"\n    restart: unless-stopped`,
   },
+  {
+    id: 'portainer', name: 'Portainer CE', category: 'Management', icon: 'fas fa-columns',
+    description: 'Docker management UI (for comparison testing)',
+    compose: `services:\n  portainer:\n    image: portainer/portainer-ce:latest\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - portainer-data:/data\n    ports:\n      - "9443:9443"\n    restart: unless-stopped\nvolumes:\n  portainer-data:`,
+  },
+  {
+    id: 'elasticsearch', name: 'Elasticsearch', category: 'Search', icon: 'fas fa-search',
+    description: 'Distributed search and analytics engine',
+    compose: `services:\n  elasticsearch:\n    image: elasticsearch:8.12.0\n    environment:\n      - discovery.type=single-node\n      - xpack.security.enabled=false\n      - ES_JAVA_OPTS=-Xms512m -Xmx512m\n    volumes:\n      - es-data:/usr/share/elasticsearch/data\n    ports:\n      - "9200:9200"\n    restart: unless-stopped\nvolumes:\n  es-data:`,
+  },
+  {
+    id: 'rabbitmq', name: 'RabbitMQ', category: 'Messaging', icon: 'fas fa-exchange-alt',
+    description: 'Message broker with management UI',
+    compose: `services:\n  rabbitmq:\n    image: rabbitmq:3-management-alpine\n    environment:\n      RABBITMQ_DEFAULT_USER: admin\n      RABBITMQ_DEFAULT_PASS: changeme\n    volumes:\n      - rabbitmq-data:/var/lib/rabbitmq\n    ports:\n      - "5672:5672"\n      - "15672:15672"\n    restart: unless-stopped\nvolumes:\n  rabbitmq-data:`,
+  },
+  {
+    id: 'mailhog', name: 'MailHog', category: 'Development', icon: 'fas fa-envelope',
+    description: 'Email testing tool — catches outgoing emails',
+    compose: `services:\n  mailhog:\n    image: mailhog/mailhog:latest\n    ports:\n      - "1025:1025"\n      - "8025:8025"\n    restart: unless-stopped`,
+  },
+  {
+    id: 'plausible', name: 'Plausible Analytics', category: 'Analytics', icon: 'fas fa-chart-line',
+    description: 'Privacy-friendly web analytics (Google Analytics alternative)',
+    compose: `services:\n  plausible:\n    image: plausible/analytics:latest\n    ports:\n      - "8000:8000"\n    environment:\n      - BASE_URL=http://localhost:8000\n      - SECRET_KEY_BASE=changeme_generate_64_chars\n    volumes:\n      - plausible-data:/var/lib/plausible\n    restart: unless-stopped\nvolumes:\n  plausible-data:`,
+  },
+  {
+    id: 'filebrowser', name: 'File Browser', category: 'Storage', icon: 'fas fa-folder-open',
+    description: 'Web-based file manager with sharing',
+    compose: `services:\n  filebrowser:\n    image: filebrowser/filebrowser:latest\n    volumes:\n      - /path/to/files:/srv\n      - filebrowser-db:/database\n    ports:\n      - "8080:80"\n    restart: unless-stopped\nvolumes:\n  filebrowser-db:`,
+  },
+  {
+    id: 'watchtower', name: 'Watchtower', category: 'Management', icon: 'fas fa-binoculars',
+    description: 'Auto-update Docker containers (Docker Dash has native safe-pull)',
+    compose: `services:\n  watchtower:\n    image: containrrr/watchtower:latest\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n    environment:\n      - WATCHTOWER_CLEANUP=true\n      - WATCHTOWER_POLL_INTERVAL=86400\n    restart: unless-stopped`,
+  },
+  {
+    id: 'drone', name: 'Drone CI', category: 'CI/CD', icon: 'fas fa-rocket',
+    description: 'Self-hosted continuous integration platform',
+    compose: `services:\n  drone:\n    image: drone/drone:latest\n    environment:\n      - DRONE_SERVER_HOST=localhost\n      - DRONE_SERVER_PROTO=http\n    volumes:\n      - drone-data:/data\n    ports:\n      - "8080:80"\n    restart: unless-stopped\nvolumes:\n  drone-data:`,
+  },
+  {
+    id: 'ghost', name: 'Ghost', category: 'CMS', icon: 'fas fa-ghost',
+    description: 'Modern publishing platform (blogging)',
+    compose: `services:\n  ghost:\n    image: ghost:5-alpine\n    environment:\n      url: http://localhost:2368\n    volumes:\n      - ghost-data:/var/lib/ghost/content\n    ports:\n      - "2368:2368"\n    restart: unless-stopped\nvolumes:\n  ghost-data:`,
+  },
+  {
+    id: 'wireguard', name: 'WireGuard', category: 'VPN', icon: 'fas fa-lock',
+    description: 'Modern VPN tunnel',
+    compose: `services:\n  wireguard:\n    image: lscr.io/linuxserver/wireguard:latest\n    cap_add:\n      - NET_ADMIN\n      - SYS_MODULE\n    environment:\n      - PEERS=3\n      - SERVERURL=auto\n    volumes:\n      - wg-config:/config\n    ports:\n      - "51820:51820/udp"\n    sysctls:\n      - net.ipv4.conf.all.src_valid_mark=1\n    restart: unless-stopped\nvolumes:\n  wg-config:`,
+  },
 ];
 
 // Get all templates (grouped by category)
