@@ -145,8 +145,8 @@ const server = http.createServer(app);
 async function start() {
   // ─── Security Validation ─────────────────────────────────
   const isProduction = config.app.env === 'production';
-  const weakSecrets = ['change-me-in-production-', 'generate-a-random-string-here', ''];
-  const weakEncKeys = ['change-me-to-a-random-32-char-hex', ''];
+  const weakSecrets = ['change-me-in-production-', 'generate-a-random-string-here'];
+  const weakEncKeys = ['change-me-to-a-random-32-char-hex'];
 
   if (isProduction) {
     const secret = config.app.secret || '';
