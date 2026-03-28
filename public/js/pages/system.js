@@ -27,6 +27,7 @@ const SystemPage = {
         <button class="tab" data-tab="stacks"><i class="fas fa-layer-group" style="margin-right:4px"></i> Stacks</button>
         <button class="tab" data-tab="database"><i class="fas fa-database" style="margin-right:4px"></i> Database</button>
         <button class="tab" data-tab="tools"><i class="fas fa-toolbox" style="margin-right:4px"></i> Tools</button>
+        <button class="tab" data-tab="templates"><i class="fas fa-rocket" style="margin-right:4px"></i> Templates</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
         <button class="tab" data-tab="audit">${i18n.t('pages.system.tabAudit')}</button>
       </div>
@@ -60,6 +61,7 @@ const SystemPage = {
       else if (this._tab === 'stacks') await this._renderStacks(el);
       else if (this._tab === 'database') await this._renderDatabase(el);
       else if (this._tab === 'tools') this._renderTools(el);
+      else if (this._tab === 'templates') await this._renderTemplates(el);
       else if (this._tab === 'prune') this._renderPrune(el);
       else if (this._tab === 'audit') await this._renderAudit(el);
     } catch (err) {
@@ -861,6 +863,121 @@ ${logText.substring(0, 3000)}
         labels += `  caddy.tls: "internal"  # or remove for Let's Encrypt auto\n`;
       }
       return labels;
+    }
+  },
+
+  // ─── Templates Tab ────────────────────────────────
+  async _renderTemplates(el) {
+    el.innerHTML = `<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading templates...</div>`;
+    try {
+      const data = await Api.getTemplates();
+      const templates = data.templates || [];
+      const categories = data.categories || [];
+
+      el.innerHTML = `
+        <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <div class="search-box" style="flex:1;min-width:200px">
+            <i class="fas fa-search"></i>
+            <input type="text" id="tpl-search" placeholder="Search templates...">
+          </div>
+          <select id="tpl-category" class="form-control" style="width:auto;min-width:150px">
+            <option value="">All categories</option>
+            ${categories.map(c => `<option value="${Utils.escapeHtml(c)}">${Utils.escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="info-grid" id="tpl-grid" style="margin-top:0">
+          ${templates.map(t => `
+            <div class="card tpl-card" data-id="${t.id}" data-cat="${Utils.escapeHtml(t.category.toLowerCase())}" data-name="${Utils.escapeHtml(t.name.toLowerCase())} ${Utils.escapeHtml(t.description.toLowerCase())}">
+              <div class="card-header">
+                <h3><i class="${t.icon || 'fas fa-cube'}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
+                <span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(t.category)}</span>
+              </div>
+              <div class="card-body">
+                <p class="text-sm text-muted" style="margin-bottom:12px">${Utils.escapeHtml(t.description)}</p>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-sm btn-primary tpl-deploy" data-id="${t.id}"><i class="fas fa-rocket"></i> Deploy</button>
+                  <button class="btn btn-sm btn-secondary tpl-view" data-id="${t.id}"><i class="fas fa-code"></i> View YAML</button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      // Search + filter
+      const filterFn = () => {
+        const q = el.querySelector('#tpl-search')?.value?.toLowerCase() || '';
+        const cat = el.querySelector('#tpl-category')?.value?.toLowerCase() || '';
+        el.querySelectorAll('.tpl-card').forEach(card => {
+          const matchName = card.dataset.name.includes(q);
+          const matchCat = !cat || card.dataset.cat === cat;
+          card.style.display = matchName && matchCat ? '' : 'none';
+        });
+      };
+      el.querySelector('#tpl-search')?.addEventListener('input', Utils.debounce(filterFn, 200));
+      el.querySelector('#tpl-category')?.addEventListener('change', filterFn);
+
+      // Deploy + view
+      el.addEventListener('click', async (e) => {
+        const deployBtn = e.target.closest('.tpl-deploy');
+        const viewBtn = e.target.closest('.tpl-view');
+
+        if (viewBtn) {
+          const t = templates.find(t => t.id === viewBtn.dataset.id);
+          if (t) {
+            Modal.open(`
+              <div class="modal-header">
+                <h3><i class="${t.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
+                <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+              </div>
+              <div class="modal-body">
+                <textarea readonly style="width:100%;min-height:300px;font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px;color:var(--text);resize:vertical">${Utils.escapeHtml(t.compose)}</textarea>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="Utils.copyToClipboard(document.querySelector('.modal-body textarea').value);Toast.success('Copied!')"><i class="fas fa-copy"></i> Copy</button>
+                <button class="btn btn-primary" onclick="Modal.close()">Close</button>
+              </div>
+            `, { width: '600px' });
+          }
+        }
+
+        if (deployBtn) {
+          const t = templates.find(t => t.id === deployBtn.dataset.id);
+          if (!t) return;
+
+          const result = await Modal.form(`
+            <div class="form-group">
+              <label>Stack Name *</label>
+              <input type="text" id="tpl-name" class="form-control" value="${t.id}" placeholder="my-${t.id}">
+            </div>
+            <div class="form-group">
+              <label>Directory</label>
+              <input type="text" id="tpl-dir" class="form-control" value="/opt/${t.id}">
+            </div>
+            <div class="form-group">
+              <label>Compose YAML</label>
+              <textarea id="tpl-yaml" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(t.compose)}</textarea>
+            </div>
+          `, {
+            title: 'Deploy ' + t.name,
+            width: '600px',
+            onSubmit: (content) => ({
+              name: content.querySelector('#tpl-name').value.trim(),
+              dir: content.querySelector('#tpl-dir').value.trim(),
+              yaml: content.querySelector('#tpl-yaml').value,
+            }),
+          });
+
+          if (result && result.name && result.yaml) {
+            try {
+              await Api.post('/system/stacks', result);
+              Toast.success(t.name + ' deployed!');
+            } catch (err) { Toast.error(err.message); }
+          }
+        }
+      });
+    } catch (err) {
+      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
     }
   },
 
