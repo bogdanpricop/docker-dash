@@ -119,7 +119,7 @@
 - **Public Status Page** — Unauthenticated status page for selected services
 - **Container Metadata** — Custom labels, descriptions, links, categories, owner, notes
 - **Dark/Light Theme** — System-aware with manual toggle + mobile responsive UI
-- **i18n** — English, Romanian, German (easily extensible — [add your language](public/js/i18n/README.md))
+- **i18n** — 11 languages: English, Romanian, German, Italian, French, Spanish, Portuguese, Chinese, Japanese, Korean, Klingon ([add yours](public/js/i18n/README.md))
 - **Command Palette** — Ctrl+K quick navigation
 - **Watchtower Detection** — Auto-detect and migrate from Watchtower to native safe-pull
 - **Prometheus Metrics** — `/api/metrics` endpoint for Grafana integration
@@ -247,7 +247,7 @@ docker-dash/
 │   └── utils/           # Logger, helpers
 ├── public/
 │   ├── js/
-│   │   ├── i18n/        # Language files (en.js, ro.js, de.js, TEMPLATE.js)
+│   │   ├── i18n/        # Language files (11 languages + TEMPLATE.js)
 │   │   ├── pages/       # SPA pages (dashboard, containers, images, security, hosts, ...)
 │   │   ├── components/  # Reusable UI (modal, toast, data table)
 │   │   ├── api.js       # HTTP client with auto host-context
@@ -293,7 +293,7 @@ docker-dash/
 | **Public Status Page** | **Yes** | No | No | No |
 | **Daily Auto-Backup** | **Yes** | No | No | No |
 | App Templates | 30 built-in | 500+ community | No | No |
-| i18n | EN/RO/DE | Partial | No | No |
+| i18n | 11 languages | Partial | No | No |
 | Command Palette + Shortcuts | Yes | No | No | No |
 | Test Suite | 104 tests (100%) | Yes | No | No |
 | Build Step | **None** | Angular | Required | Required |
