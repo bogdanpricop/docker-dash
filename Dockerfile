@@ -63,6 +63,16 @@ COPY src/ ./src/
 COPY public/ ./public/
 COPY package.json README.md LICENSE CONTRIBUTING.md .env.example .gitignore ./
 RUN mkdir -p /data
+
+# Version label — read from package.json at build time
+ARG APP_VERSION=unknown
+LABEL org.opencontainers.image.title="Docker Dash" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.description="Full-featured Docker management dashboard" \
+      org.opencontainers.image.source="https://github.com/bogdanpricop/docker-dash" \
+      org.opencontainers.image.authors="Bogdan Pricop <bogdan.pricop@gmail.com>" \
+      org.opencontainers.image.licenses="MIT"
+
 EXPOSE 8101
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
   CMD sh -c "wget --no-verbose --tries=1 --spider http://localhost:\${APP_PORT:-8101}/api/health || exit 1"

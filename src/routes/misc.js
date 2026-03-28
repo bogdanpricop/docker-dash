@@ -21,7 +21,7 @@ const _pkgVersion = require('../../package.json').version;
 router.get('/health', (req, res) => {
   try {
     getDb().prepare('SELECT 1').get();
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', version: _pkgVersion, timestamp: new Date().toISOString() });
   } catch {
     res.status(503).json({ status: 'error', message: 'Database unavailable' });
   }
