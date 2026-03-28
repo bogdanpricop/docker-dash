@@ -401,6 +401,8 @@ const ContainersPage = {
         <button class="tab" data-tab="terminal">${i18n.t('pages.containers.tabs.terminal')}</button>
         <button class="tab" data-tab="stats">${i18n.t('pages.containers.tabs.stats')}</button>
         <button class="tab" data-tab="env"><i class="fas fa-key" style="margin-right:4px"></i>Env</button>
+        <button class="tab" data-tab="mounts"><i class="fas fa-hdd" style="margin-right:4px"></i>Mounts</button>
+        <button class="tab" data-tab="networking"><i class="fas fa-network-wired" style="margin-right:4px"></i>Network</button>
         <button class="tab" data-tab="inspect">${i18n.t('pages.containers.tabs.inspect')}</button>
       </div>
       <div class="tab-content" id="detail-content">${i18n.t('common.loading')}</div>
@@ -847,6 +849,8 @@ const ContainersPage = {
     else if (tab === 'terminal') this._renderTerminalTab(content);
     else if (tab === 'stats') this._renderStatsTab(content);
     else if (tab === 'env') this._renderEnvTab(content);
+    else if (tab === 'mounts') this._renderMountsTab(content);
+    else if (tab === 'networking') this._renderNetworkTab(content);
     else if (tab === 'inspect') this._renderInspectTab(content);
   },
 
@@ -1538,6 +1542,86 @@ const ContainersPage = {
         } catch (err) { Toast.error(err.message); }
       });
     } catch { /* dependency detection is best-effort */ }
+  },
+
+  _renderMountsTab(el) {
+    const mounts = this._detailData?.mounts || [];
+    if (mounts.length === 0) {
+      el.innerHTML = '<div class="empty-msg"><i class="fas fa-hdd"></i><p>No volumes or bind mounts</p></div>';
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="text-muted text-sm" style="margin-bottom:12px">${mounts.length} mount(s)</div>
+      <table class="data-table">
+        <thead><tr>
+          <th style="text-align:left">Type</th>
+          <th style="text-align:left">Source</th>
+          <th style="text-align:left">Destination</th>
+          <th>Mode</th>
+        </tr></thead>
+        <tbody>${mounts.map(m => {
+          const isVolume = m.Type === 'volume' || m.type === 'volume';
+          const source = m.Source || m.source || m.Name || m.name || '—';
+          const dest = m.Destination || m.destination || '—';
+          const rw = m.RW !== undefined ? m.RW : m.rw;
+          return `
+            <tr>
+              <td style="text-align:left"><span class="badge ${isVolume ? 'badge-info' : 'badge-warning'}" style="font-size:10px">${isVolume ? 'volume' : 'bind'}</span></td>
+              <td style="text-align:left;word-break:break-all" class="mono text-sm">${Utils.escapeHtml(source)}</td>
+              <td style="text-align:left;word-break:break-all" class="mono text-sm">${Utils.escapeHtml(dest)}</td>
+              <td>${rw === false ? '<span class="text-muted">ro</span>' : '<span class="text-green">rw</span>'}</td>
+            </tr>`;
+        }).join('')}</tbody>
+      </table>
+    `;
+  },
+
+  _renderNetworkTab(el) {
+    const networks = this._detailData?.networks || {};
+    const entries = Object.entries(networks);
+
+    if (entries.length === 0) {
+      el.innerHTML = '<div class="empty-msg"><i class="fas fa-network-wired"></i><p>Not connected to any network</p></div>';
+      return;
+    }
+
+    // Port bindings
+    const ports = this._detailData?.ports || {};
+    const portEntries = Object.entries(ports);
+
+    el.innerHTML = `
+      ${portEntries.length > 0 ? `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3><i class="fas fa-plug" style="margin-right:8px;opacity:0.6"></i>Port Bindings</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr><th style="text-align:left">Container Port</th><th style="text-align:left">Host Binding</th></tr></thead>
+            <tbody>${portEntries.map(([containerPort, bindings]) => {
+              if (!bindings || bindings.length === 0) return `<tr><td style="text-align:left" class="mono">${Utils.escapeHtml(containerPort)}</td><td class="text-muted">Not bound</td></tr>`;
+              return bindings.map(b => `<tr><td style="text-align:left" class="mono">${Utils.escapeHtml(containerPort)}</td><td class="mono text-green">${b.HostIp || '0.0.0.0'}:${b.HostPort}</td></tr>`).join('');
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>` : ''}
+
+      <div class="card">
+        <div class="card-header"><h3><i class="fas fa-network-wired" style="margin-right:8px;opacity:0.6"></i>Networks (${entries.length})</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr><th style="text-align:left">Network</th><th style="text-align:left">IPv4 Address</th><th style="text-align:left">Gateway</th><th style="text-align:left">MAC</th></tr></thead>
+            <tbody>${entries.map(([name, net]) => `
+              <tr>
+                <td style="text-align:left"><strong>${Utils.escapeHtml(name)}</strong></td>
+                <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(net.IPAddress || '—')}</td>
+                <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(net.Gateway || '—')}</td>
+                <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(net.MacAddress || '—')}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
   },
 
   _renderInspectTab(el) {
