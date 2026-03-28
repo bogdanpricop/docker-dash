@@ -294,6 +294,18 @@ const DashboardPage = {
             },
           },
         },
+        onClick: (_event, elements) => {
+          if (elements.length > 0) {
+            const idx = elements[0].index;
+            const item = items[idx];
+            if (item?.container_id) {
+              location.hash = `#/containers/${item.container_id}`;
+            }
+          }
+        },
+        onHover: (event, elements) => {
+          event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+        },
       },
     });
   },
