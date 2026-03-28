@@ -49,7 +49,7 @@ const Api = {
     }
     try {
       const res = await fetch(`/api${this._appendHostId(path)}`, options);
-      if (res.status === 401) {
+      if (res.status === 401 && !path.startsWith('/auth/login')) {
         App.handleUnauthorized();
         throw new Error('Unauthorized');
       }
