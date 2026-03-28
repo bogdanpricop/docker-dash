@@ -300,6 +300,11 @@ const App = {
     code.textContent = currentLang?.label || i18n.lang.toUpperCase();
     btn.title = currentLang?.name || 'Language';
 
+    // Restore Klingon mode if it was the saved language
+    if (i18n.lang === 'tlh' && window.KlingonFX) {
+      document.body.classList.add('klingon-mode');
+    }
+
     // Build dropdown
     const renderDropdown = () => {
       dropdown.innerHTML = i18n.languages.map(l => `
@@ -313,12 +318,21 @@ const App = {
       dropdown.querySelectorAll('.lang-option').forEach(opt => {
         opt.addEventListener('click', (e) => {
           e.stopPropagation();
+          const prevLang = i18n.lang;
           const lang = opt.dataset.lang;
           i18n.setLang(lang);
           const l = i18n.languages.find(x => x.code === lang);
           code.textContent = l?.label || lang.toUpperCase();
           btn.title = l?.name || lang;
           dropdown.classList.add('hidden');
+
+          // Klingon easter egg
+          if (lang === 'tlh' && prevLang !== 'tlh' && window.KlingonFX) {
+            KlingonFX.activate();
+          } else if (prevLang === 'tlh' && lang !== 'tlh' && window.KlingonFX) {
+            KlingonFX.deactivate();
+          }
+
           this._updateStaticUI();
           if (this._currentPage?.destroy) this._currentPage.destroy();
           this._route();

@@ -1,6 +1,6 @@
 'use strict';
 // Klingon translations
-i18n.register('tlh', 'KLI', 'tlhIngan Hol', {
+i18n.register('tlh', '\u2694\uFE0F', 'tlhIngan Hol', {
   common: {
     close: 'SoQmoH', cancel: 'qIl', confirm: 'Harbej', save: 'choq',
     remove: 'teq', delete: 'Qaw\'', create: 'chenmoH', edit: 'choH',
