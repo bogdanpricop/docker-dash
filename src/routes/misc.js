@@ -341,6 +341,79 @@ router.get('/search', requireAuth, async (req, res) => {
   }
 });
 
+// ─── API Documentation ──────────────────────────────────────
+
+router.get('/docs', (req, res) => {
+  res.json({
+    name: 'Docker Dash API',
+    version: _pkgVersion,
+    description: 'Lightweight Docker management dashboard REST API',
+    endpoints: [
+      { method: 'GET', path: '/api/health', auth: false, description: 'Health check with DB verification' },
+      { method: 'GET', path: '/api/metrics', auth: false, description: 'Prometheus metrics export' },
+      { method: 'GET', path: '/api/compare', auth: false, description: 'Feature comparison matrix (52 features)' },
+      { method: 'GET', path: '/api/docs', auth: false, description: 'This API documentation' },
+      { group: 'Auth', endpoints: [
+        { method: 'POST', path: '/api/auth/login', description: 'Login with username + password' },
+        { method: 'GET', path: '/api/auth/me', description: 'Current user info' },
+        { method: 'POST', path: '/api/auth/logout', description: 'Invalidate session' },
+        { method: 'POST', path: '/api/auth/change-password', description: 'Change own password' },
+      ]},
+      { group: 'Containers', endpoints: [
+        { method: 'GET', path: '/api/containers', description: 'List all containers' },
+        { method: 'GET', path: '/api/containers/:id/inspect', description: 'Inspect container' },
+        { method: 'GET', path: '/api/containers/:id/logs', description: 'Container logs (search, regex, level filter)' },
+        { method: 'POST', path: '/api/containers/:id/:action', description: 'Action: start/stop/restart/pause/kill' },
+        { method: 'POST', path: '/api/containers/:id/update', description: 'Pull + recreate container' },
+        { method: 'POST', path: '/api/containers/:id/safe-update', description: 'Safe-pull: scan before swap' },
+        { method: 'GET', path: '/api/containers/:id/deploy-preview', description: 'Check for image updates' },
+        { method: 'GET', path: '/api/containers/:id/diagnose', description: 'Troubleshooting wizard (8 steps)' },
+        { method: 'POST', path: '/api/containers/:id/smart-restart', description: 'Restart with backoff' },
+      ]},
+      { group: 'Images', endpoints: [
+        { method: 'GET', path: '/api/images', description: 'List images' },
+        { method: 'GET', path: '/api/images/:id/scan', description: 'Vulnerability scan (Trivy/Scout)' },
+        { method: 'GET', path: '/api/images/freshness', description: 'Image freshness dashboard' },
+      ]},
+      { group: 'Git Stacks', endpoints: [
+        { method: 'GET', path: '/api/git/stacks', description: 'List Git-linked stacks' },
+        { method: 'POST', path: '/api/git/stacks', description: 'Deploy from Git repo' },
+        { method: 'POST', path: '/api/git/stacks/:id/deploy', description: 'Pull & redeploy' },
+        { method: 'GET', path: '/api/git/stacks/:id/diff', description: 'Diff view (what changed)' },
+        { method: 'POST', path: '/api/git/stacks/:id/rollback/:deploymentId', description: 'Rollback deployment' },
+        { method: 'POST', path: '/api/git/stacks/:id/push', description: 'Push compose changes to Git' },
+        { method: 'POST', path: '/api/git/webhook/:token', auth: false, description: 'Webhook receiver (GitHub/GitLab/Gitea/Bitbucket)' },
+      ]},
+      { group: 'Stats & Monitoring', endpoints: [
+        { method: 'GET', path: '/api/stats/overview', description: 'Real-time stats overview' },
+        { method: 'GET', path: '/api/stats/uptime', description: 'Container uptime reports' },
+        { method: 'GET', path: '/api/stats/trends/:id', description: 'Resource trends + 24h forecast' },
+        { method: 'GET', path: '/api/stats/cost', description: 'Per-container cost estimation' },
+        { method: 'GET', path: '/api/stats/recommendations', description: 'Resource recommendations' },
+      ]},
+      { group: 'Operations', endpoints: [
+        { method: 'GET', path: '/api/notification-channels', description: 'List notification channels' },
+        { method: 'GET', path: '/api/workflows', description: 'List workflow automation rules' },
+        { method: 'GET', path: '/api/maintenance', description: 'List maintenance windows' },
+        { method: 'GET', path: '/api/templates', description: 'App template marketplace (20 templates)' },
+        { method: 'POST', path: '/api/migrate/container', description: 'Cross-host migration (zero-downtime)' },
+        { method: 'GET', path: '/api/bundles/export/stack/:name', description: 'Export stack as bundle' },
+        { method: 'POST', path: '/api/bundles/import', description: 'Import stack bundle' },
+      ]},
+      { group: 'Admin', endpoints: [
+        { method: 'GET', path: '/api/search', description: 'Global search (containers, images, stacks, audit)' },
+        { method: 'GET', path: '/api/dependencies', description: 'Container dependency graph' },
+        { method: 'GET', path: '/api/audit', description: 'Audit log (paginated)' },
+        { method: 'GET', path: '/api/audit/analytics', description: 'Audit analytics (top users, actions)' },
+        { method: 'GET', path: '/api/footprint', description: 'Docker Dash resource footprint' },
+        { method: 'POST', path: '/api/backup/database', description: 'Create database backup' },
+        { method: 'GET', path: '/api/status-page/public', auth: false, description: 'Public status page' },
+        { method: 'GET', path: '/api/watchtower', description: 'Detect Watchtower containers' },
+      ]},
+    ],
+  });
+});
+
 // ─── Dashboard Preferences ──────────────────────────────────
 
 router.get('/dashboard/preferences', requireAuth, (req, res) => {

@@ -137,6 +137,33 @@ function startAll() {
   // VACUUM database to reclaim disk space — daily at 03:30
   jobs.push(cron.schedule('30 3 * * *', vacuumDatabase));
 
+  // Daily database backup at 02:00
+  jobs.push(cron.schedule('0 2 * * *', () => {
+    try {
+      const db = getDb();
+      const path = require('path');
+      const fs = require('fs');
+      const backupDir = process.env.DATA_DIR || '/data';
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 10);
+      const backupPath = path.join(backupDir, `backup-daily-${ts}.db`);
+
+      db.backup(backupPath).then(() => {
+        const stat = fs.statSync(backupPath);
+        log.info('Daily backup completed', { path: backupPath, size: stat.size });
+
+        // Keep only last 7 daily backups
+        const backups = fs.readdirSync(backupDir)
+          .filter(f => f.startsWith('backup-daily-') && f.endsWith('.db'))
+          .sort()
+          .reverse();
+        for (const old of backups.slice(7)) {
+          fs.unlinkSync(path.join(backupDir, old));
+          log.debug('Old backup removed', { file: old });
+        }
+      }).catch(e => log.error('Daily backup failed', e.message));
+    } catch (e) { log.error('Daily backup error', e.message); }
+  }));
+
   // Container schedule execution every minute
   jobs.push(cron.schedule('* * * * *', async () => {
     try {
