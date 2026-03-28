@@ -2,6 +2,60 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [4.0.0] - 2026-03-28
+
+### Added
+- **Insights page** — executive dashboard aggregating health scores, recommendations, stale images, footprint
+- **Compare page** — interactive 52-feature matrix vs Portainer/Dockge/Dockhand with search
+- **Templates browser** — 30 curated app templates (System > Templates) with search, filter, one-click deploy
+- **Workflows manager** — create/manage IF-THEN automation rules (Settings > Workflows)
+- **Reset password dialog** — admin resets passwords directly from Settings > Users (no email required)
+- **Container rename** button in container detail view
+- **Safe Update** button — Trivy scan before container swap, blocks critical CVEs
+- **Diagnose** button — 8-step troubleshooting wizard in modal
+- **Dashboard clickable charts** — click CPU/memory bar → navigate to container
+- **Live container count** badge in sidebar (running/total via WebSocket)
+- **Dashboard "last updated"** timestamp in header
+- **Audit CSV export** — download audit log as CSV file
+- **Audit analytics** modal — top users, top actions
+- **Database backup** button (System > Database > Create Backup Now)
+- **Keyboard shortcuts** — `?` help modal, `g+key` vim-style navigation (g+d dashboard, g+c containers, etc.)
+- **Professional error boundary** — catches all uncaught errors with EMS PRO-style overlay
+- **Welcome onboarding** modal for first-time users
+- **Dark mode toggle** on login page
+- **System overview API** — `GET /api/overview` complete infrastructure snapshot
+- **API documentation** endpoint — `GET /api/docs` (70+ endpoints documented)
+- **Daily auto-backup** — cron at 02:00, keeps 7 daily backups
+- **Connection status** indicator in sidebar footer
+- **OS theme auto-detection** — follows system preference changes
+- **Forgot password** hint on login page
+- **Version display** on login page footer
+- 10 new app templates (Elasticsearch, RabbitMQ, MailHog, Plausible, File Browser, Watchtower, Drone CI, Ghost, WireGuard, Portainer CE)
+- 20 new tests (104 total across 8 files)
+- Open Graph meta tags for social link previews
+- GitHub v4.0 milestone with 6 roadmap issues
+- GitHub Discussions enabled
+
+### Fixed
+- **Login error message** not showing on wrong password (handleUnauthorized was recreating the form)
+- **Password reset** not working (was calling updateUser which ignores password field — now calls /reset-password with bcrypt)
+- **Auto-logout** after resetting own password
+- **APP_SECRET validation** false positive (empty string in weak list matched everything)
+- **Cache busting** — JS file versions updated to force browser reload
+- **i18n nav labels** — Insights, Git Stacks, Compare, section labels translated (EN/RO/DE)
+- **Chart.js light theme** colors adapted to theme
+
+### Security
+- Strong APP_SECRET enforced on production server
+- SECURITY.md updated with full architecture documentation
+- 4 vulnerability fixes documented (DD-001 through DD-004)
+
+### Changed
+- Version bumped from 3.10.2 to 4.0.0
+- README badges updated (104 tests, security audited)
+- CONTRIBUTING.md updated with "Good First Issues" section
+- Docker socket security documented in README
+
 ## [3.10.2] - 2026-03-28
 
 ### Added

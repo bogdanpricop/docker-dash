@@ -8,11 +8,21 @@ Thanks for your interest in contributing! Docker Dash is actively maintained and
 
 Looking for where to start? These are great first contributions:
 
-- **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag
-- **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML)
+- **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag. Currently: EN, RO, DE.
+- **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML). Currently: 30 templates.
 - **Improve i18n coverage** — some pages still have hardcoded English strings (grep for strings not using `i18n.t()`)
-- **Add tests** — the test suite covers core security paths; more coverage is always welcome
+- **Add tests** — 104 tests across 8 files; more coverage is always welcome, especially integration tests
 - **Documentation** — improve README, add examples, write tutorials
+- **Accessibility** — add ARIA attributes, improve screen reader support, test keyboard navigation
+
+### Project Stats (v4.0.0)
+
+- **19 pages** in the frontend SPA
+- **75+ API endpoints** (see `/api/docs` for full list)
+- **104 tests** (8 test files, 100% passing)
+- **30 app templates**
+- **9 database migrations** (014-022)
+- **3 languages** (EN, RO, DE + TEMPLATE for new ones)
 
 ## Getting Started
 
@@ -204,29 +214,53 @@ Always test your changes in **both dark and light themes**.
 
 Before submitting a PR, verify:
 
+- [ ] `node --check` passes on all modified `.js` files
+- [ ] `npm test` passes (104+ tests, 100%)
+- [ ] `npm run lint` passes (0 errors)
 - [ ] Works in both **dark and light** themes
 - [ ] Works with **sidebar collapsed** and expanded
-- [ ] **Translations** added/updated for both EN and RO
-- [ ] No **console errors** in browser DevTools
-- [ ] API endpoints include **`extractHostId`** if they touch Docker
-- [ ] No hardcoded colors — use **CSS variables**
+- [ ] Works on **mobile** (768px and 480px breakpoints)
+- [ ] **Translations** added for EN (RO and DE appreciated but not required)
+- [ ] No **console.log** in production code (use `log.info/warn/error`)
+- [ ] No **`execSync`** with template literals — use `execFileSync` with argument arrays
+- [ ] No **hardcoded colors** — use CSS variables
+- [ ] API endpoints include **`extractHostId`** if they touch Docker resources
+- [ ] Sensitive data (tokens, keys) encrypted with **`crypto.encrypt()`**, never stored in plaintext
 - [ ] PR is focused on a **single feature or fix**
-- [ ] Commit messages are **descriptive** (not just "fix" or "update")
+- [ ] Commit messages follow **conventional format** (`feat:`, `fix:`, `chore:`, `test:`)
+
+## Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npx jest auth-flow --verbose
+
+# Run with watch mode
+npm run test:watch
+
+# Run linter
+npm run lint
+```
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/bogdan-pricop/docker-dash/issues). Please include:
+Use [GitHub Issues](https://github.com/bogdanpricop/docker-dash/issues) with our templates:
 
-- Browser and version (Chrome 120, Firefox 121, etc.)
-- OS (Windows 11, Ubuntu 24.04, macOS 15, etc.)
-- Steps to reproduce
-- Expected vs actual behavior
-- Console errors if any (F12 → Console tab)
-- Screenshots if it's a visual issue
+- **Bug Report** — include browser, OS, Docker version, steps to reproduce
+- **Feature Request** — describe the problem, proposed solution, use case
 
-## Questions?
+For security vulnerabilities, see [SECURITY.md](SECURITY.md) — **do not** open public issues.
 
-Open a [Discussion](https://github.com/bogdan-pricop/docker-dash/discussions) for questions, ideas, or feedback.
+## Questions & Ideas
+
+Use [GitHub Discussions](https://github.com/bogdanpricop/docker-dash/discussions):
+
+- **Q&A** — for support questions
+- **Ideas** — for feature suggestions
+- **Show and tell** — share your Docker Dash setup
 
 ## License
 
