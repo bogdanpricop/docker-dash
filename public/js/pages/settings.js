@@ -293,7 +293,7 @@ const SettingsPage = {
       if (newPass !== confirm) { Toast.warning('Passwords do not match'); return; }
 
       try {
-        await Api.updateUser(id, { password: newPass });
+        await Api.post('/auth/users/' + id + '/reset-password', { password: newPass });
         Modal.close();
 
         // If resetting own password → logout so user re-authenticates with new password
