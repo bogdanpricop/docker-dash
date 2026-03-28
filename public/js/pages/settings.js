@@ -294,8 +294,18 @@ const SettingsPage = {
 
       try {
         await Api.updateUser(id, { password: newPass });
-        Toast.success('Password reset for "' + username + '"');
         Modal.close();
+
+        // If resetting own password → logout so user re-authenticates with new password
+        if (id === App.user?.id) {
+          Toast.success('Password changed. Please login with your new password.');
+          setTimeout(async () => {
+            try { await Api.logout(); } catch {}
+            App.handleUnauthorized();
+          }, 1500);
+        } else {
+          Toast.success('Password reset for "' + username + '"');
+        }
       } catch (err) { Toast.error(err.message); }
     });
   },
