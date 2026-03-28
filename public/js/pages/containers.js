@@ -894,7 +894,8 @@ const ContainersPage = {
             <table class="info-table">
               <tr><td>${i18n.t('pages.containers.id')}</td><td class="mono">${Utils.shortId(info.id)}</td></tr>
               <tr><td>${i18n.t('pages.containers.image')}</td><td class="mono text-sm">${Utils.escapeHtml(info.image)}</td></tr>
-              <tr><td>${i18n.t('common.status')}</td><td><span class="badge ${Utils.statusBadgeClass(stateStatus)}">${stateStatus}</span></td></tr>
+              <tr><td>${i18n.t('common.status')}</td><td><span class="badge ${Utils.statusBadgeClass(stateStatus)}">${stateStatus}</span> <span class="text-sm text-muted">${Utils.containerStatusMessage(stateStatus, state.ExitCode, state.Health?.Status, info.restartCount)}</span></td></tr>
+              <tr><td>Health Score</td><td><strong style="color:${Utils.healthScoreColor(Utils.containerHealthScore({state: stateStatus, exitCode: state.ExitCode || 0, health: state.Health?.Status, restartCount: info.restartCount || 0, cpuPercent: 0, memPercent: 0, imageAge: 0, vulnCount: 0}))}">${Utils.containerHealthScore({state: stateStatus, exitCode: state.ExitCode || 0, health: state.Health?.Status, restartCount: info.restartCount || 0, cpuPercent: 0, memPercent: 0, imageAge: 0, vulnCount: 0})}/100</strong> <span class="text-sm text-muted">(${Utils.healthScoreLabel(Utils.containerHealthScore({state: stateStatus, exitCode: state.ExitCode || 0, health: state.Health?.Status, restartCount: info.restartCount || 0, cpuPercent: 0, memPercent: 0, imageAge: 0, vulnCount: 0}))})</span></td></tr>
               <tr><td>${i18n.t('pages.containers.created')}</td><td>${Utils.formatDate(info.created)}</td></tr>
               <tr><td>${i18n.t('pages.containers.started')}</td><td>${Utils.formatDate(state.StartedAt)}</td></tr>
               ${stateStatus === 'exited' ? `<tr><td>${i18n.t('pages.containers.exitCode')}</td><td>${state.ExitCode}</td></tr>` : ''}
