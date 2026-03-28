@@ -16,6 +16,15 @@ RUN wget -qO /tmp/trivy.tar.gz \
     chmod +x /usr/local/bin/trivy && \
     rm -f /tmp/trivy.tar.gz
 
+# Install Grype vulnerability scanner
+# Pin version for reproducible builds. Update ARG to upgrade.
+ARG GRYPE_VERSION=0.92.0
+RUN wget -qO /tmp/grype.tar.gz \
+      "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" && \
+    tar -xzf /tmp/grype.tar.gz -C /usr/local/bin grype && \
+    chmod +x /usr/local/bin/grype && \
+    rm -f /tmp/grype.tar.gz
+
 # Install Docker Scout CLI plugin
 # Pin version for reproducible builds. Update ARG to upgrade.
 ARG SCOUT_VERSION=1.17.0
@@ -56,6 +65,6 @@ COPY package.json README.md LICENSE CONTRIBUTING.md .env.example .gitignore ./
 RUN mkdir -p /data
 EXPOSE 8101
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8101/api/health || exit 1
+  CMD sh -c "wget --no-verbose --tries=1 --spider http://localhost:\${APP_PORT:-8101}/api/health || exit 1"
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "src/server.js"]

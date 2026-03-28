@@ -281,8 +281,7 @@ const Api = {
   // ─── Resource Limits ─────────────────────────────
   updateContainerResources(id, data) { return this.put(`/system/containers/${id}/resources`, data); },
 
-  // ─── Templates ────────────────────────────────────
-  getTemplates() { return this.get('/system/templates'); },
+  // ─── Templates (uses /api/templates, defined above) ─
 
   // ─── Health Check Logs ────────────────────────────
   getHealthLogs(id) { return this.get(`/system/containers/${id}/health-logs`); },

@@ -239,6 +239,7 @@ Please:
     menu.innerHTML = `
       <div class="scan-menu-item" data-scanner="auto"><i class="fas fa-magic" style="width:16px;text-align:center"></i> Auto-detect</div>
       <div class="scan-menu-item" data-scanner="trivy"><i class="fas fa-search" style="width:16px;text-align:center"></i> Trivy</div>
+      <div class="scan-menu-item" data-scanner="grype"><i class="fas fa-shield-alt" style="width:16px;text-align:center"></i> Grype</div>
       <div class="scan-menu-item" data-scanner="docker-scout"><i class="fab fa-docker" style="width:16px;text-align:center"></i> Docker Scout</div>
     `;
     menu.style.position = 'fixed';
@@ -494,6 +495,22 @@ Please:
               <span class="badge badge-running" style="flex-shrink:0">${scanners.some(s => s === 'trivy') ? '<i class="fas fa-check" style="margin-right:4px"></i>Ready' : 'Not Installed'}</span>
             </div>
 
+            <!-- Grype -->
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)">
+              <div style="width:40px;height:40px;border-radius:8px;background:rgba(168,85,247,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas fa-shield-alt" style="font-size:18px;color:#a855f7"></i>
+              </div>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:14px">Grype</div>
+                <div class="text-sm text-muted" style="margin:2px 0 6px">Open-source vulnerability scanner by Anchore. Fast scanning of container images and filesystems against multiple vulnerability databases.</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                  <a href="https://github.com/anchore/grype" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fab fa-github" style="margin-right:4px"></i>GitHub</a>
+                  <a href="https://github.com/anchore/grype#readme" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fas fa-book" style="margin-right:4px"></i>Documentation</a>
+                </div>
+              </div>
+              <span class="badge ${scanners.some(s => s === 'grype') ? 'badge-running' : 'badge-stopped'}" style="flex-shrink:0">${scanners.some(s => s === 'grype') ? '<i class="fas fa-check" style="margin-right:4px"></i>Ready' : 'Not Installed'}</span>
+            </div>
+
             <!-- Docker Scout -->
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0">
               <div style="width:40px;height:40px;border-radius:8px;background:rgba(56,139,253,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -519,6 +536,7 @@ Please:
             <p class="text-muted text-sm" style="margin-bottom:12px">Vulnerability scanning checks Docker images for known security issues (CVEs) in OS packages and application dependencies.</p>
             <table class="info-table">
               <tr><td>Trivy</td><td>Free, no authentication needed. Scans OS packages + language dependencies. <strong>Recommended.</strong></td></tr>
+              <tr><td>Grype</td><td>Free, no authentication needed. Fast scanning by Anchore against multiple vulnerability databases (NVD, GitHub Advisories, etc.).</td></tr>
               <tr><td>Docker Scout</td><td>Requires Docker Hub account. Provides supply chain insights and base image recommendations.</td></tr>
               <tr><td>Scan frequency</td><td>Manual per image. Recommended: weekly or after each build.</td></tr>
               <tr><td>Data retention</td><td>All scan results are stored in the database with full history.</td></tr>

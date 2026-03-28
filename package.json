@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {

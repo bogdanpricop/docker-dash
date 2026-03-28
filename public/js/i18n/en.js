@@ -14,6 +14,7 @@ i18n.register('en', 'EN', 'English', {
     test: 'Test', prune: 'Prune', unlimited: 'unlimited',
     pageNotFound: 'Page not found: {{page}}',
     errorLoading: 'Error loading page: {{message}}',
+    running: 'running', stopped: 'stopped', other: 'other',
   },
   nav: {
     dashboard: 'Dashboard', containers: 'Containers', images: 'Images',
@@ -51,7 +52,7 @@ i18n.register('en', 'EN', 'English', {
       running: 'Running', stopped: 'Stopped', images: 'Images', volumes: 'Volumes',
       containerStates: 'Container States', topCpu: 'Top CPU Consumers', topMemory: 'Top Memory Consumers',
       recentEvents: 'Recent Events', liveUpdates: 'Live updates via WebSocket',
-      noDataYet: 'No data yet', noRecentEvents: 'No recent events',
+      noDataYet: 'No data yet', noRecentEvents: 'No recent events', uptime: 'Uptime',
       eventsNotAvailable: 'Events not available', justNow: 'just now',
       live: 'Live', offline: 'Offline',
       help: {
@@ -74,7 +75,7 @@ i18n.register('en', 'EN', 'English', {
       showStopped: 'Show stopped', singleColumn: 'Single column', twoColumns: 'Two columns',
       collapseAll: 'Collapse all', expandAll: 'Expand all',
       helpTooltip: 'Container Guide',
-      standalone: 'Standalone', noContainers: 'No containers found',
+      standalone: 'Standalone', noContainers: 'No containers found', total: 'total', needsAttention: 'needs attention',
       loadFailed: 'Failed to load containers: {{message}}',
       notFoundOrError: 'Container not found or error loading',
       // Table
@@ -149,6 +150,7 @@ i18n.register('en', 'EN', 'English', {
       templatesDesc: 'Quick-deploy popular services with pre-configured settings',
       templatesCustomize: 'Customize', templatesDeplyed: 'Template "{{name}}" deployed!',
       templatesDeployFailed: 'Deploy failed: {{message}}',
+      templatesNameHint: 'Letters, numbers, dashes and underscores only',
       templatesCatAll: 'All', templatesCatWeb: 'Web', templatesCatDb: 'Database',
       templatesCatTool: 'Tools', templatesCatMon: 'Monitoring', templatesCatMsg: 'Messaging',
       // Health Check Logs
@@ -221,7 +223,7 @@ i18n.register('en', 'EN', 'English', {
       loadFailed: 'Failed to load images: {{message}}',
       scanImage: 'Scan for vulnerabilities', scanning: 'Scanning image for vulnerabilities...',
       scanTitle: 'Vulnerability Scan', scannerUsed: 'Scanner', totalVulns: 'Total vulnerabilities',
-      scanAuto: 'Auto-detect', scanWithTrivy: 'Scan with Trivy', scanWithScout: 'Scan with Docker Scout',
+      scanAuto: 'Auto-detect', scanWithTrivy: 'Scan with Trivy', scanWithGrype: 'Scan with Grype', scanWithScout: 'Scan with Docker Scout',
       severity: 'Severity', package: 'Package', version: 'Version', fixedIn: 'Fixed In',
       noVulns: 'No vulnerabilities found!', scanFailed: 'Scan failed: {{message}}',
       help: {
@@ -637,7 +639,7 @@ i18n.register('en', 'EN', 'English', {
       critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', total: 'Total',
       fixable: 'Fixable', noVulns: 'No vulnerabilities found',
       scannerDetected: 'Scanner detected', noScannerDetected: 'No scanner detected',
-      trivyAvailable: 'Trivy available', scoutAvailable: 'Scout available',
+      trivyAvailable: 'Trivy available', grypeAvailable: 'Grype available', scoutAvailable: 'Scout available',
       imagesScanned: 'Images Scanned', imagesUnscanned: 'Images Unscanned',
       scanResults: 'Scan Results', vulnerability: 'Vulnerability',
       package: 'Package', installedVersion: 'Installed', fixedVersion: 'Fixed In',

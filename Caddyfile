@@ -1,9 +1,14 @@
-# Docker Dash — Caddy HTTPS Reverse Proxy
+# Docker Dash — Caddy HTTPS Reverse Proxy (Example)
 # Usage: docker compose --profile tls up -d
-# Access: https://192.168.13.20:8443 (self-signed cert)
+#
+# Replace YOUR_HOST with your actual IP or domain:
+#   - LAN:    https://192.168.1.100
+#   - Domain: https://dash.example.com
+#
+# For domains, remove the `tls internal` block to get Let's Encrypt auto-certs.
 
-https://192.168.13.20 {
-    reverse_proxy docker-dash:8101
+https://YOUR_HOST {
+    reverse_proxy docker-dash:{$APP_PORT:8101}
 
     tls internal {
         on_demand

@@ -28,6 +28,7 @@ const ContainersPage = {
   // ═══════════════════════════════════════════════
   _collapsed: {},
   _filter: '',
+  _stateFilter: '',
   _layout: '1col', // '1col' | '2col'
 
   async _renderList(container) {
@@ -163,10 +164,44 @@ const ContainersPage = {
       });
     }
 
-    if (containers.length === 0) {
+    if (containers.length === 0 && !this._stateFilter) {
       el.innerHTML = `<div class="table-empty">${i18n.t('pages.containers.noContainers')}</div>`;
       return;
     }
+
+    // Health summary bar (computed from filtered-by-text containers, before state filter)
+    const total = containers.length;
+    const running = containers.filter(c => c.state === 'running').length;
+    const stopped = containers.filter(c => c.state === 'exited').length;
+    const other = total - running - stopped;
+    const _getScore = (c) => {
+      const s = c.status || '';
+      const hm = s.match(/\((healthy|unhealthy|health: starting)\)/i);
+      const hs = hm ? hm[1].replace('health: ', '') : undefined;
+      const em = s.match(/Exited \((\d+)\)/);
+      const ec = em ? parseInt(em[1], 10) : 0;
+      return Utils.containerHealthScore({ state: c.state, exitCode: ec, health: hs, restartCount: 0, cpuPercent: 0, memPercent: 0, imageAge: 0, vulnCount: 0 });
+    };
+    const needsAttention = containers.filter(c => _getScore(c) < 80).length;
+
+    // Apply state filter (after computing summary counts)
+    if (this._stateFilter === 'running') containers = containers.filter(c => c.state === 'running');
+    else if (this._stateFilter === 'exited') containers = containers.filter(c => c.state === 'exited');
+    else if (this._stateFilter === 'other') containers = containers.filter(c => c.state !== 'running' && c.state !== 'exited');
+    else if (this._stateFilter === 'attention') containers = containers.filter(c => _getScore(c) < 80);
+
+    const activeFilter = this._stateFilter || '';
+    const summaryHtml = `
+      <div class="containers-summary">
+        <span class="summary-item"><i class="fas fa-cube"></i> <strong>${total}</strong> ${i18n.t('pages.containers.total')}</span>
+        <span class="summary-sep">|</span>
+        <span class="summary-item summary-filter ${activeFilter === 'running' ? 'active' : ''} text-green" data-state-filter="running"><i class="fas fa-play"></i> ${running} ${i18n.t('common.running')}</span>
+        <span class="summary-sep">|</span>
+        <span class="summary-item summary-filter ${activeFilter === 'exited' ? 'active' : ''} text-muted" data-state-filter="exited"><i class="fas fa-stop"></i> ${stopped} ${i18n.t('common.stopped')}</span>
+        ${other > 0 ? `<span class="summary-sep">|</span><span class="summary-item summary-filter ${activeFilter === 'other' ? 'active' : ''} text-yellow" data-state-filter="other"><i class="fas fa-exclamation-triangle"></i> ${other} ${i18n.t('common.other')}</span>` : ''}
+        ${needsAttention > 0 ? `<span class="summary-sep">|</span><span class="summary-item summary-filter ${activeFilter === 'attention' ? 'active' : ''} text-orange" data-state-filter="attention"><i class="fas fa-heartbeat"></i> ${needsAttention} ${i18n.t('pages.containers.needsAttention')}</span>` : ''}
+      </div>
+    `;
 
     const groups = {};
     containers.forEach(c => {
@@ -181,7 +216,7 @@ const ContainersPage = {
       return a.localeCompare(b);
     });
 
-    el.innerHTML = sortedKeys.map(stack => {
+    el.innerHTML = summaryHtml + sortedKeys.map(stack => {
       const items = groups[stack];
       const isStandalone = stack === '_standalone';
       const collapsed = this._collapsed[stack] || false;
@@ -242,6 +277,16 @@ const ContainersPage = {
         const stack = header.dataset.stack;
         this._collapsed[stack] = !this._collapsed[stack];
         header.closest('.stack-group').classList.toggle('collapsed');
+      });
+    });
+
+    // Summary bar filter clicks
+    el.querySelectorAll('.summary-filter').forEach(item => {
+      item.style.cursor = 'pointer';
+      item.addEventListener('click', () => {
+        const filter = item.dataset.stateFilter;
+        this._stateFilter = (this._stateFilter === filter) ? '' : filter;
+        this._renderGrouped();
       });
     });
 
@@ -340,6 +385,18 @@ const ContainersPage = {
     const running = c.state === 'running';
     const paused = c.state === 'paused';
 
+    // Parse health and exit code from Docker status string for health score
+    const statusStr = c.status || '';
+    const healthMatch = statusStr.match(/\((healthy|unhealthy|health: starting)\)/i);
+    const healthStatus = healthMatch ? healthMatch[1].replace('health: ', '') : undefined;
+    const exitMatch = statusStr.match(/Exited \((\d+)\)/);
+    const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : 0;
+    const restartMatch = statusStr.match(/Restarting \((\d+)\)/);
+    const restartCount = restartMatch ? parseInt(restartMatch[1], 10) : 0;
+    const hScore = Utils.containerHealthScore({ state: c.state, exitCode, health: healthStatus, restartCount, cpuPercent: 0, memPercent: 0, imageAge: 0, vulnCount: 0 });
+    const hColor = Utils.healthScoreColor(hScore);
+    const hLabel = Utils.healthScoreLabel(hScore);
+
     // Container metadata
     const meta = this._metaMap?.[c.name] || {};
     let metaLine = '';
@@ -359,7 +416,8 @@ const ContainersPage = {
         </td>
         <td><span class="mono text-sm">${Utils.escapeHtml(imgName)}</span></td>
         <td><span class="badge badge-version">${Utils.escapeHtml(version)}</span></td>
-        <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span></td>
+        <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span> <span class="health-dot" style="background:${hColor}" title="${hScore}/100 — ${hLabel}"></span>
+          <div class="text-xs text-muted" style="margin-top:2px">${Utils.escapeHtml(statusStr.replace(/^(Up|Exited \(\d+\))\s*/, '$1 ').trim())}</div></td>
         <td>${ports ? `<span class="mono text-sm">${ports}</span>` : '<span class="text-muted">—</span>'}</td>
         <td class="text-sm text-muted">${created}</td>
         <td>
@@ -674,63 +732,88 @@ const ContainersPage = {
     const id = this._detailId;
     const name = this._detailData?.name || 'container';
 
-    const result = await Modal.form(`
-      <div class="form-group">
-        <label>Export Format</label>
-        <select id="export-format" class="form-control">
-          <option value="compose">Docker Compose YAML</option>
-          <option value="run">Docker Run Command</option>
-          <option value="json">JSON Inspect</option>
-        </select>
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-file-export" style="color:var(--accent);margin-right:8px"></i>Export — ${Utils.escapeHtml(name)}</h3>
+        <button class="modal-close-btn" id="export-close"><i class="fas fa-times"></i></button>
       </div>
-    `, {
-      title: 'Export Container Configuration',
-      width: '400px',
-      onSubmit: (content) => content.querySelector('#export-format').value,
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:16px">
+          <label>Export Format</label>
+          <select id="export-format" class="form-control">
+            <option value="compose">Docker Compose YAML</option>
+            <option value="run">Docker Run Command</option>
+            <option value="json">JSON Inspect</option>
+          </select>
+        </div>
+        <div id="export-preview" style="display:none">
+          <pre class="inspect-json" id="export-content" style="max-height:50vh;overflow:auto;white-space:pre-wrap"></pre>
+        </div>
+        <div id="export-loading" style="display:none;text-align:center;padding:24px">
+          <i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="export-copy" style="display:none"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+        <button class="btn btn-secondary" id="export-download" style="display:none"><i class="fas fa-download"></i> Download</button>
+        <button class="btn btn-primary" id="export-generate"><i class="fas fa-eye"></i> Generate</button>
+      </div>
+    `, { width: '700px' });
+
+    let currentData = '';
+    let currentFilename = '';
+
+    Modal._content.querySelector('#export-close').addEventListener('click', () => Modal.close());
+
+    const generate = async () => {
+      const format = Modal._content.querySelector('#export-format').value;
+      const loading = Modal._content.querySelector('#export-loading');
+      const preview = Modal._content.querySelector('#export-preview');
+      const content = Modal._content.querySelector('#export-content');
+      const copyBtn = Modal._content.querySelector('#export-copy');
+      const dlBtn = Modal._content.querySelector('#export-download');
+
+      loading.style.display = '';
+      preview.style.display = 'none';
+
+      try {
+        let data;
+        if (format === 'json') {
+          data = JSON.stringify(await Api.getContainer(id), null, 2);
+          currentFilename = `${name}-inspect.json`;
+        } else {
+          data = await Api.get(`/containers/${id}/export?format=${format}`);
+          currentFilename = format === 'compose' ? `${name}-compose.yml` : `${name}-run.sh`;
+        }
+        currentData = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+        content.textContent = currentData;
+        loading.style.display = 'none';
+        preview.style.display = '';
+        copyBtn.style.display = '';
+        dlBtn.style.display = '';
+      } catch (err) {
+        loading.style.display = 'none';
+        Toast.error(err.message);
+      }
+    };
+
+    Modal._content.querySelector('#export-generate').addEventListener('click', generate);
+
+    Modal._content.querySelector('#export-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(currentData).then(() => Toast.success(i18n.t('common.copied')));
     });
 
-    if (!result) return;
+    Modal._content.querySelector('#export-download').addEventListener('click', () => {
+      const blob = new Blob([currentData], { type: 'text/plain' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = currentFilename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
 
-    try {
-      let data, contentType, filename;
-      if (result === 'json') {
-        data = JSON.stringify(await Api.getContainer(id), null, 2);
-        filename = `${name}-inspect.json`;
-      } else {
-        data = await Api.get(`/containers/${id}/export?format=${result}`);
-        filename = result === 'compose' ? `${name}-compose.yml` : `${name}-run.sh`;
-      }
-
-      Modal.open(`
-        <div class="modal-header">
-          <h3><i class="fas fa-file-export" style="margin-right:8px"></i>Export — ${Utils.escapeHtml(name)}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
-        </div>
-        <div class="modal-body">
-          <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap">${Utils.escapeHtml(typeof data === 'string' ? data : JSON.stringify(data, null, 2))}</pre>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="export-copy"><i class="fas fa-copy"></i> Copy</button>
-          <button class="btn btn-secondary" id="export-download"><i class="fas fa-download"></i> Download</button>
-          <button class="btn btn-primary" onclick="Modal.close()">Close</button>
-        </div>
-      `, { width: '700px' });
-
-      const textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-      Modal._content.querySelector('#export-copy').addEventListener('click', () => {
-        Utils.copyToClipboard(textContent).then(() => Toast.success('Copied to clipboard'));
-      });
-      Modal._content.querySelector('#export-download').addEventListener('click', () => {
-        const blob = new Blob([textContent], { type: 'text/plain' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      });
-    } catch (err) {
-      Toast.error(err.message);
-    }
+    // Auto-generate on open
+    generate();
   },
 
   async _editMetaDialog(containerName) {
@@ -1817,7 +1900,8 @@ const ContainersPage = {
   // ─── Container Templates Dialog ──────────────
   async _templatesDialog() {
     try {
-      const templates = await Api.getTemplates();
+      const res = await Api.getTemplates();
+      const templates = res.templates || res;
       const cats = { all: i18n.t('pages.containers.templatesCatAll'), web: i18n.t('pages.containers.templatesCatWeb'), database: i18n.t('pages.containers.templatesCatDb'), tool: i18n.t('pages.containers.templatesCatTool'), monitoring: i18n.t('pages.containers.templatesCatMon'), messaging: i18n.t('pages.containers.templatesCatMsg') };
 
       const catBtns = Object.entries(cats).map(([k, v]) =>
@@ -1831,9 +1915,14 @@ const ContainersPage = {
             <h4>${Utils.escapeHtml(t.name)}</h4>
             <p class="text-muted text-sm">${Utils.escapeHtml(t.description)}</p>
           </div>
-          <button class="btn btn-xs btn-primary template-deploy-btn" data-tid="${t.id}">
-            <i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}
-          </button>
+          <div class="template-card-actions">
+            <button class="btn btn-xs btn-secondary template-view-btn" data-tid="${t.id}" title="View configuration">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button class="btn btn-xs btn-primary template-deploy-btn" data-tid="${t.id}">
+              <i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}
+            </button>
+          </div>
         </div>
       `).join('');
 
@@ -1865,43 +1954,107 @@ const ContainersPage = {
         });
       });
 
+      // View buttons — show compose YAML preview
+      Modal._content.querySelectorAll('.template-view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tid = btn.dataset.tid;
+          const tmpl = templates.find(t => t.id === tid);
+          if (!tmpl) return;
+
+          // Show preview overlay inside the same modal
+          const body = Modal._content.querySelector('.modal-body');
+          const footer = Modal._content.querySelector('.modal-footer');
+          const prevBody = body.innerHTML;
+          const prevFooter = footer.innerHTML;
+
+          body.innerHTML = `
+            <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+              <i class="fas ${tmpl.icon}" style="font-size:20px;color:var(--accent)"></i>
+              <div>
+                <h4 style="margin:0">${Utils.escapeHtml(tmpl.name)}</h4>
+                <span class="text-muted text-sm">${Utils.escapeHtml(tmpl.description)}</span>
+              </div>
+            </div>
+            <div style="margin-bottom:8px">
+              <span class="badge badge-info">${Utils.escapeHtml(tmpl.category)}</span>
+            </div>
+            <label class="text-sm text-muted" style="display:block;margin-bottom:4px">docker-compose.yml</label>
+            <pre class="inspect-json" style="max-height:50vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(tmpl.compose || 'No compose configuration')}</pre>
+          `;
+          footer.innerHTML = `
+            <button class="btn btn-secondary" id="tmpl-preview-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+            <button class="btn btn-secondary" id="tmpl-preview-back"><i class="fas fa-arrow-left"></i> Back</button>
+            <button class="btn btn-primary" id="tmpl-preview-deploy"><i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}</button>
+          `;
+
+          footer.querySelector('#tmpl-preview-back').addEventListener('click', () => {
+            body.innerHTML = prevBody;
+            footer.innerHTML = prevFooter;
+            // Re-attach all event listeners by re-opening the dialog
+            Modal.close();
+            setTimeout(() => this._templatesDialog(), 250);
+          });
+
+          footer.querySelector('#tmpl-preview-copy').addEventListener('click', () => {
+            Utils.copyToClipboard(tmpl.compose || '').then(() => Toast.success(i18n.t('common.copied')));
+          });
+
+          footer.querySelector('#tmpl-preview-deploy').addEventListener('click', () => {
+            Modal.close();
+            this._deployTemplate(tmpl);
+          });
+        });
+      });
+
       // Deploy buttons
       Modal._content.querySelectorAll('.template-deploy-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           const tid = btn.dataset.tid;
           const tmpl = templates.find(t => t.id === tid);
           if (!tmpl) return;
-
           Modal.close();
-
-          // Ask for container name
-          const nameResult = await Modal.form(`
-            <div class="form-group">
-              <label>${i18n.t('pages.containers.containerName')}</label>
-              <input type="text" id="tmpl-name" class="form-control" value="${tmpl.id}" required>
-            </div>
-          `, {
-            title: `${i18n.t('pages.containers.templatesDeploy')}: ${tmpl.name}`,
-            width: '400px',
-            onSubmit: (content) => content.querySelector('#tmpl-name').value.trim() || false,
-          });
-
-          if (nameResult) {
-            try {
-              const config = JSON.parse(JSON.stringify(tmpl.config));
-              config.name = nameResult;
-              const created = await Api.createContainer(config);
-              if (created.id) await Api.containerAction(created.id, 'start');
-              Toast.success(i18n.t('pages.containers.templatesDeplyed', { name: tmpl.name }));
-              await this._loadList();
-            } catch (err) {
-              Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
-            }
-          }
+          this._deployTemplate(tmpl);
         });
       });
     } catch (err) {
       Toast.error(err.message);
+    }
+  },
+
+  async _deployTemplate(tmpl) {
+    // Wait for modal close animation
+    await new Promise(r => setTimeout(r, 250));
+
+    const nameResult = await Modal.form(`
+      <div class="form-group">
+        <label>${i18n.t('pages.containers.containerName')}</label>
+        <input type="text" id="tmpl-name" class="form-control" value="${tmpl.id}" required>
+        <small class="text-muted">${i18n.t('pages.containers.templatesNameHint')}</small>
+      </div>
+    `, {
+      title: `${i18n.t('pages.containers.templatesDeploy')}: ${tmpl.name}`,
+      width: '400px',
+      onSubmit: (content) => {
+        const name = content.querySelector('#tmpl-name').value.trim();
+        if (!name) return false;
+        if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+          Toast.error('Name must contain only letters, numbers, dashes, underscores');
+          return false;
+        }
+        return name;
+      },
+    });
+
+    if (nameResult) {
+      try {
+        Toast.info(`Deploying ${tmpl.name}...`);
+        await Api.post(`/templates/${tmpl.id}/deploy`, { name: nameResult });
+        Toast.success(i18n.t('pages.containers.templatesDeplyed', { name: tmpl.name }));
+        await this._loadList();
+      } catch (err) {
+        Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
+      }
     }
   },
 

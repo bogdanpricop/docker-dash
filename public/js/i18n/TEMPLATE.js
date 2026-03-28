@@ -218,7 +218,7 @@ i18n.register('xx', 'XX', 'Language Name', {
       loadFailed: 'Failed to load images: {{message}}',
       scanImage: 'Scan for vulnerabilities', scanning: 'Scanning image for vulnerabilities...',
       scanTitle: 'Vulnerability Scan', scannerUsed: 'Scanner', totalVulns: 'Total vulnerabilities',
-      scanAuto: 'Auto-detect', scanWithTrivy: 'Scan with Trivy', scanWithScout: 'Scan with Docker Scout',
+      scanAuto: 'Auto-detect', scanWithTrivy: 'Scan with Trivy', scanWithGrype: 'Scan with Grype', scanWithScout: 'Scan with Docker Scout',
       severity: 'Severity', package: 'Package', version: 'Version', fixedIn: 'Fixed In',
       noVulns: 'No vulnerabilities found!', scanFailed: 'Scan failed: {{message}}',
       help: {

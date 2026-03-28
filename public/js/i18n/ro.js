@@ -14,6 +14,7 @@ i18n.register('ro', 'RO', 'Română', {
     test: 'Test', prune: 'Curata', unlimited: 'nelimitat',
     pageNotFound: 'Pagina negasita: {{page}}',
     errorLoading: 'Eroare la incarcarea paginii: {{message}}',
+    running: 'active', stopped: 'oprite', other: 'altele',
   },
   nav: {
     dashboard: 'Dashboard', containers: 'Containere', images: 'Imagini',
@@ -51,7 +52,7 @@ i18n.register('ro', 'RO', 'Română', {
       running: 'Active', stopped: 'Oprite', images: 'Imagini', volumes: 'Volume',
       containerStates: 'Stari Containere', topCpu: 'Top Consum CPU', topMemory: 'Top Consum Memorie',
       recentEvents: 'Evenimente Recente', liveUpdates: 'Actualizari live prin WebSocket',
-      noDataYet: 'Fara date inca', noRecentEvents: 'Fara evenimente recente',
+      noDataYet: 'Fara date inca', noRecentEvents: 'Fara evenimente recente', uptime: 'Timp functionare',
       eventsNotAvailable: 'Evenimentele nu sunt disponibile', justNow: 'acum',
       live: 'Live', offline: 'Offline',
       help: {
@@ -74,7 +75,7 @@ i18n.register('ro', 'RO', 'Română', {
       showStopped: 'Arata oprite', singleColumn: 'O coloana', twoColumns: 'Doua coloane',
       collapseAll: 'Inchide toate', expandAll: 'Deschide toate',
       helpTooltip: 'Ghid Containere',
-      standalone: 'Standalone', noContainers: 'Niciun container gasit',
+      standalone: 'Standalone', noContainers: 'Niciun container gasit', total: 'total', needsAttention: 'necesita atentie',
       loadFailed: 'Eroare la incarcarea containerelor: {{message}}',
       notFoundOrError: 'Containerul nu a fost gasit sau eroare la incarcare',
       service: 'Serviciu', image: 'Imagine', version: 'Versiune', ports: 'Porturi', created: 'Creat',
@@ -142,6 +143,7 @@ i18n.register('ro', 'RO', 'Română', {
       templatesDesc: 'Instaleaza rapid servicii populare cu setari pre-configurate',
       templatesCustomize: 'Personalizeaza', templatesDeplyed: 'Sablonul "{{name}}" a fost instalat!',
       templatesDeployFailed: 'Instalare esuata: {{message}}',
+      templatesNameHint: 'Doar litere, cifre, cratimi si underscore',
       templatesCatAll: 'Toate', templatesCatWeb: 'Web', templatesCatDb: 'Baze de Date',
       templatesCatTool: 'Unelte', templatesCatMon: 'Monitorizare', templatesCatMsg: 'Mesagerie',
       // Health Check Logs
@@ -212,7 +214,7 @@ i18n.register('ro', 'RO', 'Română', {
       loadFailed: 'Eroare la incarcarea imaginilor: {{message}}',
       scanImage: 'Scanare vulnerabilitati', scanning: 'Se scaneaza imaginea pentru vulnerabilitati...',
       scanTitle: 'Scanare Vulnerabilitati', scannerUsed: 'Scanner', totalVulns: 'Total vulnerabilitati',
-      scanAuto: 'Auto-detectare', scanWithTrivy: 'Scanare cu Trivy', scanWithScout: 'Scanare cu Docker Scout',
+      scanAuto: 'Auto-detectare', scanWithTrivy: 'Scanare cu Trivy', scanWithGrype: 'Scanare cu Grype', scanWithScout: 'Scanare cu Docker Scout',
       severity: 'Severitate', package: 'Pachet', version: 'Versiune', fixedIn: 'Rezolvat in',
       noVulns: 'Nicio vulnerabilitate gasita!', scanFailed: 'Scanarea a esuat: {{message}}',
       help: {

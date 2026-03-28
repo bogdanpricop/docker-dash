@@ -221,6 +221,9 @@ class AuthService {
     const existing = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE').get(username);
     if (existing) return { error: 'Username already exists' };
 
+    const pwErr = this.validatePassword(password);
+    if (pwErr) return { error: pwErr };
+
     const hash = await bcrypt.hash(password, config.security.bcryptRounds);
     const result = db.prepare(
       'INSERT INTO users (username, display_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)'

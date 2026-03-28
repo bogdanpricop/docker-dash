@@ -888,6 +888,32 @@ ${logText.substring(0, 3000)}
       const templates = data.templates || [];
       const categories = data.categories || [];
 
+      const renderCard = (t) => {
+        const modifiedBadge = t.isModified
+          ? `<span class="badge badge-warning" style="font-size:9px;margin-left:6px" title="Modified by ${Utils.escapeHtml(t.updatedBy || '?')} on ${Utils.escapeHtml(t.updatedAt || '?')}"><i class="fas fa-pen" style="margin-right:3px"></i>modified</span>`
+          : '';
+        const customBadge = t.isCustom
+          ? `<span class="badge badge-info" style="font-size:9px;margin-left:6px"><i class="fas fa-user" style="margin-right:3px"></i>custom</span>`
+          : '';
+        return `
+          <div class="card tpl-card" data-id="${t.id}" data-cat="${Utils.escapeHtml((t.category || '').toLowerCase())}" data-name="${Utils.escapeHtml((t.name || '').toLowerCase())} ${Utils.escapeHtml((t.description || '').toLowerCase())}">
+            <div class="card-header">
+              <h3><i class="${t.icon || 'fas fa-cube'}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}${modifiedBadge}${customBadge}</h3>
+              <span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(t.category)}</span>
+            </div>
+            <div class="card-body">
+              <p class="text-sm text-muted" style="margin-bottom:12px">${Utils.escapeHtml(t.description)}</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-sm btn-primary tpl-deploy" data-id="${t.id}"><i class="fas fa-rocket"></i> Deploy</button>
+                <button class="btn btn-sm btn-secondary tpl-view" data-id="${t.id}"><i class="fas fa-code"></i> View</button>
+                <button class="btn btn-sm btn-secondary tpl-edit" data-id="${t.id}"><i class="fas fa-edit"></i> Edit</button>
+                ${t.isModified ? `<button class="btn btn-sm btn-secondary tpl-reset" data-id="${t.id}" title="Reset to built-in default"><i class="fas fa-undo"></i></button>` : ''}
+                ${t.isCustom ? `<button class="btn btn-sm btn-danger tpl-delete" data-id="${t.id}" title="Delete custom template"><i class="fas fa-trash"></i></button>` : ''}
+              </div>
+            </div>
+          </div>`;
+      };
+
       el.innerHTML = `
         <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
           <div class="search-box" style="flex:1;min-width:200px">
@@ -898,23 +924,10 @@ ${logText.substring(0, 3000)}
             <option value="">All categories</option>
             ${categories.map(c => `<option value="${Utils.escapeHtml(c)}">${Utils.escapeHtml(c)}</option>`).join('')}
           </select>
+          <button class="btn btn-sm btn-primary" id="tpl-add"><i class="fas fa-plus"></i> Add Template</button>
         </div>
         <div class="info-grid" id="tpl-grid" style="margin-top:0">
-          ${templates.map(t => `
-            <div class="card tpl-card" data-id="${t.id}" data-cat="${Utils.escapeHtml(t.category.toLowerCase())}" data-name="${Utils.escapeHtml(t.name.toLowerCase())} ${Utils.escapeHtml(t.description.toLowerCase())}">
-              <div class="card-header">
-                <h3><i class="${t.icon || 'fas fa-cube'}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
-                <span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(t.category)}</span>
-              </div>
-              <div class="card-body">
-                <p class="text-sm text-muted" style="margin-bottom:12px">${Utils.escapeHtml(t.description)}</p>
-                <div style="display:flex;gap:8px">
-                  <button class="btn btn-sm btn-primary tpl-deploy" data-id="${t.id}"><i class="fas fa-rocket"></i> Deploy</button>
-                  <button class="btn btn-sm btn-secondary tpl-view" data-id="${t.id}"><i class="fas fa-code"></i> View YAML</button>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+          ${templates.map(renderCard).join('')}
         </div>
       `;
 
@@ -931,60 +944,85 @@ ${logText.substring(0, 3000)}
       el.querySelector('#tpl-search')?.addEventListener('input', Utils.debounce(filterFn, 200));
       el.querySelector('#tpl-category')?.addEventListener('change', filterFn);
 
-      // Deploy + view
-      el.addEventListener('click', async (e) => {
-        const deployBtn = e.target.closest('.tpl-deploy');
-        const viewBtn = e.target.closest('.tpl-view');
+      // Add new template
+      el.querySelector('#tpl-add').addEventListener('click', () => this._templateFormDialog(null, el));
 
-        if (viewBtn) {
-          const t = templates.find(t => t.id === viewBtn.dataset.id);
-          if (t) {
-            Modal.open(`
-              <div class="modal-header">
-                <h3><i class="${t.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
-                <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
-              </div>
-              <div class="modal-body">
-                <textarea readonly style="width:100%;min-height:300px;font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px;color:var(--text);resize:vertical">${Utils.escapeHtml(t.compose)}</textarea>
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="Utils.copyToClipboard(document.querySelector('.modal-body textarea').value);Toast.success('Copied!')"><i class="fas fa-copy"></i> Copy</button>
-                <button class="btn btn-primary" onclick="Modal.close()">Close</button>
-              </div>
-            `, { width: '600px' });
-          }
+      // Delegated click handler
+      el.addEventListener('click', async (e) => {
+        const id = e.target.closest('[data-id]')?.dataset?.id;
+        if (!id) return;
+        const t = templates.find(t => t.id === id);
+
+        if (e.target.closest('.tpl-view') && t) {
+          Modal.open(`
+            <div class="modal-header">
+              <h3><i class="${t.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
+              <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+              <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(t.compose)}</pre>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="tpl-view-copy"><i class="fas fa-copy"></i> Copy</button>
+              <button class="btn btn-primary" onclick="Modal.close()">Close</button>
+            </div>
+          `, { width: '600px' });
+          Modal._content.querySelector('#tpl-view-copy').addEventListener('click', () => {
+            Utils.copyToClipboard(t.compose).then(() => Toast.success('Copied!'));
+          });
         }
 
-        if (deployBtn) {
-          const t = templates.find(t => t.id === deployBtn.dataset.id);
-          if (!t) return;
+        if (e.target.closest('.tpl-edit') && t) {
+          this._templateFormDialog(t, el);
+        }
 
+        if (e.target.closest('.tpl-reset') && t) {
+          const ok = await Modal.confirm(`Reset "${t.name}" to its original built-in configuration?`);
+          if (!ok) return;
+          try {
+            await Api.post(`/templates/${id}/reset`);
+            Toast.success('Template reset to default');
+            this._renderTemplates(el);
+          } catch (err) { Toast.error(err.message); }
+        }
+
+        if (e.target.closest('.tpl-delete') && t) {
+          const ok = await Modal.confirm(`Delete custom template "${t.name}"?`, { danger: true });
+          if (!ok) return;
+          try {
+            await Api.delete(`/templates/${id}`);
+            Toast.success('Template deleted');
+            this._renderTemplates(el);
+          } catch (err) { Toast.error(err.message); }
+        }
+
+        if (e.target.closest('.tpl-deploy') && t) {
           const result = await Modal.form(`
             <div class="form-group">
               <label>Stack Name *</label>
               <input type="text" id="tpl-name" class="form-control" value="${t.id}" placeholder="my-${t.id}">
-            </div>
-            <div class="form-group">
-              <label>Directory</label>
-              <input type="text" id="tpl-dir" class="form-control" value="/opt/${t.id}">
+              <small class="text-muted">Letters, numbers, dashes and underscores only</small>
             </div>
             <div class="form-group">
               <label>Compose YAML</label>
-              <textarea id="tpl-yaml" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(t.compose)}</textarea>
+              <textarea id="tpl-yaml" class="form-control" rows="10" style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(t.compose)}</textarea>
             </div>
           `, {
             title: 'Deploy ' + t.name,
             width: '600px',
-            onSubmit: (content) => ({
-              name: content.querySelector('#tpl-name').value.trim(),
-              dir: content.querySelector('#tpl-dir').value.trim(),
-              yaml: content.querySelector('#tpl-yaml').value,
-            }),
+            onSubmit: (content) => {
+              const name = content.querySelector('#tpl-name').value.trim();
+              if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
+                Toast.error('Invalid stack name');
+                return false;
+              }
+              return { name };
+            },
           });
-
-          if (result && result.name && result.yaml) {
+          if (result) {
             try {
-              await Api.post('/system/stacks', result);
+              Toast.info('Deploying ' + t.name + '...');
+              await Api.post(`/templates/${id}/deploy`, result);
               Toast.success(t.name + ' deployed!');
             } catch (err) { Toast.error(err.message); }
           }
@@ -992,6 +1030,71 @@ ${logText.substring(0, 3000)}
       });
     } catch (err) {
       el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
+    }
+  },
+
+  async _templateFormDialog(template, parentEl) {
+    const isEdit = !!template;
+    const isBuiltin = template?.isBuiltin;
+    const title = isEdit ? `Edit: ${template.name}` : 'Add Custom Template';
+
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>Template ID *</label>
+        <input type="text" id="tf-id" class="form-control" value="${isEdit ? Utils.escapeHtml(template.id) : ''}" ${isEdit ? 'readonly style="opacity:0.6"' : ''} placeholder="my-template">
+        ${!isEdit ? '<small class="text-muted">Unique identifier (letters, numbers, dashes, underscores)</small>' : ''}
+      </div>
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" id="tf-name" class="form-control" value="${isEdit ? Utils.escapeHtml(template.name) : ''}" placeholder="My Template">
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <input type="text" id="tf-category" class="form-control" value="${isEdit ? Utils.escapeHtml(template.category) : 'Custom'}" placeholder="Database, Web Server, Tool...">
+      </div>
+      <div class="form-group">
+        <label>Icon (FontAwesome class)</label>
+        <input type="text" id="tf-icon" class="form-control" value="${isEdit ? Utils.escapeHtml(template.icon) : 'fas fa-cube'}" placeholder="fas fa-cube">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="tf-desc" class="form-control" value="${isEdit ? Utils.escapeHtml(template.description) : ''}" placeholder="What this template does">
+      </div>
+      <div class="form-group">
+        <label>Compose YAML *</label>
+        <textarea id="tf-compose" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px">${isEdit ? Utils.escapeHtml(template.compose) : 'services:\n  my-app:\n    image: nginx:alpine\n    ports:\n      - "8080:80"\n    restart: unless-stopped'}</textarea>
+      </div>
+    `, {
+      title,
+      width: '650px',
+      onSubmit: (content) => {
+        const id = content.querySelector('#tf-id').value.trim();
+        const name = content.querySelector('#tf-name').value.trim();
+        const compose = content.querySelector('#tf-compose').value.trim();
+        if (!id || !name || !compose) { Toast.error('ID, Name, and Compose YAML are required'); return false; }
+        if (!isEdit && !/^[a-zA-Z0-9_-]+$/.test(id)) { Toast.error('ID must be alphanumeric with dashes/underscores'); return false; }
+        return {
+          id, name, compose,
+          category: content.querySelector('#tf-category').value.trim() || 'Custom',
+          icon: content.querySelector('#tf-icon').value.trim() || 'fas fa-cube',
+          description: content.querySelector('#tf-desc').value.trim(),
+        };
+      },
+    });
+
+    if (!result) return;
+
+    try {
+      if (isEdit) {
+        await Api.put(`/templates/${result.id}`, result);
+        Toast.success('Template updated');
+      } else {
+        await Api.post('/templates', result);
+        Toast.success('Template created');
+      }
+      this._renderTemplates(parentEl);
+    } catch (err) {
+      Toast.error(err.message);
     }
   },
 

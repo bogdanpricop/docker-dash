@@ -81,6 +81,46 @@ function _makeSummary(vulns) {
   };
 }
 
+function _scanWithGrype(imageName) {
+  const output = execFileSync('grype', [imageName, '-o', 'json', '--quiet'], {
+    timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
+  });
+  const data = JSON.parse(output);
+  const vulns = [];
+  for (const match of (data.matches || [])) {
+    const v = match.vulnerability || {};
+    const pkg = match.artifact || {};
+    const related = (match.relatedVulnerabilities || [])[0] || {};
+    const cvssEntries = [...(v.cvss || []), ...(related.cvss || [])];
+    const cvssScore = cvssEntries.length > 0
+      ? Math.max(...cvssEntries.map(c => c.metrics?.baseScore || 0))
+      : null;
+
+    vulns.push({
+      id: v.id || '?',
+      severity: (v.severity || 'unknown').toLowerCase(),
+      package: pkg.name || '?',
+      version: pkg.version || '?',
+      fixedIn: (v.fix?.versions || [])[0] || null,
+      title: related.description?.substring(0, 200) || v.description?.substring(0, 200) || '',
+      url: (related.urls || v.urls || [])[0] || '',
+      cvss: cvssScore,
+      type: pkg.type || '',
+      target: pkg.locations?.[0]?.path || '',
+    });
+  }
+
+  const recommendations = _generateRemediation(vulns, imageName);
+  return {
+    scanner: 'grype',
+    image: imageName,
+    scannedAt: new Date().toISOString(),
+    vulnerabilities: vulns,
+    summary: _makeSummary(vulns),
+    recommendations,
+  };
+}
+
 function _scanWithScout(imageName) {
   // Docker Scout uses SARIF format for structured output
   const output = execFileSync('docker', ['scout', 'cves', imageName, '--format', 'sarif', '--only-severity', 'critical,high,medium,low'], {
@@ -391,6 +431,7 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
 router.get('/scanners', requireAuth, (req, res) => {
   const available = [];
   try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('trivy'); } catch {}
+  try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('grype'); } catch {}
   try {
     execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe' });
     if (_isScoutAuthenticated()) {
@@ -430,10 +471,24 @@ router.get('/:id/scan', requireAuth, async (req, res) => {
           message: 'Trivy scan failed. Check that Trivy is installed correctly.',
         });
       }
+    } else if (preferredScanner === 'grype') {
+      try { result = _scanWithGrype(imageName); }
+      catch (err) { scanLog.warn('Grype scan failed', err.message); }
+      if (!result) {
+        return res.json({
+          scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
+          vulnerabilities: [], summary: _makeSummary([]),
+          message: 'Grype scan failed. Check that Grype is installed correctly.',
+        });
+      }
     } else {
-      // Auto mode: try Trivy first (works without auth), then Scout
+      // Auto mode: try Trivy first, then Grype, then Scout
       try { result = _scanWithTrivy(imageName); }
-      catch (err) { scanLog.debug('Trivy auto-scan failed, trying Scout', err.message); }
+      catch (err) { scanLog.debug('Trivy auto-scan failed, trying Grype', err.message); }
+      if (!result) {
+        try { result = _scanWithGrype(imageName); }
+        catch (err) { scanLog.debug('Grype auto-scan failed, trying Scout', err.message); }
+      }
       if (!result && _isScoutAuthenticated()) {
         try { result = _scanWithScout(imageName); }
         catch (err) { scanLog.debug('Scout auto-scan failed', err.message); }
@@ -442,7 +497,7 @@ router.get('/:id/scan', requireAuth, async (req, res) => {
         result = {
           scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
           vulnerabilities: [], summary: _makeSummary([]),
-          message: 'No vulnerability scanner available. Install Trivy or authenticate Docker Scout.',
+          message: 'No vulnerability scanner available. Install Trivy or Grype, or authenticate Docker Scout.',
         };
       }
     }

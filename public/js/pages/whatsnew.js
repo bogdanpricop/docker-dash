@@ -10,6 +10,29 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '4.1.0',
+      date: '2026-03-28',
+      title: 'Grype Scanner, Custom Templates, UX Polish',
+      changes: [
+        { type: 'feature', text: 'Grype vulnerability scanner — third scanner option alongside Trivy and Docker Scout (Anchore open-source)' },
+        { type: 'feature', text: 'Custom templates — add, edit, delete your own app templates (System > Templates)' },
+        { type: 'feature', text: 'Built-in template overrides — modify default templates with modification tracking (who, when)' },
+        { type: 'feature', text: 'Template preview — view docker-compose.yml before deploying, with Copy and Deploy buttons' },
+        { type: 'feature', text: 'Container health score dot — color-coded indicator in list view (green/yellow/orange/red)' },
+        { type: 'feature', text: 'Container summary bar — total, running, stopped, needs attention counts with clickable filters' },
+        { type: 'feature', text: 'Host info bar on dashboard — hostname, CPUs, RAM, Docker version, storage driver, uptime' },
+        { type: 'feature', text: 'Container detail tabs: Labels (grouped), Mounts, Network with port bindings' },
+        { type: 'security', text: 'Unified password policy — validatePassword() enforced on all 4 password flows' },
+        { type: 'fix', text: 'Export Container Configuration dialog no longer closes immediately' },
+        { type: 'fix', text: 'System > Templates tab now loads correctly (duplicate API method removed)' },
+        { type: 'fix', text: 'Container list summary bar spans full width in 2-column layout' },
+        { type: 'fix', text: 'Dockerfile healthcheck uses configurable APP_PORT' },
+        { type: 'improvement', text: 'Caddyfile converted to generic template with setup instructions' },
+        { type: 'improvement', text: 'About page with GitHub link and author info' },
+        { type: 'improvement', text: 'README and docs consistency fixes (template count, retention days, badges)' },
+      ],
+    },
+    {
       version: '4.0.0',
       date: '2026-03-28',
       title: 'Complete Docker Management Platform',

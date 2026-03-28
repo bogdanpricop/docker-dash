@@ -14,6 +14,7 @@ i18n.register('de', 'DE', 'Deutsch', {
     test: 'Testen', prune: 'Bereinigen', unlimited: 'unbegrenzt',
     pageNotFound: 'Seite nicht gefunden: {{page}}',
     errorLoading: 'Fehler beim Laden der Seite: {{message}}',
+    running: 'aktiv', stopped: 'gestoppt', other: 'andere',
   },
   nav: {
     dashboard: 'Dashboard', containers: 'Container', images: 'Images',
@@ -51,7 +52,7 @@ i18n.register('de', 'DE', 'Deutsch', {
       running: 'Laufend', stopped: 'Gestoppt', images: 'Images', volumes: 'Volumes',
       containerStates: 'Container-Status', topCpu: 'Top CPU-Verbraucher', topMemory: 'Top Speicher-Verbraucher',
       recentEvents: 'Letzte Ereignisse', liveUpdates: 'Live-Updates über WebSocket',
-      noDataYet: 'Noch keine Daten', noRecentEvents: 'Keine aktuellen Ereignisse',
+      noDataYet: 'Noch keine Daten', noRecentEvents: 'Keine aktuellen Ereignisse', uptime: 'Betriebszeit',
       eventsNotAvailable: 'Ereignisse nicht verfügbar', justNow: 'gerade eben',
       live: 'Live', offline: 'Offline',
       help: {
@@ -74,7 +75,7 @@ i18n.register('de', 'DE', 'Deutsch', {
       showStopped: 'Gestoppte anzeigen', singleColumn: 'Einspaltig', twoColumns: 'Zweispaltig',
       collapseAll: 'Alle einklappen', expandAll: 'Alle ausklappen',
       helpTooltip: 'Container-Anleitung',
-      standalone: 'Einzeln', noContainers: 'Keine Container gefunden',
+      standalone: 'Einzeln', noContainers: 'Keine Container gefunden', total: 'gesamt', needsAttention: 'braucht Aufmerksamkeit',
       loadFailed: 'Fehler beim Laden der Container: {{message}}',
       notFoundOrError: 'Container nicht gefunden oder Fehler beim Laden',
       // Table
@@ -149,6 +150,7 @@ i18n.register('de', 'DE', 'Deutsch', {
       templatesDesc: 'Schnellbereitstellung beliebter Dienste mit vorkonfigurierten Einstellungen',
       templatesCustomize: 'Anpassen', templatesDeplyed: 'Vorlage "{{name}}" bereitgestellt!',
       templatesDeployFailed: 'Bereitstellung fehlgeschlagen: {{message}}',
+      templatesNameHint: 'Nur Buchstaben, Zahlen, Bindestriche und Unterstriche',
       templatesCatAll: 'Alle', templatesCatWeb: 'Web', templatesCatDb: 'Datenbank',
       templatesCatTool: 'Werkzeuge', templatesCatMon: 'Monitoring', templatesCatMsg: 'Messaging',
       // Health Check Logs
@@ -221,7 +223,7 @@ i18n.register('de', 'DE', 'Deutsch', {
       loadFailed: 'Fehler beim Laden der Images: {{message}}',
       scanImage: 'Auf Schwachstellen scannen', scanning: 'Image wird auf Schwachstellen gescannt...',
       scanTitle: 'Schwachstellen-Scan', scannerUsed: 'Scanner', totalVulns: 'Schwachstellen gesamt',
-      scanAuto: 'Automatisch erkennen', scanWithTrivy: 'Mit Trivy scannen', scanWithScout: 'Mit Docker Scout scannen',
+      scanAuto: 'Automatisch erkennen', scanWithTrivy: 'Mit Trivy scannen', scanWithGrype: 'Mit Grype scannen', scanWithScout: 'Mit Docker Scout scannen',
       severity: 'Schweregrad', package: 'Paket', version: 'Version', fixedIn: 'Behoben in',
       noVulns: 'Keine Schwachstellen gefunden!', scanFailed: 'Scan fehlgeschlagen: {{message}}',
       help: {

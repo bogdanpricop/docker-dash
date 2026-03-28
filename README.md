@@ -8,8 +8,8 @@
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-104%20passing%20(100%25)-brightgreen" alt="Tests">
-    <img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness">
+    <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-104%20passing%20(100%25)-brightgreen" alt="Tests"></a>
+    <a href="SECURITY.md#security-audit-history"><img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
     <img src="https://img.shields.io/badge/Docker-~80MB-blue" alt="Image Size">
     <img src="https://img.shields.io/badge/RAM-~50MB-blue" alt="RAM Usage">
@@ -72,7 +72,7 @@
 - **Audit Log Analytics** — Top users, top actions, activity heatmap by hour/day
 
 ### Security
-- **Vulnerability Scanning** — Integrated Trivy + Docker Scout with automatic detection
+- **Vulnerability Scanning** — Integrated Trivy + Grype + Docker Scout with automatic detection
 - **Safe-Pull Updates** — Pull new image → scan for vulns → only swap if clean (blocks critical CVEs)
 - **Security Dashboard** — Scan history, per-image status, AI-assisted remediation prompts
 - **Guided Troubleshooting** — 8-step diagnostic wizard (state, health, logs, ports, volumes, resources)
@@ -108,7 +108,7 @@
 - **docker run → Compose** — Paste any docker run command, get docker-compose YAML
 - **AI Log Analysis** — Generate diagnostic prompts for ChatGPT/Claude from container logs
 - **Traefik/Caddy Labels** — Generate reverse proxy labels from domain + port
-- **App Templates** — 20 curated one-click templates (Nginx, PostgreSQL, Redis, Grafana, and more)
+- **App Templates** — 30 curated one-click templates (Nginx, PostgreSQL, Redis, Grafana, and more)
 - **Deploy Preview** — Check for image updates via digest comparison before pulling
 - **Resource Recommendations** — Smart advice: over-provisioned, memory pressure, idle containers
 
@@ -174,7 +174,7 @@ Default credentials: `admin` / `admin` — on first login, a **security setup wi
 | Frontend | Vanilla JavaScript SPA, Chart.js, xterm.js, Font Awesome (CDN) |
 | Database | SQLite with WAL mode, auto-aggregation, configurable retention |
 | Security | bcrypt, Helmet CSP, rate limiting, session-based auth, Bearer token fallback |
-| Scanning | Trivy (OSS), Docker Scout (SARIF format) |
+| Scanning | Trivy (OSS), Grype (Anchore), Docker Scout (SARIF format) |
 
 **Zero build step** — no webpack, no bundler, no transpiler. Frontend files are served as-is.
 
@@ -273,7 +273,7 @@ docker-dash/
 | **Network Topology** | **Yes** | No | No | No |
 | Real-time Stats (WebSocket) | Yes | Yes | Basic | Yes |
 | Terminal (xterm.js) | Yes | Yes | Yes | Yes |
-| Vulnerability Scanning | Trivy + Scout | No | No | Grype + Trivy |
+| Vulnerability Scanning | Trivy + Grype + Scout | No | No | Grype + Trivy |
 | **Safe-Pull Updates** | **Yes** | No | No | Yes |
 | Multi-Host (agentless) | Yes | Agent required | Agent | Yes |
 | **Git Integration** | **Yes** | BE only ($) | No | No |
@@ -375,5 +375,6 @@ Built with:
 - [xterm.js](https://xtermjs.org/) — Terminal emulator
 - [Chart.js](https://www.chartjs.org/) — Charts
 - [Trivy](https://trivy.dev/) — Vulnerability scanner
+- [Grype](https://github.com/anchore/grype) — Vulnerability scanner by Anchore
 - [ssh2](https://github.com/mscdex/ssh2) — SSH client
 - [Font Awesome](https://fontawesome.com/) — Icons

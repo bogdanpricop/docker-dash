@@ -145,7 +145,8 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const pwErr = authService.validatePassword(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
     await authService.resetPassword(parseInt(req.params.id), password);
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'reset_password',
       targetType: 'user', targetId: req.params.id, ip: getClientIp(req) });
@@ -274,7 +275,8 @@ router.post('/reset-password-token', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Token and password required' });
-    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    const pwErr = authService.validatePassword(newPassword);
+    if (pwErr) return res.status(400).json({ error: pwErr });
 
     const db = getDb();
     const tokenHash = sha256(token);

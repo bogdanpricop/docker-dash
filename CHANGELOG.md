@@ -2,6 +2,35 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [4.1.0] - 2026-03-28
+
+### Added
+- **Grype vulnerability scanner** — third scanning option alongside Trivy and Docker Scout (auto-fallback: Trivy → Grype → Scout)
+- **Custom templates** — add, edit, delete your own app templates (System > Templates) with full CRUD
+- **Built-in template overrides** — modify default templates, tracked with who/when modification badges
+- **Template preview** — view docker-compose.yml before deploying with Copy button
+- **Template deploy endpoint** — `POST /templates/:id/deploy` writes temp compose and runs `docker compose up -d`
+- **Container health score dot** — color-coded indicator in list view (green/yellow/orange/red)
+- **Container summary bar** — total, running, stopped, needs attention counts with clickable state filters
+- **Host info bar** on dashboard — hostname, CPUs, RAM, Docker version, storage driver, OS, uptime
+- **Container detail tabs** — Labels (grouped by type), Mounts, Network with port bindings
+- **About page** — GitHub repository link, author info
+
+### Fixed
+- **Export Container Configuration** dialog no longer closes immediately (Modal.close 200ms timer race condition)
+- **System > Templates** tab now loads correctly (duplicate `getTemplates()` API method removed)
+- **Container summary bar** spans full width in 2-column layout
+- **Dockerfile healthcheck** uses configurable `APP_PORT` via shell expansion
+
+### Security
+- **Unified password policy** — `validatePassword()` enforced on all 4 password flows (change-password, reset-password, create-user, token-reset)
+
+### Improved
+- **Caddyfile** converted to generic template with `YOUR_HOST` placeholder
+- **EVENT_RETENTION_DAYS** aligned to 7 across `.env.example`, config, README
+- **README badges** linked to verifiable artifacts (CI pipeline, SECURITY.md audit history)
+- **Template count** fixed: 30 everywhere (was inconsistent 20 vs 30)
+
 ## [4.0.0] - 2026-03-28
 
 ### Added

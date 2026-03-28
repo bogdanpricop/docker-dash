@@ -1,9 +1,60 @@
 'use strict';
 
 const { Router } = require('express');
-const { requireAuth } = require('../middleware/auth');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { requireAuth, requireRole, writeable, requireFeature } = require('../middleware/auth');
+const auditService = require('../services/audit');
+const { getClientIp } = require('../utils/helpers');
+const { getDb } = require('../db');
 
 const router = Router();
+
+/** Merge built-in templates with DB overrides and custom templates */
+function getMergedTemplates() {
+  const db = getDb();
+  const customRows = db.prepare('SELECT * FROM custom_templates').all();
+  const overrideMap = {};
+  const customOnly = [];
+  for (const row of customRows) {
+    if (row.is_builtin_override) {
+      overrideMap[row.id] = row;
+    } else {
+      customOnly.push({
+        id: row.id, name: row.name, category: row.category,
+        icon: row.icon, description: row.description, compose: row.compose,
+        isCustom: true,
+        createdBy: row.created_by, createdAt: row.created_at,
+        updatedBy: row.updated_by, updatedAt: row.updated_at,
+      });
+    }
+  }
+
+  const merged = TEMPLATES.map(t => {
+    const override = overrideMap[t.id];
+    if (override) {
+      return {
+        ...t,
+        name: override.name, category: override.category,
+        icon: override.icon, description: override.description,
+        compose: override.compose,
+        isModified: true, isBuiltin: true,
+        updatedBy: override.updated_by, updatedAt: override.updated_at,
+        originalCompose: t.compose,
+      };
+    }
+    return { ...t, isBuiltin: true };
+  });
+
+  return [...merged, ...customOnly];
+}
+
+/** Find a template by id (merged) */
+function findTemplate(id) {
+  return getMergedTemplates().find(t => t.id === id);
+}
 
 // Curated app templates — no external dependency, ships with Docker Dash
 const TEMPLATES = [
@@ -159,25 +210,166 @@ const TEMPLATES = [
   },
 ];
 
-// Get all templates (grouped by category)
+// Get all templates (built-in + custom, with overrides merged)
 router.get('/', requireAuth, (req, res) => {
   const { category, search } = req.query;
-  let filtered = TEMPLATES;
-  if (category) filtered = filtered.filter(t => t.category.toLowerCase() === category.toLowerCase());
+  let all = getMergedTemplates();
+  if (category) all = all.filter(t => t.category.toLowerCase() === category.toLowerCase());
   if (search) {
     const q = search.toLowerCase();
-    filtered = filtered.filter(t => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q));
+    all = all.filter(t => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q));
   }
-
-  const categories = [...new Set(TEMPLATES.map(t => t.category))].sort();
-  res.json({ templates: filtered, categories, total: TEMPLATES.length });
+  const categories = [...new Set(getMergedTemplates().map(t => t.category))].sort();
+  res.json({ templates: all, categories, total: all.length });
 });
 
 // Get single template
 router.get('/:id', requireAuth, (req, res) => {
-  const t = TEMPLATES.find(t => t.id === req.params.id);
+  const t = findTemplate(req.params.id);
   if (!t) return res.status(404).json({ error: 'Template not found' });
   res.json(t);
+});
+
+// Create custom template
+router.post('/', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { id, name, category, icon, description, compose } = req.body;
+    if (!id || !name || !compose) return res.status(400).json({ error: 'id, name, and compose are required' });
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) return res.status(400).json({ error: 'id must be alphanumeric with dashes/underscores' });
+
+    // Check if id conflicts with built-in
+    if (TEMPLATES.find(t => t.id === id)) {
+      return res.status(409).json({ error: 'A built-in template with this id already exists. Use PUT to override it.' });
+    }
+
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM custom_templates WHERE id = ?').get(id);
+    if (existing) return res.status(409).json({ error: 'A custom template with this id already exists' });
+
+    db.prepare(`INSERT INTO custom_templates (id, name, category, icon, description, compose, is_builtin_override, created_by, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`).run(
+      id, name, category || 'Custom', icon || 'fas fa-cube', description || '', compose,
+      req.user.username, req.user.username
+    );
+
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'template_create', targetType: 'template', targetId: id, ip: getClientIp(req) });
+
+    res.status(201).json({ ok: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Update template (custom or override built-in)
+router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { name, category, icon, description, compose } = req.body;
+    if (!name || !compose) return res.status(400).json({ error: 'name and compose are required' });
+
+    const db = getDb();
+    const isBuiltin = !!TEMPLATES.find(t => t.id === req.params.id);
+    const existing = db.prepare('SELECT id FROM custom_templates WHERE id = ?').get(req.params.id);
+
+    if (existing) {
+      // Update existing override/custom
+      db.prepare(`UPDATE custom_templates SET name=?, category=?, icon=?, description=?, compose=?,
+        updated_by=?, updated_at=datetime('now') WHERE id=?`).run(
+        name, category || 'Custom', icon || 'fas fa-cube', description || '', compose,
+        req.user.username, req.params.id
+      );
+    } else if (isBuiltin) {
+      // Create override for built-in
+      db.prepare(`INSERT INTO custom_templates (id, name, category, icon, description, compose, is_builtin_override, created_by, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`).run(
+        req.params.id, name, category || 'Custom', icon || 'fas fa-cube', description || '', compose,
+        req.user.username, req.user.username
+      );
+    } else {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'template_update', targetType: 'template', targetId: req.params.id, ip: getClientIp(req) });
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Reset built-in template to original
+router.post('/:id/reset', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const isBuiltin = !!TEMPLATES.find(t => t.id === req.params.id);
+    if (!isBuiltin) return res.status(400).json({ error: 'Only built-in templates can be reset' });
+
+    const db = getDb();
+    db.prepare('DELETE FROM custom_templates WHERE id = ? AND is_builtin_override = 1').run(req.params.id);
+
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'template_reset', targetType: 'template', targetId: req.params.id, ip: getClientIp(req) });
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Delete custom template (cannot delete built-in)
+router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const isBuiltin = !!TEMPLATES.find(t => t.id === req.params.id);
+    if (isBuiltin) return res.status(400).json({ error: 'Cannot delete built-in templates. Use PUT to override or POST /reset to restore.' });
+
+    const db = getDb();
+    const result = db.prepare('DELETE FROM custom_templates WHERE id = ? AND is_builtin_override = 0').run(req.params.id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Custom template not found' });
+
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'template_delete', targetType: 'template', targetId: req.params.id, ip: getClientIp(req) });
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Deploy a template (writes temp compose file, runs docker compose up)
+router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writeable, requireFeature('create'), async (req, res) => {
+  try {
+    const t = findTemplate(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Template not found' });
+
+    const stackName = req.body.name || t.id;
+    // Validate stack name: only alphanumeric, dash, underscore
+    if (!/^[a-zA-Z0-9_-]+$/.test(stackName)) {
+      return res.status(400).json({ error: 'Stack name must contain only letters, numbers, dashes, underscores' });
+    }
+
+    // Replace service name in compose YAML
+    let compose = t.compose;
+    // Replace first service name with custom name
+    compose = compose.replace(/^(services:\n  )\S+:/m, `$1${stackName}:`);
+
+    // Write temp compose file
+    const tmpDir = path.join(os.tmpdir(), `dd-template-${stackName}-${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const composeFile = path.join(tmpDir, 'docker-compose.yml');
+    fs.writeFileSync(composeFile, compose, 'utf8');
+
+    // Run docker compose up
+    const output = execFileSync('docker', ['compose', '-f', composeFile, '-p', stackName, 'up', '-d'], {
+      timeout: 120000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Cleanup temp file
+    try { fs.unlinkSync(composeFile); fs.rmdirSync(tmpDir); } catch {}
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'template_deploy', targetType: 'template', targetId: t.id,
+      details: { template: t.name, stackName }, ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, stackName, output });
+  } catch (err) {
+    res.status(500).json({ error: err.stderr || err.message });
+  }
 });
 
 module.exports = router;

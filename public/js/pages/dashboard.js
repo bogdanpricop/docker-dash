@@ -15,7 +15,8 @@ const DashboardPage = {
           <h2><i class="fas fa-chart-pie"></i> ${i18n.t('pages.dashboard.title')}</h2>
           <div class="page-subtitle">${i18n.t('pages.dashboard.subtitle')}</div>
         </div>
-        <div class="page-actions">
+        <div class="page-actions" style="align-items:center">
+          <a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" class="text-muted text-xs" style="margin-right:8px" title="Docker Dash on GitHub"><i class="fab fa-github"></i></a>
           <span class="ws-status" id="ws-indicator">
             <i class="fas fa-circle"></i> <span>---</span>
           </span>
@@ -58,6 +59,13 @@ const DashboardPage = {
             <div class="stat-value" id="stat-volumes">---</div>
             <div class="stat-label">${i18n.t('pages.dashboard.volumes')}</div>
           </div>
+        </div>
+      </div>
+
+      <!-- Host Info -->
+      <div class="card" id="host-info-card" style="margin-bottom:16px">
+        <div class="card-body" style="padding:10px 16px">
+          <div id="host-info-bar" class="host-info-bar">${i18n.t('common.loading')}</div>
         </div>
       </div>
 
@@ -143,11 +151,12 @@ const DashboardPage = {
 
   async _load() {
     try {
-      const [containers, images, volumes, overview] = await Promise.all([
+      const [containers, images, volumes, overview, sysInfo] = await Promise.all([
         Api.getContainers(true),
         Api.getImages(),
         Api.getVolumes(),
         Api.getStatsOverview().catch(() => null),
+        Api.getSystemInfo().catch(() => null),
       ]);
 
       // Backend returns lowercase keys: state, not State
@@ -165,6 +174,7 @@ const DashboardPage = {
       this._renderCpuChart(overview);
       this._renderMemoryChart(overview);
       this._renderEvents();
+      this._renderHostInfo(sysInfo);
 
       // Update "last updated" indicator
       const updEl = document.getElementById('dash-last-updated');
@@ -315,6 +325,28 @@ const DashboardPage = {
         },
       },
     });
+  },
+
+  _renderHostInfo(info) {
+    const el = document.getElementById('host-info-bar');
+    if (!el || !info) return;
+    const uptime = info.uptime ? Utils.formatDuration(info.uptime) : '—';
+    const mem = info.memTotal ? Utils.formatBytes(info.memTotal) : '—';
+    el.innerHTML = `
+      <span class="host-info-item"><i class="fas fa-server"></i> ${Utils.escapeHtml(info.hostname || '—')}</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item"><i class="fas fa-microchip"></i> ${info.cpus || '—'} CPUs</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item"><i class="fas fa-memory"></i> ${mem} RAM</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item"><i class="fab fa-docker"></i> ${Utils.escapeHtml(info.dockerVersion || '—')}</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item"><i class="fas fa-hdd"></i> ${Utils.escapeHtml(info.storageDriver || '—')}</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item"><i class="fas fa-clock"></i> ${i18n.t('pages.dashboard.uptime')}: ${uptime}</span>
+      <span class="host-info-sep">|</span>
+      <span class="host-info-item text-muted"><i class="fas fa-linux"></i> ${Utils.escapeHtml(info.os || '—')}</span>
+    `;
   },
 
   async _renderEvents() {

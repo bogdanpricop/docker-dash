@@ -61,7 +61,8 @@ const AboutPage = {
             <tr><td>${i18n.t('pages.about.version')}</td><td><strong>v${Utils.escapeHtml(this._version)}</strong></td></tr>
             <tr><td>${i18n.t('pages.about.license')}</td><td>MIT</td></tr>
             <tr><td>${i18n.t('pages.about.tech')}</td><td>Node.js, Express, SQLite, Vanilla JS</td></tr>
-            <tr><td>${i18n.t('pages.about.repo')}</td><td><span class="text-muted">${i18n.t('pages.about.repoPlaceholder')}</span></td></tr>
+            <tr><td>${i18n.t('pages.about.repo')}</td><td><a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" style="color:var(--accent)"><i class="fab fa-github" style="margin-right:4px"></i>bogdanpricop/docker-dash</a></td></tr>
+            <tr><td>Author</td><td>Bogdan Pricop — <a href="mailto:bogdan.pricop@gmail.com" style="color:var(--accent)">bogdan.pricop@gmail.com</a></td></tr>
           </table>
         </div>
       </div>
