@@ -808,6 +808,23 @@ const App = {
         if (this._currentPage?.destroy) this._currentPage.destroy();
         this._route();
       }
+
+      // ? — Show keyboard shortcuts help
+      if (e.key === '?') {
+        this._showShortcutsHelp();
+      }
+
+      // g then d/c/i/s — vim-style navigation
+      if (e.key === 'g' && !this._gPressed) {
+        this._gPressed = true;
+        setTimeout(() => { this._gPressed = false; }, 500);
+        return;
+      }
+      if (this._gPressed) {
+        this._gPressed = false;
+        const nav = { d: '#/', c: '#/containers', i: '#/images', s: '#/system', n: '#/networks', a: '#/alerts', h: '#/hosts', g: '#/git-stacks', p: '#/insights' };
+        if (nav[e.key]) { location.hash = nav[e.key]; return; }
+      }
     });
   },
 
@@ -837,6 +854,46 @@ const App = {
       { icon: 'fa-sign-out-alt', label: 'Logout', action: () => this._logout(), section: 'action' },
     ];
     return cmds;
+  },
+
+  _showShortcutsHelp() {
+    const shortcuts = [
+      { keys: 'Ctrl+K', desc: 'Command palette — search and navigate anywhere' },
+      { keys: '?', desc: 'This shortcuts help' },
+      { keys: 'R', desc: 'Refresh current page' },
+      { keys: 'g d', desc: 'Go to Dashboard' },
+      { keys: 'g c', desc: 'Go to Containers' },
+      { keys: 'g i', desc: 'Go to Images' },
+      { keys: 'g n', desc: 'Go to Networks' },
+      { keys: 'g s', desc: 'Go to System' },
+      { keys: 'g a', desc: 'Go to Alerts' },
+      { keys: 'g h', desc: 'Go to Hosts' },
+      { keys: 'g g', desc: 'Go to Git Stacks' },
+      { keys: 'g p', desc: 'Go to Insights' },
+      { keys: 'Esc', desc: 'Close modal / dialog' },
+    ];
+
+    const html = `
+      <div class="modal-header">
+        <h3 style="margin:0"><i class="fas fa-keyboard" style="margin-right:8px;color:var(--accent)"></i>Keyboard Shortcuts</h3>
+        <button class="modal-close-btn" id="shortcuts-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <table class="data-table" style="margin:0">
+          <thead><tr><th style="text-align:left;width:120px">Shortcut</th><th style="text-align:left">Action</th></tr></thead>
+          <tbody>
+            ${shortcuts.map(s => `<tr><td><kbd style="background:var(--surface3);padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:12px">${s.keys}</kbd></td><td>${s.desc}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="text-muted text-sm" style="margin-top:12px">Shortcuts work when not typing in an input field.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="shortcuts-ok">Got it</button>
+      </div>
+    `;
+    Modal.open(html, { width: '480px' });
+    Modal._content.querySelector('#shortcuts-x')?.addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#shortcuts-ok')?.addEventListener('click', () => Modal.close());
   },
 
   _toggleCommandPalette() {
