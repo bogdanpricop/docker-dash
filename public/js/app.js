@@ -326,6 +326,13 @@ const App = {
       const span = item.querySelector('span');
       if (span && page) span.textContent = i18n.t('nav.' + page);
     });
+    // Sidebar section labels
+    const sectionLabels = document.querySelectorAll('.nav-section-label span');
+    const sectionKeys = ['sectionResources', 'sectionOperations', 'sectionAdmin'];
+    sectionLabels.forEach((span, i) => {
+      if (sectionKeys[i]) span.textContent = i18n.t('nav.' + sectionKeys[i]);
+    });
+
     // Notification dropdown
     const notifHeader = document.querySelector('.notif-dropdown-header > span');
     if (notifHeader) notifHeader.textContent = i18n.t('notifications.title');
