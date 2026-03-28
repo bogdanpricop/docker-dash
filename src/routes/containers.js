@@ -868,4 +868,201 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Dependency Analysis ──────────────────────────────
+
+router.get('/:id/dependencies', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+    const envVars = inspect.Config.Env || [];
+
+    // Get all running containers to match hostnames
+    const allContainers = await docker.listContainers({ all: true });
+    const containerNames = allContainers.map(c => ({
+      id: c.Id.substring(0, 12),
+      name: (c.Names?.[0] || '').replace(/^\//, ''),
+      image: c.Image,
+      state: c.State,
+    }));
+    const nameSet = new Set(containerNames.map(c => c.name.toLowerCase()));
+
+    // Parse env vars for references to other containers
+    const urlPattern = /(?:\/\/|@)([a-z0-9][\w.-]*?)(?::\d+|\/)/gi;
+    const hostPattern = /^([A-Z_]*(?:HOST|SERVER|ADDR|ENDPOINT|URL|URI))\s*=\s*(.+)$/i;
+    const dependencies = [];
+    const seen = new Set();
+
+    for (const env of envVars) {
+      const eq = env.indexOf('=');
+      if (eq <= 0) continue;
+      const key = env.substring(0, eq);
+      const value = env.substring(eq + 1);
+
+      // Method 1: Find hostnames in URLs (postgres://db:5432, redis://cache:6379)
+      let match;
+      urlPattern.lastIndex = 0;
+      while ((match = urlPattern.exec(value)) !== null) {
+        const hostname = match[1].toLowerCase();
+        if (nameSet.has(hostname) && hostname !== name.toLowerCase() && !seen.has(hostname)) {
+          seen.add(hostname);
+          const target = containerNames.find(c => c.name.toLowerCase() === hostname);
+          dependencies.push({
+            type: 'url',
+            envVar: key,
+            hostname,
+            container: target,
+            description: `${key} connects to container "${target.name}" via URL`,
+          });
+        }
+      }
+
+      // Method 2: Check if value directly matches a container name
+      const cleanVal = value.replace(/:\d+$/, '').trim().toLowerCase();
+      if (nameSet.has(cleanVal) && cleanVal !== name.toLowerCase() && !seen.has(cleanVal)) {
+        seen.add(cleanVal);
+        const target = containerNames.find(c => c.name.toLowerCase() === cleanVal);
+        dependencies.push({
+          type: 'hostname',
+          envVar: key,
+          hostname: cleanVal,
+          container: target,
+          description: `${key} references container "${target.name}"`,
+        });
+      }
+    }
+
+    // Method 3: Check Docker links (legacy)
+    const links = inspect.HostConfig?.Links || [];
+    for (const link of links) {
+      const parts = link.split(':');
+      const linkedName = (parts[0] || '').replace(/^\//, '');
+      if (linkedName && !seen.has(linkedName.toLowerCase())) {
+        seen.add(linkedName.toLowerCase());
+        const target = containerNames.find(c => c.name.toLowerCase() === linkedName.toLowerCase());
+        dependencies.push({
+          type: 'link',
+          envVar: null,
+          hostname: linkedName,
+          container: target || { name: linkedName, state: 'unknown' },
+          description: `Docker link to "${linkedName}"`,
+        });
+      }
+    }
+
+    // Method 4: Check same compose stack
+    const stack = inspect.Config.Labels?.['com.docker.compose.project'];
+    const stackContainers = stack
+      ? containerNames.filter(c => {
+          const cl = allContainers.find(ac => ac.Id.startsWith(c.id));
+          return cl?.Labels?.['com.docker.compose.project'] === stack && c.name !== name;
+        })
+      : [];
+
+    res.json({
+      container: name,
+      image: inspect.Config.Image,
+      stack: stack || null,
+      dependencies,
+      stackMembers: stackContainers,
+      networks: Object.keys(inspect.NetworkSettings?.Networks || {}),
+      hasDependencies: dependencies.length > 0 || stackContainers.length > 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Deploy with Dependencies ─────────────────────────
+
+router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const { destHostId } = req.body;
+    if (destHostId === undefined) return res.status(400).json({ error: 'destHostId required' });
+
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+
+    // Get dependencies
+    const depsRes = await new Promise((resolve, reject) => {
+      const http = require('http');
+      const r = http.request({
+        hostname: 'localhost', port: require('../config').app.port,
+        path: `/api/containers/${req.params.id}/dependencies?hostId=${req.hostId || 0}`,
+        headers: { 'Authorization': req.headers.authorization, 'Cookie': req.headers.cookie },
+      }, (resp) => {
+        let body = '';
+        resp.on('data', d => body += d);
+        resp.on('end', () => resolve(JSON.parse(body)));
+      });
+      r.on('error', reject);
+      r.end();
+    });
+
+    // Collect containers to migrate: dependencies + main container
+    const migrationService = require('../services/migration');
+    const results = [];
+
+    // 1. Migrate dependencies first
+    const depContainers = (depsRes.dependencies || [])
+      .filter(d => d.container?.id)
+      .map(d => d.container);
+
+    // Add stack members if in a compose stack
+    const allToMigrate = [...depContainers];
+    for (const sm of (depsRes.stackMembers || [])) {
+      if (!allToMigrate.find(c => c.id === sm.id)) {
+        allToMigrate.push(sm);
+      }
+    }
+
+    for (const dep of allToMigrate) {
+      try {
+        const result = await migrationService.migrateContainer({
+          containerId: dep.id,
+          sourceHostId: req.hostId || 0,
+          destHostId,
+          zeroDowntime: true,
+        });
+        results.push({ container: dep.name, ...result });
+      } catch (err) {
+        results.push({ container: dep.name, ok: false, error: err.message });
+      }
+    }
+
+    // 2. Migrate main container last
+    try {
+      const result = await migrationService.migrateContainer({
+        containerId: req.params.id,
+        sourceHostId: req.hostId || 0,
+        destHostId,
+        zeroDowntime: true,
+      });
+      results.push({ container: name, main: true, ...result });
+    } catch (err) {
+      results.push({ container: name, main: true, ok: false, error: err.message });
+    }
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'container_deploy_with_deps', targetType: 'container', targetId: name,
+      details: JSON.stringify({ destHostId, total: results.length, ok: results.filter(r => r.ok).length }),
+      ip: getClientIp(req),
+    });
+
+    res.json({
+      ok: results.every(r => r.ok),
+      total: results.length,
+      succeeded: results.filter(r => r.ok).length,
+      failed: results.filter(r => !r.ok).length,
+      results,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

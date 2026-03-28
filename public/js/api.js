@@ -161,6 +161,8 @@ const Api = {
   safeUpdateContainer(id) { return this.post(`/containers/${id}/safe-update`); },
   diagnoseContainer(id) { return this.get(`/containers/${id}/diagnose`); },
   smartRestart(id) { return this.post(`/containers/${id}/smart-restart`); },
+  getContainerDeps(id) { return this.get(`/containers/${id}/dependencies`); },
+  deployWithDeps(id, destHostId) { return this.post(`/containers/${id}/deploy-with-deps`, { destHostId }); },
 
   // ─── Maintenance Windows ──────────────────────────
   getMaintenanceWindows() { return this.get('/maintenance'); },

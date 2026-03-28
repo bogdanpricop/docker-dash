@@ -1458,6 +1458,86 @@ const ContainersPage = {
       Utils.copyToClipboard(text);
       Toast.success('Environment variables copied!');
     });
+
+    // Load and show dependencies
+    this._loadDependencies(el);
+  },
+
+  async _loadDependencies(el) {
+    try {
+      const deps = await Api.getContainerDeps(this._detailId);
+      if (!deps.hasDependencies) return;
+
+      const depsHtml = document.createElement('div');
+      depsHtml.style.marginTop = '20px';
+      depsHtml.innerHTML = `
+        <div class="card" style="border-left:3px solid var(--accent)">
+          <div class="card-header">
+            <h3><i class="fas fa-project-diagram" style="margin-right:8px;color:var(--accent)"></i>Detected Dependencies</h3>
+            <button class="btn btn-sm btn-primary" id="deploy-with-deps"><i class="fas fa-rocket"></i> Deploy All to Host</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            ${deps.dependencies.length > 0 ? `
+            <table class="data-table">
+              <thead><tr><th style="text-align:left">Service</th><th>Detected Via</th><th>Env Variable</th><th>State</th></tr></thead>
+              <tbody>${deps.dependencies.map(d => `
+                <tr style="cursor:pointer" onclick="location.hash='#/containers/${d.container?.id || ''}'">
+                  <td style="text-align:left"><i class="fas fa-cube" style="margin-right:6px;color:var(--accent)"></i><strong>${Utils.escapeHtml(d.container?.name || d.hostname)}</strong>
+                    <div class="text-sm text-muted">${Utils.escapeHtml(d.container?.image || '')}</div></td>
+                  <td><span class="badge badge-info" style="font-size:10px">${d.type}</span></td>
+                  <td class="mono text-sm">${Utils.escapeHtml(d.envVar || '')}</td>
+                  <td><span class="badge ${d.container?.state === 'running' ? 'badge-running' : 'badge-stopped'}">${d.container?.state || 'unknown'}</span></td>
+                </tr>
+              `).join('')}</tbody>
+            </table>` : ''}
+
+            ${deps.stackMembers.length > 0 ? `
+            <div style="padding:12px 16px;border-top:1px solid var(--border)">
+              <div class="text-sm text-muted" style="margin-bottom:8px"><i class="fas fa-layer-group" style="margin-right:4px"></i>Same stack: <strong>${Utils.escapeHtml(deps.stack)}</strong></div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px">
+                ${deps.stackMembers.map(s => `<span class="badge ${s.state === 'running' ? 'badge-running' : 'badge-stopped'}" style="cursor:pointer;font-size:11px" onclick="location.hash='#/containers/${s.id}'">${Utils.escapeHtml(s.name)}</span>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+        </div>
+      `;
+      el.appendChild(depsHtml);
+
+      // Deploy with dependencies button
+      depsHtml.querySelector('#deploy-with-deps')?.addEventListener('click', async () => {
+        try {
+          const hosts = await Api.getHosts();
+          const hostOptions = (hosts || []).filter(h => h.is_active).map(h =>
+            '<option value="' + h.id + '">' + Utils.escapeHtml(h.name) + '</option>'
+          ).join('');
+
+          if (!hostOptions) {
+            Toast.warning('No remote hosts configured. Add hosts in Settings > Hosts first.');
+            return;
+          }
+
+          const result = await Modal.form(
+            '<div class="form-group"><label>Destination Host</label><select id="dep-host" class="form-control">' + hostOptions + '</select></div>' +
+            '<p class="text-sm text-muted">' + (deps.dependencies.length + deps.stackMembers.length) + ' dependent container(s) will be migrated first, then this container. Zero-downtime migration.</p>',
+            {
+              title: 'Deploy with Dependencies',
+              width: '450px',
+              onSubmit: (content) => ({ destHostId: parseInt(content.querySelector('#dep-host').value) }),
+            }
+          );
+
+          if (result) {
+            Toast.info('Migrating container + dependencies...');
+            const migResult = await Api.deployWithDeps(this._detailId, result.destHostId);
+            if (migResult.ok) {
+              Toast.success('All ' + migResult.succeeded + ' containers migrated successfully!');
+            } else {
+              Toast.warning(migResult.succeeded + '/' + migResult.total + ' migrated. ' + migResult.failed + ' failed.');
+            }
+          }
+        } catch (err) { Toast.error(err.message); }
+      });
+    } catch { /* dependency detection is best-effort */ }
   },
 
   _renderInspectTab(el) {
