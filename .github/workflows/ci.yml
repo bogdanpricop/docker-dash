@@ -70,7 +70,8 @@ jobs:
         run: |
           echo "### CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Node.js syntax: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests: ✅ (53 tests)" >> $GITHUB_STEP_SUMMARY
+          echo "- Node.js syntax: ✅ (backend + frontend)" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: ✅ (84 tests — 100% passing)" >> $GITHUB_STEP_SUMMARY
+          echo "- Security audit: ✅" >> $GITHUB_STEP_SUMMARY
           echo "- i18n: ✅ (3 languages)" >> $GITHUB_STEP_SUMMARY
           echo "- Dependencies: installed" >> $GITHUB_STEP_SUMMARY

@@ -1,6 +1,18 @@
 # Contributing to Docker Dash
 
-Thanks for your interest in contributing! This guide will help you get up and running.
+Thanks for your interest in contributing! Docker Dash is actively maintained and welcomes contributions of all sizes — from typo fixes to new features.
+
+**No build step required.** Edit any `.js` or `.css` file, refresh the browser, and see your changes immediately. This is the simplest Docker management dashboard to contribute to.
+
+### Good First Issues
+
+Looking for where to start? These are great first contributions:
+
+- **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag
+- **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML)
+- **Improve i18n coverage** — some pages still have hardcoded English strings (grep for strings not using `i18n.t()`)
+- **Add tests** — the test suite covers core security paths; more coverage is always welcome
+- **Documentation** — improve README, add examples, write tutorials
 
 ## Getting Started
 

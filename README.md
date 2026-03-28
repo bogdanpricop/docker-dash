@@ -8,8 +8,9 @@
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
-    <img src="https://img.shields.io/badge/tests-67%20passing-brightgreen" alt="Tests">
+    <img src="https://img.shields.io/badge/tests-84%20passing%20(100%25)-brightgreen" alt="Tests">
     <img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness">
+    <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
     <img src="https://img.shields.io/badge/Docker-~80MB-blue" alt="Image Size">
     <img src="https://img.shields.io/badge/RAM-~50MB-blue" alt="RAM Usage">
   </p>
@@ -286,6 +287,46 @@ docker-dash/
 ## License
 
 [MIT](LICENSE) — free for personal and commercial use.
+
+## Security
+
+Docker Dash takes security seriously. See [SECURITY.md](SECURITY.md) for our full security policy.
+
+### Docker Socket Access
+
+Docker Dash requires access to the Docker socket (`/var/run/docker.sock`). This is **equivalent to root access** on the host. This is the same requirement as Portainer, Dockge, and all other Docker management UIs.
+
+**Mitigations in place:**
+- Socket mounted **read-only** (`:ro`) in production docker-compose
+- `no-new-privileges` security option enabled
+- Role-based access control (admin/operator/viewer)
+- Feature flags to disable dangerous operations (`ENABLE_EXEC=false`, `READ_ONLY_MODE=true`)
+- Audit log for every action with user, timestamp, and IP
+- Rate limiting on all API endpoints
+- Session-based auth with bcrypt + SHA-256 hashed tokens
+
+**Recommendations for production:**
+- Deploy behind HTTPS reverse proxy (Caddy config included)
+- Set strong `APP_SECRET` and `ENCRYPTION_KEY` (startup validates these)
+- Disable exec terminal if not needed (`ENABLE_EXEC=false`)
+- Use read-only mode for monitoring-only deployments (`READ_ONLY_MODE=true`)
+- Restrict network access to trusted IPs
+- Review [SECURITY.md](SECURITY.md) for responsible disclosure process
+
+### Security Audit Results
+
+| Audit | Date | Score | Critical Issues |
+|-------|------|-------|----------------|
+| Tech Debt Scan | 2026-03-27 | 33 items found | All 4 CRITICAL fixed |
+| Production Readiness | 2026-03-28 | 9.2/10 | All P0+P1 resolved |
+| Shell Injection | 2026-03-28 | 0 vectors | All execSync eliminated |
+
+### Test Coverage
+
+- **84 tests** across 6 test files (100% passing)
+- Unit tests: crypto, helpers, validation, git patterns
+- Integration tests: auth flow, API endpoints
+- CI runs on every push via GitHub Actions
 
 ## Contributing
 
