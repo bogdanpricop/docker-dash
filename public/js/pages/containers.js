@@ -11,6 +11,7 @@ const ContainersPage = {
   _logStream: null,
   _statsChart: null,
   _metaMap: {},
+  _selectedIds: new Set(),
 
   async render(container, params = {}) {
     if (params.id) {
@@ -64,12 +65,16 @@ const ContainersPage = {
           <button class="btn btn-sm btn-secondary" id="container-templates">
             <i class="fas fa-th"></i> ${i18n.t('pages.containers.templates')}
           </button>
+          <button class="btn btn-sm btn-secondary" id="container-groups" title="Manage groups">
+            <i class="fas fa-folder"></i> Groups
+          </button>
           <button class="prune-help-btn" id="containers-help" title="${i18n.t('pages.containers.helpTooltip')}">?</button>
           <button class="btn btn-sm btn-secondary" id="containers-refresh">
             <i class="fas fa-sync-alt"></i>
           </button>
         </div>
       </div>
+      <div id="container-groups-section"></div>
       <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
     `;
 
@@ -79,6 +84,7 @@ const ContainersPage = {
     container.querySelector('#containers-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#container-create').addEventListener('click', () => this._createContainerDialog());
     container.querySelector('#container-templates').addEventListener('click', () => this._templatesDialog());
+    container.querySelector('#container-groups').addEventListener('click', () => this._manageGroupsDialog());
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
 
     // Layout toggles
@@ -120,13 +126,16 @@ const ContainersPage = {
   async _loadList() {
     try {
       const showAll = document.getElementById('show-all')?.checked ?? true;
-      const [containers, metaMap] = await Promise.all([
+      const [containers, metaMap, userGroups] = await Promise.all([
         Api.getContainers(showAll),
         Api.getAllContainerMeta().catch(() => ({})),
+        Api.getGroups().catch(() => []),
       ]);
       this._containers = containers;
       this._metaMap = metaMap || {};
+      this._userGroups = userGroups || [];
       this._renderGrouped();
+      this._renderUserGroups();
     } catch (err) {
       Toast.error(i18n.t('pages.containers.loadFailed', { message: err.message }));
     }
@@ -253,6 +262,7 @@ const ContainersPage = {
             <table class="data-table containers-table">
               <thead>
                 <tr>
+                  <th style="width:32px"><input type="checkbox" class="bulk-checkbox bulk-select-all" data-stack="${Utils.escapeHtml(stack)}" title="Select all"></th>
                   <th>${i18n.t('pages.containers.service')}</th>
                   <th>${i18n.t('pages.containers.image')}</th>
                   <th>${i18n.t('pages.containers.version')}</th>
@@ -292,8 +302,46 @@ const ContainersPage = {
 
     el.querySelectorAll('tr[data-cid]').forEach(tr => {
       tr.addEventListener('click', (e) => {
-        if (e.target.closest('.action-btn, button')) return;
+        if (e.target.closest('.action-btn, button, .bulk-checkbox')) return;
         App.navigate(`/containers/${tr.dataset.cid}`);
+      });
+    });
+
+    // Bulk selection checkboxes
+    el.querySelectorAll('.bulk-row-check').forEach(cb => {
+      cb.checked = this._selectedIds.has(cb.dataset.cid);
+      if (cb.checked) cb.closest('tr')?.classList.add('row-selected');
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (cb.checked) {
+          this._selectedIds.add(cb.dataset.cid);
+          cb.closest('tr')?.classList.add('row-selected');
+        } else {
+          this._selectedIds.delete(cb.dataset.cid);
+          cb.closest('tr')?.classList.remove('row-selected');
+        }
+        this._updateBulkBar();
+      });
+    });
+
+    // Select-all per stack
+    el.querySelectorAll('.bulk-select-all').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const stack = cb.dataset.stack;
+        const tbody = cb.closest('table')?.querySelector('tbody');
+        if (!tbody) return;
+        tbody.querySelectorAll('.bulk-row-check:not(:disabled)').forEach(rcb => {
+          rcb.checked = cb.checked;
+          if (cb.checked) {
+            this._selectedIds.add(rcb.dataset.cid);
+            rcb.closest('tr')?.classList.add('row-selected');
+          } else {
+            this._selectedIds.delete(rcb.dataset.cid);
+            rcb.closest('tr')?.classList.remove('row-selected');
+          }
+        });
+        this._updateBulkBar();
       });
     });
 
@@ -338,22 +386,72 @@ const ContainersPage = {
         if (action === 'config') {
           try {
             const data = await Api.composeConfig(stackName);
+            const stackDetail = await Api.getStack(stackName);
             Modal.open(`
               <div class="modal-header">
                 <h3><i class="fas fa-file-code" style="color:var(--accent);margin-right:8px"></i> docker-compose.yml — ${Utils.escapeHtml(stackName)}</h3>
                 <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
               </div>
-              <div class="modal-body"><pre class="inspect-json" style="max-height:500px;overflow-y:auto">${Utils.escapeHtml(data.config || 'No compose config found')}</pre></div>
-              <div class="modal-footer">
-                <button class="btn btn-secondary" id="copy-compose"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
-                <button class="btn btn-primary" id="modal-ok">${i18n.t('common.close')}</button>
+              <div class="modal-body">
+                <textarea id="compose-editor" style="width:100%;min-height:400px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:12px;padding:12px;resize:vertical;outline:none;border-radius:var(--radius-sm);tab-size:2">${Utils.escapeHtml(data.config || '')}</textarea>
+                <div id="compose-validation-msg" style="margin-top:8px;display:none" class="text-sm"></div>
               </div>
-            `, { width: '700px' });
+              <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+                <button class="btn btn-secondary" id="copy-compose"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+                <button class="btn btn-secondary" id="validate-compose"><i class="fas fa-check-circle"></i> Validate</button>
+                <button class="btn btn-primary" id="save-compose"><i class="fas fa-save"></i> ${i18n.t('common.save')}</button>
+                <button class="btn btn-accent" id="save-deploy-compose"><i class="fas fa-rocket"></i> Save & Deploy</button>
+                <button class="btn btn-secondary" id="modal-ok">${i18n.t('common.close')}</button>
+              </div>
+            `, { width: '800px' });
             Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
             Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
             Modal._content.querySelector('#copy-compose').addEventListener('click', () => {
-              Utils.copyToClipboard(data.config || '').then(() => Toast.success(i18n.t('common.copied')));
+              const val = Modal._content.querySelector('#compose-editor').value;
+              Utils.copyToClipboard(val).then(() => Toast.success(i18n.t('common.copied')));
             });
+            // Handle Tab key in textarea
+            Modal._content.querySelector('#compose-editor').addEventListener('keydown', (e) => {
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                const ta = e.target;
+                const start = ta.selectionStart;
+                ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(ta.selectionEnd);
+                ta.selectionStart = ta.selectionEnd = start + 2;
+              }
+            });
+            Modal._content.querySelector('#validate-compose').addEventListener('click', async () => {
+              const msgEl = Modal._content.querySelector('#compose-validation-msg');
+              const yamlContent = Modal._content.querySelector('#compose-editor').value;
+              msgEl.style.display = '';
+              msgEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Validating...';
+              try {
+                const result = await Api.validateStackConfig(stackName, { config: yamlContent, workingDir: stackDetail.workingDir });
+                if (result.valid) {
+                  msgEl.innerHTML = '<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Valid YAML</span>';
+                } else {
+                  msgEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(result.error)}</span>`;
+                }
+              } catch (err) {
+                msgEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</span>`;
+              }
+            });
+            const saveCompose = async (deploy = false) => {
+              const yamlContent = Modal._content.querySelector('#compose-editor').value;
+              try {
+                await Api.saveStackConfig(stackName, { config: yamlContent, workingDir: stackDetail.workingDir });
+                Toast.success('Configuration saved');
+                if (deploy) {
+                  Toast.info('Deploying...');
+                  await Api.deployStack(stackName, { workingDir: stackDetail.workingDir });
+                  Toast.success('Stack deployed');
+                  Modal.close();
+                  await this._loadList();
+                }
+              } catch (err) { Toast.error(err.message); }
+            };
+            Modal._content.querySelector('#save-compose').addEventListener('click', () => saveCompose(false));
+            Modal._content.querySelector('#save-deploy-compose').addEventListener('click', () => saveCompose(true));
           } catch (err) { Toast.error(err.message); }
           return;
         }
@@ -374,6 +472,75 @@ const ContainersPage = {
         }
       });
     });
+  },
+
+  _updateBulkBar() {
+    let bar = document.getElementById('bulk-action-bar');
+    if (this._selectedIds.size === 0) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'bulk-action-bar';
+      bar.className = 'bulk-action-bar';
+      document.body.appendChild(bar);
+    }
+    bar.innerHTML = `
+      <span class="bulk-count">${this._selectedIds.size} selected</span>
+      <button class="btn btn-sm btn-primary" data-bulk="start"><i class="fas fa-play"></i> Start</button>
+      <button class="btn btn-sm btn-warning" data-bulk="stop"><i class="fas fa-stop"></i> Stop</button>
+      <button class="btn btn-sm btn-secondary" data-bulk="restart"><i class="fas fa-redo"></i> Restart</button>
+      <button class="btn btn-sm btn-danger" data-bulk="remove"><i class="fas fa-trash"></i> Remove</button>
+      <button class="btn btn-sm btn-secondary" data-bulk="clear"><i class="fas fa-times"></i> Clear</button>
+    `;
+    bar.querySelectorAll('[data-bulk]').forEach(btn => {
+      btn.addEventListener('click', () => this._bulkAction(btn.dataset.bulk));
+    });
+  },
+
+  async _bulkAction(action) {
+    if (action === 'clear') {
+      this._selectedIds.clear();
+      this._updateBulkBar();
+      this._renderGrouped();
+      return;
+    }
+
+    const ids = [...this._selectedIds];
+    if (ids.length === 0) return;
+
+    // Get container names for confirmation
+    const names = ids.map(id => {
+      const c = (this._containers || []).find(c => c.id === id);
+      return c ? (c.name || id.substring(0, 12)) : id.substring(0, 12);
+    });
+
+    const confirmMsg = action === 'remove'
+      ? `Remove ${ids.length} container(s)?\n\n${names.join(', ')}\n\nThis cannot be undone.`
+      : `${action.charAt(0).toUpperCase() + action.slice(1)} ${ids.length} container(s)?`;
+
+    const ok = await Modal.confirm(confirmMsg, {
+      danger: action === 'remove',
+      confirmText: action.charAt(0).toUpperCase() + action.slice(1),
+    });
+    if (!ok) return;
+
+    try {
+      Toast.info(`${action}... ${ids.length} containers`);
+      const result = await Api.bulkContainerAction(ids, action);
+      const failed = (result.results || []).filter(r => !r.ok);
+      if (failed.length > 0) {
+        Toast.warning(`${action}: ${failed.length} failed`);
+      } else {
+        Toast.success(`${action} completed for ${ids.length} containers`);
+      }
+      this._selectedIds.clear();
+      this._updateBulkBar();
+      await this._loadList();
+    } catch (err) {
+      Toast.error(err.message);
+    }
   },
 
   _renderRow(c, isStandalone) {
@@ -407,8 +574,13 @@ const ContainersPage = {
     if (meta.category) metaLine += ` <span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span>`;
     const colorStyle = meta.color ? `border-left: 3px solid ${meta.color}; padding-left: 8px;` : '';
 
+    const isSelf = c.isSelf || false;
+
     return `
       <tr data-cid="${c.id}" class="clickable ${running ? '' : 'row-dim'}">
+        <td onclick="event.stopPropagation()">
+          <input type="checkbox" class="bulk-checkbox bulk-row-check" data-cid="${c.id}" ${isSelf ? 'disabled title="Cannot modify Docker Dash"' : ''}>
+        </td>
         <td style="${colorStyle}">
           <span class="mono">${Utils.escapeHtml(isStandalone ? (c.name || service) : service)}</span>
           ${metaLine ? `<div class="container-meta-line">${metaLine}</div>` :
@@ -458,10 +630,13 @@ const ContainersPage = {
         <button class="tab" data-tab="logs">${i18n.t('pages.containers.tabs.logs')}</button>
         <button class="tab" data-tab="terminal">${i18n.t('pages.containers.tabs.terminal')}</button>
         <button class="tab" data-tab="stats">${i18n.t('pages.containers.tabs.stats')}</button>
+        <button class="tab" data-tab="pipeline"><i class="fas fa-rocket" style="margin-right:4px"></i>Pipeline</button>
         <button class="tab" data-tab="env"><i class="fas fa-key" style="margin-right:4px"></i>Env</button>
         <button class="tab" data-tab="mounts"><i class="fas fa-hdd" style="margin-right:4px"></i>Mounts</button>
         <button class="tab" data-tab="networking"><i class="fas fa-network-wired" style="margin-right:4px"></i>Network</button>
         <button class="tab" data-tab="labels"><i class="fas fa-tags" style="margin-right:4px"></i>Labels</button>
+        <button class="tab" data-tab="files"><i class="fas fa-folder-open" style="margin-right:4px"></i>Files</button>
+        <button class="tab" data-tab="changes"><i class="fas fa-exchange-alt" style="margin-right:4px"></i>Changes</button>
         <button class="tab" data-tab="inspect">${i18n.t('pages.containers.tabs.inspect')}</button>
       </div>
       <div class="tab-content" id="detail-content">${i18n.t('common.loading')}</div>
@@ -528,7 +703,9 @@ const ContainersPage = {
       <button class="btn btn-sm btn-secondary" data-act="healthlogs"><i class="fas fa-heartbeat"></i> ${i18n.t('pages.containers.healthCheckLogs')}</button>
       <button class="btn btn-sm btn-accent" data-act="update"><i class="fas fa-arrow-circle-up"></i> Update</button>
       <button class="btn btn-sm btn-accent" data-act="safe-update" title="Scan for vulnerabilities before updating"><i class="fas fa-shield-alt"></i> Safe Update</button>
+      <button class="btn btn-sm btn-secondary" data-act="rollback" title="Rollback to previous image"><i class="fas fa-history"></i> Rollback</button>
       <button class="btn btn-sm btn-secondary" data-act="diagnose" title="Run troubleshooting wizard"><i class="fas fa-stethoscope"></i> Diagnose</button>
+      <button class="btn btn-sm btn-accent" data-act="doctor" title="AI Container Doctor — deep analysis with log pattern matching"><i class="fas fa-user-md"></i> Doctor</button>
       <button class="btn btn-sm btn-secondary" data-act="rename"><i class="fas fa-pencil-alt"></i> Rename</button>
       <button class="btn btn-sm btn-secondary" data-act="clone"><i class="fas fa-clone"></i> Clone</button>
       <button class="btn btn-sm btn-secondary" data-act="export"><i class="fas fa-file-export"></i> Export</button>
@@ -542,7 +719,9 @@ const ContainersPage = {
         if (btn.dataset.act === 'rename') return this._renameContainer(this._detailId, info.name);
         if (btn.dataset.act === 'safe-update') return this._safeUpdateContainer(this._detailId, info.name, info.image);
         if (btn.dataset.act === 'diagnose') return this._diagnoseContainer(this._detailId, info.name);
+        if (btn.dataset.act === 'doctor') return this._doctorContainer(this._detailId, info.name);
         if (btn.dataset.act === 'clone') return this._cloneContainer(this._detailId, info.name, info.image);
+        if (btn.dataset.act === 'rollback') return this._rollbackDialog(this._detailId, info.name);
         if (btn.dataset.act === 'meta') return this._editMetaDialog(info.name);
         if (btn.dataset.act === 'resources') return this._editResources();
         if (btn.dataset.act === 'healthlogs') return this._viewHealthLogs(this._detailId, info.name || '');
@@ -555,34 +734,89 @@ const ContainersPage = {
     const info = this._detailData;
     const resources = info.resources || {};
     const currentMemMB = resources.memory ? Math.round(resources.memory / (1024 * 1024)) : 0;
-    const currentCpuCores = resources.cpuQuota ? (resources.cpuQuota / (resources.cpuPeriod || 100000)).toFixed(2) : '';
+    const currentCpuCores = resources.cpuQuota ? parseFloat((resources.cpuQuota / (resources.cpuPeriod || 100000)).toFixed(2)) : 0;
 
-    // Try to get current usage for recommendation
-    let usageInfo = '';
+    // Try to get current usage
+    let usedMemMB = 0, cpuPct = 0;
     try {
       const stats = await Api.getContainerStats(this._detailId);
-      const usedMemMB = Math.round((stats.memUsage || 0) / (1024 * 1024));
-      const cpuPct = (stats.cpuPercent || 0).toFixed(1);
-      usageInfo = `<div class="tip-box" style="margin-bottom:12px"><i class="fas fa-lightbulb"></i> ${i18n.t('pages.containers.currentUsage')}: CPU ${cpuPct}%, Memory ${usedMemMB} MB${currentMemMB > 0 && usedMemMB < currentMemMB * 0.3 ? ` — ${i18n.t('pages.containers.recommendation')}: ${i18n.t('pages.containers.memoryLimitMB')} ${Math.max(128, usedMemMB * 2)} MB` : ''}</div>`;
+      usedMemMB = Math.round((stats.memUsage || 0) / (1024 * 1024));
+      cpuPct = parseFloat((stats.cpuPercent || 0).toFixed(1));
     } catch { /* ignore */ }
 
+    const memPresets = [256, 512, 1024, 2048];
+    const cpuPresets = [0.5, 1, 2, 4];
+
+    const usageBarMem = currentMemMB > 0 ? Math.min(100, Math.round((usedMemMB / currentMemMB) * 100)) : 0;
+    const usageBarCpu = currentCpuCores > 0 ? Math.min(100, Math.round((cpuPct / (currentCpuCores * 100)) * 100)) : 0;
+
     const result = await Modal.form(`
-      ${usageInfo}
-      <div class="form-group">
-        <label>${i18n.t('pages.containers.memoryLimitMB')} (0 = ${i18n.t('pages.containers.unlimited')})</label>
-        <input type="number" id="res-mem" class="form-control" value="${currentMemMB}" min="0" step="64">
+      <div style="display:flex;gap:16px;margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:var(--radius-sm)">
+        <div style="flex:1;text-align:center">
+          <div class="text-sm text-muted">CPU Usage</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${cpuPct}%</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div class="text-sm text-muted">Memory Usage</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${usedMemMB} MB</div>
+        </div>
       </div>
+
       <div class="form-group">
-        <label>${i18n.t('pages.containers.cpuLimitCores')} (0 = ${i18n.t('pages.containers.unlimited')})</label>
-        <input type="number" id="res-cpu" class="form-control" value="${currentCpuCores}" min="0" step="0.25">
+        <label>${i18n.t('pages.containers.memoryLimitMB')} <span id="res-mem-val" style="font-weight:700;color:var(--accent)">${currentMemMB || 'Unlimited'}</span> MB</label>
+        ${currentMemMB > 0 ? `<div class="resource-usage-bar" style="margin-bottom:8px">
+          <div class="resource-usage-fill" style="width:${usageBarMem}%;background:${usageBarMem > 80 ? 'var(--red)' : usageBarMem > 60 ? 'var(--yellow)' : 'var(--green)'}"></div>
+          <span class="resource-usage-label">${usedMemMB} / ${currentMemMB} MB (${usageBarMem}%)</span>
+        </div>` : ''}
+        <input type="range" id="res-mem" class="resource-slider" value="${currentMemMB}" min="0" max="8192" step="64">
+        <div class="resource-presets">
+          ${memPresets.map(v => `<button type="button" class="btn btn-sm btn-secondary res-preset" data-target="res-mem" data-value="${v}">${v >= 1024 ? (v / 1024) + 'GB' : v + 'MB'}</button>`).join('')}
+          <button type="button" class="btn btn-sm btn-secondary res-preset" data-target="res-mem" data-value="0">Unlimited</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>${i18n.t('pages.containers.cpuLimitCores')} <span id="res-cpu-val" style="font-weight:700;color:var(--accent)">${currentCpuCores || 'Unlimited'}</span> cores</label>
+        ${currentCpuCores > 0 ? `<div class="resource-usage-bar" style="margin-bottom:8px">
+          <div class="resource-usage-fill" style="width:${usageBarCpu}%;background:${usageBarCpu > 80 ? 'var(--red)' : usageBarCpu > 60 ? 'var(--yellow)' : 'var(--green)'}"></div>
+          <span class="resource-usage-label">${cpuPct}% / ${(currentCpuCores * 100).toFixed(0)}% (${usageBarCpu}%)</span>
+        </div>` : ''}
+        <input type="range" id="res-cpu" class="resource-slider" value="${currentCpuCores * 100}" min="0" max="800" step="25">
+        <div class="resource-presets">
+          ${cpuPresets.map(v => `<button type="button" class="btn btn-sm btn-secondary res-preset" data-target="res-cpu" data-value="${v * 100}">${v}</button>`).join('')}
+          <button type="button" class="btn btn-sm btn-secondary res-preset" data-target="res-cpu" data-value="0">Unlimited</button>
+        </div>
       </div>
     `, {
       title: i18n.t('pages.containers.editResources'),
-      width: '460px',
+      width: '520px',
       onSubmit: (content) => {
         const mem = parseInt(content.querySelector('#res-mem').value) || 0;
-        const cpu = parseFloat(content.querySelector('#res-cpu').value) || 0;
-        return { memory: mem * 1024 * 1024, cpuQuota: Math.round(cpu * 100000), cpuPeriod: 100000 };
+        const cpuVal = parseInt(content.querySelector('#res-cpu').value) || 0;
+        return { memory: mem * 1024 * 1024, cpuQuota: cpuVal * 1000, cpuPeriod: 100000 };
+      },
+      onMount: (content) => {
+        const memSlider = content.querySelector('#res-mem');
+        const cpuSlider = content.querySelector('#res-cpu');
+        const memVal = content.querySelector('#res-mem-val');
+        const cpuVal = content.querySelector('#res-cpu-val');
+
+        memSlider.addEventListener('input', () => {
+          const v = parseInt(memSlider.value);
+          memVal.textContent = v === 0 ? 'Unlimited' : (v >= 1024 ? (v / 1024).toFixed(1) + ' GB' : v + '');
+        });
+        cpuSlider.addEventListener('input', () => {
+          const v = parseInt(cpuSlider.value);
+          cpuVal.textContent = v === 0 ? 'Unlimited' : (v / 100).toFixed(2);
+        });
+
+        content.querySelectorAll('.res-preset').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const target = content.querySelector('#' + btn.dataset.target);
+            target.value = btn.dataset.value;
+            target.dispatchEvent(new Event('input'));
+          });
+        });
       }
     });
 
@@ -726,6 +960,84 @@ const ContainersPage = {
       `;
       Modal.open(html, { width: '700px' });
     } catch (err) { Toast.error(err.message); }
+  },
+
+  async _doctorContainer(id, name) {
+    Toast.info('Running Container Doctor analysis...');
+    try {
+      const result = await Api.get(`/containers/${id}/doctor`);
+      const overallColor = result.overall === 'healthy' ? 'var(--green)' : result.overall === 'warning' ? 'var(--yellow)' : 'var(--red)';
+
+      const checksHtml = result.steps.map(s => `
+        <div class="doctor-card severity-${s.status === 'error' ? 'critical' : s.status}">
+          <div class="doctor-card-header">
+            <span class="severity-badge ${s.status === 'error' ? 'critical' : s.status}">${s.status.toUpperCase()}</span>
+            <span class="doctor-card-title">${Utils.escapeHtml(s.title)}</span>
+          </div>
+          <div class="doctor-card-detail">${Utils.escapeHtml(s.detail)}</div>
+          ${s.suggestion ? `<div class="doctor-card-suggestion">${Utils.escapeHtml(s.suggestion)}</div>` : ''}
+        </div>
+      `).join('');
+
+      let patternsHtml = '';
+      if (result.logAnalysis?.patterns?.length > 0) {
+        patternsHtml = `
+          <h4 style="margin:16px 0 8px;color:var(--text-bright)"><i class="fas fa-search" style="margin-right:6px;color:var(--accent)"></i>Log Pattern Analysis</h4>
+          <div class="doctor-patterns">
+            ${result.logAnalysis.patterns.map(p => `
+              <div class="doctor-pattern">
+                <span class="severity-badge ${p.severity}" style="font-size:9px">${p.severity.toUpperCase()}</span>
+                <span class="doctor-pattern-category">${Utils.escapeHtml(p.category)}</span>
+                <div style="flex:1">
+                  <strong>${Utils.escapeHtml(p.title)}</strong>
+                  <div class="text-sm text-muted" style="margin-top:2px">${Utils.escapeHtml(p.explanation)}</div>
+                  <div class="text-sm" style="margin-top:4px;color:var(--text-dim)"><strong>Fixes:</strong> ${p.fixes.map(f => Utils.escapeHtml(f)).join(' | ')}</div>
+                  <div class="mono text-xs" style="margin-top:4px;color:var(--text-dim);word-break:break-all">${Utils.escapeHtml(p.matchedLine)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>`;
+      } else {
+        patternsHtml = '<p class="text-muted" style="margin:12px 0"><i class="fas fa-check-circle" style="color:var(--green);margin-right:6px"></i>No known error patterns detected in recent logs.</p>';
+      }
+
+      const html = `
+        <div class="modal-header">
+          <h3><i class="fas fa-user-md" style="margin-right:8px;color:var(--accent)"></i>Container Doctor: ${Utils.escapeHtml(result.container)}</h3>
+          <button class="modal-close-btn" id="doctor-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:var(--radius)">
+            <div style="font-size:32px;color:${overallColor}">
+              <i class="fas fa-${result.overall === 'healthy' ? 'heart' : result.overall === 'warning' ? 'exclamation-triangle' : 'times-circle'}"></i>
+            </div>
+            <div>
+              <div style="font-size:18px;font-weight:700;color:${overallColor}">${result.overall.toUpperCase()}</div>
+              <div class="text-sm text-muted">${result.errors} error(s), ${result.warnings} warning(s), ${result.logAnalysis?.patterns?.length || 0} log pattern(s)</div>
+            </div>
+          </div>
+          <h4 style="margin:0 0 8px;color:var(--text-bright)"><i class="fas fa-clipboard-check" style="margin-right:6px;color:var(--accent)"></i>Diagnostic Checks</h4>
+          <div class="doctor-report">${checksHtml}</div>
+          ${patternsHtml}
+          ${result.logText ? `
+            <details style="margin-top:16px">
+              <summary style="cursor:pointer;color:var(--accent);font-weight:600"><i class="fas fa-file-alt" style="margin-right:6px"></i>Recent Logs (last 30 lines)</summary>
+              <pre class="inspect-json" style="margin-top:8px;max-height:200px;overflow:auto;font-size:11px">${Utils.escapeHtml(result.logText)}</pre>
+            </details>` : ''}
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <button class="btn btn-sm btn-accent" id="doctor-copy-ai" style="margin-right:8px"><i class="fas fa-robot"></i> Copy AI Prompt</button>
+            <span class="text-sm text-muted">Copy a structured prompt for ChatGPT/Claude with full container context</span>
+          </div>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" id="doctor-ok">Close</button></div>
+      `;
+      Modal.open(html, { width: '750px' });
+      Modal._content.querySelector('#doctor-close')?.addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#doctor-ok')?.addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#doctor-copy-ai')?.addEventListener('click', () => {
+        Utils.copyToClipboard(result.aiPrompt || '').then(() => Toast.success('AI prompt copied to clipboard'));
+      });
+    } catch (err) { Toast.error('Doctor analysis failed: ' + err.message); }
   },
 
   async _exportDialog() {
@@ -936,7 +1248,161 @@ const ContainersPage = {
     else if (tab === 'mounts') this._renderMountsTab(content);
     else if (tab === 'networking') this._renderNetworkTab(content);
     else if (tab === 'labels') this._renderLabelsTab(content);
+    else if (tab === 'files') this._renderFilesTab(content);
+    else if (tab === 'changes') this._renderChangesTab(content);
+    else if (tab === 'pipeline') this._renderPipelineTab(content);
     else if (tab === 'inspect') this._renderInspectTab(content);
+  },
+
+  async _renderPipelineTab(el) {
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-rocket" style="color:var(--accent);margin-right:8px"></i>Deployment Pipeline</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm btn-primary" id="pipeline-start-safe"><i class="fas fa-shield-alt"></i> Safe Deploy</button>
+            <button class="btn btn-sm btn-secondary" id="pipeline-start-quick"><i class="fas fa-bolt"></i> Quick Deploy</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="text-sm text-muted" style="margin-bottom:16px">
+            Deploy updates through a staged pipeline: Pull &rarr; Scan &rarr; Swap &rarr; Verify &rarr; Notify.
+            Safe deploy runs all stages. Quick deploy skips scan and verify.
+          </p>
+          <div id="pipeline-active" class="hidden">
+            <div class="pipeline-stages" id="pipeline-stages"></div>
+            <div id="pipeline-result" style="margin-top:12px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card mt-md">
+        <div class="card-header"><h3><i class="fas fa-history" style="color:var(--text-dim);margin-right:8px"></i>Pipeline History</h3></div>
+        <div class="card-body" id="pipeline-history"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+      </div>
+    `;
+
+    const startPipeline = async (skipScan, skipVerify) => {
+      const ok = await Modal.confirm(
+        `Start ${skipScan ? 'quick' : 'safe'} deployment pipeline for "${this._detailData?.name || 'this container'}"?`,
+        { confirmText: skipScan ? 'Quick Deploy' : 'Safe Deploy', danger: false }
+      );
+      if (!ok) return;
+
+      const activeEl = document.getElementById('pipeline-active');
+      const stagesEl = document.getElementById('pipeline-stages');
+      const resultEl = document.getElementById('pipeline-result');
+      if (activeEl) activeEl.classList.remove('hidden');
+
+      // Show pending stages
+      const stageNames = [
+        { name: 'pull', label: 'Pull', icon: 'fa-download' },
+        { name: 'scan', label: 'Scan', icon: 'fa-shield-alt' },
+        { name: 'swap', label: 'Swap', icon: 'fa-exchange-alt' },
+        { name: 'verify', label: 'Verify', icon: 'fa-heartbeat' },
+        { name: 'notify', label: 'Notify', icon: 'fa-bell' },
+      ];
+
+      if (stagesEl) {
+        stagesEl.innerHTML = stageNames.map((s, i) => {
+          const status = (skipScan && s.name === 'scan') || (skipVerify && s.name === 'verify') ? 'skipped' : 'running';
+          return `
+            ${i > 0 ? '<span class="pipeline-arrow"><i class="fas fa-chevron-right"></i></span>' : ''}
+            <div class="pipeline-stage ${i === 0 ? 'running' : status === 'skipped' ? 'skipped' : 'pending'}">
+              <div class="pipeline-stage-icon"><i class="fas ${s.icon}"></i></div>
+              <div class="pipeline-stage-label">${s.label}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      if (resultEl) resultEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Pipeline running...</div>';
+
+      try {
+        const result = await Api.post(`/containers/${this._detailId}/pipeline/start`, { skipScan, skipVerify });
+
+        // Update stages with result
+        if (stagesEl && result.stages) {
+          stagesEl.innerHTML = result.stages.map((s, i) => `
+            ${i > 0 ? `<span class="pipeline-arrow ${s.status === 'success' ? 'done' : s.status === 'running' ? 'active' : ''}"><i class="fas fa-chevron-right"></i></span>` : ''}
+            <div class="pipeline-stage ${s.status}">
+              <div class="pipeline-stage-icon"><i class="fas ${s.icon || 'fa-circle'}"></i></div>
+              <div class="pipeline-stage-label">${s.label || s.name}</div>
+              ${s.detail ? `<div class="pipeline-stage-duration text-xs">${Utils.escapeHtml(s.detail).substring(0, 30)}</div>` : ''}
+            </div>
+          `).join('');
+        }
+
+        if (resultEl) {
+          const isOk = result.status === 'success';
+          resultEl.innerHTML = `
+            <div style="padding:12px;background:${isOk ? 'var(--green-dim)' : 'var(--red-dim)'};border-radius:var(--radius);display:flex;align-items:center;gap:8px">
+              <i class="fas fa-${isOk ? 'check-circle' : 'times-circle'}" style="color:${isOk ? 'var(--green)' : 'var(--red)'};font-size:20px"></i>
+              <div>
+                <strong style="color:${isOk ? 'var(--green)' : 'var(--red)'}">${isOk ? 'Pipeline Completed' : 'Pipeline Failed'}</strong>
+                ${result.error ? `<div class="text-sm text-muted">${Utils.escapeHtml(result.error)}</div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+
+        // Refresh history
+        this._loadPipelineHistory();
+        // Reload container detail
+        if (result.status === 'success') {
+          setTimeout(() => this._loadDetail(), 1000);
+        }
+      } catch (err) {
+        if (resultEl) resultEl.innerHTML = `<div class="text-sm" style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+      }
+    };
+
+    el.querySelector('#pipeline-start-safe')?.addEventListener('click', () => startPipeline(false, false));
+    el.querySelector('#pipeline-start-quick')?.addEventListener('click', () => startPipeline(true, true));
+
+    this._loadPipelineHistory();
+  },
+
+  async _loadPipelineHistory() {
+    const historyEl = document.getElementById('pipeline-history');
+    if (!historyEl) return;
+
+    try {
+      const data = await Api.get(`/containers/${this._detailId}/pipeline/history`);
+      const pipelines = data.pipelines || [];
+
+      if (pipelines.length === 0) {
+        historyEl.innerHTML = '<div class="text-muted text-sm" style="padding:12px">No previous pipeline deployments.</div>';
+        return;
+      }
+
+      historyEl.innerHTML = `
+        <table class="data-table pipeline-history-table">
+          <thead><tr><th>Date</th><th>Status</th><th>Stages</th><th>By</th><th>Duration</th></tr></thead>
+          <tbody>
+            ${pipelines.map(p => {
+              const started = new Date(p.started_at);
+              const completed = p.completed_at ? new Date(p.completed_at) : null;
+              const duration = completed ? Math.round((completed - started) / 1000) : '-';
+              return `
+                <tr>
+                  <td class="text-sm">${Utils.formatDate(p.started_at)}</td>
+                  <td><span class="badge badge-${p.status === 'success' ? 'running' : p.status === 'failed' ? 'stopped' : 'pending'}">${p.status}</span></td>
+                  <td>
+                    <div class="pipeline-mini-stages">
+                      ${(p.stages || []).map(s => `<div class="pipeline-mini-dot ${s.status}" title="${s.label || s.name}: ${s.status}${s.detail ? ' — ' + s.detail : ''}"></div>`).join('')}
+                    </div>
+                  </td>
+                  <td class="text-sm text-muted">${Utils.escapeHtml(p.started_by || '-')}</td>
+                  <td class="mono text-sm">${typeof duration === 'number' ? duration + 's' : duration}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      historyEl.innerHTML = `<div class="text-sm text-muted">${Utils.escapeHtml(err.message)}</div>`;
+    }
   },
 
   async _renderInfoTab(el) {
@@ -2155,6 +2621,491 @@ const ContainersPage = {
     Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
   },
 
+  // ─── Files Tab ──────────────────────────────────
+  _filesPath: '/',
+
+  async _renderFilesTab(el) {
+    this._filesPath = '/';
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-folder-open" style="margin-right:8px"></i>File Browser</h3>
+        </div>
+        <div class="card-body">
+          <div id="files-breadcrumb" class="files-breadcrumb" style="margin-bottom:12px"></div>
+          <div id="files-list"></div>
+        </div>
+      </div>
+      <div id="file-preview-panel" style="display:none" class="card mt-md">
+        <div class="card-header">
+          <h3 id="file-preview-name"><i class="fas fa-file" style="margin-right:8px"></i>File Preview</h3>
+          <button class="btn btn-sm btn-secondary" id="file-preview-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="card-body"><pre id="file-preview-content" class="inspect-json" style="max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all"></pre></div>
+      </div>
+    `;
+    el.querySelector('#file-preview-close')?.addEventListener('click', () => {
+      el.querySelector('#file-preview-panel').style.display = 'none';
+    });
+    await this._loadFiles(el);
+  },
+
+  async _loadFiles(el) {
+    const listEl = el.querySelector('#files-list');
+    const breadcrumbEl = el.querySelector('#files-breadcrumb');
+    if (!listEl) return;
+
+    listEl.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+
+    // Render breadcrumb
+    const parts = this._filesPath.split('/').filter(Boolean);
+    let breadcrumb = `<a href="#" class="files-crumb" data-path="/">/</a>`;
+    let cumPath = '';
+    for (const p of parts) {
+      cumPath += '/' + p;
+      breadcrumb += ` <span class="text-muted">/</span> <a href="#" class="files-crumb" data-path="${Utils.escapeHtml(cumPath)}">${Utils.escapeHtml(p)}</a>`;
+    }
+    breadcrumbEl.innerHTML = breadcrumb;
+    breadcrumbEl.querySelectorAll('.files-crumb').forEach(a => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        this._filesPath = a.dataset.path;
+        this._loadFiles(el);
+      });
+    });
+
+    try {
+      const data = await Api.getContainerFiles(this._detailId, this._filesPath);
+      const entries = data.entries || [];
+
+      if (entries.length === 0) {
+        listEl.innerHTML = '<div class="text-muted text-sm">Empty directory</div>';
+        return;
+      }
+
+      // Sort: directories first, then files
+      entries.sort((a, b) => {
+        if (a.type === 'directory' && b.type !== 'directory') return -1;
+        if (a.type !== 'directory' && b.type === 'directory') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      listEl.innerHTML = `
+        ${this._filesPath !== '/' ? `<div class="file-entry file-dir" data-path="${Utils.escapeHtml(this._filesPath.replace(/\/[^/]+\/?$/, '') || '/')}">
+          <span class="file-icon"><i class="fas fa-level-up-alt"></i></span>
+          <span class="file-name">..</span>
+          <span class="file-size"></span><span class="file-modified"></span><span class="file-actions"></span>
+        </div>` : ''}
+        ${entries.map(e => {
+          const icon = e.type === 'directory' ? 'fa-folder' : e.type === 'symlink' ? 'fa-link' : 'fa-file';
+          const iconColor = e.type === 'directory' ? 'color:var(--accent)' : e.type === 'symlink' ? 'color:var(--purple)' : '';
+          const fullPath = (this._filesPath === '/' ? '/' : this._filesPath + '/') + e.name;
+          return `<div class="file-entry ${e.type === 'directory' ? 'file-dir' : 'file-file'}" data-path="${Utils.escapeHtml(fullPath)}" data-type="${e.type}">
+            <span class="file-icon"><i class="fas ${icon}" style="${iconColor}"></i></span>
+            <span class="file-name">${Utils.escapeHtml(e.name)}</span>
+            <span class="file-size text-muted text-sm">${e.type !== 'directory' ? Utils.formatBytes(e.size) : ''}</span>
+            <span class="file-modified text-muted text-sm">${e.modified || ''}</span>
+            <span class="file-actions">${e.type !== 'directory' ? `<a href="${Api.getFileDownloadUrl(this._detailId, fullPath)}" class="action-btn" title="Download" onclick="event.stopPropagation()"><i class="fas fa-download"></i></a>` : ''}</span>
+          </div>`;
+        }).join('')}
+      `;
+
+      listEl.querySelectorAll('.file-entry').forEach(row => {
+        row.addEventListener('click', async () => {
+          const path = row.dataset.path;
+          const type = row.dataset.type;
+          if (type === 'directory' || row.classList.contains('file-dir')) {
+            this._filesPath = path;
+            this._loadFiles(el);
+          } else {
+            // Preview file
+            try {
+              const panel = el.querySelector('#file-preview-panel');
+              const nameEl = el.querySelector('#file-preview-name');
+              const contentEl = el.querySelector('#file-preview-content');
+              nameEl.innerHTML = `<i class="fas fa-file" style="margin-right:8px"></i>${Utils.escapeHtml(path)}`;
+              contentEl.textContent = 'Loading...';
+              panel.style.display = '';
+              const data = await Api.getFileContent(this._detailId, path);
+              contentEl.textContent = data.content || '(empty)';
+              if (data.truncated) contentEl.textContent += '\n\n--- Truncated (file too large) ---';
+            } catch (err) {
+              el.querySelector('#file-preview-content').textContent = 'Error: ' + err.message;
+            }
+          }
+        });
+      });
+    } catch (err) {
+      listEl.innerHTML = `<div class="text-muted">Error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  // ─── Changes (Diff) Tab ────────────────────────
+  async _renderChangesTab(el) {
+    el.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading container changes...</div>';
+    try {
+      const data = await Api.getContainerDiff(this._detailId);
+      const { changes, summary } = data;
+
+      if (!changes || changes.length === 0) {
+        el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-msg"><i class="fas fa-check-circle" style="color:var(--green)"></i><p>No filesystem changes detected compared to image.</p></div></div></div>`;
+        return;
+      }
+
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-exchange-alt" style="margin-right:8px"></i>Filesystem Changes</h3>
+            <span class="text-sm text-muted">${summary.total} total</span>
+          </div>
+          <div class="card-body">
+            <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+              <span class="badge" style="background:var(--yellow-dim);color:var(--yellow)"><i class="fas fa-pen"></i> ${summary.modified} Modified</span>
+              <span class="badge" style="background:var(--green-dim);color:var(--green)"><i class="fas fa-plus"></i> ${summary.added} Added</span>
+              <span class="badge" style="background:var(--red-dim);color:var(--red)"><i class="fas fa-minus"></i> ${summary.deleted} Deleted</span>
+            </div>
+            <div class="diff-filter" style="margin-bottom:12px">
+              <button class="btn btn-sm btn-secondary diff-filter-btn active" data-filter="all">All</button>
+              <button class="btn btn-sm btn-secondary diff-filter-btn" data-filter="0">Modified</button>
+              <button class="btn btn-sm btn-secondary diff-filter-btn" data-filter="1">Added</button>
+              <button class="btn btn-sm btn-secondary diff-filter-btn" data-filter="2">Deleted</button>
+            </div>
+            <div id="diff-entries" style="max-height:500px;overflow-y:auto">
+              ${changes.map(c => {
+                const color = c.kind === 0 ? 'var(--yellow)' : c.kind === 1 ? 'var(--green)' : 'var(--red)';
+                const icon = c.kind === 0 ? 'fa-pen' : c.kind === 1 ? 'fa-plus' : 'fa-minus';
+                return `<div class="diff-entry" data-kind="${c.kind}" style="padding:4px 8px;border-left:3px solid ${color};margin-bottom:2px;background:var(--surface2);border-radius:0 var(--radius-xs) var(--radius-xs) 0">
+                  <i class="fas ${icon}" style="color:${color};width:16px;margin-right:8px;font-size:11px"></i>
+                  <span class="mono text-sm">${Utils.escapeHtml(c.path)}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      el.querySelectorAll('.diff-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          el.querySelectorAll('.diff-filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const filter = btn.dataset.filter;
+          el.querySelectorAll('.diff-entry').forEach(e => {
+            e.style.display = (filter === 'all' || e.dataset.kind === filter) ? '' : 'none';
+          });
+        });
+      });
+    } catch (err) {
+      el.innerHTML = `<div class="card"><div class="card-body"><div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div></div></div>`;
+    }
+  },
+
+  // ─── Rollback Dialog ───────────────────────────
+  async _rollbackDialog(containerId, containerName) {
+    try {
+      const data = await Api.getContainerHistory(containerId);
+      const entries = data.entries || [];
+
+      if (entries.length === 0) {
+        Toast.info('No version history available for this container. History is recorded when updates are performed.');
+        return;
+      }
+
+      const rows = entries.map(e => {
+        const date = e.deployed_at ? Utils.formatDate(e.deployed_at) : '—';
+        const shortId = (e.image_id || '').substring(0, 19);
+        const isCurrent = e.image_id === data.currentImageId;
+        return `<tr${isCurrent ? ' style="opacity:0.5"' : ''}>
+          <td class="mono text-sm">${Utils.escapeHtml(e.image_name)}</td>
+          <td class="mono text-sm" title="${Utils.escapeHtml(e.image_id)}">${shortId}</td>
+          <td class="text-sm">${date}</td>
+          <td><span class="badge badge-info">${e.action}</span></td>
+          <td class="text-sm">${e.deployed_by || '—'}</td>
+          <td>${isCurrent
+            ? '<span class="badge badge-running">Current</span>'
+            : e.imageAvailable
+              ? `<button class="btn btn-sm btn-warning rollback-btn" data-history-id="${e.id}"><i class="fas fa-undo"></i> Rollback</button>`
+              : '<span class="text-muted text-sm">Image pruned</span>'
+          }</td>
+        </tr>`;
+      }).join('');
+
+      Modal.open(`
+        <div class="modal-header">
+          <h3><i class="fas fa-history" style="color:var(--accent);margin-right:8px"></i>Version History — ${Utils.escapeHtml(containerName)}</h3>
+          <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="text-sm text-muted" style="margin-bottom:12px">Current image: <span class="mono">${Utils.escapeHtml(data.currentImage)}</span></div>
+          <table class="data-table compact">
+            <thead><tr><th>Image</th><th>ID</th><th>Date</th><th>Action</th><th>By</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-ok">Close</button>
+        </div>
+      `, { width: '800px' });
+
+      Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+
+      Modal._content.querySelectorAll('.rollback-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const historyId = btn.dataset.historyId;
+          const ok = await Modal.confirm(`Rollback "${containerName}" to a previous image version? The container will be recreated.`, { danger: true, confirmText: 'Rollback' });
+          if (!ok) return;
+          try {
+            Toast.info('Rolling back...');
+            const result = await Api.rollbackContainer(containerId, parseInt(historyId));
+            Toast.success(`Rolled back to ${result.rolledBackTo || 'previous version'}`);
+            Modal.close();
+            await this._loadDetail();
+          } catch (err) {
+            Toast.error('Rollback failed: ' + err.message);
+          }
+        });
+      });
+    } catch (err) {
+      Toast.error('Failed to load history: ' + err.message);
+    }
+  },
+
+  // ─── Container Groups ───────────────────────────
+  _userGroups: [],
+
+  async _renderUserGroups() {
+    const section = document.getElementById('container-groups-section');
+    if (!section || !this._userGroups.length) {
+      if (section) section.innerHTML = '';
+      return;
+    }
+
+    const containers = this._containers || [];
+    const containerMap = {};
+    containers.forEach(c => { containerMap[c.id] = c; });
+
+    const groupsHtml = [];
+    for (const g of this._userGroups) {
+      let groupDetail;
+      try { groupDetail = await Api.getGroup(g.id); } catch { continue; }
+      const members = (groupDetail.members || []).map(cid => containerMap[cid]).filter(Boolean);
+      const running = members.filter(c => c.state === 'running').length;
+      const collapsed = this._collapsed[`group_${g.id}`] || false;
+
+      groupsHtml.push(`
+        <div class="stack-group ${collapsed ? 'collapsed' : ''}" style="margin-bottom:8px">
+          <div class="stack-header" data-stack="group_${g.id}" style="border-left:3px solid ${g.color || 'var(--accent)'}">
+            <div class="stack-header-left">
+              <i class="fas fa-chevron-down stack-chevron"></i>
+              <i class="${g.icon || 'fas fa-folder'}" style="color:${g.color || 'var(--accent)'}"></i>
+              <span class="stack-name">${Utils.escapeHtml(g.name)}</span>
+              <span class="stack-count">${members.length}</span>
+            </div>
+            <div class="stack-header-right">
+              <span class="stack-status ${running === members.length && members.length > 0 ? 'all-running' : ''}">
+                <i class="fas fa-circle"></i> ${running}/${members.length}
+              </span>
+              <div class="stack-actions" onclick="event.stopPropagation()">
+                <button class="action-btn group-edit-btn" data-group-id="${g.id}" title="Edit group"><i class="fas fa-edit"></i></button>
+                <button class="action-btn group-add-btn" data-group-id="${g.id}" title="Add containers"><i class="fas fa-plus"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="stack-body">
+            ${members.length === 0 ? '<div class="text-muted text-sm" style="padding:12px 16px">No containers in this group. Click + to add.</div>' : `
+            <table class="data-table containers-table">
+              <thead><tr><th>Container</th><th>Image</th><th>State</th><th style="width:60px"></th></tr></thead>
+              <tbody>
+                ${members.map(c => `
+                  <tr style="cursor:pointer" onclick="App.navigate('/containers/${c.id}')">
+                    <td>${Utils.escapeHtml(c.name)}</td>
+                    <td class="text-muted text-sm" style="font-family:var(--mono)">${Utils.escapeHtml(c.image)}</td>
+                    <td><span class="badge ${c.state === 'running' ? 'badge-success' : 'badge-danger'}">${c.state}</span></td>
+                    <td onclick="event.stopPropagation()">
+                      <button class="action-btn group-remove-member" data-group-id="${g.id}" data-container-id="${c.id}" title="Remove from group"><i class="fas fa-times"></i></button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`}
+          </div>
+        </div>
+      `);
+    }
+
+    section.innerHTML = groupsHtml.join('');
+
+    section.querySelectorAll('.stack-header').forEach(header => {
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('.action-btn, button')) return;
+        const stack = header.dataset.stack;
+        this._collapsed[stack] = !this._collapsed[stack];
+        header.closest('.stack-group').classList.toggle('collapsed');
+      });
+    });
+
+    section.querySelectorAll('.group-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._editGroupDialog(parseInt(btn.dataset.groupId)));
+    });
+
+    section.querySelectorAll('.group-add-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._addToGroupDialog(parseInt(btn.dataset.groupId)));
+    });
+
+    section.querySelectorAll('.group-remove-member').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await Api.removeContainerFromGroup(parseInt(btn.dataset.groupId), btn.dataset.containerId);
+          Toast.success('Container removed from group');
+          this._loadList();
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
+  },
+
+  async _manageGroupsDialog() {
+    const groups = await Api.getGroups().catch(() => []);
+
+    const html = `
+      <div class="modal-header">
+        <h3 style="margin:0"><i class="fas fa-folder" style="margin-right:8px;color:var(--accent)"></i>Container Groups</h3>
+        <button class="modal-close-btn" id="grp-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:12px">
+          <div style="display:flex;gap:8px">
+            <input type="text" id="grp-new-name" class="form-control" placeholder="New group name" style="flex:1">
+            <input type="color" id="grp-new-color" value="#388bfd" style="width:40px;height:36px;padding:2px;border:1px solid var(--border);border-radius:var(--radius)">
+            <button class="btn btn-primary btn-sm" id="grp-create"><i class="fas fa-plus"></i> Create</button>
+          </div>
+        </div>
+        <div id="grp-list">
+          ${groups.length === 0 ? '<div class="text-muted text-sm">No groups created yet.</div>' : groups.map(g => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px;background:var(--surface2);border-radius:var(--radius);margin-bottom:6px;border-left:3px solid ${g.color || 'var(--accent)'}">
+              <i class="${g.icon || 'fas fa-folder'}" style="color:${g.color || 'var(--accent)'}"></i>
+              <span style="flex:1">${Utils.escapeHtml(g.name)}</span>
+              <span class="text-muted text-sm">${g.member_count || 0} containers</span>
+              <button class="action-btn grp-del" data-id="${g.id}" title="Delete"><i class="fas fa-trash"></i></button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    Modal.open(html, { width: '480px' });
+    Modal._content.querySelector('#grp-close').addEventListener('click', () => Modal.close());
+
+    Modal._content.querySelector('#grp-create').addEventListener('click', async () => {
+      const name = Modal._content.querySelector('#grp-new-name').value.trim();
+      const color = Modal._content.querySelector('#grp-new-color').value;
+      if (!name) return;
+      try {
+        await Api.createGroup({ name, color });
+        Toast.success('Group created');
+        Modal.close();
+        this._loadList();
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    Modal._content.querySelectorAll('.grp-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ok = await Modal.confirm('Delete this group?', { danger: true });
+        if (!ok) return;
+        try {
+          await Api.deleteGroup(parseInt(btn.dataset.id));
+          Toast.success('Group deleted');
+          this._loadList();
+          this._manageGroupsDialog();
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
+  },
+
+  async _editGroupDialog(groupId) {
+    const group = await Api.getGroup(groupId).catch(() => null);
+    if (!group) return Toast.error('Group not found');
+
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="grp-edit-name" class="form-control" value="${Utils.escapeHtml(group.name)}">
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <input type="color" id="grp-edit-color" value="${group.color || '#388bfd'}" style="width:60px;height:36px;padding:2px;border:1px solid var(--border);border-radius:var(--radius)">
+      </div>
+    `, {
+      title: 'Edit Group',
+      width: '400px',
+      onSubmit: (el) => ({
+        name: el.querySelector('#grp-edit-name').value.trim(),
+        color: el.querySelector('#grp-edit-color').value,
+      }),
+    });
+
+    if (result && result.name) {
+      try {
+        await Api.updateGroup(groupId, result);
+        Toast.success('Group updated');
+        this._loadList();
+      } catch (err) { Toast.error(err.message); }
+    }
+  },
+
+  async _addToGroupDialog(groupId) {
+    const containers = this._containers || [];
+    const group = await Api.getGroup(groupId).catch(() => null);
+    if (!group) return;
+    const existingMembers = new Set(group.members || []);
+    const available = containers.filter(c => !existingMembers.has(c.id));
+
+    const html = `
+      <div class="modal-header">
+        <h3 style="margin:0"><i class="fas fa-plus" style="margin-right:8px;color:var(--accent)"></i>Add to "${Utils.escapeHtml(group.name)}"</h3>
+        <button class="modal-close-btn" id="atg-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="text" id="atg-search" class="form-control" placeholder="Search containers..." style="margin-bottom:12px">
+        <div id="atg-list" style="max-height:400px;overflow-y:auto">
+          ${available.length === 0 ? '<div class="text-muted text-sm">All containers are already in this group.</div>' :
+            available.map(c => `
+              <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:var(--radius)" class="atg-item">
+                <input type="checkbox" class="atg-cb" value="${c.id}">
+                <span class="badge ${c.state === 'running' ? 'badge-success' : 'badge-danger'}" style="font-size:10px">${c.state}</span>
+                <span>${Utils.escapeHtml(c.name)}</span>
+              </label>
+            `).join('')}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="atg-cancel">${i18n.t('common.cancel')}</button>
+        <button class="btn btn-primary" id="atg-add"><i class="fas fa-plus"></i> Add selected</button>
+      </div>
+    `;
+
+    Modal.open(html, { width: '480px' });
+    Modal._content.querySelector('#atg-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#atg-cancel').addEventListener('click', () => Modal.close());
+
+    Modal._content.querySelector('#atg-search').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      Modal._content.querySelectorAll('.atg-item').forEach(item => {
+        item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    Modal._content.querySelector('#atg-add').addEventListener('click', async () => {
+      const selected = [...Modal._content.querySelectorAll('.atg-cb:checked')].map(cb => cb.value);
+      if (selected.length === 0) return;
+      try {
+        await Api.addContainersToGroup(groupId, selected);
+        Toast.success(`${selected.length} container(s) added to group`);
+        Modal.close();
+        this._loadList();
+      } catch (err) { Toast.error(err.message); }
+    });
+  },
+
   destroy() {
     clearInterval(this._refreshTimer);
     if (this._logStream) this._logStream();
@@ -2165,6 +3116,10 @@ const ContainersPage = {
     if (this._term) { this._term.dispose(); this._term = null; }
     this._fitAddon = null;
     if (this._detailId) WS.unsubscribe(`logs:${this._detailId}`);
+    // Clean up bulk action bar
+    this._selectedIds.clear();
+    const bar = document.getElementById('bulk-action-bar');
+    if (bar) bar.remove();
   },
 };
 

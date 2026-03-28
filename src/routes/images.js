@@ -39,6 +39,59 @@ router.post('/pull', requireAuth, requireRole('admin', 'operator'), writeable, a
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Image Pull with SSE Streaming ─────────────────────────
+router.post('/pull-stream', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  const { image } = req.body;
+  if (!image) return res.status(400).json({ error: 'Image name required' });
+
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+
+    docker.pull(image, (err, stream) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      docker.modem.followProgress(stream, (err, output) => {
+        // onFinished
+        if (err) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ type: 'done', image })}\n\n`);
+          auditService.log({ userId: req.user.id, username: req.user.username,
+            action: 'image_pull', targetType: 'image', targetId: image, ip: getClientIp(req) });
+        }
+        res.end();
+      }, (event) => {
+        // onProgress — each layer event
+        const data = {
+          type: 'progress',
+          id: event.id || '',
+          status: event.status || '',
+          progress: event.progress || '',
+        };
+        if (event.progressDetail && event.progressDetail.total) {
+          data.current = event.progressDetail.current || 0;
+          data.total = event.progressDetail.total;
+        }
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      });
+    });
+
+    req.on('close', () => {
+      // Client disconnected — stream will be cleaned up by Docker
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     await dockerService.removeImage(req.params.id, { force: req.query.force === 'true' }, req.hostId);

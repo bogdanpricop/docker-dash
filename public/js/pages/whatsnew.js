@@ -10,6 +10,33 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '4.2.0',
+      date: '2026-03-28',
+      title: '20 New Features — Full Platform Upgrade',
+      changes: [
+        { type: 'feature', text: 'Image pull progress — real-time streaming per-layer progress bars via SSE' },
+        { type: 'feature', text: 'Resource limits editor — visual sliders with presets (256MB/512MB/1GB/2GB, 0.5/1/2/4 CPU)' },
+        { type: 'feature', text: 'Bulk container actions — checkboxes + floating action bar for batch start/stop/restart/remove' },
+        { type: 'feature', text: 'Theme & language sync per user — saved server-side, synced across devices' },
+        { type: 'feature', text: 'Container file browser — navigate, view, download files inside running containers' },
+        { type: 'feature', text: 'Docker Compose editor — edit, validate, save & deploy compose configs inline' },
+        { type: 'feature', text: 'Scheduled actions — cron-based automation with presets, history, run-now, enable/disable' },
+        { type: 'feature', text: 'Container diff — see filesystem changes vs base image with color-coded entries' },
+        { type: 'feature', text: 'Container rollback — one-click revert to previous image, with version history' },
+        { type: 'feature', text: 'Notifications center — dedicated page with filters, pagination, bulk actions' },
+        { type: 'feature', text: 'Dashboard customizable — toggle widget visibility, order saved to server' },
+        { type: 'feature', text: 'Stacks page — unified Compose + Git stacks management' },
+        { type: 'feature', text: 'Container groups — user-defined grouping with colors, beyond compose projects' },
+        { type: 'feature', text: 'API Playground — browse and test all API endpoints from the UI with response viewer' },
+        { type: 'feature', text: 'AI Container Doctor — diagnostics + log pattern matching + AI prompt generator' },
+        { type: 'feature', text: 'Cost Optimizer — per-container cost breakdown, idle detection, savings recommendations' },
+        { type: 'feature', text: 'Dependency Map — interactive canvas graph showing container relationships' },
+        { type: 'feature', text: 'Deployment Pipelines — staged pull → scan → swap → verify → notify with history' },
+        { type: 'feature', text: 'Mobile responsive — full UI on phone/tablet with 360px-768px breakpoints' },
+        { type: 'improvement', text: '5 new DB migrations (024-028), 6 new pages, 3 new backend services' },
+      ],
+    },
+    {
       version: '4.1.0',
       date: '2026-03-28',
       title: 'Grype Scanner, Custom Templates, UX Polish',

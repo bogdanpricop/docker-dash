@@ -118,16 +118,110 @@ const ImagesPage = {
       }
     });
 
-    if (result) {
-      Toast.info(i18n.t('pages.images.pulling', { image: result }));
-      try {
-        await Api.pullImage(result);
-        Toast.success(i18n.t('pages.images.pullSuccess', { image: result }));
-        await this._load();
-      } catch (err) {
-        Toast.error(i18n.t('pages.images.pullFailed', { message: err.message }));
+    if (!result) return;
+
+    // Show pull progress modal with SSE streaming
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-download" style="margin-right:8px"></i>Pulling ${Utils.escapeHtml(result)}</h3>
+      </div>
+      <div class="modal-body">
+        <div id="pull-layers" style="max-height:50vh;overflow:auto"></div>
+        <div id="pull-overall" style="margin-top:12px">
+          <div class="text-sm text-muted"><i class="fas fa-spinner fa-spin"></i> Starting pull...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="pull-close" disabled>Close</button>
+      </div>
+    `, { width: '600px', closeable: false });
+
+    const layersEl = document.getElementById('pull-layers');
+    const overallEl = document.getElementById('pull-overall');
+    const closeBtn = document.getElementById('pull-close');
+    const layers = {};
+    let completedLayers = 0;
+    let totalLayers = 0;
+
+    const updateLayerUI = () => {
+      const ids = Object.keys(layers);
+      layersEl.innerHTML = ids.map(id => {
+        const l = layers[id];
+        const pct = (l.total > 0) ? Math.round((l.current / l.total) * 100) : 0;
+        const done = l.status === 'Pull complete' || l.status === 'Already exists' || l.status === 'Download complete';
+        const barColor = done ? 'var(--green)' : 'var(--accent)';
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px">
+          <span class="mono" style="width:80px;flex-shrink:0;color:var(--text-muted)">${Utils.escapeHtml(id.substring(0, 12))}</span>
+          <div style="flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden">
+            <div style="width:${done ? 100 : pct}%;height:100%;background:${barColor};border-radius:3px;transition:width 0.2s"></div>
+          </div>
+          <span style="width:140px;text-align:right;flex-shrink:0;color:${done ? 'var(--green)' : 'var(--text-muted)'}">${Utils.escapeHtml(l.status)}</span>
+        </div>`;
+      }).join('');
+      layersEl.scrollTop = layersEl.scrollHeight;
+
+      completedLayers = ids.filter(id => {
+        const s = layers[id].status;
+        return s === 'Pull complete' || s === 'Already exists';
+      }).length;
+      totalLayers = ids.length;
+      if (totalLayers > 0) {
+        overallEl.innerHTML = `<div class="text-sm text-muted"><i class="fas fa-layer-group" style="margin-right:4px"></i> ${completedLayers}/${totalLayers} layers complete</div>`;
       }
+    };
+
+    try {
+      const hostParam = Api.getHostId() ? `?hostId=${Api.getHostId()}` : '';
+      const response = await fetch(`/api/images/pull-stream${hostParam}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(Api._bearerToken ? { 'Authorization': `Bearer ${Api._bearerToken}` } : {}) },
+        credentials: 'same-origin',
+        body: JSON.stringify({ image: result }),
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'progress' && data.id) {
+              if (!layers[data.id]) layers[data.id] = { status: '', current: 0, total: 0 };
+              layers[data.id].status = data.status;
+              if (data.total) {
+                layers[data.id].current = data.current;
+                layers[data.id].total = data.total;
+              }
+              if (data.status === 'Pull complete' || data.status === 'Already exists') {
+                layers[data.id].current = layers[data.id].total || 1;
+              }
+              updateLayerUI();
+            } else if (data.type === 'done') {
+              overallEl.innerHTML = `<div class="text-sm" style="color:var(--green)"><i class="fas fa-check-circle" style="margin-right:4px"></i> Pull complete!</div>`;
+              Toast.success(i18n.t('pages.images.pullSuccess', { image: result }));
+              this._load();
+            } else if (data.type === 'error') {
+              overallEl.innerHTML = `<div class="text-sm" style="color:var(--red)"><i class="fas fa-times-circle" style="margin-right:4px"></i> ${Utils.escapeHtml(data.message)}</div>`;
+              Toast.error(i18n.t('pages.images.pullFailed', { message: data.message }));
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      overallEl.innerHTML = `<div class="text-sm" style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+      Toast.error(i18n.t('pages.images.pullFailed', { message: err.message }));
     }
+
+    closeBtn.disabled = false;
+    closeBtn.addEventListener('click', () => Modal.close());
   },
 
   async _inspect(id) {

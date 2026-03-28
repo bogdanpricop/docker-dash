@@ -41,6 +41,99 @@ router.get('/_meta', requireAuth, (req, res) => {
   }
 });
 
+// ─── Dependency Graph (all containers) ───────────────
+
+router.get('/dependency-graph', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const allContainers = await docker.listContainers({ all: true });
+    const nodes = [];
+    const edges = [];
+    const clusters = {};
+
+    for (const c of allContainers) {
+      const name = (c.Names?.[0] || '').replace(/^\//, '');
+      const stack = c.Labels?.['com.docker.compose.project'] || null;
+      const networks = Object.keys(c.NetworkSettings?.Networks || {});
+
+      nodes.push({
+        id: c.Id.substring(0, 12),
+        name,
+        image: c.Image,
+        state: c.State,
+        stack,
+        networks,
+      });
+
+      if (stack) {
+        if (!clusters[stack]) clusters[stack] = { id: stack, name: stack, type: 'stack', nodeIds: [] };
+        clusters[stack].nodeIds.push(c.Id.substring(0, 12));
+      }
+    }
+
+    const nameSet = new Map(nodes.map(n => [n.name.toLowerCase(), n]));
+    const urlPattern = /(?:\/\/|@)([a-z0-9][\w.-]*?)(?::\d+|\/)/gi;
+
+    for (const c of allContainers) {
+      const sourceId = c.Id.substring(0, 12);
+      let envVars = [];
+      try {
+        const inspect = await docker.getContainer(c.Id).inspect();
+        envVars = inspect.Config?.Env || [];
+        const links = inspect.HostConfig?.Links || [];
+        for (const link of links) {
+          const parts = link.split(':');
+          const linkedName = (parts[0] || '').replace(/^\//, '').toLowerCase();
+          const target = nameSet.get(linkedName);
+          if (target && target.id !== sourceId) {
+            edges.push({ source: sourceId, target: target.id, type: 'link', label: 'docker link' });
+          }
+        }
+      } catch { /* skip */ }
+
+      const seen = new Set();
+      for (const env of envVars) {
+        const eq = env.indexOf('=');
+        if (eq <= 0) continue;
+        const key = env.substring(0, eq);
+        const value = env.substring(eq + 1);
+        let match;
+        urlPattern.lastIndex = 0;
+        while ((match = urlPattern.exec(value)) !== null) {
+          const hostname = match[1].toLowerCase();
+          const target = nameSet.get(hostname);
+          if (target && target.id !== sourceId && !seen.has(target.id)) {
+            seen.add(target.id);
+            edges.push({ source: sourceId, target: target.id, type: 'url', label: key });
+          }
+        }
+        const cleanVal = value.replace(/:\d+$/, '').trim().toLowerCase();
+        const target = nameSet.get(cleanVal);
+        if (target && target.id !== sourceId && !seen.has(target.id)) {
+          seen.add(target.id);
+          edges.push({ source: sourceId, target: target.id, type: 'hostname', label: key });
+        }
+      }
+
+      const nets = Object.keys(c.NetworkSettings?.Networks || {}).filter(n => n !== 'bridge' && n !== 'host' && n !== 'none');
+      for (const net of nets) {
+        for (const other of allContainers) {
+          const otherId = other.Id.substring(0, 12);
+          if (otherId === sourceId) continue;
+          const otherNets = Object.keys(other.NetworkSettings?.Networks || {});
+          if (otherNets.includes(net) && sourceId < otherId) {
+            edges.push({ source: sourceId, target: otherId, type: 'network', label: net });
+          }
+        }
+      }
+    }
+
+    res.json({ nodes, edges, clusters: Object.values(clusters) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get metadata for a single container by name
 router.get('/:name/meta', requireAuth, (req, res) => {
   try {
@@ -349,6 +442,20 @@ router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writea
     if (dockerService.isSelf(inspect.Id)) {
       return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
     }
+
+    // Record current state for rollback history
+    try {
+      const db = getDb();
+      db.prepare(`
+        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
+        VALUES (?, ?, ?, ?, ?, 'update', ?, ?, ?)
+      `).run(
+        name, inspect.Id, req.hostId || 0,
+        image, inspect.Image,
+        req.user.username, inspect.State.Running ? 1 : 0,
+        JSON.stringify({ Image: image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
+      );
+    } catch { /* table may not exist yet */ }
 
     // Check if part of compose project
     const project = inspect.Config.Labels?.['com.docker.compose.project'];
@@ -664,6 +771,20 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
       return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
     }
 
+    // Record current state for rollback history
+    try {
+      const db = getDb();
+      db.prepare(`
+        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
+        VALUES (?, ?, ?, ?, ?, 'safe-update', ?, ?, ?)
+      `).run(
+        name, inspect.Id, req.hostId || 0,
+        image, inspect.Image,
+        req.user.username, inspect.State.Running ? 1 : 0,
+        JSON.stringify({ Image: image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
+      );
+    } catch { /* table may not exist yet */ }
+
     // Step 1: Pull new image
     await new Promise((resolve, reject) => {
       docker.pull(image, (err, stream) => {
@@ -868,6 +989,129 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Container Doctor ────────────────────────────────
+
+router.get('/:id/doctor', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+    const state = inspect.State;
+
+    // Collect last 50 lines of logs
+    let logText = '';
+    try {
+      const logs = await container.logs({ stdout: true, stderr: true, tail: 50, timestamps: false });
+      logText = logs.toString('utf8').replace(/[\x00-\x08]/g, '').trim();
+    } catch { /* container may be stopped */ }
+
+    // Run existing diagnose checks inline
+    const steps = [];
+
+    // Step 1: Container state
+    steps.push({
+      step: 1, title: 'Container State',
+      status: state.Running ? 'ok' : state.ExitCode === 0 ? 'info' : 'error',
+      detail: state.Running ? 'Container is running' :
+        `Exited with code ${state.ExitCode} (${state.Error || 'no error message'})`,
+      suggestion: state.Running ? null :
+        state.ExitCode === 137 ? 'Container was killed (OOM or docker kill). Check memory limits.' :
+        state.ExitCode === 1 ? 'Application error. Check logs for stack trace.' :
+        state.ExitCode === 127 ? 'Command not found. Check image and entrypoint.' :
+        `Exit code ${state.ExitCode}. Check logs for details.`,
+    });
+
+    // Step 2: Health check
+    if (state.Health) {
+      const hStatus = state.Health.Status;
+      steps.push({
+        step: 2, title: 'Health Check',
+        status: hStatus === 'healthy' ? 'ok' : hStatus === 'starting' ? 'warning' : 'error',
+        detail: `Health: ${hStatus}. Last ${state.Health.FailingStreak || 0} checks failed.`,
+        suggestion: hStatus === 'unhealthy' ? 'Health check is failing. Check the health check command and endpoint.' : null,
+      });
+    }
+
+    // Step 3: Logs analysis
+    const hasErrors = /error|exception|fatal|panic|traceback|fail/i.test(logText);
+    steps.push({
+      step: 3, title: 'Recent Logs',
+      status: hasErrors ? 'warning' : 'ok',
+      detail: hasErrors ? 'Error patterns detected in recent logs' : 'No obvious errors in recent logs',
+    });
+
+    // Step 4: Port bindings
+    const ports = inspect.NetworkSettings?.Ports || {};
+    const portIssues = Object.entries(ports).filter(([, v]) => v && v.length > 0).length === 0 && Object.keys(ports).length > 0;
+    steps.push({
+      step: 4, title: 'Port Bindings',
+      status: portIssues ? 'warning' : 'ok',
+      detail: portIssues ? 'Container exposes ports but none are bound to host' :
+        `${Object.entries(ports).filter(([, v]) => v).length} port(s) bound`,
+    });
+
+    // Step 5: Resource limits
+    const memLimit = inspect.HostConfig?.Memory || 0;
+    steps.push({
+      step: 5, title: 'Resource Limits',
+      status: memLimit === 0 ? 'info' : 'ok',
+      detail: memLimit > 0 ? `Memory limit: ${formatBytes(memLimit)}` : 'No memory limit set (unlimited)',
+      suggestion: memLimit === 0 ? 'Consider setting a memory limit.' : null,
+    });
+
+    // Step 6: Restart policy
+    const restartPolicy = inspect.HostConfig?.RestartPolicy?.Name || 'no';
+    const restartCount = inspect.RestartCount || 0;
+    steps.push({
+      step: 6, title: 'Restart Policy',
+      status: restartCount > 10 ? 'error' : restartPolicy === 'no' ? 'info' : 'ok',
+      detail: `Policy: ${restartPolicy}. Restarted ${restartCount} time(s).`,
+    });
+
+    // Run log pattern analysis
+    const logPatterns = require('../services/log-patterns');
+    const logAnalysis = logPatterns.analyzeLog(logText);
+
+    // Overall score
+    const errors = steps.filter(s => s.status === 'error').length;
+    const warnings = steps.filter(s => s.status === 'warning').length;
+    let overall = errors > 0 ? 'critical' : warnings > 0 ? 'warning' : 'healthy';
+    if (logAnalysis.severity === 'critical') overall = 'critical';
+    else if (logAnalysis.severity === 'warning' && overall === 'healthy') overall = 'warning';
+
+    // Container context for AI prompt generation
+    const containerContext = {
+      name,
+      image: inspect.Config.Image,
+      stateStatus: state.Running ? 'running' : `exited (code ${state.ExitCode})`,
+      restartPolicy,
+      memoryLimit: memLimit > 0 ? formatBytes(memLimit) : 'unlimited',
+      restartCount,
+      env: (inspect.Config.Env || []).filter(e => !e.match(/password|secret|key|token/i)).slice(0, 20),
+      networks: Object.keys(inspect.NetworkSettings?.Networks || {}),
+      ports: Object.entries(ports).map(([k, v]) => `${k} -> ${v?.[0]?.HostPort || 'none'}`),
+    };
+
+    // Generate AI prompt
+    const aiPrompt = logPatterns.generateAIPrompt(containerContext, { steps }, logAnalysis, logText);
+
+    res.json({
+      container: name,
+      image: inspect.Config.Image,
+      overall,
+      steps,
+      errors,
+      warnings,
+      logAnalysis,
+      logText: logText.split('\n').slice(-30).join('\n'),
+      aiPrompt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Dependency Analysis ──────────────────────────────
 
 router.get('/:id/dependencies', requireAuth, async (req, res) => {
@@ -1060,6 +1304,292 @@ router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeabl
       failed: results.filter(r => !r.ok).length,
       results,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Container File Browser ─────────────────────────
+
+function validateFilePath(p) {
+  if (!p || typeof p !== 'string') return false;
+  if (!p.startsWith('/')) return false;
+  if (p.includes('..')) return false;
+  if (p.includes('\0')) return false;
+  return true;
+}
+
+router.get('/:id/files', requireAuth, async (req, res) => {
+  try {
+    const filePath = req.query.path || '/';
+    if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
+
+    const output = await dockerService.execCommand(
+      req.params.id,
+      ['ls', '-la', '--time-style=+%Y-%m-%dT%H:%M:%S', filePath],
+      req.hostId
+    );
+
+    const lines = output.split('\n').filter(l => l.trim() && !l.startsWith('total'));
+    const entries = [];
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 7) continue;
+      const permissions = parts[0];
+      const owner = parts[2];
+      const group = parts[3];
+      const size = parseInt(parts[4]) || 0;
+      const modified = parts[5];
+      const name = parts.slice(6).join(' ').replace(/ -> .*$/, '');
+      if (name === '.' || name === '..') continue;
+      const type = permissions.startsWith('d') ? 'directory' :
+                   permissions.startsWith('l') ? 'symlink' : 'file';
+      entries.push({ name, type, size, modified, permissions, owner, group });
+    }
+    res.json({ path: filePath, entries });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/files/content', requireAuth, async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
+
+    const output = await dockerService.execCommand(
+      req.params.id,
+      ['cat', filePath],
+      req.hostId
+    );
+
+    const maxSize = 1024 * 1024; // 1MB
+    const truncated = output.length > maxSize;
+    res.json({
+      path: filePath,
+      content: truncated ? output.substring(0, maxSize) : output,
+      truncated,
+      size: output.length,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/files/download', requireAuth, async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
+
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const archive = await container.getArchive({ path: filePath });
+    const fileName = filePath.split('/').pop() || 'download';
+
+    res.setHeader('Content-Type', 'application/x-tar');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.tar"`);
+    archive.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Container Diff ─────────────────────────────────
+
+router.get('/:id/diff', requireAuth, async (req, res) => {
+  try {
+    const changes = await dockerService.containerDiff(req.params.id, req.hostId);
+    const summary = {
+      modified: changes.filter(c => c.kind === 0).length,
+      added: changes.filter(c => c.kind === 1).length,
+      deleted: changes.filter(c => c.kind === 2).length,
+      total: changes.length,
+    };
+    res.json({ changes, summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Container Image History & Rollback ──────────────
+
+router.get('/:id/history', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+
+    const db = getDb();
+    let entries = [];
+    try {
+      entries = db.prepare(`
+        SELECT * FROM container_image_history
+        WHERE container_name = ? AND host_id = ?
+        ORDER BY deployed_at DESC LIMIT 10
+      `).all(name, req.hostId || 0);
+    } catch { /* table may not exist yet */ }
+
+    // Check if images still exist
+    for (const entry of entries) {
+      try {
+        await docker.getImage(entry.image_id).inspect();
+        entry.imageAvailable = true;
+      } catch {
+        entry.imageAvailable = false;
+      }
+    }
+
+    res.json({
+      container: name,
+      currentImage: inspect.Config.Image,
+      currentImageId: inspect.Image,
+      entries,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  const { id } = req.params;
+  const { historyId } = req.body;
+  if (!historyId) return res.status(400).json({ error: 'historyId required' });
+
+  try {
+    const db = getDb();
+    const entry = db.prepare('SELECT * FROM container_image_history WHERE id = ?').get(historyId);
+    if (!entry) return res.status(404).json({ error: 'History entry not found' });
+
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+
+    // Verify old image still exists
+    try {
+      await docker.getImage(entry.image_id).inspect();
+    } catch {
+      return res.status(400).json({ error: 'Previous image no longer exists locally. Re-pull the tag first.' });
+    }
+
+    // Record current state before rollback
+    try {
+      db.prepare(`
+        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
+        VALUES (?, ?, ?, ?, ?, 'rollback', ?, ?, ?)
+      `).run(
+        name, inspect.Id, req.hostId || 0,
+        inspect.Config.Image, inspect.Image,
+        req.user.username, inspect.State.Running ? 1 : 0,
+        JSON.stringify({ Image: inspect.Config.Image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
+      );
+    } catch { /* table may not exist */ }
+
+    // Recreate with old image
+    const wasRunning = inspect.State.Running;
+    if (wasRunning) await container.stop();
+    await container.remove();
+
+    // Parse config from history or rebuild from current
+    let createOpts;
+    if (entry.config_snapshot) {
+      try {
+        const cfg = JSON.parse(entry.config_snapshot);
+        createOpts = {
+          name,
+          Image: entry.image_id,
+          Cmd: cfg.Cmd,
+          Env: cfg.Env,
+          ExposedPorts: cfg.ExposedPorts,
+          Labels: cfg.Labels,
+          WorkingDir: cfg.WorkingDir,
+          Entrypoint: cfg.Entrypoint,
+          Volumes: cfg.Volumes,
+          Hostname: cfg.Hostname,
+          User: cfg.User,
+          HostConfig: cfg.HostConfig,
+          NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
+        };
+      } catch {
+        createOpts = null;
+      }
+    }
+
+    if (!createOpts) {
+      createOpts = {
+        name,
+        Image: entry.image_id,
+        Cmd: inspect.Config.Cmd,
+        Env: inspect.Config.Env,
+        ExposedPorts: inspect.Config.ExposedPorts,
+        Labels: inspect.Config.Labels,
+        WorkingDir: inspect.Config.WorkingDir,
+        Entrypoint: inspect.Config.Entrypoint,
+        Volumes: inspect.Config.Volumes,
+        Hostname: inspect.Config.Hostname,
+        User: inspect.Config.User,
+        HostConfig: inspect.HostConfig,
+        NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
+      };
+    }
+
+    const newContainer = await docker.createContainer(createOpts);
+    if (wasRunning) await newContainer.start();
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'container_rollback', targetType: 'container', targetId: name,
+      details: { fromImage: inspect.Config.Image, toImage: entry.image_name, toImageId: entry.image_id },
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, newId: newContainer.id, rolledBackTo: entry.image_name });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Deployment Pipeline ─────────────────────────────
+
+router.post('/:id/pipeline/start', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  try {
+    const pipelineService = require('../services/pipeline');
+    const { skipScan, skipVerify } = req.body;
+    const result = await pipelineService.start({
+      containerId: req.params.id,
+      hostId: req.hostId || 0,
+      user: req.user,
+      skipScan: !!skipScan,
+      skipVerify: !!skipVerify,
+      clientIp: getClientIp(req),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/pipeline/status/:executionId', requireAuth, (req, res) => {
+  try {
+    const pipelineService = require('../services/pipeline');
+    const result = pipelineService.getStatus(parseInt(req.params.executionId));
+    if (!result) return res.status(404).json({ error: 'Pipeline not found' });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/pipeline/history', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+    const pipelineService = require('../services/pipeline');
+    const history = pipelineService.getHistory(name, req.hostId || 0);
+    res.json({ container: name, pipelines: history });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -357,6 +357,7 @@ DB_PASS=secret"></textarea>
           <div class="card-header">
             <h3><i class="fas fa-layer-group" style="margin-right:8px"></i>${Utils.escapeHtml(name)}</h3>
             <div class="btn-group">
+              ${stack.config ? '<button class="btn btn-sm btn-secondary" id="stack-validate"><i class="fas fa-check-circle"></i> Validate</button>' : ''}
               ${stack.config ? '<button class="btn btn-sm btn-primary" id="stack-save"><i class="fas fa-save"></i> Save</button>' : ''}
               <button class="btn btn-sm btn-accent" id="stack-deploy"><i class="fas fa-rocket"></i> Deploy</button>
             </div>
@@ -395,6 +396,21 @@ DB_PASS=secret"></textarea>
       `;
 
       el.querySelector('#stack-back').addEventListener('click', () => this._renderStacks(el));
+
+      const validateBtn = el.querySelector('#stack-validate');
+      if (validateBtn) {
+        validateBtn.addEventListener('click', async () => {
+          const editor = el.querySelector('#stack-editor');
+          try {
+            const result = await Api.validateStackConfig(name, { config: editor.value, workingDir: stack.workingDir });
+            if (result.valid) {
+              Toast.success('Valid YAML configuration');
+            } else {
+              Toast.error('Validation failed: ' + (result.error || 'Unknown error'));
+            }
+          } catch (err) { Toast.error(err.message); }
+        });
+      }
 
       const saveBtn = el.querySelector('#stack-save');
       if (saveBtn) {
@@ -1349,6 +1365,8 @@ ${logText.substring(0, 3000)}
                 <th>${i18n.t('pages.containers.scheduleAction')}</th>
                 <th>${i18n.t('pages.containers.scheduleCron')}</th>
                 <th>${i18n.t('common.status')}</th>
+                <th>Last Run</th>
+                <th>Runs</th>
                 <th></th>
               </tr></thead>
               <tbody>${schedules.map(s => `
@@ -1356,8 +1374,17 @@ ${logText.substring(0, 3000)}
                   <td class="mono text-sm">${Utils.escapeHtml(s.containerName || s.containerId?.substring(0, 12))}</td>
                   <td><span class="badge badge-info">${s.action}</span></td>
                   <td class="mono text-sm">${Utils.escapeHtml(s.cron)}</td>
-                  <td><span class="badge ${s.enabled ? 'badge-running' : 'badge-stopped'}">${s.enabled ? i18n.t('common.enabled') : i18n.t('common.disabled')}</span></td>
                   <td>
+                    <label class="toggle-label" style="margin:0">
+                      <input type="checkbox" class="sched-toggle" data-sched-id="${s.id}" ${s.enabled ? 'checked' : ''}>
+                      <span class="text-sm">${s.enabled ? i18n.t('common.enabled') : i18n.t('common.disabled')}</span>
+                    </label>
+                  </td>
+                  <td class="text-sm">${s.lastRunAt ? `<span class="${s.lastRunStatus === 'error' ? 'text-danger' : ''}">${Utils.timeAgo(s.lastRunAt)}</span>` : '—'}</td>
+                  <td class="text-sm">${s.runCount || 0}</td>
+                  <td style="white-space:nowrap">
+                    <button class="action-btn" data-run-schedule="${s.id}" title="Run Now"><i class="fas fa-play"></i></button>
+                    <button class="action-btn" data-history-schedule="${s.id}" title="History"><i class="fas fa-history"></i></button>
                     <button class="action-btn danger" data-del-schedule="${s.id}" title="${i18n.t('common.delete')}"><i class="fas fa-trash"></i></button>
                   </td>
                 </tr>
@@ -1366,6 +1393,64 @@ ${logText.substring(0, 3000)}
           </div>
         </div>
       `;
+
+      // Toggle schedule enabled/disabled
+      el.querySelectorAll('.sched-toggle').forEach(checkbox => {
+        checkbox.addEventListener('change', async () => {
+          try {
+            await Api.updateSchedule(checkbox.dataset.schedId, { enabled: checkbox.checked });
+            Toast.success(checkbox.checked ? 'Schedule enabled' : 'Schedule disabled');
+          } catch (err) { Toast.error(err.message); checkbox.checked = !checkbox.checked; }
+        });
+      });
+
+      // Run now
+      el.querySelectorAll('[data-run-schedule]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            Toast.info('Executing schedule...');
+            await Api.runScheduleNow(btn.dataset.runSchedule);
+            Toast.success('Schedule executed');
+            this._renderSchedules(el);
+          } catch (err) { Toast.error('Execution failed: ' + err.message); }
+        });
+      });
+
+      // History
+      el.querySelectorAll('[data-history-schedule]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          try {
+            const history = await Api.getScheduleHistory(btn.dataset.historySchedule);
+            if (history.length === 0) {
+              Toast.info('No execution history yet.');
+              return;
+            }
+            Modal.open(`
+              <div class="modal-header">
+                <h3><i class="fas fa-history" style="color:var(--accent);margin-right:8px"></i>Execution History</h3>
+                <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
+              </div>
+              <div class="modal-body">
+                <table class="data-table compact">
+                  <thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Duration</th><th>Error</th></tr></thead>
+                  <tbody>${history.map(h => `
+                    <tr>
+                      <td class="text-sm">${Utils.formatDate(h.executed_at)}</td>
+                      <td><span class="badge badge-info">${h.action}</span></td>
+                      <td><span class="badge ${h.status === 'success' ? 'badge-running' : 'badge-stopped'}">${h.status}</span></td>
+                      <td class="text-sm">${h.duration_ms ? h.duration_ms + 'ms' : '—'}</td>
+                      <td class="text-sm text-danger">${Utils.escapeHtml(h.error_message || '')}</td>
+                    </tr>
+                  `).join('')}</tbody>
+                </table>
+              </div>
+              <div class="modal-footer"><button class="btn btn-secondary" id="modal-ok">Close</button></div>
+            `, { width: '700px' });
+            Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
+            Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+          } catch (err) { Toast.error(err.message); }
+        });
+      });
 
       // Add schedule
       el.querySelector('#add-schedule').addEventListener('click', async () => {
@@ -1384,14 +1469,27 @@ ${logText.substring(0, 3000)}
               <option value="restart">${i18n.t('common.restart')}</option>
               <option value="stop">${i18n.t('common.stop')}</option>
               <option value="start">${i18n.t('common.start')}</option>
+              <option value="pause">${i18n.t('common.pause')}</option>
+              <option value="unpause">${i18n.t('common.unpause')}</option>
             </select>
           </div>
           <div class="form-group">
             <label>${i18n.t('pages.containers.scheduleCron')}</label>
             <input type="text" id="sched-cron" class="form-control" placeholder="${i18n.t('pages.containers.cronPlaceholder')}">
+            <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn btn-sm btn-secondary cron-preset" data-cron="*/5 * * * *">Every 5 min</button>
+              <button type="button" class="btn btn-sm btn-secondary cron-preset" data-cron="0 * * * *">Every hour</button>
+              <button type="button" class="btn btn-sm btn-secondary cron-preset" data-cron="0 0 * * *">Daily midnight</button>
+              <button type="button" class="btn btn-sm btn-secondary cron-preset" data-cron="0 3 * * 0">Sun 3 AM</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Description <span class="text-muted text-sm">(optional)</span></label>
+            <input type="text" id="sched-desc" class="form-control" placeholder="e.g. Weekly restart">
           </div>
         `, {
           title: i18n.t('pages.containers.scheduleCreate'),
+          width: '500px',
           onSubmit: (content) => {
             const sel = content.querySelector('#sched-container');
             return {
@@ -1399,9 +1497,18 @@ ${logText.substring(0, 3000)}
               containerName: sel.options[sel.selectedIndex]?.dataset?.name || '',
               action: content.querySelector('#sched-action').value,
               cron: content.querySelector('#sched-cron').value.trim(),
+              description: content.querySelector('#sched-desc').value.trim(),
               enabled: true,
             };
-          }
+          },
+          onMount: (content) => {
+            content.querySelectorAll('.cron-preset').forEach(btn => {
+              btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                content.querySelector('#sched-cron').value = btn.dataset.cron;
+              });
+            });
+          },
         });
 
         if (result && result.cron) {

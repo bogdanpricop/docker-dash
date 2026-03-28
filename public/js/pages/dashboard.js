@@ -7,6 +7,8 @@ const DashboardPage = {
   _charts: {},
   _refreshTimer: null,
   _statsUnsub: null,
+  _hiddenWidgets: [],
+  _widgetOrder: null,
 
   async render(container) {
     container.innerHTML = `
@@ -20,6 +22,7 @@ const DashboardPage = {
           <span class="ws-status" id="ws-indicator">
             <i class="fas fa-circle"></i> <span>---</span>
           </span>
+          <button class="btn btn-sm btn-secondary" id="dash-configure" title="Configure widgets"><i class="fas fa-sliders-h"></i></button>
           <button class="prune-help-btn" id="dash-help" title="${i18n.t('pages.dashboard.helpTooltip')}">?</button>
           <span class="text-muted text-sm" style="margin-right:8px"><i class="fas fa-clock" style="margin-right:4px"></i><span id="dash-last-updated">—</span></span>
           <button class="btn btn-sm" id="dash-refresh">
@@ -117,6 +120,7 @@ const DashboardPage = {
 
     container.querySelector('#dash-refresh').addEventListener('click', () => this._load());
     container.querySelector('#dash-help').addEventListener('click', () => this._showHelp());
+    container.querySelector('#dash-configure').addEventListener('click', () => this._showConfigureWidgets());
     this._updateWsIndicator();
 
     this._statsUnsub = WS.on('event', (msg) => {
@@ -484,25 +488,106 @@ const DashboardPage = {
         target.parentNode.insertBefore(dragEl, target);
       }
 
-      // Save order
+      // Save order to API
       const order = [...grid.querySelectorAll('.dash-widget')].map(w => w.dataset.widget);
+      this._widgetOrder = order;
       localStorage.setItem('dd-widget-order', JSON.stringify(order));
+      Api.saveDashboardPrefs({ widget_order: order, hidden_widgets: this._hiddenWidgets }).catch(() => {});
     });
   },
 
-  _restoreWidgetOrder() {
-    const saved = localStorage.getItem('dd-widget-order');
-    if (!saved) return;
+  async _restoreWidgetOrder() {
+    const grid = document.getElementById('dash-widgets');
+    if (!grid) return;
+
+    // Try API first, fall back to localStorage
     try {
-      const order = JSON.parse(saved);
-      const grid = document.getElementById('dash-widgets');
-      if (!grid) return;
+      const prefs = await Api.getDashboardPrefs();
+      if (prefs.widget_order && prefs.widget_order.length) {
+        this._widgetOrder = prefs.widget_order;
+        this._hiddenWidgets = prefs.hidden_widgets || [];
+      }
+    } catch {
+      // Fallback to localStorage
+      const saved = localStorage.getItem('dd-widget-order');
+      if (saved) {
+        try { this._widgetOrder = JSON.parse(saved); } catch {}
+      }
+    }
+
+    // Apply widget order
+    if (this._widgetOrder && this._widgetOrder.length) {
       const widgets = {};
       grid.querySelectorAll('.dash-widget').forEach(w => { widgets[w.dataset.widget] = w; });
-      for (const key of order) {
+      for (const key of this._widgetOrder) {
         if (widgets[key]) grid.appendChild(widgets[key]);
       }
-    } catch { /* ignore */ }
+    }
+
+    // Apply hidden widgets
+    if (this._hiddenWidgets && this._hiddenWidgets.length) {
+      grid.querySelectorAll('.dash-widget').forEach(w => {
+        if (this._hiddenWidgets.includes(w.dataset.widget)) {
+          w.style.display = 'none';
+        }
+      });
+    }
+  },
+
+  _showConfigureWidgets() {
+    const allWidgets = [
+      { id: 'states', label: 'Container States', icon: 'fa-chart-pie' },
+      { id: 'cpu', label: 'Top CPU Consumers', icon: 'fa-microchip' },
+      { id: 'memory', label: 'Top Memory Consumers', icon: 'fa-memory' },
+    ];
+
+    const html = `
+      <div class="modal-header">
+        <h3 style="margin:0"><i class="fas fa-sliders-h" style="margin-right:8px;color:var(--accent)"></i>Configure Widgets</h3>
+        <button class="modal-close-btn" id="cfg-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-sm" style="margin-bottom:12px">Toggle widget visibility. Drag handles on the dashboard to reorder.</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${allWidgets.map(w => `
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);cursor:pointer">
+              <input type="checkbox" class="widget-toggle" data-widget="${w.id}" ${this._hiddenWidgets.includes(w.id) ? '' : 'checked'}>
+              <i class="fas ${w.icon}" style="color:var(--accent);width:20px;text-align:center"></i>
+              <span>${w.label}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="cfg-save">${i18n.t('common.save')}</button>
+      </div>
+    `;
+
+    Modal.open(html, { width: '420px' });
+
+    Modal._content.querySelector('#cfg-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#cfg-save').addEventListener('click', () => {
+      const hidden = [];
+      Modal._content.querySelectorAll('.widget-toggle').forEach(cb => {
+        if (!cb.checked) hidden.push(cb.dataset.widget);
+      });
+      this._hiddenWidgets = hidden;
+
+      // Apply visibility
+      const grid = document.getElementById('dash-widgets');
+      if (grid) {
+        grid.querySelectorAll('.dash-widget').forEach(w => {
+          w.style.display = hidden.includes(w.dataset.widget) ? 'none' : '';
+        });
+      }
+
+      // Save to API
+      const order = grid ? [...grid.querySelectorAll('.dash-widget')].map(w => w.dataset.widget) : this._widgetOrder || [];
+      Api.saveDashboardPrefs({ widget_order: order, hidden_widgets: hidden }).catch(() => {});
+
+      Modal.close();
+      Toast.success('Dashboard layout saved');
+    });
   },
 
   _appendHistory(overview) {

@@ -75,6 +75,27 @@ function purgeAllOldData() {
     if (r.changes) deleted.git_deployments = r.changes;
   } catch (e) { /* table may not exist */ }
 
+  // Schedule history (keep 30 days)
+  try {
+    const r = db.prepare(`DELETE FROM schedule_history WHERE executed_at < datetime('now', '-30 days')`).run();
+    if (r.changes) deleted.schedule_history = r.changes;
+  } catch { /* table may not exist */ }
+
+  // Container image history (keep 90 days, minimum 3 per container)
+  try {
+    const r = db.prepare(`
+      DELETE FROM container_image_history
+      WHERE deployed_at < datetime('now', '-90 days')
+      AND id NOT IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY container_name, host_id ORDER BY deployed_at DESC) as rn
+          FROM container_image_history
+        ) WHERE rn <= 3
+      )
+    `).run();
+    if (r.changes) deleted.container_image_history = r.changes;
+  } catch { /* table may not exist */ }
+
   // Expired sessions
   try { authService.cleanSessions(); } catch (e) { log.error('Session cleanup failed', e.message); }
 
@@ -164,24 +185,55 @@ function startAll() {
     } catch (e) { log.error('Daily backup error', e.message); }
   }));
 
-  // Container schedule execution every minute
+  // Container schedule execution every minute (DB-backed with JSON fallback)
   jobs.push(cron.schedule('* * * * *', async () => {
     try {
-      const schedulesFile = '/data/schedules.json';
-      if (!fs.existsSync(schedulesFile)) return;
-      const schedules = JSON.parse(fs.readFileSync(schedulesFile, 'utf8'));
       const now = new Date();
+      let schedules = [];
+
+      // Try DB first
+      try {
+        const db = getDb();
+        schedules = db.prepare('SELECT * FROM scheduled_actions WHERE enabled = 1').all();
+      } catch {
+        // Fallback to JSON
+        const schedulesFile = '/data/schedules.json';
+        if (!fs.existsSync(schedulesFile)) return;
+        const jsonSchedules = JSON.parse(fs.readFileSync(schedulesFile, 'utf8'));
+        schedules = jsonSchedules.filter(s => s.enabled).map(s => ({
+          id: s.id, container_id: s.containerId, container_name: s.containerName,
+          action: s.action, cron: s.cron, host_id: 0,
+        }));
+      }
 
       for (const s of schedules) {
-        if (!s.enabled || !s.cron || !s.containerId) continue;
+        if (!s.cron || !s.container_id) continue;
         try {
           if (cron.validate(s.cron) && cronMatchesNow(s.cron, now)) {
-            log.info(`Schedule executing: ${s.action} on ${s.containerName || s.containerId}`);
-            await dockerService.containerAction(s.containerId, s.action);
-            log.info(`Schedule done: ${s.action} on ${s.containerName || s.containerId}`);
+            const start = Date.now();
+            log.info(`Schedule executing: ${s.action} on ${s.container_name || s.container_id}`);
+            try {
+              await dockerService.containerAction(s.container_id, s.action, s.host_id || 0);
+              const duration = Date.now() - start;
+              log.info(`Schedule done: ${s.action} on ${s.container_name || s.container_id} (${duration}ms)`);
+              // Record success in DB
+              try {
+                const db = getDb();
+                db.prepare(`INSERT INTO schedule_history (schedule_id, container_id, action, status, duration_ms) VALUES (?, ?, ?, 'success', ?)`).run(s.id, s.container_id, s.action, duration);
+                db.prepare(`UPDATE scheduled_actions SET last_run_at = datetime('now'), last_run_status = 'success', run_count = run_count + 1 WHERE id = ?`).run(s.id);
+              } catch { /* ignore DB errors */ }
+            } catch (e) {
+              const duration = Date.now() - start;
+              log.error(`Schedule failed: ${s.action} on ${s.container_name}: ${e.message}`);
+              try {
+                const db = getDb();
+                db.prepare(`INSERT INTO schedule_history (schedule_id, container_id, action, status, error_message, duration_ms) VALUES (?, ?, ?, 'error', ?, ?)`).run(s.id, s.container_id, s.action, e.message, duration);
+                db.prepare(`UPDATE scheduled_actions SET last_run_at = datetime('now'), last_run_status = 'error', last_run_error = ? WHERE id = ?`).run(e.message, s.id);
+              } catch { /* ignore DB errors */ }
+            }
           }
         } catch (e) {
-          log.error(`Schedule failed: ${s.action} on ${s.containerName}: ${e.message}`);
+          log.error(`Schedule check error: ${e.message}`);
         }
       }
     } catch (e) { log.error('Schedule check failed', e.message); }

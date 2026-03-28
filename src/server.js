@@ -100,6 +100,7 @@ app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
 const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
 app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
+app.use('/api/groups', apiLimiter, require('./routes/groups'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────

@@ -24,12 +24,20 @@ const favorites = {
 // ─── Notifications ──────────────────────────────────────────
 
 const notifications = {
-  list(userId, { unreadOnly = false, limit = 50 } = {}) {
-    const where = unreadOnly ? 'AND is_read = 0' : '';
-    return getDb().prepare(`
-      SELECT * FROM notifications WHERE (user_id = ? OR user_id IS NULL) ${where}
-      ORDER BY created_at DESC LIMIT ?
-    `).all(userId, limit);
+  list(userId, { unreadOnly = false, limit = 50, page = 1, type } = {}) {
+    const conditions = ['(user_id = ? OR user_id IS NULL)'];
+    const params = [userId];
+    if (unreadOnly) conditions.push('is_read = 0');
+    if (type) { conditions.push('type = ?'); params.push(type); }
+    const where = conditions.join(' AND ');
+    const offset = (page - 1) * limit;
+    const countRow = getDb().prepare(`SELECT COUNT(*) as total FROM notifications WHERE ${where}`).get(...params);
+    params.push(limit, offset);
+    const items = getDb().prepare(`
+      SELECT * FROM notifications WHERE ${where}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params);
+    return { items, total: countRow.total, page, limit };
   },
   create({ userId, type, title, message, link }) {
     getDb().prepare('INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, ?, ?, ?, ?)')
@@ -45,6 +53,21 @@ const notifications = {
   unreadCount(userId) {
     return getDb().prepare('SELECT COUNT(*) as c FROM notifications WHERE (user_id = ? OR user_id IS NULL) AND is_read = 0')
       .get(userId).c;
+  },
+  delete(id, userId) {
+    getDb().prepare('DELETE FROM notifications WHERE id = ? AND (user_id = ? OR user_id IS NULL)')
+      .run(id, userId);
+  },
+  bulkAction(ids, userId, action) {
+    const db = getDb();
+    const placeholders = ids.map(() => '?').join(',');
+    if (action === 'read') {
+      db.prepare(`UPDATE notifications SET is_read = 1 WHERE id IN (${placeholders}) AND (user_id = ? OR user_id IS NULL)`)
+        .run(...ids, userId);
+    } else if (action === 'delete') {
+      db.prepare(`DELETE FROM notifications WHERE id IN (${placeholders}) AND (user_id = ? OR user_id IS NULL)`)
+        .run(...ids, userId);
+    }
   },
 };
 

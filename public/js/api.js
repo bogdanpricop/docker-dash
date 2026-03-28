@@ -27,7 +27,7 @@ const Api = {
   _appendHostId(path) {
     if (this._currentHostId === 0) return path;
     // Skip host parameter for auth, settings, hosts, and other non-Docker endpoints
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -257,10 +257,25 @@ const Api = {
   deleteFirewallRule(number) { return this.delete(`/system/firewall/rule/${number}`); },
 
   // ─── Notifications ─────────────────────────────
-  getNotifications() { return this.get('/notifications'); },
+  getNotifications(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.get(`/notifications${qs ? '?' + qs : ''}`);
+  },
   getNotificationCount() { return this.get('/notifications/count'); },
   markNotificationRead(id) { return this.post(`/notifications/${id}/read`); },
   markAllNotificationsRead() { return this.post('/notifications/read-all'); },
+  deleteNotification(id) { return this.delete(`/notifications/${id}`); },
+  bulkNotifications(ids, action) { return this.post('/notifications/bulk', { ids, action }); },
+
+  // ─── Container Groups ──────────────────────────────
+  getGroups() { return this.get('/groups'); },
+  getGroup(id) { return this.get(`/groups/${id}`); },
+  createGroup(data) { return this.post('/groups', data); },
+  updateGroup(id, data) { return this.put(`/groups/${id}`, data); },
+  deleteGroup(id) { return this.delete(`/groups/${id}`); },
+  addContainersToGroup(id, containerIds) { return this.post(`/groups/${id}/containers`, { containerIds }); },
+  removeContainerFromGroup(groupId, containerId) { return this.delete(`/groups/${groupId}/containers/${containerId}`); },
+  reorderGroups(order) { return this.put('/groups/order', { order }); },
 
   // ─── Compose (Stacks) ─────────────────────────────
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
@@ -274,6 +289,24 @@ const Api = {
   createSchedule(data) { return this.post('/system/schedules', data); },
   updateSchedule(id, data) { return this.put(`/system/schedules/${id}`, data); },
   deleteSchedule(id) { return this.delete(`/system/schedules/${id}`); },
+  getScheduleHistory(id) { return this.get(`/system/schedules/${id}/history`); },
+  runScheduleNow(id) { return this.post(`/system/schedules/${id}/run-now`); },
+  previewCron(cron) { return this.get(`/system/schedules/preview?cron=${encodeURIComponent(cron)}`); },
+
+  // ─── Container Files ─────────────────────────────
+  getContainerFiles(id, path = '/') { return this.get(`/containers/${id}/files?path=${encodeURIComponent(path)}`); },
+  getFileContent(id, path) { return this.get(`/containers/${id}/files/content?path=${encodeURIComponent(path)}`); },
+  getFileDownloadUrl(id, path) { return `/api/containers/${id}/files/download?path=${encodeURIComponent(path)}`; },
+
+  // ─── Container Diff ──────────────────────────────
+  getContainerDiff(id) { return this.get(`/containers/${id}/diff`); },
+
+  // ─── Container History & Rollback ────────────────
+  getContainerHistory(id) { return this.get(`/containers/${id}/history`); },
+  rollbackContainer(id, historyId) { return this.post(`/containers/${id}/rollback`, { historyId }); },
+
+  // ─── Compose Validation ──────────────────────────
+  validateStackConfig(name, data) { return this.post(`/system/stacks/${encodeURIComponent(name)}/validate`, data); },
 
   // ─── Backup & Restore ───────────────────────────
   restoreConfig(data) { return this.post('/system/backup/restore', data); },
@@ -353,6 +386,10 @@ const Api = {
   getAboutFiles() { return this.get('/about/files'); },
   getAboutFile(name) { return this.get(`/about/file/${encodeURIComponent(name)}`); },
   saveAboutFile(name, content) { return this.put(`/about/file/${encodeURIComponent(name)}`, { content }); },
+
+  // ─── User Preferences ─────────────────────────────
+  getUserPreferences() { return this.get('/preferences'); },
+  saveUserPreference(key, value) { return this.put('/preferences', { key, value }); },
 
   // ─── Misc ────────────────────────────────────────
   health() { return this.get('/health'); },

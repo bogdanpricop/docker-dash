@@ -43,7 +43,7 @@
           Forgot password? Contact your administrator to reset it from Settings &gt; Users.
         </p>
       </form>
-      <div class="text-sm text-muted" style="margin-top:16px;text-align:center;opacity:0.5">v4.1.0</div>
+      <div class="text-sm text-muted" style="margin-top:16px;text-align:center;opacity:0.5">v4.2.0</div>
     </div>
   </div>
 
@@ -56,7 +56,7 @@
         <span class="sidebar-logo">🐳</span>
         <div class="sidebar-title-group">
           <span class="sidebar-title">Docker Dash</span>
-          <span class="sidebar-version" id="sidebar-version">v4.1.0</span>
+          <span class="sidebar-version" id="sidebar-version">v4.2.0</span>
         </div>
         <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
           <i class="fas fa-bars"></i>
@@ -73,6 +73,12 @@
         </a>
         <a href="#/insights" class="nav-item" data-page="insights">
           <i class="fas fa-brain"></i><span>Insights</span>
+        </a>
+        <a href="#/cost-optimizer" class="nav-item" data-page="cost-optimizer">
+          <i class="fas fa-dollar-sign"></i><span>Cost</span>
+        </a>
+        <a href="#/dependency-map" class="nav-item" data-page="dependency-map">
+          <i class="fas fa-project-diagram"></i><span>Dep Map</span>
         </a>
         <div class="nav-section-label"><span>Resources</span></div>
         <a href="#/containers" class="nav-item" data-page="containers">
@@ -99,8 +105,8 @@
         <a href="#/system" class="nav-item" data-page="system">
           <i class="fas fa-server"></i><span>System</span>
         </a>
-        <a href="#/git-stacks" class="nav-item" data-page="git-stacks">
-          <i class="fab fa-git-alt"></i><span>Git Stacks</span>
+        <a href="#/stacks" class="nav-item" data-page="stacks">
+          <i class="fas fa-layer-group"></i><span>Stacks</span>
         </a>
         <a href="#/firewall" class="nav-item" data-page="firewall">
           <i class="fas fa-fire"></i><span>Firewall</span>
@@ -111,6 +117,9 @@
         </a>
         <a href="#/compare" class="nav-item" data-page="compare">
           <i class="fas fa-balance-scale"></i><span>Compare</span>
+        </a>
+        <a href="#/api-playground" class="nav-item" data-page="api-playground">
+          <i class="fas fa-flask"></i><span>API</span>
         </a>
         <a href="#/about" class="nav-item" data-page="about">
           <i class="fas fa-info-circle"></i><span>About</span>
@@ -156,6 +165,9 @@
         </div>
         <div class="notif-dropdown-body" id="notif-list">
           <div class="empty-msg" style="padding:24px;font-size:12px">No notifications</div>
+        </div>
+        <div style="padding:8px;border-top:1px solid var(--border);text-align:center">
+          <a href="#/notifications" style="color:var(--accent);font-size:12px;text-decoration:none">View all notifications</a>
         </div>
       </div>
     </aside>
@@ -235,6 +247,11 @@
   <script src="/js/pages/git-stacks.js?v=4.1.0"></script>
   <script src="/js/pages/compare.js?v=4.1.0"></script>
   <script src="/js/pages/insights.js?v=4.1.0"></script>
+  <script src="/js/pages/cost-optimizer.js?v=4.1.0"></script>
+  <script src="/js/pages/dependency-map.js?v=4.1.0"></script>
+  <script src="/js/pages/notifications.js?v=4.1.0"></script>
+  <script src="/js/pages/stacks.js?v=4.1.0"></script>
+  <script src="/js/pages/api-playground.js?v=4.1.0"></script>
   <script src="/js/app.js?v=4.1.0"></script>
 </body>
 </html>

@@ -281,4 +281,137 @@ function _linearRegression(points) {
   return { slope, intercept };
 }
 
+// ─── Cost Analysis (enhanced) ────────────────────────
+
+router.get('/cost-analysis', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const hostId = req.hostId || 0;
+
+    // Get monthly cost from settings or query param
+    let monthlyCost = parseFloat(req.query.monthly_cost || '0');
+    if (monthlyCost <= 0) {
+      try {
+        const setting = db.prepare("SELECT value FROM settings WHERE key = 'monthly_server_cost'").get();
+        monthlyCost = parseFloat(setting?.value || '0');
+      } catch { /* settings table may not exist */ }
+    }
+    if (monthlyCost <= 0) monthlyCost = 50; // default fallback
+
+    const overview = statsService.getOverview(hostId);
+    const totalCpu = Math.max(overview.totals.cpu, 1);
+    const totalMem = Math.max(overview.totals.memory, 1);
+
+    // Cost per container
+    const containers = overview.containers.map(c => {
+      const cpuShare = c.cpu_percent / totalCpu;
+      const memShare = c.mem_usage / totalMem;
+      const weightedShare = (cpuShare + memShare) / 2;
+      const estimatedCost = monthlyCost * weightedShare;
+
+      return {
+        container_name: c.container_name,
+        container_id: c.container_id,
+        cpu_percent: Math.round(c.cpu_percent * 10) / 10,
+        mem_usage: c.mem_usage,
+        mem_limit: c.mem_limit || 0,
+        cpu_share: Math.round(cpuShare * 1000) / 10,
+        mem_share: Math.round(memShare * 1000) / 10,
+        estimated_monthly_cost: Math.round(estimatedCost * 100) / 100,
+      };
+    });
+    containers.sort((a, b) => b.estimated_monthly_cost - a.estimated_monthly_cost);
+
+    // Get 24h recommendations
+    let recommendations = [];
+    try {
+      const stats = db.prepare(`
+        SELECT container_id, container_name,
+          AVG(cpu_percent) AS avg_cpu, MAX(cpu_percent) AS max_cpu,
+          AVG(mem_usage) AS avg_mem, MAX(mem_usage) AS max_mem,
+          AVG(mem_limit) AS mem_limit, COUNT(*) AS samples
+        FROM container_stats
+        WHERE host_id = ? AND recorded_at >= datetime('now', '-24 hours')
+        GROUP BY container_id HAVING samples >= 10
+      `).all(hostId);
+
+      for (const s of stats) {
+        const avgMemPct = s.mem_limit > 0 ? (s.avg_mem / s.mem_limit) * 100 : 0;
+
+        // Over-provisioned
+        if (s.mem_limit > 0 && avgMemPct < 20 && s.mem_limit > 128 * 1024 * 1024) {
+          const suggested = Math.max(128 * 1024 * 1024, Math.ceil(s.max_mem * 1.5));
+          const costSaving = (1 - suggested / s.mem_limit) * (monthlyCost * ((s.avg_mem / totalMem + s.avg_cpu / totalCpu) / 2));
+          recommendations.push({
+            container_name: s.container_name,
+            container_id: s.container_id,
+            type: 'over_provisioned',
+            severity: 'info',
+            message: `Using ${avgMemPct.toFixed(0)}% of ${Math.round(s.mem_limit / 1024 / 1024)}MB limit. Reduce to ${Math.round(suggested / 1024 / 1024)}MB.`,
+            current: s.mem_limit,
+            suggested,
+            monthly_savings: Math.round(Math.abs(costSaving) * 100) / 100,
+          });
+        }
+
+        // Idle
+        if (s.avg_cpu < 1 && s.avg_mem < 50 * 1024 * 1024) {
+          const containerCost = containers.find(c => c.container_id === s.container_id);
+          recommendations.push({
+            container_name: s.container_name,
+            container_id: s.container_id,
+            type: 'idle',
+            severity: 'warning',
+            message: `Idle for 24h (CPU: ${s.avg_cpu.toFixed(1)}%, Mem: ${Math.round(s.avg_mem / 1024 / 1024)}MB). Consider stopping.`,
+            monthly_savings: containerCost?.estimated_monthly_cost || 0,
+          });
+        }
+
+        // Memory pressure
+        if (s.mem_limit > 0 && avgMemPct > 85) {
+          const suggested = Math.ceil(s.max_mem * 1.3);
+          recommendations.push({
+            container_name: s.container_name,
+            container_id: s.container_id,
+            type: 'memory_pressure',
+            severity: 'warning',
+            message: `Using ${avgMemPct.toFixed(0)}% of memory limit. Risk of OOM. Increase to ${Math.round(suggested / 1024 / 1024)}MB.`,
+            current: s.mem_limit,
+            suggested,
+            monthly_savings: 0,
+          });
+        }
+      }
+    } catch { /* stats table may not have data */ }
+
+    const totalSavings = recommendations.reduce((s, r) => s + (r.monthly_savings || 0), 0);
+    const idleContainers = recommendations.filter(r => r.type === 'idle');
+    const idleCost = idleContainers.reduce((s, r) => s + (r.monthly_savings || 0), 0);
+
+    res.json({
+      monthly_total: monthlyCost,
+      containers,
+      recommendations,
+      savings_potential: Math.round(totalSavings * 100) / 100,
+      idle_count: idleContainers.length,
+      idle_cost: Math.round(idleCost * 100) / 100,
+      unallocated: Math.round((monthlyCost - containers.reduce((s, c) => s + c.estimated_monthly_cost, 0)) * 100) / 100,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Cost Settings ───────────────────────────────────
+
+router.post('/cost-settings', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const { monthly_cost } = req.body;
+    if (monthly_cost === undefined || isNaN(parseFloat(monthly_cost))) {
+      return res.status(400).json({ error: 'monthly_cost required (number)' });
+    }
+    db.prepare("INSERT INTO settings (key, value) VALUES ('monthly_server_cost', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(String(monthly_cost));
+    res.json({ ok: true, monthly_cost: parseFloat(monthly_cost) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

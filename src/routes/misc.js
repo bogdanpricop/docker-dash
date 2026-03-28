@@ -103,8 +103,13 @@ router.delete('/favorites/:containerId', requireAuth, (req, res) => {
 // ─── Notifications ──────────────────────────────────────────
 
 router.get('/notifications', requireAuth, (req, res) => {
-  const { unreadOnly } = req.query;
-  res.json(notifications.list(req.user.id, { unreadOnly: unreadOnly === 'true' }));
+  const { unreadOnly, page, limit, type } = req.query;
+  res.json(notifications.list(req.user.id, {
+    unreadOnly: unreadOnly === 'true',
+    page: parseInt(page) || 1,
+    limit: parseInt(limit) || 50,
+    type: type || undefined,
+  }));
 });
 
 router.get('/notifications/count', requireAuth, (req, res) => {
@@ -118,6 +123,20 @@ router.post('/notifications/:id/read', requireAuth, (req, res) => {
 
 router.post('/notifications/read-all', requireAuth, (req, res) => {
   notifications.markAllRead(req.user.id);
+  res.json({ ok: true });
+});
+
+router.delete('/notifications/:id', requireAuth, (req, res) => {
+  notifications.delete(parseInt(req.params.id), req.user.id);
+  res.json({ ok: true });
+});
+
+router.post('/notifications/bulk', requireAuth, (req, res) => {
+  const { ids, action } = req.body;
+  if (!ids || !Array.isArray(ids) || !['read', 'delete'].includes(action)) {
+    return res.status(400).json({ error: 'ids (array) and action (read|delete) required' });
+  }
+  notifications.bulkAction(ids.map(id => parseInt(id)), req.user.id, action);
   res.json({ ok: true });
 });
 
@@ -448,6 +467,28 @@ router.get('/docs', (req, res) => {
         { method: 'POST', path: '/api/git/stacks/:id/push', description: 'Push compose changes to Git' },
         { method: 'POST', path: '/api/git/webhook/:token', auth: false, description: 'Webhook receiver (GitHub/GitLab/Gitea/Bitbucket)' },
       ]},
+      { group: 'Notifications', endpoints: [
+        { method: 'GET', path: '/api/notifications', description: 'List notifications (paginated, filterable by type/read status)' },
+        { method: 'GET', path: '/api/notifications/count', description: 'Unread notification count' },
+        { method: 'POST', path: '/api/notifications/:id/read', description: 'Mark notification as read' },
+        { method: 'POST', path: '/api/notifications/read-all', description: 'Mark all notifications as read' },
+        { method: 'DELETE', path: '/api/notifications/:id', description: 'Delete a notification' },
+        { method: 'POST', path: '/api/notifications/bulk', description: 'Bulk mark read or delete notifications' },
+      ]},
+      { group: 'Container Groups', endpoints: [
+        { method: 'GET', path: '/api/groups', description: 'List container groups with member counts' },
+        { method: 'GET', path: '/api/groups/:id', description: 'Get group with member container IDs' },
+        { method: 'POST', path: '/api/groups', description: 'Create a new container group' },
+        { method: 'PUT', path: '/api/groups/:id', description: 'Update group (name, color, icon)' },
+        { method: 'DELETE', path: '/api/groups/:id', description: 'Delete a container group' },
+        { method: 'POST', path: '/api/groups/:id/containers', description: 'Add containers to group' },
+        { method: 'DELETE', path: '/api/groups/:id/containers/:containerId', description: 'Remove container from group' },
+        { method: 'PUT', path: '/api/groups/order', description: 'Reorder groups' },
+      ]},
+      { group: 'Dashboard', endpoints: [
+        { method: 'GET', path: '/api/dashboard/preferences', description: 'Get dashboard widget order and hidden widgets' },
+        { method: 'PUT', path: '/api/dashboard/preferences', description: 'Save dashboard widget order and hidden widgets' },
+      ]},
       { group: 'Stats & Monitoring', endpoints: [
         { method: 'GET', path: '/api/stats/overview', description: 'Real-time stats overview' },
         { method: 'GET', path: '/api/stats/uptime', description: 'Container uptime reports' },
@@ -776,6 +817,38 @@ router.get('/export/:type', requireAuth, requireRole('admin'), (req, res) => {
       res.json(data);
     }
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── User Preferences ───────────────────────────────────────
+
+router.get('/preferences', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT pref_key, pref_value FROM user_preferences WHERE user_id = ?').all(req.user.id);
+    const prefs = {};
+    for (const row of rows) {
+      prefs[row.pref_key] = row.pref_value;
+    }
+    res.json(prefs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/preferences', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const { key, value } = req.body;
+    if (!key || typeof key !== 'string') return res.status(400).json({ error: 'key required' });
+    db.prepare(`
+      INSERT INTO user_preferences (user_id, pref_key, pref_value, updated_at)
+      VALUES (?, ?, ?, datetime('now'))
+      ON CONFLICT(user_id, pref_key) DO UPDATE SET pref_value = ?, updated_at = datetime('now')
+    `).run(req.user.id, key, value || '', value || '');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── About / Open Source Files ─────────────────────────────

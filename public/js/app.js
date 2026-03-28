@@ -25,8 +25,13 @@ const App = {
     'git-stacks': () => GitStacksPage,
     compare:    () => ComparePage,
     insights:   () => InsightsPage,
+    'cost-optimizer': () => CostOptimizerPage,
+    'dependency-map': () => DependencyMapPage,
     settings:   () => SettingsPage,
     profile:    () => ProfilePage,
+    notifications: () => NotificationsPage,
+    stacks:     () => StacksPage,
+    'api-playground': () => ApiPlaygroundPage,
   },
 
   async init() {
@@ -178,6 +183,9 @@ const App = {
     // Setup theme toggle
     this._initThemeToggle();
 
+    // Sync preferences from server (fire-and-forget, localStorage wins for instant display)
+    this._syncUserPreferences();
+
     // Setup language toggle
     this._initLangToggle();
 
@@ -271,6 +279,8 @@ const App = {
       this._updateThemeIcon(icon);
       // Update chart colors for new theme
       Utils.configureChartDefaults();
+      // Save to server (fire-and-forget)
+      Api.saveUserPreference('theme', next).catch(() => {});
     });
 
     // Auto-detect OS theme changes (if user hasn't manually set)
@@ -287,6 +297,35 @@ const App = {
     if (!icon) return;
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     icon.className = isLight ? 'fas fa-moon' : 'fas fa-sun';
+  },
+
+  async _syncUserPreferences() {
+    try {
+      const prefs = await Api.getUserPreferences();
+      // Theme: server overrides localStorage only if localStorage has no value (new device)
+      // or if values differ and we want server to be source of truth across devices
+      if (prefs.theme) {
+        const local = localStorage.getItem('dd-theme');
+        if (!local || local !== prefs.theme) {
+          localStorage.setItem('dd-theme', prefs.theme);
+          if (prefs.theme === 'dark') {
+            document.documentElement.removeAttribute('data-theme');
+          } else {
+            document.documentElement.setAttribute('data-theme', prefs.theme);
+          }
+          const icon = document.getElementById('theme-icon');
+          this._updateThemeIcon(icon);
+          Utils.configureChartDefaults();
+        }
+      }
+      // Language: sync from server if available
+      if (prefs.lang && prefs.lang !== i18n.lang) {
+        localStorage.setItem('dd-lang', prefs.lang);
+        i18n.setLanguage(prefs.lang);
+      }
+    } catch {
+      // Preferences table may not exist yet (migration pending) — ignore silently
+    }
   },
 
   _initLangToggle() {
@@ -321,6 +360,8 @@ const App = {
           const prevLang = i18n.lang;
           const lang = opt.dataset.lang;
           i18n.setLang(lang);
+          // Save language preference to server (fire-and-forget)
+          Api.saveUserPreference('lang', lang).catch(() => {});
           const l = i18n.languages.find(x => x.code === lang);
           code.textContent = l?.label || lang.toUpperCase();
           btn.title = l?.name || lang;
@@ -818,8 +859,8 @@ const App = {
     if (!listEl) return;
 
     try {
-      const data = await Api.get('/notifications?limit=20');
-      const items = data.notifications || data || [];
+      const data = await Api.getNotifications({ limit: 20 });
+      const items = data.items || data.notifications || data || [];
 
       if (items.length === 0) {
         listEl.innerHTML = `<div class="empty-msg" style="padding:24px;font-size:12px">${i18n.t('notifications.empty')}</div>`;
@@ -832,7 +873,7 @@ const App = {
                           severity === 'warning' ? 'fa-exclamation-triangle' :
                           severity === 'success' ? 'fa-check-circle' : 'fa-info-circle';
         return `
-          <div class="notif-item ${n.read ? '' : 'unread'}">
+          <div class="notif-item ${n.is_read || n.read ? '' : 'unread'}">
             <div class="notif-icon ${severity}"><i class="fas ${iconClass}"></i></div>
             <div class="notif-body">
               <div class="notif-title">${Utils.escapeHtml(n.title || n.message || '')}</div>
@@ -905,6 +946,11 @@ const App = {
       { icon: 'fa-info-circle', label: i18n.t('nav.about'), action: () => this.navigate('/about'), section: 'nav' },
       { icon: 'fa-cog', label: i18n.t('nav.settings'), action: () => this.navigate('/settings'), section: 'nav' },
       { icon: 'fa-user-circle', label: i18n.t('nav.profile'), action: () => this.navigate('/profile'), section: 'nav' },
+      { icon: 'fa-bell', label: 'Notifications', action: () => this.navigate('/notifications'), section: 'nav' },
+      { icon: 'fa-layer-group', label: 'Stacks', action: () => this.navigate('/stacks'), section: 'nav' },
+      { icon: 'fa-flask', label: 'API Playground', action: () => this.navigate('/api-playground'), section: 'nav' },
+      { icon: 'fa-dollar-sign', label: 'Cost Optimizer', action: () => this.navigate('/cost-optimizer'), section: 'nav' },
+      { icon: 'fa-project-diagram', label: 'Dependency Map', action: () => this.navigate('/dependency-map'), section: 'nav' },
       { icon: 'fa-sync-alt', label: i18n.t('common.refresh'), action: () => { if (this._currentPage?.destroy) this._currentPage.destroy(); this._route(); }, shortcut: 'R', section: 'action' },
       { icon: 'fa-broom', label: 'System Prune', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="prune"]')?.click(), 300); }, section: 'action' },
       { icon: 'fa-download', label: i18n.t('pages.system.checkUpdates'), action: () => { this.navigate('/system'); }, section: 'action' },

@@ -565,6 +565,51 @@ class DockerService {
     });
   }
 
+  // ─── Exec Command (non-interactive) ─────────────────────
+
+  async execCommand(containerId, cmd, hostId = 0) {
+    const container = this.getDocker(hostId).getContainer(containerId);
+    const exec = await container.exec({
+      Cmd: cmd,
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: false,
+    });
+    const stream = await exec.start({ Detach: false, Tty: false });
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      stream.on('data', (chunk) => chunks.push(chunk));
+      stream.on('end', () => {
+        const raw = Buffer.concat(chunks);
+        // Demux docker stream (8-byte header per frame)
+        const lines = [];
+        let pos = 0;
+        while (pos + 8 <= raw.length) {
+          const size = raw.readUInt32BE(pos + 4);
+          pos += 8;
+          if (pos + size > raw.length) break;
+          lines.push(raw.slice(pos, pos + size).toString('utf8'));
+          pos += size;
+        }
+        const output = lines.length > 0 ? lines.join('') : raw.toString('utf8');
+        resolve(output);
+      });
+      stream.on('error', reject);
+    });
+  }
+
+  // ─── Container Diff ────────────────────────────────────
+
+  async containerDiff(containerId, hostId = 0) {
+    const container = this.getDocker(hostId).getContainer(containerId);
+    const changes = await container.diff();
+    return (changes || []).map(c => ({
+      path: c.Path,
+      kind: c.Kind,
+      kindLabel: ['Modified', 'Added', 'Deleted'][c.Kind] || 'Unknown',
+    }));
+  }
+
   // ─── Helpers ──────────────────────────────────────────────
 
   _parseStats(stats) {

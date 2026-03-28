@@ -20,7 +20,8 @@ i18n.register('en', 'EN', 'English', {
     dashboard: 'Dashboard', containers: 'Containers', images: 'Images',
     volumes: 'Volumes', networks: 'Networks', security: 'Security', alerts: 'Alerts',
     system: 'System', firewall: 'Firewall', hosts: 'Hosts', about: 'About', whatsnew: "What's New", settings: 'Settings', profile: 'Profile',
-    insights: 'Insights', 'git-stacks': 'Git Stacks', compare: 'Compare',
+    insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare',
+    notifications: 'Notifications', 'api-playground': 'API',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
   },
   login: {
