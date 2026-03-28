@@ -501,8 +501,8 @@ Please:
                 <i class="fas fa-shield-alt" style="font-size:18px;color:#a855f7"></i>
               </div>
               <div style="flex:1">
-                <div style="font-weight:600;font-size:14px">Grype</div>
-                <div class="text-sm text-muted" style="margin:2px 0 6px">Open-source vulnerability scanner by Anchore. Fast scanning of container images and filesystems against multiple vulnerability databases.</div>
+                <div style="font-weight:600;font-size:14px">Grype <span class="text-muted text-sm" style="font-weight:400">by Anchore</span></div>
+                <div class="text-sm text-muted" style="margin:2px 0 6px">Open-source vulnerability scanner. Fast scanning against multiple databases (NVD, GitHub Advisories, Alpine SecDB, etc.). No authentication required.</div>
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
                   <a href="https://github.com/anchore/grype" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fab fa-github" style="margin-right:4px"></i>GitHub</a>
                   <a href="https://github.com/anchore/grype#readme" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fas fa-book" style="margin-right:4px"></i>Documentation</a>
@@ -510,6 +510,35 @@ Please:
               </div>
               <span class="badge ${scanners.some(s => s === 'grype') ? 'badge-running' : 'badge-stopped'}" style="flex-shrink:0">${scanners.some(s => s === 'grype') ? '<i class="fas fa-check" style="margin-right:4px"></i>Ready' : 'Not Installed'}</span>
             </div>
+            ${!scanners.some(s => s === 'grype') ? `
+            <div style="padding:12px 0 6px">
+              <details style="cursor:pointer">
+                <summary style="font-size:13px;font-weight:600;color:var(--accent)"><i class="fas fa-wrench" style="margin-right:6px"></i>How to install Grype</summary>
+                <div style="margin-top:10px;padding:12px 16px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px">
+                  <p class="text-muted" style="margin:0 0 10px"><strong>Option 1: Docker (recommended)</strong> — rebuild the Docker Dash image:</p>
+                  <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)">docker compose build --no-cache
+docker compose up -d</pre>
+                  <p class="text-muted" style="margin:0 0 10px"><strong>Option 2: Install into running container</strong> (temporary, lost on restart):</p>
+                  <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)">docker exec -u root docker-dash sh -c '\\
+  wget -qO /tmp/grype.tar.gz \\
+    https://github.com/anchore/grype/releases/download/v0.92.0/grype_0.92.0_linux_amd64.tar.gz \\
+  && tar -xzf /tmp/grype.tar.gz -C /usr/local/bin grype \\
+  && chmod +x /usr/local/bin/grype \\
+  && rm -f /tmp/grype.tar.gz'</pre>
+                  <p class="text-muted" style="margin:0 0 10px"><strong>Option 3: Native install</strong> (Linux/macOS, if running without Docker):</p>
+                  <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)"># One-line install (official script)
+curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+# Or via Homebrew (macOS/Linux)
+brew install grype
+
+# Verify installation
+grype version</pre>
+                  <p class="text-muted" style="margin:0 0 6px"><strong>First scan note:</strong> Grype downloads its vulnerability database (~150MB) on the first scan. This is a one-time operation and takes 1-2 minutes. Subsequent scans are fast.</p>
+                  <p class="text-muted" style="margin:0"><i class="fas fa-sync-alt" style="margin-right:4px"></i>After installing, refresh this page to see the updated status.</p>
+                </div>
+              </details>
+            </div>` : ''}
 
             <!-- Docker Scout -->
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0">
