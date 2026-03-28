@@ -20,6 +20,7 @@ const DashboardPage = {
             <i class="fas fa-circle"></i> <span>---</span>
           </span>
           <button class="prune-help-btn" id="dash-help" title="${i18n.t('pages.dashboard.helpTooltip')}">?</button>
+          <span class="text-muted text-sm" style="margin-right:8px"><i class="fas fa-clock" style="margin-right:4px"></i><span id="dash-last-updated">—</span></span>
           <button class="btn btn-sm" id="dash-refresh">
             <i class="fas fa-sync-alt"></i> ${i18n.t('common.refresh')}
           </button>
@@ -164,6 +165,12 @@ const DashboardPage = {
       this._renderCpuChart(overview);
       this._renderMemoryChart(overview);
       this._renderEvents();
+
+      // Update "last updated" indicator
+      const updEl = document.getElementById('dash-last-updated');
+      if (updEl) updEl.textContent = new Date().toLocaleTimeString();
+      const errBanner = document.getElementById('dash-error');
+      if (errBanner) errBanner.style.display = 'none';
     } catch (err) {
       console.error('Dashboard load error:', err);
       // Show user-facing error banner

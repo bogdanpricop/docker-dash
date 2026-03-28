@@ -1378,6 +1378,14 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .meta-card-links a:hover { background: var(--accent-dim); color: var(--accent-hover); }
 .meta-card-links a i { font-size: 11px; }
 
+/* ── Sidebar Count Badge ─────────────────────────── */
+.nav-badge-count {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  background: var(--surface3); color: var(--text-dim); padding: 1px 6px;
+  border-radius: 8px; min-width: 18px; text-align: center;
+}
+.sidebar.collapsed .nav-badge-count { display: none; }
+
 /* ── Error Boundary Overlay ──────────────────────── */
 #error-boundary-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; }
 .eb-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }

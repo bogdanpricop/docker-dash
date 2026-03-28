@@ -146,6 +146,19 @@ const App = {
     // Connect WebSocket
     WS.connect();
 
+    // Update sidebar container count from live stats
+    WS.on('stats:overview', (data) => {
+      const badge = document.getElementById('container-count');
+      if (badge && data?.containers) {
+        const running = data.containers.filter(c => c.state === 'running' || c.cpu !== undefined).length;
+        const total = data.containers.length;
+        badge.textContent = `${running}/${total}`;
+        badge.classList.remove('hidden');
+        badge.style.color = running === total ? 'var(--green)' : running > 0 ? 'var(--text)' : 'var(--red)';
+      }
+    });
+    WS.subscribe('stats:overview');
+
     // Setup sidebar
     this._initSidebar();
 
