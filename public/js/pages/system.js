@@ -448,6 +448,10 @@ DB_PASS=secret"></textarea>
       const totalDataSize = tables.reduce((s, t) => s + (t.size || 0), 0);
 
       el.innerHTML = `
+        <!-- Quick Actions -->
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary" id="db-backup-now"><i class="fas fa-download"></i> Create Backup Now</button>
+        </div>
         <!-- Overview Cards -->
         <div class="stat-cards" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap">
           <div class="card" style="flex:1;min-width:140px;padding:16px;text-align:center">
@@ -539,6 +543,16 @@ DB_PASS=secret"></textarea>
           </div>
         </div>
       `;
+
+      // Backup button
+      el.querySelector('#db-backup-now')?.addEventListener('click', async () => {
+        try {
+          Toast.info('Creating backup...');
+          const result = await Api.post('/backup/database');
+          if (result.ok) Toast.success('Backup created: ' + Utils.formatBytes(result.size));
+          else Toast.error('Backup failed');
+        } catch (err) { Toast.error(err.message); }
+      });
 
       // Cleanup button
       el.querySelector('#db-cleanup-btn').addEventListener('click', async () => {
@@ -1096,7 +1110,12 @@ ${logText.substring(0, 3000)}
         return;
       }
 
-      el.innerHTML = `<table class="data-table">
+      el.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+        <button class="btn btn-sm btn-secondary" id="audit-export-csv"><i class="fas fa-download"></i> Export CSV</button>
+        <button class="btn btn-sm btn-secondary" id="audit-analytics-btn"><i class="fas fa-chart-bar"></i> Analytics</button>
+      </div>
+      <table class="data-table">
         <thead><tr><th>${i18n.t('pages.system.eventTime')}</th><th>${i18n.t('pages.system.auditUser')}</th><th>${i18n.t('pages.system.auditAction')}</th><th>${i18n.t('pages.system.auditTarget')}</th><th>${i18n.t('pages.system.auditIp')}</th></tr></thead>
         <tbody>${entries.map(e => `
           <tr>
@@ -1108,6 +1127,30 @@ ${logText.substring(0, 3000)}
           </tr>
         `).join('')}</tbody>
       </table>`;
+
+      el.querySelector('#audit-export-csv')?.addEventListener('click', () => {
+        window.open('/api/audit/export?days=30', '_blank');
+      });
+
+      el.querySelector('#audit-analytics-btn')?.addEventListener('click', async () => {
+        try {
+          const analytics = await Api.getAuditAnalytics(7);
+          const html = `
+            <div class="modal-header"><h3><i class="fas fa-chart-bar" style="margin-right:8px;color:var(--accent)"></i>Audit Analytics (${analytics.days} days)</h3>
+              <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+            <div class="modal-body">
+              <p><strong>${analytics.total}</strong> total actions</p>
+              <h4 style="margin-top:12px">Top Users</h4>
+              <table class="data-table"><thead><tr><th style="text-align:left">User</th><th>Actions</th></tr></thead>
+              <tbody>${(analytics.topUsers || []).map(u => `<tr><td style="text-align:left">${Utils.escapeHtml(u.username)}</td><td>${u.action_count}</td></tr>`).join('')}</tbody></table>
+              <h4 style="margin-top:12px">Top Actions</h4>
+              <table class="data-table"><thead><tr><th style="text-align:left">Action</th><th>Count</th></tr></thead>
+              <tbody>${(analytics.topActions || []).slice(0, 10).map(a => `<tr><td style="text-align:left"><span class="badge badge-info">${Utils.escapeHtml(a.action)}</span></td><td>${a.count}</td></tr>`).join('')}</tbody></table>
+            </div>
+            <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">Close</button></div>`;
+          Modal.open(html, { width: '500px' });
+        } catch (err) { Toast.error(err.message); }
+      });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
     }
