@@ -30,11 +30,12 @@ router.post('/login',
         return res.status(result.locked ? 429 : 401).json({ error: result.error });
       }
 
-      // Set cookie (lax sameSite for HTTP compatibility)
+      // Set cookie — auto-detect HTTPS from request protocol or X-Forwarded-Proto
+      const isHttps = config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
       res.cookie(config.session.cookieName, result.token, {
         httpOnly: true,
-        secure: config.session.secureCookie,
-        sameSite: 'lax',
+        secure: isHttps,
+        sameSite: isHttps ? 'strict' : 'lax',
         maxAge: config.session.ttl,
         path: '/',
       });

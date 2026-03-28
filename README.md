@@ -129,7 +129,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/bogdan-pricop/docker-dash.git
+git clone https://github.com/bogdanpricop/docker-dash.git
 cd docker-dash
 
 # Copy and configure environment
@@ -203,7 +203,7 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `ENCRYPTION_KEY` | — | Encrypt registry credentials at rest |
 | `STATS_INTERVAL_MS` | `10000` | Stats collection interval (ms) |
 | `STATS_RAW_RETENTION_HOURS` | `24` | Keep raw stats for N hours |
-| `EVENT_RETENTION_DAYS` | `3` | Keep Docker events for N days |
+| `EVENT_RETENTION_DAYS` | `7` | Keep Docker events for N days |
 | `ENABLE_EXEC` | `true` | Allow terminal exec into containers |
 | `READ_ONLY_MODE` | `false` | Disable all write operations |
 
@@ -258,8 +258,7 @@ docker-dash/
 │   └── screenshots/     # UI screenshots for README
 ├── Dockerfile           # Multi-stage: base → deps → production
 ├── docker-compose.yml   # Production-ready with health check
-├── .env.example         # All variables documented
-└── plans/               # Architecture decisions and feature roadmap
+└── .env.example         # All variables documented
 ```
 
 ## Comparison

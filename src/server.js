@@ -43,7 +43,11 @@ app.use(cookieParser());
 
 // Trust proxy — set to specific proxy IPs or 'loopback' for security
 // 'true' trusts ALL proxies (allows IP spoofing). Use specific IPs in production.
-app.set('trust proxy', config.app.env === 'production' ? 'loopback' : true);
+// Trust proxy — configurable via TRUST_PROXY env var.
+// 'loopback' = trust only localhost proxies (safe default for production)
+// 'true' = trust all (development convenience)
+// '10.0.0.1' = trust specific proxy IP
+app.set('trust proxy', process.env.TRUST_PROXY || (config.app.env === 'production' ? 'loopback' : true));
 
 // Request latency tracking + logging
 app.use((req, res, next) => {
@@ -94,7 +98,8 @@ app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/workflows', apiLimiter, require('./routes/workflows'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
-app.use('/api/status-page', require('./routes/statusPage'));
+const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
+app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────
