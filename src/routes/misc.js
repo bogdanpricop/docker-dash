@@ -341,6 +341,42 @@ router.get('/search', requireAuth, async (req, res) => {
   }
 });
 
+// ─── System Overview (complete infrastructure snapshot) ──────
+
+router.get('/overview', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
+
+    let containers = [];
+    try { containers = await dockerService.listContainers(hostId); } catch {}
+    const running = containers.filter(c => c.state === 'running').length;
+
+    const overview = statsService.getOverview(hostId);
+
+    let gitStacks = 0, activeAlerts = 0, channels = 0, workflows = 0, recentDeploys = 0;
+    try { gitStacks = db.prepare('SELECT COUNT(*) AS cnt FROM git_stacks').get()?.cnt || 0; } catch {}
+    try { activeAlerts = db.prepare("SELECT COUNT(*) AS cnt FROM alert_events WHERE resolved_at IS NULL").get()?.cnt || 0; } catch {}
+    try { channels = db.prepare('SELECT COUNT(*) AS cnt FROM notification_channels WHERE is_active = 1').get()?.cnt || 0; } catch {}
+    try { workflows = db.prepare('SELECT COUNT(*) AS cnt FROM workflow_rules WHERE is_active = 1').get()?.cnt || 0; } catch {}
+    try { recentDeploys = db.prepare("SELECT COUNT(*) AS cnt FROM git_deployments WHERE started_at > datetime('now', '-1 day')").get()?.cnt || 0; } catch {}
+
+    const mem = process.memoryUsage();
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      version: _pkgVersion,
+      status: activeAlerts > 0 ? 'warning' : running === 0 && containers.length > 0 ? 'critical' : 'healthy',
+      containers: { total: containers.length, running, stopped: containers.length - running },
+      resources: { totalCpu: Math.round(overview.totals.cpu * 10) / 10, totalMemory: overview.totals.memory, totalMemoryHuman: formatBytes(overview.totals.memory) },
+      operations: { activeAlerts, gitStacks, recentDeploys24h: recentDeploys, notificationChannels: channels, workflowRules: workflows },
+      dockerDash: { memoryRss: mem.rss, memoryHuman: formatBytes(mem.rss), uptime: Math.floor(process.uptime()), nodeVersion: process.version },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── API Documentation ──────────────────────────────────────
 
 router.get('/docs', (req, res) => {
