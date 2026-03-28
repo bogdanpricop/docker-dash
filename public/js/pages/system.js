@@ -637,148 +637,745 @@ DB_PASS=secret"></textarea>
   },
 
   // ─── Tools Tab ─────────────────────────────────────
+  _toolsDef() {
+    return [
+      // Docker tools (existing)
+      { id: 'docker-run', name: 'docker run → Compose', icon: 'fa-terminal', color: '#388bfd', cat: 'docker', desc: 'Convert docker run commands to docker-compose YAML' },
+      { id: 'proxy-labels', name: 'Reverse Proxy Labels', icon: 'fa-tags', color: '#3fb950', cat: 'docker', desc: 'Generate Traefik or Caddy reverse proxy labels' },
+      { id: 'ai-logs', name: 'AI Log Analysis', icon: 'fa-robot', color: '#a371f7', cat: 'docker', desc: 'Generate diagnostic prompts from container logs' },
+      // Security
+      { id: 'password-gen', name: 'Password Generator', icon: 'fa-key', color: '#f85149', cat: 'security', desc: 'Generate secure random passwords with custom rules' },
+      { id: 'password-strength', name: 'Password Strength', icon: 'fa-shield-alt', color: '#db6d28', cat: 'security', desc: 'Check password entropy, crack time and strength' },
+      { id: 'hash-gen', name: 'Hash Generator', icon: 'fa-hashtag', color: '#a371f7', cat: 'security', desc: 'Generate SHA-1, SHA-256, SHA-512 hashes' },
+      // Network
+      { id: 'ip-calc', name: 'IP/Subnet Calculator', icon: 'fa-network-wired', color: '#0ea5e9', cat: 'network', desc: 'Calculate network, broadcast, host range from CIDR' },
+      { id: 'url-codec', name: 'URL Encoder/Decoder', icon: 'fa-link', color: '#3fb950', cat: 'network', desc: 'Encode and decode URL components' },
+      // Converters
+      { id: 'base64', name: 'Base64 Encode/Decode', icon: 'fa-exchange-alt', color: '#388bfd', cat: 'converters', desc: 'Convert text to/from Base64 encoding' },
+      { id: 'json-fmt', name: 'JSON Formatter', icon: 'fa-code', color: '#d29922', cat: 'converters', desc: 'Format, minify and validate JSON data' },
+      { id: 'epoch', name: 'Epoch/Date Converter', icon: 'fa-clock', color: '#8b5cf6', cat: 'converters', desc: 'Convert between epoch timestamps and dates' },
+      { id: 'storage-conv', name: 'Storage Unit Converter', icon: 'fa-hdd', color: '#39d0d8', cat: 'converters', desc: 'Convert between B, KB, MB, GB, TB (binary & decimal)' },
+      // Text Tools
+      { id: 'regex', name: 'Regex Tester', icon: 'fa-asterisk', color: '#f472b6', cat: 'text', desc: 'Test regex patterns with match highlighting' },
+      { id: 'text-diff', name: 'Text Diff', icon: 'fa-columns', color: '#6366f1', cat: 'text', desc: 'Compare two texts with line-by-line diff' },
+      { id: 'lorem', name: 'Lorem Ipsum Generator', icon: 'fa-paragraph', color: '#14b8a6', cat: 'text', desc: 'Generate placeholder text (paragraphs, sentences, words)' },
+      // Reference
+      { id: 'http-codes', name: 'HTTP Status Codes', icon: 'fa-globe', color: '#06b6d4', cat: 'reference', desc: 'Searchable reference of HTTP status codes' },
+      { id: 'port-ref', name: 'Port Reference', icon: 'fa-server', color: '#ec4899', cat: 'reference', desc: 'Common network ports and their services' },
+    ];
+  },
+
   _renderTools(el) {
+    const tools = this._toolsDef();
+    const cats = [
+      { key: '', label: 'All', count: tools.length },
+      { key: 'docker', label: 'Docker', count: tools.filter(t => t.cat === 'docker').length },
+      { key: 'security', label: 'Security', count: tools.filter(t => t.cat === 'security').length },
+      { key: 'network', label: 'Network', count: tools.filter(t => t.cat === 'network').length },
+      { key: 'converters', label: 'Converters', count: tools.filter(t => t.cat === 'converters').length },
+      { key: 'text', label: 'Text Tools', count: tools.filter(t => t.cat === 'text').length },
+      { key: 'reference', label: 'Reference', count: tools.filter(t => t.cat === 'reference').length },
+    ];
+
     el.innerHTML = `
-      <div class="info-grid" style="margin-top:0">
-        <div class="card">
-          <div class="card-header"><h3><i class="fas fa-terminal" style="margin-right:8px"></i>docker run → Compose</h3></div>
-          <div class="card-body">
-            <p class="text-sm text-muted" style="margin-bottom:12px">Paste a <code>docker run</code> command to convert it to docker-compose YAML.</p>
-            <textarea id="tool-run-input" class="form-control" rows="4" style="font-family:var(--mono);font-size:12px"
-              placeholder="docker run -d --name myapp -p 8080:80 -v data:/app/data -e NODE_ENV=production --restart unless-stopped nginx:alpine"></textarea>
-            <button class="btn btn-sm btn-primary" id="tool-run-convert" style="margin-top:8px"><i class="fas fa-exchange-alt"></i> Convert</button>
-            <div id="tool-run-output" style="margin-top:12px;display:none">
-              <textarea id="tool-run-yaml" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px" readonly></textarea>
-              <button class="btn btn-sm btn-secondary" id="tool-run-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
-            </div>
-          </div>
+      <div class="tool-filter-bar">
+        <div class="search-box" style="flex:1;min-width:200px;max-width:320px">
+          <i class="fas fa-search"></i>
+          <input type="text" id="tools-search" placeholder="Search tools...">
         </div>
-
-        <div class="card">
-          <div class="card-header"><h3><i class="fas fa-tags" style="margin-right:8px"></i>Reverse Proxy Labels</h3></div>
-          <div class="card-body">
-            <p class="text-sm text-muted" style="margin-bottom:12px">Generate Traefik or Caddy labels for a container.</p>
-            <div class="form-group">
-              <label>Proxy Type</label>
-              <select id="tool-proxy-type" class="form-control"><option value="traefik">Traefik v2</option><option value="caddy">Caddy</option></select>
-            </div>
-            <div style="display:flex;gap:8px">
-              <div class="form-group" style="flex:1"><label>Domain</label><input type="text" id="tool-proxy-domain" class="form-control" placeholder="app.example.com"></div>
-              <div class="form-group" style="flex:1"><label>Container Port</label><input type="number" id="tool-proxy-port" class="form-control" value="80"></div>
-            </div>
-            <div class="form-group"><label><input type="checkbox" id="tool-proxy-tls" checked> Enable HTTPS (Let's Encrypt)</label></div>
-            <button class="btn btn-sm btn-primary" id="tool-proxy-gen"><i class="fas fa-magic"></i> Generate</button>
-            <div id="tool-proxy-output" style="margin-top:12px;display:none">
-              <textarea id="tool-proxy-labels" class="form-control" rows="10" style="font-family:var(--mono);font-size:12px" readonly></textarea>
-              <button class="btn btn-sm btn-secondary" id="tool-proxy-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
-            </div>
+        ${cats.map(c => `<button class="tool-filter-btn${c.key === '' ? ' active' : ''}" data-cat="${c.key}">${c.label}<span class="tool-filter-count">${c.count}</span></button>`).join('')}
+      </div>
+      <div class="tools-grid" id="tools-grid">
+        ${tools.map(t => `
+          <div class="tool-card" data-tool="${t.id}" data-cat="${t.cat}" data-search="${t.name.toLowerCase()} ${t.desc.toLowerCase()}">
+            <div class="tool-card-icon" style="background:${t.color}"><i class="fas ${t.icon}"></i></div>
+            <div class="tool-card-title">${t.name}</div>
+            <span class="tool-cat-badge tool-cat-${t.cat}">${t.cat}</span>
+            <div class="tool-card-desc">${t.desc}</div>
           </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header"><h3><i class="fas fa-robot" style="margin-right:8px"></i>AI Log Analysis</h3></div>
-          <div class="card-body">
-            <p class="text-sm text-muted" style="margin-bottom:12px">Generate a diagnostic prompt from container logs for ChatGPT/Claude.</p>
-            <div class="form-group">
-              <label>Container</label>
-              <select id="tool-ai-container" class="form-control"><option value="">Loading...</option></select>
-            </div>
-            <div class="form-group"><label>Log lines (last N)</label><input type="number" id="tool-ai-lines" class="form-control" value="50" min="10" max="200"></div>
-            <button class="btn btn-sm btn-primary" id="tool-ai-gen"><i class="fas fa-magic"></i> Generate Prompt</button>
-            <div id="tool-ai-output" style="margin-top:12px;display:none">
-              <textarea id="tool-ai-prompt" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" readonly></textarea>
-              <button class="btn btn-sm btn-secondary" id="tool-ai-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy to Clipboard</button>
-            </div>
-          </div>
-        </div>
+        `).join('')}
       </div>
     `;
 
-    // Load containers for AI tool
-    Api.getContainers().then(containers => {
-      const sel = el.querySelector('#tool-ai-container');
-      if (sel) sel.innerHTML = containers.map(c => {
-        const name = Utils.containerName(c.Names || c.names);
-        return `<option value="${c.Id || c.id}">${Utils.escapeHtml(name)} (${c.State || c.state})</option>`;
-      }).join('');
-    }).catch(() => {});
-
-    // docker run → Compose converter
-    el.querySelector('#tool-run-convert').addEventListener('click', () => {
-      const input = el.querySelector('#tool-run-input').value.trim();
-      if (!input) { Toast.warning('Paste a docker run command'); return; }
-      try {
-        const yaml = this._dockerRunToCompose(input);
-        el.querySelector('#tool-run-yaml').value = yaml;
-        el.querySelector('#tool-run-output').style.display = '';
-      } catch (err) { Toast.error('Parse error: ' + err.message); }
-    });
-    el.querySelector('#tool-run-copy').addEventListener('click', () => {
-      Utils.copyToClipboard(el.querySelector('#tool-run-yaml').value);
-      Toast.success('Copied!');
+    // Filter by category
+    el.querySelectorAll('.tool-filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        el.querySelectorAll('.tool-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const cat = btn.dataset.cat;
+        el.querySelectorAll('.tool-card').forEach(card => {
+          card.style.display = (!cat || card.dataset.cat === cat) ? '' : 'none';
+        });
+      });
     });
 
-    // Proxy label generator
-    el.querySelector('#tool-proxy-gen').addEventListener('click', () => {
-      const type = el.querySelector('#tool-proxy-type').value;
-      const domain = el.querySelector('#tool-proxy-domain').value.trim();
-      const port = el.querySelector('#tool-proxy-port').value;
-      const tls = el.querySelector('#tool-proxy-tls').checked;
-      if (!domain) { Toast.warning('Enter a domain'); return; }
-      const labels = this._generateProxyLabels(type, domain, port, tls);
-      el.querySelector('#tool-proxy-labels').value = labels;
-      el.querySelector('#tool-proxy-output').style.display = '';
+    // Search
+    el.querySelector('#tools-search').addEventListener('input', Utils.debounce((e) => {
+      const q = e.target.value.toLowerCase();
+      const activeCat = el.querySelector('.tool-filter-btn.active')?.dataset?.cat || '';
+      el.querySelectorAll('.tool-card').forEach(card => {
+        const matchSearch = !q || card.dataset.search.includes(q);
+        const matchCat = !activeCat || card.dataset.cat === activeCat;
+        card.style.display = (matchSearch && matchCat) ? '' : 'none';
+      });
+    }, 150));
+
+    // Card click → open tool modal
+    el.querySelectorAll('.tool-card').forEach(card => {
+      card.addEventListener('click', () => this._openToolModal(card.dataset.tool));
     });
-    el.querySelector('#tool-proxy-copy').addEventListener('click', () => {
-      Utils.copyToClipboard(el.querySelector('#tool-proxy-labels').value);
-      Toast.success('Copied!');
-    });
+  },
 
-    // AI log analysis
-    el.querySelector('#tool-ai-gen').addEventListener('click', async () => {
-      const containerId = el.querySelector('#tool-ai-container').value;
-      const lines = parseInt(el.querySelector('#tool-ai-lines').value) || 50;
-      if (!containerId) { Toast.warning('Select a container'); return; }
-      try {
-        const [logs, inspect] = await Promise.all([
-          Api.getContainerLogs(containerId, lines),
-          Api.getContainer(containerId),
-        ]);
-        const name = Utils.containerName(inspect.Name || inspect.name);
-        const image = inspect.Config?.Image || inspect.config?.Image || '';
-        const state = inspect.State?.Status || inspect.state?.Status || '';
-        const exitCode = inspect.State?.ExitCode ?? '';
-        const logText = typeof logs === 'string' ? logs : (logs.logs || logs.stdout || '');
+  _openToolModal(toolId) {
+    const tool = this._toolsDef().find(t => t.id === toolId);
+    if (!tool) return;
 
-        const prompt = `I have a Docker container that needs diagnosis. Please analyze the following information and provide:
-1. What the likely issue is
-2. Recommended fixes (most likely first)
-3. Any preventive measures
+    const modalBody = this._getToolModalBody(toolId);
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas ${tool.icon}" style="margin-right:10px;color:${tool.color}"></i>${tool.name}</h3>
+        <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body tool-modal-content">${modalBody}</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="Modal.close()">Close</button>
+      </div>
+    `, { width: '650px' });
 
-**Container:** ${name}
-**Image:** ${image}
-**State:** ${state}${exitCode !== '' ? ` (exit code: ${exitCode})` : ''}
-**Status Message:** ${Utils.containerStatusMessage(state, exitCode)}
+    // Initialize tool interactions after modal is open
+    setTimeout(() => this._initToolModal(toolId), 50);
+  },
 
-**Last ${lines} log lines:**
-\`\`\`
-${logText.substring(0, 3000)}
-\`\`\`
+  _getToolModalBody(id) {
+    switch (id) {
+      case 'docker-run': return `
+        <p class="text-sm text-muted" style="margin-bottom:12px">Paste a <code>docker run</code> command to convert to docker-compose YAML.</p>
+        <textarea id="tm-run-input" class="form-control" rows="4" placeholder="docker run -d --name myapp -p 8080:80 -v data:/app/data nginx:alpine"></textarea>
+        <button class="btn btn-sm btn-primary" id="tm-run-convert" style="margin-top:8px"><i class="fas fa-exchange-alt"></i> Convert</button>
+        <div id="tm-run-output" style="margin-top:12px;display:none">
+          <textarea id="tm-run-yaml" class="form-control" rows="12" readonly></textarea>
+          <button class="btn btn-sm btn-secondary" id="tm-run-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
+        </div>`;
+      case 'proxy-labels': return `
+        <p class="text-sm text-muted" style="margin-bottom:12px">Generate Traefik or Caddy reverse proxy labels.</p>
+        <div class="form-group"><label>Proxy Type</label>
+          <select id="tm-proxy-type" class="form-control"><option value="traefik">Traefik v2</option><option value="caddy">Caddy</option></select></div>
+        <div style="display:flex;gap:8px">
+          <div class="form-group" style="flex:1"><label>Domain</label><input type="text" id="tm-proxy-domain" class="form-control" placeholder="app.example.com"></div>
+          <div class="form-group" style="flex:1"><label>Container Port</label><input type="number" id="tm-proxy-port" class="form-control" value="80"></div>
+        </div>
+        <div class="form-group"><label><input type="checkbox" id="tm-proxy-tls" checked> Enable HTTPS</label></div>
+        <button class="btn btn-sm btn-primary" id="tm-proxy-gen"><i class="fas fa-magic"></i> Generate</button>
+        <div id="tm-proxy-output" style="margin-top:12px;display:none">
+          <textarea id="tm-proxy-labels" class="form-control" rows="10" readonly></textarea>
+          <button class="btn btn-sm btn-secondary" id="tm-proxy-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
+        </div>`;
+      case 'ai-logs': return `
+        <p class="text-sm text-muted" style="margin-bottom:12px">Generate a diagnostic prompt from container logs for AI analysis.</p>
+        <div class="form-group"><label>Container</label>
+          <select id="tm-ai-container" class="form-control"><option value="">Loading...</option></select></div>
+        <div class="form-group"><label>Log lines (last N)</label><input type="number" id="tm-ai-lines" class="form-control" value="50" min="10" max="200"></div>
+        <button class="btn btn-sm btn-primary" id="tm-ai-gen"><i class="fas fa-magic"></i> Generate Prompt</button>
+        <div id="tm-ai-output" style="margin-top:12px;display:none">
+          <textarea id="tm-ai-prompt" class="form-control" rows="14" readonly></textarea>
+          <button class="btn btn-sm btn-secondary" id="tm-ai-copy" style="margin-top:4px"><i class="fas fa-copy"></i> Copy</button>
+        </div>`;
+      case 'password-gen': return `
+        <div class="form-group"><label>Length: <span id="tm-pw-len-val">16</span></label>
+          <input type="range" id="tm-pw-len" min="8" max="128" value="16" style="width:100%"></div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+          <label><input type="checkbox" id="tm-pw-upper" checked> Uppercase (A-Z)</label>
+          <label><input type="checkbox" id="tm-pw-lower" checked> Lowercase (a-z)</label>
+          <label><input type="checkbox" id="tm-pw-digits" checked> Digits (0-9)</label>
+          <label><input type="checkbox" id="tm-pw-symbols" checked> Symbols (!@#$...)</label>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary" id="tm-pw-gen"><i class="fas fa-sync-alt"></i> Generate</button>
+          <button class="btn btn-sm btn-secondary" id="tm-pw-copy"><i class="fas fa-copy"></i> Copy</button>
+        </div>
+        <div class="tool-output" id="tm-pw-result" style="font-size:16px;letter-spacing:1px;text-align:center;padding:16px"></div>`;
+      case 'password-strength': return `
+        <div class="form-group"><label>Enter password</label>
+          <input type="text" id="tm-ps-input" class="form-control" placeholder="Type or paste a password..." autocomplete="off"></div>
+        <div class="strength-bar"><div class="strength-bar-fill" id="tm-ps-bar" style="width:0"></div></div>
+        <div id="tm-ps-result" style="margin-top:12px"></div>`;
+      case 'hash-gen': return `
+        <div class="form-group"><label>Input text</label>
+          <textarea id="tm-hash-input" class="form-control" rows="3" placeholder="Type or paste text to hash..."></textarea></div>
+        <button class="btn btn-sm btn-primary" id="tm-hash-gen" style="margin-bottom:12px"><i class="fas fa-hashtag"></i> Generate Hashes</button>
+        <div id="tm-hash-output"></div>`;
+      case 'ip-calc': return `
+        <div class="form-group"><label>IP Address / CIDR</label>
+          <input type="text" id="tm-ip-input" class="form-control" placeholder="192.168.1.0/24"></div>
+        <button class="btn btn-sm btn-primary" id="tm-ip-calc"><i class="fas fa-calculator"></i> Calculate</button>
+        <div id="tm-ip-output" style="margin-top:12px"></div>`;
+      case 'url-codec': return `
+        <div class="form-group"><label>Decoded</label>
+          <textarea id="tm-url-decoded" class="form-control" rows="3" placeholder="Hello World! foo=bar&baz=qux"></textarea></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary" id="tm-url-encode"><i class="fas fa-arrow-down"></i> Encode ↓</button>
+          <button class="btn btn-sm btn-primary" id="tm-url-decode"><i class="fas fa-arrow-up"></i> Decode ↑</button>
+        </div>
+        <div class="form-group"><label>Encoded</label>
+          <textarea id="tm-url-encoded" class="form-control" rows="3" placeholder="Hello%20World%21%20foo%3Dbar%26baz%3Dqux"></textarea></div>`;
+      case 'base64': return `
+        <div class="form-group"><label>Text</label>
+          <textarea id="tm-b64-text" class="form-control" rows="3" placeholder="Plain text..."></textarea></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary" id="tm-b64-encode"><i class="fas fa-arrow-down"></i> Encode ↓</button>
+          <button class="btn btn-sm btn-primary" id="tm-b64-decode"><i class="fas fa-arrow-up"></i> Decode ↑</button>
+        </div>
+        <div class="form-group"><label>Base64</label>
+          <textarea id="tm-b64-b64" class="form-control" rows="3" placeholder="Base64 encoded..."></textarea></div>`;
+      case 'json-fmt': return `
+        <div class="form-group"><label>JSON Input</label>
+          <textarea id="tm-json-input" class="form-control" rows="10" placeholder='{"key":"value","arr":[1,2,3]}'></textarea></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <button class="btn btn-sm btn-primary" id="tm-json-format"><i class="fas fa-indent"></i> Format</button>
+          <button class="btn btn-sm btn-secondary" id="tm-json-minify"><i class="fas fa-compress-alt"></i> Minify</button>
+          <button class="btn btn-sm btn-secondary" id="tm-json-validate"><i class="fas fa-check"></i> Validate</button>
+          <button class="btn btn-sm btn-secondary" id="tm-json-copy"><i class="fas fa-copy"></i> Copy</button>
+        </div>
+        <div id="tm-json-msg" style="font-size:12px;margin-top:4px"></div>`;
+      case 'epoch': return `
+        <div class="form-group"><label>Epoch (seconds)</label>
+          <div style="display:flex;gap:8px"><input type="number" id="tm-epoch-input" class="form-control" placeholder="1711612800">
+          <button class="btn btn-sm btn-primary" id="tm-epoch-now"><i class="fas fa-clock"></i> Now</button>
+          <button class="btn btn-sm btn-secondary" id="tm-epoch-to-date">→ Date</button></div></div>
+        <div id="tm-epoch-date-result" style="margin-bottom:12px"></div>
+        <div class="form-group"><label>Date/Time</label>
+          <div style="display:flex;gap:8px"><input type="datetime-local" id="tm-epoch-date" class="form-control">
+          <button class="btn btn-sm btn-secondary" id="tm-epoch-to-epoch">→ Epoch</button></div></div>
+        <div id="tm-epoch-epoch-result"></div>`;
+      case 'storage-conv': return `
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <div class="form-group" style="flex:1"><label>Value</label>
+            <input type="number" id="tm-stor-val" class="form-control" value="1" min="0" step="any"></div>
+          <div class="form-group" style="flex:0 0 120px"><label>Unit</label>
+            <select id="tm-stor-unit" class="form-control">
+              <option value="B">Bytes (B)</option><option value="KB">KB</option><option value="MB">MB</option>
+              <option value="GB" selected>GB</option><option value="TB">TB</option>
+            </select></div>
+        </div>
+        <button class="btn btn-sm btn-primary" id="tm-stor-calc" style="margin-bottom:12px"><i class="fas fa-calculator"></i> Convert</button>
+        <div id="tm-stor-output"></div>`;
+      case 'regex': return `
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div class="form-group" style="flex:1"><label>Pattern</label>
+            <input type="text" id="tm-regex-pattern" class="form-control" placeholder="\\d+"></div>
+          <div class="form-group" style="flex:0 0 100px"><label>Flags</label>
+            <input type="text" id="tm-regex-flags" class="form-control" value="g" placeholder="g, i, m"></div>
+        </div>
+        <div class="form-group"><label>Test String</label>
+          <textarea id="tm-regex-input" class="form-control" rows="4" placeholder="Enter text to test against..."></textarea></div>
+        <button class="btn btn-sm btn-primary" id="tm-regex-test"><i class="fas fa-play"></i> Test</button>
+        <div id="tm-regex-output" style="margin-top:12px"></div>`;
+      case 'text-diff': return `
+        <div style="display:flex;gap:12px;margin-bottom:12px">
+          <div class="form-group" style="flex:1"><label>Original</label>
+            <textarea id="tm-diff-a" class="form-control" rows="8" placeholder="Original text..."></textarea></div>
+          <div class="form-group" style="flex:1"><label>Modified</label>
+            <textarea id="tm-diff-b" class="form-control" rows="8" placeholder="Modified text..."></textarea></div>
+        </div>
+        <button class="btn btn-sm btn-primary" id="tm-diff-compare"><i class="fas fa-columns"></i> Compare</button>
+        <div id="tm-diff-output" class="diff-result" style="margin-top:12px"></div>`;
+      case 'lorem': return `
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div class="form-group" style="flex:1"><label>Type</label>
+            <select id="tm-lorem-type" class="form-control">
+              <option value="paragraphs">Paragraphs</option><option value="sentences">Sentences</option><option value="words">Words</option>
+            </select></div>
+          <div class="form-group" style="flex:0 0 100px"><label>Count</label>
+            <input type="number" id="tm-lorem-count" class="form-control" value="3" min="1" max="50"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn btn-sm btn-primary" id="tm-lorem-gen"><i class="fas fa-paragraph"></i> Generate</button>
+          <button class="btn btn-sm btn-secondary" id="tm-lorem-copy"><i class="fas fa-copy"></i> Copy</button>
+        </div>
+        <div class="tool-output" id="tm-lorem-output" style="max-height:300px;overflow:auto;white-space:pre-wrap"></div>`;
+      case 'http-codes': return `
+        <div class="form-group" style="margin-bottom:12px">
+          <input type="text" id="tm-http-search" class="form-control" placeholder="Search by code or name...">
+        </div>
+        <div style="max-height:450px;overflow:auto"><table class="ref-table" id="tm-http-table">
+          <thead><tr><th style="width:70px">Code</th><th>Name</th><th>Description</th></tr></thead>
+          <tbody></tbody></table></div>`;
+      case 'port-ref': return `
+        <div class="form-group" style="margin-bottom:12px">
+          <input type="text" id="tm-port-search" class="form-control" placeholder="Search by port, protocol, or service...">
+        </div>
+        <div style="max-height:450px;overflow:auto"><table class="ref-table" id="tm-port-table">
+          <thead><tr><th style="width:70px">Port</th><th style="width:60px">Proto</th><th>Service</th><th>Description</th></tr></thead>
+          <tbody></tbody></table></div>`;
+      default: return '<p>Tool not implemented yet.</p>';
+    }
+  },
 
-**Container Config:**
-- Restart Policy: ${inspect.HostConfig?.RestartPolicy?.Name || 'none'}
-- Memory Limit: ${inspect.HostConfig?.Memory ? Utils.formatBytes(inspect.HostConfig.Memory) : 'unlimited'}
-- CPU Shares: ${inspect.HostConfig?.CpuShares || 'default'}
-- Ports: ${Utils.formatPorts(inspect.NetworkSettings?.Ports ? Object.entries(inspect.NetworkSettings.Ports).map(([k,v]) => ({ private: k.split('/')[0], public: v?.[0]?.HostPort, type: k.split('/')[1] })) : [])}`;
+  _initToolModal(id) {
+    const mc = Modal._content;
+    if (!mc) return;
 
-        el.querySelector('#tool-ai-prompt').value = prompt;
-        el.querySelector('#tool-ai-output').style.display = '';
-      } catch (err) { Toast.error(err.message); }
-    });
-    el.querySelector('#tool-ai-copy').addEventListener('click', () => {
-      Utils.copyToClipboard(el.querySelector('#tool-ai-prompt').value);
-      Toast.success('Copied! Paste into ChatGPT or Claude.');
-    });
+    switch (id) {
+      case 'docker-run': {
+        mc.querySelector('#tm-run-convert').addEventListener('click', () => {
+          const input = mc.querySelector('#tm-run-input').value.trim();
+          if (!input) { Toast.warning('Paste a docker run command'); return; }
+          try {
+            const yaml = this._dockerRunToCompose(input);
+            mc.querySelector('#tm-run-yaml').value = yaml;
+            mc.querySelector('#tm-run-output').style.display = '';
+          } catch (err) { Toast.error('Parse error: ' + err.message); }
+        });
+        mc.querySelector('#tm-run-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-run-yaml').value); Toast.success('Copied!');
+        });
+        break;
+      }
+      case 'proxy-labels': {
+        mc.querySelector('#tm-proxy-gen').addEventListener('click', () => {
+          const type = mc.querySelector('#tm-proxy-type').value;
+          const domain = mc.querySelector('#tm-proxy-domain').value.trim();
+          const port = mc.querySelector('#tm-proxy-port').value;
+          const tls = mc.querySelector('#tm-proxy-tls').checked;
+          if (!domain) { Toast.warning('Enter a domain'); return; }
+          const labels = this._generateProxyLabels(type, domain, port, tls);
+          mc.querySelector('#tm-proxy-labels').value = labels;
+          mc.querySelector('#tm-proxy-output').style.display = '';
+        });
+        mc.querySelector('#tm-proxy-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-proxy-labels').value); Toast.success('Copied!');
+        });
+        break;
+      }
+      case 'ai-logs': {
+        Api.getContainers().then(containers => {
+          const sel = mc.querySelector('#tm-ai-container');
+          if (sel) sel.innerHTML = containers.map(c => {
+            const name = Utils.containerName(c.Names || c.names);
+            return `<option value="${c.Id || c.id}">${Utils.escapeHtml(name)} (${c.State || c.state})</option>`;
+          }).join('');
+        }).catch(() => {});
+        mc.querySelector('#tm-ai-gen').addEventListener('click', async () => {
+          const containerId = mc.querySelector('#tm-ai-container').value;
+          const lines = parseInt(mc.querySelector('#tm-ai-lines').value) || 50;
+          if (!containerId) { Toast.warning('Select a container'); return; }
+          try {
+            const [logs, inspect] = await Promise.all([Api.getContainerLogs(containerId, lines), Api.getContainer(containerId)]);
+            const name = Utils.containerName(inspect.Name || inspect.name);
+            const image = inspect.Config?.Image || inspect.config?.Image || '';
+            const state = inspect.State?.Status || inspect.state?.Status || '';
+            const exitCode = inspect.State?.ExitCode ?? '';
+            const logText = typeof logs === 'string' ? logs : (logs.logs || logs.stdout || '');
+            const prompt = `I have a Docker container that needs diagnosis. Please analyze the following information and provide:\n1. What the likely issue is\n2. Recommended fixes (most likely first)\n3. Any preventive measures\n\n**Container:** ${name}\n**Image:** ${image}\n**State:** ${state}${exitCode !== '' ? ` (exit code: ${exitCode})` : ''}\n\n**Last ${lines} log lines:**\n\`\`\`\n${logText.substring(0, 3000)}\n\`\`\`\n\n**Container Config:**\n- Restart Policy: ${inspect.HostConfig?.RestartPolicy?.Name || 'none'}\n- Memory Limit: ${inspect.HostConfig?.Memory ? Utils.formatBytes(inspect.HostConfig.Memory) : 'unlimited'}\n- CPU Shares: ${inspect.HostConfig?.CpuShares || 'default'}`;
+            mc.querySelector('#tm-ai-prompt').value = prompt;
+            mc.querySelector('#tm-ai-output').style.display = '';
+          } catch (err) { Toast.error(err.message); }
+        });
+        mc.querySelector('#tm-ai-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-ai-prompt').value); Toast.success('Copied!');
+        });
+        break;
+      }
+      case 'password-gen': {
+        const generate = () => {
+          const len = parseInt(mc.querySelector('#tm-pw-len').value);
+          let chars = '';
+          if (mc.querySelector('#tm-pw-upper').checked) chars += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+          if (mc.querySelector('#tm-pw-lower').checked) chars += 'abcdefghijklmnopqrstuvwxyz';
+          if (mc.querySelector('#tm-pw-digits').checked) chars += '0123456789';
+          if (mc.querySelector('#tm-pw-symbols').checked) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+          if (!chars) { Toast.warning('Select at least one character set'); return; }
+          const arr = new Uint32Array(len);
+          crypto.getRandomValues(arr);
+          let pw = '';
+          for (let i = 0; i < len; i++) pw += chars[arr[i] % chars.length];
+          mc.querySelector('#tm-pw-result').textContent = pw;
+        };
+        mc.querySelector('#tm-pw-gen').addEventListener('click', generate);
+        mc.querySelector('#tm-pw-copy').addEventListener('click', () => {
+          const pw = mc.querySelector('#tm-pw-result').textContent;
+          if (pw) { Utils.copyToClipboard(pw); Toast.success('Copied!'); }
+        });
+        mc.querySelector('#tm-pw-len').addEventListener('input', (e) => {
+          mc.querySelector('#tm-pw-len-val').textContent = e.target.value;
+          generate();
+        });
+        ['#tm-pw-upper','#tm-pw-lower','#tm-pw-digits','#tm-pw-symbols'].forEach(s => {
+          mc.querySelector(s).addEventListener('change', generate);
+        });
+        generate();
+        break;
+      }
+      case 'password-strength': {
+        const commonPasswords = ['password','123456','12345678','qwerty','abc123','monkey','master','dragon','111111',
+          'baseball','iloveyou','trustno1','sunshine','princess','football','shadow','superman','letmein','welcome',
+          'admin','login','passw0rd','starwars','hello','charlie','donald','password1','password123','1234567890'];
+        mc.querySelector('#tm-ps-input').addEventListener('input', (e) => {
+          const pw = e.target.value;
+          const bar = mc.querySelector('#tm-ps-bar');
+          const result = mc.querySelector('#tm-ps-result');
+          if (!pw) { bar.style.width = '0'; result.innerHTML = ''; return; }
+          // Calculate charset size
+          let poolSize = 0;
+          if (/[a-z]/.test(pw)) poolSize += 26;
+          if (/[A-Z]/.test(pw)) poolSize += 26;
+          if (/[0-9]/.test(pw)) poolSize += 10;
+          if (/[^a-zA-Z0-9]/.test(pw)) poolSize += 33;
+          const entropy = Math.floor(pw.length * Math.log2(poolSize || 1));
+          const isCommon = commonPasswords.includes(pw.toLowerCase());
+          let strength, color, pct;
+          if (isCommon) { strength = 'Common password!'; color = '#f85149'; pct = 5; }
+          else if (entropy < 28) { strength = 'Weak'; color = '#f85149'; pct = 15; }
+          else if (entropy < 36) { strength = 'Fair'; color = '#db6d28'; pct = 35; }
+          else if (entropy < 60) { strength = 'Good'; color = '#d29922'; pct = 55; }
+          else if (entropy < 80) { strength = 'Strong'; color = '#3fb950'; pct = 80; }
+          else { strength = 'Very Strong'; color = '#3fb950'; pct = 100; }
+          // Crack time estimation
+          const guessesPerSec = 1e10; // 10 billion/sec for modern hardware
+          const totalGuesses = Math.pow(2, entropy);
+          const seconds = totalGuesses / guessesPerSec;
+          let crackTime;
+          if (seconds < 1) crackTime = 'Instant';
+          else if (seconds < 60) crackTime = Math.round(seconds) + ' seconds';
+          else if (seconds < 3600) crackTime = Math.round(seconds / 60) + ' minutes';
+          else if (seconds < 86400) crackTime = Math.round(seconds / 3600) + ' hours';
+          else if (seconds < 31536000) crackTime = Math.round(seconds / 86400) + ' days';
+          else if (seconds < 31536000 * 1000) crackTime = Math.round(seconds / 31536000) + ' years';
+          else if (seconds < 31536000 * 1e6) crackTime = Math.round(seconds / (31536000 * 1000)) + 'K years';
+          else crackTime = 'Centuries+';
+          bar.style.width = pct + '%';
+          bar.style.background = color;
+          result.innerHTML = `
+            <table class="info-table" style="margin-top:8px;font-size:12px">
+              <tr><td>Strength</td><td><strong style="color:${color}">${strength}</strong></td></tr>
+              <tr><td>Entropy</td><td>${entropy} bits</td></tr>
+              <tr><td>Crack time</td><td>${crackTime} (10B guesses/sec)</td></tr>
+              <tr><td>Length</td><td>${pw.length} characters</td></tr>
+              <tr><td>Charset size</td><td>${poolSize} characters</td></tr>
+              ${isCommon ? '<tr><td colspan="2" style="color:#f85149"><i class="fas fa-exclamation-triangle"></i> This is a commonly used password!</td></tr>' : ''}
+            </table>`;
+        });
+        break;
+      }
+      case 'hash-gen': {
+        mc.querySelector('#tm-hash-gen').addEventListener('click', async () => {
+          const text = mc.querySelector('#tm-hash-input').value;
+          if (!text) { Toast.warning('Enter some text'); return; }
+          const enc = new TextEncoder().encode(text);
+          const [sha1, sha256, sha512] = await Promise.all([
+            crypto.subtle.digest('SHA-1', enc),
+            crypto.subtle.digest('SHA-256', enc),
+            crypto.subtle.digest('SHA-512', enc),
+          ]);
+          const toHex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+          const hashes = [
+            { label: 'SHA-1', value: toHex(sha1) },
+            { label: 'SHA-256', value: toHex(sha256) },
+            { label: 'SHA-512', value: toHex(sha512) },
+          ];
+          mc.querySelector('#tm-hash-output').innerHTML = hashes.map(h => `
+            <div class="hash-row">
+              <span class="hash-label">${h.label}</span>
+              <code>${h.value}</code>
+              <button class="btn btn-xs btn-secondary hash-copy-btn" data-val="${h.value}"><i class="fas fa-copy"></i></button>
+            </div>`).join('');
+          mc.querySelectorAll('.hash-copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => { Utils.copyToClipboard(btn.dataset.val); Toast.success('Copied!'); });
+          });
+        });
+        break;
+      }
+      case 'ip-calc': {
+        mc.querySelector('#tm-ip-calc').addEventListener('click', () => {
+          const input = mc.querySelector('#tm-ip-input').value.trim();
+          const match = input.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+          if (!match) { Toast.warning('Enter IP in CIDR format (e.g. 192.168.1.0/24)'); return; }
+          const octets = [parseInt(match[1]), parseInt(match[2]), parseInt(match[3]), parseInt(match[4])];
+          const cidr = parseInt(match[5]);
+          if (octets.some(o => o > 255) || cidr > 32) { Toast.error('Invalid IP or CIDR'); return; }
+          const ip = (octets[0] << 24 | octets[1] << 16 | octets[2] << 8 | octets[3]) >>> 0;
+          const mask = cidr === 0 ? 0 : (~0 << (32 - cidr)) >>> 0;
+          const network = (ip & mask) >>> 0;
+          const broadcast = (network | ~mask) >>> 0;
+          const firstHost = cidr >= 31 ? network : (network + 1) >>> 0;
+          const lastHost = cidr >= 31 ? broadcast : (broadcast - 1) >>> 0;
+          const totalHosts = cidr >= 31 ? Math.pow(2, 32 - cidr) : Math.pow(2, 32 - cidr) - 2;
+          const wildcard = (~mask) >>> 0;
+          const toIP = (n) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+          mc.querySelector('#tm-ip-output').innerHTML = `
+            <table class="info-table" style="font-size:12px">
+              <tr><td>Network Address</td><td><strong>${toIP(network)}</strong></td></tr>
+              <tr><td>Broadcast Address</td><td>${toIP(broadcast)}</td></tr>
+              <tr><td>First Host</td><td>${toIP(firstHost)}</td></tr>
+              <tr><td>Last Host</td><td>${toIP(lastHost)}</td></tr>
+              <tr><td>Total Hosts</td><td>${totalHosts.toLocaleString()}</td></tr>
+              <tr><td>Subnet Mask</td><td>${toIP(mask)}</td></tr>
+              <tr><td>Wildcard Mask</td><td>${toIP(wildcard)}</td></tr>
+              <tr><td>CIDR Notation</td><td>/${cidr}</td></tr>
+            </table>`;
+        });
+        break;
+      }
+      case 'url-codec': {
+        mc.querySelector('#tm-url-encode').addEventListener('click', () => {
+          mc.querySelector('#tm-url-encoded').value = encodeURIComponent(mc.querySelector('#tm-url-decoded').value);
+        });
+        mc.querySelector('#tm-url-decode').addEventListener('click', () => {
+          try {
+            mc.querySelector('#tm-url-decoded').value = decodeURIComponent(mc.querySelector('#tm-url-encoded').value);
+          } catch (e) { Toast.error('Invalid encoded string'); }
+        });
+        break;
+      }
+      case 'base64': {
+        mc.querySelector('#tm-b64-encode').addEventListener('click', () => {
+          try {
+            mc.querySelector('#tm-b64-b64').value = btoa(unescape(encodeURIComponent(mc.querySelector('#tm-b64-text').value)));
+          } catch (e) { Toast.error('Encoding failed'); }
+        });
+        mc.querySelector('#tm-b64-decode').addEventListener('click', () => {
+          try {
+            mc.querySelector('#tm-b64-text').value = decodeURIComponent(escape(atob(mc.querySelector('#tm-b64-b64').value)));
+          } catch (e) { Toast.error('Invalid Base64 string'); }
+        });
+        break;
+      }
+      case 'json-fmt': {
+        mc.querySelector('#tm-json-format').addEventListener('click', () => {
+          try {
+            const obj = JSON.parse(mc.querySelector('#tm-json-input').value);
+            mc.querySelector('#tm-json-input').value = JSON.stringify(obj, null, 2);
+            mc.querySelector('#tm-json-msg').innerHTML = '<span style="color:#3fb950"><i class="fas fa-check"></i> Formatted</span>';
+          } catch (e) { mc.querySelector('#tm-json-msg').innerHTML = `<span style="color:#f85149"><i class="fas fa-times"></i> ${Utils.escapeHtml(e.message)}</span>`; }
+        });
+        mc.querySelector('#tm-json-minify').addEventListener('click', () => {
+          try {
+            const obj = JSON.parse(mc.querySelector('#tm-json-input').value);
+            mc.querySelector('#tm-json-input').value = JSON.stringify(obj);
+            mc.querySelector('#tm-json-msg').innerHTML = '<span style="color:#3fb950"><i class="fas fa-check"></i> Minified</span>';
+          } catch (e) { mc.querySelector('#tm-json-msg').innerHTML = `<span style="color:#f85149"><i class="fas fa-times"></i> ${Utils.escapeHtml(e.message)}</span>`; }
+        });
+        mc.querySelector('#tm-json-validate').addEventListener('click', () => {
+          try {
+            JSON.parse(mc.querySelector('#tm-json-input').value);
+            mc.querySelector('#tm-json-msg').innerHTML = '<span style="color:#3fb950"><i class="fas fa-check-circle"></i> Valid JSON</span>';
+          } catch (e) { mc.querySelector('#tm-json-msg').innerHTML = `<span style="color:#f85149"><i class="fas fa-times-circle"></i> Invalid: ${Utils.escapeHtml(e.message)}</span>`; }
+        });
+        mc.querySelector('#tm-json-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-json-input').value); Toast.success('Copied!');
+        });
+        break;
+      }
+      case 'epoch': {
+        mc.querySelector('#tm-epoch-now').addEventListener('click', () => {
+          mc.querySelector('#tm-epoch-input').value = Math.floor(Date.now() / 1000);
+        });
+        mc.querySelector('#tm-epoch-to-date').addEventListener('click', () => {
+          const epoch = parseInt(mc.querySelector('#tm-epoch-input').value);
+          if (isNaN(epoch)) { Toast.warning('Enter an epoch timestamp'); return; }
+          const ms = epoch > 1e12 ? epoch : epoch * 1000;
+          const d = new Date(ms);
+          mc.querySelector('#tm-epoch-date-result').innerHTML = `
+            <table class="info-table" style="font-size:12px">
+              <tr><td>UTC</td><td>${d.toUTCString()}</td></tr>
+              <tr><td>Local</td><td>${d.toLocaleString()}</td></tr>
+              <tr><td>ISO 8601</td><td>${d.toISOString()}</td></tr>
+              <tr><td>Milliseconds</td><td>${ms}</td></tr>
+            </table>`;
+        });
+        mc.querySelector('#tm-epoch-to-epoch').addEventListener('click', () => {
+          const dateVal = mc.querySelector('#tm-epoch-date').value;
+          if (!dateVal) { Toast.warning('Select a date'); return; }
+          const d = new Date(dateVal);
+          mc.querySelector('#tm-epoch-epoch-result').innerHTML = `
+            <table class="info-table" style="font-size:12px">
+              <tr><td>Epoch (seconds)</td><td><strong>${Math.floor(d.getTime() / 1000)}</strong></td></tr>
+              <tr><td>Epoch (milliseconds)</td><td>${d.getTime()}</td></tr>
+            </table>`;
+        });
+        break;
+      }
+      case 'storage-conv': {
+        mc.querySelector('#tm-stor-calc').addEventListener('click', () => {
+          const val = parseFloat(mc.querySelector('#tm-stor-val').value);
+          const unit = mc.querySelector('#tm-stor-unit').value;
+          if (isNaN(val) || val < 0) { Toast.warning('Enter a valid number'); return; }
+          const decimalMap = { B: 1, KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 };
+          const bytes = val * (decimalMap[unit] || 1);
+          const fmt = (v) => v % 1 === 0 ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 4 });
+          mc.querySelector('#tm-stor-output').innerHTML = `
+            <table class="info-table" style="font-size:12px">
+              <tr><td colspan="2" style="font-weight:600;color:var(--text-muted)">Decimal (SI)</td></tr>
+              <tr><td>Bytes</td><td>${fmt(bytes)}</td></tr>
+              <tr><td>KB (10<sup>3</sup>)</td><td>${fmt(bytes / 1e3)}</td></tr>
+              <tr><td>MB (10<sup>6</sup>)</td><td>${fmt(bytes / 1e6)}</td></tr>
+              <tr><td>GB (10<sup>9</sup>)</td><td>${fmt(bytes / 1e9)}</td></tr>
+              <tr><td>TB (10<sup>12</sup>)</td><td>${fmt(bytes / 1e12)}</td></tr>
+              <tr><td colspan="2" style="font-weight:600;color:var(--text-muted);padding-top:12px">Binary (IEC)</td></tr>
+              <tr><td>KiB (2<sup>10</sup>)</td><td>${fmt(bytes / 1024)}</td></tr>
+              <tr><td>MiB (2<sup>20</sup>)</td><td>${fmt(bytes / (1024 ** 2))}</td></tr>
+              <tr><td>GiB (2<sup>30</sup>)</td><td>${fmt(bytes / (1024 ** 3))}</td></tr>
+              <tr><td>TiB (2<sup>40</sup>)</td><td>${fmt(bytes / (1024 ** 4))}</td></tr>
+            </table>`;
+        });
+        break;
+      }
+      case 'regex': {
+        mc.querySelector('#tm-regex-test').addEventListener('click', () => {
+          const pattern = mc.querySelector('#tm-regex-pattern').value;
+          const flags = mc.querySelector('#tm-regex-flags').value;
+          const text = mc.querySelector('#tm-regex-input').value;
+          if (!pattern) { Toast.warning('Enter a pattern'); return; }
+          try {
+            const re = new RegExp(pattern, flags);
+            const matches = [];
+            let m;
+            if (flags.includes('g')) {
+              while ((m = re.exec(text)) !== null) {
+                matches.push({ index: m.index, length: m[0].length, value: m[0], groups: m.slice(1) });
+                if (m[0].length === 0) re.lastIndex++;
+              }
+            } else {
+              m = re.exec(text);
+              if (m) matches.push({ index: m.index, length: m[0].length, value: m[0], groups: m.slice(1) });
+            }
+            // Build highlighted text
+            let highlighted = '';
+            let lastIdx = 0;
+            matches.forEach(match => {
+              highlighted += Utils.escapeHtml(text.substring(lastIdx, match.index));
+              highlighted += `<span class="regex-match">${Utils.escapeHtml(match.value)}</span>`;
+              lastIdx = match.index + match.length;
+            });
+            highlighted += Utils.escapeHtml(text.substring(lastIdx));
+            let groupsHtml = '';
+            if (matches.length > 0 && matches[0].groups.length > 0) {
+              groupsHtml = '<div style="margin-top:8px;font-size:12px"><strong>Groups:</strong><br>' +
+                matches.map((m, i) => m.groups.map((g, j) => `Match ${i + 1}, Group ${j + 1}: <code>${Utils.escapeHtml(g || '')}</code>`).join('<br>')).join('<br>') + '</div>';
+            }
+            mc.querySelector('#tm-regex-output').innerHTML = `
+              <div style="font-size:12px;margin-bottom:8px;color:var(--text-muted)">${matches.length} match${matches.length !== 1 ? 'es' : ''} found</div>
+              <div class="tool-output" style="white-space:pre-wrap">${highlighted || '<span class="text-muted">No matches</span>'}</div>
+              ${groupsHtml}`;
+          } catch (e) { mc.querySelector('#tm-regex-output').innerHTML = `<span style="color:#f85149"><i class="fas fa-times"></i> ${Utils.escapeHtml(e.message)}</span>`; }
+        });
+        break;
+      }
+      case 'text-diff': {
+        mc.querySelector('#tm-diff-compare').addEventListener('click', () => {
+          const a = mc.querySelector('#tm-diff-a').value.split('\n');
+          const b = mc.querySelector('#tm-diff-b').value.split('\n');
+          const maxLen = Math.max(a.length, b.length);
+          let html = '<div class="diff-result" style="border:1px solid var(--border);border-radius:6px;overflow:auto;max-height:350px">';
+          for (let i = 0; i < maxLen; i++) {
+            const lineA = i < a.length ? a[i] : undefined;
+            const lineB = i < b.length ? b[i] : undefined;
+            if (lineA === lineB) {
+              html += `<div class="diff-line diff-same">&nbsp; ${Utils.escapeHtml(lineA)}</div>`;
+            } else {
+              if (lineA !== undefined) html += `<div class="diff-line diff-del">- ${Utils.escapeHtml(lineA)}</div>`;
+              if (lineB !== undefined) html += `<div class="diff-line diff-add">+ ${Utils.escapeHtml(lineB)}</div>`;
+            }
+          }
+          html += '</div>';
+          mc.querySelector('#tm-diff-output').innerHTML = html;
+        });
+        break;
+      }
+      case 'lorem': {
+        const words = ['lorem','ipsum','dolor','sit','amet','consectetur','adipiscing','elit','sed','do','eiusmod','tempor','incididunt','ut','labore','et','dolore','magna','aliqua','enim','ad','minim','veniam','quis','nostrud','exercitation','ullamco','laboris','nisi','aliquip','ex','ea','commodo','consequat','duis','aute','irure','in','reprehenderit','voluptate','velit','esse','cillum','fugiat','nulla','pariatur','excepteur','sint','occaecat','cupidatat','non','proident','sunt','culpa','qui','officia','deserunt','mollit','anim','id','est','laborum','porta','nibh','venenatis','cras','pulvinar','mattis','nunc','pellentesque','habitant','morbi','tristique','senectus','netus','malesuada','fames','ac','turpis','egestas','maecenas','pharetra','convallis','posuere','orci','leo','faucibus','pretium','vulputate','sapien','nec','sagittis','feugiat','vivamus','at','augue'];
+        const randWord = () => words[Math.floor(Math.random() * words.length)];
+        const genSentence = () => {
+          const len = 8 + Math.floor(Math.random() * 12);
+          const s = Array.from({ length: len }, randWord).join(' ');
+          return s.charAt(0).toUpperCase() + s.slice(1) + '.';
+        };
+        const genParagraph = () => Array.from({ length: 4 + Math.floor(Math.random() * 4) }, genSentence).join(' ');
+        mc.querySelector('#tm-lorem-gen').addEventListener('click', () => {
+          const type = mc.querySelector('#tm-lorem-type').value;
+          const count = parseInt(mc.querySelector('#tm-lorem-count').value) || 1;
+          let result;
+          if (type === 'paragraphs') result = Array.from({ length: count }, genParagraph).join('\n\n');
+          else if (type === 'sentences') result = Array.from({ length: count }, genSentence).join(' ');
+          else result = Array.from({ length: count }, randWord).join(' ');
+          mc.querySelector('#tm-lorem-output').textContent = result;
+        });
+        mc.querySelector('#tm-lorem-copy').addEventListener('click', () => {
+          const text = mc.querySelector('#tm-lorem-output').textContent;
+          if (text) { Utils.copyToClipboard(text); Toast.success('Copied!'); }
+        });
+        mc.querySelector('#tm-lorem-gen').click(); // auto-generate
+        break;
+      }
+      case 'http-codes': {
+        const codes = [
+          [200, 'OK', 'The request succeeded'],
+          [201, 'Created', 'The request succeeded and a new resource was created'],
+          [204, 'No Content', 'The request succeeded with no response body'],
+          [301, 'Moved Permanently', 'The resource has been permanently moved to a new URL'],
+          [302, 'Found', 'The resource resides temporarily at a different URL'],
+          [304, 'Not Modified', 'The resource has not been modified since the last request'],
+          [400, 'Bad Request', 'The server cannot process the request due to client error'],
+          [401, 'Unauthorized', 'Authentication is required and has failed or not been provided'],
+          [403, 'Forbidden', 'The server understood the request but refuses to authorize it'],
+          [404, 'Not Found', 'The requested resource could not be found'],
+          [405, 'Method Not Allowed', 'The HTTP method is not supported for the requested resource'],
+          [408, 'Request Timeout', 'The server timed out waiting for the request'],
+          [409, 'Conflict', 'The request conflicts with the current state of the resource'],
+          [429, 'Too Many Requests', 'The user has sent too many requests in a given time (rate limiting)'],
+          [500, 'Internal Server Error', 'The server encountered an unexpected condition'],
+          [502, 'Bad Gateway', 'The server received an invalid response from an upstream server'],
+          [503, 'Service Unavailable', 'The server is temporarily unable to handle the request'],
+          [504, 'Gateway Timeout', 'The upstream server failed to respond in time'],
+        ];
+        const renderTable = (filter) => {
+          const f = (filter || '').toLowerCase();
+          const filtered = codes.filter(([code, name, desc]) => !f || String(code).includes(f) || name.toLowerCase().includes(f) || desc.toLowerCase().includes(f));
+          const tbody = mc.querySelector('#tm-http-table tbody');
+          tbody.innerHTML = filtered.map(([code, name, desc]) => {
+            const cls = code < 300 ? 'http-2xx' : code < 400 ? 'http-3xx' : code < 500 ? 'http-4xx' : 'http-5xx';
+            return `<tr><td><strong class="${cls}">${code}</strong></td><td>${name}</td><td class="text-muted">${desc}</td></tr>`;
+          }).join('');
+        };
+        renderTable('');
+        mc.querySelector('#tm-http-search').addEventListener('input', (e) => renderTable(e.target.value));
+        break;
+      }
+      case 'port-ref': {
+        const ports = [
+          [20, 'TCP', 'FTP Data', 'File Transfer Protocol data transfer'],
+          [21, 'TCP', 'FTP Control', 'File Transfer Protocol command control'],
+          [22, 'TCP', 'SSH', 'Secure Shell remote login and command execution'],
+          [25, 'TCP', 'SMTP', 'Simple Mail Transfer Protocol for email routing'],
+          [53, 'TCP/UDP', 'DNS', 'Domain Name System name resolution'],
+          [80, 'TCP', 'HTTP', 'Hypertext Transfer Protocol for web traffic'],
+          [110, 'TCP', 'POP3', 'Post Office Protocol v3 for email retrieval'],
+          [143, 'TCP', 'IMAP', 'Internet Message Access Protocol for email'],
+          [443, 'TCP', 'HTTPS', 'HTTP Secure (TLS/SSL encrypted web traffic)'],
+          [465, 'TCP', 'SMTPS', 'SMTP over SSL for secure email submission'],
+          [587, 'TCP', 'SMTP Submission', 'Email message submission with STARTTLS'],
+          [993, 'TCP', 'IMAPS', 'IMAP over SSL for secure email access'],
+          [995, 'TCP', 'POP3S', 'POP3 over SSL for secure email retrieval'],
+          [3306, 'TCP', 'MySQL', 'MySQL / MariaDB database server'],
+          [5432, 'TCP', 'PostgreSQL', 'PostgreSQL database server'],
+          [6379, 'TCP', 'Redis', 'Redis in-memory data structure store'],
+          [8080, 'TCP', 'HTTP Alt', 'Alternative HTTP port (proxies, dev servers)'],
+          [8443, 'TCP', 'HTTPS Alt', 'Alternative HTTPS port'],
+          [27017, 'TCP', 'MongoDB', 'MongoDB NoSQL database server'],
+        ];
+        const renderTable = (filter) => {
+          const f = (filter || '').toLowerCase();
+          const filtered = ports.filter(([port, proto, svc, desc]) => !f || String(port).includes(f) || proto.toLowerCase().includes(f) || svc.toLowerCase().includes(f) || desc.toLowerCase().includes(f));
+          const tbody = mc.querySelector('#tm-port-table tbody');
+          tbody.innerHTML = filtered.map(([port, proto, svc, desc]) =>
+            `<tr><td><strong>${port}</strong></td><td>${proto}</td><td>${svc}</td><td class="text-muted">${desc}</td></tr>`
+          ).join('');
+        };
+        renderTable('');
+        mc.querySelector('#tm-port-search').addEventListener('input', (e) => renderTable(e.target.value));
+        break;
+      }
+    }
   },
 
   _dockerRunToCompose(cmd) {
