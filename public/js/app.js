@@ -338,6 +338,8 @@ const App = {
     const currentLang = i18n.languages.find(l => l.code === i18n.lang);
     code.textContent = currentLang?.label || i18n.lang.toUpperCase();
     btn.title = currentLang?.name || 'Language';
+    if (i18n.lang === 'tlh') code.style.fontFamily = "'Klingon', sans-serif";
+    else code.style.fontFamily = '';
 
     // Restore Klingon mode if it was the saved language
     if (i18n.lang === 'tlh' && window.KlingonFX) {
@@ -349,7 +351,7 @@ const App = {
       dropdown.innerHTML = i18n.languages.map(l => `
         <div class="lang-option ${l.code === i18n.lang ? 'active' : ''}" data-lang="${l.code}">
           <span class="lang-option-label">${l.label}</span>
-          <span class="lang-option-name">${l.name}</span>
+          <span class="lang-option-name" ${l.code === 'tlh' ? 'style="font-family:\'Klingon\',sans-serif;letter-spacing:2px;color:#cc0000"' : ''}>${l.name}</span>
           ${l.code === i18n.lang ? '<i class="fas fa-check" style="margin-left:auto;font-size:10px;color:var(--accent)"></i>' : ''}
         </div>
       `).join('');
@@ -364,6 +366,7 @@ const App = {
           Api.saveUserPreference('lang', lang).catch(() => {});
           const l = i18n.languages.find(x => x.code === lang);
           code.textContent = l?.label || lang.toUpperCase();
+          code.style.fontFamily = lang === 'tlh' ? "'Klingon', sans-serif" : '';
           btn.title = l?.name || lang;
           dropdown.classList.add('hidden');
 
