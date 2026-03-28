@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
+// child_process used via _execFile method (execFileSync)
 const simpleGit = require('simple-git');
 const { getDb } = require('../db');
 const { encrypt, decrypt, generateToken, hmacSign } = require('../utils/crypto');
@@ -930,19 +930,25 @@ class GitService {
       if (!fs.existsSync(full)) throw new Error(`Compose file not found: ${f}`);
     }
 
-    const fileFlags = composeFiles.map(f => `-f "${path.join(repoDir, f)}"`).join(' ');
+    // Build args array for execFileSync (no shell injection)
+    const buildArgs = (extra = []) => {
+      const args = ['compose'];
+      for (const f of composeFiles) args.push('-f', path.join(repoDir, f));
+      args.push('-p', stack.stack_name);
+      args.push(...extra);
+      return args;
+    };
 
-    let cmd = `cd "${repoDir}"`;
+    const opts = { cwd: repoDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe' };
+
     if (stack.re_pull_images) {
-      cmd += ` && docker compose ${fileFlags} -p "${stack.stack_name}" pull`;
+      this._execFile('docker', buildArgs(['pull']), opts);
     }
-    cmd += ` && docker compose ${fileFlags} -p "${stack.stack_name}"`;
-    if (hasEnvOverride) {
-      cmd += ` --env-file "${envFile}"`;
-    }
-    cmd += ' up -d --remove-orphans';
 
-    this._exec(cmd);
+    const upArgs = hasEnvOverride
+      ? buildArgs(['--env-file', envFile, 'up', '-d', '--remove-orphans'])
+      : buildArgs(['up', '-d', '--remove-orphans']);
+    this._execFile('docker', upArgs, opts);
   }
 
   // ─── Env Var Management ──────────────────────────────
@@ -1010,8 +1016,9 @@ class GitService {
     return variables;
   }
 
-  _exec(cmd) {
-    return execSync(cmd, { timeout: 120000, encoding: 'utf8', stdio: 'pipe' });
+  _execFile(bin, args, opts = {}) {
+    const { execFileSync } = require('child_process');
+    return execFileSync(bin, args, { timeout: 120000, encoding: 'utf8', stdio: 'pipe', ...opts });
   }
 
   _validateStackName(name) {

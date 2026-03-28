@@ -68,7 +68,7 @@ router.get('/:id/config', requireAuth, async (req, res) => {
 });
 
 // ─── Vulnerability Scanning ─────────────────────────
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const scanLog = require('../utils/logger')('scan');
 
 function _makeSummary(vulns) {
@@ -83,10 +83,10 @@ function _makeSummary(vulns) {
 
 function _scanWithScout(imageName) {
   // Docker Scout uses SARIF format for structured output
-  const output = execSync(
-    `docker scout cves "${imageName}" --format sarif --only-severity critical,high,medium,low 2>/dev/null`,
-    { timeout: 120000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR } }
-  );
+  const output = execFileSync('docker', ['scout', 'cves', imageName, '--format', 'sarif', '--only-severity', 'critical,high,medium,low'], {
+    timeout: 120000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
+    env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR },
+  });
   const data = JSON.parse(output);
 
   // SARIF format: runs[].results[] + runs[].tool.driver.rules[]
@@ -133,10 +133,9 @@ function _scanWithScout(imageName) {
 }
 
 function _scanWithTrivy(imageName) {
-  const output = execSync(
-    `trivy image --format json --quiet "${imageName}" 2>/dev/null`,
-    { timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
-  );
+  const output = execFileSync('trivy', ['image', '--format', 'json', '--quiet', imageName], {
+    timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
+  });
   const data = JSON.parse(output);
   const vulns = [];
   for (const r of (data.Results || [])) {
@@ -365,7 +364,7 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
     // Ensure persistent config directory exists
     if (!fs.existsSync(DOCKER_CONFIG_DIR)) fs.mkdirSync(DOCKER_CONFIG_DIR, { recursive: true });
 
-    // Run docker login with our persistent config dir
+    // Run docker login — requires shell for stdin pipe (execSync intentional)
     const result = execSync(
       `echo "${password.replace(/"/g, '\\"')}" | docker login -u "${username.replace(/"/g, '\\"')}" --password-stdin 2>&1`,
       { timeout: 30000, encoding: 'utf8', env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR } }
@@ -391,9 +390,9 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
 // Check which scanners are installed and ready
 router.get('/scanners', requireAuth, (req, res) => {
   const available = [];
-  try { execSync('trivy --version 2>/dev/null', { encoding: 'utf8' }); available.push('trivy'); } catch {}
+  try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('trivy'); } catch {}
   try {
-    execSync('docker scout version 2>/dev/null', { encoding: 'utf8' });
+    execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe' });
     if (_isScoutAuthenticated()) {
       available.push('docker-scout');
     } else {

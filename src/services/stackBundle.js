@@ -25,12 +25,11 @@ class StackBundleService {
     let composeYaml = null;
     if (workingDir) {
       try {
-        const { execSync } = require('child_process');
         // Try reading the compose file
         const configFiles = stackContainers[0]?.Labels?.['com.docker.compose.project.config_files'] || '';
         const mainFile = configFiles.split(',')[0]?.trim();
-        if (mainFile) {
-          composeYaml = execSync(`cat "${mainFile}" 2>/dev/null`, { encoding: 'utf8', timeout: 5000 });
+        if (mainFile && require('fs').existsSync(mainFile)) {
+          composeYaml = require('fs').readFileSync(mainFile, 'utf8');
         }
       } catch {}
     }

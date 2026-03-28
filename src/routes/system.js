@@ -213,7 +213,7 @@ router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeatu
 });
 
 // ─── Update Checks ───────────────────────────────────────────
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const https = require('https');
 
 function fetchJSON(url) {
@@ -501,7 +501,7 @@ router.get('/compose/:stack/config', requireAuth, async (req, res) => {
 
     let config = '';
     try {
-      config = execSync(`cd "${workingDir}" && docker compose config 2>/dev/null`, { timeout: 10000, encoding: 'utf8' });
+      config = execFileSync('docker', ['compose', 'config'], { cwd: workingDir, timeout: 10000, encoding: 'utf8', stdio: 'pipe' });
     } catch {
       // Try reading compose files directly
       const fs = require('fs');
@@ -869,8 +869,7 @@ router.post('/stacks', requireAuth, requireRole('admin'), writeable, (req, res) 
     }
 
     // Deploy the stack
-    const { execSync } = require('child_process');
-    const output = execSync(`cd "${targetDir}" && docker compose -p "${name}" up -d 2>&1`, { timeout: 120000, encoding: 'utf8' });
+    const output = execFileSync('docker', ['compose', '-p', name, 'up', '-d'], { cwd: targetDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe' });
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -938,8 +937,7 @@ router.post('/stacks/:name/deploy', requireAuth, requireRole('admin'), writeable
   try {
     const { workingDir } = req.body;
     if (!workingDir) return res.status(400).json({ error: 'workingDir required' });
-    const { execSync } = require('child_process');
-    const output = execSync(`cd "${workingDir}" && docker compose up -d 2>&1`, { timeout: 120000, encoding: 'utf8' });
+    const output = execFileSync('docker', ['compose', 'up', '-d'], { cwd: workingDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe' });
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
