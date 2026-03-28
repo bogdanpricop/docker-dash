@@ -343,6 +343,14 @@ Docker Dash requires access to the Docker socket (`/var/run/docker.sock`). This 
 | Production Readiness | 2026-03-28 | 9.2/10 | All P0+P1 resolved |
 | Shell Injection | 2026-03-28 | 0 vectors | All execSync eliminated |
 
+### Known Security Tradeoffs
+
+These are conscious design decisions documented in [SECURITY.md](SECURITY.md):
+
+1. **CSP allows `unsafe-inline`/`unsafe-eval`** — required by the zero-build-step vanilla JS architecture. XSS is mitigated by output escaping on all user content.
+2. **WebSocket accepts token via query string** — fallback for browsers that block cookies (Edge Tracking Prevention). Cookie-based auth is always preferred. Usage is logged.
+3. **Mixed auth model (cookie + Bearer + API key)** — cookies for browser UI, Bearer for API/CLI, API keys for integrations. All validate against the same session store.
+
 ### Test Coverage
 
 - **104 tests** across 8 test files (100% passing)

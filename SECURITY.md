@@ -102,6 +102,40 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 | 2026-03-28 | Shell Injection Audit | 0 vectors remaining | All execSync eliminated |
 | 2026-03-28 | Final Security Scan | 0 warnings on server | Clean |
 
+## Known Security Tradeoffs
+
+The following are conscious design decisions, not oversights. Each represents a tradeoff between security hardening and product functionality.
+
+### 1. CSP allows `unsafe-inline` and `unsafe-eval`
+
+**What:** The Content Security Policy in `server.js` permits inline scripts and `eval()`.
+
+**Why:** Docker Dash uses vanilla JavaScript with no build step — there is no bundler to generate nonce-based scripts or extract inline styles. This is a core architectural decision that enables zero-build-step development and contribution.
+
+**Impact:** XSS attacks via injected inline scripts are not blocked by CSP. However, all user input is escaped via `Utils.escapeHtml()` before rendering, and the application does not use `innerHTML` with unsanitized user data.
+
+**Mitigation:** Output escaping on all user-facing content. Helmet.js provides all other security headers (X-Frame-Options, X-Content-Type-Options, etc.). Future consideration: nonce-based CSP if a build step is ever introduced.
+
+### 2. WebSocket accepts authentication token via query string
+
+**What:** The WebSocket endpoint accepts the session token via `?token=` query parameter as a fallback when cookies are blocked.
+
+**Why:** Some browsers (Edge with Tracking Prevention, Chrome with strict third-party cookie settings) block cookies on HTTP connections to IP addresses. Without the query param fallback, these users cannot use the real-time dashboard, terminal, or live logs.
+
+**Impact:** Tokens in URLs can be exposed in server access logs, browser history, and referrer headers. OWASP recommends against passing sensitive data in URLs.
+
+**Mitigation:** Cookie-based auth is always preferred — query param is only used when cookies fail. When query param auth is detected, it is logged at debug level for monitoring. HTTPS (via included Caddy config) encrypts the URL in transit. The token is a session token (not a permanent credential) with configurable TTL.
+
+### 3. Mixed authentication model (cookie + Bearer + API key)
+
+**What:** The application accepts three authentication methods: session cookies (primary), Bearer tokens in Authorization header (API/CLI), and API keys (integrations).
+
+**Why:** Session cookies are optimal for browser UI. Bearer tokens are needed for programmatic API access (scripts, CLI tools, monitoring). API keys enable long-lived integrations (Prometheus scraping, CI/CD webhooks).
+
+**Impact:** More authentication paths means more surface area to secure. Each path must be independently validated and rate-limited.
+
+**Mitigation:** All three methods validate against the same session/token store. Rate limiting applies regardless of auth method. API keys have separate creation/revocation UI. Audit log records the authentication method used. Bearer token is only returned in the login response body (not stored server-side in plaintext).
+
 ## Vulnerability Fixes (v3.7.1 — v3.9.0)
 
 | CVE-like | Severity | Description | Fix |
