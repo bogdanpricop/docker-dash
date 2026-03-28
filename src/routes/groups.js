@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const groups = require('../services/groups');
 const auditService = require('../services/audit');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 
 const router = Router();
@@ -19,7 +19,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // Reorder groups — MUST be before /:id to avoid matching "order" as id
-router.put('/order', requireAuth, (req, res) => {
+router.put('/order', requireAuth, requireRole('admin', 'operator'), (req, res) => {
   try {
     const { order } = req.body;
     if (!order || !Array.isArray(order)) {
@@ -44,7 +44,7 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // Create group
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, requireRole('admin', 'operator'), (req, res) => {
   try {
     const { name, color, icon, scope } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
@@ -58,7 +58,7 @@ router.post('/', requireAuth, (req, res) => {
 });
 
 // Update group
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, requireRole('admin', 'operator'), (req, res) => {
   try {
     const { name, color, icon } = req.body;
     groups.update(parseInt(req.params.id), { name, color, icon }, req.user.id);
@@ -69,7 +69,7 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 // Delete group
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
   try {
     groups.delete(parseInt(req.params.id), req.user.id);
     auditService.log({ userId: req.user.id, username: req.user.username,
@@ -81,7 +81,7 @@ router.delete('/:id', requireAuth, (req, res) => {
 });
 
 // Add containers to group
-router.post('/:id/containers', requireAuth, (req, res) => {
+router.post('/:id/containers', requireAuth, requireRole('admin', 'operator'), (req, res) => {
   try {
     const { containerIds } = req.body;
     if (!containerIds || !Array.isArray(containerIds)) {
@@ -95,7 +95,7 @@ router.post('/:id/containers', requireAuth, (req, res) => {
 });
 
 // Remove container from group
-router.delete('/:id/containers/:containerId', requireAuth, (req, res) => {
+router.delete('/:id/containers/:containerId', requireAuth, requireRole('admin', 'operator'), (req, res) => {
   try {
     groups.removeContainer(parseInt(req.params.id), req.params.containerId);
     res.json({ ok: true });
