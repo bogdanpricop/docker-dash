@@ -30,52 +30,72 @@
 
 <table>
   <tr>
-    <td align="center"><strong>Dashboard</strong><br><img src="docs/screenshots/dashboard.png" alt="Dashboard" width="400"></td>
+    <td align="center"><strong>Dashboard (Dark)</strong><br><img src="docs/screenshots/dashboard.png" alt="Dashboard" width="400"></td>
+    <td align="center"><strong>Dashboard (Light)</strong><br><img src="docs/screenshots/dashboard-light.png" alt="Dashboard Light" width="400"></td>
+  </tr>
+  <tr>
     <td align="center"><strong>Containers</strong><br><img src="docs/screenshots/containers.png" alt="Containers" width="400"></td>
+    <td align="center"><strong>Containers (Light)</strong><br><img src="docs/screenshots/containers-light.png" alt="Containers Light" width="400"></td>
   </tr>
   <tr>
     <td align="center"><strong>Container Detail</strong><br><img src="docs/screenshots/container-detail.png" alt="Container Detail" width="400"></td>
     <td align="center"><strong>Terminal (xterm.js)</strong><br><img src="docs/screenshots/terminal.png" alt="Terminal" width="400"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Network Topology</strong><br><img src="docs/screenshots/topology.png" alt="Network Topology" width="400"></td>
     <td align="center"><strong>Security Scanning</strong><br><img src="docs/screenshots/security.png" alt="Security" width="400"></td>
-  </tr>
-  <tr>
     <td align="center"><strong>Image Management</strong><br><img src="docs/screenshots/images.png" alt="Images" width="400"></td>
-    <td align="center"><strong>Multi-Host Management</strong><br><img src="docs/screenshots/hosts.png" alt="Hosts" width="400"></td>
   </tr>
   <tr>
-    <td align="center"><strong>Compose Stacks</strong><br><img src="docs/screenshots/stacks.png" alt="Stacks" width="400"></td>
-    <td align="center"><strong>Light Theme</strong><br><img src="docs/screenshots/dashboard-light.png" alt="Light Theme" width="400"></td>
+    <td align="center"><strong>Network Topology</strong><br><img src="docs/screenshots/topology.png" alt="Network Topology" width="400"></td>
+    <td align="center"><strong>Dependency Map</strong><br><img src="docs/screenshots/dependency-map.png" alt="Dependency Map" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Cost Optimizer</strong><br><img src="docs/screenshots/cost-optimizer.png" alt="Cost Optimizer" width="400"></td>
+    <td align="center"><strong>Insights</strong><br><img src="docs/screenshots/insights.png" alt="Insights" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Stacks</strong><br><img src="docs/screenshots/stacks.png" alt="Stacks" width="400"></td>
+    <td align="center"><strong>Multi-Host</strong><br><img src="docs/screenshots/hosts.png" alt="Hosts" width="400"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>API Playground</strong><br><img src="docs/screenshots/api-playground.png" alt="API Playground" width="400"></td>
+    <td align="center"><strong>Notifications</strong><br><img src="docs/screenshots/notifications.png" alt="Notifications" width="400"></td>
   </tr>
 </table>
 
 ## Features
 
 ### Core
-- **Container Management** — Start, stop, restart, pause, kill, remove, clone, update/recreate
-- **Image Management** — Pull, remove, tag, import/export, build from Dockerfile with streaming output
+- **Container Management** — Start, stop, restart, pause, kill, remove, clone, rename, update/recreate
+- **Image Management** — Pull with streaming progress, remove, tag, import/export, build from Dockerfile
 - **Volume Management** — Create, remove, inspect with real disk usage sizes
 - **Network Management** — Create, remove, connect/disconnect containers, inspect IPAM config
+- **Bulk Actions** — Checkbox selection + floating bar for batch start/stop/restart/remove
+- **Container File Browser** — Navigate, view, and download files inside running containers
+- **Container Diff** — See filesystem changes vs base image with color-coded entries
 
 ### Monitoring & Intelligence
-- **Real-time Dashboard** — Live CPU/memory time-series charts (WebSocket-powered, 10s interval)
-- **Container Health Score** — Composite 0-100 score (state, health checks, restarts, CPU/memory, vulns, image age)
+- **Real-time Dashboard** — Customizable live CPU/memory charts (WebSocket, 10s interval, toggle widgets)
+- **Container Health Score** — Composite 0-100 score with color dots in list view + summary bar
 - **Resource Trends & Forecasting** — 7-day linear regression with 24h CPU/memory projection
 - **Memory Exhaustion Prediction** — "will exceed limit in N hours" warning
-- **Plain-English Status** — Exit codes mapped to human-readable messages (137=OOM, 143=SIGTERM, etc.)
+- **Plain-English Status** — Exit codes mapped to messages (137=OOM, 143=SIGTERM, etc.)
 - **Network Topology** — Interactive canvas map with drag, zoom, pan, hover highlighting
+- **Dependency Map** — Interactive graph showing container relationships (env vars, networks, links)
 - **Uptime Reports** — Per-container uptime %, restart count, first/last seen
-- **Cost Estimation** — Input VPS cost, see per-container breakdown (CPU+memory weighted)
+- **Cost Optimizer** — Per-container cost breakdown, idle detection, savings recommendations
 - **Image Freshness Dashboard** — Freshness score based on age + vulnerability count
 - **Audit Log Analytics** — Top users, top actions, activity heatmap by hour/day
+- **Notifications Center** — Dedicated page with filters, pagination, bulk mark-read/delete
 
 ### Security
-- **Vulnerability Scanning** — Integrated Trivy + Grype + Docker Scout with automatic detection
+- **Vulnerability Scanning** — Trivy + Grype + Docker Scout with automatic detection and fallback
 - **Safe-Pull Updates** — Pull new image → scan for vulns → only swap if clean (blocks critical CVEs)
+- **Deployment Pipelines** — Staged pull → scan → swap → verify → notify with full history
 - **Security Dashboard** — Scan history, per-image status, AI-assisted remediation prompts
+- **AI Container Doctor** — Diagnostics + 30 log pattern matchers + AI prompt generator
 - **Guided Troubleshooting** — 8-step diagnostic wizard (state, health, logs, ports, volumes, resources)
+- **Container Rollback** — One-click revert to previous image with version history
 - **First-login Setup Wizard** — Forces password change, recommends disabling default admin
 
 ### Git Integration (GitOps)
@@ -95,21 +115,25 @@
 - **Host Selector** — Switch between hosts from the sidebar dropdown
 
 ### Operations
-- **Compose/Stacks** — List, view, edit YAML, manage environment variables, deploy
+- **Stacks Page** — Unified Compose + Git stacks management with actions (up/down/restart/pull)
+- **Docker Compose Editor** — Edit, validate, save & deploy compose configs inline
 - **Terminal** — Full xterm.js terminal with shell selection (`sh`, `bash`, `zsh`, `ash`)
 - **Alerts** — CPU/memory threshold rules with 7 notification channels
 - **Notifications** — Discord, Slack, Telegram, Ntfy, Gotify, Email (SMTP), Custom Webhook
 - **Workflow Automation** — IF-THEN rules (CPU high → restart, container crash → notify, etc.)
+- **Scheduled Actions** — Cron-based container actions with presets, history, run-now, enable/disable
 - **Maintenance Windows** — Scheduled pull/scan/update with block-on-critical
-- **Schedules** — Cron-based container actions (start/stop/restart on schedule)
 - **Firewall** — View and manage UFW rules (Linux)
+- **Container Groups** — User-defined grouping with colors, beyond Docker Compose projects
 
 ### Developer Tools
+- **API Playground** — Browse and test all 230+ API endpoints from the UI with response viewer
 - **docker run → Compose** — Paste any docker run command, get docker-compose YAML
 - **AI Log Analysis** — Generate diagnostic prompts for ChatGPT/Claude from container logs
 - **Traefik/Caddy Labels** — Generate reverse proxy labels from domain + port
-- **App Templates** — 30 curated one-click templates (Nginx, PostgreSQL, Redis, Grafana, and more)
+- **App Templates** — 30 built-in + custom templates with CRUD, preview, and modification tracking
 - **Deploy Preview** — Check for image updates via digest comparison before pulling
+- **Resource Limits Editor** — Visual sliders with presets for CPU and memory
 - **Resource Recommendations** — Smart advice: over-provisioned, memory pressure, idle containers
 
 ### Platform
@@ -118,12 +142,14 @@
 - **Audit Log** — Every action logged with user, timestamp, IP address
 - **Public Status Page** — Unauthenticated status page for selected services
 - **Container Metadata** — Custom labels, descriptions, links, categories, owner, notes
-- **Dark/Light Theme** — System-aware with manual toggle + mobile responsive UI
+- **Dark/Light Theme** — Per-user sync across devices, system-aware toggle, mobile responsive
 - **i18n** — 11 languages: English, Romanian, German, Italian, French, Spanish, Portuguese, Chinese, Japanese, Korean, Klingon ([add yours](public/js/i18n/README.md))
-- **Command Palette** — Ctrl+K quick navigation
+- **Klingon Easter Egg** — Full activation animation with sound, dagger cursor, red theme
+- **Command Palette** — Ctrl+K quick navigation with keyboard shortcuts
 - **Watchtower Detection** — Auto-detect and migrate from Watchtower to native safe-pull
 - **Prometheus Metrics** — `/api/metrics` endpoint for Grafana integration
 - **Self-Reporting Footprint** — Docker Dash memory, uptime, DB size at `/api/footprint`
+- **335 Tests** — 22 test suites covering auth, RBAC, security, CRUD, services (100% passing)
 
 ## Quick Start
 
@@ -263,7 +289,7 @@ docker-dash/
 
 ## Comparison
 
-**60 features compared, 33 exclusive to Docker Dash.** See the interactive comparison at `#/compare` in the app, or via `GET /api/compare`.
+**75+ features compared, 40+ exclusive to Docker Dash.** See the interactive comparison at `#/compare` in the app, or via `GET /api/compare`.
 
 | Feature | Docker Dash | Portainer CE | Dockge | Dockhand |
 |---------|:-----------:|:------------:|:------:|:--------:|
@@ -271,37 +297,49 @@ docker-dash/
 | Image Management | Yes | Yes | No | Yes |
 | Volume / Network Management | Yes | Yes | No | Yes |
 | **Network Topology** | **Yes** | No | No | No |
+| **Dependency Map** | **Yes** | No | No | No |
 | Real-time Stats (WebSocket) | Yes | Yes | Basic | Yes |
 | Terminal (xterm.js) | Yes | Yes | Yes | Yes |
+| **Container File Browser** | **Yes** | Yes ($) | No | No |
+| **Container Diff** | **Yes** | No | No | No |
 | Vulnerability Scanning | Trivy + Grype + Scout | No | No | Grype + Trivy |
-| **Safe-Pull Updates** | **Yes** | No | No | Yes |
+| **Safe-Pull + Pipeline** | **5-stage** | No | No | Basic |
+| **Container Rollback** | **Yes** | No | No | No |
 | Multi-Host (agentless) | Yes | Agent required | Agent | Yes |
 | **Git Integration** | **Yes** | BE only ($) | No | No |
 | **Webhooks + Polling** | **Yes** | BE only ($) | No | No |
-| **Deployment Rollback** | **Yes** | No | No | No |
 | **Audit Log** | **Yes** | BE only ($) | No | No |
 | **Alerts (7 channels)** | **Yes** | BE only ($) | No | No |
 | **SSO (Authelia/Authentik)** | **Yes** | BE only ($) | No | No |
 | **Health Score (0-100)** | **Yes** | No | No | No |
+| **AI Container Doctor** | **Yes** | No | No | No |
 | **Resource Forecasting** | **Yes** | No | No | No |
-| **Cost Estimation** | **Yes** | No | No | No |
+| **Cost Optimizer** | **Yes** | No | No | No |
 | **Insights Dashboard** | **Yes** | No | No | No |
 | **Workflow Automation** | **Yes** | No | No | No |
+| **Scheduled Actions (cron)** | **Yes** | No | No | No |
+| **Bulk Actions** | **Yes** | Yes | No | No |
 | **Cross-Host Migration** | **Zero-downtime** | No | No | No |
 | **Stack Export/Import** | **Yes** | No | No | No |
+| **Compose Editor** | **Yes** | Yes ($) | Yes | No |
 | **Troubleshooting Wizard** | **Yes** | No | No | No |
 | **Public Status Page** | **Yes** | No | No | No |
 | **Daily Auto-Backup** | **Yes** | No | No | No |
-| App Templates | 30 built-in | 500+ community | No | No |
+| **Notifications Center** | **Yes** | Basic | No | No |
+| **API Playground** | **Yes** | Swagger ($) | No | No |
+| **Container Groups** | **Yes** | No | No | No |
+| **Dashboard Widgets** | **Configurable** | Fixed | No | No |
+| App Templates | 30 + custom | 500+ community | No | No |
 | i18n | 11 languages | Partial | No | No |
 | Command Palette + Shortcuts | Yes | No | No | No |
+| Mobile Responsive | Yes | Yes | Yes | Yes |
 | Test Suite | 335 tests (100%) | Yes | No | No |
 | Build Step | **None** | Angular | Required | Required |
 | Container Size | **~80MB** | ~250MB | ~100MB | ~80MB |
 | RAM Usage | **~50MB** | ~200MB | ~50MB | ~60MB |
 | License | **MIT** | Zlib | MIT | BSL 1.1 |
 
-> **33 features** are exclusive to Docker Dash — no competitor has them.
+> **40+ features** are exclusive to Docker Dash — no competitor has them.
 > **6 features** that Portainer locks behind paid Business Edition are **free** in Docker Dash.
 
 ## License

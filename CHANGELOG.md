@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [4.2.0] - 2026-03-28
+
+### Added — 20 New Features
+- **Image pull progress** — real-time streaming per-layer progress bars via SSE
+- **Resource limits editor** — visual sliders with presets (256MB-2GB memory, 0.5-4 CPU cores)
+- **Bulk container actions** — checkboxes + floating action bar for batch start/stop/restart/remove
+- **Theme & language sync** — user preferences saved server-side, synced across devices
+- **Container file browser** — navigate, view, download files inside running containers
+- **Docker Compose editor** — edit, validate, save & deploy compose configs inline
+- **Scheduled actions** — cron-based automation with presets, execution history, run-now
+- **Container diff** — filesystem changes vs base image with color-coded entries
+- **Container rollback** — one-click revert to previous image with version history
+- **Notifications center** — dedicated page with filters, pagination, bulk mark-read/delete
+- **Dashboard customizable** — toggle widget visibility, order saved to server per user
+- **Stacks page** — unified Compose + Git stacks management with actions
+- **Container groups** — user-defined grouping with colors, beyond compose projects
+- **API Playground** — browse and test all API endpoints from the UI with response viewer
+- **AI Container Doctor** — diagnostics + 30 log patterns + AI prompt generator for ChatGPT/Claude
+- **Cost Optimizer page** — per-container cost breakdown, idle detection, savings recommendations
+- **Dependency Map** — interactive canvas graph showing container relationships
+- **Deployment Pipelines** — staged pull → scan → swap → verify → notify with history
+- **Mobile responsive** — full UI on phone/tablet with 360px-768px breakpoints
+- **Container health dots** — color-coded indicator in list view with summary bar
+
+### Security
+- Eliminated all remaining `execSync` with user input (firewall, compose, Docker login)
+- Groups routes: `requireRole('admin','operator')` on all write endpoints
+- Global prototype pollution protection middleware
+- Unified password policy enforced on all 4 auth flows
+
+### Testing
+- **231 new tests** across 14 test files (104 → 335 total)
+- CRITICAL: RBAC enforcement, SQL injection, path traversal, prototype pollution, password policy
+- HIGH: log patterns, groups service, preferences, notifications, pipeline service
+- MEDIUM: templates CRUD, schedules, cost analysis, validation, health endpoint
+
+### Technical
+- 5 new DB migrations (024-028)
+- 6 new frontend pages
+- 3 new backend services (groups, pipeline, log-patterns)
+- 34 files changed, 5,492 insertions
+
 ## [4.1.0] - 2026-03-28
 
 ### Added
