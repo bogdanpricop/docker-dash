@@ -259,35 +259,43 @@ const SettingsPage = {
   },
 
   async _resetPasswordDialog(id, username) {
-    const result = await Modal.form(`
-      <p>Set a new password for <strong>${Utils.escapeHtml(username)}</strong>:</p>
-      <div class="form-group">
-        <label>New Password *</label>
-        <input type="password" id="rp-new" class="form-control" required minlength="8" placeholder="Minimum 8 characters">
+    const html = `
+      <div class="modal-header">
+        <h3><i class="fas fa-key" style="margin-right:8px;color:var(--accent)"></i>Reset Password — ${Utils.escapeHtml(username)}</h3>
+        <button class="modal-close-btn" id="rp-close"><i class="fas fa-times"></i></button>
       </div>
-      <div class="form-group">
-        <label>Confirm Password *</label>
-        <input type="password" id="rp-confirm" class="form-control" required>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>New Password *</label>
+          <input type="password" id="rp-new" class="form-control" placeholder="Minimum 8 characters" autofocus>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password *</label>
+          <input type="password" id="rp-confirm" class="form-control">
+        </div>
       </div>
-    `, {
-      title: 'Reset Password — ' + username,
-      width: '400px',
-      confirmText: 'Reset Password',
-      onSubmit: (content) => {
-        const newPass = content.querySelector('#rp-new').value;
-        const confirm = content.querySelector('#rp-confirm').value;
-        if (!newPass || newPass.length < 8) { Toast.warning('Password must be at least 8 characters'); return false; }
-        if (newPass !== confirm) { Toast.warning('Passwords do not match'); return false; }
-        return { password: newPass };
-      },
-    });
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="rp-cancel">Cancel</button>
+        <button class="btn btn-primary" id="rp-submit"><i class="fas fa-key"></i> Reset Password</button>
+      </div>
+    `;
+    Modal.open(html, { width: '400px' });
 
-    if (result) {
+    Modal._content.querySelector('#rp-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#rp-cancel').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#rp-submit').addEventListener('click', async () => {
+      const newPass = Modal._content.querySelector('#rp-new').value;
+      const confirm = Modal._content.querySelector('#rp-confirm').value;
+
+      if (!newPass || newPass.length < 8) { Toast.warning('Password must be at least 8 characters'); return; }
+      if (newPass !== confirm) { Toast.warning('Passwords do not match'); return; }
+
       try {
-        await Api.updateUser(id, { password: result.password });
-        Toast.success(`Password reset for "${username}"`);
+        await Api.updateUser(id, { password: newPass });
+        Toast.success('Password reset for "' + username + '"');
+        Modal.close();
       } catch (err) { Toast.error(err.message); }
-    }
+    });
   },
 
   async _sendResetEmail(id, username) {
