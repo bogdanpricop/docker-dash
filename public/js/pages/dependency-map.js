@@ -119,18 +119,32 @@ const DependencyMapPage = {
       const cy = (this._canvas?.height || 600) / (2 * window.devicePixelRatio);
       const radius = Math.min(cx, cy) * 0.6;
 
-      nodes.forEach((n, i) => {
-        const angle = (2 * Math.PI * i) / nodes.length;
-        n.x = cx + radius * Math.cos(angle) + (Math.random() - 0.5) * 40;
-        n.y = cy + radius * Math.sin(angle) + (Math.random() - 0.5) * 40;
-        n.vx = 0;
-        n.vy = 0;
-        n.radius = 20;
+      // Group nodes by stack for cluster seeding
+      const stacks = {};
+      nodes.forEach(n => { const s = n.stack || '_'; if (!stacks[s]) stacks[s] = []; stacks[s].push(n); });
+      const stackKeys = Object.keys(stacks);
+      stackKeys.forEach((s, si) => {
+        const clusterAngle = (2 * Math.PI * si) / stackKeys.length;
+        const clusterR = radius * 0.7;
+        const clusterCx = cx + clusterR * Math.cos(clusterAngle);
+        const clusterCy = cy + clusterR * Math.sin(clusterAngle);
+        stacks[s].forEach((n, ni) => {
+          const memberAngle = (2 * Math.PI * ni) / stacks[s].length;
+          const memberR = 40 + stacks[s].length * 8;
+          n.x = clusterCx + memberR * Math.cos(memberAngle) + (Math.random() - 0.5) * 20;
+          n.y = clusterCy + memberR * Math.sin(memberAngle) + (Math.random() - 0.5) * 20;
+          n.vx = 0;
+          n.vy = 0;
+          n.radius = 20;
+        });
       });
 
       this._nodes = nodes;
       this._edges = edges;
       this._clusters = data.clusters || [];
+      // Build stack groups for clustering
+      this._stackGroups = {};
+      nodes.forEach(n => { if (n.stack) { if (!this._stackGroups[n.stack]) this._stackGroups[n.stack] = []; this._stackGroups[n.stack].push(n.id); } });
 
       // Run force simulation
       this._simulate();
@@ -141,49 +155,66 @@ const DependencyMapPage = {
   },
 
   _simulate() {
-    const iterations = 100;
+    const iterations = 300;
     const nodes = this._nodes;
     const edges = this._edges;
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    // Scale repulsion with node count
+    const repulseK = Math.max(250, 120 + nodes.length * 5);
 
     for (let iter = 0; iter < iterations; iter++) {
-      const alpha = 1 - iter / iterations;
-      const strength = 0.3 * alpha;
+      const alpha = Math.max(0.01, 1 - iter / iterations);
 
-      // Repulsion between all nodes
+      // Repulsion between all nodes (Coulomb's law)
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const a = nodes[i], b = nodes[j];
           let dx = b.x - a.x, dy = b.y - a.y;
-          let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = (150 * 150) / (dist * dist);
-          const fx = (dx / dist) * force * strength;
-          const fy = (dy / dist) * force * strength;
+          let dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 1) { dx = (Math.random() - 0.5) * 10; dy = (Math.random() - 0.5) * 10; dist = 10; }
+          // Same stack = weaker repulsion (they should cluster)
+          const sameStack = a.stack && b.stack && a.stack === b.stack;
+          const k = sameStack ? repulseK * 0.4 : repulseK;
+          const force = (k * k) / (dist * dist) * alpha * 0.5;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
           a.x -= fx; a.y -= fy;
           b.x += fx; b.y += fy;
         }
       }
 
-      // Attraction along edges
+      // Attraction along edges (Hooke's spring)
       for (const e of edges) {
         const a = nodeMap.get(e.source), b = nodeMap.get(e.target);
         if (!a || !b) continue;
         let dx = b.x - a.x, dy = b.y - a.y;
         let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const ideal = e.type === 'network' ? 200 : 120;
-        const force = (dist - ideal) * 0.005 * alpha;
+        const ideal = e.type === 'network' ? 180 : 100;
+        const force = (dist - ideal) * 0.01 * alpha;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
         a.x += fx; a.y += fy;
         b.x -= fx; b.y -= fy;
       }
 
-      // Center gravity
+      // Same-stack attraction (gentle clustering)
+      for (const key of Object.keys(this._stackGroups || {})) {
+        const members = (this._stackGroups[key] || []).map(id => nodeMap.get(id)).filter(Boolean);
+        if (members.length < 2) continue;
+        const avgX = members.reduce((s, n) => s + n.x, 0) / members.length;
+        const avgY = members.reduce((s, n) => s + n.y, 0) / members.length;
+        for (const n of members) {
+          n.x += (avgX - n.x) * 0.02 * alpha;
+          n.y += (avgY - n.y) * 0.02 * alpha;
+        }
+      }
+
+      // Center gravity (very gentle)
       const cx = (this._canvas?.width || 800) / (2 * window.devicePixelRatio);
       const cy = (this._canvas?.height || 600) / (2 * window.devicePixelRatio);
       for (const n of nodes) {
-        n.x += (cx - n.x) * 0.01 * alpha;
-        n.y += (cy - n.y) * 0.01 * alpha;
+        n.x += (cx - n.x) * 0.005 * alpha;
+        n.y += (cy - n.y) * 0.005 * alpha;
       }
     }
   },
