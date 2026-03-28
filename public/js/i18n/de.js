@@ -28,6 +28,7 @@ i18n.register('de', 'DE', 'Deutsch', {
     signIn: 'Anmelden', signingIn: 'Anmeldung läuft...',
     enterCredentials: 'Bitte Benutzername und Passwort eingeben',
     invalidCredentials: 'Ungültige Anmeldedaten',
+    forgotPassword: 'Passwort vergessen? Kontaktieren Sie den Administrator unter Einstellungen > Benutzer.',
   },
   notifications: {
     title: 'Benachrichtigungen', markAllRead: 'Alle als gelesen markieren',

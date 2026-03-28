@@ -360,6 +360,7 @@ const Api = {
   toggleFavorite(containerId) { return this.post(`/favorites/${containerId}`); },
   getImageFreshness() { return this.get('/images/freshness'); },
   getAuditAnalytics(days = 7) { return this.get(`/audit/analytics?days=${days}`); },
+  exportAuditCsv(days = 30) { return `/api/audit/export?days=${days}`; }, // Returns URL for download
   getAuditLog(page = 1, limit = 50) {
     return this.get(`/audit?page=${page}&limit=${limit}`);
   },

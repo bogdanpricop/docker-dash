@@ -28,6 +28,7 @@ i18n.register('en', 'EN', 'English', {
     signIn: 'Sign In', signingIn: 'Signing in...',
     enterCredentials: 'Please enter username and password',
     invalidCredentials: 'Invalid credentials',
+    forgotPassword: 'Forgot password? Contact your administrator to reset it from Settings > Users.',
   },
   notifications: {
     title: 'Notifications', markAllRead: 'Mark all read',

@@ -149,6 +149,34 @@ router.get('/audit', requireAuth, requireRole('admin'), (req, res) => {
   }));
 });
 
+// ─── Audit CSV Export ───────────────────────────────────────
+
+router.get('/audit/export', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const db = getDb();
+    const days = parseInt(req.query.days) || 30;
+    const rows = db.prepare(`
+      SELECT id, username, action, target_type, target_id, ip, created_at
+      FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+      ORDER BY created_at DESC LIMIT 10000
+    `).all(days);
+
+    const csv = [
+      'ID,Username,Action,Target Type,Target ID,IP,Timestamp',
+      ...rows.map(r =>
+        `${r.id},"${(r.username || '').replace(/"/g, '""')}","${r.action}","${r.target_type || ''}","${(r.target_id || '').replace(/"/g, '""')}","${r.ip || ''}","${r.created_at}"`
+      ),
+    ].join('\n');
+
+    const ts = new Date().toISOString().substring(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-log-${ts}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Audit Analytics ────────────────────────────────────────
 
 router.get('/audit/analytics', requireAuth, requireRole('admin'), (req, res) => {

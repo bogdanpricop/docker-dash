@@ -28,6 +28,7 @@ i18n.register('ro', 'RO', 'Română', {
     signIn: 'Autentificare', signingIn: 'Se autentifica...',
     enterCredentials: 'Introduceti utilizatorul si parola',
     invalidCredentials: 'Date de autentificare invalide',
+    forgotPassword: 'Ati uitat parola? Contactati administratorul pentru resetare din Setari > Utilizatori.',
   },
   notifications: {
     title: 'Notificari', markAllRead: 'Marcheaza toate citite',

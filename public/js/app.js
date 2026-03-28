@@ -362,6 +362,8 @@ const App = {
     if (loginPassInput) loginPassInput.placeholder = i18n.t('login.passPlaceholder');
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn && !loginBtn.disabled) loginBtn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${i18n.t('login.signIn')}`;
+    const loginForgot = document.getElementById('login-forgot');
+    if (loginForgot) loginForgot.textContent = i18n.t('login.forgotPassword');
   },
 
   // ─── Setup Wizard & Security ────────────────
