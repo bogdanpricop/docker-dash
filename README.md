@@ -262,27 +262,48 @@ docker-dash/
 └── plans/               # Architecture decisions and feature roadmap
 ```
 
-## Comparison with Portainer
+## Comparison
 
-| Feature | Portainer CE | Docker Dash |
-|---------|-------------|-------------|
-| Container CRUD | Yes | Yes |
-| Real-time stats | Yes | Yes (WebSocket) |
-| Terminal (exec) | Yes | Yes (xterm.js) |
-| Compose/Stacks | Yes | Yes |
-| Image management | Yes | Yes + vulnerability scanning |
-| Network topology | No | Yes (interactive canvas) |
-| Multi-host | Yes (agent required) | Yes (TCP/SSH/Socket, agentless) |
-| Vulnerability scanning | No | Yes (Trivy + Scout) |
-| Dark theme | Yes | Yes |
-| i18n | Partial | Yes (EN + RO + DE, extensible) |
-| Audit log | Business only | Yes (free) |
-| Alerts | Business only | Yes (free) |
-| Security wizard | No | Yes (first-login setup) |
-| Database | External (Bolt) | Embedded SQLite |
-| Build step | Yes (Angular) | None (vanilla JS) |
-| Container size | ~250MB | ~80MB |
-| RAM usage | ~200MB | ~50MB |
+**60 features compared, 33 exclusive to Docker Dash.** See the interactive comparison at `#/compare` in the app, or via `GET /api/compare`.
+
+| Feature | Docker Dash | Portainer CE | Dockge | Dockhand |
+|---------|:-----------:|:------------:|:------:|:--------:|
+| Container CRUD | Yes | Yes | Compose only | Yes |
+| Image Management | Yes | Yes | No | Yes |
+| Volume / Network Management | Yes | Yes | No | Yes |
+| **Network Topology** | **Yes** | No | No | No |
+| Real-time Stats (WebSocket) | Yes | Yes | Basic | Yes |
+| Terminal (xterm.js) | Yes | Yes | Yes | Yes |
+| Vulnerability Scanning | Trivy + Scout | No | No | Grype + Trivy |
+| **Safe-Pull Updates** | **Yes** | No | No | Yes |
+| Multi-Host (agentless) | Yes | Agent required | Agent | Yes |
+| **Git Integration** | **Yes** | BE only ($) | No | No |
+| **Webhooks + Polling** | **Yes** | BE only ($) | No | No |
+| **Deployment Rollback** | **Yes** | No | No | No |
+| **Audit Log** | **Yes** | BE only ($) | No | No |
+| **Alerts (7 channels)** | **Yes** | BE only ($) | No | No |
+| **SSO (Authelia/Authentik)** | **Yes** | BE only ($) | No | No |
+| **Health Score (0-100)** | **Yes** | No | No | No |
+| **Resource Forecasting** | **Yes** | No | No | No |
+| **Cost Estimation** | **Yes** | No | No | No |
+| **Insights Dashboard** | **Yes** | No | No | No |
+| **Workflow Automation** | **Yes** | No | No | No |
+| **Cross-Host Migration** | **Zero-downtime** | No | No | No |
+| **Stack Export/Import** | **Yes** | No | No | No |
+| **Troubleshooting Wizard** | **Yes** | No | No | No |
+| **Public Status Page** | **Yes** | No | No | No |
+| **Daily Auto-Backup** | **Yes** | No | No | No |
+| App Templates | 30 built-in | 500+ community | No | No |
+| i18n | EN/RO/DE | Partial | No | No |
+| Command Palette + Shortcuts | Yes | No | No | No |
+| Test Suite | 104 tests (100%) | Yes | No | No |
+| Build Step | **None** | Angular | Required | Required |
+| Container Size | **~80MB** | ~250MB | ~100MB | ~80MB |
+| RAM Usage | **~50MB** | ~200MB | ~50MB | ~60MB |
+| License | **MIT** | Zlib | MIT | BSL 1.1 |
+
+> **33 features** are exclusive to Docker Dash — no competitor has them.
+> **6 features** that Portainer locks behind paid Business Edition are **free** in Docker Dash.
 
 ## License
 
