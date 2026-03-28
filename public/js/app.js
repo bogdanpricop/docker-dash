@@ -23,6 +23,7 @@ const App = {
     about:      () => AboutPage,
     whatsnew:   () => WhatsNewPage,
     'git-stacks': () => GitStacksPage,
+    compare:    () => ComparePage,
     settings:   () => SettingsPage,
     profile:    () => ProfilePage,
   },

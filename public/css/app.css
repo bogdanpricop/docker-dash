@@ -1378,6 +1378,10 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .meta-card-links a:hover { background: var(--accent-dim); color: var(--accent-hover); }
 .meta-card-links a i { font-size: 11px; }
 
+/* ── Comparison Page ─────────────────────────────── */
+.exclusive-row { background: rgba(210,153,34,0.04); }
+.exclusive-row td:first-child { font-weight: 600; }
+
 /* ── Skip to Content (a11y) ──────────────────────── */
 .skip-to-content {
   position: absolute; left: -9999px; top: 0; z-index: 9999;
