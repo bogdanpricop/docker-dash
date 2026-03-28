@@ -246,6 +246,17 @@ const App = {
       }
       localStorage.setItem('dd-theme', next);
       this._updateThemeIcon(icon);
+      // Update chart colors for new theme
+      Utils.configureChartDefaults();
+    });
+
+    // Auto-detect OS theme changes (if user hasn't manually set)
+    window.matchMedia?.('(prefers-color-scheme: light)')?.addEventListener('change', (e) => {
+      if (!localStorage.getItem('dd-theme')) {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+        this._updateThemeIcon(icon);
+        Utils.configureChartDefaults();
+      }
     });
   },
 
