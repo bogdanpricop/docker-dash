@@ -400,6 +400,7 @@ const ContainersPage = {
         <button class="tab" data-tab="logs">${i18n.t('pages.containers.tabs.logs')}</button>
         <button class="tab" data-tab="terminal">${i18n.t('pages.containers.tabs.terminal')}</button>
         <button class="tab" data-tab="stats">${i18n.t('pages.containers.tabs.stats')}</button>
+        <button class="tab" data-tab="env"><i class="fas fa-key" style="margin-right:4px"></i>Env</button>
         <button class="tab" data-tab="inspect">${i18n.t('pages.containers.tabs.inspect')}</button>
       </div>
       <div class="tab-content" id="detail-content">${i18n.t('common.loading')}</div>
@@ -845,6 +846,7 @@ const ContainersPage = {
     else if (tab === 'logs') this._renderLogsTab(content);
     else if (tab === 'terminal') this._renderTerminalTab(content);
     else if (tab === 'stats') this._renderStatsTab(content);
+    else if (tab === 'env') this._renderEnvTab(content);
     else if (tab === 'inspect') this._renderInspectTab(content);
   },
 
@@ -1405,6 +1407,56 @@ const ContainersPage = {
           tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toFixed(1)}${suffix}` } },
         },
       },
+    });
+  },
+
+  _renderEnvTab(el) {
+    const envVars = this._detailData?.env || [];
+    const parsed = envVars.map(e => {
+      const eq = e.indexOf('=');
+      return eq > 0 ? { key: e.substring(0, eq), value: e.substring(eq + 1) } : { key: e, value: '' };
+    }).sort((a, b) => a.key.localeCompare(b.key));
+
+    const sensitive = /password|secret|token|key|api_key|auth|credential/i;
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span class="text-muted text-sm">${parsed.length} environment variable(s)</span>
+        <div style="display:flex;gap:8px">
+          <div class="search-box" style="min-width:200px">
+            <i class="fas fa-search"></i>
+            <input type="text" id="env-search" placeholder="Filter variables..." class="input-sm">
+          </div>
+          <button class="btn btn-sm btn-secondary" id="env-copy-all"><i class="fas fa-copy"></i> Copy All</button>
+        </div>
+      </div>
+      ${parsed.length === 0 ? '<div class="empty-msg">No environment variables</div>' : `
+      <table class="data-table" id="env-table">
+        <thead><tr><th style="text-align:left;width:35%">Variable</th><th style="text-align:left">Value</th></tr></thead>
+        <tbody>${parsed.map(v => `
+          <tr class="env-row" data-key="${Utils.escapeHtml(v.key.toLowerCase())}">
+            <td style="text-align:left" class="mono text-sm"><strong>${Utils.escapeHtml(v.key)}</strong></td>
+            <td style="text-align:left;word-break:break-all" class="mono text-sm">${
+              sensitive.test(v.key)
+                ? '<span class="text-muted" title="Click to reveal" style="cursor:pointer" onclick="this.textContent=this.dataset.v" data-v="' + Utils.escapeHtml(v.value) + '">••••••••</span>'
+                : Utils.escapeHtml(v.value)
+            }</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`}
+    `;
+
+    el.querySelector('#env-search')?.addEventListener('input', Utils.debounce(() => {
+      const q = el.querySelector('#env-search').value.toLowerCase();
+      el.querySelectorAll('.env-row').forEach(row => {
+        row.style.display = row.dataset.key.includes(q) ? '' : 'none';
+      });
+    }, 200));
+
+    el.querySelector('#env-copy-all')?.addEventListener('click', () => {
+      const text = parsed.map(v => v.key + '=' + v.value).join('\n');
+      Utils.copyToClipboard(text);
+      Toast.success('Environment variables copied!');
     });
   },
 
