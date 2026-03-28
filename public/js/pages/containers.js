@@ -403,6 +403,7 @@ const ContainersPage = {
         <button class="tab" data-tab="env"><i class="fas fa-key" style="margin-right:4px"></i>Env</button>
         <button class="tab" data-tab="mounts"><i class="fas fa-hdd" style="margin-right:4px"></i>Mounts</button>
         <button class="tab" data-tab="networking"><i class="fas fa-network-wired" style="margin-right:4px"></i>Network</button>
+        <button class="tab" data-tab="labels"><i class="fas fa-tags" style="margin-right:4px"></i>Labels</button>
         <button class="tab" data-tab="inspect">${i18n.t('pages.containers.tabs.inspect')}</button>
       </div>
       <div class="tab-content" id="detail-content">${i18n.t('common.loading')}</div>
@@ -851,6 +852,7 @@ const ContainersPage = {
     else if (tab === 'env') this._renderEnvTab(content);
     else if (tab === 'mounts') this._renderMountsTab(content);
     else if (tab === 'networking') this._renderNetworkTab(content);
+    else if (tab === 'labels') this._renderLabelsTab(content);
     else if (tab === 'inspect') this._renderInspectTab(content);
   },
 
@@ -1542,6 +1544,68 @@ const ContainersPage = {
         } catch (err) { Toast.error(err.message); }
       });
     } catch { /* dependency detection is best-effort */ }
+  },
+
+  _renderLabelsTab(el) {
+    const labels = this._detailData?.labels || {};
+    const entries = Object.entries(labels).sort((a, b) => a[0].localeCompare(b[0]));
+
+    if (entries.length === 0) {
+      el.innerHTML = '<div class="empty-msg"><i class="fas fa-tags"></i><p>No labels</p></div>';
+      return;
+    }
+
+    // Group: compose labels, traefik labels, custom labels
+    const compose = entries.filter(([k]) => k.startsWith('com.docker.compose.'));
+    const traefik = entries.filter(([k]) => k.startsWith('traefik.'));
+    const dockerDash = entries.filter(([k]) => k.startsWith('docker-dash.'));
+    const custom = entries.filter(([k]) => !k.startsWith('com.docker.compose.') && !k.startsWith('traefik.') && !k.startsWith('docker-dash.'));
+
+    const renderGroup = (title, icon, items) => {
+      if (items.length === 0) return '';
+      return `
+        <div style="margin-bottom:16px">
+          <h4 style="margin:0 0 8px"><i class="${icon}" style="margin-right:6px;opacity:0.6"></i>${title} (${items.length})</h4>
+          <table class="data-table">
+            <thead><tr><th style="text-align:left;width:40%">Label</th><th style="text-align:left">Value</th></tr></thead>
+            <tbody>${items.map(([k, v]) => `
+              <tr class="label-row" data-key="${Utils.escapeHtml(k.toLowerCase())}">
+                <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(k)}</td>
+                <td style="text-align:left;word-break:break-all" class="mono text-sm">${Utils.escapeHtml(v)}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table>
+        </div>`;
+    };
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span class="text-muted text-sm">${entries.length} label(s)</span>
+        <div style="display:flex;gap:8px">
+          <div class="search-box" style="min-width:200px">
+            <i class="fas fa-search"></i>
+            <input type="text" id="label-search" placeholder="Filter labels..." class="input-sm">
+          </div>
+          <button class="btn btn-sm btn-secondary" id="label-copy"><i class="fas fa-copy"></i> Copy All</button>
+        </div>
+      </div>
+      ${renderGroup('Custom Labels', 'fas fa-tag', custom)}
+      ${renderGroup('Docker Compose', 'fas fa-layer-group', compose)}
+      ${renderGroup('Traefik', 'fas fa-random', traefik)}
+      ${renderGroup('Docker Dash', 'fas fa-chart-pie', dockerDash)}
+    `;
+
+    el.querySelector('#label-search')?.addEventListener('input', Utils.debounce(() => {
+      const q = el.querySelector('#label-search').value.toLowerCase();
+      el.querySelectorAll('.label-row').forEach(row => {
+        row.style.display = row.dataset.key.includes(q) ? '' : 'none';
+      });
+    }, 200));
+
+    el.querySelector('#label-copy')?.addEventListener('click', () => {
+      Utils.copyToClipboard(entries.map(([k, v]) => k + '=' + v).join('\n'));
+      Toast.success('Labels copied!');
+    });
   },
 
   _renderMountsTab(el) {
