@@ -662,6 +662,9 @@ DB_PASS=secret"></textarea>
       // Reference
       { id: 'http-codes', name: 'HTTP Status Codes', icon: 'fa-globe', color: '#06b6d4', cat: 'reference', desc: 'Searchable reference of HTTP status codes' },
       { id: 'port-ref', name: 'Port Reference', icon: 'fa-server', color: '#ec4899', cat: 'reference', desc: 'Common network ports and their services' },
+      // Converters (extra)
+      { id: 'html2md', name: 'HTML → Markdown', icon: 'fa-file-code', color: '#f97316', cat: 'converters', desc: 'Convert HTML to Markdown with live preview' },
+      { id: 'md2html', name: 'Markdown → HTML', icon: 'fa-file-alt', color: '#10b981', cat: 'converters', desc: 'Convert Markdown to HTML with live preview' },
     ];
   },
 
@@ -907,6 +910,46 @@ DB_PASS=secret"></textarea>
         <div style="max-height:450px;overflow:auto"><table class="ref-table" id="tm-port-table">
           <thead><tr><th style="width:70px">Port</th><th style="width:60px">Proto</th><th>Service</th><th>Description</th></tr></thead>
           <tbody></tbody></table></div>`;
+      case 'html2md': return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label>HTML Input</label>
+            <textarea id="tm-h2m-input" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" placeholder="<h1>Hello</h1>\n<p>Paste your <strong>HTML</strong> here</p>"></textarea>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Markdown Output</label>
+            <textarea id="tm-h2m-output" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" readonly></textarea>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-primary" id="tm-h2m-convert"><i class="fas fa-arrow-right"></i> Convert</button>
+          <button class="btn btn-sm btn-secondary" id="tm-h2m-copy"><i class="fas fa-copy"></i> Copy</button>
+          <label style="margin-left:auto;font-size:12px"><input type="checkbox" id="tm-h2m-live"> Live preview</label>
+        </div>
+        <div style="margin-top:12px">
+          <label>Preview</label>
+          <div id="tm-h2m-preview" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);min-height:60px;font-size:13px"></div>
+        </div>`;
+      case 'md2html': return `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group" style="margin:0">
+            <label>Markdown Input</label>
+            <textarea id="tm-m2h-input" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" placeholder="# Hello\n\nType your **Markdown** here"></textarea>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>HTML Output</label>
+            <textarea id="tm-m2h-output" class="form-control" rows="14" style="font-family:var(--mono);font-size:12px" readonly></textarea>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-primary" id="tm-m2h-convert"><i class="fas fa-arrow-right"></i> Convert</button>
+          <button class="btn btn-sm btn-secondary" id="tm-m2h-copy"><i class="fas fa-copy"></i> Copy</button>
+          <label style="margin-left:auto;font-size:12px"><input type="checkbox" id="tm-m2h-live"> Live preview</label>
+        </div>
+        <div style="margin-top:12px">
+          <label>Preview</label>
+          <div id="tm-m2h-preview" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);min-height:60px;font-size:13px"></div>
+        </div>`;
       default: return '<p>Tool not implemented yet.</p>';
     }
   },
@@ -1345,23 +1388,61 @@ DB_PASS=secret"></textarea>
         const ports = [
           [20, 'TCP', 'FTP Data', 'File Transfer Protocol data transfer'],
           [21, 'TCP', 'FTP Control', 'File Transfer Protocol command control'],
-          [22, 'TCP', 'SSH', 'Secure Shell remote login and command execution'],
+          [22, 'TCP', 'SSH/SFTP', 'Secure Shell remote login, SFTP file transfer'],
+          [23, 'TCP', 'Telnet', 'Unencrypted text communications (legacy)'],
           [25, 'TCP', 'SMTP', 'Simple Mail Transfer Protocol for email routing'],
           [53, 'TCP/UDP', 'DNS', 'Domain Name System name resolution'],
+          [67, 'UDP', 'DHCP Server', 'Dynamic Host Configuration Protocol server'],
+          [68, 'UDP', 'DHCP Client', 'Dynamic Host Configuration Protocol client'],
+          [69, 'UDP', 'TFTP', 'Trivial File Transfer Protocol'],
           [80, 'TCP', 'HTTP', 'Hypertext Transfer Protocol for web traffic'],
           [110, 'TCP', 'POP3', 'Post Office Protocol v3 for email retrieval'],
+          [123, 'UDP', 'NTP', 'Network Time Protocol for clock synchronization'],
+          [137, 'UDP', 'NetBIOS NS', 'NetBIOS Name Service (Windows networking)'],
           [143, 'TCP', 'IMAP', 'Internet Message Access Protocol for email'],
+          [161, 'UDP', 'SNMP', 'Simple Network Management Protocol'],
+          [162, 'UDP', 'SNMP Trap', 'SNMP Trap notifications'],
+          [389, 'TCP', 'LDAP', 'Lightweight Directory Access Protocol'],
           [443, 'TCP', 'HTTPS', 'HTTP Secure (TLS/SSL encrypted web traffic)'],
+          [445, 'TCP', 'SMB', 'Server Message Block (Windows file sharing)'],
           [465, 'TCP', 'SMTPS', 'SMTP over SSL for secure email submission'],
+          [514, 'UDP', 'Syslog', 'System logging protocol'],
           [587, 'TCP', 'SMTP Submission', 'Email message submission with STARTTLS'],
+          [636, 'TCP', 'LDAPS', 'LDAP over SSL/TLS'],
+          [873, 'TCP', 'Rsync', 'Remote file synchronization'],
           [993, 'TCP', 'IMAPS', 'IMAP over SSL for secure email access'],
           [995, 'TCP', 'POP3S', 'POP3 over SSL for secure email retrieval'],
+          [1080, 'TCP', 'SOCKS', 'SOCKS proxy protocol'],
+          [1433, 'TCP', 'MSSQL', 'Microsoft SQL Server database'],
+          [1521, 'TCP', 'Oracle DB', 'Oracle Database listener'],
+          [1883, 'TCP', 'MQTT', 'Message Queuing Telemetry Transport (IoT)'],
+          [2049, 'TCP/UDP', 'NFS', 'Network File System'],
+          [2375, 'TCP', 'Docker', 'Docker daemon API (unencrypted)'],
+          [2376, 'TCP', 'Docker TLS', 'Docker daemon API (TLS encrypted)'],
+          [3000, 'TCP', 'Grafana/Dev', 'Grafana, Node.js dev servers, Gitea'],
           [3306, 'TCP', 'MySQL', 'MySQL / MariaDB database server'],
+          [3389, 'TCP', 'RDP', 'Remote Desktop Protocol (Windows)'],
+          [4222, 'TCP', 'NATS', 'NATS messaging system'],
+          [5000, 'TCP', 'Docker Registry', 'Docker container registry, Flask dev'],
           [5432, 'TCP', 'PostgreSQL', 'PostgreSQL database server'],
+          [5672, 'TCP', 'AMQP', 'RabbitMQ / Advanced Message Queuing Protocol'],
+          [5900, 'TCP', 'VNC', 'Virtual Network Computing remote desktop'],
           [6379, 'TCP', 'Redis', 'Redis in-memory data structure store'],
-          [8080, 'TCP', 'HTTP Alt', 'Alternative HTTP port (proxies, dev servers)'],
+          [6443, 'TCP', 'Kubernetes API', 'Kubernetes API server (HTTPS)'],
+          [8080, 'TCP', 'HTTP Alt', 'Alternative HTTP (proxies, Tomcat, Jenkins)'],
           [8443, 'TCP', 'HTTPS Alt', 'Alternative HTTPS port'],
+          [8883, 'TCP', 'MQTT TLS', 'MQTT over TLS/SSL'],
+          [9000, 'TCP', 'Portainer', 'Portainer, SonarQube, PHP-FPM'],
+          [9090, 'TCP', 'Prometheus', 'Prometheus monitoring server'],
+          [9200, 'TCP', 'Elasticsearch', 'Elasticsearch REST API'],
+          [9300, 'TCP', 'ES Transport', 'Elasticsearch node-to-node communication'],
+          [9418, 'TCP', 'Git', 'Git protocol (unencrypted)'],
+          [10250, 'TCP', 'Kubelet', 'Kubernetes Kubelet API'],
+          [11211, 'TCP/UDP', 'Memcached', 'Memcached distributed cache'],
+          [15672, 'TCP', 'RabbitMQ Mgmt', 'RabbitMQ management console'],
           [27017, 'TCP', 'MongoDB', 'MongoDB NoSQL database server'],
+          [50000, 'TCP', 'Jenkins Agent', 'Jenkins JNLP agent communication'],
+          [51820, 'UDP', 'WireGuard', 'WireGuard VPN tunnel'],
         ];
         const renderTable = (filter) => {
           const f = (filter || '').toLowerCase();
@@ -1373,6 +1454,85 @@ DB_PASS=secret"></textarea>
         };
         renderTable('');
         mc.querySelector('#tm-port-search').addEventListener('input', (e) => renderTable(e.target.value));
+        break;
+      }
+      case 'html2md': {
+        const convert = () => {
+          const html = mc.querySelector('#tm-h2m-input').value;
+          // Simple HTML to Markdown conversion
+          let md = html
+            .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
+            .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+            .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+            .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '#### $1\n\n')
+            .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '##### $1\n\n')
+            .replace(/<h6[^>]*>(.*?)<\/h6>/gi, '###### $1\n\n')
+            .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+            .replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**')
+            .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+            .replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*')
+            .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+            .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '```\n$1\n```\n\n')
+            .replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, '```\n$1\n```\n\n')
+            .replace(/<a[^>]+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)')
+            .replace(/<img[^>]+src="([^"]*)"[^>]*alt="([^"]*)"[^>]*\/?>/gi, '![$2]($1)')
+            .replace(/<img[^>]+src="([^"]*)"[^>]*\/?>/gi, '![]($1)')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<hr\s*\/?>/gi, '\n---\n\n')
+            .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n')
+            .replace(/<\/?(ul|ol)[^>]*>/gi, '\n')
+            .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (m, c) => c.trim().split('\n').map(l => '> ' + l.trim()).join('\n') + '\n\n')
+            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+            .replace(/<\/?(div|span|section|article|header|footer|main|nav)[^>]*>/gi, '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+            .replace(/\n{3,}/g, '\n\n').trim();
+          mc.querySelector('#tm-h2m-output').value = md;
+          mc.querySelector('#tm-h2m-preview').textContent = md;
+        };
+        mc.querySelector('#tm-h2m-convert').addEventListener('click', convert);
+        mc.querySelector('#tm-h2m-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-h2m-output').value); Toast.success('Copied!');
+        });
+        mc.querySelector('#tm-h2m-input').addEventListener('input', () => {
+          if (mc.querySelector('#tm-h2m-live').checked) convert();
+        });
+        break;
+      }
+      case 'md2html': {
+        const convert = () => {
+          const md = mc.querySelector('#tm-m2h-input').value;
+          // Simple Markdown to HTML conversion
+          let html = md
+            .replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
+            .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
+            .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
+            .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+            .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+            .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+            .replace(/^---$/gm, '<hr>')
+            .replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>')
+            .replace(/^- (.+)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>\n?)+/g, (m) => '<ul>' + m + '</ul>')
+            .replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>')
+            .replace(/^(?!<[hupblo]|<hr|<li|<blockquote|<pre)(.+)$/gm, '<p>$1</p>')
+            .replace(/\n{2,}/g, '\n').trim();
+          mc.querySelector('#tm-m2h-output').value = html;
+          mc.querySelector('#tm-m2h-preview').innerHTML = html;
+        };
+        mc.querySelector('#tm-m2h-convert').addEventListener('click', convert);
+        mc.querySelector('#tm-m2h-copy').addEventListener('click', () => {
+          Utils.copyToClipboard(mc.querySelector('#tm-m2h-output').value); Toast.success('Copied!');
+        });
+        mc.querySelector('#tm-m2h-input').addEventListener('input', () => {
+          if (mc.querySelector('#tm-m2h-live').checked) convert();
+        });
         break;
       }
     }
