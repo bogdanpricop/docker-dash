@@ -67,7 +67,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 - **Helmet.js** security headers (X-Content-Type-Options, X-Frame-Options, CSP)
 - **HTTPS** via Caddy reverse proxy (self-signed for internal, Let's Encrypt for public)
 - **HSTS** headers via Caddy
-- **Cookie flags** — HttpOnly, SameSite=Lax (Secure when behind HTTPS)
+- **Cookie flags** — HttpOnly, SameSite=Strict + Secure when HTTPS detected (falls back to SameSite=Lax on plain HTTP)
 - **Trust proxy** restricted to loopback in production (prevents IP spoofing)
 - **JSON body limit** — 2MB (prevents DoS via large payloads)
 - **Request timeout** — 5 minutes (prevents hanging requests)
@@ -135,6 +135,46 @@ The following are conscious design decisions, not oversights. Each represents a 
 **Impact:** More authentication paths means more surface area to secure. Each path must be independently validated and rate-limited.
 
 **Mitigation:** All three methods validate against the same session/token store. Rate limiting applies regardless of auth method. API keys have separate creation/revocation UI. Audit log records the authentication method used. Bearer token is only returned in the login response body (not stored server-side in plaintext).
+
+### 4. SSO header-based authentication
+
+**What:** When `ENABLE_SSO_HEADERS=true`, the application trusts `X-Forwarded-User` headers to authenticate users without password verification.
+
+**Why:** Common pattern for integration with Authelia, Authentik, Caddy forward_auth, and Traefik. These reverse proxies handle the actual authentication and inject the username header.
+
+**Impact:** If the application is accidentally exposed without the trusted reverse proxy, an attacker can forge the header and authenticate as any user. This is the most operationally dangerous setting in Docker Dash.
+
+**Mitigation:** Disabled by default (`ENABLE_SSO_HEADERS=false`). `.env.example` contains an explicit WARNING comment. Trust proxy is restricted to `loopback` in production. The feature is documented as requiring a trusted reverse proxy between the application and the internet.
+
+### 5. Rate limiter is in-memory only
+
+**What:** The HTTP rate limiter uses an in-memory `Map`, not an external store (Redis, etc.).
+
+**Why:** Zero external dependencies. For single-instance deployment (the primary use case), in-memory rate limiting is sufficient and introduces no operational complexity.
+
+**Impact:** Rate limits reset on restart. In a (currently unsupported) multi-replica deployment, each instance would have independent counters, reducing rate limiting effectiveness.
+
+**Mitigation:** Documented as single-instance only. The rate limiter includes automatic cleanup of expired entries to prevent memory growth. For the target audience (homelab, SMB, single-node), this is appropriate.
+
+### 6. Docker socket access is inherently privileged
+
+**What:** Docker Dash requires read access to the Docker socket to function.
+
+**Why:** This is inherent to the entire category of Docker management tools (Portainer, Dockge, Lazydocker, etc.). There is no way to list/manage containers without socket access.
+
+**Impact:** A compromised Docker Dash instance could potentially be used to escape to the host via Docker API. This is a structural limitation of all Docker management dashboards.
+
+**Mitigation:** Socket mounted read-only (`:ro`) in production compose. `no-new-privileges` security option. Feature flags to disable dangerous operations (`ENABLE_EXEC=false`, `READ_ONLY_MODE=true`). Multi-user RBAC limits what each role can do. Audit trail on all actions.
+
+## Deployment Recommendations
+
+| Deployment scenario | Suitability | Notes |
+|---------------------|-------------|-------|
+| Homelab / personal | **Excellent** | Ideal use case. Run behind HTTPS, generate strong secrets. |
+| Small team / staging | **Good** | Put behind reverse proxy (Caddy/Traefik). Use SSO if available. |
+| Production (internal) | **Good** | Restrict network access, use TLS, disable exec if not needed. |
+| Public internet | **Capable with caveats** | Must use HTTPS, strong secrets, and understand CSP trade-off. |
+| Enterprise / multi-tenant | **Not recommended yet** | Needs stricter CSP, distributed rate limiter, and audit. |
 
 ## Vulnerability Fixes (v3.7.1 — v3.9.0)
 

@@ -242,7 +242,7 @@ npm install
 # Start in development mode (auto-reload on file changes)
 npm run dev
 
-# Open http://localhost:3456 (dev port)
+# Open http://localhost:8101
 ```
 
 No build step needed. Edit any `.js` or `.css` file and refresh the browser.
