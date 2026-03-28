@@ -62,11 +62,13 @@ const App = {
     WS.disconnect();
 
     const form = document.getElementById('login-form');
-    const errEl = document.getElementById('login-error');
 
     // Clone to remove old listeners
     const newForm = form.cloneNode(true);
     form.parentNode.replaceChild(newForm, form);
+
+    // IMPORTANT: re-query errEl from the NEW form (old ref is detached from DOM)
+    const errEl = newForm.querySelector('#login-error');
 
     newForm.addEventListener('submit', async (e) => {
       e.preventDefault();
