@@ -259,6 +259,8 @@ const SettingsPage = {
   },
 
   async _resetPasswordDialog(id, username) {
+    console.log('[RESET-PW] Dialog opening for user:', id, username);
+    if (!id || !username) { Toast.error('Cannot reset: user ID or name missing'); return; }
     const html = `
       <div class="modal-header">
         <h3><i class="fas fa-key" style="margin-right:8px;color:var(--accent)"></i>Reset Password — ${Utils.escapeHtml(username)}</h3>
