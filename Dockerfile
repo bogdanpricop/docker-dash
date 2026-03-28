@@ -7,15 +7,19 @@ RUN apk update && apk upgrade --no-cache
 # System tools + Docker CLI + gcompat (glibc compat for Docker Scout)
 RUN apk add --no-cache tini wget curl docker-cli gcompat git openssh-client
 
-# Install Trivy vulnerability scanner (latest stable)
-RUN wget -qO - https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+# Install Trivy vulnerability scanner
+# Pin version for reproducible builds. Update ARG to upgrade.
+ARG TRIVY_VERSION=0.69.3
+RUN wget -qO /tmp/trivy.tar.gz \
+      "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" && \
+    tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy && \
+    chmod +x /usr/local/bin/trivy && \
+    rm -f /tmp/trivy.tar.gz
 
-# Install Docker Scout CLI plugin (latest release)
-# NOTE: Scout binary contains Go dependencies (grpc, stdlib, otel) with known CVEs.
-# These are in the pre-compiled binary and cannot be fixed here.
-# They will be resolved when Docker releases a new Scout version.
+# Install Docker Scout CLI plugin
+# Pin version for reproducible builds. Update ARG to upgrade.
+ARG SCOUT_VERSION=1.17.0
 RUN mkdir -p /usr/lib/docker/cli-plugins && \
-    SCOUT_VERSION=$(wget -qO- "https://api.github.com/repos/docker/scout-cli/releases/latest" | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p') && \
     wget -qO /tmp/scout.tar.gz \
       "https://github.com/docker/scout-cli/releases/download/v${SCOUT_VERSION}/docker-scout_${SCOUT_VERSION}_linux_amd64.tar.gz" && \
     tar -xzf /tmp/scout.tar.gz -C /usr/lib/docker/cli-plugins docker-scout && \

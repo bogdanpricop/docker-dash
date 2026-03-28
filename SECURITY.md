@@ -50,7 +50,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 ### Encryption & Secrets
 - **AES-256-GCM** encryption for credentials at rest (Git tokens, SSH keys, registry passwords, notification tokens)
 - **scrypt KDF** for encryption key derivation (N=16384, r=8, p=1) — not improvised padding
-- **Startup validation** — refuses to start in production with weak APP_SECRET or ENCRYPTION_KEY
+- **Startup validation** — calls `process.exit(1)` in production if APP_SECRET or ENCRYPTION_KEY are weak/default
 - **No hardcoded credentials** in source code (verified by automated scan)
 
 ### Input Validation & Injection Prevention

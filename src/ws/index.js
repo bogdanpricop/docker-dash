@@ -33,9 +33,16 @@ class WsServer {
     }, 30000);
 
     this.wss.on('connection', (ws, req) => {
-      // Authenticate via query param or cookie
+      // Authenticate via cookie (preferred) or query param (fallback for blocked cookies)
+      // NOTE: Query param auth is a fallback for browsers that block cookies (Edge Tracking Prevention).
+      // Cookie-based auth is preferred as tokens in URLs can leak via logs/referrer.
+      const cookieToken = this._extractCookie(req, config.session.cookieName);
       const url = new URL(req.url, 'http://localhost');
-      const token = url.searchParams.get('token') || this._extractCookie(req, config.session.cookieName);
+      const queryToken = url.searchParams.get('token');
+      const token = cookieToken || queryToken;
+      if (queryToken && !cookieToken) {
+        log.debug('WS auth via query param (cookie blocked)', { ip: req.socket?.remoteAddress });
+      }
       const user = authService.validateSession(token);
 
       if (!user) {

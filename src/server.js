@@ -149,18 +149,28 @@ async function start() {
   const weakEncKeys = ['change-me-to-a-random-32-char-hex'];
 
   if (isProduction) {
+    let securityFatal = false;
     const secret = config.app.secret || '';
     if (weakSecrets.some(w => secret.startsWith(w)) || secret.length < 32) {
-      log.error('SECURITY: APP_SECRET is weak or default! Set a random 64+ char string in .env');
-      log.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+      log.error('FATAL: APP_SECRET is weak or default. Refusing to start in production.');
+      log.error('Fix: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))" >> .env');
+      securityFatal = true;
     }
     const encKey = config.security.encryptionKey || '';
     if (weakEncKeys.some(w => encKey === w) || encKey.length < 16) {
-      log.error('SECURITY: ENCRYPTION_KEY is weak or default! Set a random 32+ char hex string in .env');
-      log.error('Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+      log.error('FATAL: ENCRYPTION_KEY is weak or default. Refusing to start in production.');
+      log.error('Fix: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))" >> .env');
+      securityFatal = true;
+    }
+    if (securityFatal) {
+      log.error('Set strong secrets in .env and restart. Exiting.');
+      process.exit(1);
     }
     if (config.admin.defaultPassword === 'admin') {
       log.warn('SECURITY: Default admin password is "admin". Change it immediately after first login.');
+    }
+    if (!config.session.secureCookie) {
+      log.warn('SECURITY: COOKIE_SECURE is false. Set COOKIE_SECURE=true when behind HTTPS.');
     }
   }
 
@@ -211,7 +221,7 @@ async function start() {
 
   // Listen
   server.listen(config.app.port, config.app.host, () => {
-    log.info(`🐳 Docker Dash v2 running`, {
+    log.info(`🐳 Docker Dash running`, {
       url: `http://${config.app.host}:${config.app.port}`,
       env: config.app.env,
     });

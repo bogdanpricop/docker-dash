@@ -328,10 +328,12 @@ Docker Dash requires access to the Docker socket (`/var/run/docker.sock`). This 
 
 **Recommendations for production:**
 - Deploy behind HTTPS reverse proxy (Caddy config included)
-- Set strong `APP_SECRET` and `ENCRYPTION_KEY` (startup validates these)
+- Set strong `APP_SECRET` and `ENCRYPTION_KEY` (app refuses to start without them)
+- Set `COOKIE_SECURE=true` when behind HTTPS
 - Disable exec terminal if not needed (`ENABLE_EXEC=false`)
 - Use read-only mode for monitoring-only deployments (`READ_ONLY_MODE=true`)
 - Restrict network access to trusted IPs
+- Consider [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy) to limit API access (allow only read operations)
 - Review [SECURITY.md](SECURITY.md) for responsible disclosure process
 
 ### Security Audit Results
@@ -344,7 +346,7 @@ Docker Dash requires access to the Docker socket (`/var/run/docker.sock`). This 
 
 ### Test Coverage
 
-- **84 tests** across 6 test files (100% passing)
+- **104 tests** across 8 test files (100% passing)
 - Unit tests: crypto, helpers, validation, git patterns
 - Integration tests: auth flow, API endpoints
 - CI runs on every push via GitHub Actions
