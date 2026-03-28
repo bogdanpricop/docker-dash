@@ -1378,6 +1378,63 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
 .meta-card-links a:hover { background: var(--accent-dim); color: var(--accent-hover); }
 .meta-card-links a i { font-size: 11px; }
 
+/* ── Error Boundary Overlay ──────────────────────── */
+#error-boundary-overlay { position: fixed; inset: 0; z-index: 99999; display: flex; align-items: center; justify-content: center; }
+.eb-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); }
+.eb-dialog {
+  position: relative; width: 90%; max-width: 580px; max-height: 90vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5); animation: eb-slide-in 0.3s ease;
+}
+@keyframes eb-slide-in { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+.eb-header { text-align: center; padding: 28px 24px 12px; }
+.eb-header .eb-icon { margin-bottom: 12px; }
+.eb-header h2 { margin: 0 0 6px; font-size: 20px; color: var(--text-bright); }
+.eb-header .eb-subtitle { margin: 0; color: var(--text-dim); font-size: 14px; }
+.eb-body { padding: 0 24px; }
+.eb-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.eb-type { background: rgba(248,81,73,0.12); color: #f85149; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.eb-time { color: var(--text-dim); font-size: 12px; font-family: var(--mono); }
+.eb-message-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+.eb-message-box label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 6px; }
+.eb-message-box code { display: block; color: #f85149; font-family: var(--mono); font-size: 13px; word-break: break-all; }
+.eb-details { margin-bottom: 12px; }
+.eb-details summary { cursor: pointer; color: var(--text-dim); font-size: 13px; padding: 6px 0; }
+.eb-details summary:hover { color: var(--text); }
+.eb-details pre {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px; font-size: 11px; max-height: 200px; overflow: auto;
+  color: var(--text-dim); margin: 8px 0 0; white-space: pre-wrap; word-break: break-all;
+}
+.eb-source { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+.eb-source code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+.eb-help {
+  background: rgba(56,139,253,0.06); border: 1px solid rgba(56,139,253,0.2);
+  border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;
+}
+.eb-help p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text); }
+.eb-footer { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 20px; }
+.eb-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  border: none; cursor: pointer; transition: all 0.15s;
+}
+.eb-btn i { font-size: 12px; }
+.eb-btn-primary { background: var(--accent); color: #fff; }
+.eb-btn-primary:hover { background: var(--accent-hover); }
+.eb-btn-secondary { background: var(--surface3); color: var(--text); }
+.eb-btn-secondary:hover { background: var(--border); }
+.eb-btn-outline { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.eb-btn-outline:hover { color: var(--text); border-color: var(--text-dim); }
+.eb-btn-ghost { background: transparent; color: var(--text-dim); margin-left: auto; }
+.eb-btn-ghost:hover { color: var(--text); }
+.eb-brand { text-align: center; padding: 12px; font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); }
+@media (max-width: 480px) {
+  .eb-dialog { width: calc(100% - 24px); margin: 12px; }
+  .eb-footer { flex-direction: column; }
+  .eb-btn-ghost { margin-left: 0; }
+}
+
 /* ── Comparison Page ─────────────────────────────── */
 .exclusive-row { background: rgba(210,153,34,0.04); }
 .exclusive-row td:first-child { font-weight: 600; }
