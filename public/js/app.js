@@ -147,6 +147,14 @@ const App = {
     WS.connect();
 
     // Update sidebar container count from live stats
+    // Update sidebar connection status
+    WS.on('connected', () => {
+      const dot = document.getElementById('status-dot');
+      const txt = document.getElementById('status-text');
+      if (dot) dot.style.background = 'var(--green)';
+      if (txt) txt.textContent = 'Connected';
+    });
+
     WS.on('stats:overview', (data) => {
       const badge = document.getElementById('container-count');
       if (badge && data?.containers) {

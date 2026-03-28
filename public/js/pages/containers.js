@@ -465,6 +465,8 @@ const ContainersPage = {
       <button class="btn btn-sm btn-secondary" data-act="resources"><i class="fas fa-sliders-h"></i> ${i18n.t('pages.containers.editResources')}</button>
       <button class="btn btn-sm btn-secondary" data-act="healthlogs"><i class="fas fa-heartbeat"></i> ${i18n.t('pages.containers.healthCheckLogs')}</button>
       <button class="btn btn-sm btn-accent" data-act="update"><i class="fas fa-arrow-circle-up"></i> Update</button>
+      <button class="btn btn-sm btn-accent" data-act="safe-update" title="Scan for vulnerabilities before updating"><i class="fas fa-shield-alt"></i> Safe Update</button>
+      <button class="btn btn-sm btn-secondary" data-act="diagnose" title="Run troubleshooting wizard"><i class="fas fa-stethoscope"></i> Diagnose</button>
       <button class="btn btn-sm btn-secondary" data-act="clone"><i class="fas fa-clone"></i> Clone</button>
       <button class="btn btn-sm btn-secondary" data-act="export"><i class="fas fa-file-export"></i> Export</button>
       <button class="btn btn-sm btn-danger" data-act="remove"><i class="fas fa-trash"></i> ${i18n.t('common.remove')}</button>
@@ -474,6 +476,8 @@ const ContainersPage = {
       btn.addEventListener('click', () => {
         if (btn.dataset.act === 'export') return this._exportDialog();
         if (btn.dataset.act === 'update') return this._updateContainer(this._detailId, info.image);
+        if (btn.dataset.act === 'safe-update') return this._safeUpdateContainer(this._detailId, info.name, info.image);
+        if (btn.dataset.act === 'diagnose') return this._diagnoseContainer(this._detailId, info.name);
         if (btn.dataset.act === 'clone') return this._cloneContainer(this._detailId, info.name, info.image);
         if (btn.dataset.act === 'meta') return this._editMetaDialog(info.name);
         if (btn.dataset.act === 'resources') return this._editResources();
@@ -571,6 +575,67 @@ const ContainersPage = {
     } catch (err) {
       Toast.error('Update failed: ' + err.message);
     }
+  },
+
+  async _safeUpdateContainer(id, name, image) {
+    const ok = await Modal.confirm(
+      `<strong>Safe Update</strong>: Pull latest <code>${Utils.escapeHtml(image)}</code>, scan for vulnerabilities with Trivy, and only swap if no critical CVEs are found.<br><br>This is safer than a regular update.`,
+      { confirmText: 'Safe Update', danger: false }
+    );
+    if (!ok) return;
+
+    Toast.info('Safe updating... (pull + scan + swap)');
+    try {
+      const result = await Api.safeUpdateContainer(id);
+      if (result.ok) {
+        Toast.success(`Safe update complete. Scan: ${result.scan?.critical || 0} critical, ${result.scan?.high || 0} high`);
+        if (result.newId) this._detailId = result.newId;
+        await this._loadDetail();
+      } else if (result.blocked) {
+        Toast.error(`Update BLOCKED: ${result.scan?.critical} critical vulnerabilities found. Use regular update to override.`);
+        Modal.open(`
+          <div class="modal-header"><h3 style="color:var(--red)"><i class="fas fa-shield-alt"></i> Update Blocked</h3>
+            <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+          <div class="modal-body">
+            <p>${Utils.escapeHtml(result.message)}</p>
+            <p><strong>Critical:</strong> ${result.scan?.critical || 0} | <strong>High:</strong> ${result.scan?.high || 0}</p>
+          </div>
+          <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">OK</button></div>
+        `, { width: '450px' });
+      }
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _diagnoseContainer(id, name) {
+    Toast.info('Running diagnostics...');
+    try {
+      const result = await Api.diagnoseContainer(id);
+      const statusColors = { ok: 'var(--green)', warning: '#d29922', error: 'var(--red)', info: 'var(--accent)', skipped: 'var(--text-dim)' };
+
+      const html = `
+        <div class="modal-header">
+          <h3><i class="fas fa-stethoscope" style="margin-right:8px;color:var(--accent)"></i>Diagnose: ${Utils.escapeHtml(result.container)}</h3>
+          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <p>Overall: <strong style="color:${result.overall === 'healthy' ? 'var(--green)' : result.overall === 'warning' ? '#d29922' : 'var(--red)'}">${result.overall.toUpperCase()}</strong>
+          (${result.errors} errors, ${result.warnings} warnings)</p>
+          <table class="data-table" style="margin-top:12px">
+            <thead><tr><th>#</th><th style="text-align:left">Check</th><th>Status</th><th style="text-align:left">Detail</th></tr></thead>
+            <tbody>${result.steps.map(s => `
+              <tr>
+                <td>${s.step}</td>
+                <td style="text-align:left"><strong>${Utils.escapeHtml(s.title)}</strong></td>
+                <td><span style="color:${statusColors[s.status] || 'var(--text)'}">${s.status.toUpperCase()}</span></td>
+                <td style="text-align:left" class="text-sm">${Utils.escapeHtml(s.detail)}${s.suggestion ? '<br><em class="text-muted">' + Utils.escapeHtml(s.suggestion) + '</em>' : ''}</td>
+              </tr>
+            `).join('')}</tbody>
+          </table>
+        </div>
+        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">Close</button></div>
+      `;
+      Modal.open(html, { width: '700px' });
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _exportDialog() {
