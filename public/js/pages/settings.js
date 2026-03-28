@@ -133,7 +133,7 @@ const SettingsPage = {
                 <td>
                   <div class="action-btns">
                     <button class="action-btn" data-action="edit-user" data-id="${u.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
-                    ${u.email ? `<button class="action-btn" data-action="send-reset" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="${i18n.t('pages.settings.sendReset')}"><i class="fas fa-key"></i></button>` : ''}
+                    <button class="action-btn" data-action="reset-password" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Reset Password"><i class="fas fa-key"></i></button>
                     ${u.email ? `<button class="action-btn" data-action="send-invite" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="${i18n.t('pages.settings.sendInvite')}"><i class="fas fa-envelope"></i></button>` : ''}
                     ${u.username !== 'admin' ? `<button class="action-btn danger" data-action="delete-user" data-id="${u.id}" title="${i18n.t('common.delete')}"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
@@ -154,6 +154,7 @@ const SettingsPage = {
       const id = parseInt(btn.dataset.id);
       const username = btn.dataset.username;
       if (action === 'edit-user') this._editUser(id);
+      else if (action === 'reset-password') this._resetPasswordDialog(id, username);
       else if (action === 'send-reset') this._sendResetEmail(id, username);
       else if (action === 'send-invite') this._sendInviteEmail(id, username);
       else if (action === 'delete-user') this._deleteUser(id);
@@ -255,6 +256,38 @@ const SettingsPage = {
         await this._renderTab();
       }
     } catch (err) { Toast.error(err.message); }
+  },
+
+  async _resetPasswordDialog(id, username) {
+    const result = await Modal.form(`
+      <p>Set a new password for <strong>${Utils.escapeHtml(username)}</strong>:</p>
+      <div class="form-group">
+        <label>New Password *</label>
+        <input type="password" id="rp-new" class="form-control" required minlength="8" placeholder="Minimum 8 characters">
+      </div>
+      <div class="form-group">
+        <label>Confirm Password *</label>
+        <input type="password" id="rp-confirm" class="form-control" required>
+      </div>
+    `, {
+      title: 'Reset Password — ' + username,
+      width: '400px',
+      confirmText: 'Reset Password',
+      onSubmit: (content) => {
+        const newPass = content.querySelector('#rp-new').value;
+        const confirm = content.querySelector('#rp-confirm').value;
+        if (!newPass || newPass.length < 8) { Toast.warning('Password must be at least 8 characters'); return false; }
+        if (newPass !== confirm) { Toast.warning('Passwords do not match'); return false; }
+        return { password: newPass };
+      },
+    });
+
+    if (result) {
+      try {
+        await Api.updateUser(id, { password: result.password });
+        Toast.success(`Password reset for "${username}"`);
+      } catch (err) { Toast.error(err.message); }
+    }
   },
 
   async _sendResetEmail(id, username) {
