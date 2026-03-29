@@ -107,15 +107,19 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 
 The following are conscious design decisions, not oversights. Each represents a tradeoff between security hardening and product functionality.
 
-### 1. CSP allows `unsafe-inline` and `unsafe-eval`
+### 1. CSP allows `unsafe-eval` (but NOT `unsafe-inline`)
 
-**What:** The Content Security Policy in `server.js` permits inline scripts and `eval()`.
+**What:** The Content Security Policy permits `eval()` via `'unsafe-eval'` in scriptSrc. Inline scripts (`'unsafe-inline'`) have been **eliminated** as of v5.0.
 
-**Why:** Docker Dash uses vanilla JavaScript with no build step — there is no bundler to generate nonce-based scripts or extract inline styles. This is a core architectural decision that enables zero-build-step development and contribution.
+**Why:** `unsafe-eval` is required by Chart.js 4.x which uses `new Function()` internally. Removing it would require replacing the charting library entirely.
 
-**Impact:** XSS attacks via injected inline scripts are not blocked by CSP. However, all user input is escaped via `Utils.escapeHtml()` before rendering, and the application does not use `innerHTML` with unsanitized user data.
+**What was fixed (v5.0):** All 67 inline event handlers (`onclick=`, `onchange=`, etc.) across 12 files were converted to `addEventListener`. CSP `scriptSrc` no longer includes `'unsafe-inline'`, and `scriptSrcAttr` is set to `'none'`.
 
-**Mitigation:** Output escaping on all user-facing content. Helmet.js provides all other security headers (X-Frame-Options, X-Content-Type-Options, etc.). Future consideration: nonce-based CSP if a build step is ever introduced.
+**Remaining:** `styleSrc` still allows `'unsafe-inline'` because inline `style="..."` attributes are used extensively and cannot be eliminated without a CSS-in-JS build step.
+
+**Impact:** XSS via inline `<script>` injection is now blocked by CSP. XSS via `eval()` remains theoretically possible but requires an attacker to inject code that calls eval — mitigated by output escaping (`Utils.escapeHtml()`, 400+ usages).
+
+**Mitigation:** Output escaping on all user-facing content. Helmet.js provides all other security headers. The application never calls `eval()` directly — only Chart.js does internally.
 
 ### 2. WebSocket accepts authentication token via query string
 
