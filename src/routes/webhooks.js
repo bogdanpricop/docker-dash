@@ -16,22 +16,28 @@ router.get('/:id', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 router.post('/', requireAuth, requireRole('admin'), (req, res) => {
-  const result = webhookService.create({ ...req.body, created_by: req.user.id });
-  auditService.log({ userId: req.user.id, username: req.user.username,
-    action: 'webhook_create', targetType: 'webhook', targetId: String(result.id), ip: getClientIp(req) });
-  res.status(201).json(result);
+  try {
+    const result = webhookService.create({ ...req.body, created_by: req.user.id });
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'webhook_create', targetType: 'webhook', targetId: String(result.id), ip: getClientIp(req) });
+    res.status(201).json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/:id', requireAuth, requireRole('admin'), (req, res) => {
-  webhookService.update(parseInt(req.params.id), req.body);
-  res.json({ ok: true });
+  try {
+    webhookService.update(parseInt(req.params.id), req.body);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
-  webhookService.delete(parseInt(req.params.id));
-  auditService.log({ userId: req.user.id, username: req.user.username,
-    action: 'webhook_delete', targetType: 'webhook', targetId: req.params.id, ip: getClientIp(req) });
-  res.json({ ok: true });
+  try {
+    webhookService.delete(parseInt(req.params.id));
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'webhook_delete', targetType: 'webhook', targetId: req.params.id, ip: getClientIp(req) });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/:id/test', requireAuth, requireRole('admin'), async (req, res) => {

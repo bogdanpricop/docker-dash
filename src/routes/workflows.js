@@ -46,13 +46,15 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
-  workflowService.delete(parseInt(req.params.id));
-  auditService.log({
-    userId: req.user.id, username: req.user.username,
-    action: 'workflow_delete', targetType: 'workflow',
-    targetId: req.params.id, ip: getClientIp(req),
-  });
-  res.json({ ok: true });
+  try {
+    workflowService.delete(parseInt(req.params.id));
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'workflow_delete', targetType: 'workflow',
+      targetId: req.params.id, ip: getClientIp(req),
+    });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

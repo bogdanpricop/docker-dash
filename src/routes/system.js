@@ -24,7 +24,7 @@ router.get('/database', requireAuth, requireRole('admin'), (req, res) => {
     const dbPath = config.db.path;
     const dbStat = fs.statSync(dbPath);
     let walSize = 0;
-    try { walSize = fs.statSync(dbPath + '-wal').size; } catch {}
+    try { walSize = fs.statSync(dbPath + '-wal').size; } catch (err) { /* WAL file may not exist */ }
 
     const pageSize = db.pragma('page_size')[0].page_size;
     const pageCount = db.pragma('page_count')[0].page_count;
@@ -50,7 +50,7 @@ router.get('/database', requireAuth, requireRole('admin'), (req, res) => {
         try {
           const c = db.prepare(`SELECT COUNT(*) as c FROM "${t.name}"`).get();
           tables.push({ name: t.name, size: 0, rows: c.c });
-        } catch {}
+        } catch (err) { /* table may have been dropped */ }
       }
     }
 
@@ -121,31 +121,31 @@ router.post('/database/cleanup', requireAuth, requireRole('admin'), writeable, (
     try {
       const r = db.prepare(`DELETE FROM health_events WHERE recorded_at < datetime('now', '-' || ? || ' days')`).run(ret.eventDays);
       if (r.changes) deleted.health_events = r.changes;
-    } catch {}
+    } catch (err) { /* table may not exist */ }
 
     // Alert events
     try {
       const r = db.prepare(`DELETE FROM alert_events WHERE triggered_at < datetime('now', '-' || ? || ' days')`).run(ret.eventDays);
       if (r.changes) deleted.alert_events = r.changes;
-    } catch {}
+    } catch (err) { /* table may not exist */ }
 
     // Webhook deliveries
     try {
       const r = db.prepare(`DELETE FROM webhook_deliveries WHERE delivered_at < datetime('now', '-' || ? || ' days')`).run(ret.eventDays);
       if (r.changes) deleted.webhook_deliveries = r.changes;
-    } catch {}
+    } catch (err) { /* table may not exist */ }
 
     // Login attempts
     try {
       const r = db.prepare(`DELETE FROM login_attempts WHERE attempted_at < datetime('now', '-' || ? || ' days')`).run(ret.eventDays);
       if (r.changes) deleted.login_attempts = r.changes;
-    } catch {}
+    } catch (err) { /* table may not exist */ }
 
     // Expired tokens
     try {
       const r = db.prepare(`DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')`).run();
       if (r.changes) deleted.password_reset_tokens = r.changes;
-    } catch {}
+    } catch (err) { /* table may not exist */ }
 
     const totalDeleted = Object.values(deleted).reduce((a, b) => a + b, 0);
 
@@ -1006,7 +1006,7 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
         const fp = path.join(workingDir, fname);
         try {
           if (fs.existsSync(fp)) { config = fs.readFileSync(fp, 'utf8'); break; }
-        } catch {}
+        } catch (err) { /* compose file not readable */ }
       }
     }
 
@@ -1015,7 +1015,7 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
     if (workingDir) {
       const path = require('path');
       const envPath = path.join(workingDir, '.env');
-      try { if (fs.existsSync(envPath)) envFile = fs.readFileSync(envPath, 'utf8'); } catch {}
+      try { if (fs.existsSync(envPath)) envFile = fs.readFileSync(envPath, 'utf8'); } catch (err) { /* .env not readable */ }
     }
 
     res.json({

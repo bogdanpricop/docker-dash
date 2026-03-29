@@ -911,7 +911,7 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
     try {
       const logs = await container.logs({ stdout: true, stderr: true, tail: 20, timestamps: false });
       logLines = logs.toString('utf8').replace(/[\x00-\x08]/g, '').trim();
-    } catch {}
+    } catch (err) { /* logs may not be available */ }
 
     const hasErrors = /error|exception|fatal|panic|traceback|fail/i.test(logLines);
     steps.push({
@@ -976,7 +976,7 @@ router.get('/:id/diagnose', requireAuth, async (req, res) => {
         detail: `Image created ${ageDays} days ago`,
         suggestion: ageDays > 180 ? 'Image is quite old. Consider updating to get security patches.' : null,
       });
-    } catch {}
+    } catch (err) { /* image inspect may fail for removed images */ }
 
     // Overall score
     const errors = steps.filter(s => s.status === 'error').length;

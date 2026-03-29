@@ -67,7 +67,7 @@ router.get('/footprint', requireAuth, (req, res) => {
   try {
     const stat = db.pragma('page_count')[0].page_count * db.pragma('page_size')[0].page_size;
     dbSize = stat;
-  } catch {}
+  } catch (err) { /* non-critical, db size is optional */ }
 
   res.json({
     memory: {
@@ -302,7 +302,7 @@ router.get('/search', requireAuth, async (req, res) => {
           });
         }
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     // Search images
     try {
@@ -320,7 +320,7 @@ router.get('/search', requireAuth, async (req, res) => {
           }
         }
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     // Search volumes
     try {
@@ -335,7 +335,7 @@ router.get('/search', requireAuth, async (req, res) => {
           });
         }
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     // Search networks
     try {
@@ -350,7 +350,7 @@ router.get('/search', requireAuth, async (req, res) => {
           });
         }
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     // Search Git stacks
     try {
@@ -365,7 +365,7 @@ router.get('/search', requireAuth, async (req, res) => {
           url: `#/git-stacks/${s.id}`, icon: 'fab fa-git-alt',
         });
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     // Search audit log
     try {
@@ -380,7 +380,7 @@ router.get('/search', requireAuth, async (req, res) => {
           url: `#/system`, icon: 'fas fa-clipboard-list',
         });
       }
-    } catch {}
+    } catch (err) { /* search section failed, skip */ }
 
     res.json({ results: results.slice(0, 30), query: q, total: results.length });
   } catch (err) {
@@ -396,17 +396,17 @@ router.get('/overview', requireAuth, async (req, res) => {
     const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
 
     let containers = [];
-    try { containers = await dockerService.listContainers(hostId); } catch {}
+    try { containers = await dockerService.listContainers(hostId); } catch (err) { /* host may be unreachable */ }
     const running = containers.filter(c => c.state === 'running').length;
 
     const overview = statsService.getOverview(hostId);
 
     let gitStacks = 0, activeAlerts = 0, channels = 0, workflows = 0, recentDeploys = 0;
-    try { gitStacks = db.prepare('SELECT COUNT(*) AS cnt FROM git_stacks').get()?.cnt || 0; } catch {}
-    try { activeAlerts = db.prepare("SELECT COUNT(*) AS cnt FROM alert_events WHERE resolved_at IS NULL").get()?.cnt || 0; } catch {}
-    try { channels = db.prepare('SELECT COUNT(*) AS cnt FROM notification_channels WHERE is_active = 1').get()?.cnt || 0; } catch {}
-    try { workflows = db.prepare('SELECT COUNT(*) AS cnt FROM workflow_rules WHERE is_active = 1').get()?.cnt || 0; } catch {}
-    try { recentDeploys = db.prepare("SELECT COUNT(*) AS cnt FROM git_deployments WHERE started_at > datetime('now', '-1 day')").get()?.cnt || 0; } catch {}
+    try { gitStacks = db.prepare('SELECT COUNT(*) AS cnt FROM git_stacks').get()?.cnt || 0; } catch (err) { /* table may not exist */ }
+    try { activeAlerts = db.prepare("SELECT COUNT(*) AS cnt FROM alert_events WHERE resolved_at IS NULL").get()?.cnt || 0; } catch (err) { /* table may not exist */ }
+    try { channels = db.prepare('SELECT COUNT(*) AS cnt FROM notification_channels WHERE is_active = 1').get()?.cnt || 0; } catch (err) { /* table may not exist */ }
+    try { workflows = db.prepare('SELECT COUNT(*) AS cnt FROM workflow_rules WHERE is_active = 1').get()?.cnt || 0; } catch (err) { /* table may not exist */ }
+    try { recentDeploys = db.prepare("SELECT COUNT(*) AS cnt FROM git_deployments WHERE started_at > datetime('now', '-1 day')").get()?.cnt || 0; } catch (err) { /* table may not exist */ }
 
     const mem = process.memoryUsage();
 
@@ -867,12 +867,12 @@ router.get('/about/files', requireAuth, (req, res) => {
       const stat = fs.statSync(filePath);
       exists = true;
       size = stat.size;
-    } catch {}
+    } catch (err) { /* file may not exist */ }
     return { name, exists, size };
   });
   // Also include package.json version
   let version = '?';
-  try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch {}
+  try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch (err) { /* fallback to '?' */ }
   res.json({ files, version });
 });
 

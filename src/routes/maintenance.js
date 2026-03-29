@@ -68,8 +68,10 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
 });
 
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
-  getDb().prepare('DELETE FROM maintenance_windows WHERE id = ?').run(parseInt(req.params.id));
-  res.json({ ok: true });
+  try {
+    getDb().prepare('DELETE FROM maintenance_windows WHERE id = ?').run(parseInt(req.params.id));
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;
