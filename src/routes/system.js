@@ -263,7 +263,7 @@ router.get('/check-updates', requireAuth, async (req, res) => {
 
     // ── OS update check (apt-based) ──
     try {
-      const raw = execSync('apt list --upgradable 2>/dev/null | tail -n +2', { timeout: 15000, encoding: 'utf8' }).trim();
+      const raw = execFileSync('apt', ['list', '--upgradable'], { timeout: 15000, encoding: 'utf8', stdio: 'pipe' }).trim();
       const lines = raw ? raw.split('\n').filter(l => l.includes('upgradable')) : [];
       const packages = lines.map(l => {
         const name = l.split('/')[0];
@@ -281,7 +281,7 @@ router.get('/check-updates', requireAuth, async (req, res) => {
     }
 
     // ── Docker Dash app version ──
-    result.app = { version: '1.5.1' };
+    result.app = { version: require('../../package.json').version };
 
     res.json(result);
   } catch (err) {
@@ -291,9 +291,9 @@ router.get('/check-updates', requireAuth, async (req, res) => {
 
 // ─── Firewall (UFW) ───────────────────────────────────────────
 
-function runCmd(cmd) {
+function runCmd(bin, args = []) {
   try {
-    return execSync(cmd, { timeout: 10000, encoding: 'utf8' }).trim();
+    return execFileSync(bin, args, { timeout: 10000, encoding: 'utf8', stdio: 'pipe' }).trim();
   } catch (err) {
     return err.stdout?.trim() || err.stderr?.trim() || err.message;
   }
@@ -301,13 +301,13 @@ function runCmd(cmd) {
 
 router.get('/firewall', requireAuth, requireRole('admin'), (req, res) => {
   try {
-    const statusRaw = runCmd('ufw status numbered 2>&1');
-    const verboseRaw = runCmd('ufw status verbose 2>&1');
+    const statusRaw = runCmd('ufw', ['status', 'numbered']);
+    const verboseRaw = runCmd('ufw', ['status', 'verbose']);
 
     // Check if ufw is available
     if (statusRaw.includes('command not found') || statusRaw.includes('not found')) {
       // Try iptables as fallback
-      const iptables = runCmd('iptables -L -n --line-numbers 2>&1');
+      const iptables = runCmd('iptables', ['-L', '-n', '--line-numbers']);
       return res.json({
         available: !!iptables && !iptables.includes('not found'),
         backend: 'iptables',
@@ -339,7 +339,7 @@ router.get('/firewall', requireAuth, requireRole('admin'), (req, res) => {
     }
 
     // Get listening ports
-    const listening = runCmd('ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null');
+    const listening = runCmd('ss', ['-tlnp']);
 
     res.json({
       available: true,
@@ -782,7 +782,7 @@ router.get('/backup/config', requireAuth, requireRole('admin'), (req, res) => {
     const schedules = loadSchedules();
 
     const backup = {
-      version: '1.5.1',
+      version: require('../../package.json').version,
       timestamp: new Date().toISOString(),
       settings, alertRules, users, schedules,
     };

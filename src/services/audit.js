@@ -250,7 +250,8 @@ class AuditService {
       const pri = 10 * 8 + 6; // info level by default
       const timestamp = row.created_at || new Date().toISOString();
       const msgId = row.action || '-';
-      const structuredData = `[audit@0 userId="${row.user_id || ''}" username="${row.username || ''}" action="${row.action || ''}" targetType="${row.target_type || ''}" targetId="${row.target_id || ''}" ip="${row.ip || ''}" hash="${row.entry_hash || ''}"]`;
+      const esc = (s) => String(s || '').replace(/[\\"\\]\n]/g, (c) => '\\' + c);
+      const structuredData = `[audit@0 userId="${esc(row.user_id)}" username="${esc(row.username)}" action="${esc(row.action)}" targetType="${esc(row.target_type)}" targetId="${esc(row.target_id)}" ip="${esc(row.ip)}" hash="${esc(row.entry_hash)}"]`;
       const msg = row.details || '-';
 
       lines.push(`<${pri}>1 ${timestamp} ${hostname} ${appName} - ${msgId} ${structuredData} ${msg}`);

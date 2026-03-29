@@ -44,7 +44,7 @@ const WS = {
       clearTimeout(connectTimeout);
       this._connected = true;
       this._reconnectDelay = 1000;
-      console.log('[WS] Connected');
+      if (window._ddDebug) console.log('[WS] Connected');
       this._emit('_connected');
       // Re-subscribe channels
       for (const ch of this._subscriptions) {
@@ -65,7 +65,7 @@ const WS = {
 
     this._ws.onclose = (evt) => {
       this._connected = false;
-      console.log('[WS] Disconnected', evt.code);
+      if (window._ddDebug) console.log('[WS] Disconnected', evt.code);
       this._emit('_disconnected');
       if (!this._intentionalClose && evt.code !== 4001) {
         this._scheduleReconnect();
@@ -147,7 +147,7 @@ const WS = {
     const jitter = Math.random() * baseDelay * 0.3;
     const delay = baseDelay + jitter;
     this._reconnectTimer = setTimeout(() => {
-      console.log('[WS] Reconnecting...');
+      if (window._ddDebug) console.log('[WS] Reconnecting...');
       this.connect();
     }, delay);
     this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, this._maxReconnect);

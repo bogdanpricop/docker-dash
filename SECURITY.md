@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 4.x     | :white_check_mark: |
+| 5.x     | :white_check_mark: |
+| 4.x     | :white_check_mark: (security fixes only) |
 | 3.x     | :white_check_mark: (security fixes only) |
 | < 3.0   | :x:                |
 

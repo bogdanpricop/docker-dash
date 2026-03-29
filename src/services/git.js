@@ -272,7 +272,9 @@ class GitService {
       try {
         const composePath = path.join(repoDir, stack.compose_path);
         const flags = removeVolumes ? '--volumes' : '';
-        this._exec(`docker compose -f "${composePath}" -p "${stack.stack_name}" down ${flags}`);
+        const args = ['compose', '-f', composePath, '-p', stack.stack_name, 'down'];
+        if (removeVolumes) args.push('--volumes');
+        require('child_process').execFileSync('docker', args, { timeout: 60000, encoding: 'utf8', stdio: 'pipe' });
       } catch (err) {
         log.warn('compose down failed during delete', { stackId: id, error: err.message });
       }

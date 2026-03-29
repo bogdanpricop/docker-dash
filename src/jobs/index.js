@@ -272,7 +272,9 @@ function startAll() {
 
   log.info('Background jobs started');
 
-  return { jobs, alertInterval };
+  _alertInterval = alertInterval;
+  _securityAlertInterval = securityAlertInterval;
+  return { jobs, alertInterval, securityAlertInterval };
 }
 
 function cronMatchesNow(cronExpr, now) {
@@ -301,10 +303,15 @@ function cronMatchesNow(cronExpr, now) {
   });
 }
 
+let _alertInterval = null;
+let _securityAlertInterval = null;
+
 function stopAll() {
   jobs.forEach(j => j.stop());
   jobs.length = 0;
-  try { require('../services/gitPolling').stopAll(); } catch {}
+  if (_alertInterval) { clearInterval(_alertInterval); _alertInterval = null; }
+  if (_securityAlertInterval) { clearInterval(_securityAlertInterval); _securityAlertInterval = null; }
+  try { require('../services/gitPolling').stopAll(); } catch { /* git polling may not be initialized */ }
 }
 
 module.exports = { startAll, stopAll };

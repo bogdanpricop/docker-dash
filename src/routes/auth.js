@@ -459,7 +459,7 @@ router.post('/reset-password-token', async (req, res) => {
 
     // Set new password
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
-    db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, updated_at = datetime(\'now\') WHERE id = ?')
+    db.prepare('UPDATE users SET password_hash = ?, password_changed_at = datetime(\'now\'), failed_attempts = 0, is_locked = 0, locked_until = NULL, updated_at = datetime(\'now\') WHERE id = ?')
       .run(hash, row.uid);
 
     // Mark token as used
