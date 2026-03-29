@@ -31,28 +31,178 @@ router.post('/login',
       }
 
       // Set cookie — auto-detect HTTPS from request protocol or X-Forwarded-Proto
-      const isHttps = config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+      // In strict mode: always set Secure + SameSite=Strict (forces HTTPS)
+      const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
       res.cookie(config.session.cookieName, result.token, {
         httpOnly: true,
         secure: isHttps,
-        sameSite: isHttps ? 'strict' : 'lax',
+        sameSite: config.security.isStrict ? 'strict' : (isHttps ? 'strict' : 'lax'),
         maxAge: config.session.ttl,
         path: '/',
       });
 
       auditService.log({ userId: result.user.id, username, action: 'login', ip, userAgent: ua });
-      res.json({
-        token: result.token, // Also in body for when cookies are blocked (Edge Tracking Prevention, HTTP on public IPs)
+
+      const response = {
         user: result.user,
         setupRequired: result.setupRequired,
         mustChangePassword: result.user.mustChangePassword,
         defaultAdminActive: authService.hasDefaultAdminActive(),
-      });
+      };
+
+      // In strict security mode, do NOT include token in body (cookie-only)
+      if (!config.security.disableTokenInBody) {
+        response.token = result.token; // Also in body for when cookies are blocked (Edge Tracking Prevention, HTTP on public IPs)
+      }
+
+      // MFA check: if user has TOTP enabled, return mfaRequired instead of session
+      if (result.mfaRequired) {
+        return res.json({
+          mfaRequired: true,
+          mfaToken: result.mfaToken,
+        });
+      }
+
+      res.json(response);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   }
 );
+
+// ─── MFA Endpoints ──────────────────────────────────────────
+
+// Verify TOTP code during login
+router.post('/mfa/verify',
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  (req, res) => {
+    try {
+      const { mfaToken, code } = req.body;
+      if (!mfaToken || !code) return res.status(400).json({ error: 'MFA token and code required' });
+
+      const ip = getClientIp(req);
+      const ua = req.headers['user-agent'];
+      const result = authService.verifyMfa(mfaToken, code, ip, ua);
+
+      if (result.error) return res.status(401).json({ error: result.error });
+
+      // Set cookie
+      const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+      res.cookie(config.session.cookieName, result.token, {
+        httpOnly: true,
+        secure: isHttps,
+        sameSite: config.security.isStrict ? 'strict' : (isHttps ? 'strict' : 'lax'),
+        maxAge: config.session.ttl,
+        path: '/',
+      });
+
+      auditService.log({ userId: result.user.id, username: result.user.username, action: 'mfa_verify', ip, userAgent: ua });
+
+      const response = {
+        user: result.user,
+        setupRequired: result.setupRequired,
+        mustChangePassword: result.user.mustChangePassword,
+        defaultAdminActive: authService.hasDefaultAdminActive(),
+      };
+
+      if (!config.security.disableTokenInBody) {
+        response.token = result.token;
+      }
+
+      res.json(response);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// Verify recovery code during login
+router.post('/mfa/recovery',
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  (req, res) => {
+    try {
+      const { mfaToken, recoveryCode } = req.body;
+      if (!mfaToken || !recoveryCode) return res.status(400).json({ error: 'MFA token and recovery code required' });
+
+      const ip = getClientIp(req);
+      const ua = req.headers['user-agent'];
+      const result = authService.verifyMfaRecovery(mfaToken, recoveryCode, ip, ua);
+
+      if (result.error) return res.status(401).json({ error: result.error });
+
+      const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+      res.cookie(config.session.cookieName, result.token, {
+        httpOnly: true,
+        secure: isHttps,
+        sameSite: config.security.isStrict ? 'strict' : (isHttps ? 'strict' : 'lax'),
+        maxAge: config.session.ttl,
+        path: '/',
+      });
+
+      auditService.log({ userId: result.user.id, username: result.user.username, action: 'mfa_recovery', ip, userAgent: ua,
+        details: { method: 'recovery_code' } });
+
+      const response = {
+        user: result.user,
+        setupRequired: result.setupRequired,
+        mustChangePassword: result.user.mustChangePassword,
+        defaultAdminActive: authService.hasDefaultAdminActive(),
+      };
+
+      if (!config.security.disableTokenInBody) {
+        response.token = result.token;
+      }
+
+      res.json(response);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// Setup MFA (generate secret, return otpauth URI)
+router.post('/mfa/setup', requireAuth, (req, res) => {
+  try {
+    const result = authService.mfaSetup(req.user.id);
+    if (result.error) return res.status(400).json({ error: result.error });
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'mfa_setup', ip: getClientIp(req) });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Enable MFA (verify first code)
+router.post('/mfa/enable', requireAuth, (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'TOTP code required' });
+
+    const result = authService.mfaEnable(req.user.id, code);
+    if (result.error) return res.status(400).json({ error: result.error });
+
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'mfa_enable', ip: getClientIp(req) });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Disable MFA (requires password confirmation)
+router.post('/mfa/disable', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password required to disable MFA' });
+
+    const result = await authService.mfaDisable(req.user.id, password);
+    if (result.error) return res.status(400).json({ error: result.error });
+
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'mfa_disable', ip: getClientIp(req) });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Logout
 router.post('/logout', requireAuth, (req, res) => {
@@ -69,6 +219,7 @@ router.get('/me', requireAuth, (req, res) => {
     setupRequired: !authService.isSetupComplete(),
     mustChangePassword: req.user.mustChangePassword,
     defaultAdminActive: authService.hasDefaultAdminActive(),
+    mfaEnabled: !!req.user.totpEnabled,
   });
 });
 

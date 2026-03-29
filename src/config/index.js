@@ -13,6 +13,9 @@ const bool = (key, fallback) => {
   return v === 'true' || v === '1';
 };
 
+const securityMode = env('SECURITY_MODE', 'standard'); // 'standard' | 'strict'
+const isStrict = securityMode === 'strict';
+
 module.exports = {
   app: {
     env: env('APP_ENV', 'development'),
@@ -30,9 +33,9 @@ module.exports = {
     socketPath: env('DOCKER_SOCKET', '/var/run/docker.sock'),
   },
   session: {
-    ttl: int('SESSION_TTL_HOURS', 24) * 3600 * 1000,
+    ttl: int('SESSION_TTL_HOURS', isStrict ? 8 : 24) * 3600 * 1000,
     cookieName: env('SESSION_COOKIE', 'dd_sid'),
-    secureCookie: bool('COOKIE_SECURE', false),
+    secureCookie: bool('COOKIE_SECURE', isStrict),
   },
   rateLimit: {
     loginMaxAttempts: int('RATE_LIMIT_LOGIN_MAX', 5),
@@ -41,10 +44,15 @@ module.exports = {
     apiWindowMs: int('RATE_LIMIT_API_WINDOW_MS', 60 * 1000),
   },
   security: {
+    mode: securityMode,
+    isStrict,
     bcryptRounds: int('BCRYPT_ROUNDS', 12),
     lockoutAttempts: int('LOCKOUT_ATTEMPTS', 10),
     lockoutDurationMs: int('LOCKOUT_DURATION_MS', 30 * 60 * 1000),
     encryptionKey: env('ENCRYPTION_KEY', ''),
+    passwordMaxAgeDays: int('PASSWORD_MAX_AGE_DAYS', isStrict ? 90 : 0),
+    disableTokenInBody: bool('DISABLE_TOKEN_IN_BODY', isStrict),
+    disableWsQueryAuth: bool('DISABLE_WS_QUERY_AUTH', isStrict),
   },
   stats: {
     collectIntervalMs: int('STATS_INTERVAL_MS', 10000),

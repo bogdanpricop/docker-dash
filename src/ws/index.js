@@ -39,9 +39,19 @@ class WsServer {
       const cookieToken = this._extractCookie(req, config.session.cookieName);
       const url = new URL(req.url, 'http://localhost');
       const queryToken = url.searchParams.get('token');
-      const token = cookieToken || queryToken;
-      if (queryToken && !cookieToken) {
-        log.debug('WS auth via query param (cookie blocked)', { ip: req.socket?.remoteAddress });
+
+      // In strict security mode, reject query-string token auth (cookie-only)
+      let token;
+      if (config.security.disableWsQueryAuth) {
+        token = cookieToken;
+        if (queryToken && !cookieToken) {
+          log.warn('WS query-string auth rejected (strict mode)', { ip: req.socket?.remoteAddress });
+        }
+      } else {
+        token = cookieToken || queryToken;
+        if (queryToken && !cookieToken) {
+          log.debug('WS auth via query param (cookie blocked)', { ip: req.socket?.remoteAddress });
+        }
       }
       const user = authService.validateSession(token);
 

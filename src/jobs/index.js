@@ -33,10 +33,10 @@ function purgeAllOldData() {
     if (r.changes) deleted.docker_events = r.changes;
   } catch (e) { log.error('docker_events cleanup failed', e.message); }
 
-  // Audit log
+  // Audit log (blocked in strict security mode)
   try {
-    const r = db.prepare(`DELETE FROM audit_log WHERE created_at < datetime('now', '-' || ? || ' days')`).run(auditDays);
-    if (r.changes) deleted.audit_log = r.changes;
+    const r = auditService.cleanup(auditDays);
+    if (r > 0) deleted.audit_log = r;
   } catch (e) { log.error('audit_log cleanup failed', e.message); }
 
   // Health events
@@ -62,6 +62,18 @@ function purgeAllOldData() {
     const r = db.prepare(`DELETE FROM login_attempts WHERE attempted_at < datetime('now', '-' || ? || ' days')`).run(retDays);
     if (r.changes) deleted.login_attempts = r.changes;
   } catch (e) { log.error('login_attempts cleanup failed', e.message); }
+
+  // Security alert events (keep 90 days)
+  try {
+    const r = db.prepare(`DELETE FROM security_alert_events WHERE fired_at < datetime('now', '-90 days')`).run();
+    if (r.changes) deleted.security_alert_events = r.changes;
+  } catch { /* table may not exist */ }
+
+  // Expired MFA tokens
+  try {
+    const r = db.prepare(`DELETE FROM mfa_tokens WHERE expires_at < datetime('now') OR used = 1`).run();
+    if (r.changes) deleted.mfa_tokens = r.changes;
+  } catch { /* table may not exist */ }
 
   // Expired password reset tokens
   try {
@@ -146,11 +158,21 @@ function startAll() {
     catch (e) { log.error('Alert evaluation failed', e.message); }
   }, 10000);
 
-  // Clean expired sessions every 15 minutes
+  // Clean expired sessions and MFA tokens every 15 minutes
   jobs.push(cron.schedule('*/15 * * * *', () => {
     try { authService.cleanSessions(); }
     catch (e) { log.error('Session cleanup failed', e.message); }
+    try { authService.cleanMfaTokens(); }
+    catch (e) { log.error('MFA token cleanup failed', e.message); }
   }));
+
+  // Security alert windowed evaluation every 60 seconds
+  const securityAlertInterval = setInterval(() => {
+    try {
+      const securityAlerts = require('../services/securityAlerts');
+      securityAlerts.evaluateWindowed();
+    } catch (e) { log.error('Security alert windowed eval failed', e.message); }
+  }, 60000);
 
   // Purge ALL old data from every table — every hour
   jobs.push(cron.schedule('5 * * * *', purgeAllOldData));

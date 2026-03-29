@@ -111,6 +111,8 @@ app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
 const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
 app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
 app.use('/api/groups', apiLimiter, require('./routes/groups'));
+app.use('/api/audit', apiLimiter, require('./routes/audit'));
+app.use('/api/security-alerts', apiLimiter, require('./routes/securityAlerts'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────
@@ -190,6 +192,17 @@ async function start() {
     }
   }
 
+  // Log security mode
+  if (config.security.isStrict) {
+    log.info('SECURITY MODE: strict', {
+      sessionTtlHours: config.session.ttl / 3600000,
+      secureCookie: config.session.secureCookie,
+      tokenInBody: !config.security.disableTokenInBody,
+      wsQueryAuth: !config.security.disableWsQueryAuth,
+      passwordMaxAgeDays: config.security.passwordMaxAgeDays,
+    });
+  }
+
   // Initialize DB (runs migrations)
   getDb();
   log.info('Database initialized');
@@ -197,6 +210,12 @@ async function start() {
   // Seed admin user
   const authService = require('./services/auth');
   authService.seedAdmin();
+
+  // Initialize security alerting (hook into audit service)
+  const securityAlerts = require('./services/securityAlerts');
+  const auditService = require('./services/audit');
+  securityAlerts.init();
+  auditService.onLog((entry) => securityAlerts.evaluate(entry));
 
   // Detect self container ID
   const dockerService = require('./services/docker');
