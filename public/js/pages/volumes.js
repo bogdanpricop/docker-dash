@@ -38,8 +38,8 @@ const VolumesPage = {
         { key: '_created', label: i18n.t('pages.volumes.created'), render: (_, row) => Utils.timeAgo(row.created) },
         { key: '_actions', label: '', sortable: false, width: '100px', render: (_, row) => `
           <div class="action-btns">
-            <button class="action-btn" onclick="VolumesPage._inspect('${Utils.escapeHtml(row.name)}')" title="${i18n.t('pages.volumes.inspect')}"><i class="fas fa-info-circle"></i></button>
-            <button class="action-btn danger" onclick="VolumesPage._remove('${Utils.escapeHtml(row.name)}')" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
+            <button class="action-btn" data-action="inspect" data-name="${Utils.escapeHtml(row.name)}" title="${i18n.t('pages.volumes.inspect')}"><i class="fas fa-info-circle"></i></button>
+            <button class="action-btn danger" data-action="remove" data-name="${Utils.escapeHtml(row.name)}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
           </div>
         `},
       ],
@@ -51,6 +51,15 @@ const VolumesPage = {
     container.querySelector('#vol-create').addEventListener('click', () => this._createDialog());
     container.querySelector('#vol-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#vol-refresh').addEventListener('click', () => this._load());
+
+    // Event delegation for table action buttons
+    container.querySelector('#vol-table').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const name = btn.dataset.name;
+      if (btn.dataset.action === 'inspect') this._inspect(name);
+      else if (btn.dataset.action === 'remove') this._remove(name);
+    });
 
     await this._load();
     this._refreshTimer = setInterval(() => this._load(), 30000);
@@ -114,11 +123,13 @@ const VolumesPage = {
       const data = await Api.getVolume(name);
       Modal.open(`
         <div class="modal-header"><h3>${i18n.t('pages.volumes.volumeTitle', { name: Utils.escapeHtml(name) })}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="vol-modal-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body"><pre class="inspect-json">${Utils.escapeHtml(JSON.stringify(data, null, 2))}</pre></div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="vol-modal-close-btn">${i18n.t('common.close')}</button></div>
       `, { width: '600px' });
+      Modal._content.querySelector('#vol-modal-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#vol-modal-close-btn').addEventListener('click', () => Modal.close());
     } catch (err) { Toast.error(err.message); }
   },
 

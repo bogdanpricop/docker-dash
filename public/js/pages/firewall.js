@@ -115,7 +115,7 @@ const FirewallPage = {
                   <td class="mono text-sm">${Utils.escapeHtml(r.from)}</td>
                   <td>
                     <div class="action-btns">
-                      <button class="action-btn danger" onclick="FirewallPage._deleteRule(${r.number})" title="${i18n.t('pages.firewall.deleteRule')}">
+                      <button class="action-btn danger" data-action="delete-rule" data-rule-number="${r.number}" title="${i18n.t('pages.firewall.deleteRule')}">
                         <i class="fas fa-trash"></i>
                       </button>
                     </div>
@@ -138,6 +138,11 @@ const FirewallPage = {
         </div>
       </div>` : ''}
     `;
+
+    // Wire up delete rule buttons
+    el.querySelectorAll('[data-action="delete-rule"]').forEach(btn => {
+      btn.addEventListener('click', () => FirewallPage._deleteRule(parseInt(btn.dataset.ruleNumber)));
+    });
   },
 
   async _addRuleDialog() {

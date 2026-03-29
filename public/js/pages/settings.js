@@ -562,9 +562,9 @@ const SettingsPage = {
                   <td class="text-sm">${r.last_used_at ? Utils.timeAgo(r.last_used_at) : '\u2014'}</td>
                   <td>
                     <div class="action-btns">
-                      <button class="action-btn" onclick="SettingsPage._testRegistry(${r.id})" title="Test"><i class="fas fa-plug"></i></button>
-                      <button class="action-btn" onclick="SettingsPage._editRegistry(${r.id})" title="Edit"><i class="fas fa-edit"></i></button>
-                      <button class="action-btn danger" onclick="SettingsPage._deleteRegistry(${r.id})" title="Delete"><i class="fas fa-trash"></i></button>
+                      <button class="action-btn" data-action="test-registry" data-reg-id="${r.id}" title="Test"><i class="fas fa-plug"></i></button>
+                      <button class="action-btn" data-action="edit-registry" data-reg-id="${r.id}" title="Edit"><i class="fas fa-edit"></i></button>
+                      <button class="action-btn danger" data-action="delete-registry" data-reg-id="${r.id}" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                   </td>
                 </tr>
@@ -575,6 +575,16 @@ const SettingsPage = {
       `;
 
       el.querySelector('#add-registry')?.addEventListener('click', () => this._addRegistryDialog());
+
+      // Event delegation for registry action buttons
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const regId = parseInt(btn.dataset.regId);
+        if (btn.dataset.action === 'test-registry') this._testRegistry(regId);
+        else if (btn.dataset.action === 'edit-registry') this._editRegistry(regId);
+        else if (btn.dataset.action === 'delete-registry') this._deleteRegistry(regId);
+      });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
     }
@@ -993,9 +1003,11 @@ const SettingsPage = {
         `).join('');
 
         Modal.open(`
-          <div class="modal-header"><h3>${i18n.t('pages.settings.workflowTemplatesTitle')}</h3><button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+          <div class="modal-header"><h3>${i18n.t('pages.settings.workflowTemplatesTitle')}</h3><button class="modal-close-btn" id="wf-tpl-close-x"><i class="fas fa-times"></i></button></div>
           <div class="modal-body">${html}</div>
         `, { width: '500px' });
+
+        Modal._content.querySelector('#wf-tpl-close-x').addEventListener('click', () => Modal.close());
 
         Modal._content.querySelectorAll('[data-tpl]').forEach(card => {
           card.querySelector('.btn')?.addEventListener('click', async () => {

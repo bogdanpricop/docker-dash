@@ -46,12 +46,12 @@ const ImagesPage = {
         { key: '_actions', label: '', sortable: false, width: '180px', render: (_, row) => `
           <div class="action-btns">
             <div class="scan-dropdown-wrap" style="position:relative;display:inline-block">
-              <button class="action-btn" onclick="ImagesPage._showScanMenu(event,'${row.id}')" title="${i18n.t('pages.images.scanImage')}"><i class="fas fa-shield-alt"></i></button>
+              <button class="action-btn" data-action="scan" data-id="${row.id}" title="${i18n.t('pages.images.scanImage')}"><i class="fas fa-shield-alt"></i></button>
             </div>
-            <button class="action-btn" onclick="ImagesPage._tagDialog('${row.id}')" title="Tag"><i class="fas fa-tag"></i></button>
-            <button class="action-btn" onclick="ImagesPage._exportImage('${row.id}')" title="Export"><i class="fas fa-file-export"></i></button>
-            <button class="action-btn" onclick="ImagesPage._inspect('${row.id}')" title="${i18n.t('pages.images.inspect')}"><i class="fas fa-info-circle"></i></button>
-            <button class="action-btn danger" onclick="ImagesPage._remove('${row.id}')" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
+            <button class="action-btn" data-action="tag" data-id="${row.id}" title="Tag"><i class="fas fa-tag"></i></button>
+            <button class="action-btn" data-action="export" data-id="${row.id}" title="Export"><i class="fas fa-file-export"></i></button>
+            <button class="action-btn" data-action="inspect" data-id="${row.id}" title="${i18n.t('pages.images.inspect')}"><i class="fas fa-info-circle"></i></button>
+            <button class="action-btn danger" data-action="remove" data-id="${row.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
           </div>
         `},
       ],
@@ -67,6 +67,18 @@ const ImagesPage = {
     container.querySelector('#import-file').addEventListener('change', (e) => this._importImage(e));
     container.querySelector('#images-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#images-refresh').addEventListener('click', () => this._load());
+
+    // Event delegation for table action buttons
+    container.querySelector('#images-table').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'scan') this._showScanMenu(e, id);
+      else if (btn.dataset.action === 'tag') this._tagDialog(id);
+      else if (btn.dataset.action === 'export') this._exportImage(id);
+      else if (btn.dataset.action === 'inspect') this._inspect(id);
+      else if (btn.dataset.action === 'remove') this._remove(id);
+    });
 
     await this._load();
   },
@@ -231,7 +243,7 @@ const ImagesPage = {
       Modal.open(`
         <div class="modal-header">
           <h3>${i18n.t('pages.images.inspectTitle')}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="img-inspect-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <pre class="inspect-json" style="max-height:60vh;overflow:auto">${Utils.escapeHtml(json)}</pre>
@@ -240,9 +252,11 @@ const ImagesPage = {
           <button class="btn btn-secondary" id="inspect-copy-btn">
             <i class="fas fa-copy"></i> ${i18n.t('common.copy')}
           </button>
-          <button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button>
+          <button class="btn btn-primary" id="img-inspect-close-btn">${i18n.t('common.close')}</button>
         </div>
       `, { width: '700px' });
+      Modal._content.querySelector('#img-inspect-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#img-inspect-close-btn').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#inspect-copy-btn')?.addEventListener('click', () => {
         Utils.copyToClipboard(json).then(() => Toast.success(i18n.t('common.copied')));
       });
@@ -319,13 +333,15 @@ const ImagesPage = {
         Modal.open(`
           <div class="modal-header">
             <h3><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i> ${i18n.t('pages.images.scanTitle')}</h3>
-            <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+            <button class="modal-close-btn" id="scan-noscan-close-x"><i class="fas fa-times"></i></button>
           </div>
           <div class="modal-body">
             <div class="empty-msg"><i class="fas fa-info-circle"></i> ${Utils.escapeHtml(data.message)}</div>
           </div>
-          <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+          <div class="modal-footer"><button class="btn btn-primary" id="scan-noscan-close-btn">${i18n.t('common.close')}</button></div>
         `, { width: '500px' });
+        Modal._content.querySelector('#scan-noscan-close-x').addEventListener('click', () => Modal.close());
+        Modal._content.querySelector('#scan-noscan-close-btn').addEventListener('click', () => Modal.close());
         return;
       }
 
@@ -359,7 +375,7 @@ const ImagesPage = {
       Modal.open(`
         <div class="modal-header">
           <h3><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i> ${i18n.t('pages.images.scanTitle')} — ${Utils.escapeHtml(data.image)}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="scan-results-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <div style="display:flex;gap:12px;margin-bottom:16px">
@@ -402,8 +418,11 @@ const ImagesPage = {
             </table>
           </div>` : `<div class="empty-msg" style="color:var(--green)"><i class="fas fa-check-circle"></i> ${i18n.t('pages.images.noVulns')}</div>`}
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="scan-results-close-btn">${i18n.t('common.close')}</button></div>
       `, { width: '850px' });
+
+      Modal._content.querySelector('#scan-results-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#scan-results-close-btn').addEventListener('click', () => Modal.close());
 
       // Click-to-expand vulnerability details
       const vulnTable = Modal._content.querySelector('#vuln-table');

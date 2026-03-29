@@ -111,7 +111,7 @@ const SecurityPage = {
         <div class="card-body" style="padding:12px 16px">
           <i class="fas fa-exclamation-triangle" style="color:var(--yellow);margin-right:8px"></i>
           <strong>${unscannedImages} image(s)</strong> have not been scanned yet.
-          <button class="btn btn-sm btn-warning" style="margin-left:12px" onclick="SecurityPage._scanAll()">Scan Now</button>
+          <button class="btn btn-sm btn-warning" style="margin-left:12px" id="sec-scan-all-btn">Scan Now</button>
         </div>
       </div>` : ''}
 
@@ -152,7 +152,7 @@ const SecurityPage = {
                   <td class="text-sm text-muted">${Utils.timeAgo(scan.scanned_at)}</td>
                   <td>
                     <div class="action-btns">
-                      <button class="action-btn" onclick="SecurityPage._viewScanDetail(${scan.id})" title="View Details"><i class="fas fa-eye"></i></button>
+                      <button class="action-btn" data-action="view-scan" data-scan-id="${scan.id}" title="View Details"><i class="fas fa-eye"></i></button>
                       <button class="action-btn scan-menu-trigger" data-image="${eName}" title="Re-scan"><i class="fas fa-sync-alt"></i></button>
                     </div>
                   </td>
@@ -219,6 +219,14 @@ Please:
         const text = btn.previousElementSibling?.textContent;
         if (text) Utils.copyToClipboard(text).then(() => Toast.success('Copied!'));
       });
+    });
+
+    // Scan All button
+    el.querySelector('#sec-scan-all-btn')?.addEventListener('click', () => this._scanAll());
+
+    // View scan detail buttons
+    el.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
+      btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
     });
 
     // Scan menu dropdowns
@@ -461,10 +469,15 @@ Please:
           <td><strong>${r.summary_total}</strong></td>
           <td style="color:var(--green)">${r.fixable_count}</td>
           <td class="text-sm">${Utils.formatDate(r.scanned_at)}</td>
-          <td><button class="action-btn" onclick="SecurityPage._viewScanDetail(${r.id})" title="View Details"><i class="fas fa-eye"></i></button></td>
+          <td><button class="action-btn" data-action="view-scan" data-scan-id="${r.id}" title="View Details"><i class="fas fa-eye"></i></button></td>
         </tr>
       `).join('')}</tbody>
     </table>`;
+
+    // Wire up view scan detail buttons in history
+    el.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
+      btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
+    });
   },
 
   async _renderScanners(el) {
@@ -698,7 +711,7 @@ Please:
           <button class="btn btn-sm btn-secondary" id="scan-next" ${!nextId ? 'disabled' : ''} title="Next scan"><i class="fas fa-chevron-right"></i></button>
           <h3 style="flex:1;margin:0"><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i>Scan: ${Utils.escapeHtml(data.image_name)}</h3>
           <span class="text-sm text-muted">${currentIdx + 1}/${this._scanIds.length}</span>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="scan-detail-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <div class="text-sm text-muted" style="margin-bottom:12px">
@@ -775,8 +788,11 @@ Please:
             </table>
           </div>` : ''}
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">Close</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="scan-detail-close-btn">Close</button></div>
       `, { width: '850px' });
+
+      Modal._content.querySelector('#scan-detail-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#scan-detail-close-btn').addEventListener('click', () => Modal.close());
 
       // Navigation buttons
       const prevBtn = Modal._content.querySelector('#scan-prev');

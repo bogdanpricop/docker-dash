@@ -193,8 +193,9 @@ const DashboardPage = {
         banner.style.display = 'block';
         banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:center;gap:8px">
           <i class="fas fa-exclamation-triangle"></i>
-          <span>Failed to load dashboard data. <button class="btn btn-sm" style="margin-left:8px" onclick="DashboardPage._load()">Retry</button></span>
+          <span>Failed to load dashboard data. <button class="btn btn-sm" style="margin-left:8px" id="dash-retry-btn">Retry</button></span>
         </div>`;
+        banner.querySelector('#dash-retry-btn')?.addEventListener('click', () => DashboardPage._load());
       }
     }
   },

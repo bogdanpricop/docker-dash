@@ -247,7 +247,7 @@ const ContainersPage = {
                 <i class="fas fa-circle"></i> ${running}/${total}
               </span>
               ${!isStandalone ? `
-              <div class="stack-actions" onclick="event.stopPropagation()">
+              <div class="stack-actions" data-stop-propagation>
                 ${running < total ? `<button class="action-btn" data-stack-action="start" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.startAll')}"><i class="fas fa-play"></i></button>` : ''}
                 ${running > 0 ? `<button class="action-btn" data-stack-action="restart" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.restartAll')}"><i class="fas fa-redo"></i></button>` : ''}
                 ${running > 0 ? `<button class="action-btn" data-stack-action="stop" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.stopAll')}"><i class="fas fa-stop"></i></button>` : ''}
@@ -280,6 +280,11 @@ const ContainersPage = {
         </div>
       `;
     }).join('');
+
+    // Stop propagation for elements that need it (checkboxes, action bars, links)
+    el.querySelectorAll('[data-stop-propagation]').forEach(node => {
+      node.addEventListener('click', (e) => e.stopPropagation());
+    });
 
     el.querySelectorAll('.stack-header').forEach(header => {
       header.addEventListener('click', (e) => {
@@ -568,9 +573,9 @@ const ContainersPage = {
     const meta = this._metaMap?.[c.name] || {};
     let metaLine = '';
     if (meta.app_name) metaLine += `<span class="meta-app-name">${Utils.escapeHtml(meta.app_name)}</span>`;
-    if (meta.lan_link) metaLine += ` <a href="${Utils.escapeHtml(meta.lan_link)}" class="meta-link" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="LAN"><i class="fas fa-home"></i></a>`;
-    if (meta.web_link) metaLine += ` <a href="${Utils.escapeHtml(meta.web_link)}" class="meta-link" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="WEB"><i class="fas fa-globe"></i></a>`;
-    if (meta.docs_url) metaLine += ` <a href="${Utils.escapeHtml(meta.docs_url)}" class="meta-link" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Docs"><i class="fas fa-book"></i></a>`;
+    if (meta.lan_link) metaLine += ` <a href="${Utils.escapeHtml(meta.lan_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="LAN"><i class="fas fa-home"></i></a>`;
+    if (meta.web_link) metaLine += ` <a href="${Utils.escapeHtml(meta.web_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="WEB"><i class="fas fa-globe"></i></a>`;
+    if (meta.docs_url) metaLine += ` <a href="${Utils.escapeHtml(meta.docs_url)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="Docs"><i class="fas fa-book"></i></a>`;
     if (meta.category) metaLine += ` <span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span>`;
     const colorStyle = meta.color ? `border-left: 3px solid ${meta.color}; padding-left: 8px;` : '';
 
@@ -578,7 +583,7 @@ const ContainersPage = {
 
     return `
       <tr data-cid="${c.id}" class="clickable ${running ? '' : 'row-dim'}">
-        <td onclick="event.stopPropagation()">
+        <td data-stop-propagation>
           <input type="checkbox" class="bulk-checkbox bulk-row-check" data-cid="${c.id}" ${isSelf ? 'disabled title="Cannot modify Docker Dash"' : ''}>
         </td>
         <td style="${colorStyle}">
@@ -919,13 +924,15 @@ const ContainersPage = {
         Toast.error(`Update BLOCKED: ${result.scan?.critical} critical vulnerabilities found. Use regular update to override.`);
         Modal.open(`
           <div class="modal-header"><h3 style="color:var(--red)"><i class="fas fa-shield-alt"></i> Update Blocked</h3>
-            <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+            <button class="modal-close-btn" id="blocked-close-x"><i class="fas fa-times"></i></button></div>
           <div class="modal-body">
             <p>${Utils.escapeHtml(result.message)}</p>
             <p><strong>Critical:</strong> ${result.scan?.critical || 0} | <strong>High:</strong> ${result.scan?.high || 0}</p>
           </div>
-          <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">OK</button></div>
+          <div class="modal-footer"><button class="btn btn-primary" id="blocked-close-btn">OK</button></div>
         `, { width: '450px' });
+        Modal._content.querySelector('#blocked-close-x').addEventListener('click', () => Modal.close());
+        Modal._content.querySelector('#blocked-close-btn').addEventListener('click', () => Modal.close());
       }
     } catch (err) { Toast.error(err.message); }
   },
@@ -939,7 +946,7 @@ const ContainersPage = {
       const html = `
         <div class="modal-header">
           <h3><i class="fas fa-stethoscope" style="margin-right:8px;color:var(--accent)"></i>Diagnose: ${Utils.escapeHtml(result.container)}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="diag-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <p>Overall: <strong style="color:${result.overall === 'healthy' ? 'var(--green)' : result.overall === 'warning' ? '#d29922' : 'var(--red)'}">${result.overall.toUpperCase()}</strong>
@@ -956,9 +963,11 @@ const ContainersPage = {
             `).join('')}</tbody>
           </table>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">Close</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="diag-close-btn">Close</button></div>
       `;
       Modal.open(html, { width: '700px' });
+      Modal._content.querySelector('#diag-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#diag-close-btn').addEventListener('click', () => Modal.close());
     } catch (err) { Toast.error(err.message); }
   },
 
@@ -1994,13 +2003,18 @@ const ContainersPage = {
             <td style="text-align:left" class="mono text-sm"><strong>${Utils.escapeHtml(v.key)}</strong></td>
             <td style="text-align:left;word-break:break-all" class="mono text-sm">${
               sensitive.test(v.key)
-                ? '<span class="text-muted" title="Click to reveal" style="cursor:pointer" onclick="this.textContent=this.dataset.v" data-v="' + Utils.escapeHtml(v.value) + '">••••••••</span>'
+                ? '<span class="text-muted env-reveal" title="Click to reveal" style="cursor:pointer" data-v="' + Utils.escapeHtml(v.value) + '">••••••••</span>'
                 : Utils.escapeHtml(v.value)
             }</td>
           </tr>
         `).join('')}</tbody>
       </table>`}
     `;
+
+    // Wire up env var reveal clicks
+    el.querySelectorAll('.env-reveal').forEach(span => {
+      span.addEventListener('click', () => { span.textContent = span.dataset.v; });
+    });
 
     el.querySelector('#env-search')?.addEventListener('input', Utils.debounce(() => {
       const q = el.querySelector('#env-search').value.toLowerCase();
@@ -2037,7 +2051,7 @@ const ContainersPage = {
             <table class="data-table">
               <thead><tr><th style="text-align:left">Service</th><th>Detected Via</th><th>Env Variable</th><th>State</th></tr></thead>
               <tbody>${deps.dependencies.map(d => `
-                <tr style="cursor:pointer" onclick="location.hash='#/containers/${d.container?.id || ''}'">
+                <tr style="cursor:pointer" data-nav-container="${d.container?.id || ''}"
                   <td style="text-align:left"><i class="fas fa-cube" style="margin-right:6px;color:var(--accent)"></i><strong>${Utils.escapeHtml(d.container?.name || d.hostname)}</strong>
                     <div class="text-sm text-muted">${Utils.escapeHtml(d.container?.image || '')}</div></td>
                   <td><span class="badge badge-info" style="font-size:10px">${d.type}</span></td>
@@ -2051,13 +2065,18 @@ const ContainersPage = {
             <div style="padding:12px 16px;border-top:1px solid var(--border)">
               <div class="text-sm text-muted" style="margin-bottom:8px"><i class="fas fa-layer-group" style="margin-right:4px"></i>Same stack: <strong>${Utils.escapeHtml(deps.stack)}</strong></div>
               <div style="display:flex;flex-wrap:wrap;gap:4px">
-                ${deps.stackMembers.map(s => `<span class="badge ${s.state === 'running' ? 'badge-running' : 'badge-stopped'}" style="cursor:pointer;font-size:11px" onclick="location.hash='#/containers/${s.id}'">${Utils.escapeHtml(s.name)}</span>`).join('')}
+                ${deps.stackMembers.map(s => `<span class="badge ${s.state === 'running' ? 'badge-running' : 'badge-stopped'}" style="cursor:pointer;font-size:11px" data-nav-container="${s.id}">${Utils.escapeHtml(s.name)}</span>`).join('')}
               </div>
             </div>` : ''}
           </div>
         </div>
       `;
       el.appendChild(depsHtml);
+
+      // Wire up container navigation clicks in dependencies
+      depsHtml.querySelectorAll('[data-nav-container]').forEach(node => {
+        node.addEventListener('click', () => { location.hash = '#/containers/' + node.dataset.navContainer; });
+      });
 
       // Deploy with dependencies button
       depsHtml.querySelector('#deploy-with-deps')?.addEventListener('click', async () => {
@@ -2533,11 +2552,13 @@ const ContainersPage = {
         Modal.open(`
           <div class="modal-header">
             <h3><i class="fas fa-heartbeat" style="color:var(--accent);margin-right:8px"></i> ${i18n.t('pages.containers.healthCheckTitle')} — ${Utils.escapeHtml(containerName)}</h3>
-            <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+            <button class="modal-close-btn" id="hlogs-empty-close-x"><i class="fas fa-times"></i></button>
           </div>
           <div class="modal-body"><div class="empty-msg"><i class="fas fa-info-circle"></i> ${i18n.t('pages.containers.noHealthCheck')}</div></div>
-          <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+          <div class="modal-footer"><button class="btn btn-primary" id="hlogs-empty-close-btn">${i18n.t('common.close')}</button></div>
         `, { width: '500px' });
+        Modal._content.querySelector('#hlogs-empty-close-x').addEventListener('click', () => Modal.close());
+        Modal._content.querySelector('#hlogs-empty-close-btn').addEventListener('click', () => Modal.close());
         return;
       }
 
@@ -2553,7 +2574,7 @@ const ContainersPage = {
       Modal.open(`
         <div class="modal-header">
           <h3><i class="fas fa-heartbeat" style="color:var(--accent);margin-right:8px"></i> ${i18n.t('pages.containers.healthCheckTitle')} — ${Utils.escapeHtml(containerName)}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="hlogs-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <div style="display:flex;gap:16px;margin-bottom:16px">
@@ -2573,8 +2594,10 @@ const ContainersPage = {
             </table>
           </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="hlogs-close-btn">${i18n.t('common.close')}</button></div>
       `, { width: '700px' });
+      Modal._content.querySelector('#hlogs-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#hlogs-close-btn').addEventListener('click', () => Modal.close());
     } catch (err) {
       Toast.error(err.message);
     }
@@ -2705,10 +2728,15 @@ const ContainersPage = {
             <span class="file-name">${Utils.escapeHtml(e.name)}</span>
             <span class="file-size text-muted text-sm">${e.type !== 'directory' ? Utils.formatBytes(e.size) : ''}</span>
             <span class="file-modified text-muted text-sm">${e.modified || ''}</span>
-            <span class="file-actions">${e.type !== 'directory' ? `<a href="${Api.getFileDownloadUrl(this._detailId, fullPath)}" class="action-btn" title="Download" onclick="event.stopPropagation()"><i class="fas fa-download"></i></a>` : ''}</span>
+            <span class="file-actions">${e.type !== 'directory' ? `<a href="${Api.getFileDownloadUrl(this._detailId, fullPath)}" class="action-btn" title="Download" data-stop-propagation><i class="fas fa-download"></i></a>` : ''}</span>
           </div>`;
         }).join('')}
       `;
+
+      // Stop propagation for download links
+      listEl.querySelectorAll('[data-stop-propagation]').forEach(node => {
+        node.addEventListener('click', (e) => e.stopPropagation());
+      });
 
       listEl.querySelectorAll('.file-entry').forEach(row => {
         row.addEventListener('click', async () => {
@@ -2905,7 +2933,7 @@ const ContainersPage = {
               <span class="stack-status ${running === members.length && members.length > 0 ? 'all-running' : ''}">
                 <i class="fas fa-circle"></i> ${running}/${members.length}
               </span>
-              <div class="stack-actions" onclick="event.stopPropagation()">
+              <div class="stack-actions" data-stop-propagation>
                 <button class="action-btn group-edit-btn" data-group-id="${g.id}" title="Edit group"><i class="fas fa-edit"></i></button>
                 <button class="action-btn group-add-btn" data-group-id="${g.id}" title="Add containers"><i class="fas fa-plus"></i></button>
               </div>
@@ -2917,11 +2945,11 @@ const ContainersPage = {
               <thead><tr><th>Container</th><th>Image</th><th>State</th><th style="width:60px"></th></tr></thead>
               <tbody>
                 ${members.map(c => `
-                  <tr style="cursor:pointer" onclick="App.navigate('/containers/${c.id}')">
+                  <tr style="cursor:pointer" data-nav-container="${c.id}">
                     <td>${Utils.escapeHtml(c.name)}</td>
                     <td class="text-muted text-sm" style="font-family:var(--mono)">${Utils.escapeHtml(c.image)}</td>
                     <td><span class="badge ${c.state === 'running' ? 'badge-success' : 'badge-danger'}">${c.state}</span></td>
-                    <td onclick="event.stopPropagation()">
+                    <td data-stop-propagation>
                       <button class="action-btn group-remove-member" data-group-id="${g.id}" data-container-id="${c.id}" title="Remove from group"><i class="fas fa-times"></i></button>
                     </td>
                   </tr>
@@ -2942,6 +2970,14 @@ const ContainersPage = {
         this._collapsed[stack] = !this._collapsed[stack];
         header.closest('.stack-group').classList.toggle('collapsed');
       });
+    });
+
+    // Wire up container navigation and stop-propagation in groups
+    section.querySelectorAll('[data-nav-container]').forEach(row => {
+      row.addEventListener('click', () => { App.navigate('/containers/' + row.dataset.navContainer); });
+    });
+    section.querySelectorAll('[data-stop-propagation]').forEach(node => {
+      node.addEventListener('click', (e) => e.stopPropagation());
     });
 
     section.querySelectorAll('.group-edit-btn').forEach(btn => {

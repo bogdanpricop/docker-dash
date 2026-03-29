@@ -78,12 +78,17 @@ const AlertsPage = {
             <p class="text-muted">${Utils.escapeHtml(a.container_name || Utils.shortId(a.container_id) || '')} — ${a.metric}: ${parseFloat(a.metric_value || 0).toFixed(1)}</p>
           </div>
           <div class="alert-card-footer">
-            <button class="btn btn-sm btn-secondary" onclick="AlertsPage._acknowledge(${a.id})">
+            <button class="btn btn-sm btn-secondary" data-action="acknowledge" data-alert-id="${a.id}">
               <i class="fas fa-check"></i> ${i18n.t('pages.alerts.acknowledge')}
             </button>
           </div>
         </div>
       `).join('')}</div>`;
+
+      // Wire up acknowledge buttons
+      el.querySelectorAll('[data-action="acknowledge"]').forEach(btn => {
+        btn.addEventListener('click', () => AlertsPage._acknowledge(parseInt(btn.dataset.alertId)));
+      });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">${i18n.t('pages.alerts.loadFailed', { message: err.message })}</div>`;
     }
@@ -108,10 +113,10 @@ const AlertsPage = {
             <td>${r.is_active ? `<span class="text-green">${i18n.t('common.active')}</span>` : `<span class="text-muted">${i18n.t('common.disabled')}</span>`}</td>
             <td>
               <div class="action-btns">
-                <button class="action-btn" onclick="AlertsPage._toggleRule(${r.id}, ${r.is_active ? 0 : 1})" title="${r.is_active ? i18n.t('pages.alerts.disable') : i18n.t('pages.alerts.enable')}">
+                <button class="action-btn" data-action="toggle-rule" data-rule-id="${r.id}" data-toggle-val="${r.is_active ? 0 : 1}" title="${r.is_active ? i18n.t('pages.alerts.disable') : i18n.t('pages.alerts.enable')}">
                   <i class="fas fa-${r.is_active ? 'pause' : 'play'}"></i>
                 </button>
-                <button class="action-btn danger" onclick="AlertsPage._deleteRule(${r.id})" title="${i18n.t('common.delete')}">
+                <button class="action-btn danger" data-action="delete-rule" data-rule-id="${r.id}" title="${i18n.t('common.delete')}">
                   <i class="fas fa-trash"></i>
                 </button>
               </div>
@@ -119,6 +124,14 @@ const AlertsPage = {
           </tr>
         `).join('')}</tbody>
       </table>`;
+
+      // Wire up rule action buttons
+      el.querySelectorAll('[data-action="toggle-rule"]').forEach(btn => {
+        btn.addEventListener('click', () => AlertsPage._toggleRule(parseInt(btn.dataset.ruleId), parseInt(btn.dataset.toggleVal)));
+      });
+      el.querySelectorAll('[data-action="delete-rule"]').forEach(btn => {
+        btn.addEventListener('click', () => AlertsPage._deleteRule(parseInt(btn.dataset.ruleId)));
+      });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">${i18n.t('pages.alerts.loadFailed', { message: err.message })}</div>`;
     }

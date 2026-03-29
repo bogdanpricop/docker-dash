@@ -68,12 +68,21 @@ const NetworksPage = {
         { key: '_actions', label: '', sortable: false, width: '100px', render: (_, row) => {
           if (row.name === 'bridge' || row.name === 'host' || row.name === 'none') return '';
           return `<div class="action-btns">
-            <button class="action-btn" onclick="NetworksPage._inspect('${row.id}')" title="${i18n.t('pages.networks.inspect')}"><i class="fas fa-info-circle"></i></button>
-            <button class="action-btn danger" onclick="NetworksPage._remove('${row.id}')" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
+            <button class="action-btn" data-action="inspect" data-id="${row.id}" title="${i18n.t('pages.networks.inspect')}"><i class="fas fa-info-circle"></i></button>
+            <button class="action-btn danger" data-action="remove" data-id="${row.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
           </div>`;
         }},
       ],
       emptyText: i18n.t('pages.networks.noNetworks'),
+    });
+
+    // Event delegation for table action buttons
+    tableEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'inspect') this._inspect(id);
+      else if (btn.dataset.action === 'remove') this._remove(id);
     });
 
     const searchEl = container.querySelector('#net-search');
@@ -419,7 +428,7 @@ const NetworksPage = {
 
       Modal.open(`
         <div class="modal-header"><h3>${Utils.escapeHtml(data.Name)}</h3>
-          <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+          <button class="modal-close-btn" id="net-modal-close-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
           <table class="info-table">
@@ -436,8 +445,11 @@ const NetworksPage = {
             ${containers ? '<button class="btn btn-sm btn-warning" id="net-disconnect-btn"><i class="fas fa-unlink"></i> Disconnect</button>' : ''}
           </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">${i18n.t('common.close')}</button></div>
+        <div class="modal-footer"><button class="btn btn-primary" id="net-modal-close-btn">${i18n.t('common.close')}</button></div>
       `, { width: '600px' });
+
+      Modal._content.querySelector('#net-modal-close-x').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#net-modal-close-btn').addEventListener('click', () => Modal.close());
 
       const connectBtn = Modal._content.querySelector('#net-connect-btn');
       if (connectBtn) {

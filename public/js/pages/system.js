@@ -384,7 +384,7 @@ DB_PASS=secret"></textarea>
             <table class="data-table">
               <thead><tr><th style="text-align:left">Container</th><th>Image</th><th>State</th></tr></thead>
               <tbody>${stack.containers.map(c => `
-                <tr style="cursor:pointer" onclick="location.hash='#/containers/${c.id}'">
+                <tr style="cursor:pointer" data-nav-container="${c.id}">
                   <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(c.name)}</td>
                   <td class="text-sm">${Utils.escapeHtml(c.image)}</td>
                   <td><span class="badge ${c.state === 'running' ? 'badge-running' : 'badge-stopped'}">${c.state}</span></td>
@@ -396,6 +396,11 @@ DB_PASS=secret"></textarea>
       `;
 
       el.querySelector('#stack-back').addEventListener('click', () => this._renderStacks(el));
+
+      // Wire up container navigation clicks
+      el.querySelectorAll('[data-nav-container]').forEach(row => {
+        row.addEventListener('click', () => { location.hash = '#/containers/' + row.dataset.navContainer; });
+      });
 
       const validateBtn = el.querySelector('#stack-validate');
       if (validateBtn) {
@@ -737,13 +742,16 @@ DB_PASS=secret"></textarea>
     Modal.open(`
       <div class="modal-header">
         <h3><i class="fas ${tool.icon}" style="margin-right:10px;color:${tool.color}"></i>${tool.name}</h3>
-        <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+        <button class="modal-close-btn" id="tool-modal-close-x"><i class="fas fa-times"></i></button>
       </div>
       <div class="modal-body tool-modal-content">${modalBody}</div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="Modal.close()">Close</button>
+        <button class="btn btn-secondary" id="tool-modal-close-btn">Close</button>
       </div>
     `, { width: '650px' });
+
+    Modal._content.querySelector('#tool-modal-close-x').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#tool-modal-close-btn').addEventListener('click', () => Modal.close());
 
     // Initialize tool interactions after modal is open
     setTimeout(() => this._initToolModal(toolId), 50);
@@ -1730,16 +1738,18 @@ DB_PASS=secret"></textarea>
           Modal.open(`
             <div class="modal-header">
               <h3><i class="${t.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
-              <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button>
+              <button class="modal-close-btn" id="tpl-view-close-x"><i class="fas fa-times"></i></button>
             </div>
             <div class="modal-body">
               <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(t.compose)}</pre>
             </div>
             <div class="modal-footer">
               <button class="btn btn-secondary" id="tpl-view-copy"><i class="fas fa-copy"></i> Copy</button>
-              <button class="btn btn-primary" onclick="Modal.close()">Close</button>
+              <button class="btn btn-primary" id="tpl-view-close-btn">Close</button>
             </div>
           `, { width: '600px' });
+          Modal._content.querySelector('#tpl-view-close-x').addEventListener('click', () => Modal.close());
+          Modal._content.querySelector('#tpl-view-close-btn').addEventListener('click', () => Modal.close());
           Modal._content.querySelector('#tpl-view-copy').addEventListener('click', () => {
             Utils.copyToClipboard(t.compose).then(() => Toast.success('Copied!'));
           });
@@ -1884,27 +1894,27 @@ DB_PASS=secret"></textarea>
             <div class="prune-item">
               <h4><i class="fas fa-cube"></i> ${i18n.t('pages.system.pruneContainers')}</h4>
               <p>${i18n.t('pages.system.pruneContainersDesc')}</p>
-              <button class="btn btn-sm btn-warning" onclick="SystemPage._prune('containers')">${i18n.t('pages.system.pruneContainersBtn')}</button>
+              <button class="btn btn-sm btn-warning" data-prune="containers">${i18n.t('pages.system.pruneContainersBtn')}</button>
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-layer-group"></i> ${i18n.t('pages.system.pruneImages')}</h4>
               <p>${i18n.t('pages.system.pruneImagesDesc')}</p>
-              <button class="btn btn-sm btn-warning" onclick="SystemPage._prune('images')">${i18n.t('pages.system.pruneImagesBtn')}</button>
+              <button class="btn btn-sm btn-warning" data-prune="images">${i18n.t('pages.system.pruneImagesBtn')}</button>
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-database"></i> ${i18n.t('pages.system.pruneVolumes')}</h4>
               <p>${i18n.t('pages.system.pruneVolumesDesc')}</p>
-              <button class="btn btn-sm btn-danger" onclick="SystemPage._prune('volumes')">${i18n.t('pages.system.pruneVolumesBtn')}</button>
+              <button class="btn btn-sm btn-danger" data-prune="volumes">${i18n.t('pages.system.pruneVolumesBtn')}</button>
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-network-wired"></i> ${i18n.t('pages.system.pruneNetworks')}</h4>
               <p>${i18n.t('pages.system.pruneNetworksDesc')}</p>
-              <button class="btn btn-sm btn-warning" onclick="SystemPage._prune('networks')">${i18n.t('pages.system.pruneNetworksBtn')}</button>
+              <button class="btn btn-sm btn-warning" data-prune="networks">${i18n.t('pages.system.pruneNetworksBtn')}</button>
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-broom"></i> ${i18n.t('pages.system.pruneEverything')}</h4>
               <p>${i18n.t('pages.system.pruneEverythingDesc')}</p>
-              <button class="btn btn-sm btn-danger" onclick="SystemPage._prune('all')">${i18n.t('pages.system.pruneAllBtn')}</button>
+              <button class="btn btn-sm btn-danger" data-prune="all">${i18n.t('pages.system.pruneAllBtn')}</button>
             </div>
           </div>
         </div>
@@ -1912,6 +1922,11 @@ DB_PASS=secret"></textarea>
     `;
 
     el.querySelector('#prune-help').addEventListener('click', () => this._showPruneHelp());
+
+    // Wire up prune buttons
+    el.querySelectorAll('[data-prune]').forEach(btn => {
+      btn.addEventListener('click', () => SystemPage._prune(btn.dataset.prune));
+    });
   },
 
   _showPruneHelp() {
@@ -2013,7 +2028,7 @@ DB_PASS=secret"></textarea>
           const analytics = await Api.getAuditAnalytics(7);
           const html = `
             <div class="modal-header"><h3><i class="fas fa-chart-bar" style="margin-right:8px;color:var(--accent)"></i>Audit Analytics (${analytics.days} days)</h3>
-              <button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+              <button class="modal-close-btn" id="audit-modal-close-x"><i class="fas fa-times"></i></button></div>
             <div class="modal-body">
               <p><strong>${analytics.total}</strong> total actions</p>
               <h4 style="margin-top:12px">Top Users</h4>
@@ -2023,8 +2038,10 @@ DB_PASS=secret"></textarea>
               <table class="data-table"><thead><tr><th style="text-align:left">Action</th><th>Count</th></tr></thead>
               <tbody>${(analytics.topActions || []).slice(0, 10).map(a => `<tr><td style="text-align:left"><span class="badge badge-info">${Utils.escapeHtml(a.action)}</span></td><td>${a.count}</td></tr>`).join('')}</tbody></table>
             </div>
-            <div class="modal-footer"><button class="btn btn-primary" onclick="Modal.close()">Close</button></div>`;
+            <div class="modal-footer"><button class="btn btn-primary" id="audit-modal-close-btn">Close</button></div>`;
           Modal.open(html, { width: '500px' });
+          Modal._content.querySelector('#audit-modal-close-x').addEventListener('click', () => Modal.close());
+          Modal._content.querySelector('#audit-modal-close-btn').addEventListener('click', () => Modal.close());
         } catch (err) { Toast.error(err.message); }
       });
     } catch (err) {

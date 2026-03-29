@@ -98,7 +98,7 @@ const InsightsPage = {
               <table class="data-table">
                 <thead><tr><th style="text-align:left">Container</th><th>Score</th><th>State</th><th>Issue</th></tr></thead>
                 <tbody>${scored.filter(c => c.healthScore < 25).map(c => `
-                  <tr style="cursor:pointer" onclick="location.hash='#/containers/${c.id}'">
+                  <tr style="cursor:pointer" data-nav-container="${c.id}">
                     <td style="text-align:left" class="mono">${Utils.escapeHtml(c.name)}</td>
                     <td><span style="color:${Utils.healthScoreColor(c.healthScore)};font-weight:700">${c.healthScore}</span></td>
                     <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span></td>
@@ -180,6 +180,11 @@ const InsightsPage = {
           </div>
         </div>
       `;
+
+      // Wire up navigation clicks
+      el.querySelectorAll('[data-nav-container]').forEach(row => {
+        row.addEventListener('click', () => { location.hash = '#/containers/' + row.dataset.navContainer; });
+      });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error loading insights: ${err.message}</div>`;
     }

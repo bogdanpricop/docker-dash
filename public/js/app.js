@@ -888,8 +888,9 @@ const App = {
       container.innerHTML = `<div class="empty-msg">
         <i class="fas fa-exclamation-triangle"></i>
         <p>${i18n.t('common.errorLoading', { message: Utils.escapeHtml(err.message) })}</p>
-        <button class="btn btn-sm btn-primary" onclick="App._route()">${i18n.t('common.retry')}</button>
+        <button class="btn btn-sm btn-primary" id="page-retry-btn">${i18n.t('common.retry')}</button>
       </div>`;
+      container.querySelector('#page-retry-btn')?.addEventListener('click', () => App._route());
     }
   },
 
