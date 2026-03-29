@@ -122,18 +122,24 @@ const SettingsPage = {
         </div>
         <div class="card-body">
           <table class="data-table">
-            <thead><tr><th>${i18n.t('pages.settings.username')}</th><th>Email</th><th>${i18n.t('pages.settings.role')}</th><th>${i18n.t('common.status')}</th><th>${i18n.t('pages.settings.lastLogin')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
+            <thead><tr><th>${i18n.t('pages.settings.username')}</th><th>Email</th><th>${i18n.t('pages.settings.role')}</th><th>MFA</th><th>${i18n.t('common.status')}</th><th>${i18n.t('pages.settings.lastLogin')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
             <tbody>${items.map(u => `
               <tr>
                 <td class="mono">${Utils.escapeHtml(u.username)}</td>
                 <td class="text-sm">${u.email ? Utils.escapeHtml(u.email) : '<span class="text-muted">—</span>'}</td>
                 <td><span class="badge badge-info">${u.role}</span></td>
+                <td>${u.totp_enabled
+                  ? `<span class="badge badge-running" style="font-size:10px"><i class="fas fa-shield-alt" style="margin-right:3px"></i>TOTP</span>`
+                  : '<span class="text-muted text-sm">Off</span>'}</td>
                 <td>${u.is_active ? `<span class="text-green">${i18n.t('common.active')}</span>` : `<span class="text-muted">${i18n.t('common.inactive')}</span>`}</td>
                 <td>${u.last_login_at ? Utils.timeAgo(u.last_login_at) : '—'}</td>
                 <td>
                   <div class="action-btns">
                     <button class="action-btn" data-action="edit-user" data-id="${u.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
                     <button class="action-btn" data-action="reset-password" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Reset Password"><i class="fas fa-key"></i></button>
+                    ${!u.totp_enabled
+                      ? `<button class="action-btn" data-action="setup-mfa" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Enable MFA"><i class="fas fa-shield-alt"></i></button>`
+                      : `<button class="action-btn danger" data-action="disable-mfa" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Disable MFA"><i class="fas fa-unlock"></i></button>`}
                     ${u.email ? `<button class="action-btn" data-action="send-invite" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="${i18n.t('pages.settings.sendInvite')}"><i class="fas fa-envelope"></i></button>` : ''}
                     ${u.username !== 'admin' ? `<button class="action-btn danger" data-action="delete-user" data-id="${u.id}" title="${i18n.t('common.delete')}"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
@@ -158,6 +164,8 @@ const SettingsPage = {
       else if (action === 'send-reset') this._sendResetEmail(id, username);
       else if (action === 'send-invite') this._sendInviteEmail(id, username);
       else if (action === 'delete-user') this._deleteUser(id);
+      else if (action === 'setup-mfa') this._setupMfaDialog(id, username);
+      else if (action === 'disable-mfa') this._disableMfaDialog(id, username);
     });
   },
 
@@ -343,6 +351,119 @@ const SettingsPage = {
     try {
       await Api.deleteUser(id);
       Toast.success(i18n.t('pages.settings.userDeleted'));
+      await this._renderTab();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _setupMfaDialog(userId, username) {
+    try {
+      // Step 1: Setup — get secret and otpauth URI
+      const setup = await Api.post('/auth/mfa/setup');
+      if (setup.error) { Toast.error(setup.error); return; }
+
+      Modal.open(`
+        <div class="modal-header">
+          <h3><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i>Enable MFA for ${Utils.escapeHtml(username)}</h3>
+          <button class="modal-close-btn" id="mfa-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-sm text-muted" style="margin-bottom:12px">Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password), then enter the 6-digit code to verify.</p>
+
+          <div style="text-align:center;margin:16px 0">
+            <div style="background:#fff;display:inline-block;padding:16px;border-radius:8px">
+              <canvas id="mfa-qr-canvas" width="200" height="200"></canvas>
+            </div>
+          </div>
+
+          <div style="text-align:center;margin-bottom:16px">
+            <details>
+              <summary class="text-sm" style="color:var(--accent);cursor:pointer">Can't scan? Enter key manually</summary>
+              <div class="mono text-sm" style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:4px;word-break:break-all">${Utils.escapeHtml(setup.secret)}</div>
+            </details>
+          </div>
+
+          <div class="form-group">
+            <label>Enter 6-digit code from your app</label>
+            <input type="text" id="mfa-verify-code" class="form-control" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" style="text-align:center;font-size:20px;letter-spacing:6px;max-width:200px;margin:0 auto;display:block">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="mfa-cancel">${i18n.t('common.cancel')}</button>
+          <button class="btn btn-primary" id="mfa-enable-btn"><i class="fas fa-check"></i> Verify & Enable</button>
+        </div>
+      `, { width: '480px' });
+
+      // Generate QR code on canvas (simple QR using otpauth URI)
+      this._renderQR(setup.otpauthUri, document.getElementById('mfa-qr-canvas'));
+
+      Modal._content.querySelector('#mfa-close').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#mfa-cancel').addEventListener('click', () => Modal.close());
+
+      Modal._content.querySelector('#mfa-enable-btn').addEventListener('click', async () => {
+        const code = Modal._content.querySelector('#mfa-verify-code').value.trim();
+        if (!code || code.length !== 6) { Toast.error('Enter the 6-digit code'); return; }
+        try {
+          const result = await Api.post('/auth/mfa/enable', { code });
+          if (result.error) { Toast.error(result.error); return; }
+
+          // Show recovery codes
+          Modal._content.querySelector('.modal-body').innerHTML = `
+            <div style="text-align:center;margin-bottom:16px">
+              <i class="fas fa-check-circle" style="font-size:48px;color:var(--green)"></i>
+              <h3 style="margin:12px 0 4px">MFA Enabled!</h3>
+              <p class="text-sm text-muted">Save these recovery codes in a safe place. Each code can be used once if you lose access to your authenticator.</p>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-family:var(--mono);font-size:14px;line-height:2;text-align:center">
+              ${result.recoveryCodes.map(c => `<div>${Utils.escapeHtml(c)}</div>`).join('')}
+            </div>
+          `;
+          Modal._content.querySelector('.modal-footer').innerHTML = `
+            <button class="btn btn-secondary" id="mfa-dl-codes"><i class="fas fa-download"></i> Download Codes</button>
+            <button class="btn btn-primary" id="mfa-done">${i18n.t('common.close')}</button>
+          `;
+          Modal._content.querySelector('#mfa-done').addEventListener('click', () => { Modal.close(); this._renderTab(); });
+          Modal._content.querySelector('#mfa-dl-codes').addEventListener('click', () => {
+            const blob = new Blob([result.recoveryCodes.join('\n')], { type: 'text/plain' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `docker-dash-recovery-codes-${username}.txt`; a.click();
+          });
+
+          Toast.success('MFA enabled for ' + username);
+        } catch (err) { Toast.error(err.message); }
+      });
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  /** Render QR code on canvas from text (minimal QR generator) */
+  _renderQR(text, canvas) {
+    // Simple approach: use an image from a QR API (no dependencies)
+    // We generate a Google Charts QR code URL
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => ctx.drawImage(img, 0, 0, 200, 200);
+    img.onerror = () => {
+      // Fallback: show the URI as text
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, 200, 200);
+      ctx.fillStyle = '#000';
+      ctx.font = '10px monospace';
+      ctx.fillText('Scan failed — use', 10, 90);
+      ctx.fillText('manual key above', 10, 105);
+    };
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
+  },
+
+  async _disableMfaDialog(userId, username) {
+    const ok = await Modal.confirm(
+      `Disable MFA for "${username}"? They will only need a password to log in.`,
+      { danger: true, confirmText: 'Disable MFA' }
+    );
+    if (!ok) return;
+    try {
+      // Admin disabling MFA for another user — use admin endpoint
+      await Api.delete(`/auth/users/${userId}/mfa`);
+      Toast.success('MFA disabled for ' + username);
       await this._renderTab();
     } catch (err) { Toast.error(err.message); }
   },

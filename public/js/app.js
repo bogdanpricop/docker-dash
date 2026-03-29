@@ -94,6 +94,15 @@ const App = {
 
       try {
         const res = await Api.login(username, password);
+
+        // MFA required — show TOTP input
+        if (res.mfaRequired) {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${i18n.t('login.signIn')}`;
+          this._showMfaPrompt(res.mfaToken, newForm, errEl);
+          return;
+        }
+
         this.user = res.user;
         this._loginPassword = password; // Temp store for setup wizard password change
         this._securityFlags = {
@@ -116,6 +125,151 @@ const App = {
         btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${i18n.t('login.signIn')}`;
       }
     });
+  },
+
+  _showMfaPrompt(mfaToken, form, errEl) {
+    // Hide username/password fields, show TOTP input
+    const formGroups = form.querySelectorAll('.form-group');
+    formGroups.forEach(g => g.style.display = 'none');
+    const forgotEl = form.querySelector('#login-forgot');
+    if (forgotEl) forgotEl.style.display = 'none';
+
+    // Create MFA input UI
+    const mfaDiv = document.createElement('div');
+    mfaDiv.id = 'mfa-section';
+    mfaDiv.innerHTML = `
+      <div style="text-align:center;margin-bottom:16px">
+        <i class="fas fa-shield-alt" style="font-size:32px;color:var(--accent)"></i>
+        <h3 style="margin:8px 0 4px">Two-Factor Authentication</h3>
+        <p class="text-sm text-muted">Enter the 6-digit code from your authenticator app</p>
+      </div>
+      <div class="form-group">
+        <input type="text" id="mfa-code" class="form-control" placeholder="000000"
+          maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+          style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:bold">
+      </div>
+      <div style="text-align:center;margin-top:8px">
+        <a href="#" id="mfa-use-recovery" class="text-sm" style="color:var(--accent)">Use a recovery code instead</a>
+      </div>
+    `;
+    form.insertBefore(mfaDiv, errEl);
+
+    const codeInput = mfaDiv.querySelector('#mfa-code');
+    codeInput.focus();
+
+    // Replace form submit handler for MFA
+    const newHandler = async (e) => {
+      e.preventDefault();
+      errEl.classList.add('hidden');
+      const code = codeInput.value.trim();
+      if (!code || code.length < 6) {
+        errEl.textContent = 'Enter the 6-digit code';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const btn = form.querySelector('#login-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+
+      try {
+        const res = await Api.post('/auth/mfa/verify', { mfaToken, code });
+        if (res.token) {
+          Api._bearerToken = res.token;
+          try { sessionStorage.setItem('dd_token', res.token); } catch {}
+        }
+        this.user = res.user;
+        this._securityFlags = {
+          setupRequired: res.setupRequired,
+          mustChangePassword: res.mustChangePassword,
+          defaultAdminActive: res.defaultAdminActive,
+        };
+        form.reset();
+        mfaDiv.remove();
+        formGroups.forEach(g => g.style.display = '');
+        if (forgotEl) forgotEl.style.display = '';
+        this._showApp();
+      } catch (err) {
+        errEl.textContent = err.message || 'Invalid code';
+        errEl.classList.remove('hidden');
+        codeInput.value = '';
+        codeInput.focus();
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> Verify`;
+      }
+    };
+
+    // Replace submit listener
+    const newForm = form.cloneNode(true);
+    form.parentNode.replaceChild(newForm, form);
+    // Re-get elements from new form
+    const newMfaDiv = newForm.querySelector('#mfa-section');
+    const newErrEl = newForm.querySelector('#login-error');
+    const newCodeInput = newForm.querySelector('#mfa-code');
+    newCodeInput.focus();
+
+    newForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      newErrEl.classList.add('hidden');
+      const code = newCodeInput.value.trim();
+      const isRecovery = newForm.querySelector('#mfa-recovery-input');
+
+      if (isRecovery) {
+        const recoveryCode = isRecovery.value.trim();
+        if (!recoveryCode) { newErrEl.textContent = 'Enter recovery code'; newErrEl.classList.remove('hidden'); return; }
+        const btn = newForm.querySelector('#login-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+        try {
+          const res = await Api.post('/auth/mfa/recovery', { mfaToken, recoveryCode });
+          if (res.token) { Api._bearerToken = res.token; try { sessionStorage.setItem('dd_token', res.token); } catch {} }
+          this.user = res.user;
+          this._securityFlags = { setupRequired: res.setupRequired, mustChangePassword: res.mustChangePassword, defaultAdminActive: res.defaultAdminActive };
+          this._showApp();
+        } catch (err) { newErrEl.textContent = err.message || 'Invalid recovery code'; newErrEl.classList.remove('hidden'); }
+        finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Verify'; }
+        return;
+      }
+
+      if (!code || code.length < 6) { newErrEl.textContent = 'Enter the 6-digit code'; newErrEl.classList.remove('hidden'); return; }
+      const btn = newForm.querySelector('#login-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verifying...';
+      try {
+        const res = await Api.post('/auth/mfa/verify', { mfaToken, code });
+        if (res.token) { Api._bearerToken = res.token; try { sessionStorage.setItem('dd_token', res.token); } catch {} }
+        this.user = res.user;
+        this._securityFlags = { setupRequired: res.setupRequired, mustChangePassword: res.mustChangePassword, defaultAdminActive: res.defaultAdminActive };
+        this._showApp();
+      } catch (err) { newErrEl.textContent = err.message || 'Invalid code'; newErrEl.classList.remove('hidden'); newCodeInput.value = ''; newCodeInput.focus(); }
+      finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Verify'; }
+    });
+
+    // Recovery code link
+    newForm.querySelector('#mfa-use-recovery')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const codeGroup = newMfaDiv.querySelector('.form-group');
+      codeGroup.innerHTML = `
+        <label class="text-sm">Recovery Code</label>
+        <input type="text" id="mfa-recovery-input" class="form-control" placeholder="Enter recovery code" style="text-align:center;font-size:16px">
+      `;
+      newMfaDiv.querySelector('#mfa-use-recovery').textContent = 'Use authenticator code instead';
+      newMfaDiv.querySelector('#mfa-use-recovery').addEventListener('click', (e2) => {
+        e2.preventDefault();
+        codeGroup.innerHTML = `
+          <input type="text" id="mfa-code" class="form-control" placeholder="000000"
+            maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code"
+            style="text-align:center;font-size:24px;letter-spacing:8px;font-weight:bold">
+        `;
+        newMfaDiv.querySelector('#mfa-use-recovery').textContent = 'Use a recovery code instead';
+      });
+      newForm.querySelector('#mfa-recovery-input')?.focus();
+    });
+
+    // Update button text
+    const loginBtn = newForm.querySelector('#login-btn');
+    loginBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Verify';
   },
 
   _showApp() {

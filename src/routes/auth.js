@@ -204,6 +204,24 @@ router.post('/mfa/disable', requireAuth, async (req, res) => {
   }
 });
 
+// Admin: force-disable MFA for any user
+router.delete('/users/:id/mfa', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(parseInt(req.params.id));
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = NULL, mfa_enrolled_at = NULL WHERE id = ?')
+      .run(user.id);
+
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'mfa_disable_admin', targetType: 'user', targetId: String(user.id),
+      details: { targetUsername: user.username }, ip: getClientIp(req) });
+
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Logout
 router.post('/logout', requireAuth, (req, res) => {
   authService.logout(req.authToken);

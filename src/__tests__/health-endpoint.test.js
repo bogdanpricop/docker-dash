@@ -39,7 +39,6 @@ describe('GET /api/health', () => {
     const res = await request(app).get('/api/health').expect(200);
 
     expect(res.body.version).toBe(expectedVersion);
-    expect(res.body.version).toBe('4.2.0');
   });
 
   it('should return a valid ISO timestamp', async () => {
