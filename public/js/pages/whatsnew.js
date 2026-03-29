@@ -10,6 +10,24 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.0.0',
+      date: '2026-03-29',
+      title: 'Enterprise Security Hardening',
+      changes: [
+        { type: 'security', text: 'Enterprise Security Mode — SECURITY_MODE=strict flag toggles all hardening (cookie-only auth, forced HTTPS, 8h sessions, password expiry)' },
+        { type: 'security', text: 'TOTP/MFA — two-factor authentication with zero dependencies (RFC 6238), encrypted secrets, 10 recovery codes' },
+        { type: 'security', text: 'Immutable hash-chained audit log — SHA-256 chain, tamper detection, JSON/CSV/Syslog export' },
+        { type: 'security', text: 'Security event alerting — 5 default rules (brute force, admin created, MFA disabled), threshold detection, 7 notification channels' },
+        { type: 'feature', text: '14 developer tools — Password Generator, Hash Generator, IP Calculator, JSON Formatter, Regex Tester, Text Diff, and more' },
+        { type: 'feature', text: 'HTML ↔ Markdown converter tools with live preview' },
+        { type: 'feature', text: 'Klingon pIqaD font integration with full easter egg experience' },
+        { type: 'fix', text: 'Dependency Map layout — containers no longer overlap (improved force simulation)' },
+        { type: 'fix', text: 'Port Reference expanded to 57 ports (Docker, K8s, MQTT, RDP, etc.)' },
+        { type: 'improvement', text: 'External audit findings addressed — 6 security tradeoffs fully documented, deployment recommendations table' },
+        { type: 'improvement', text: '359 tests across 24 test files (100% passing)' },
+      ],
+    },
+    {
       version: '4.2.0',
       date: '2026-03-28',
       title: '20 New Features — Full Platform Upgrade',
