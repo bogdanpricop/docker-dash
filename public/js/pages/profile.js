@@ -155,7 +155,7 @@ const ProfilePage = {
               <p class="text-sm text-muted" style="margin-bottom:12px">Scan this QR code with your authenticator app, then enter the 6-digit code.</p>
               <div style="text-align:center;margin:16px 0">
                 <div style="background:#fff;display:inline-block;padding:16px;border-radius:8px">
-                  <img id="mfa-qr-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(setup.otpauthUri)}" alt="QR Code" width="200" height="200">
+                  <canvas id="mfa-qr-canvas"></canvas>
                 </div>
               </div>
               <details><summary class="text-sm" style="color:var(--accent);cursor:pointer">Can't scan? Enter manually</summary>
@@ -171,6 +171,9 @@ const ProfilePage = {
               <button class="btn btn-primary" id="mfa-verify"><i class="fas fa-check"></i> Verify & Enable</button>
             </div>
           `, { width: '480px' });
+
+          // Render QR code on canvas
+          if (window.QR) QR.render(Modal._content.querySelector('#mfa-qr-canvas'), setup.otpauthUri, 3);
 
           Modal._content.querySelector('#mfa-close').addEventListener('click', () => Modal.close());
           Modal._content.querySelector('#mfa-cancel').addEventListener('click', () => Modal.close());

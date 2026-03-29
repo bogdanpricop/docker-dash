@@ -393,8 +393,8 @@ const SettingsPage = {
         </div>
       `, { width: '480px' });
 
-      // Generate QR code on canvas (simple QR using otpauth URI)
-      this._renderQR(setup.otpauthUri, document.getElementById('mfa-qr-canvas'));
+      // Render QR code on canvas
+      if (window.QR) QR.render(document.getElementById('mfa-qr-canvas'), setup.otpauthUri, 3);
 
       Modal._content.querySelector('#mfa-close').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#mfa-cancel').addEventListener('click', () => Modal.close());
@@ -432,26 +432,6 @@ const SettingsPage = {
         } catch (err) { Toast.error(err.message); }
       });
     } catch (err) { Toast.error(err.message); }
-  },
-
-  /** Render QR code on canvas from text (minimal QR generator) */
-  _renderQR(text, canvas) {
-    // Simple approach: use an image from a QR API (no dependencies)
-    // We generate a Google Charts QR code URL
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => ctx.drawImage(img, 0, 0, 200, 200);
-    img.onerror = () => {
-      // Fallback: show the URI as text
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, 200, 200);
-      ctx.fillStyle = '#000';
-      ctx.font = '10px monospace';
-      ctx.fillText('Scan failed — use', 10, 90);
-      ctx.fillText('manual key above', 10, 105);
-    };
-    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(text)}`;
   },
 
   async _disableMfaDialog(userId, username) {
