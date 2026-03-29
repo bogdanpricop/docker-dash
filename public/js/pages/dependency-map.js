@@ -23,12 +23,12 @@ const DependencyMapPage = {
   async render(container) {
     container.innerHTML = `
       <div class="page-header">
-        <h2><i class="fas fa-project-diagram" style="color:var(--accent)"></i> Dependency Map</h2>
+        <h2><i class="fas fa-project-diagram" style="color:var(--accent)"></i> ${i18n.t('pages.dependencyMap.title')}</h2>
         <div class="page-actions">
           <select id="dep-filter" class="form-control" style="width:auto">
-            <option value="all">All Containers</option>
-            <option value="running">Running Only</option>
-            <option value="connected">With Dependencies</option>
+            <option value="all">${i18n.t('pages.dependencyMap.allContainers')}</option>
+            <option value="running">${i18n.t('pages.dependencyMap.runningOnly')}</option>
+            <option value="connected">${i18n.t('pages.dependencyMap.withDependencies')}</option>
           </select>
           <button class="btn btn-sm btn-secondary" id="dep-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
@@ -36,16 +36,16 @@ const DependencyMapPage = {
       <div class="dep-map-container" id="dep-map-container" style="height:calc(100vh - 180px)">
         <canvas id="dep-map-canvas" class="dep-map-canvas"></canvas>
         <div class="dep-map-controls">
-          <button id="dep-zoom-in" title="Zoom In"><i class="fas fa-plus"></i></button>
-          <button id="dep-zoom-out" title="Zoom Out"><i class="fas fa-minus"></i></button>
-          <button id="dep-zoom-fit" title="Fit All"><i class="fas fa-compress-arrows-alt"></i></button>
+          <button id="dep-zoom-in" title="${i18n.t('pages.dependencyMap.zoomIn')}"><i class="fas fa-plus"></i></button>
+          <button id="dep-zoom-out" title="${i18n.t('pages.dependencyMap.zoomOut')}"><i class="fas fa-minus"></i></button>
+          <button id="dep-zoom-fit" title="${i18n.t('pages.dependencyMap.fitAll')}"><i class="fas fa-compress-arrows-alt"></i></button>
         </div>
         <div class="dep-map-legend">
-          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--green)"></div>Running</div>
-          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--red)"></div>Stopped</div>
-          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--text-dim)"></div>Other</div>
-          <div class="dep-map-legend-item" style="border-left:1px solid var(--border);padding-left:12px"><span style="color:var(--accent)">&#9473;</span> URL/Hostname</div>
-          <div class="dep-map-legend-item"><span style="color:var(--text-dim)">- - -</span> Network</div>
+          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--green)"></div>${i18n.t('pages.dependencyMap.running')}</div>
+          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--red)"></div>${i18n.t('pages.dependencyMap.stopped')}</div>
+          <div class="dep-map-legend-item"><div class="dep-map-legend-dot" style="background:var(--text-dim)"></div>${i18n.t('pages.dependencyMap.other')}</div>
+          <div class="dep-map-legend-item" style="border-left:1px solid var(--border);padding-left:12px"><span style="color:var(--accent)">&#9473;</span> ${i18n.t('pages.dependencyMap.urlHostname')}</div>
+          <div class="dep-map-legend-item"><span style="color:var(--text-dim)">- - -</span> ${i18n.t('pages.dependencyMap.network')}</div>
         </div>
         <div class="dep-map-tooltip hidden" id="dep-tooltip"></div>
       </div>
@@ -150,7 +150,7 @@ const DependencyMapPage = {
       this._simulate();
       this._fitAll();
     } catch (err) {
-      Toast.error('Failed to load dependency graph: ' + err.message);
+      Toast.error(i18n.t('pages.dependencyMap.loadFailed', { message: err.message }));
     }
   },
 
@@ -417,7 +417,7 @@ const DependencyMapPage = {
           <span class="text-sm text-muted">${Utils.escapeHtml(node.image)}</span><br>
           <span class="badge badge-${node.state === 'running' ? 'running' : 'stopped'}" style="margin-top:4px">${node.state}</span>
           ${node.stack ? `<br><span class="text-xs text-muted">Stack: ${Utils.escapeHtml(node.stack)}</span>` : ''}
-          <br><span class="text-xs text-muted">${edgeCount} connection(s)</span>
+          <br><span class="text-xs text-muted">${i18n.t('pages.dependencyMap.connections', { count: edgeCount })}</span>
         `;
       } else if (tooltip) {
         tooltip.classList.add('hidden');

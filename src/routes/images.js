@@ -484,8 +484,8 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
 // Check which scanners are installed and ready
 router.get('/scanners', requireAuth, (req, res) => {
   const available = [];
-  try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('trivy'); } catch {}
-  try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('grype'); } catch {}
+  try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('trivy'); } catch { /* trivy not installed */ }
+  try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('grype'); } catch { /* grype not installed */ }
   try {
     execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe' });
     if (_isScoutAuthenticated()) {
@@ -493,7 +493,7 @@ router.get('/scanners', requireAuth, (req, res) => {
     } else {
       available.push('docker-scout (not authenticated)');
     }
-  } catch {}
+  } catch { /* docker scout not installed or docker CLI unavailable */ }
   res.json({ scanners: available });
 });
 
@@ -753,7 +753,7 @@ router.post('/build', requireAuth, requireRole('admin'), writeable, async (req, 
             res.write(`data: ${JSON.stringify({ type: 'status', text: json.status + (json.progress || '') })}\n\n`);
           }
         }
-      } catch {}
+      } catch { /* partial JSON chunk from Docker stream; skip malformed data */ }
     });
 
     stream.on('end', () => {

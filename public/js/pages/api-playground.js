@@ -12,14 +12,14 @@ const ApiPlaygroundPage = {
     container.innerHTML = `
       <div class="page-header">
         <div>
-          <h2><i class="fas fa-flask" style="color:var(--accent)"></i> API Playground</h2>
-          <div class="page-subtitle">Explore and test Docker Dash REST API endpoints</div>
+          <h2><i class="fas fa-flask" style="color:var(--accent)"></i> ${i18n.t('pages.apiPlayground.title')}</h2>
+          <div class="page-subtitle">${i18n.t('pages.apiPlayground.subtitle')}</div>
         </div>
         <div class="page-actions">
           <button class="btn btn-sm btn-secondary" id="api-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
-      <div id="api-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading API documentation...</div></div>
+      <div id="api-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.apiPlayground.loadingDocs')}</div></div>
     `;
 
     container.querySelector('#api-refresh').addEventListener('click', () => this._load());
@@ -56,7 +56,7 @@ const ApiPlaygroundPage = {
         <div class="text-sm text-muted" style="margin-bottom:16px">
           <i class="fas fa-info-circle"></i> Base URL: <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">${window.location.origin}/api</code>
           &nbsp;|&nbsp; Version: <strong>${Utils.escapeHtml(docs.version || '?')}</strong>
-          &nbsp;|&nbsp; Auth: Bearer token (auto-injected for "Try it")
+          &nbsp;|&nbsp; ${i18n.t('pages.apiPlayground.auth')}
         </div>
         <div id="api-try-panel" style="display:none;margin-bottom:16px"></div>
         ${html}
@@ -81,7 +81,7 @@ const ApiPlaygroundPage = {
         });
       });
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> Failed to load API docs: ${Utils.escapeHtml(err.message)}</div>`;
+      el.innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${i18n.t('pages.apiPlayground.loadFailed', { message: Utils.escapeHtml(err.message) })}</div>`;
     }
   },
 
@@ -93,7 +93,7 @@ const ApiPlaygroundPage = {
           <h3 style="display:flex;align-items:center;gap:8px">
             <i class="fas fa-chevron-down" style="font-size:12px;transition:transform 0.2s"></i>
             ${Utils.escapeHtml(g.group)}
-            <span class="text-muted text-sm" style="font-weight:normal">(${eps.length} endpoints)</span>
+            <span class="text-muted text-sm" style="font-weight:normal">(${eps.length} ${i18n.t('pages.apiPlayground.endpoints')})</span>
           </h3>
         </div>
         <div class="api-group-body card-body" style="padding:0">
@@ -105,7 +105,7 @@ const ApiPlaygroundPage = {
                   <td style="font-family:var(--mono);font-size:12px">${this._highlightParams(e.path || '')}</td>
                   <td class="text-muted text-sm">${Utils.escapeHtml(e.description || '')}</td>
                   <td style="width:40px;text-align:center">${e.auth === false ? '<span class="text-muted text-xs" title="No auth required"><i class="fas fa-unlock"></i></span>' : '<span class="text-muted text-xs" title="Auth required"><i class="fas fa-lock"></i></span>'}</td>
-                  <td style="width:70px"><button class="btn btn-xs btn-primary api-try-btn" data-method="${e.method || 'GET'}" data-path="${Utils.escapeHtml(e.path || '')}" data-desc="${Utils.escapeHtml(e.description || '')}">Try it</button></td>
+                  <td style="width:70px"><button class="btn btn-xs btn-primary api-try-btn" data-method="${e.method || 'GET'}" data-path="${Utils.escapeHtml(e.path || '')}" data-desc="${Utils.escapeHtml(e.description || '')}">${i18n.t('pages.apiPlayground.tryIt')}</button></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -142,7 +142,7 @@ const ApiPlaygroundPage = {
           ${desc ? `<div class="text-muted text-sm" style="margin-bottom:12px">${Utils.escapeHtml(desc)}</div>` : ''}
           ${params.length ? `
             <div style="margin-bottom:12px">
-              <label class="text-sm" style="font-weight:600;margin-bottom:4px;display:block">Path Parameters</label>
+              <label class="text-sm" style="font-weight:600;margin-bottom:4px;display:block">${i18n.t('pages.apiPlayground.pathParameters')}</label>
               <div style="display:flex;flex-wrap:wrap;gap:8px">
                 ${params.map(p => `
                   <div style="display:flex;align-items:center;gap:4px">
@@ -155,19 +155,19 @@ const ApiPlaygroundPage = {
           ` : ''}
           ${needsBody ? `
             <div style="margin-bottom:12px">
-              <label class="text-sm" style="font-weight:600;margin-bottom:4px;display:block">Request Body (JSON)</label>
+              <label class="text-sm" style="font-weight:600;margin-bottom:4px;display:block">${i18n.t('pages.apiPlayground.requestBody')}</label>
               <textarea id="api-req-body" class="form-control" style="font-family:var(--mono);font-size:12px;height:120px;resize:vertical" placeholder='{"key": "value"}'></textarea>
             </div>
           ` : ''}
           <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-primary" id="api-send"><i class="fas fa-paper-plane"></i> Send</button>
-            <button class="btn btn-secondary btn-sm" id="api-copy-curl" title="Copy as cURL"><i class="fas fa-terminal"></i> cURL</button>
+            <button class="btn btn-primary" id="api-send"><i class="fas fa-paper-plane"></i> ${i18n.t('pages.apiPlayground.send')}</button>
+            <button class="btn btn-secondary btn-sm" id="api-copy-curl" title="${i18n.t('pages.apiPlayground.curl')}"><i class="fas fa-terminal"></i> ${i18n.t('pages.apiPlayground.curl')}</button>
             <span id="api-response-time" class="text-muted text-sm"></span>
           </div>
           <div id="api-response" style="margin-top:12px;display:none">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <span id="api-resp-status" style="font-weight:600"></span>
-              <button class="btn btn-xs btn-secondary" id="api-copy-resp"><i class="fas fa-copy"></i> Copy</button>
+              <button class="btn btn-xs btn-secondary" id="api-copy-resp"><i class="fas fa-copy"></i> ${i18n.t('pages.apiPlayground.copy')}</button>
             </div>
             <pre id="api-resp-body" style="background:var(--surface1);padding:16px;border-radius:var(--radius);overflow:auto;max-height:400px;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word"></pre>
           </div>
@@ -185,13 +185,13 @@ const ApiPlaygroundPage = {
     panel.querySelector('#api-copy-curl').addEventListener('click', () => {
       const curl = this._buildCurl(method, path, params);
       navigator.clipboard?.writeText(curl);
-      Toast.success('cURL command copied');
+      Toast.success(i18n.t('pages.apiPlayground.curlCopied'));
     });
 
     panel.querySelector('#api-copy-resp')?.addEventListener('click', () => {
       const body = document.getElementById('api-resp-body')?.textContent || '';
       navigator.clipboard?.writeText(body);
-      Toast.success('Response copied');
+      Toast.success(i18n.t('pages.apiPlayground.responseCopied'));
     });
 
     // Scroll to panel
@@ -232,13 +232,13 @@ const ApiPlaygroundPage = {
       try {
         body = JSON.parse(bodyEl.value.trim());
       } catch {
-        Toast.error('Invalid JSON in request body');
+        Toast.error(i18n.t('pages.apiPlayground.invalidJson'));
         return;
       }
     }
 
     const sendBtn = document.getElementById('api-send');
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...'; }
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + i18n.t('pages.apiPlayground.sending'); }
 
     const start = performance.now();
     try {
@@ -296,7 +296,7 @@ const ApiPlaygroundPage = {
       const bodyEl2 = document.getElementById('api-resp-body');
       if (bodyEl2) bodyEl2.textContent = err.message;
     } finally {
-      if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send'; }
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> ' + i18n.t('pages.apiPlayground.send'); }
     }
   },
 

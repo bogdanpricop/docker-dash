@@ -358,7 +358,7 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
     });
 
     // Cleanup temp file
-    try { fs.unlinkSync(composeFile); fs.rmdirSync(tmpDir); } catch {}
+    try { fs.unlinkSync(composeFile); fs.rmdirSync(tmpDir); } catch { /* cleanup best-effort; temp files will be removed on reboot */ }
 
     auditService.log({
       userId: req.user.id, username: req.user.username,

@@ -76,7 +76,7 @@ router.get('/:id', requireAuth, async (req, res) => {
         result.sshUsername = ssh.username;
         result.sshAuthType = ssh.privateKey ? 'key' : 'password';
         result.sshDockerSocket = ssh.dockerSocket;
-      } catch {}
+      } catch { /* SSH config may not exist for this host */ }
     }
 
     res.json(result);
@@ -218,7 +218,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, async (req, res
       }
     } else {
       // Close SSH tunnel if switching away from SSH
-      try { require('../services/ssh-tunnel').closeTunnel(hostId); } catch {}
+      try { require('../services/ssh-tunnel').closeTunnel(hostId); } catch { /* tunnel may not be active */ }
     }
 
     auditService.log({
@@ -246,7 +246,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, async (req, 
     try {
       const sshTunnelService = require('../services/ssh-tunnel');
       sshTunnelService.closeTunnel(hostId);
-    } catch {}
+    } catch { /* tunnel may not be active or ssh-tunnel module unavailable */ }
 
     // Drop connection
     dockerService.dropConnection(hostId);

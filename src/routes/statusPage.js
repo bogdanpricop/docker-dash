@@ -23,7 +23,7 @@ router.get('/public', async (req, res) => {
 
     // Get running containers
     let containers = [];
-    try { containers = await dockerService.listContainers(0); } catch {}
+    try { containers = await dockerService.listContainers(0); } catch { /* Docker may be unreachable; show services as unknown */ }
 
     const services = items.map(item => {
       const container = containers.find(c => {

@@ -29,19 +29,19 @@ const StacksPage = {
     container.innerHTML = `
       <div class="page-header">
         <div>
-          <h2><i class="fas fa-layer-group" style="color:var(--accent)"></i> Stacks</h2>
-          <div class="page-subtitle">Compose stacks and Git-linked deployments</div>
+          <h2><i class="fas fa-layer-group" style="color:var(--accent)"></i> ${i18n.t('pages.stacks.title')}</h2>
+          <div class="page-subtitle">${i18n.t('pages.stacks.subtitle')}</div>
         </div>
         <div class="page-actions">
           <div class="tabs" id="stack-tabs" style="margin:0">
-            <button class="tab ${this._tab === 'all' ? 'active' : ''}" data-tab="all">All</button>
-            <button class="tab ${this._tab === 'compose' ? 'active' : ''}" data-tab="compose">Compose</button>
-            <button class="tab ${this._tab === 'git' ? 'active' : ''}" data-tab="git">Git</button>
+            <button class="tab ${this._tab === 'all' ? 'active' : ''}" data-tab="all">${i18n.t('pages.stacks.tabAll')}</button>
+            <button class="tab ${this._tab === 'compose' ? 'active' : ''}" data-tab="compose">${i18n.t('pages.stacks.tabCompose')}</button>
+            <button class="tab ${this._tab === 'git' ? 'active' : ''}" data-tab="git">${i18n.t('pages.stacks.tabGit')}</button>
           </div>
           <button class="btn btn-sm btn-secondary" id="stacks-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
-      <div id="stacks-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+      <div id="stacks-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
 
     container.querySelectorAll('#stack-tabs .tab').forEach(tab => {
@@ -91,7 +91,7 @@ const StacksPage = {
         el.innerHTML = `
           <div class="empty-msg" style="padding:48px">
             <i class="fas fa-layer-group" style="font-size:48px;opacity:0.3;margin-bottom:12px"></i>
-            <p>No stacks found. Deploy a Compose stack or link a Git repository.</p>
+            <p>${i18n.t('pages.stacks.noStacks')}</p>
           </div>`;
         return;
       }
@@ -122,10 +122,10 @@ const StacksPage = {
             } else if (source === 'git') {
               await Api.deployGitStack(parseInt(stackId), {});
             }
-            Toast.success(`Stack ${stack}: ${action} successful`);
+            Toast.success(i18n.t('pages.stacks.actionSuccess', { stack, action }));
             setTimeout(() => this._loadList(), 1500);
           } catch (err) {
-            Toast.error(`Failed: ${err.message}`);
+            Toast.error(i18n.t('pages.stacks.actionFailed', { message: err.message }));
           } finally {
             btn.disabled = false;
           }
@@ -161,7 +161,7 @@ const StacksPage = {
             <div class="text-sm text-muted" style="word-break:break-all">${Utils.escapeHtml(s.repoUrl || '')}</div>
             ${s.lastCommit ? `<div class="text-sm" style="margin-top:4px;font-family:var(--mono)">${Utils.escapeHtml(s.lastCommit)}</div>` : ''}
           ` : `
-            <div class="text-sm" style="margin-bottom:4px"><strong>${s.running}</strong>/${s.total} containers running</div>
+            <div class="text-sm" style="margin-bottom:4px">${i18n.t('pages.stacks.containersRunning', { running: '<strong>' + s.running + '</strong>', total: s.total })}</div>
             ${s.containers ? `<div class="text-sm text-muted">${s.containers.map(c => `<span style="color:${c.state === 'running' ? 'var(--green)' : 'var(--red)'}">${Utils.escapeHtml(c.name)}</span>`).join(', ')}</div>` : ''}
           `}
           <div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end">
@@ -195,10 +195,10 @@ const StacksPage = {
         </div>
       </div>
       <div class="tabs" style="margin-bottom:16px">
-        <button class="tab active" data-tab="services">Services</button>
-        <button class="tab" data-tab="config">Compose Config</button>
+        <button class="tab active" data-tab="services">${i18n.t('pages.stacks.services')}</button>
+        <button class="tab" data-tab="config">${i18n.t('pages.stacks.composeConfig')}</button>
       </div>
-      <div id="cs-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+      <div id="cs-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
 
     container.querySelector('#stacks-back').addEventListener('click', () => { location.hash = '#/stacks'; });
@@ -208,7 +208,7 @@ const StacksPage = {
       container.querySelector(`#cs-${action}`).addEventListener('click', async () => {
         try {
           await Api.composeAction(this._detailStack, action);
-          Toast.success(`${action} successful`);
+          Toast.success(i18n.t('pages.stacks.actionSuccessShort', { action }));
           setTimeout(() => this._loadComposeDetail(), 1500);
         } catch (err) { Toast.error(err.message); }
       });
@@ -239,7 +239,7 @@ const StacksPage = {
           <div class="card">
             <div class="card-body" style="padding:0">
               <table class="data-table" style="margin:0">
-                <thead><tr><th>Container</th><th>Image</th><th>State</th><th>Actions</th></tr></thead>
+                <thead><tr><th>${i18n.t('pages.containers.container', { defaultValue: 'Container' })}</th><th>${i18n.t('pages.containers.image')}</th><th>${i18n.t('common.status')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
                 <tbody>
                   ${(stack.containers || []).map(c => `
                     <tr>
@@ -263,7 +263,7 @@ const StacksPage = {
           btn.addEventListener('click', async () => {
             try {
               await Api.containerAction(btn.dataset.id, btn.dataset.action);
-              Toast.success(`Container ${btn.dataset.action} successful`);
+              Toast.success(i18n.t('pages.stacks.containerActionSuccess', { action: btn.dataset.action }));
               setTimeout(() => this._loadComposeDetail('services'), 1000);
             } catch (err) { Toast.error(err.message); }
           });
@@ -273,7 +273,7 @@ const StacksPage = {
           <div class="card">
             <div class="card-header"><h3>docker-compose.yml</h3></div>
             <div class="card-body">
-              <pre style="background:var(--surface1);padding:16px;border-radius:var(--radius);overflow:auto;max-height:500px;font-family:var(--mono);font-size:12px;line-height:1.6">${Utils.escapeHtml(stack.config || 'No compose config found')}</pre>
+              <pre style="background:var(--surface1);padding:16px;border-radius:var(--radius);overflow:auto;max-height:500px;font-family:var(--mono);font-size:12px;line-height:1.6">${Utils.escapeHtml(stack.config || i18n.t('pages.stacks.noComposeConfig'))}</pre>
             </div>
           </div>
           ${stack.envFile ? `
@@ -297,10 +297,10 @@ const StacksPage = {
       <div class="page-header">
         <div style="display:flex;align-items:center;gap:12px">
           <button class="btn btn-sm btn-secondary" id="stacks-back"><i class="fas fa-arrow-left"></i></button>
-          <h2><i class="fab fa-git-alt" style="color:var(--accent)"></i> Git Stack Detail</h2>
+          <h2><i class="fab fa-git-alt" style="color:var(--accent)"></i> ${i18n.t('pages.stacks.gitStackDetail')}</h2>
         </div>
       </div>
-      <div id="gs-detail-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div></div>
+      <div id="gs-detail-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
 
     container.querySelector('#stacks-back').addEventListener('click', () => { location.hash = '#/stacks'; });
@@ -318,32 +318,32 @@ const StacksPage = {
           </div>
           <div class="card-body">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px">
-              <div><div class="text-muted text-sm">Repository</div><div style="word-break:break-all">${Utils.escapeHtml(stack.repo_url)}</div></div>
-              <div><div class="text-muted text-sm">Branch</div><div><i class="fas fa-code-branch"></i> ${Utils.escapeHtml(stack.branch)}</div></div>
-              <div><div class="text-muted text-sm">Last Commit</div><div style="font-family:var(--mono)">${Utils.escapeHtml(stack.last_commit_hash || '-')}</div></div>
-              <div><div class="text-muted text-sm">Compose File</div><div>${Utils.escapeHtml(stack.compose_file || 'docker-compose.yml')}</div></div>
-              <div><div class="text-muted text-sm">Last Deployed</div><div>${Utils.timeAgo(stack.last_deployed_at)}</div></div>
-              <div><div class="text-muted text-sm">Auto-Deploy</div><div>${stack.auto_deploy ? '<span class="badge badge-success">Enabled</span>' : '<span class="badge">Disabled</span>'}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.repository')}</div><div style="word-break:break-all">${Utils.escapeHtml(stack.repo_url)}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.branch')}</div><div><i class="fas fa-code-branch"></i> ${Utils.escapeHtml(stack.branch)}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.lastCommit')}</div><div style="font-family:var(--mono)">${Utils.escapeHtml(stack.last_commit_hash || '-')}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.composeFile')}</div><div>${Utils.escapeHtml(stack.compose_file || 'docker-compose.yml')}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.lastDeployed')}</div><div>${Utils.timeAgo(stack.last_deployed_at)}</div></div>
+              <div><div class="text-muted text-sm">${i18n.t('pages.stacks.autoDeploy')}</div><div>${stack.auto_deploy ? '<span class="badge badge-success">' + i18n.t('common.enabled') + '</span>' : '<span class="badge">' + i18n.t('common.disabled') + '</span>'}</div></div>
             </div>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:16px">
-          <button class="btn btn-primary" id="gs-deploy"><i class="fas fa-rocket"></i> Deploy</button>
-          <button class="btn btn-secondary" id="gs-check"><i class="fas fa-sync-alt"></i> Check for updates</button>
-          <a href="#/git-stacks/${stack.id}" class="btn btn-secondary"><i class="fas fa-external-link-alt"></i> Full Git Stack view</a>
+          <button class="btn btn-primary" id="gs-deploy"><i class="fas fa-rocket"></i> ${i18n.t('pages.stacks.deploy')}</button>
+          <button class="btn btn-secondary" id="gs-check"><i class="fas fa-sync-alt"></i> ${i18n.t('pages.stacks.checkForUpdates')}</button>
+          <a href="#/git-stacks/${stack.id}" class="btn btn-secondary"><i class="fas fa-external-link-alt"></i> ${i18n.t('pages.stacks.fullGitStackView')}</a>
         </div>
       `;
 
       el.querySelector('#gs-deploy')?.addEventListener('click', async () => {
         try {
           await Api.deployGitStack(stack.id, {});
-          Toast.success('Deployment started');
+          Toast.success(i18n.t('pages.stacks.deploymentStarted'));
         } catch (err) { Toast.error(err.message); }
       });
       el.querySelector('#gs-check')?.addEventListener('click', async () => {
         try {
           const result = await Api.checkGitStack(stack.id);
-          Toast.info(result.hasUpdates ? 'Updates available' : 'Already up to date');
+          Toast.info(result.hasUpdates ? i18n.t('pages.stacks.updatesAvailable') : i18n.t('pages.stacks.upToDate'));
         } catch (err) { Toast.error(err.message); }
       });
     } catch (err) {

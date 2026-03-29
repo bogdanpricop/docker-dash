@@ -22,7 +22,7 @@ const SettingsPage = {
         <button class="tab active" data-tab="profile">${i18n.t('pages.settings.tabProfile')}</button>
         ${isAdmin ? `<button class="tab" data-tab="users">${i18n.t('pages.settings.tabUsers')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="webhooks">${i18n.t('pages.settings.tabWebhooks')}</button>` : ''}
-        ${isAdmin ? `<button class="tab" data-tab="registries">Registries</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="registries">${i18n.t('pages.settings.registriesTitle')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="git-credentials"><i class="fab fa-git-alt" style="margin-right:4px"></i> Git</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="notifications"><i class="fas fa-bell" style="margin-right:4px"></i> Notifications</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="workflows"><i class="fas fa-cogs" style="margin-right:4px"></i> Workflows</button>` : ''}
@@ -267,25 +267,25 @@ const SettingsPage = {
   },
 
   async _resetPasswordDialog(id, username) {
-    if (!id || !username) { Toast.error('Cannot reset: user ID or name missing'); return; }
+    if (!id || !username) { Toast.error(i18n.t('pages.settings.cannotReset')); return; }
     const html = `
       <div class="modal-header">
-        <h3><i class="fas fa-key" style="margin-right:8px;color:var(--accent)"></i>Reset Password — ${Utils.escapeHtml(username)}</h3>
+        <h3><i class="fas fa-key" style="margin-right:8px;color:var(--accent)"></i>${i18n.t('pages.settings.resetPasswordTitle', { username: Utils.escapeHtml(username) })}</h3>
         <button class="modal-close-btn" id="rp-close"><i class="fas fa-times"></i></button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>New Password *</label>
-          <input type="password" id="rp-new" class="form-control" placeholder="Minimum 8 characters" autofocus>
+          <label>${i18n.t('pages.settings.newPasswordLabel')}</label>
+          <input type="password" id="rp-new" class="form-control" placeholder="${i18n.t('pages.settings.minCharsPlaceholder')}" autofocus>
         </div>
         <div class="form-group">
-          <label>Confirm Password *</label>
+          <label>${i18n.t('pages.settings.confirmPasswordLabel')}</label>
           <input type="password" id="rp-confirm" class="form-control">
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="rp-cancel">Cancel</button>
-        <button class="btn btn-primary" id="rp-submit"><i class="fas fa-key"></i> Reset Password</button>
+        <button class="btn btn-secondary" id="rp-cancel">${i18n.t('common.cancel')}</button>
+        <button class="btn btn-primary" id="rp-submit"><i class="fas fa-key"></i> ${i18n.t('pages.settings.resetPassword')}</button>
       </div>
     `;
     Modal.open(html, { width: '400px' });
@@ -296,8 +296,8 @@ const SettingsPage = {
       const newPass = Modal._content.querySelector('#rp-new').value;
       const confirm = Modal._content.querySelector('#rp-confirm').value;
 
-      if (!newPass || newPass.length < 8) { Toast.warning('Password must be at least 8 characters'); return; }
-      if (newPass !== confirm) { Toast.warning('Passwords do not match'); return; }
+      if (!newPass || newPass.length < 8) { Toast.warning(i18n.t('pages.settings.passwordMinChars')); return; }
+      if (newPass !== confirm) { Toast.warning(i18n.t('pages.settings.passwordsNoMatch')); return; }
 
       try {
         await Api.post('/auth/users/' + id + '/reset-password', { password: newPass });
@@ -305,13 +305,13 @@ const SettingsPage = {
 
         // If resetting own password → logout so user re-authenticates with new password
         if (id === App.user?.id) {
-          Toast.success('Password changed. Please login with your new password.');
+          Toast.success(i18n.t('pages.settings.passwordChangedRelogin'));
           setTimeout(async () => {
             try { await Api.logout(); } catch {}
             App.handleUnauthorized();
           }, 1500);
         } else {
-          Toast.success('Password reset for "' + username + '"');
+          Toast.success(i18n.t('pages.settings.passwordResetFor', { username }));
         }
       } catch (err) { Toast.error(err.message); }
     });
@@ -363,11 +363,11 @@ const SettingsPage = {
 
       Modal.open(`
         <div class="modal-header">
-          <h3><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i>Enable MFA for ${Utils.escapeHtml(username)}</h3>
+          <h3><i class="fas fa-shield-alt" style="color:var(--accent);margin-right:8px"></i>${i18n.t('pages.settings.enableMfaTitle', { username: Utils.escapeHtml(username) })}</h3>
           <button class="modal-close-btn" id="mfa-close"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
-          <p class="text-sm text-muted" style="margin-bottom:12px">Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password), then enter the 6-digit code to verify.</p>
+          <p class="text-sm text-muted" style="margin-bottom:12px">${i18n.t('pages.settings.mfaScanInstructions')}</p>
 
           <div style="text-align:center;margin:16px 0">
             <div style="background:#fff;display:inline-block;padding:16px;border-radius:8px">
@@ -377,19 +377,19 @@ const SettingsPage = {
 
           <div style="text-align:center;margin-bottom:16px">
             <details>
-              <summary class="text-sm" style="color:var(--accent);cursor:pointer">Can't scan? Enter key manually</summary>
+              <summary class="text-sm" style="color:var(--accent);cursor:pointer">${i18n.t('pages.settings.cantScan')}</summary>
               <div class="mono text-sm" style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:4px;word-break:break-all">${Utils.escapeHtml(setup.secret)}</div>
             </details>
           </div>
 
           <div class="form-group">
-            <label>Enter 6-digit code from your app</label>
+            <label>${i18n.t('pages.settings.enterCode')}</label>
             <input type="text" id="mfa-verify-code" class="form-control" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" style="text-align:center;font-size:20px;letter-spacing:6px;max-width:200px;margin:0 auto;display:block">
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="mfa-cancel">${i18n.t('common.cancel')}</button>
-          <button class="btn btn-primary" id="mfa-enable-btn"><i class="fas fa-check"></i> Verify & Enable</button>
+          <button class="btn btn-primary" id="mfa-enable-btn"><i class="fas fa-check"></i> ${i18n.t('pages.settings.verifyAndEnable')}</button>
         </div>
       `, { width: '480px' });
 
@@ -401,7 +401,7 @@ const SettingsPage = {
 
       Modal._content.querySelector('#mfa-enable-btn').addEventListener('click', async () => {
         const code = Modal._content.querySelector('#mfa-verify-code').value.trim();
-        if (!code || code.length !== 6) { Toast.error('Enter the 6-digit code'); return; }
+        if (!code || code.length !== 6) { Toast.error(i18n.t('pages.settings.enterTheCode')); return; }
         try {
           const result = await Api.post('/auth/mfa/enable', { code });
           if (result.error) { Toast.error(result.error); return; }
@@ -410,15 +410,15 @@ const SettingsPage = {
           Modal._content.querySelector('.modal-body').innerHTML = `
             <div style="text-align:center;margin-bottom:16px">
               <i class="fas fa-check-circle" style="font-size:48px;color:var(--green)"></i>
-              <h3 style="margin:12px 0 4px">MFA Enabled!</h3>
-              <p class="text-sm text-muted">Save these recovery codes in a safe place. Each code can be used once if you lose access to your authenticator.</p>
+              <h3 style="margin:12px 0 4px">${i18n.t('pages.settings.mfaEnabled')}</h3>
+              <p class="text-sm text-muted">${i18n.t('pages.settings.mfaEnabledDesc')}</p>
             </div>
             <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;font-family:var(--mono);font-size:14px;line-height:2;text-align:center">
               ${result.recoveryCodes.map(c => `<div>${Utils.escapeHtml(c)}</div>`).join('')}
             </div>
           `;
           Modal._content.querySelector('.modal-footer').innerHTML = `
-            <button class="btn btn-secondary" id="mfa-dl-codes"><i class="fas fa-download"></i> Download Codes</button>
+            <button class="btn btn-secondary" id="mfa-dl-codes"><i class="fas fa-download"></i> ${i18n.t('pages.settings.downloadCodes')}</button>
             <button class="btn btn-primary" id="mfa-done">${i18n.t('common.close')}</button>
           `;
           Modal._content.querySelector('#mfa-done').addEventListener('click', () => { Modal.close(); this._renderTab(); });
@@ -428,7 +428,7 @@ const SettingsPage = {
             a.download = `docker-dash-recovery-codes-${username}.txt`; a.click();
           });
 
-          Toast.success('MFA enabled for ' + username);
+          Toast.success(i18n.t('pages.settings.mfaEnabledToast', { username }));
         } catch (err) { Toast.error(err.message); }
       });
     } catch (err) { Toast.error(err.message); }
@@ -436,14 +436,14 @@ const SettingsPage = {
 
   async _disableMfaDialog(userId, username) {
     const ok = await Modal.confirm(
-      `Disable MFA for "${username}"? They will only need a password to log in.`,
-      { danger: true, confirmText: 'Disable MFA' }
+      i18n.t('pages.settings.disableMfaConfirm', { username }),
+      { danger: true, confirmText: i18n.t('pages.settings.disableMfa') }
     );
     if (!ok) return;
     try {
       // Admin disabling MFA for another user — use admin endpoint
       await Api.delete(`/auth/users/${userId}/mfa`);
-      Toast.success('MFA disabled for ' + username);
+      Toast.success(i18n.t('pages.settings.mfaDisabled', { username }));
       await this._renderTab();
     } catch (err) { Toast.error(err.message); }
   },
@@ -547,11 +547,11 @@ const SettingsPage = {
       el.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3><i class="fas fa-warehouse" style="margin-right:8px"></i>Docker Registries</h3>
-            <button class="btn btn-sm btn-primary" id="add-registry"><i class="fas fa-plus"></i> Add Registry</button>
+            <h3><i class="fas fa-warehouse" style="margin-right:8px"></i>${i18n.t('pages.settings.registriesTitle')}</h3>
+            <button class="btn btn-sm btn-primary" id="add-registry"><i class="fas fa-plus"></i> ${i18n.t('pages.settings.addRegistry')}</button>
           </div>
           <div class="card-body" style="padding:0">
-            ${registries.length === 0 ? '<div class="empty-msg">No registries configured. Only Docker Hub (public) is available.</div>' : `
+            ${registries.length === 0 ? '<div class="empty-msg">' + i18n.t('pages.settings.noRegistries') + '</div>' : `
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>URL</th><th>Username</th><th>Last Used</th><th></th></tr></thead>
               <tbody>${registries.map(r => `
@@ -587,7 +587,7 @@ const SettingsPage = {
       <div class="form-group"><label>Username (optional)</label><input type="text" id="reg-user" class="form-control"></div>
       <div class="form-group"><label>Password (optional)</label><input type="password" id="reg-pass" class="form-control"></div>
     `, {
-      title: 'Add Docker Registry',
+      title: i18n.t('pages.settings.addRegistryTitle'),
       width: '450px',
       onSubmit: (content) => ({
         name: content.querySelector('#reg-name').value.trim(),
@@ -600,31 +600,31 @@ const SettingsPage = {
     if (result && result.name && result.url) {
       try {
         await Api.createRegistry(result);
-        Toast.success('Registry added');
+        Toast.success(i18n.t('pages.settings.registryAdded'));
         this._renderTab();
       } catch (err) { Toast.error(err.message); }
     }
   },
 
   async _testRegistry(id) {
-    Toast.info('Testing connection...');
+    Toast.info(i18n.t('pages.settings.testingConnection'));
     try {
       const result = await Api.testRegistry(id);
-      if (result.ok) Toast.success('Connection successful');
-      else Toast.error('Connection failed: ' + (result.error || 'Unknown error'));
+      if (result.ok) Toast.success(i18n.t('pages.settings.connectionSuccessful'));
+      else Toast.error(i18n.t('pages.settings.connectionFailed', { message: result.error || 'Unknown error' }));
     } catch (err) { Toast.error(err.message); }
   },
 
   async _editRegistry(id) {
-    Toast.info('Edit functionality coming soon');
+    Toast.info(i18n.t('pages.settings.editComingSoon'));
   },
 
   async _deleteRegistry(id) {
-    const ok = await Modal.confirm('Delete this registry?', { danger: true });
+    const ok = await Modal.confirm(i18n.t('pages.settings.deleteRegistryConfirm'), { danger: true });
     if (!ok) return;
     try {
       await Api.deleteRegistry(id);
-      Toast.success('Registry deleted');
+      Toast.success(i18n.t('pages.settings.registryDeleted'));
       this._renderTab();
     } catch (err) { Toast.error(err.message); }
   },
@@ -641,11 +641,11 @@ const SettingsPage = {
       el.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3><i class="fas fa-bell" style="margin-right:8px"></i>Notification Channels</h3>
-            <button class="btn btn-sm btn-primary" id="nc-create"><i class="fas fa-plus"></i> Add Channel</button>
+            <h3><i class="fas fa-bell" style="margin-right:8px"></i>${i18n.t('pages.settings.notificationChannelsTitle')}</h3>
+            <button class="btn btn-sm btn-primary" id="nc-create"><i class="fas fa-plus"></i> ${i18n.t('pages.settings.addChannel')}</button>
           </div>
           <div class="card-body" style="padding:0">
-            ${channels.length === 0 ? '<div class="empty-msg">No notification channels configured. Add Discord, Telegram, Slack, or other channels to receive alerts.</div>' : `
+            ${channels.length === 0 ? '<div class="empty-msg">' + i18n.t('pages.settings.noChannels') + '</div>' : `
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
               <tbody>${channels.map(c => `
@@ -680,12 +680,12 @@ const SettingsPage = {
           </div>
           <div id="nc-fields"></div>
         `, {
-          title: 'Add Notification Channel',
+          title: i18n.t('pages.settings.addChannelTitle'),
           width: '480px',
           onSubmit: (content) => {
             const name = content.querySelector('#nc-name').value.trim();
             const provider = content.querySelector('#nc-provider').value;
-            if (!name) { Toast.warning('Name is required'); return false; }
+            if (!name) { Toast.warning(i18n.t('pages.settings.nameRequired')); return false; }
             const config = {};
             content.querySelectorAll('[data-config-key]').forEach(input => {
               config[input.dataset.configKey] = input.value;
@@ -713,7 +713,7 @@ const SettingsPage = {
         if (result) {
           try {
             await Api.createNotificationChannel(result);
-            Toast.success('Notification channel created');
+            Toast.success(i18n.t('pages.settings.channelCreated'));
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
         }
@@ -724,18 +724,18 @@ const SettingsPage = {
         if (!btn) return;
         const id = parseInt(btn.dataset.id);
         if (btn.dataset.action === 'test-nc') {
-          Toast.info('Sending test notification...');
+          Toast.info(i18n.t('pages.settings.sendingTest'));
           try {
             const res = await Api.testNotificationChannel(id);
-            if (res.ok) Toast.success('Test notification sent');
-            else Toast.error('Test failed: ' + (res.error || 'Unknown error'));
+            if (res.ok) Toast.success(i18n.t('pages.settings.testSentSuccess'));
+            else Toast.error(i18n.t('pages.settings.testFailed', { message: res.error || 'Unknown error' }));
           } catch (err) { Toast.error(err.message); }
         } else if (btn.dataset.action === 'delete-nc') {
-          const ok = await Modal.confirm('Delete this notification channel?', { danger: true });
+          const ok = await Modal.confirm(i18n.t('pages.settings.deleteChannelConfirm'), { danger: true });
           if (!ok) return;
           try {
             await Api.deleteNotificationChannel(id);
-            Toast.success('Channel deleted');
+            Toast.success(i18n.t('pages.settings.channelDeleted'));
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
         }
@@ -751,11 +751,11 @@ const SettingsPage = {
       el.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3><i class="fab fa-git-alt" style="margin-right:8px"></i>Git Credentials</h3>
-            <button class="btn btn-sm btn-primary" id="gc-create"><i class="fas fa-plus"></i> Add Credential</button>
+            <h3><i class="fab fa-git-alt" style="margin-right:8px"></i>${i18n.t('pages.settings.gitCredentialsTitle')}</h3>
+            <button class="btn btn-sm btn-primary" id="gc-create"><i class="fas fa-plus"></i> ${i18n.t('pages.settings.addCredential')}</button>
           </div>
           <div class="card-body" style="padding:0">
-            ${creds.length === 0 ? '<div class="empty-msg">No Git credentials saved. Add one to deploy from private repositories.</div>' : `
+            ${creds.length === 0 ? '<div class="empty-msg">' + i18n.t('pages.settings.noCredentials') + '</div>' : `
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>Type</th><th>Username</th><th>Used By</th><th>Created</th><th></th></tr></thead>
               <tbody>${creds.map(c => `
@@ -824,7 +824,7 @@ const SettingsPage = {
         </div>
       </div>
     `, {
-      title: 'New Git Credential',
+      title: i18n.t('pages.settings.newCredentialTitle'),
       width: '480px',
       onSubmit: (content) => {
         const name = content.querySelector('#gc-name').value.trim();
@@ -854,7 +854,7 @@ const SettingsPage = {
     if (result) {
       try {
         await Api.createGitCredential(result);
-        Toast.success('Git credential created');
+        Toast.success(i18n.t('pages.settings.credentialCreated'));
         await this._renderTab();
       } catch (err) { Toast.error(err.message); }
     }
@@ -893,7 +893,7 @@ const SettingsPage = {
           ${cred.ssh_public_key ? `<div class="form-group"><label>Current Public Key</label><div class="mono text-sm" style="word-break:break-all;padding:8px;background:var(--surface2);border-radius:4px">${Utils.escapeHtml(cred.ssh_public_key)}</div></div>` : ''}
         `}
       `, {
-        title: 'Edit Git Credential',
+        title: i18n.t('pages.settings.editCredentialTitle'),
         width: '480px',
         onSubmit: (content) => {
           const data = {};
@@ -911,7 +911,7 @@ const SettingsPage = {
 
       if (result) {
         await Api.updateGitCredential(id, result);
-        Toast.success('Git credential updated');
+        Toast.success(i18n.t('pages.settings.credentialUpdated'));
         await this._renderTab();
       }
     } catch (err) { Toast.error(err.message); }
@@ -919,14 +919,14 @@ const SettingsPage = {
 
   async _deleteGitCredential(id, usageCount) {
     if (usageCount > 0) {
-      Toast.error(`This credential is used by ${usageCount} stack(s). Remove or reassign them first.`);
+      Toast.error(i18n.t('pages.settings.credentialInUse', { count: usageCount }));
       return;
     }
-    const ok = await Modal.confirm('Delete this Git credential?', { danger: true, confirmText: 'Delete' });
+    const ok = await Modal.confirm(i18n.t('pages.settings.deleteCredentialConfirm'), { danger: true, confirmText: i18n.t('common.delete') });
     if (!ok) return;
     try {
       await Api.deleteGitCredential(id);
-      Toast.success('Git credential deleted');
+      Toast.success(i18n.t('pages.settings.credentialDeleted'));
       await this._renderTab();
     } catch (err) { Toast.error(err.message); }
   },
@@ -947,14 +947,14 @@ const SettingsPage = {
       el.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3><i class="fas fa-cogs" style="margin-right:8px"></i>Workflow Automation</h3>
+            <h3><i class="fas fa-cogs" style="margin-right:8px"></i>${i18n.t('pages.settings.workflowsTitle')}</h3>
             <div style="display:flex;gap:8px">
-              <button class="btn btn-sm btn-secondary" id="wf-templates"><i class="fas fa-magic"></i> From Template</button>
-              <button class="btn btn-sm btn-primary" id="wf-create"><i class="fas fa-plus"></i> New Rule</button>
+              <button class="btn btn-sm btn-secondary" id="wf-templates"><i class="fas fa-magic"></i> ${i18n.t('pages.settings.fromTemplate')}</button>
+              <button class="btn btn-sm btn-primary" id="wf-create"><i class="fas fa-plus"></i> ${i18n.t('pages.settings.newRule')}</button>
             </div>
           </div>
           <div class="card-body" style="padding:0">
-            ${rules.length === 0 ? '<div class="empty-msg">No workflow rules. Create one or use a template to automate container management.</div>' : `
+            ${rules.length === 0 ? '<div class="empty-msg">' + i18n.t('pages.settings.noWorkflows') + '</div>' : `
             <table class="data-table">
               <thead><tr><th style="text-align:left">Name</th><th>Trigger</th><th>Action</th><th>Target</th><th>Fired</th><th>Status</th><th></th></tr></thead>
               <tbody>${rules.map(r => `
@@ -993,7 +993,7 @@ const SettingsPage = {
         `).join('');
 
         Modal.open(`
-          <div class="modal-header"><h3>Workflow Templates</h3><button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
+          <div class="modal-header"><h3>${i18n.t('pages.settings.workflowTemplatesTitle')}</h3><button class="modal-close-btn" onclick="Modal.close()"><i class="fas fa-times"></i></button></div>
           <div class="modal-body">${html}</div>
         `, { width: '500px' });
 
@@ -1002,7 +1002,7 @@ const SettingsPage = {
             const tpl = JSON.parse(card.dataset.tpl);
             try {
               await Api.createWorkflow({ ...tpl, target: '*' });
-              Toast.success(`Workflow "${tpl.name}" created`);
+              Toast.success(i18n.t('pages.settings.workflowCreated'));
               Modal.close();
               this._renderTab();
             } catch (err) { Toast.error(err.message); }
@@ -1034,7 +1034,7 @@ const SettingsPage = {
           <div class="form-group"><label>Target Container</label><input type="text" id="wf-target" class="form-control" value="*" placeholder="* = all, or container name"></div>
           <div class="form-group"><label>Cooldown (seconds)</label><input type="number" id="wf-cooldown" class="form-control" value="300" min="60"></div>
         `, {
-          title: 'New Workflow Rule', width: '480px',
+          title: i18n.t('pages.settings.newWorkflowTitle'), width: '480px',
           onSubmit: (c) => ({
             name: c.querySelector('#wf-name').value.trim(),
             description: c.querySelector('#wf-desc').value.trim(),
@@ -1049,7 +1049,7 @@ const SettingsPage = {
         if (result && result.name) {
           try {
             await Api.createWorkflow(result);
-            Toast.success('Workflow rule created');
+            Toast.success(i18n.t('pages.settings.workflowCreated'));
             this._renderTab();
           } catch (err) { Toast.error(err.message); }
         }
@@ -1062,13 +1062,13 @@ const SettingsPage = {
         const id = parseInt(btn.dataset.id);
         if (btn.dataset.action === 'toggle-wf') {
           await Api.updateWorkflow(id, { is_active: btn.dataset.active !== '1' });
-          Toast.success('Workflow updated');
+          Toast.success(i18n.t('pages.settings.workflowUpdated'));
           this._renderTab();
         } else if (btn.dataset.action === 'delete-wf') {
-          const ok = await Modal.confirm('Delete this workflow rule?', { danger: true });
+          const ok = await Modal.confirm(i18n.t('pages.settings.deleteWorkflowConfirm'), { danger: true });
           if (!ok) return;
           await Api.deleteWorkflow(id);
-          Toast.success('Workflow deleted');
+          Toast.success(i18n.t('pages.settings.workflowDeleted'));
           this._renderTab();
         }
       });

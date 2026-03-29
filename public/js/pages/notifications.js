@@ -15,26 +15,26 @@ const NotificationsPage = {
       <div class="page-header">
         <div>
           <h2><i class="fas fa-bell"></i> ${i18n.t('notifications.title')}</h2>
-          <div class="page-subtitle">Notification history and management</div>
+          <div class="page-subtitle">${i18n.t('pages.notifications.subtitle')}</div>
         </div>
         <div class="page-actions" style="gap:8px">
           <select id="notif-type-filter" class="form-control form-control-sm" style="width:140px">
-            <option value="">All types</option>
-            <option value="info">Info</option>
-            <option value="success">Success</option>
-            <option value="warning">Warning</option>
-            <option value="error">Error</option>
+            <option value="">${i18n.t('pages.notifications.allTypes')}</option>
+            <option value="info">${i18n.t('pages.notifications.info')}</option>
+            <option value="success">${i18n.t('pages.notifications.success')}</option>
+            <option value="warning">${i18n.t('pages.notifications.warning')}</option>
+            <option value="error">${i18n.t('pages.notifications.error')}</option>
           </select>
           <select id="notif-read-filter" class="form-control form-control-sm" style="width:130px">
-            <option value="all">All</option>
-            <option value="unread">Unread only</option>
-            <option value="read">Read only</option>
+            <option value="all">${i18n.t('pages.notifications.all')}</option>
+            <option value="unread">${i18n.t('pages.notifications.unreadOnly')}</option>
+            <option value="read">${i18n.t('pages.notifications.readOnly')}</option>
           </select>
           <button class="btn btn-sm btn-secondary" id="notif-mark-all" title="${i18n.t('notifications.markAllRead')}">
-            <i class="fas fa-check-double"></i> Mark all read
+            <i class="fas fa-check-double"></i> ${i18n.t('pages.notifications.markAllReadBtn')}
           </button>
           <button class="btn btn-sm btn-danger" id="notif-bulk-delete" style="display:none">
-            <i class="fas fa-trash"></i> Delete selected (<span id="notif-sel-count">0</span>)
+            <i class="fas fa-trash"></i> ${i18n.t('pages.notifications.deleteSelected')} (<span id="notif-sel-count">0</span>)
           </button>
           <button class="btn btn-sm btn-secondary" id="notif-refresh">
             <i class="fas fa-sync-alt"></i>
@@ -48,16 +48,16 @@ const NotificationsPage = {
     container.querySelector('#notif-refresh').addEventListener('click', () => this._load());
     container.querySelector('#notif-mark-all').addEventListener('click', async () => {
       await Api.markAllNotificationsRead();
-      Toast.success('All notifications marked as read');
+      Toast.success(i18n.t('pages.notifications.allMarkedRead'));
       this._load();
     });
     container.querySelector('#notif-bulk-delete').addEventListener('click', async () => {
       if (this._selectedIds.size === 0) return;
-      const ok = await Modal.confirm(`Delete ${this._selectedIds.size} notification(s)?`, { danger: true });
+      const ok = await Modal.confirm(i18n.t('pages.notifications.deleteConfirm', { count: this._selectedIds.size }), { danger: true });
       if (!ok) return;
       await Api.bulkNotifications([...this._selectedIds], 'delete');
       this._selectedIds.clear();
-      Toast.success('Notifications deleted');
+      Toast.success(i18n.t('pages.notifications.deleted'));
       this._load();
     });
     container.querySelector('#notif-read-filter').addEventListener('change', (e) => {
@@ -107,12 +107,12 @@ const NotificationsPage = {
             <table class="data-table" style="margin:0">
               <thead>
                 <tr>
-                  <th style="width:40px"><input type="checkbox" id="notif-select-all" title="Select all"></th>
-                  <th style="width:40px">Type</th>
-                  <th>Title</th>
-                  <th>Message</th>
-                  <th style="width:140px">Time</th>
-                  <th style="width:80px">Status</th>
+                  <th style="width:40px"><input type="checkbox" id="notif-select-all" title="${i18n.t('pages.notifications.selectAll')}"></th>
+                  <th style="width:40px">${i18n.t('pages.notifications.type')}</th>
+                  <th>${i18n.t('pages.notifications.titleCol')}</th>
+                  <th>${i18n.t('pages.notifications.message')}</th>
+                  <th style="width:140px">${i18n.t('pages.notifications.time')}</th>
+                  <th style="width:80px">${i18n.t('pages.notifications.statusCol')}</th>
                   <th style="width:100px">${i18n.t('common.actions')}</th>
                 </tr>
               </thead>
@@ -158,7 +158,7 @@ const NotificationsPage = {
       el.querySelectorAll('.notif-delete-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
           await Api.deleteNotification(parseInt(btn.dataset.id));
-          Toast.success('Notification deleted');
+          Toast.success(i18n.t('pages.notifications.singleDeleted'));
           this._load();
         });
       });
@@ -166,7 +166,7 @@ const NotificationsPage = {
       // Pagination
       this._renderPagination(totalPages);
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg" style="padding:24px;color:var(--red)"><i class="fas fa-exclamation-triangle"></i> Failed to load: ${Utils.escapeHtml(err.message)}</div>`;
+      el.innerHTML = `<div class="empty-msg" style="padding:24px;color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${i18n.t('pages.notifications.failedToLoad', { message: Utils.escapeHtml(err.message) })}</div>`;
     }
   },
 
@@ -191,9 +191,9 @@ const NotificationsPage = {
         <td>${Utils.escapeHtml(n.title || '')}${n.link ? ` <a href="${Utils.escapeHtml(n.link)}" style="color:var(--accent);font-size:12px"><i class="fas fa-external-link-alt"></i></a>` : ''}</td>
         <td class="text-muted text-sm">${Utils.escapeHtml(n.message || '')}</td>
         <td class="text-muted text-sm" title="${Utils.formatDate(n.created_at)}">${Utils.timeAgo(n.created_at)}</td>
-        <td>${n.is_read ? '<span class="badge" style="background:var(--surface2);color:var(--text-muted)">Read</span>' : '<span class="badge badge-info">Unread</span>'}</td>
+        <td>${n.is_read ? '<span class="badge" style="background:var(--surface2);color:var(--text-muted)">' + i18n.t('pages.notifications.read') + '</span>' : '<span class="badge badge-info">' + i18n.t('pages.notifications.unread') + '</span>'}</td>
         <td style="display:flex;gap:4px">
-          ${!n.is_read ? `<button class="action-btn notif-read-btn" data-id="${n.id}" title="Mark read"><i class="fas fa-check"></i></button>` : ''}
+          ${!n.is_read ? `<button class="action-btn notif-read-btn" data-id="${n.id}" title="${i18n.t('pages.notifications.markRead')}"><i class="fas fa-check"></i></button>` : ''}
           <button class="action-btn notif-delete-btn" data-id="${n.id}" title="${i18n.t('common.delete')}"><i class="fas fa-trash"></i></button>
         </td>
       </tr>
