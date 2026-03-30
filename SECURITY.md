@@ -139,7 +139,7 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 **Impact:** More authentication paths means more surface area to secure. Each path must be independently validated and rate-limited.
 
-**Mitigation:** All three methods validate against the same session/token store. Rate limiting applies regardless of auth method. API keys have separate creation/revocation UI. Audit log records the authentication method used. Bearer token is only returned in the login response body (not stored server-side in plaintext).
+**Mitigation:** Session cookies and Bearer tokens validate against the `sessions` table. API keys validate against a separate `api_keys` table with independent creation/revocation. Rate limiting applies regardless of auth method. Audit log records the authentication method used. Bearer token is only returned in the login response body (not stored server-side in plaintext).
 
 ### 4. SSO header-based authentication
 

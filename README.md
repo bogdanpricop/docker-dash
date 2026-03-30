@@ -385,7 +385,7 @@ Docker Dash requires access to the Docker socket (`/var/run/docker.sock`). This 
 
 These are conscious design decisions documented in [SECURITY.md](SECURITY.md):
 
-1. **CSP allows `unsafe-inline`/`unsafe-eval`** — required by the zero-build-step vanilla JS architecture. XSS is mitigated by output escaping on all user content.
+1. **CSP allows `unsafe-eval`** (but NOT `unsafe-inline`) — `unsafe-eval` required by Chart.js. All 67 inline handlers were converted to addEventListener in v5.0. XSS mitigated by output escaping on all user content (400+ `escapeHtml()` calls).
 2. **WebSocket accepts token via query string** — fallback for browsers that block cookies (Edge Tracking Prevention). Cookie-based auth is always preferred. Usage is logged.
 3. **Mixed auth model (cookie + Bearer + API key)** — cookies for browser UI, Bearer for API/CLI, API keys for integrations. All validate against the same session store.
 

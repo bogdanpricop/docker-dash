@@ -30,8 +30,17 @@ router.post('/login',
         return res.status(result.locked ? 429 : 401).json({ error: result.error });
       }
 
-      // Set cookie — auto-detect HTTPS from request protocol or X-Forwarded-Proto
-      // In strict mode: always set Secure + SameSite=Strict (forces HTTPS)
+      // MFA check: if user has TOTP enabled, return mfaRequired instead of session
+      // IMPORTANT: do NOT set session cookie here — MFA is not yet verified
+      if (result.mfaRequired) {
+        auditService.log({ userId: result.user.id, username, action: 'login_mfa_pending', ip, userAgent: ua });
+        return res.json({
+          mfaRequired: true,
+          mfaToken: result.mfaToken,
+        });
+      }
+
+      // MFA not required — set session cookie and respond
       const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
       res.cookie(config.session.cookieName, result.token, {
         httpOnly: true,
@@ -52,15 +61,7 @@ router.post('/login',
 
       // In strict security mode, do NOT include token in body (cookie-only)
       if (!config.security.disableTokenInBody) {
-        response.token = result.token; // Also in body for when cookies are blocked (Edge Tracking Prevention, HTTP on public IPs)
-      }
-
-      // MFA check: if user has TOTP enabled, return mfaRequired instead of session
-      if (result.mfaRequired) {
-        return res.json({
-          mfaRequired: true,
-          mfaToken: result.mfaToken,
-        });
+        response.token = result.token;
       }
 
       res.json(response);
