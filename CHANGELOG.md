@@ -2,6 +2,16 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.0.2] - 2026-03-30
+
+### Fixed
+- CRITICAL: MFA login flow — session cookie was set before MFA verification, creating invalid cookie when TOTP required. Cookie now only set after complete authentication.
+- README CSP tradeoff description aligned with actual code (unsafe-eval only, NOT unsafe-inline)
+- dotenv added as explicit dependency for local development reliability
+- .env.example expanded with missing config vars (SECURITY_MODE, PASSWORD_MAX_AGE_DAYS, APP_NAME, etc.)
+- SECURITY.md auth model description clarified (API keys use separate table)
+- CI syntax check error fixed (single quotes → backtick template literals in MFA flow)
+
 ## [5.0.1] - 2026-03-30
 
 ### Fixed — Documentation & Release Hygiene
