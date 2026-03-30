@@ -2,6 +2,16 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.0.4] - 2026-03-30
+
+### Verified
+- All findings from external audit re-verified on live GitHub repo
+- API key permission enforcement confirmed live (enforceApiKeyPermissions in auth middleware)
+- Rate limiting confirmed on /validate-reset-token and /reset-password-token
+- Version consistency confirmed: 5.0.4 across package.json, docker-compose.yml, index.html
+- Zero stale references (4.2.0, 335 tests, 52 features, 20 templates, ENABLE_TLS) — all clean
+- 384 tests, 29 suites, 100% passing
+
 ## [5.0.3] - 2026-03-30
 
 ### Security
