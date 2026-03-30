@@ -91,13 +91,13 @@ router.get('/favorites', requireAuth, (req, res) => {
 });
 
 router.post('/favorites', requireAuth, (req, res) => {
-  favorites.add(req.user.id, req.body.containerId);
-  res.json({ ok: true });
+  try { favorites.add(req.user.id, req.body.containerId); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/favorites/:containerId', requireAuth, (req, res) => {
-  favorites.remove(req.user.id, req.params.containerId);
-  res.json({ ok: true });
+  try { favorites.remove(req.user.id, req.params.containerId); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Notifications ──────────────────────────────────────────
@@ -117,27 +117,29 @@ router.get('/notifications/count', requireAuth, (req, res) => {
 });
 
 router.post('/notifications/:id/read', requireAuth, (req, res) => {
-  notifications.markRead(parseInt(req.params.id), req.user.id);
-  res.json({ ok: true });
+  try { notifications.markRead(parseInt(req.params.id), req.user.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/notifications/read-all', requireAuth, (req, res) => {
-  notifications.markAllRead(req.user.id);
-  res.json({ ok: true });
+  try { notifications.markAllRead(req.user.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/notifications/:id', requireAuth, (req, res) => {
-  notifications.delete(parseInt(req.params.id), req.user.id);
-  res.json({ ok: true });
+  try { notifications.delete(parseInt(req.params.id), req.user.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/notifications/bulk', requireAuth, (req, res) => {
-  const { ids, action } = req.body;
-  if (!ids || !Array.isArray(ids) || !['read', 'delete'].includes(action)) {
-    return res.status(400).json({ error: 'ids (array) and action (read|delete) required' });
-  }
-  notifications.bulkAction(ids.map(id => parseInt(id)), req.user.id, action);
-  res.json({ ok: true });
+  try {
+    const { ids, action } = req.body;
+    if (!ids || !Array.isArray(ids) || !['read', 'delete'].includes(action)) {
+      return res.status(400).json({ error: 'ids (array) and action (read|delete) required' });
+    }
+    notifications.bulkAction(ids.map(id => parseInt(id)), req.user.id, action);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── API Keys ───────────────────────────────────────────────
@@ -147,15 +149,17 @@ router.get('/api-keys', requireAuth, (req, res) => {
 });
 
 router.post('/api-keys', requireAuth, (req, res) => {
-  const result = apiKeys.create(req.user.id, req.body);
-  auditService.log({ userId: req.user.id, username: req.user.username,
-    action: 'apikey_create', details: { name: req.body.name }, ip: getClientIp(req) });
-  res.status(201).json(result);
+  try {
+    const result = apiKeys.create(req.user.id, req.body);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'apikey_create', details: { name: req.body.name }, ip: getClientIp(req) });
+    res.status(201).json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/api-keys/:id', requireAuth, (req, res) => {
-  apiKeys.revoke(parseInt(req.params.id), req.user.id);
-  res.json({ ok: true });
+  try { apiKeys.revoke(parseInt(req.params.id), req.user.id); res.json({ ok: true }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // ─── Audit Log ──────────────────────────────────────────────

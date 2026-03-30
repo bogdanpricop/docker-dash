@@ -213,7 +213,7 @@ router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeatu
 });
 
 // ─── Update Checks ───────────────────────────────────────────
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const https = require('https');
 
 function fetchJSON(url) {

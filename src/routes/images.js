@@ -121,7 +121,7 @@ router.get('/:id/config', requireAuth, async (req, res) => {
 });
 
 // ─── Vulnerability Scanning ─────────────────────────
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const scanLog = require('../utils/logger')('scan');
 
 function _makeSummary(vulns) {
