@@ -112,6 +112,7 @@
 - **TCP + TLS** — Connect remote Docker hosts over the network with mutual TLS
 - **SSH Tunnel** — Secure tunnel via SSH (no need to expose Docker API)
 - **Docker Desktop** — Connect to Windows/Mac Docker Desktop instances
+- **Podman Compatible** — Works with Podman via Docker-compatible API socket
 - **Host Selector** — Switch between hosts from the sidebar dropdown
 
 ### Operations
@@ -216,6 +217,27 @@ Docker Dash can manage multiple Docker hosts from a single instance:
 | **Unix Socket** | Local (default) | Docker socket mounted (automatic) |
 
 The app includes a **built-in setup guide** (Hosts page) with step-by-step instructions for each method, including TLS certificate generation and per-OS `socat` installation commands.
+
+## Podman Support
+
+Docker Dash works with **Podman** via its Docker-compatible API. No code changes needed.
+
+```bash
+# 1. Enable the Podman socket
+systemctl --user enable --now podman.socket    # rootless
+# or
+sudo systemctl enable --now podman.socket      # rootful
+
+# 2. Set the socket path in .env
+echo 'DOCKER_SOCKET=/run/podman/podman.sock' >> .env   # rootful
+# or
+echo 'DOCKER_SOCKET=/run/user/1000/podman/podman.sock' >> .env  # rootless
+
+# 3. Start Docker Dash
+docker compose up -d   # or podman-compose up -d
+```
+
+**Known differences:** Podman lacks Docker Compose labels (`com.docker.compose.project`), so containers won't auto-group into stacks. Use Docker Dash's Container Groups feature instead.
 
 ## Configuration
 

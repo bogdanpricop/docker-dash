@@ -13,8 +13,10 @@ services:
     ports:
       - "${APP_PORT:-8101}:${APP_PORT:-8101}"
     volumes:
-      # Docker socket — read-only for security
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Container runtime socket — read-only for security
+      # Docker:  /var/run/docker.sock (default)
+      # Podman:  /run/podman/podman.sock (set DOCKER_SOCKET in .env)
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
       # Persistent data (SQLite DB, stats)
       - docker-dash-data:/data
     healthcheck:
