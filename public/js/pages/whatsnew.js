@@ -24,7 +24,7 @@ const WhatsNewPage = {
         { type: 'fix', text: 'Dependency Map layout — containers no longer overlap (improved force simulation)' },
         { type: 'fix', text: 'Port Reference expanded to 57 ports (Docker, K8s, MQTT, RDP, etc.)' },
         { type: 'improvement', text: 'External audit findings addressed — 6 security tradeoffs fully documented, deployment recommendations table' },
-        { type: 'improvement', text: '359 tests across 24 test files (100% passing)' },
+        { type: 'improvement', text: '384 tests across 29 test files (100% passing)' },
       ],
     },
     {

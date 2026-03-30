@@ -149,7 +149,7 @@
 - **Watchtower Detection** — Auto-detect and migrate from Watchtower to native safe-pull
 - **Prometheus Metrics** — `/api/metrics` endpoint for Grafana integration
 - **Self-Reporting Footprint** — Docker Dash memory, uptime, DB size at `/api/footprint`
-- **335 Tests** — 22 test suites covering auth, RBAC, security, CRUD, services (100% passing)
+- **384 Tests** — 29 test suites covering auth, RBAC, security, CRUD, services (100% passing)
 
 ## Quick Start
 
@@ -257,7 +257,7 @@ Docker Dash uses a modular i18n system. To add a new language:
 
 That's it — the language appears automatically in the selector. See [`public/js/i18n/README.md`](public/js/i18n/README.md) for full instructions.
 
-Currently supported: **English**, **Romanian**, **German**.
+Currently supported: **English**, **Romanian**, **German**, **Italian**, **French**, **Spanish**, **Portuguese**, **Chinese**, **Japanese**, **Korean**, **Klingon** (11 languages).
 
 ## Project Structure
 
@@ -265,7 +265,7 @@ Currently supported: **English**, **Romanian**, **German**.
 docker-dash/
 ├── src/
 │   ├── config/          # Environment-based configuration
-│   ├── db/              # SQLite setup + 13 auto-migrations
+│   ├── db/              # SQLite setup + 32 auto-migrations
 │   ├── middleware/       # Auth, rate limiting, hostId extraction
 │   ├── routes/          # REST API (containers, images, volumes, networks, hosts, ...)
 │   ├── services/        # Business logic (docker, stats, alerts, ssh-tunnel, registry)
@@ -333,7 +333,7 @@ docker-dash/
 | i18n | 11 languages | Partial | No | No |
 | Command Palette + Shortcuts | Yes | No | No | No |
 | Mobile Responsive | Yes | Yes | Yes | Yes |
-| Test Suite | 384 tests (100%) | Yes | No | No |
+| Test Suite | **384 tests (100%)** | Yes | No | No |
 | Build Step | **None** | Angular | Required | Required |
 | Container Size | **~80MB** | ~250MB | ~100MB | ~80MB |
 | RAM Usage | **~50MB** | ~200MB | ~50MB | ~60MB |
@@ -391,9 +391,9 @@ These are conscious design decisions documented in [SECURITY.md](SECURITY.md):
 
 ### Test Coverage
 
-- **384 tests** across 29 test files (100% passing)
+- **384 tests** across **29 test files** (100% passing)
 - Unit tests: crypto, helpers, validation, git patterns
-- Integration tests: auth flow, API endpoints
+- Integration tests: auth flow, API endpoints, RBAC, security
 - CI runs on every push via GitHub Actions
 
 ## Contributing

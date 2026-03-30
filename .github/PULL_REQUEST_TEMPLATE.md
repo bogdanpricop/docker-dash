@@ -9,7 +9,7 @@ Brief description of changes.
 
 ## Checklist
 - [ ] `node --check` passes on all modified .js files
-- [ ] `npm test` passes (335+ tests)
+- [ ] `npm test` passes (384+ tests)
 - [ ] No `console.log` in production code
 - [ ] i18n keys added for user-facing strings (EN at minimum)
 - [ ] No `execSync` with template literals (use `execFileSync` with arg arrays)

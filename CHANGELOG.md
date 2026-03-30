@@ -2,6 +2,49 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.0.1] - 2026-03-30
+
+### Fixed — Documentation & Release Hygiene
+- All documentation files updated to reflect actual project stats (384 tests, 29 test files, 32 migrations, 11 languages)
+- Stale test counts fixed across README.md, SECURITY.md, CONTRIBUTING.md, CI workflow, PR template, comparison table
+- Cache busters updated in index.html (all `?v=` references now `5.0.1`)
+- i18n language count fixed in comparison API (`EN/RO/DE` → `11 languages`)
+- Project structure in README corrected (13 migrations → 32 migrations)
+- README language list expanded from "English, Romanian, German" to all 11 languages
+- whatsnew.js v5.0.0 test count corrected (359/24 → 384/29)
+- PR template test threshold updated (335+ → 384+)
+- CI summary test count updated (335 → 384)
+
+### Changed
+- Version bumped from 5.0.0 to 5.0.1 across package.json, docker-compose.yml, index.html
+
+## [5.0.0] - 2026-03-29
+
+### Added — Enterprise Security Hardening
+- **Enterprise Security Mode** — `SECURITY_MODE=strict` flag toggles all hardening (cookie-only auth, forced HTTPS, 8h sessions, password expiry)
+- **TOTP/MFA** — two-factor authentication with zero dependencies (RFC 6238), encrypted secrets, 10 recovery codes
+- **Immutable hash-chained audit log** — SHA-256 chain, tamper detection, JSON/CSV/Syslog export
+- **Security event alerting** — 5 default rules (brute force, admin created, MFA disabled), threshold detection, 7 notification channels
+- **14 developer tools** — Password Generator, Hash Generator, IP Calculator, JSON Formatter, Regex Tester, Text Diff, and more
+- **HTML/Markdown converter** tools with live preview
+- **Klingon pIqaD font** integration with full easter egg experience
+
+### Fixed
+- Dependency Map layout — containers no longer overlap (improved force simulation)
+- Port Reference expanded to 57 ports (Docker, K8s, MQTT, RDP, etc.)
+
+### Improved
+- External audit findings addressed — 6 security tradeoffs fully documented, deployment recommendations table
+- 384 tests across 29 test files (100% passing)
+
+### Security
+- All inline event handlers eliminated (67 `onclick=`/`onchange=` converted to `addEventListener`)
+- CSP `scriptSrc` no longer includes `unsafe-inline`; `scriptSrcAttr` set to `none`
+
+### Technical
+- 4 new DB migrations (029-032): enterprise security, MFA, audit integrity, security alerts
+- 5 new test files: TOTP, audit integrity, health endpoint, webhooks, stacks, images scan, alerts
+
 ## [4.2.0] - 2026-03-28
 
 ### Added — 20 New Features

@@ -8,20 +8,20 @@ Thanks for your interest in contributing! Docker Dash is actively maintained and
 
 Looking for where to start? These are great first contributions:
 
-- **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag. Currently: EN, RO, DE.
+- **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag. Currently: 11 languages (EN, RO, DE, IT, FR, ES, PT, ZH, JA, KO, Klingon).
 - **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML). Currently: 30 templates.
 - **Improve i18n coverage** — some pages still have hardcoded English strings (grep for strings not using `i18n.t()`)
-- **Add tests** — 335 tests across 22 files; more coverage is always welcome, especially integration tests
+- **Add tests** — 384 tests across 29 files; more coverage is always welcome, especially integration tests
 - **Documentation** — improve README, add examples, write tutorials
 - **Accessibility** — add ARIA attributes, improve screen reader support, test keyboard navigation
 
-### Project Stats (v4.2.0)
+### Project Stats (v5.0.1)
 
-- **25+ pages** in the frontend SPA
+- **22 pages** in the frontend SPA
 - **230+ API endpoints** (see `/api/docs` for full list)
-- **335 tests** (22 test files, 100% passing)
+- **384 tests** (29 test files, 100% passing)
 - **30 app templates** (+ custom user templates)
-- **28 database migrations** (001-028)
+- **32 database migrations** (001-032)
 - **11 languages** (EN, RO, DE, IT, FR, ES, PT, ZH, JA, KO, Klingon)
 
 ## Getting Started
@@ -215,7 +215,7 @@ Always test your changes in **both dark and light themes**.
 Before submitting a PR, verify:
 
 - [ ] `node --check` passes on all modified `.js` files
-- [ ] `npm test` passes (104+ tests, 100%)
+- [ ] `npm test` passes (384+ tests, 100%)
 - [ ] `npm run lint` passes (0 errors)
 - [ ] Works in both **dark and light** themes
 - [ ] Works with **sidebar collapsed** and expanded
