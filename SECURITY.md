@@ -129,7 +129,7 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 **Impact:** Tokens in URLs can be exposed in server access logs, browser history, and referrer headers. OWASP recommends against passing sensitive data in URLs.
 
-**Mitigation:** Cookie-based auth is always preferred — query param is only used when cookies fail. When query param auth is detected, it is logged at debug level for monitoring. HTTPS (via included Caddy config) encrypts the URL in transit. The token is a session token (not a permanent credential) with configurable TTL.
+**Mitigation:** Cookie-based auth is always preferred — query param is only used when cookies fail. When query param auth is detected, it is logged at debug level for monitoring. HTTPS (via included Caddy config) encrypts the URL in transit. The token is a session token (not a permanent credential) with configurable TTL. **In `SECURITY_MODE=strict`, WebSocket query-string auth is completely disabled.**
 
 ### 3. Mixed authentication model (cookie + Bearer + API key)
 
@@ -139,7 +139,7 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 **Impact:** More authentication paths means more surface area to secure. Each path must be independently validated and rate-limited.
 
-**Mitigation:** Session cookies and Bearer tokens validate against the `sessions` table. API keys validate against a separate `api_keys` table with independent creation/revocation. Rate limiting applies regardless of auth method. Audit log records the authentication method used. Bearer token is only returned in the login response body (not stored server-side in plaintext).
+**Mitigation:** Session cookies and Bearer tokens validate against the `sessions` table. API keys validate against a separate `api_keys` table with independent creation/revocation and **permission enforcement** (read-only keys are blocked from POST/PUT/DELETE by middleware). Rate limiting applies regardless of auth method. Audit log records the authentication method used. **In `SECURITY_MODE=strict`, the login response body omits the token entirely (cookie-only); Bearer and API key auth via Authorization header remain available by design.**
 
 ### 4. SSO header-based authentication
 

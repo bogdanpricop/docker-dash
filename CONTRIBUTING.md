@@ -15,7 +15,7 @@ Looking for where to start? These are great first contributions:
 - **Documentation** — improve README, add examples, write tutorials
 - **Accessibility** — add ARIA attributes, improve screen reader support, test keyboard navigation
 
-### Project Stats (v5.0.1)
+### Project Stats (v5.0.4)
 
 - **22 pages** in the frontend SPA
 - **230+ API endpoints** (see `/api/docs` for full list)
