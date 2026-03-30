@@ -56,6 +56,10 @@ function requireAuth(req, res, next) {
 
   req.user = user;
   req.authToken = token;
+
+  // Enforce API key permissions (read-only keys blocked from mutations)
+  if (user.apiKey) return enforceApiKeyPermissions(req, res, next);
+
   next();
 }
 
@@ -79,6 +83,21 @@ function requireRole(...roles) {
   };
 }
 
+/** Enforce API key permissions (read-only keys can only GET) */
+function enforceApiKeyPermissions(req, res, next) {
+  if (req.user?.apiKey && req.user.permissions) {
+    const perms = req.user.permissions;
+    const isRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    if (isRead && !perms.includes('read') && !perms.includes('*')) {
+      return res.status(403).json({ error: 'API key lacks read permission' });
+    }
+    if (!isRead && !perms.includes('write') && !perms.includes('*')) {
+      return res.status(403).json({ error: 'API key lacks write permission (read-only key)' });
+    }
+  }
+  next();
+}
+
 /** Block actions in read-only mode */
 function writeable(req, res, next) {
   if (config.features.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
@@ -97,4 +116,4 @@ function requireFeature(feature) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature };
+module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature, enforceApiKeyPermissions };

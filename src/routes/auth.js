@@ -419,7 +419,9 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
 });
 
 // ─── Public: Validate Reset Token ──────────────────────────
-router.post('/validate-reset-token', async (req, res) => {
+router.post('/validate-reset-token',
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Token required' });
@@ -441,7 +443,9 @@ router.post('/validate-reset-token', async (req, res) => {
 });
 
 // ─── Public: Reset Password with Token ──────────────────────
-router.post('/reset-password-token', async (req, res) => {
+router.post('/reset-password-token',
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Token and password required' });

@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: "${APP_VERSION:-5.0.2}"
-    image: docker-dash:${APP_VERSION:-5.0.2}
+        APP_VERSION: "${APP_VERSION:-5.0.3}"
+    image: docker-dash:${APP_VERSION:-5.0.3}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -32,8 +32,8 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Optional HTTPS reverse proxy — enable by setting ENABLE_TLS=true in .env
-  # Access via https://192.168.13.20:8443 (self-signed cert for internal network)
+  # Optional HTTPS reverse proxy — enable with: docker compose --profile tls up -d
+  # Access via https://YOUR_HOST:8443 (self-signed cert for internal network)
   caddy:
     image: caddy:2-alpine
     container_name: docker-dash-caddy

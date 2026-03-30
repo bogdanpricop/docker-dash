@@ -383,7 +383,7 @@ class AuthService {
     const timestamp = now();
     db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ?').run(hash, timestamp, timestamp, userId);
 
-    // Invalidate all sessions except current
+    // Invalidate all sessions (user must re-login with new password)
     db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
     return { success: true };
   }

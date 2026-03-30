@@ -438,7 +438,7 @@ router.get('/docs', (req, res) => {
     endpoints: [
       { method: 'GET', path: '/api/health', auth: false, description: 'Health check with DB verification' },
       { method: 'GET', path: '/api/metrics', auth: false, description: 'Prometheus metrics export' },
-      { method: 'GET', path: '/api/compare', auth: false, description: 'Feature comparison matrix (52 features)' },
+      { method: 'GET', path: '/api/compare', auth: false, description: 'Feature comparison matrix (75+ features)' },
       { method: 'GET', path: '/api/docs', auth: false, description: 'This API documentation' },
       { group: 'Auth', endpoints: [
         { method: 'POST', path: '/api/auth/login', description: 'Login with username + password' },
@@ -678,7 +678,7 @@ router.get('/compare', (req, res) => {
     { feature: 'Health Score', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
     { feature: 'Resource Forecasting', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
     { feature: 'Cost Estimation', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
-    { feature: 'App Templates', dockerDash: '20 built-in', portainerCE: '500+ community', dockge: false, dockhand: false },
+    { feature: 'App Templates', dockerDash: '30 + custom', portainerCE: '500+ community', dockge: false, dockhand: false },
     { feature: 'Troubleshooting Wizard', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
     { feature: 'Public Status Page', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },
     { feature: 'Maintenance Windows', dockerDash: true, portainerCE: false, dockge: false, dockhand: false },

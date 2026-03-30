@@ -46,7 +46,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 - **SSO support** — Authelia, Authentik, Caddy forward_auth, Traefik (X-Forwarded-User headers)
 - **API key authentication** as alternative to session-based auth
 - **Forced password change** on first login for default admin
-- **Password policy** — minimum 8 characters + at least one digit + common password rejection, enforced via single `validatePassword()` on all flows (login, change-password, reset-password, create-user, token-based reset)
+- **Password policy** — minimum 8 characters + at least one digit + common password rejection, enforced via single `validatePassword()` on all password-setting flows (change-password, reset-password, create-user, token-based reset)
 
 ### Encryption & Secrets
 - **AES-256-GCM** encryption for credentials at rest (Git tokens, SSH keys, registry passwords, notification tokens)

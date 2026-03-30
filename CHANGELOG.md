@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.0.3] - 2026-03-30
+
+### Security
+- **API key permission enforcement** — read-only API keys now blocked from POST/PUT/DELETE (was decorative, now enforced in auth middleware)
+- **Rate limiting** on public reset-password endpoints (`/validate-reset-token`, `/reset-password-token`)
+
+### Fixed
+- `/api/docs` feature count: 52 → 75+
+- `/api/compare` App Templates: "20 built-in" → "30 + custom"
+- docker-compose.yml TLS comment: "ENABLE_TLS=true" → "docker compose --profile tls up -d"
+- .env.example strict mode description: clarified Bearer/API key still work (by design)
+- SECURITY.md: removed "login" from validatePassword flows (login only compares hashes)
+- changePassword() comment: "except current" → "all sessions" (matches actual behavior)
+
 ## [5.0.2] - 2026-03-30
 
 ### Fixed
