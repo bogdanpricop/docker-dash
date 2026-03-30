@@ -170,7 +170,7 @@ const App = {
 
       const btn = form.querySelector('#login-btn');
       btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}';
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}`;
 
       try {
         const res = await Api.post('/auth/mfa/verify', { mfaToken, code });
@@ -220,7 +220,7 @@ const App = {
         if (!recoveryCode) { newErrEl.textContent = i18n.t('login.mfaEnterRecovery'); newErrEl.classList.remove('hidden'); return; }
         const btn = newForm.querySelector('#login-btn');
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}';
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}`;
         try {
           const res = await Api.post('/auth/mfa/recovery', { mfaToken, recoveryCode });
           if (res.token) { Api._bearerToken = res.token; try { sessionStorage.setItem('dd_token', res.token); } catch {} }
@@ -235,7 +235,7 @@ const App = {
       if (!code || code.length < 6) { newErrEl.textContent = i18n.t('login.mfaEnterCode'); newErrEl.classList.remove('hidden'); return; }
       const btn = newForm.querySelector('#login-btn');
       btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}';
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('login.mfaVerifying')}`;
       try {
         const res = await Api.post('/auth/mfa/verify', { mfaToken, code });
         if (res.token) { Api._bearerToken = res.token; try { sessionStorage.setItem('dd_token', res.token); } catch {} }
