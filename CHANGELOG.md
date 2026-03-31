@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.0.5] - 2026-03-31
+
+### Added
+- **Template Configurator** — dynamic visual editor for template deployment: auto-detects configurable fields (passwords, ports, URLs, booleans), generates smart forms, live YAML preview with change highlighting
+- **Password generator** in configurator — slider (8-256 chars), Generate button, strength indicator, weak default warnings
+- **3 Euro-Office templates** — Document Server standalone, Euro-Office + Nextcloud combo, Dev Stack (Euro-Office vs OnlyOffice)
+- **Cost Optimizer tabs** — Recommendations and Cost Breakdown on separate tabs under savings banner
+- **3-button template UX** — Eye (view YAML), Sliders (configure & deploy), Rocket (deploy with defaults)
+
+### Fixed
+- Container filter reset on page navigation (ghost filter no longer persists)
+- Template configurator: Generate button now correctly updates both input field and YAML preview
+- Template configurator: password field layout — input full width, controls on separate row
+- Template configurator: strength bar updates correctly after generating (was stuck on "weak")
+
 ## [5.0.4] - 2026-03-30
 
 ### Verified

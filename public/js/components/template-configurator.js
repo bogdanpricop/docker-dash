@@ -109,19 +109,46 @@ const TemplateConfigurator = {
       });
     }
 
+    // Length sliders — update label on drag
+    fieldsContainer.querySelectorAll('.tplc-gen-length').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const label = slider.closest('.tpl-field-generate-row')?.querySelector(`.tplc-gen-length-label[data-field-id="${slider.dataset.fieldId}"]`);
+        if (label) label.textContent = slider.value;
+      });
+    });
+
     // Generate buttons
     fieldsContainer.querySelectorAll('.tplc-generate-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const fieldId = btn.dataset.fieldId;
-        const input = fieldsContainer.querySelector(`[data-field-id="${fieldId}"]`);
+        const fieldItem = btn.closest('.tpl-field-item');
+        const input = fieldItem?.querySelector('input.tplc-input');
         if (input) {
-          input.value = this._generatePassword(32);
-          input.type = 'text'; // briefly show generated password
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          btn.closest('.tpl-field-item')?.classList.add('tpl-field-generated');
-          setTimeout(() => {
-            btn.closest('.tpl-field-item')?.classList.remove('tpl-field-generated');
-          }, 1200);
+          const lengthSlider = fieldItem.querySelector('.tplc-gen-length');
+          const len = lengthSlider ? parseInt(lengthSlider.value) || 32 : 32;
+          const generated = this._generatePassword(len);
+          input.value = generated;
+          input.type = 'text'; // show generated password
+          // Update the field object directly
+          const fieldId = btn.dataset.fieldId;
+          const field = fields.find(f => f.id === fieldId);
+          if (field) field.value = generated;
+          // Update strength bar + warning
+          const warningEl = fieldItem.querySelector('.tpl-field-warning');
+          if (warningEl) warningEl.remove();
+          const strengthContainer = fieldItem.querySelector('.tpl-password-strength');
+          if (strengthContainer) {
+            const strength = this._passwordStrength(generated);
+            const colors = { weak: '#f85149', fair: '#d29922', good: '#3fb950', strong: '#58a6ff' };
+            const widths = { weak: '25%', fair: '50%', good: '75%', strong: '100%' };
+            const fill = strengthContainer.querySelector('.tpl-strength-fill');
+            if (fill) { fill.style.width = widths[strength]; fill.style.background = colors[strength]; }
+            const label = strengthContainer.querySelector('span');
+            if (label) { label.textContent = strength; label.style.color = colors[strength]; }
+          }
+          // Trigger preview update
+          this._updatePreview(el, fields, originalYaml);
+          fieldItem.classList.add('tpl-field-generated');
+          setTimeout(() => fieldItem.classList.remove('tpl-field-generated'), 1200);
         }
       });
     });
@@ -130,7 +157,7 @@ const TemplateConfigurator = {
     fieldsContainer.querySelectorAll('.tplc-toggle-vis').forEach(btn => {
       btn.addEventListener('click', () => {
         const fieldId = btn.dataset.fieldId;
-        const input = fieldsContainer.querySelector(`[data-field-id="${fieldId}"]`);
+        const input = fieldsContainer.querySelector(`input.tplc-input[data-field-id="${fieldId}"]`);
         if (input) {
           const isPass = input.type === 'password';
           input.type = isPass ? 'text' : 'password';
@@ -416,16 +443,22 @@ const TemplateConfigurator = {
     const labelText = f.group === 'env' ? f.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/ /g, ' ') : f.label;
 
     switch (f.type) {
-      case 'password':
-        inputHtml = `
-          <div class="tpl-field-password-row">
-            <input type="password" class="form-control tplc-input" data-field-id="${f.id}" value="${escaped}" autocomplete="new-password">
-            <button type="button" class="btn btn-xs btn-secondary tplc-toggle-vis" data-field-id="${f.id}" title="Show/hide"><i class="fas fa-eye"></i></button>
-            <button type="button" class="btn btn-xs btn-accent tplc-generate-btn" data-field-id="${f.id}" title="Generate random"><i class="fas fa-sync-alt"></i></button>
-          </div>
-          ${this._isWeakDefault(f.value) ? `<small class="tpl-field-warning"><i class="fas fa-exclamation-triangle"></i> Default password — change before deploying</small>` : ''}
-          ${this._renderStrengthBar(f.value)}`;
+      case 'password': {
+        const warnHtml = this._isWeakDefault(f.value) ? `<div class="tpl-field-warning" style="margin:4px 0"><i class="fas fa-exclamation-triangle"></i> Default password — change before deploying</div>` : '';
+        inputHtml = `<div style="flex:1;min-width:0">
+  <input type="password" class="form-control tplc-input" data-field-id="${f.id}" value="${escaped}" autocomplete="new-password" style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:12px">
+  <div class="tpl-field-generate-row" style="display:flex;align-items:center;gap:6px;margin-top:6px">
+    <button type="button" class="btn btn-xs btn-secondary tplc-toggle-vis" data-field-id="${f.id}" title="Show/hide"><i class="fas fa-eye"></i></button>
+    <span class="text-xs text-muted">Length:</span>
+    <input type="range" class="tplc-gen-length" data-field-id="${f.id}" min="8" max="256" value="32" style="width:80px">
+    <span class="tplc-gen-length-label text-xs mono" data-field-id="${f.id}" style="min-width:24px;text-align:right">32</span>
+    <button type="button" class="btn btn-xs btn-accent tplc-generate-btn" data-field-id="${f.id}" title="Generate random" style="white-space:nowrap"><i class="fas fa-sync-alt"></i> Generate</button>
+  </div>
+  ${warnHtml}
+  ${this._renderStrengthBar(f.value)}
+</div>`;
         break;
+      }
 
       case 'port':
         inputHtml = `<input type="number" class="form-control tplc-input" data-field-id="${f.id}" value="${escaped}" min="1" max="65535" style="max-width:120px">`;
@@ -517,14 +550,14 @@ const TemplateConfigurator = {
 
   _syncFieldValues(container, fields) {
     for (const f of fields) {
-      const input = container.querySelector(`[data-field-id="${f.id}"]`);
+      const input = container.querySelector(`input[data-field-id="${f.id}"], select[data-field-id="${f.id}"]`);
       if (!input) continue;
       if (f.type === 'toggle') {
         f.value = input.checked ? 'true' : 'false';
         const label = input.closest('.tpl-toggle')?.querySelector('.tpl-toggle-label');
         if (label) label.textContent = f.value;
       } else {
-        f.value = input.value;
+        f.value = input.value || '';
       }
     }
   },
@@ -535,6 +568,7 @@ const TemplateConfigurator = {
     const lines = originalYaml.split('\n');
 
     for (const f of fields) {
+      if (f.value === undefined || f.value === null) f.value = '';
       const line = lines[f.line];
       if (!line) continue;
       const indent = line.length - line.trimStart().length;

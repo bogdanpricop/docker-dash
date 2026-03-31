@@ -10,6 +10,25 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.0.5',
+      date: '2026-03-31',
+      title: 'Template Configurator + Euro-Office Templates',
+      changes: [
+        { type: 'feature', text: 'Dynamic Template Configurator — auto-detects configurable fields, smart forms (passwords, ports, toggles), live YAML preview' },
+        { type: 'feature', text: 'Password generator with length slider (8-256 chars), strength indicator, weak default warnings' },
+        { type: 'feature', text: '3 Euro-Office templates — Document Server, Euro-Office + Nextcloud, Dev Stack comparison' },
+        { type: 'feature', text: 'Cost Optimizer — Recommendations and Cost Breakdown on separate tabs' },
+        { type: 'feature', text: '3-button template UX: View (eye), Configure (sliders), Deploy (rocket)' },
+        { type: 'feature', text: 'Podman compatibility — configurable socket path, documented setup' },
+        { type: 'fix', text: 'Container filter no longer persists as ghost filter after navigation' },
+        { type: 'fix', text: 'MFA login: session cookie no longer set before TOTP verification' },
+        { type: 'fix', text: 'CSP: eliminated unsafe-inline from scriptSrc (67 inline handlers converted)' },
+        { type: 'security', text: 'API key permissions enforced in auth middleware (read-only keys blocked from mutations)' },
+        { type: 'security', text: 'Rate limiting on public password reset endpoints' },
+        { type: 'improvement', text: '33 built-in templates, 384 tests, all audit findings resolved' },
+      ],
+    },
+    {
       version: '5.0.0',
       date: '2026-03-29',
       title: 'Enterprise Security Hardening',

@@ -149,7 +149,27 @@ const CostOptimizerPage = {
         </div>
       `;
 
-      el.innerHTML = overviewHtml + savingsHtml + recsHtml + breakdownHtml;
+      // Tabs for Recommendations + Cost Breakdown
+      const tabsHtml = `
+        <div class="tabs" style="margin-bottom:16px">
+          <button class="tab active" data-cost-tab="recommendations"><i class="fas fa-lightbulb" style="margin-right:4px"></i>${i18n.t('pages.costOptimizer.recommendations')} ${data.recommendations.length ? `<span class="badge badge-warning" style="margin-left:6px;font-size:10px">${data.recommendations.length}</span>` : ''}</button>
+          <button class="tab" data-cost-tab="breakdown"><i class="fas fa-chart-bar" style="margin-right:4px"></i>${i18n.t('pages.costOptimizer.costBreakdown')} <span class="badge badge-info" style="margin-left:6px;font-size:10px">${data.containers.length}</span></button>
+        </div>
+        <div id="cost-tab-recommendations">${recsHtml || '<div class="empty-msg"><i class="fas fa-check-circle" style="color:var(--green);margin-right:8px"></i>No recommendations — all containers are well-optimized!</div>'}</div>
+        <div id="cost-tab-breakdown" style="display:none">${breakdownHtml}</div>
+      `;
+
+      el.innerHTML = overviewHtml + savingsHtml + tabsHtml;
+
+      // Tab switching
+      el.querySelectorAll('[data-cost-tab]').forEach(tab => {
+        tab.addEventListener('click', () => {
+          el.querySelectorAll('[data-cost-tab]').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById('cost-tab-recommendations').style.display = tab.dataset.costTab === 'recommendations' ? '' : 'none';
+          document.getElementById('cost-tab-breakdown').style.display = tab.dataset.costTab === 'breakdown' ? '' : 'none';
+        });
+      });
 
       // Wire up action buttons
       el.querySelectorAll('.cost-stop-btn').forEach(btn => {

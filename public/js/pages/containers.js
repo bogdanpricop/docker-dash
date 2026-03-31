@@ -3160,6 +3160,9 @@ const ContainersPage = {
     this._selectedIds.clear();
     const bar = document.getElementById('bulk-action-bar');
     if (bar) bar.remove();
+    // Reset filters so returning to page shows everything
+    this._filter = '';
+    this._stateFilter = '';
   },
 };
 
