@@ -208,6 +208,21 @@ const TEMPLATES = [
     description: 'Modern VPN tunnel',
     compose: `services:\n  wireguard:\n    image: lscr.io/linuxserver/wireguard:latest\n    cap_add:\n      - NET_ADMIN\n      - SYS_MODULE\n    environment:\n      - PEERS=3\n      - SERVERURL=auto\n    volumes:\n      - wg-config:/config\n    ports:\n      - "51820:51820/udp"\n    sysctls:\n      - net.ipv4.conf.all.src_valid_mark=1\n    restart: unless-stopped\nvolumes:\n  wg-config:`,
   },
+  {
+    id: 'eurooffice', name: 'Euro-Office Document Server', category: 'Office', icon: 'fas fa-file-word',
+    description: 'Self-hosted office suite — edit Word, Excel, PowerPoint in browser (OnlyOffice-compatible)',
+    compose: `services:\n  eurooffice:\n    image: ghcr.io/euro-office/documentserver:latest\n    ports:\n      - "8080:80"\n    environment:\n      JWT_SECRET: changeme-generate-strong-secret\n      ALLOW_PRIVATE_IP_ADDRESS: "true"\n    volumes:\n      - eo-data:/var/lib/eurooffice\n    restart: unless-stopped\nvolumes:\n  eo-data:`,
+  },
+  {
+    id: 'eurooffice-nextcloud', name: 'Euro-Office + Nextcloud', category: 'Office', icon: 'fas fa-cloud',
+    description: 'Complete self-hosted office: Euro-Office document editing + Nextcloud file storage and collaboration',
+    compose: `services:\n  eurooffice:\n    image: ghcr.io/euro-office/documentserver:latest\n    container_name: eurooffice\n    ports:\n      - "8080:80"\n    environment:\n      JWT_SECRET: changeme-generate-strong-secret\n      ALLOW_PRIVATE_IP_ADDRESS: "true"\n    volumes:\n      - eo-data:/var/lib/eurooffice\n    restart: unless-stopped\n\n  nextcloud:\n    image: nextcloud:latest\n    container_name: nextcloud\n    ports:\n      - "8081:80"\n    environment:\n      NEXTCLOUD_ADMIN_USER: admin\n      NEXTCLOUD_ADMIN_PASSWORD: changeme\n      NEXTCLOUD_TRUSTED_DOMAINS: "localhost 172.18.0.1"\n    volumes:\n      - nc-data:/var/www/html\n    depends_on:\n      - eurooffice\n    restart: unless-stopped\n\nvolumes:\n  eo-data:\n  nc-data:`,
+  },
+  {
+    id: 'eurooffice-dev', name: 'Euro-Office Dev Stack', category: 'Development', icon: 'fas fa-code',
+    description: 'Euro-Office + OnlyOffice side-by-side for comparison testing and development',
+    compose: `services:\n  eurooffice:\n    image: ghcr.io/euro-office/documentserver:latest\n    container_name: eurooffice-dev\n    ports:\n      - "8080:80"\n    environment:\n      JWT_SECRET: dev-secret\n      ALLOW_PRIVATE_IP_ADDRESS: "true"\n      USE_UNAUTHORIZED_STORAGE: "true"\n    restart: unless-stopped\n\n  onlyoffice:\n    image: onlyoffice/documentserver:latest\n    container_name: onlyoffice-compare\n    ports:\n      - "8082:80"\n    environment:\n      JWT_SECRET: dev-secret\n      ALLOW_PRIVATE_IP_ADDRESS: "true"\n      USE_UNAUTHORIZED_STORAGE: "true"\n    restart: unless-stopped\n\n  nextcloud:\n    image: nextcloud:latest\n    container_name: nextcloud-dev\n    ports:\n      - "8081:80"\n    environment:\n      NEXTCLOUD_ADMIN_USER: admin\n      NEXTCLOUD_ADMIN_PASSWORD: admin\n      SQLITE_DATABASE: nextcloud\n    volumes:\n      - nc-dev-data:/var/www/html\n    restart: unless-stopped\n\nvolumes:\n  nc-dev-data:`,
+  },
 ];
 
 // Get all templates (built-in + custom, with overrides merged)
