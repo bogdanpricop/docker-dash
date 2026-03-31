@@ -354,8 +354,8 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
       return res.status(400).json({ error: 'Stack name must contain only letters, numbers, dashes, underscores' });
     }
 
-    // Replace service name in compose YAML
-    let compose = t.compose;
+    // Use custom compose YAML from configurator if provided, otherwise use template default
+    let compose = (req.body.compose && typeof req.body.compose === 'string') ? req.body.compose : t.compose;
     // Replace first service name with custom name
     compose = compose.replace(/^(services:\n  )\S+:/m, `$1${stackName}:`);
 

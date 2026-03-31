@@ -1686,8 +1686,9 @@ DB_PASS=secret"></textarea>
               <p class="text-sm text-muted" style="margin-bottom:12px">${Utils.escapeHtml(t.description)}</p>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button class="btn btn-sm btn-primary tpl-deploy" data-id="${t.id}"><i class="fas fa-rocket"></i> Deploy</button>
-                <button class="btn btn-sm btn-secondary tpl-view" data-id="${t.id}"><i class="fas fa-code"></i> View</button>
-                <button class="btn btn-sm btn-secondary tpl-edit" data-id="${t.id}"><i class="fas fa-edit"></i> Edit</button>
+                <button class="btn btn-sm btn-secondary tpl-view" data-id="${t.id}" title="View YAML"><i class="fas fa-eye"></i> View</button>
+                <button class="btn btn-sm btn-secondary tpl-configure" data-id="${t.id}" title="Configure & Deploy"><i class="fas fa-sliders-h"></i> Configure</button>
+                <button class="btn btn-sm btn-secondary tpl-edit" data-id="${t.id}" title="Edit template"><i class="fas fa-edit"></i> Edit</button>
                 ${t.isModified ? `<button class="btn btn-sm btn-secondary tpl-reset" data-id="${t.id}" title="Reset to built-in default"><i class="fas fa-undo"></i></button>` : ''}
                 ${t.isCustom ? `<button class="btn btn-sm btn-danger tpl-delete" data-id="${t.id}" title="Delete custom template"><i class="fas fa-trash"></i></button>` : ''}
               </div>
@@ -1734,27 +1735,43 @@ DB_PASS=secret"></textarea>
         if (!id) return;
         const t = templates.find(t => t.id === id);
 
+        // View — read-only YAML
         if (e.target.closest('.tpl-view') && t) {
           Modal.open(`
             <div class="modal-header">
               <h3><i class="${t.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}</h3>
-              <button class="modal-close-btn" id="tpl-view-close-x"><i class="fas fa-times"></i></button>
+              <button class="modal-close-btn" id="tpl-v-close"><i class="fas fa-times"></i></button>
             </div>
             <div class="modal-body">
               <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(t.compose)}</pre>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-secondary" id="tpl-view-copy"><i class="fas fa-copy"></i> Copy</button>
-              <button class="btn btn-primary" id="tpl-view-close-btn">Close</button>
+              <button class="btn btn-secondary" id="tpl-v-copy"><i class="fas fa-copy"></i> Copy</button>
+              <button class="btn btn-primary" id="tpl-v-ok">Close</button>
             </div>
           `, { width: '600px' });
-          Modal._content.querySelector('#tpl-view-close-x').addEventListener('click', () => Modal.close());
-          Modal._content.querySelector('#tpl-view-close-btn').addEventListener('click', () => Modal.close());
-          Modal._content.querySelector('#tpl-view-copy').addEventListener('click', () => {
+          Modal._content.querySelector('#tpl-v-close').addEventListener('click', () => Modal.close());
+          Modal._content.querySelector('#tpl-v-ok').addEventListener('click', () => Modal.close());
+          Modal._content.querySelector('#tpl-v-copy').addEventListener('click', () => {
             Utils.copyToClipboard(t.compose).then(() => Toast.success('Copied!'));
           });
         }
 
+        // Configure — dynamic configurator with deploy
+        if (e.target.closest('.tpl-configure') && t) {
+          TemplateConfigurator.open(t, {
+            mode: 'deploy',
+            onDeploy: async ({ name, compose }) => {
+              try {
+                Toast.info('Deploying ' + t.name + '...');
+                await Api.post(`/templates/${id}/deploy`, { name, compose });
+                Toast.success(t.name + ' deployed!');
+              } catch (err) { Toast.error(err.message); }
+            },
+          });
+        }
+
+        // Edit — edit template definition (name, icon, YAML)
         if (e.target.closest('.tpl-edit') && t) {
           this._templateFormDialog(t, el);
         }
@@ -1779,6 +1796,7 @@ DB_PASS=secret"></textarea>
           } catch (err) { Toast.error(err.message); }
         }
 
+        // Deploy — direct with defaults
         if (e.target.closest('.tpl-deploy') && t) {
           const result = await Modal.form(`
             <div class="form-group">
@@ -1786,19 +1804,12 @@ DB_PASS=secret"></textarea>
               <input type="text" id="tpl-name" class="form-control" value="${t.id}" placeholder="my-${t.id}">
               <small class="text-muted">Letters, numbers, dashes and underscores only</small>
             </div>
-            <div class="form-group">
-              <label>Compose YAML</label>
-              <textarea id="tpl-yaml" class="form-control" rows="10" style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(t.compose)}</textarea>
-            </div>
           `, {
             title: 'Deploy ' + t.name,
-            width: '600px',
+            width: '400px',
             onSubmit: (content) => {
               const name = content.querySelector('#tpl-name').value.trim();
-              if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) {
-                Toast.error('Invalid stack name');
-                return false;
-              }
+              if (!name || !/^[a-zA-Z0-9_-]+$/.test(name)) { Toast.error('Invalid stack name'); return false; }
               return { name };
             },
           });

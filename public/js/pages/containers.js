@@ -2401,8 +2401,11 @@ const ContainersPage = {
             <p class="text-muted text-sm">${Utils.escapeHtml(t.description)}</p>
           </div>
           <div class="template-card-actions">
-            <button class="btn btn-xs btn-secondary template-view-btn" data-tid="${t.id}" title="View configuration">
+            <button class="btn btn-xs btn-secondary template-view-btn" data-tid="${t.id}" title="View YAML">
               <i class="fas fa-eye"></i>
+            </button>
+            <button class="btn btn-xs btn-secondary template-edit-btn" data-tid="${t.id}" title="Configure">
+              <i class="fas fa-sliders-h"></i>
             </button>
             <button class="btn btn-xs btn-primary template-deploy-btn" data-tid="${t.id}">
               <i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}
@@ -2439,64 +2442,65 @@ const ContainersPage = {
         });
       });
 
-      // View buttons — show compose YAML preview
+      // View buttons — read-only YAML preview
       Modal._content.querySelectorAll('.template-view-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          const tid = btn.dataset.tid;
-          const tmpl = templates.find(t => t.id === tid);
+          const tmpl = templates.find(t => t.id === btn.dataset.tid);
           if (!tmpl) return;
-
-          // Show preview overlay inside the same modal
-          const body = Modal._content.querySelector('.modal-body');
-          const footer = Modal._content.querySelector('.modal-footer');
-          const prevBody = body.innerHTML;
-          const prevFooter = footer.innerHTML;
-
-          body.innerHTML = `
-            <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
-              <i class="fas ${tmpl.icon}" style="font-size:20px;color:var(--accent)"></i>
-              <div>
-                <h4 style="margin:0">${Utils.escapeHtml(tmpl.name)}</h4>
-                <span class="text-muted text-sm">${Utils.escapeHtml(tmpl.description)}</span>
+          Modal.close();
+          setTimeout(() => {
+            Modal.open(`
+              <div class="modal-header">
+                <h3><i class="${tmpl.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(tmpl.name)}</h3>
+                <button class="modal-close-btn" id="tpl-view-close"><i class="fas fa-times"></i></button>
               </div>
-            </div>
-            <div style="margin-bottom:8px">
-              <span class="badge badge-info">${Utils.escapeHtml(tmpl.category)}</span>
-            </div>
-            <label class="text-sm text-muted" style="display:block;margin-bottom:4px">docker-compose.yml</label>
-            <pre class="inspect-json" style="max-height:50vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(tmpl.compose || 'No compose configuration')}</pre>
-          `;
-          footer.innerHTML = `
-            <button class="btn btn-secondary" id="tmpl-preview-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
-            <button class="btn btn-secondary" id="tmpl-preview-back"><i class="fas fa-arrow-left"></i> Back</button>
-            <button class="btn btn-primary" id="tmpl-preview-deploy"><i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}</button>
-          `;
-
-          footer.querySelector('#tmpl-preview-back').addEventListener('click', () => {
-            body.innerHTML = prevBody;
-            footer.innerHTML = prevFooter;
-            // Re-attach all event listeners by re-opening the dialog
-            Modal.close();
-            setTimeout(() => this._templatesDialog(), 250);
-          });
-
-          footer.querySelector('#tmpl-preview-copy').addEventListener('click', () => {
-            Utils.copyToClipboard(tmpl.compose || '').then(() => Toast.success(i18n.t('common.copied')));
-          });
-
-          footer.querySelector('#tmpl-preview-deploy').addEventListener('click', () => {
-            Modal.close();
-            this._deployTemplate(tmpl);
-          });
+              <div class="modal-body">
+                <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(tmpl.compose)}</pre>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" id="tpl-view-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+                <button class="btn btn-primary" id="tpl-view-ok">${i18n.t('common.close')}</button>
+              </div>
+            `, { width: '600px' });
+            Modal._content.querySelector('#tpl-view-close').addEventListener('click', () => Modal.close());
+            Modal._content.querySelector('#tpl-view-ok').addEventListener('click', () => Modal.close());
+            Modal._content.querySelector('#tpl-view-copy').addEventListener('click', () => {
+              Utils.copyToClipboard(tmpl.compose).then(() => Toast.success(i18n.t('common.copied')));
+            });
+          }, 250);
         });
       });
 
-      // Deploy buttons
+      // Edit buttons — open dynamic configurator
+      Modal._content.querySelectorAll('.template-edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tmpl = templates.find(t => t.id === btn.dataset.tid);
+          if (!tmpl) return;
+          Modal.close();
+          setTimeout(() => {
+            TemplateConfigurator.open(tmpl, {
+              mode: 'deploy',
+              onDeploy: async ({ name, compose }) => {
+                try {
+                  Toast.info(`Deploying ${tmpl.name}...`);
+                  await Api.post(`/templates/${tmpl.id}/deploy`, { name, compose });
+                  Toast.success(i18n.t('pages.containers.templatesDeplyed', { name: tmpl.name }));
+                  await this._loadList();
+                } catch (err) {
+                  Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
+                }
+              },
+            });
+          }, 250);
+        });
+      });
+
+      // Deploy buttons — deploy directly with defaults
       Modal._content.querySelectorAll('.template-deploy-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const tid = btn.dataset.tid;
-          const tmpl = templates.find(t => t.id === tid);
+          const tmpl = templates.find(t => t.id === btn.dataset.tid);
           if (!tmpl) return;
           Modal.close();
           this._deployTemplate(tmpl);
