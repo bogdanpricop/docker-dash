@@ -111,8 +111,11 @@ app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
 const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
 app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
 app.use('/api/groups', apiLimiter, require('./routes/groups'));
+app.use('/api/permissions', apiLimiter, require('./routes/permissions'));
 app.use('/api/audit', apiLimiter, require('./routes/audit'));
 app.use('/api/security-alerts', apiLimiter, require('./routes/securityAlerts'));
+app.use('/api/secrets', apiLimiter, require('./routes/secrets'));
+app.use('/api/log-forwarders', apiLimiter, require('./routes/log-forwarders'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────
@@ -275,6 +278,7 @@ function shutdown(signal) {
   dockerService2.stopHealthChecks();
 
   try { require('./services/ssh-tunnel').closeAll(); } catch {}
+  try { require('./services/log-forwarder').stopAll(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

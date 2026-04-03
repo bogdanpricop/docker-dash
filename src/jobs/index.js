@@ -261,6 +261,18 @@ function startAll() {
     } catch (e) { log.error('Schedule check failed', e.message); }
   }));
 
+  // S3 backup (if configured)
+  if (config.s3 && config.s3.enabled) {
+    const s3Schedule = config.s3.backupSchedule || '0 3 * * *';
+    jobs.push(cron.schedule(s3Schedule, async () => {
+      try {
+        const s3Backup = require('../services/s3-backup');
+        await s3Backup.uploadBackup();
+      } catch (e) { log.error('S3 backup failed', e.message); }
+    }));
+    log.info('S3 backup scheduled', { cron: s3Schedule });
+  }
+
   // Git deployment history cleanup
   try {
     const gitPolling = require('../services/gitPolling');

@@ -6,6 +6,7 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const dockerService = require('../services/docker');
 const auditService = require('../services/audit');
+const permService = require('../services/permissions');
 const { requireAuth, requireRole, writeable, requireFeature } = require('../middleware/auth');
 const { getClientIp, sanitizeId, sanitizeShellArg, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
@@ -15,10 +16,12 @@ const { extractHostId } = require('../middleware/hostId');
 const router = Router();
 router.use(extractHostId);
 
-// List containers
+// List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
+    let containers = await dockerService.listContainers(req.hostId);
+    // Apply per-stack permission filtering
+    containers = permService.filterContainers(containers, req.user.id, req.user.role);
     res.json(containers);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -284,6 +287,14 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
   }
 
   try {
+    // Check per-stack permission: actions require at least 'operate'
+    const inspect = await dockerService.inspectContainer(id, req.hostId);
+    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+    if (!permService.hasPermission(effectiveRole, 'operate')) {
+      return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
+    }
+
     await dockerService.containerAction(id, action, req.hostId);
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -299,6 +310,14 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
 // Remove container
 router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeature('remove'), async (req, res) => {
   try {
+    // Check per-stack permission: remove requires 'admin' on the stack
+    const inspect = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+    if (!permService.hasPermission(effectiveRole, 'admin')) {
+      return res.status(403).json({ error: 'Insufficient stack permissions to remove this container' });
+    }
+
     const { force, v } = req.query;
     await dockerService.removeContainer(req.params.id, {
       force: force === 'true', v: v === 'true',

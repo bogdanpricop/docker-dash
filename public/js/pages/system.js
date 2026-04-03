@@ -28,6 +28,7 @@ const SystemPage = {
         <button class="tab" data-tab="database"><i class="fas fa-database" style="margin-right:4px"></i> Database</button>
         <button class="tab" data-tab="tools"><i class="fas fa-toolbox" style="margin-right:4px"></i> Tools</button>
         <button class="tab" data-tab="templates"><i class="fas fa-rocket" style="margin-right:4px"></i> Templates</button>
+        <button class="tab" data-tab="ssl"><i class="fas fa-shield-alt" style="margin-right:4px"></i> SSL/TLS</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
         <button class="tab" data-tab="audit">${i18n.t('pages.system.tabAudit')}</button>
       </div>
@@ -62,6 +63,7 @@ const SystemPage = {
       else if (this._tab === 'database') await this._renderDatabase(el);
       else if (this._tab === 'tools') this._renderTools(el);
       else if (this._tab === 'templates') await this._renderTemplates(el);
+      else if (this._tab === 'ssl') await this._renderSsl(el);
       else if (this._tab === 'prune') this._renderPrune(el);
       else if (this._tab === 'audit') await this._renderAudit(el);
     } catch (err) {
@@ -2474,7 +2476,104 @@ DB_PASS=secret"></textarea>
           </div>
         </div>
       </div>
+
+      <div class="card mt-md" id="s3-backup-section">
+        <div class="card-header">
+          <h3><i class="fab fa-aws" style="margin-right:8px"></i>S3 Cloud Backup</h3>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-md">Automatically backup the database to S3-compatible storage (AWS S3, MinIO, Backblaze B2).</p>
+          <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:700px">
+            <div class="form-group">
+              <label>Endpoint URL</label>
+              <input type="text" id="s3-endpoint" class="form-control" placeholder="https://s3.amazonaws.com">
+            </div>
+            <div class="form-group">
+              <label>Bucket</label>
+              <input type="text" id="s3-bucket" class="form-control" placeholder="my-backups">
+            </div>
+            <div class="form-group">
+              <label>Access Key</label>
+              <input type="text" id="s3-access-key" class="form-control" placeholder="AKIA...">
+            </div>
+            <div class="form-group">
+              <label>Secret Key</label>
+              <input type="password" id="s3-secret-key" class="form-control" placeholder="secret">
+            </div>
+            <div class="form-group">
+              <label>Region</label>
+              <input type="text" id="s3-region" class="form-control" placeholder="us-east-1" value="us-east-1">
+            </div>
+            <div class="form-group">
+              <label>Schedule (cron)</label>
+              <input type="text" id="s3-schedule" class="form-control" placeholder="0 3 * * *" value="0 3 * * *">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-primary" id="s3-save-btn"><i class="fas fa-save"></i> Save Config</button>
+            <button class="btn btn-sm btn-secondary" id="s3-test-btn"><i class="fas fa-plug"></i> Test Connection</button>
+            <button class="btn btn-sm btn-secondary" id="s3-upload-btn"><i class="fas fa-cloud-upload-alt"></i> Backup Now</button>
+          </div>
+          <div id="s3-status" class="mt-sm" style="margin-top:12px"></div>
+        </div>
+      </div>
     `;
+
+    // S3 backup handlers
+    (async () => {
+      try {
+        const status = await Api.get('/system/backup/s3-status');
+        const statusEl = el.querySelector('#s3-status');
+        if (status.enabled) {
+          statusEl.innerHTML = '<span class="badge badge-running">Enabled</span>';
+          if (status.lastBackup && status.lastBackup.time) {
+            const lb = status.lastBackup;
+            const badge = lb.status === 'success' ? 'badge-running' : 'badge-stopped';
+            statusEl.innerHTML += ` &mdash; Last backup: <span class="badge ${badge}">${lb.status}</span> ${Utils.timeAgo(lb.time)}`;
+            if (lb.size) statusEl.innerHTML += ` (${Utils.formatBytes(lb.size)})`;
+            if (lb.error) statusEl.innerHTML += ` <span class="text-red">${Utils.escapeHtml(lb.error)}</span>`;
+          }
+        } else {
+          statusEl.innerHTML = '<span class="text-muted">Not configured — fill in the fields above and save.</span>';
+        }
+      } catch { /* ignore */ }
+    })();
+
+    el.querySelector('#s3-save-btn').addEventListener('click', async () => {
+      try {
+        const cfg = {
+          endpoint: el.querySelector('#s3-endpoint').value.trim(),
+          bucket: el.querySelector('#s3-bucket').value.trim(),
+          accessKey: el.querySelector('#s3-access-key').value.trim(),
+          secretKey: el.querySelector('#s3-secret-key').value.trim(),
+          region: el.querySelector('#s3-region').value.trim(),
+          schedule: el.querySelector('#s3-schedule').value.trim(),
+        };
+        if (!cfg.endpoint || !cfg.bucket || !cfg.accessKey || !cfg.secretKey) {
+          Toast.error('Endpoint, bucket, access key, and secret key are required');
+          return;
+        }
+        await Api.put('/system/backup/s3-config', cfg);
+        Toast.success('S3 configuration saved');
+        this._renderTab();
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelector('#s3-test-btn').addEventListener('click', async () => {
+      try {
+        Toast.info('Testing S3 connection...');
+        const result = await Api.post('/system/backup/s3-test');
+        Toast.success(result.message || 'S3 connection successful');
+      } catch (err) { Toast.error('S3 test failed: ' + err.message); }
+    });
+
+    el.querySelector('#s3-upload-btn').addEventListener('click', async () => {
+      try {
+        Toast.info('Uploading backup to S3...');
+        const result = await Api.post('/system/backup/s3-upload');
+        Toast.success('Backup uploaded to S3 (' + Utils.formatBytes(result.size) + ')');
+      } catch (err) { Toast.error('S3 upload failed: ' + err.message); }
+    });
 
     // Database backup from backup tab
     el.querySelector('#db-backup-tab-btn')?.addEventListener('click', async () => {
@@ -2565,6 +2664,166 @@ DB_PASS=secret"></textarea>
         Toast.error('Restore failed: ' + err.message);
         dbFileInput.value = '';
       }
+    });
+  },
+
+  // ═══════════════════════════════════════════════════
+  // SSL/TLS WIZARD
+  // ═══════════════════════════════════════════════════
+
+  async _renderSsl(el) {
+    let status;
+    try {
+      status = await Api.getSslStatus();
+    } catch {
+      status = { mode: 'none', hasCert: false, hasKey: false, hasCaddyfile: false };
+    }
+
+    const modeLabel = {
+      'none': '<span class="text-muted"><i class="fas fa-unlock"></i> HTTP Only (No SSL)</span>',
+      'self-signed': '<span class="text-yellow"><i class="fas fa-shield-alt"></i> Self-Signed Certificate</span>',
+      'caddy': '<span class="text-green"><i class="fas fa-lock"></i> Caddy Reverse Proxy (Auto-TLS)</span>',
+    };
+
+    let certHtml = '';
+    if (status.certInfo && !status.certInfo.error) {
+      const ci = status.certInfo;
+      const expiryClass = ci.expired ? 'text-red' : (ci.daysUntilExpiry < 30 ? 'text-yellow' : 'text-green');
+      certHtml = `
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fas fa-certificate" style="margin-right:8px"></i>Current Certificate</h3></div>
+          <div class="card-body">
+            <table class="info-table">
+              <tr><td>Subject</td><td class="mono">${Utils.escapeHtml(ci.subject || '')}</td></tr>
+              <tr><td>Issuer</td><td class="mono">${Utils.escapeHtml(ci.issuer || '')}</td></tr>
+              <tr><td>Valid From</td><td>${ci.notBefore || '—'}</td></tr>
+              <tr><td>Expires</td><td class="${expiryClass}">${ci.notAfter || '—'} ${ci.daysUntilExpiry != null ? `(${ci.daysUntilExpiry} days)` : ''}</td></tr>
+              <tr><td>Self-Signed</td><td>${ci.selfSigned ? '<span class="text-yellow">Yes</span>' : '<span class="text-green">No</span>'}</td></tr>
+              <tr><td>Fingerprint</td><td class="mono text-sm">${Utils.escapeHtml(ci.fingerprint || '')}</td></tr>
+            </table>
+            <div style="margin-top:12px">
+              <a href="/api/system/ssl/cert/server.crt" download class="btn btn-sm btn-secondary"><i class="fas fa-download" style="margin-right:4px"></i>Download Certificate</a>
+              <a href="/api/system/ssl/cert/server.key" download class="btn btn-sm btn-secondary" style="margin-left:8px"><i class="fas fa-download" style="margin-right:4px"></i>Download Key</a>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (status.certInfo?.error) {
+      certHtml = `<div class="card" style="margin-top:16px"><div class="card-body"><span class="text-muted">${Utils.escapeHtml(status.certInfo.error)}</span></div></div>`;
+    }
+
+    let caddyHtml = '';
+    if (status.caddyfileContent) {
+      caddyHtml = `
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fas fa-file-code" style="margin-right:8px"></i>Caddyfile</h3></div>
+          <div class="card-body">
+            <pre class="code-block" style="max-height:200px;overflow:auto">${Utils.escapeHtml(status.caddyfileContent)}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-shield-alt" style="margin-right:8px"></i>SSL/TLS Configuration</h3>
+        </div>
+        <div class="card-body">
+          <table class="info-table">
+            <tr><td>Current Mode</td><td>${modeLabel[status.mode] || modeLabel.none}</td></tr>
+            <tr><td>Certificate</td><td>${status.hasCert ? '<span class="text-green">Present</span>' : '<span class="text-muted">Not configured</span>'}</td></tr>
+            <tr><td>Private Key</td><td>${status.hasKey ? '<span class="text-green">Present</span>' : '<span class="text-muted">Not configured</span>'}</td></tr>
+            <tr><td>Certs Directory</td><td class="mono text-sm">${Utils.escapeHtml(status.certsDir || '/data/certs')}</td></tr>
+          </table>
+        </div>
+      </div>
+
+      ${certHtml}
+      ${caddyHtml}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:20px">
+        <!-- Option 1: No SSL -->
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-unlock" style="margin-right:8px"></i>No SSL</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">
+              Use HTTP only. Suitable for local/internal networks behind a trusted reverse proxy.
+            </p>
+            ${status.mode !== 'none' ? '<button class="btn btn-sm btn-danger" id="ssl-remove"><i class="fas fa-trash" style="margin-right:4px"></i>Remove SSL Config</button>' : '<span class="badge badge-info">Current</span>'}
+          </div>
+        </div>
+
+        <!-- Option 2: Self-Signed -->
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-certificate" style="margin-right:8px"></i>Self-Signed Certificate</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">
+              Generate a self-signed certificate for development or internal use. Browsers will show a warning.
+            </p>
+            <div class="form-group">
+              <label>Domain / Hostname</label>
+              <input type="text" id="ssl-domain" class="form-control" placeholder="e.g. docker-dash.local" value="${window.location.hostname}">
+            </div>
+            <button class="btn btn-sm btn-primary" id="ssl-generate"><i class="fas fa-magic" style="margin-right:4px"></i>Generate Certificate</button>
+          </div>
+        </div>
+
+        <!-- Option 3: Caddy -->
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-lock" style="margin-right:8px"></i>Caddy Reverse Proxy</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted" style="margin-bottom:12px">
+              Generate a Caddyfile for automatic HTTPS via Let's Encrypt. Requires a public domain pointing to this server.
+            </p>
+            <div class="form-group">
+              <label>Public Domain</label>
+              <input type="text" id="caddy-domain" class="form-control" placeholder="e.g. dash.example.com">
+            </div>
+            <div class="form-group">
+              <label>Upstream Port (Docker Dash)</label>
+              <input type="number" id="caddy-port" class="form-control" value="8101">
+            </div>
+            <button class="btn btn-sm btn-primary" id="caddy-save"><i class="fas fa-save" style="margin-right:4px"></i>Save Caddyfile</button>
+            <div class="tip-box" style="margin-top:12px">
+              <i class="fas fa-info-circle"></i>
+              After saving, run: <code>docker compose --profile tls up -d</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Event handlers
+    el.querySelector('#ssl-generate')?.addEventListener('click', async () => {
+      const domain = el.querySelector('#ssl-domain').value.trim();
+      if (!domain) { Toast.warning('Enter a domain'); return; }
+      try {
+        Toast.info('Generating self-signed certificate...');
+        const result = await Api.generateSelfSigned(domain);
+        Toast.success('Certificate generated for ' + domain);
+        await this._renderSsl(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelector('#caddy-save')?.addEventListener('click', async () => {
+      const domain = el.querySelector('#caddy-domain').value.trim();
+      const port = el.querySelector('#caddy-port').value.trim();
+      if (!domain) { Toast.warning('Enter a domain'); return; }
+      try {
+        const result = await Api.saveCaddyfile(domain, parseInt(port) || 8101);
+        Toast.success('Caddyfile saved for ' + domain);
+        await this._renderSsl(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelector('#ssl-remove')?.addEventListener('click', async () => {
+      if (!confirm('Remove all SSL configuration? This cannot be undone.')) return;
+      try {
+        await Api.removeSsl();
+        Toast.success('SSL configuration removed');
+        await this._renderSsl(el);
+      } catch (err) { Toast.error(err.message); }
     });
   },
 

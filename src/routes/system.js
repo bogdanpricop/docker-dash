@@ -9,6 +9,7 @@ const { getClientIp } = require('../utils/helpers');
 
 const { getDb } = require('../db');
 const config = require('../config');
+const sslService = require('../services/ssl');
 
 const { extractHostId } = require('../middleware/hostId');
 
@@ -1132,6 +1133,145 @@ router.post('/stacks/:name/deploy', requireAuth, requireRole('admin'), writeable
     res.json({ ok: true, output });
   } catch (err) {
     res.status(500).json({ error: err.stderr || err.message });
+  }
+});
+
+// ─── S3 Backup ─────────────────────────────────────────────
+router.get('/backup/s3-status', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const s3Backup = require('../services/s3-backup');
+    res.json(s3Backup.getStatus());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/backup/s3-test', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const s3Backup = require('../services/s3-backup');
+    const result = await s3Backup.testConnection();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/backup/s3-upload', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const s3Backup = require('../services/s3-backup');
+    const result = await s3Backup.uploadBackup();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/backup/s3-config', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { endpoint, bucket, accessKey, secretKey, region, schedule } = req.body;
+    // Update runtime config (persists until restart; users should also set .env)
+    const cfg = require('../config');
+    if (endpoint !== undefined) cfg.s3.endpoint = endpoint;
+    if (bucket !== undefined) cfg.s3.bucket = bucket;
+    if (accessKey !== undefined) cfg.s3.accessKey = accessKey;
+    if (secretKey !== undefined) cfg.s3.secretKey = secretKey;
+    if (region !== undefined) cfg.s3.region = region || 'us-east-1';
+    if (schedule !== undefined) cfg.s3.backupSchedule = schedule || '0 3 * * *';
+    cfg.s3.enabled = !!(cfg.s3.endpoint && cfg.s3.bucket && cfg.s3.accessKey && cfg.s3.secretKey);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 's3_config_update', targetType: 'system', targetId: 'backup',
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, enabled: cfg.s3.enabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── SSL/TLS Management ─────────────────────────────────────
+
+// GET /api/system/ssl/status — current SSL status
+router.get('/ssl/status', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const status = sslService.getStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/system/ssl/self-signed — generate self-signed certificate
+router.post('/ssl/self-signed', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain) return res.status(400).json({ error: 'domain is required' });
+
+    const result = sslService.generateSelfSigned(domain);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ssl_generate_self_signed',
+      targetType: 'ssl', targetId: domain,
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/system/ssl/caddy — save Caddyfile configuration
+router.post('/ssl/caddy', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { domain, upstreamPort } = req.body;
+    if (!domain) return res.status(400).json({ error: 'domain is required' });
+
+    const result = sslService.saveCaddyfile(domain, upstreamPort);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ssl_save_caddyfile',
+      targetType: 'ssl', targetId: domain,
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/system/ssl/cert/:filename — download certificate file
+router.get('/ssl/cert/:filename', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const content = sslService.readCert(req.params.filename);
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.filename}"`);
+    res.send(content);
+  } catch (err) {
+    res.status(err.message === 'File not found' ? 404 : 500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/system/ssl — remove SSL configuration
+router.delete('/ssl', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    sslService.removeSsl();
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ssl_remove',
+      targetType: 'ssl', targetId: 'all',
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -26,6 +26,8 @@ const SettingsPage = {
         ${isAdmin ? `<button class="tab" data-tab="git-credentials"><i class="fab fa-git-alt" style="margin-right:4px"></i> Git</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="notifications"><i class="fas fa-bell" style="margin-right:4px"></i> Notifications</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="workflows"><i class="fas fa-cogs" style="margin-right:4px"></i> Workflows</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="secrets"><i class="fas fa-key" style="margin-right:4px"></i> Secrets</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="log-forwarding"><i class="fas fa-share-alt" style="margin-right:4px"></i> Log Forwarding</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="general">${i18n.t('pages.settings.tabGeneral')}</button>` : ''}
       </div>
       <div id="settings-content"></div>
@@ -57,6 +59,8 @@ const SettingsPage = {
       else if (this._tab === 'git-credentials') await this._renderGitCredentials(el);
       else if (this._tab === 'notifications') await this._renderNotificationChannels(el);
       else if (this._tab === 'workflows') await this._renderWorkflows(el);
+      else if (this._tab === 'secrets') await this._renderSecrets(el);
+      else if (this._tab === 'log-forwarding') await this._renderLogForwarding(el);
       else if (this._tab === 'general') await this._renderGeneral(el);
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
@@ -136,6 +140,7 @@ const SettingsPage = {
                 <td>
                   <div class="action-btns">
                     <button class="action-btn" data-action="edit-user" data-id="${u.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
+                    <button class="action-btn" data-action="stack-perms" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Stack Permissions"><i class="fas fa-lock"></i></button>
                     <button class="action-btn" data-action="reset-password" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Reset Password"><i class="fas fa-key"></i></button>
                     ${!u.totp_enabled
                       ? `<button class="action-btn" data-action="setup-mfa" data-id="${u.id}" data-username="${Utils.escapeHtml(u.username)}" title="Enable MFA"><i class="fas fa-shield-alt"></i></button>`
@@ -160,6 +165,7 @@ const SettingsPage = {
       const id = parseInt(btn.dataset.id);
       const username = btn.dataset.username;
       if (action === 'edit-user') this._editUser(id);
+      else if (action === 'stack-perms') this._editStackPermissions(id, username);
       else if (action === 'reset-password') this._resetPasswordDialog(id, username);
       else if (action === 'send-reset') this._sendResetEmail(id, username);
       else if (action === 'send-invite') this._sendInviteEmail(id, username);
@@ -263,6 +269,108 @@ const SettingsPage = {
         Toast.success(i18n.t('pages.settings.userUpdated'));
         await this._renderTab();
       }
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _editStackPermissions(userId, username) {
+    try {
+      const [permsRes, stacksRes] = await Promise.all([
+        Api.getUserPermissions(userId),
+        Api.getStacks().catch(() => []),
+      ]);
+      const perms = permsRes.permissions || [];
+      const permsMap = {};
+      for (const p of perms) permsMap[p.stack_name] = p.permission;
+
+      // Also get running containers to discover stack names
+      let stackNames = [];
+      try {
+        const containers = await Api.getContainers(true);
+        const nameSet = new Set();
+        for (const c of containers) {
+          const stack = c.stack || c.labels?.['com.docker.compose.project'];
+          if (stack) nameSet.add(stack);
+        }
+        stackNames = [...nameSet].sort();
+      } catch { /* fallback */ }
+
+      // Merge stack names from stacks endpoint
+      if (Array.isArray(stacksRes)) {
+        for (const s of stacksRes) {
+          const name = s.name || s;
+          if (name && !stackNames.includes(name)) stackNames.push(name);
+        }
+        stackNames.sort();
+      }
+
+      // Also include stacks from existing permissions not in current container list
+      for (const p of perms) {
+        if (!stackNames.includes(p.stack_name)) stackNames.push(p.stack_name);
+      }
+
+      const html = `
+        <div class="modal-header">
+          <h3><i class="fas fa-lock" style="margin-right:8px;color:var(--accent)"></i>Stack Permissions: ${Utils.escapeHtml(username)}</h3>
+          <button class="modal-close-btn" id="sp-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="max-height:60vh;overflow-y:auto">
+          <p class="text-sm text-muted" style="margin-bottom:12px">
+            Override global role for specific stacks. "Inherit" uses the global role.
+          </p>
+          ${stackNames.length === 0 ? '<div class="empty-msg">No stacks found</div>' : `
+          <table class="data-table">
+            <thead><tr><th>Stack</th><th>Permission</th><th></th></tr></thead>
+            <tbody>
+              ${stackNames.map(stack => {
+                const current = permsMap[stack] || '';
+                return `<tr data-stack="${Utils.escapeHtml(stack)}">
+                  <td class="mono"><i class="fas fa-layer-group" style="margin-right:6px;opacity:0.5"></i>${Utils.escapeHtml(stack)}</td>
+                  <td>
+                    <select class="form-control form-control-sm sp-select" data-stack="${Utils.escapeHtml(stack)}" style="width:140px">
+                      <option value="" ${!current ? 'selected' : ''}>Inherit</option>
+                      <option value="none" ${current === 'none' ? 'selected' : ''}>None (hidden)</option>
+                      <option value="view" ${current === 'view' ? 'selected' : ''}>View</option>
+                      <option value="operate" ${current === 'operate' ? 'selected' : ''}>Operate</option>
+                      <option value="admin" ${current === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                  </td>
+                  <td>${current ? '<span class="badge badge-warning" style="font-size:10px">Override</span>' : ''}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>`}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="sp-cancel">Cancel</button>
+          <button class="btn btn-primary" id="sp-save"><i class="fas fa-save" style="margin-right:4px"></i>Save Permissions</button>
+        </div>
+      `;
+
+      Modal.open(html, { width: '520px' });
+      const mc = Modal._content;
+      mc.querySelector('#sp-close').addEventListener('click', () => Modal.close());
+      mc.querySelector('#sp-cancel').addEventListener('click', () => Modal.close());
+
+      mc.querySelector('#sp-save').addEventListener('click', async () => {
+        try {
+          const selects = mc.querySelectorAll('.sp-select');
+          for (const sel of selects) {
+            const stack = sel.dataset.stack;
+            const val = sel.value;
+            const had = permsMap[stack];
+
+            if (val && val !== had) {
+              await Api.setPermission({ stackName: stack, userId, permission: val });
+            } else if (!val && had) {
+              await Api.removePermission(stack, userId);
+            }
+          }
+          Toast.success('Stack permissions updated');
+          Modal.close();
+        } catch (err) {
+          Toast.error(err.message);
+        }
+      });
     } catch (err) { Toast.error(err.message); }
   },
 
@@ -1086,6 +1194,255 @@ const SettingsPage = {
       });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+    }
+  },
+
+  // ─── Secrets Vault Tab ───────────────────────────────────
+  async _renderSecrets(el) {
+    try {
+      const secrets = await Api.get('/secrets');
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-key" style="margin-right:8px"></i>Secrets Vault</h3>
+            <button class="btn btn-sm btn-primary" id="secret-create"><i class="fas fa-plus"></i> Add Secret</button>
+          </div>
+          <div class="card-body">
+            <p class="text-muted mb-md">Centralized encrypted secrets store. Values are encrypted at rest with AES-256-GCM.</p>
+            ${secrets.length === 0
+              ? '<div class="empty-msg">No secrets yet. Click "Add Secret" to create one.</div>'
+              : `<table class="data-table">
+                <thead><tr><th>Name</th><th>Description</th><th>Created</th><th>Actions</th></tr></thead>
+                <tbody>${secrets.map(s => `
+                  <tr>
+                    <td class="mono">${Utils.escapeHtml(s.name)}</td>
+                    <td class="text-sm">${s.description ? Utils.escapeHtml(s.description) : '<span class="text-muted">-</span>'}</td>
+                    <td class="text-sm">${Utils.timeAgo(s.created_at)}</td>
+                    <td>
+                      <div class="action-btns">
+                        <button class="action-btn" data-action="copy-secret" data-id="${s.id}" title="Copy value"><i class="fas fa-copy"></i></button>
+                        <button class="action-btn" data-action="edit-secret" data-id="${s.id}" data-name="${Utils.escapeHtml(s.name)}" data-desc="${Utils.escapeHtml(s.description || '')}" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="action-btn danger" data-action="delete-secret" data-id="${s.id}" data-name="${Utils.escapeHtml(s.name)}" title="Delete"><i class="fas fa-trash"></i></button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}</tbody>
+              </table>`}
+          </div>
+        </div>
+      `;
+
+      el.querySelector('#secret-create').addEventListener('click', async () => {
+        const result = await Modal.form({
+          title: 'Add Secret',
+          fields: `
+            <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" placeholder="MY_SECRET_KEY" pattern="[a-zA-Z0-9_-]+" required></div>
+            <div class="form-group"><label>Value</label><textarea id="sec-value" class="form-control" rows="3" required></textarea></div>
+            <div class="form-group"><label>Description (optional)</label><input type="text" id="sec-desc" class="form-control" placeholder="What is this secret for?"></div>
+          `,
+          onSubmit: (c) => ({
+            name: c.querySelector('#sec-name').value.trim(),
+            value: c.querySelector('#sec-value').value,
+            description: c.querySelector('#sec-desc').value.trim(),
+          }),
+        });
+        if (result && result.name) {
+          try {
+            await Api.post('/secrets', result);
+            Toast.success('Secret created');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+
+      el.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const id = parseInt(btn.dataset.id);
+
+        if (btn.dataset.action === 'copy-secret') {
+          try {
+            const secret = await Api.get('/secrets/' + id);
+            await navigator.clipboard.writeText(secret.value);
+            Toast.success('Secret value copied to clipboard');
+          } catch (err) { Toast.error(err.message); }
+        } else if (btn.dataset.action === 'edit-secret') {
+          const result = await Modal.form({
+            title: 'Edit Secret',
+            fields: `
+              <div class="form-group"><label>Name</label><input type="text" id="sec-name" class="form-control" value="${btn.dataset.name}" pattern="[a-zA-Z0-9_-]+" required></div>
+              <div class="form-group"><label>New Value (leave empty to keep current)</label><textarea id="sec-value" class="form-control" rows="3"></textarea></div>
+              <div class="form-group"><label>Description</label><input type="text" id="sec-desc" class="form-control" value="${btn.dataset.desc}"></div>
+            `,
+            onSubmit: (c) => {
+              const data = { name: c.querySelector('#sec-name').value.trim(), description: c.querySelector('#sec-desc').value.trim() };
+              const val = c.querySelector('#sec-value').value;
+              if (val) data.value = val;
+              return data;
+            },
+          });
+          if (result && result.name) {
+            try {
+              await Api.put('/secrets/' + id, result);
+              Toast.success('Secret updated');
+              this._renderTab();
+            } catch (err) { Toast.error(err.message); }
+          }
+        } else if (btn.dataset.action === 'delete-secret') {
+          const ok = await Modal.confirm('Delete secret "' + btn.dataset.name + '"? This cannot be undone.', { danger: true });
+          if (!ok) return;
+          try {
+            await Api.delete('/secrets/' + id);
+            Toast.success('Secret deleted');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+    } catch (err) {
+      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
+    }
+  },
+
+  // ─── Log Forwarding Tab ─────────────────────────────────
+  async _renderLogForwarding(el) {
+    try {
+      const forwarders = await Api.get('/log-forwarders');
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3><i class="fas fa-share-alt" style="margin-right:8px"></i>Log Forwarding</h3>
+            <button class="btn btn-sm btn-primary" id="lf-create"><i class="fas fa-plus"></i> Add Forwarder</button>
+          </div>
+          <div class="card-body">
+            <p class="text-muted mb-md">Forward container logs to external systems: Grafana Loki, Elasticsearch, HTTP webhooks, or Syslog.</p>
+            ${forwarders.length === 0
+              ? '<div class="empty-msg">No log forwarders configured.</div>'
+              : `<table class="data-table">
+                <thead><tr><th>Name</th><th>Type</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+                <tbody>${forwarders.map(f => `
+                  <tr>
+                    <td class="mono">${Utils.escapeHtml(f.name)}</td>
+                    <td><span class="badge badge-info">${f.type}</span></td>
+                    <td>${f.enabled ? '<span class="text-green">Enabled</span>' : '<span class="text-muted">Disabled</span>'}</td>
+                    <td class="text-sm">${Utils.timeAgo(f.created_at)}</td>
+                    <td>
+                      <div class="action-btns">
+                        <button class="action-btn" data-action="toggle-lf" data-id="${f.id}" data-enabled="${f.enabled}" title="${f.enabled ? 'Disable' : 'Enable'}"><i class="fas fa-${f.enabled ? 'pause' : 'play'}"></i></button>
+                        <button class="action-btn" data-action="test-lf" data-id="${f.id}" title="Test"><i class="fas fa-vial"></i></button>
+                        <button class="action-btn" data-action="edit-lf" data-id="${f.id}" title="Edit"><i class="fas fa-edit"></i></button>
+                        <button class="action-btn danger" data-action="delete-lf" data-id="${f.id}" data-name="${Utils.escapeHtml(f.name)}" title="Delete"><i class="fas fa-trash"></i></button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}</tbody>
+              </table>`}
+          </div>
+        </div>
+      `;
+
+      el.querySelector('#lf-create').addEventListener('click', async () => {
+        const result = await Modal.form({
+          title: 'Add Log Forwarder',
+          fields: `
+            <div class="form-group"><label>Name</label><input type="text" id="lf-name" class="form-control" required></div>
+            <div class="form-group"><label>Type</label>
+              <select id="lf-type" class="form-control">
+                <option value="loki">Grafana Loki</option>
+                <option value="elasticsearch">Elasticsearch</option>
+                <option value="http">HTTP Webhook</option>
+                <option value="syslog">Syslog</option>
+              </select>
+            </div>
+            <div id="lf-config-fields">
+              <div class="form-group"><label>URL</label><input type="url" id="lf-url" class="form-control" placeholder="http://loki:3100" required></div>
+            </div>
+            <div class="form-group"><label>Custom Headers (JSON, optional)</label><input type="text" id="lf-headers" class="form-control" placeholder='{"X-Token": "abc"}'></div>
+          `,
+          onSubmit: (c) => {
+            const type = c.querySelector('#lf-type').value;
+            const cfg = {};
+            if (type === 'syslog') {
+              cfg.host = c.querySelector('#lf-url').value.trim();
+              cfg.port = parseInt(c.querySelector('#lf-headers').value) || 514;
+              cfg.protocol = 'udp';
+            } else {
+              cfg.url = c.querySelector('#lf-url').value.trim();
+              try { cfg.headers = JSON.parse(c.querySelector('#lf-headers').value || '{}'); } catch { cfg.headers = {}; }
+              if (type === 'elasticsearch') cfg.index = 'docker-dash-logs';
+            }
+            return { name: c.querySelector('#lf-name').value.trim(), type, config: cfg };
+          },
+        });
+        if (result && result.name) {
+          try {
+            await Api.post('/log-forwarders', result);
+            Toast.success('Log forwarder created');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+
+      el.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const id = parseInt(btn.dataset.id);
+
+        if (btn.dataset.action === 'toggle-lf') {
+          try {
+            await Api.put('/log-forwarders/' + id, { enabled: btn.dataset.enabled !== '1' });
+            Toast.success('Forwarder updated');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        } else if (btn.dataset.action === 'test-lf') {
+          try {
+            Toast.info('Sending test log...');
+            const result = await Api.post('/log-forwarders/' + id + '/test');
+            Toast.success(result.message || 'Test successful');
+          } catch (err) { Toast.error('Test failed: ' + err.message); }
+        } else if (btn.dataset.action === 'edit-lf') {
+          try {
+            const fw = await Api.get('/log-forwarders/' + id);
+            const isSyslog = fw.type === 'syslog';
+            const result = await Modal.form({
+              title: 'Edit Log Forwarder',
+              fields: `
+                <div class="form-group"><label>Name</label><input type="text" id="lf-name" class="form-control" value="${Utils.escapeHtml(fw.name)}" required></div>
+                <div class="form-group"><label>Type</label><input type="text" class="form-control" value="${fw.type}" disabled></div>
+                <div class="form-group"><label>${isSyslog ? 'Host' : 'URL'}</label><input type="text" id="lf-url" class="form-control" value="${Utils.escapeHtml(isSyslog ? (fw.config.host || '') : (fw.config.url || ''))}" required></div>
+                <div class="form-group"><label>${isSyslog ? 'Port' : 'Headers (JSON)'}</label><input type="text" id="lf-extra" class="form-control" value="${Utils.escapeHtml(isSyslog ? String(fw.config.port || 514) : JSON.stringify(fw.config.headers || {}))}"></div>
+              `,
+              onSubmit: (c) => {
+                const cfg = {};
+                if (isSyslog) {
+                  cfg.host = c.querySelector('#lf-url').value.trim();
+                  cfg.port = parseInt(c.querySelector('#lf-extra').value) || 514;
+                  cfg.protocol = fw.config.protocol || 'udp';
+                } else {
+                  cfg.url = c.querySelector('#lf-url').value.trim();
+                  try { cfg.headers = JSON.parse(c.querySelector('#lf-extra').value || '{}'); } catch { cfg.headers = {}; }
+                  if (fw.type === 'elasticsearch') cfg.index = fw.config.index || 'docker-dash-logs';
+                }
+                return { name: c.querySelector('#lf-name').value.trim(), config: cfg };
+              },
+            });
+            if (result && result.name) {
+              await Api.put('/log-forwarders/' + id, result);
+              Toast.success('Forwarder updated');
+              this._renderTab();
+            }
+          } catch (err) { Toast.error(err.message); }
+        } else if (btn.dataset.action === 'delete-lf') {
+          const ok = await Modal.confirm('Delete forwarder "' + btn.dataset.name + '"?', { danger: true });
+          if (!ok) return;
+          try {
+            await Api.delete('/log-forwarders/' + id);
+            Toast.success('Forwarder deleted');
+            this._renderTab();
+          } catch (err) { Toast.error(err.message); }
+        }
+      });
+    } catch (err) {
+      el.innerHTML = '<div class="empty-msg">Error: ' + err.message + '</div>';
     }
   },
 

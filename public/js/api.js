@@ -297,6 +297,19 @@ const Api = {
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
   composeConfig(stack) { return this.get(`/system/compose/${encodeURIComponent(stack)}/config`); },
 
+  // ─── Stack Permissions (RBAC) ─────────────────────
+  getPermissions() { return this.get('/permissions'); },
+  getUserPermissions(userId) { return this.get(`/permissions/user/${userId}`); },
+  getMyPermissions() { return this.get('/permissions/me'); },
+  setPermission(data) { return this.post('/permissions', data); },
+  removePermission(stackName, userId) { return this.delete(`/permissions/${encodeURIComponent(stackName)}/${userId}`); },
+
+  // ─── SSL/TLS ──────────────────────────────────────
+  getSslStatus() { return this.get('/system/ssl/status'); },
+  generateSelfSigned(domain) { return this.post('/system/ssl/self-signed', { domain }); },
+  saveCaddyfile(domain, upstreamPort) { return this.post('/system/ssl/caddy', { domain, upstreamPort }); },
+  removeSsl() { return this.delete('/system/ssl'); },
+
   // ─── Health Overview ─────────────────────────────
   getHealthOverview() { return this.get('/system/health-overview'); },
 

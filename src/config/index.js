@@ -90,6 +90,15 @@ module.exports = {
     defaultPassword: env('ADMIN_PASSWORD', 'admin'),
     defaultUsername: env('ADMIN_USERNAME', 'admin'),
   },
+  s3: {
+    enabled: bool('S3_ENABLED', false),
+    endpoint: env('S3_ENDPOINT', ''),
+    bucket: env('S3_BUCKET', ''),
+    accessKey: env('S3_ACCESS_KEY', ''),
+    secretKey: env('S3_SECRET_KEY', ''),
+    region: env('S3_REGION', 'us-east-1'),
+    backupSchedule: env('S3_BACKUP_SCHEDULE', '0 3 * * *'),
+  },
   oidc: {
     enabled: bool('OIDC_ENABLED', false),
     issuerUrl: env('OIDC_ISSUER_URL', ''),

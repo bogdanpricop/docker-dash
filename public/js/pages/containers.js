@@ -126,14 +126,20 @@ const ContainersPage = {
   async _loadList() {
     try {
       const showAll = document.getElementById('show-all')?.checked ?? true;
-      const [containers, metaMap, userGroups] = await Promise.all([
+      const [containers, metaMap, userGroups, myPerms] = await Promise.all([
         Api.getContainers(showAll),
         Api.getAllContainerMeta().catch(() => ({})),
         Api.getGroups().catch(() => []),
+        Api.getMyPermissions().catch(() => ({ permissions: [] })),
       ]);
       this._containers = containers;
       this._metaMap = metaMap || {};
       this._userGroups = userGroups || [];
+      // Build stack permission map for visual indicators
+      this._stackPerms = {};
+      for (const p of (myPerms.permissions || [])) {
+        this._stackPerms[p.stack_name] = p.permission;
+      }
       this._renderGrouped();
       this._renderUserGroups();
     } catch (err) {
@@ -232,6 +238,9 @@ const ContainersPage = {
       const running = items.filter(c => c.state === 'running').length;
       const total = items.length;
       const allRunning = running === total;
+      const stackPerm = this._stackPerms?.[stack];
+      const hasRestriction = stackPerm && stackPerm !== 'admin';
+      const permLabel = stackPerm === 'view' ? 'View Only' : stackPerm === 'operate' ? 'Operate' : stackPerm === 'none' ? 'Hidden' : '';
 
       return `
         <div class="stack-group ${collapsed ? 'collapsed' : ''}">
@@ -241,6 +250,7 @@ const ContainersPage = {
               <i class="fas ${isStandalone ? 'fa-cube' : 'fa-layer-group'} stack-icon"></i>
               <span class="stack-name">${isStandalone ? i18n.t('pages.containers.standalone') : Utils.escapeHtml(stack)}</span>
               <span class="stack-count">${total}</span>
+              ${hasRestriction ? `<span class="badge badge-warning" style="font-size:9px;margin-left:6px" title="Your permission: ${permLabel}"><i class="fas fa-lock" style="margin-right:3px"></i>${permLabel}</span>` : ''}
             </div>
             <div class="stack-header-right">
               <span class="stack-status ${allRunning ? 'all-running' : ''}">
