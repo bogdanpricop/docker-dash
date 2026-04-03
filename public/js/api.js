@@ -183,6 +183,22 @@ const Api = {
     return this.get(`/templates${qs ? '?' + qs : ''}`);
   },
   getTemplate(id) { return this.get(`/templates/${id}`); },
+  previewPortainerImport(url) { return this.post('/templates/import/preview', { url }); },
+  importPortainerTemplates(templates) { return this.post('/templates/import', { templates }); },
+
+  // ─── Registries ──────────────────────────────────
+  getRegistries() { return this.get('/registries'); },
+  createRegistry(data) { return this.post('/registries', data); },
+  updateRegistry(id, data) { return this.put(`/registries/${id}`, data); },
+  deleteRegistry(id) { return this.delete(`/registries/${id}`); },
+  testRegistry(id) { return this.post(`/registries/${id}/test`); },
+  getRegistryCatalog(id) { return this.get(`/registries/${id}/catalog`); },
+  getRegistryTags(id, repo) { return this.get(`/registries/${id}/tags/${repo}`); },
+  pullFromRegistry(id, image, tag) { return this.post(`/registries/${id}/pull`, { image, tag }); },
+
+  // ─── OIDC ────────────────────────────────────────
+  getOidcEnabled() { return this.get('/auth/oidc/enabled'); },
+  getOidcLoginUrl() { return this.get('/auth/oidc/login'); },
 
   // ─── Watchtower ───────────────────────────────────
   detectWatchtower() { return this.get('/watchtower'); },
@@ -297,6 +313,7 @@ const Api = {
   getContainerFiles(id, path = '/') { return this.get(`/containers/${id}/files?path=${encodeURIComponent(path)}`); },
   getFileContent(id, path) { return this.get(`/containers/${id}/files/content?path=${encodeURIComponent(path)}`); },
   getFileDownloadUrl(id, path) { return `/api/containers/${id}/files/download?path=${encodeURIComponent(path)}`; },
+  uploadFile(id, destPath, filename, base64Content) { return this.post(`/containers/${id}/files/upload`, { path: destPath, filename, content: base64Content }); },
 
   // ─── Container Diff ──────────────────────────────
   getContainerDiff(id) { return this.get(`/containers/${id}/diff`); },
@@ -310,6 +327,7 @@ const Api = {
 
   // ─── Backup & Restore ───────────────────────────
   restoreConfig(data) { return this.post('/system/backup/restore', data); },
+  restoreDatabase(base64Content) { return this.post('/backup/restore', { content: base64Content }); },
 
   // ─── Resource Limits ─────────────────────────────
   updateContainerResources(id, data) { return this.put(`/system/containers/${id}/resources`, data); },

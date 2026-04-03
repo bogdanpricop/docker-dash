@@ -75,11 +75,18 @@ const HostsPage = {
                          h.socketPath || '/var/run/docker.sock';
       const isSelected = Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault);
 
+      const envColors = { production: 'var(--red)', staging: 'var(--yellow)', development: 'var(--green)', custom: 'var(--accent)' };
+      const envLabel = (h.environment || 'development').charAt(0).toUpperCase() + (h.environment || 'development').slice(1);
+      const envColor = envColors[h.environment] || 'var(--text-dim)';
+
       return `
         <div class="host-card ${statusClass} ${isSelected ? 'selected' : ''}" data-host-id="${h.id}">
           <div class="host-card-header">
             <div class="host-status"><i class="fas ${statusIcon}"></i> ${statusText}</div>
-            ${h.isDefault ? `<span class="badge badge-info">${i18n.t('pages.hosts.default')}</span>` : ''}
+            <div style="display:flex;gap:6px;align-items:center">
+              <span class="badge" style="font-size:9px;background:${envColor};color:#fff;padding:2px 6px;border-radius:3px">${envLabel}</span>
+              ${h.isDefault ? `<span class="badge badge-info">${i18n.t('pages.hosts.default')}</span>` : ''}
+            </div>
           </div>
           <div class="host-card-body">
             <h3 class="host-name">${Utils.escapeHtml(h.name)}</h3>
@@ -221,7 +228,7 @@ const HostsPage = {
   /** Shared form HTML builder for add/edit */
   _buildFormHtml(opts = {}) {
     const { name = '', type = 'tcp', host = '', port, socketPath, sshHost = '', sshPort,
-            sshUsername = '', sshDockerSocket, hasTls, showActive, isActive } = opts;
+            sshUsername = '', sshDockerSocket, hasTls, showActive, isActive, environment = 'development' } = opts;
     const esc = (v) => Utils.escapeHtml(v || '');
     return `
       <div class="form-group">
@@ -290,6 +297,15 @@ const HostsPage = {
           <input type="text" id="h-ssh-docker" class="form-control" value="${esc(sshDockerSocket || '/var/run/docker.sock')}">
         </div>
       </div>
+      <div class="form-group">
+        <label>Environment</label>
+        <select id="h-environment" class="form-control">
+          <option value="development" ${environment === 'development' ? 'selected' : ''}>Development</option>
+          <option value="staging" ${environment === 'staging' ? 'selected' : ''}>Staging</option>
+          <option value="production" ${environment === 'production' ? 'selected' : ''}>Production</option>
+          <option value="custom" ${environment === 'custom' ? 'selected' : ''}>Custom</option>
+        </select>
+      </div>
       ${showActive ? `<div class="form-group"><label><input type="checkbox" id="h-active" ${isActive ? 'checked' : ''}> ${i18n.t('pages.hosts.active')}</label></div>` : ''}
       <div style="margin-top:12px">
         <button class="btn btn-sm btn-secondary" id="h-test-btn"><i class="fas fa-plug"></i> ${i18n.t('pages.hosts.testConnection')}</button>
@@ -312,6 +328,7 @@ const HostsPage = {
       hasTls: host.hasTls,
       showActive: true,
       isActive: host.isActive,
+      environment: host.environment || 'development',
     });
 
     const result = await Modal.form(html, {
@@ -406,6 +423,10 @@ const HostsPage = {
       if (key) data.sshPrivateKey = key;
       data.sshDockerSocket = content.querySelector('#h-ssh-docker').value.trim() || '/var/run/docker.sock';
     }
+
+    // Environment tag
+    const envEl = content.querySelector('#h-environment');
+    if (envEl) data.environment = envEl.value;
 
     if (!data.name) { Toast.warning(i18n.t('pages.hosts.nameRequired')); return false; }
     return data;

@@ -1,5 +1,6 @@
 'use strict';
 
+const express = require('express');
 const { Router } = require('express');
 const { favorites, notifications, apiKeys } = require('../services/misc');
 const auditService = require('../services/audit');
@@ -282,6 +283,84 @@ router.post('/backup/database', requireAuth, requireRole('admin'), (req, res) =>
   }
 });
 
+// ─── Database Restore ──────────────────────────────────────
+
+const SQLITE_MAGIC = 'SQLite format 3\0';
+
+router.post('/backup/restore', express.json({ limit: '750mb' }), requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { content } = req.body || {};
+
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Database file content (base64) is required' });
+    }
+
+    // Decode base64
+    const fileBuffer = Buffer.from(content, 'base64');
+
+    // Validate minimum size (SQLite header is 100 bytes)
+    if (fileBuffer.length < 100) {
+      return res.status(400).json({ error: 'File is too small to be a valid SQLite database' });
+    }
+
+    // Validate SQLite magic bytes (first 16 bytes = "SQLite format 3\0")
+    const header = fileBuffer.slice(0, 16).toString('ascii');
+    if (header !== SQLITE_MAGIC) {
+      return res.status(400).json({ error: 'Invalid file: not a SQLite database (magic bytes mismatch)' });
+    }
+
+    // Limit size to 500MB
+    if (fileBuffer.length > 500 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Database file too large (max 500MB)' });
+    }
+
+    const path = require('path');
+    const fs = require('fs');
+    const dbPath = process.env.DB_PATH || path.join(process.env.DATA_DIR || '/data', 'docker-dash.db');
+    const backupDir = process.env.DATA_DIR || '/data';
+
+    // Create a safety backup of current DB before replacing
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const safetyBackupPath = path.join(backupDir, `pre-restore-${ts}.db`);
+
+    const db = getDb();
+
+    // Log the restore action before closing
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'database_restore',
+      details: JSON.stringify({ uploadSize: fileBuffer.length, safetyBackup: safetyBackupPath }),
+      ip: getClientIp(req),
+    });
+
+    // Safety backup, then replace
+    db.backup(safetyBackupPath).then(() => {
+      // Close the current database
+      try { db.close(); } catch (_e) { /* may already be closed */ }
+
+      // Write the uploaded database
+      fs.writeFileSync(dbPath, fileBuffer);
+
+      // Respond before restart so the client gets confirmation
+      res.json({
+        ok: true,
+        message: 'Database restored successfully. The application will restart.',
+        safetyBackup: safetyBackupPath,
+        restoredSize: fileBuffer.length,
+      });
+
+      // Graceful restart after a short delay
+      setTimeout(() => {
+        process.exit(0); // Docker/systemd will restart the process
+      }, 1000);
+    }).catch(err => {
+      res.status(500).json({ error: 'Failed to create safety backup: ' + err.message });
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Global Search ──────────────────────────────────────────
 
 router.get('/search', requireAuth, async (req, res) => {
@@ -516,6 +595,7 @@ router.get('/docs', (req, res) => {
         { method: 'GET', path: '/api/audit/analytics', description: 'Audit analytics (top users, actions)' },
         { method: 'GET', path: '/api/footprint', description: 'Docker Dash resource footprint' },
         { method: 'POST', path: '/api/backup/database', description: 'Create database backup' },
+        { method: 'POST', path: '/api/backup/restore', description: 'Restore database from uploaded SQLite file' },
         { method: 'GET', path: '/api/status-page/public', auth: false, description: 'Public status page' },
         { method: 'GET', path: '/api/watchtower', description: 'Detect Watchtower containers' },
       ]},

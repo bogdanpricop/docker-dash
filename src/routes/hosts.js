@@ -27,6 +27,7 @@ router.get('/', requireAuth, async (req, res) => {
         socketPath: h.socket_path,
         isActive: !!h.is_active,
         isDefault: !!h.is_default,
+        environment: h.environment || 'development',
         lastSeenAt: h.last_seen_at,
         createdAt: h.created_at,
         healthy: status.healthy,
@@ -60,6 +61,7 @@ router.get('/:id', requireAuth, async (req, res) => {
       socketPath: host.socket_path,
       isActive: !!host.is_active,
       isDefault: !!host.is_default,
+      environment: host.environment || 'development',
       lastSeenAt: host.last_seen_at,
       createdAt: host.created_at,
       healthy: status.healthy,
@@ -169,7 +171,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, async (req, res
 
     const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
             sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
-            isActive } = req.body;
+            isActive, environment } = req.body;
 
     let tlsConfig = existing.tls_config;
     if (connectionType === 'tcp' && tlsCa !== undefined) {
@@ -189,9 +191,13 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, async (req, res
       });
     }
 
+    // Validate environment value if provided
+    const validEnvs = ['development', 'staging', 'production', 'custom'];
+    const envVal = environment !== undefined ? (validEnvs.includes(environment) ? environment : existing.environment) : existing.environment;
+
     db.prepare(`
       UPDATE docker_hosts SET name = ?, connection_type = ?, socket_path = ?, host = ?, port = ?,
-        tls_config = ?, ssh_config = ?, is_active = ?, updated_at = datetime('now')
+        tls_config = ?, ssh_config = ?, is_active = ?, environment = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(
       name || existing.name,
@@ -201,6 +207,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, async (req, res
       port !== undefined ? port : existing.port,
       tlsConfig, sshConfig,
       isActive !== undefined ? (isActive ? 1 : 0) : existing.is_active,
+      envVal,
       hostId,
     );
 

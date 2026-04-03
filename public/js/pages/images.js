@@ -25,6 +25,9 @@ const ImagesPage = {
           <button class="btn btn-sm btn-secondary" id="import-btn">
             <i class="fas fa-file-import"></i> Import
           </button>
+          <button class="btn btn-sm btn-secondary" id="registry-browse-btn">
+            <i class="fas fa-warehouse"></i> Registries
+          </button>
           <input type="file" id="import-file" accept=".tar,.tar.gz" style="display:none">
           <button class="prune-help-btn" id="images-help" title="${i18n.t('pages.images.helpTooltip')}">?</button>
           <button class="btn btn-sm btn-secondary" id="images-refresh">
@@ -67,6 +70,7 @@ const ImagesPage = {
     container.querySelector('#import-file').addEventListener('change', (e) => this._importImage(e));
     container.querySelector('#images-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#images-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#registry-browse-btn').addEventListener('click', () => this._registryBrowser());
 
     // Event delegation for table action buttons
     container.querySelector('#images-table').addEventListener('click', (e) => {
@@ -628,6 +632,197 @@ const ImagesPage = {
     Modal.open(html, { width: '620px' });
     Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
     Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+  },
+
+  async _registryBrowser() {
+    let registries = [];
+    try {
+      registries = await Api.getRegistries();
+    } catch { /* no registries configured */ }
+
+    if (registries.length === 0) {
+      Modal.open(`
+        <div class="modal-header">
+          <h3><i class="fas fa-warehouse" style="color:var(--accent);margin-right:8px"></i>Registry Browser</h3>
+          <button class="modal-close-btn" id="rb-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="empty-msg" style="padding:24px">
+            <i class="fas fa-warehouse" style="font-size:32px;color:var(--text-dim);margin-bottom:12px"></i>
+            <p>No registries configured.</p>
+            <p class="text-sm text-muted">Go to <strong>System &gt; Tools</strong> or use the API to add a registry.</p>
+            <div style="margin-top:16px">
+              <button class="btn btn-sm btn-primary" id="rb-add-registry"><i class="fas fa-plus"></i> Add Registry</button>
+            </div>
+          </div>
+        </div>
+      `, { width: '500px' });
+      Modal._content.querySelector('#rb-close').addEventListener('click', () => Modal.close());
+      Modal._content.querySelector('#rb-add-registry').addEventListener('click', () => {
+        Modal.close();
+        this._addRegistryDialog();
+      });
+      return;
+    }
+
+    // Show registry list with browse capability
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-warehouse" style="color:var(--accent);margin-right:8px"></i>Registry Browser</h3>
+        <button class="modal-close-btn" id="rb-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          ${registries.map(r => `
+            <button class="btn btn-sm btn-secondary rb-reg-btn" data-id="${r.id}" title="${Utils.escapeHtml(r.url)}">
+              <i class="fas fa-server"></i> ${Utils.escapeHtml(r.name)}
+            </button>
+          `).join('')}
+          <button class="btn btn-sm btn-primary" id="rb-add"><i class="fas fa-plus"></i> Add</button>
+        </div>
+        <div id="rb-catalog" class="text-muted text-sm">Select a registry to browse its repositories.</div>
+      </div>
+    `, { width: '700px' });
+
+    Modal._content.querySelector('#rb-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#rb-add').addEventListener('click', () => {
+      Modal.close();
+      this._addRegistryDialog();
+    });
+
+    Modal._content.querySelectorAll('.rb-reg-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const regId = parseInt(btn.dataset.id);
+        const catalog = Modal._content.querySelector('#rb-catalog');
+        catalog.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading repositories...';
+
+        try {
+          const repos = await Api.getRegistryCatalog(regId);
+          if (!repos.length) {
+            catalog.innerHTML = '<div class="empty-msg">No repositories found in this registry.</div>';
+            return;
+          }
+
+          catalog.innerHTML = `
+            <table class="data-table compact">
+              <thead><tr><th>Repository</th><th style="width:100px">Actions</th></tr></thead>
+              <tbody>
+                ${repos.map(repo => `
+                  <tr>
+                    <td class="mono text-sm">${Utils.escapeHtml(repo)}</td>
+                    <td>
+                      <button class="btn btn-xs btn-secondary rb-tags" data-reg="${regId}" data-repo="${Utils.escapeHtml(repo)}"><i class="fas fa-tags"></i> Tags</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+
+          catalog.querySelectorAll('.rb-tags').forEach(tagBtn => {
+            tagBtn.addEventListener('click', async () => {
+              const rid = parseInt(tagBtn.dataset.reg);
+              const repoName = tagBtn.dataset.repo;
+              tagBtn.disabled = true;
+              tagBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+              try {
+                const tags = await Api.getRegistryTags(rid, repoName);
+                const reg = registries.find(r => r.id === rid);
+                const registryHost = reg ? new URL(reg.url).host : '';
+
+                // Replace the catalog content with tags + pull buttons
+                catalog.innerHTML = `
+                  <div style="margin-bottom:8px">
+                    <button class="btn btn-xs btn-secondary" id="rb-back"><i class="fas fa-arrow-left"></i> Back</button>
+                    <strong class="mono" style="margin-left:8px">${Utils.escapeHtml(repoName)}</strong>
+                    <span class="badge badge-info" style="margin-left:6px">${tags.length} tags</span>
+                  </div>
+                  <table class="data-table compact">
+                    <thead><tr><th>Tag</th><th style="width:150px">Actions</th></tr></thead>
+                    <tbody>
+                      ${(tags || []).map(tag => `
+                        <tr>
+                          <td class="mono text-sm">${Utils.escapeHtml(tag)}</td>
+                          <td>
+                            <button class="btn btn-xs btn-primary rb-pull" data-reg="${rid}" data-image="${Utils.escapeHtml(repoName)}" data-tag="${Utils.escapeHtml(tag)}">
+                              <i class="fas fa-download"></i> Pull
+                            </button>
+                          </td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                `;
+
+                catalog.querySelector('#rb-back').addEventListener('click', () => btn.click());
+                catalog.querySelectorAll('.rb-pull').forEach(pullBtn => {
+                  pullBtn.addEventListener('click', async () => {
+                    pullBtn.disabled = true;
+                    pullBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pulling...';
+                    try {
+                      await Api.pullFromRegistry(parseInt(pullBtn.dataset.reg), pullBtn.dataset.image, pullBtn.dataset.tag);
+                      Toast.success(`Pulled ${registryHost}/${pullBtn.dataset.image}:${pullBtn.dataset.tag}`);
+                      pullBtn.innerHTML = '<i class="fas fa-check"></i> Done';
+                    } catch (err) {
+                      Toast.error('Pull failed: ' + err.message);
+                      pullBtn.disabled = false;
+                      pullBtn.innerHTML = '<i class="fas fa-download"></i> Pull';
+                    }
+                  });
+                });
+              } catch (err) {
+                Toast.error('Failed to load tags: ' + err.message);
+                tagBtn.disabled = false;
+                tagBtn.innerHTML = '<i class="fas fa-tags"></i> Tags';
+              }
+            });
+          });
+        } catch (err) {
+          catalog.innerHTML = `<div class="text-sm" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+        }
+      });
+    });
+  },
+
+  async _addRegistryDialog() {
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>Name *</label>
+        <input type="text" id="reg-name" class="form-control" placeholder="My Registry">
+      </div>
+      <div class="form-group">
+        <label>URL *</label>
+        <input type="url" id="reg-url" class="form-control" placeholder="https://registry.example.com">
+      </div>
+      <div class="form-group">
+        <label>Username (optional)</label>
+        <input type="text" id="reg-user" class="form-control">
+      </div>
+      <div class="form-group">
+        <label>Password (optional)</label>
+        <input type="password" id="reg-pass" class="form-control">
+      </div>
+    `, {
+      title: 'Add Registry',
+      width: '450px',
+      onSubmit: (content) => {
+        const name = content.querySelector('#reg-name').value.trim();
+        const url = content.querySelector('#reg-url').value.trim();
+        if (!name || !url) { Toast.error('Name and URL are required'); return false; }
+        return {
+          name, url,
+          username: content.querySelector('#reg-user').value.trim() || undefined,
+          password: content.querySelector('#reg-pass').value || undefined,
+        };
+      },
+    });
+    if (!result) return;
+    try {
+      await Api.createRegistry(result);
+      Toast.success('Registry added');
+    } catch (err) {
+      Toast.error(err.message);
+    }
   },
 
   destroy() {

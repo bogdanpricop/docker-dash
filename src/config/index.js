@@ -90,4 +90,12 @@ module.exports = {
     defaultPassword: env('ADMIN_PASSWORD', 'admin'),
     defaultUsername: env('ADMIN_USERNAME', 'admin'),
   },
+  oidc: {
+    enabled: bool('OIDC_ENABLED', false),
+    issuerUrl: env('OIDC_ISSUER_URL', ''),
+    clientId: env('OIDC_CLIENT_ID', ''),
+    clientSecret: env('OIDC_CLIENT_SECRET', ''),
+    redirectUri: env('OIDC_REDIRECT_URI', ''),
+    defaultRole: env('OIDC_DEFAULT_ROLE', 'viewer'),
+  },
 };

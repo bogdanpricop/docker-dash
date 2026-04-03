@@ -1,10 +1,8 @@
 'use strict';
 
 const { Router } = require('express');
-const { execFileSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const https = require('https');
+const http = require('http');
 const { requireAuth, requireRole, writeable, requireFeature } = require('../middleware/auth');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
@@ -342,48 +340,366 @@ router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Deploy a template (writes temp compose file, runs docker compose up)
+/** Parse simple compose YAML into service objects (no external YAML library needed) */
+function _parseComposeServices(yaml) {
+  const services = [];
+  const lines = yaml.split('\n');
+  let currentService = null;
+  let inEnvironment = false;
+  let inPorts = false;
+  let inVolumes = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+
+    // Detect service names (children of 'services:')
+    if (trimmed === 'services:') continue;
+    if (indent === 2 && trimmed.endsWith(':') && !trimmed.includes(' ')) {
+      if (currentService) services.push(currentService);
+      currentService = { name: trimmed.slice(0, -1), image: '', env: [], ports: [], volumes: [], restart: 'unless-stopped' };
+      inEnvironment = false; inPorts = false; inVolumes = false;
+      continue;
+    }
+
+    if (!currentService) continue;
+
+    // Service properties
+    if (indent === 4) {
+      inEnvironment = false; inPorts = false; inVolumes = false;
+      if (trimmed.startsWith('image:')) currentService.image = trimmed.split(':').slice(1).join(':').trim().replace(/['"]/g, '');
+      else if (trimmed.startsWith('restart:')) currentService.restart = trimmed.split(':')[1].trim().replace(/['"]/g, '');
+      else if (trimmed === 'environment:') inEnvironment = true;
+      else if (trimmed === 'ports:') inPorts = true;
+      else if (trimmed === 'volumes:') inVolumes = true;
+    }
+
+    // List items under environment/ports/volumes
+    if (indent >= 6 && trimmed.startsWith('-')) {
+      const val = trimmed.slice(1).trim().replace(/^["']|["']$/g, '');
+      if (inPorts) currentService.ports.push(val);
+      else if (inVolumes) currentService.volumes.push(val);
+      else if (inEnvironment) currentService.env.push(val);
+    }
+    // Map-style environment (KEY: value)
+    if (indent >= 6 && inEnvironment && !trimmed.startsWith('-') && trimmed.includes(':')) {
+      const [k, ...v] = trimmed.split(':');
+      currentService.env.push(`${k.trim()}=${v.join(':').trim().replace(/^["']|["']$/g, '')}`);
+    }
+  }
+  if (currentService) services.push(currentService);
+  return services;
+}
+
+// Deploy a template via Docker API (dockerode — works on any host)
 router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writeable, requireFeature('create'), async (req, res) => {
   try {
     const t = findTemplate(req.params.id);
     if (!t) return res.status(404).json({ error: 'Template not found' });
 
     const stackName = req.body.name || t.id;
-    // Validate stack name: only alphanumeric, dash, underscore
     if (!/^[a-zA-Z0-9_-]+$/.test(stackName)) {
       return res.status(400).json({ error: 'Stack name must contain only letters, numbers, dashes, underscores' });
     }
 
-    // Use custom compose YAML from configurator if provided, otherwise use template default
-    let compose = (req.body.compose && typeof req.body.compose === 'string') ? req.body.compose : t.compose;
-    // Replace first service name with custom name
-    compose = compose.replace(/^(services:\n  )\S+:/m, `$1${stackName}:`);
+    const compose = (req.body.compose && typeof req.body.compose === 'string') ? req.body.compose : t.compose;
 
-    // Write temp compose file
-    const tmpDir = path.join(os.tmpdir(), `dd-template-${stackName}-${Date.now()}`);
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const composeFile = path.join(tmpDir, 'docker-compose.yml');
-    fs.writeFileSync(composeFile, compose, 'utf8');
+    // Parse compose YAML to extract services
+    const services = _parseComposeServices(compose);
+    if (services.length === 0) return res.status(400).json({ error: 'No services found in compose YAML' });
 
-    // Run docker compose up
-    const output = execFileSync('docker', ['compose', '-f', composeFile, '-p', stackName, 'up', '-d'], {
-      timeout: 120000,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const dockerService = require('../services/docker');
+    const docker = dockerService.getDocker(req.hostId);
+    const results = [];
 
-    // Cleanup temp file
-    try { fs.unlinkSync(composeFile); fs.rmdirSync(tmpDir); } catch { /* cleanup best-effort; temp files will be removed on reboot */ }
+    for (const svc of services) {
+      const containerName = services.length === 1 ? stackName : `${stackName}-${svc.name}`;
+
+      // Remove existing container with same name (if any)
+      try {
+        const existing = docker.getContainer(containerName);
+        const info = await existing.inspect();
+        if (info) {
+          try { await existing.stop(); } catch { /* may already be stopped */ }
+          await existing.remove({ force: true });
+        }
+      } catch { /* container doesn't exist — good */ }
+
+      // Pull image
+      try {
+        await new Promise((resolve, reject) => {
+          docker.pull(svc.image, (err, stream) => {
+            if (err) return reject(err);
+            docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
+          });
+        });
+      } catch (pullErr) {
+        // Image might already exist locally
+      }
+
+      // Build container config — do NOT set Cmd (let image default apply)
+      const createOpts = {
+        name: containerName,
+        Image: svc.image,
+        Labels: { 'com.docker.compose.project': stackName, 'com.docker.compose.service': svc.name, 'docker-dash.template': t.id },
+        HostConfig: {
+          RestartPolicy: { Name: svc.restart || 'unless-stopped' },
+          PortBindings: {},
+          Binds: [],
+        },
+      };
+      // Only set Env if non-empty
+      if (svc.env && svc.env.length > 0) createOpts.Env = svc.env;
+      // Only set ExposedPorts if we have ports
+      if (svc.ports && svc.ports.length > 0) createOpts.ExposedPorts = {};
+
+      // Ports
+      for (const p of (svc.ports || [])) {
+        const [hostPort, containerPort] = p.split(':');
+        const proto = containerPort.includes('/') ? '' : '/tcp';
+        const cPort = containerPort.replace(/\/(tcp|udp)/, '') + proto;
+        createOpts.ExposedPorts[cPort] = {};
+        createOpts.HostConfig.PortBindings[cPort] = [{ HostPort: hostPort }];
+      }
+
+      // Volumes
+      for (const v of (svc.volumes || [])) {
+        if (v.includes(':')) {
+          createOpts.HostConfig.Binds.push(v);
+        }
+      }
+
+      // Create and start
+      const container = await docker.createContainer(createOpts);
+      await container.start();
+      results.push({ name: containerName, id: container.id });
+    }
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'template_deploy', targetType: 'template', targetId: t.id,
-      details: { template: t.name, stackName }, ip: getClientIp(req),
+      details: { template: t.name, stackName, containers: results.map(r => r.name) }, ip: getClientIp(req),
     });
 
-    res.json({ ok: true, stackName, output });
+    res.json({ ok: true, stackName, containers: results });
   } catch (err) {
-    res.status(500).json({ error: err.stderr || err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Portainer Template Import ─────────────────────────────
+
+/** Fetch JSON from a URL using built-in https/http */
+function _fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const req = mod.get(url, { timeout: 15000, headers: { 'User-Agent': 'DockerDash/5.0' } }, (res) => {
+      // Follow redirects (up to 3)
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        return _fetchJson(res.headers.location).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('Invalid JSON response')); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+  });
+}
+
+/** Convert a Portainer type-1 (container) template to compose YAML */
+function _portainerContainerToCompose(t) {
+  const svcName = (t.name || 'app').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+  const lines = ['services:', `  ${svcName}:`];
+  lines.push(`    image: ${t.image || 'unknown'}`);
+
+  if (t.env && t.env.length > 0) {
+    lines.push('    environment:');
+    for (const e of t.env) {
+      const val = e.default || e.preset || '';
+      lines.push(`      ${e.name}: "${val}"`);
+    }
+  }
+
+  if (t.ports && t.ports.length > 0) {
+    lines.push('    ports:');
+    for (const p of t.ports) {
+      const hp = p.split(':')[0] || p.split('/')[0];
+      const cp = p.includes(':') ? p.split(':')[1] : p;
+      lines.push(`      - "${hp}:${cp}"`);
+    }
+  }
+
+  if (t.volumes && t.volumes.length > 0) {
+    lines.push('    volumes:');
+    const namedVolumes = [];
+    for (const v of t.volumes) {
+      const bind = v.bind || v.container;
+      if (bind) {
+        if (v.bind && !v.bind.startsWith('/')) {
+          // Named volume
+          lines.push(`      - ${v.bind}:${v.container}`);
+          namedVolumes.push(v.bind);
+        } else {
+          const volName = svcName + '-data' + (namedVolumes.length ? namedVolumes.length : '');
+          lines.push(`      - ${volName}:${v.container}${v.readonly ? ':ro' : ''}`);
+          namedVolumes.push(volName);
+        }
+      }
+    }
+    if (namedVolumes.length > 0) {
+      lines.push('volumes:');
+      for (const n of namedVolumes) lines.push(`  ${n}:`);
+    }
+  }
+
+  lines.push('    restart: unless-stopped');
+  return lines.join('\n');
+}
+
+/** Convert Portainer template to Docker Dash format */
+function _convertPortainerTemplate(t) {
+  const id = (t.name || 'imported').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 48);
+
+  let compose = '';
+  const type = t.type || 1;
+
+  if (type === 1) {
+    compose = _portainerContainerToCompose(t);
+  } else if (type === 2) {
+    // Stack — compose may be in stackfile field or repository
+    compose = t.stackfile || '';
+    if (!compose && t.repository?.stackfile) {
+      compose = `# Fetch from: ${t.repository.url}\n# File: ${t.repository.stackfile}\nservices:\n  app:\n    image: ${t.image || 'placeholder'}\n    restart: unless-stopped`;
+    }
+    if (!compose) {
+      compose = `services:\n  app:\n    image: ${t.image || 'placeholder'}\n    restart: unless-stopped`;
+    }
+  } else if (type === 3) {
+    compose = t.stackfile || t.compose || '';
+    if (!compose) {
+      compose = `services:\n  app:\n    image: ${t.image || 'placeholder'}\n    restart: unless-stopped`;
+    }
+  }
+
+  // Map categories
+  const categoryMap = { 'Databases': 'Database', 'Webservers': 'Web Server', 'Monitoring': 'Monitoring' };
+  const cats = t.categories || [];
+  const category = categoryMap[cats[0]] || cats[0] || 'Imported';
+
+  return {
+    id,
+    name: t.title || t.name || id,
+    category,
+    icon: 'fas fa-file-import',
+    description: t.description || '',
+    compose,
+    type,
+    logo: t.logo || '',
+  };
+}
+
+// Preview Portainer templates (fetch + convert, no save)
+router.post('/import/preview', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: 'url is required' });
+
+    // Basic URL validation
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return res.status(400).json({ error: 'URL must start with http:// or https://' });
+    }
+
+    const data = await _fetchJson(url);
+
+    // Portainer templates can be { version: "2", templates: [...] } or just an array
+    const rawTemplates = Array.isArray(data) ? data : (data.templates || []);
+
+    if (!rawTemplates.length) {
+      return res.status(400).json({ error: 'No templates found at the provided URL' });
+    }
+
+    // Check which IDs already exist
+    const db = getDb();
+    const existingBuiltin = new Set(TEMPLATES.map(t => t.id));
+    const existingCustom = new Set(
+      db.prepare('SELECT id FROM custom_templates').all().map(r => r.id)
+    );
+
+    const converted = rawTemplates.map(t => {
+      const c = _convertPortainerTemplate(t);
+      c.alreadyExists = existingBuiltin.has(c.id) || existingCustom.has(c.id);
+      return c;
+    });
+
+    res.json({
+      total: converted.length,
+      templates: converted,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Import selected Portainer templates (save to DB)
+router.post('/import', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { templates: toImport } = req.body;
+    if (!Array.isArray(toImport) || toImport.length === 0) {
+      return res.status(400).json({ error: 'templates array is required' });
+    }
+
+    const db = getDb();
+    const existingBuiltin = new Set(TEMPLATES.map(t => t.id));
+    const existingCustom = new Set(
+      db.prepare('SELECT id FROM custom_templates').all().map(r => r.id)
+    );
+
+    const insert = db.prepare(`INSERT INTO custom_templates (id, name, category, icon, description, compose, is_builtin_override, created_by, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`);
+
+    let imported = 0;
+    let skipped = 0;
+    const importMany = db.transaction(() => {
+      for (const t of toImport) {
+        // Deduplicate: append suffix if needed
+        let id = t.id;
+        if (existingBuiltin.has(id) || existingCustom.has(id)) {
+          // Try with -imported suffix
+          id = id + '-imported';
+          if (existingBuiltin.has(id) || existingCustom.has(id)) {
+            skipped++;
+            continue;
+          }
+        }
+        existingCustom.add(id);
+        insert.run(
+          id, t.name, t.category || 'Imported', t.icon || 'fas fa-file-import',
+          (t.description || '').substring(0, 500), t.compose,
+          req.user.username, req.user.username
+        );
+        imported++;
+      }
+    });
+    importMany();
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'template_import', targetType: 'template', targetId: 'portainer',
+      details: { imported, skipped, total: toImport.length }, ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, imported, skipped });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

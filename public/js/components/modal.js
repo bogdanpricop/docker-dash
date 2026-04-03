@@ -18,8 +18,15 @@ const Modal = {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this._overlay.classList.contains('hidden')) {
-        this.close();
+      if (e.key === 'Escape') {
+        // Close sub-modal first if open
+        if (this._subOverlay && !this._subOverlay.classList.contains('hidden')) {
+          this.closeSub();
+          return;
+        }
+        if (!this._overlay.classList.contains('hidden')) {
+          this.close();
+        }
       }
     });
   },
@@ -117,6 +124,46 @@ const Modal = {
       });
       this._onClose = () => resolve(null);
     });
+  },
+
+  // ─── Stacked Sub-Modal (opens on top of current modal) ───
+  _subOverlay: null,
+  _subContent: null,
+
+  openSub(html, { width } = {}) {
+    // Create sub-overlay if not exists
+    if (!this._subOverlay) {
+      this._subOverlay = document.createElement('div');
+      this._subOverlay.id = 'modal-sub-overlay';
+      this._subOverlay.className = 'modal-overlay hidden';
+      this._subOverlay.style.zIndex = '10001';
+      const content = document.createElement('div');
+      content.id = 'modal-sub-content';
+      content.className = 'modal-content';
+      this._subOverlay.appendChild(content);
+      document.body.appendChild(this._subOverlay);
+      this._subOverlay.addEventListener('click', (e) => {
+        if (e.target === this._subOverlay) this.closeSub();
+      });
+    }
+    this._subContent = this._subOverlay.querySelector('#modal-sub-content');
+    this._subContent.innerHTML = typeof html === 'string' ? html : '';
+    if (width) this._subContent.style.maxWidth = width;
+    else this._subContent.style.maxWidth = '';
+    this._subOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => this._subOverlay.classList.add('modal-visible'));
+    const firstInput = this._subContent.querySelector('input, textarea, select, button');
+    if (firstInput) setTimeout(() => firstInput.focus(), 100);
+    return this._subContent;
+  },
+
+  closeSub() {
+    if (!this._subOverlay) return;
+    this._subOverlay.classList.remove('modal-visible');
+    setTimeout(() => {
+      this._subOverlay.classList.add('hidden');
+      if (this._subContent) this._subContent.innerHTML = '';
+    }, 200);
   },
 };
 

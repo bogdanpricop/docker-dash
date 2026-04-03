@@ -481,4 +481,197 @@ router.post('/reset-password-token',
   }
 });
 
+// ─── OIDC / OAuth Flow ────────────────────────────────────
+
+const https = require('https');
+const http = require('http');
+const crypto = require('crypto');
+
+/** Fetch JSON from a URL (for OIDC discovery, token exchange, userinfo) */
+function _oidcFetch(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const urlObj = new URL(url);
+    const reqOpts = {
+      hostname: urlObj.hostname,
+      port: urlObj.port,
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: { 'Accept': 'application/json', ...(options.headers || {}) },
+      timeout: 10000,
+    };
+    const req = mod.request(reqOpts, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, body: data }); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('OIDC request timeout')); });
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+/** Decode JWT payload (no verification - we trust the token_endpoint response) */
+function _decodeJwtPayload(jwt) {
+  try {
+    const parts = jwt.split('.');
+    if (parts.length < 2) return null;
+    const payload = Buffer.from(parts[1], 'base64url').toString('utf8');
+    return JSON.parse(payload);
+  } catch { return null; }
+}
+
+// OIDC: Check if enabled
+router.get('/oidc/enabled', (req, res) => {
+  res.json({ enabled: config.oidc?.enabled || false });
+});
+
+// OIDC: Initiate login — redirect to provider
+router.get('/oidc/login', async (req, res) => {
+  try {
+    if (!config.oidc?.enabled) return res.status(400).json({ error: 'OIDC is not enabled' });
+
+    const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
+    const disco = await _oidcFetch(`${issuer}/.well-known/openid-configuration`);
+    if (!disco.body?.authorization_endpoint) {
+      return res.status(500).json({ error: 'Failed to discover OIDC endpoints' });
+    }
+
+    // Generate state parameter for CSRF protection
+    const state = crypto.randomBytes(16).toString('hex');
+
+    // Store state in a short-lived DB entry (5 min TTL)
+    const db = getDb();
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS oidc_states (
+        state TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL
+      )`);
+    } catch { /* table may already exist */ }
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    db.prepare('INSERT OR REPLACE INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
+
+    const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
+    const params = new URLSearchParams({
+      client_id: config.oidc.clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid profile email',
+      state,
+    });
+
+    const authUrl = `${disco.body.authorization_endpoint}?${params.toString()}`;
+    res.json({ url: authUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// OIDC: Callback — exchange code for tokens
+router.get('/oidc/callback', async (req, res) => {
+  try {
+    if (!config.oidc?.enabled) return res.status(400).send('OIDC is not enabled');
+
+    const { code, state, error: authError } = req.query;
+    if (authError) return res.status(400).send(`OIDC error: ${authError}`);
+    if (!code || !state) return res.status(400).send('Missing code or state parameter');
+
+    // Validate state
+    const db = getDb();
+    const stateRow = db.prepare("SELECT * FROM oidc_states WHERE state = ? AND expires_at > datetime('now')").get(state);
+    if (!stateRow) return res.status(400).send('Invalid or expired state parameter');
+    db.prepare('DELETE FROM oidc_states WHERE state = ?').run(state);
+
+    // Discover endpoints
+    const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
+    const disco = await _oidcFetch(`${issuer}/.well-known/openid-configuration`);
+    if (!disco.body?.token_endpoint) return res.status(500).send('OIDC discovery failed');
+
+    const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
+
+    // Exchange code for tokens
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: config.oidc.clientId,
+      client_secret: config.oidc.clientSecret,
+      code,
+      redirect_uri: redirectUri,
+    }).toString();
+
+    const tokenRes = await _oidcFetch(disco.body.token_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody,
+    });
+
+    if (tokenRes.status !== 200 || !tokenRes.body?.access_token) {
+      return res.status(401).send('Token exchange failed: ' + (tokenRes.body?.error_description || tokenRes.body?.error || 'unknown'));
+    }
+
+    // Extract user info — try id_token first, then userinfo endpoint
+    let userInfo = null;
+    if (tokenRes.body.id_token) {
+      userInfo = _decodeJwtPayload(tokenRes.body.id_token);
+    }
+
+    if ((!userInfo || !userInfo.email) && disco.body.userinfo_endpoint) {
+      const uiRes = await _oidcFetch(disco.body.userinfo_endpoint, {
+        headers: { 'Authorization': `Bearer ${tokenRes.body.access_token}` },
+      });
+      if (uiRes.status === 200 && uiRes.body) {
+        userInfo = { ...userInfo, ...uiRes.body };
+      }
+    }
+
+    if (!userInfo || (!userInfo.email && !userInfo.preferred_username && !userInfo.sub)) {
+      return res.status(401).send('Could not determine user identity from OIDC provider');
+    }
+
+    // Determine username and email
+    const email = userInfo.email || '';
+    const username = userInfo.preferred_username || email.split('@')[0] || userInfo.sub;
+    const displayName = userInfo.name || userInfo.given_name || username;
+
+    // Find or create user
+    const user = authService.findOrCreateSsoUser(username, config.oidc.defaultRole || 'viewer', email);
+    if (!user) return res.status(403).send('Account is disabled');
+
+    // Update display name if available
+    if (displayName && displayName !== username) {
+      db.prepare('UPDATE users SET display_name = ? WHERE id = ? AND (display_name IS NULL OR display_name = username)')
+        .run(displayName, user.id);
+    }
+
+    // Create session
+    const ip = getClientIp(req);
+    const ua = req.headers['user-agent'];
+    const session = authService._createSession(
+      { id: user.id, username: user.username, display_name: displayName, role: user.role },
+      ip, ua
+    );
+
+    auditService.log({ userId: user.id, username: user.username, action: 'oidc_login', ip, userAgent: ua });
+
+    // Set session cookie and redirect to app
+    const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.cookie(config.session.cookieName, session.token, {
+      httpOnly: true,
+      secure: isHttps,
+      sameSite: config.security.isStrict ? 'strict' : (isHttps ? 'strict' : 'lax'),
+      maxAge: config.session.ttl,
+      path: '/',
+    });
+
+    // Redirect to app root
+    res.redirect('/');
+  } catch (err) {
+    res.status(500).send('OIDC callback error: ' + err.message);
+  }
+});
+
 module.exports = router;

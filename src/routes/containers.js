@@ -1,5 +1,6 @@
 'use strict';
 
+const express = require('express');
 const { Router } = require('express');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -1389,6 +1390,98 @@ router.get('/:id/files/download', requireAuth, async (req, res) => {
     res.setHeader('Content-Type', 'application/x-tar');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}.tar"`);
     archive.pipe(res);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Container File Upload ─────────────────────────────
+const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
+
+router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, requireRole('operator'), async (req, res) => {
+  try {
+    const { path: destPath, content, filename } = req.body || {};
+
+    if (!destPath || typeof destPath !== 'string') {
+      return res.status(400).json({ error: 'Destination path is required' });
+    }
+    if (!validateFilePath(destPath)) {
+      return res.status(400).json({ error: 'Invalid destination path. Must start with / and not contain ..' });
+    }
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'File content (base64) is required' });
+    }
+
+    // Decode base64 and check size
+    const fileBuffer = Buffer.from(content, 'base64');
+    if (fileBuffer.length > MAX_UPLOAD_SIZE) {
+      return res.status(413).json({ error: `File too large. Maximum size is ${formatBytes(MAX_UPLOAD_SIZE)}` });
+    }
+    if (fileBuffer.length === 0) {
+      return res.status(400).json({ error: 'File is empty' });
+    }
+
+    const fileName = (filename || 'uploaded-file').replace(/[/\\]/g, '_');
+
+    // Create a tar archive in memory containing the file
+    // tar format: 512-byte header + file data + padding to 512-byte boundary + 1024 zero bytes
+    const fileSize = fileBuffer.length;
+    const headerBuf = Buffer.alloc(512, 0);
+
+    // File name (max 100 chars)
+    const nameBytes = Buffer.from(fileName, 'utf8');
+    nameBytes.copy(headerBuf, 0, 0, Math.min(nameBytes.length, 100));
+
+    // File mode: 0644
+    Buffer.from('0000644\0', 'ascii').copy(headerBuf, 100);
+    // Owner ID
+    Buffer.from('0001000\0', 'ascii').copy(headerBuf, 108);
+    // Group ID
+    Buffer.from('0001000\0', 'ascii').copy(headerBuf, 116);
+    // File size (octal)
+    Buffer.from(fileSize.toString(8).padStart(11, '0') + '\0', 'ascii').copy(headerBuf, 124);
+    // Modification time
+    const mtime = Math.floor(Date.now() / 1000);
+    Buffer.from(mtime.toString(8).padStart(11, '0') + '\0', 'ascii').copy(headerBuf, 136);
+    // Type flag: regular file
+    headerBuf[156] = 0x30; // '0'
+    // Magic
+    Buffer.from('ustar\0', 'ascii').copy(headerBuf, 257);
+    // Version
+    Buffer.from('00', 'ascii').copy(headerBuf, 263);
+
+    // Compute checksum
+    // First, fill checksum field with spaces
+    Buffer.from('        ', 'ascii').copy(headerBuf, 148);
+    let checksum = 0;
+    for (let i = 0; i < 512; i++) checksum += headerBuf[i];
+    Buffer.from(checksum.toString(8).padStart(6, '0') + '\0 ', 'ascii').copy(headerBuf, 148);
+
+    // Pad file data to 512-byte boundary
+    const padding = (512 - (fileSize % 512)) % 512;
+    const endBlock = Buffer.alloc(1024, 0); // end-of-archive marker
+
+    const tarBuffer = Buffer.concat([
+      headerBuf,
+      fileBuffer,
+      Buffer.alloc(padding, 0),
+      endBlock,
+    ]);
+
+    // Upload using dockerode putArchive
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    await container.putArchive(tarBuffer, { path: destPath });
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'container_file_upload',
+      targetId: req.params.id,
+      details: JSON.stringify({ path: destPath, filename: fileName, size: fileSize }),
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, path: destPath, filename: fileName, size: fileSize });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

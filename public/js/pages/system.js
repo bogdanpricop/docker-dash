@@ -1707,6 +1707,7 @@ DB_PASS=secret"></textarea>
             ${categories.map(c => `<option value="${Utils.escapeHtml(c)}">${Utils.escapeHtml(c)}</option>`).join('')}
           </select>
           <button class="btn btn-sm btn-primary" id="tpl-add"><i class="fas fa-plus"></i> Add Template</button>
+          <button class="btn btn-sm btn-secondary" id="tpl-import-portainer"><i class="fas fa-file-import"></i> Import from Portainer</button>
         </div>
         <div class="info-grid" id="tpl-grid" style="margin-top:0">
           ${templates.map(renderCard).join('')}
@@ -1728,6 +1729,9 @@ DB_PASS=secret"></textarea>
 
       // Add new template
       el.querySelector('#tpl-add').addEventListener('click', () => this._templateFormDialog(null, el));
+
+      // Import from Portainer
+      el.querySelector('#tpl-import-portainer').addEventListener('click', () => this._portainerImportDialog(el));
 
       // Delegated click handler
       el.addEventListener('click', async (e) => {
@@ -1889,6 +1893,96 @@ DB_PASS=secret"></textarea>
       this._renderTemplates(parentEl);
     } catch (err) {
       Toast.error(err.message);
+    }
+  },
+
+  async _portainerImportDialog(parentEl) {
+    const defaultUrl = 'https://raw.githubusercontent.com/portainer/templates/master/templates-2.0.json';
+
+    // Step 1: Ask for URL
+    const urlResult = await Modal.form(`
+      <div class="form-group">
+        <label>Portainer Templates URL</label>
+        <input type="url" id="pi-url" class="form-control" value="${defaultUrl}" placeholder="https://...">
+        <small class="text-muted">The official Portainer templates URL is pre-filled. You can also use custom template repositories.</small>
+      </div>
+    `, { title: 'Import from Portainer', width: '600px', submitText: 'Fetch Templates',
+      onSubmit: (content) => {
+        const url = content.querySelector('#pi-url').value.trim();
+        if (!url) { Toast.error('URL is required'); return false; }
+        return { url };
+      },
+    });
+    if (!urlResult) return;
+
+    // Step 2: Fetch and preview
+    Toast.info('Fetching templates...');
+    let preview;
+    try {
+      preview = await Api.previewPortainerImport(urlResult.url);
+    } catch (err) {
+      Toast.error('Failed to fetch: ' + err.message);
+      return;
+    }
+
+    if (!preview.templates || preview.templates.length === 0) {
+      Toast.warning('No templates found at that URL');
+      return;
+    }
+
+    // Step 3: Show checkboxes for selection
+    const tpls = preview.templates;
+    const selectResult = await Modal.form(`
+      <div style="margin-bottom:12px">
+        <strong>${tpls.length} templates found.</strong> Select which to import:
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-xs btn-secondary" id="pi-select-all">Select All</button>
+          <button class="btn btn-xs btn-secondary" id="pi-select-none">Select None</button>
+        </div>
+      </div>
+      <div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
+        ${tpls.map((t, i) => `
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+            <input type="checkbox" class="pi-check" data-idx="${i}" ${t.alreadyExists ? '' : 'checked'}>
+            <div>
+              <strong>${Utils.escapeHtml(t.name)}</strong>
+              <span class="badge badge-info" style="font-size:9px;margin-left:6px">${Utils.escapeHtml(t.category)}</span>
+              ${t.alreadyExists ? '<span class="badge badge-warning" style="font-size:9px;margin-left:4px">exists</span>' : ''}
+              <div class="text-sm text-muted" style="margin-top:2px">${Utils.escapeHtml((t.description || '').substring(0, 100))}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+    `, {
+      title: `Import Templates (${tpls.length} found)`,
+      width: '650px',
+      submitText: 'Import Selected',
+      onMount: (content) => {
+        content.querySelector('#pi-select-all').addEventListener('click', () => {
+          content.querySelectorAll('.pi-check').forEach(cb => cb.checked = true);
+        });
+        content.querySelector('#pi-select-none').addEventListener('click', () => {
+          content.querySelectorAll('.pi-check').forEach(cb => cb.checked = false);
+        });
+      },
+      onSubmit: (content) => {
+        const selected = [];
+        content.querySelectorAll('.pi-check:checked').forEach(cb => {
+          selected.push(tpls[parseInt(cb.dataset.idx)]);
+        });
+        if (selected.length === 0) { Toast.warning('No templates selected'); return false; }
+        return { selected };
+      },
+    });
+    if (!selectResult) return;
+
+    // Step 4: Import
+    try {
+      const result = await Api.importPortainerTemplates(selectResult.selected);
+      Toast.success(`Imported ${result.imported} templates` + (result.skipped ? `, ${result.skipped} skipped (duplicates)` : ''));
+      this._renderTemplates(parentEl);
+    } catch (err) {
+      Toast.error('Import failed: ' + err.message);
     }
   },
 
@@ -2352,7 +2446,45 @@ DB_PASS=secret"></textarea>
           </div>
         </div>
       </div>
+
+      <div class="card mt-md">
+        <div class="card-header">
+          <h3><i class="fas fa-database" style="margin-right:8px"></i>Database Backup & Restore</h3>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-md">Full database backup and restore. This includes all data: users, audit logs, settings, container metadata, and more.</p>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div class="card" style="flex:1;min-width:240px;padding:20px;text-align:center">
+              <i class="fas fa-download" style="font-size:32px;color:var(--accent);margin-bottom:12px"></i>
+              <h4>Create Backup</h4>
+              <p class="text-muted text-sm" style="margin:8px 0">Download a full copy of the SQLite database.</p>
+              <button class="btn btn-sm btn-primary" id="db-backup-tab-btn">
+                <i class="fas fa-download"></i> Download Backup
+              </button>
+            </div>
+            <div class="card" style="flex:1;min-width:240px;padding:20px;text-align:center">
+              <i class="fas fa-upload" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
+              <h4>Restore Database</h4>
+              <p class="text-muted text-sm" style="margin:8px 0">Upload a .db file to replace the current database. A safety backup is created first.</p>
+              <input type="file" id="db-restore-file" accept=".db,.sqlite,.sqlite3" style="display:none">
+              <button class="btn btn-sm btn-danger" id="db-restore-btn">
+                <i class="fas fa-upload"></i> Restore Database
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
+
+    // Database backup from backup tab
+    el.querySelector('#db-backup-tab-btn')?.addEventListener('click', async () => {
+      try {
+        Toast.info('Creating backup...');
+        const result = await Api.post('/backup/database');
+        if (result.ok) Toast.success('Backup created: ' + Utils.formatBytes(result.size));
+        else Toast.error('Backup failed');
+      } catch (err) { Toast.error(err.message); }
+    });
 
     const fileInput = el.querySelector('#restore-file');
     el.querySelector('#restore-btn').addEventListener('click', () => fileInput.click());
@@ -2374,6 +2506,64 @@ DB_PASS=secret"></textarea>
         }));
       } catch (err) {
         Toast.error(i18n.t('pages.containers.restoreFailed', { message: err.message }));
+      }
+    });
+
+    // Database restore
+    const dbFileInput = el.querySelector('#db-restore-file');
+    el.querySelector('#db-restore-btn').addEventListener('click', () => dbFileInput.click());
+
+    dbFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // Validate file extension
+      if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite') && !file.name.endsWith('.sqlite3')) {
+        Toast.error('Please select a .db, .sqlite, or .sqlite3 file');
+        dbFileInput.value = '';
+        return;
+      }
+
+      const ok = await Modal.confirm(
+        `<div style="text-align:left">
+          <p><strong>Restore database from "${Utils.escapeHtml(file.name)}"?</strong></p>
+          <p style="color:var(--red);margin-top:8px"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>
+          This will replace ALL current data (containers metadata, audit logs, settings, users, etc.).</p>
+          <p class="text-muted text-sm" style="margin-top:8px">A safety backup of the current database will be created automatically before replacing.</p>
+          <p style="margin-top:8px"><strong>The application will restart after restore.</strong></p>
+        </div>`,
+        { danger: true }
+      );
+      if (!ok) { dbFileInput.value = ''; return; }
+
+      try {
+        Toast.info('Reading database file...');
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+
+        Toast.info('Uploading and restoring database...');
+        const result = await Api.restoreDatabase(base64);
+
+        if (result.ok) {
+          Toast.success('Database restored! Application is restarting...');
+          // Wait for the server to restart, then reload
+          setTimeout(() => {
+            const checkRestart = setInterval(async () => {
+              try {
+                await fetch('/api/health');
+                clearInterval(checkRestart);
+                window.location.reload();
+              } catch (_) { /* server still restarting */ }
+            }, 2000);
+          }, 2000);
+        }
+      } catch (err) {
+        Toast.error('Restore failed: ' + err.message);
+        dbFileInput.value = '';
       }
     });
   },

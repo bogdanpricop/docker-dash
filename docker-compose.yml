@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: "${APP_VERSION:-5.0.5}"
-    image: docker-dash:${APP_VERSION:-5.0.5}
+        APP_VERSION: "${APP_VERSION:-5.1.0}"
+    image: docker-dash:${APP_VERSION:-5.1.0}
     container_name: docker-dash
     restart: unless-stopped
     env_file:

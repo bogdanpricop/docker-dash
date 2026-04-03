@@ -9,11 +9,12 @@ const TemplateConfigurator = {
   /**
    * Open the configurator modal for a template
    * @param {Object} template - template object with { id, name, icon, compose, ... }
-   * @param {Object} opts - { mode: 'view'|'deploy', onDeploy: fn }
+   * @param {Object} opts - { mode: 'view'|'deploy', onDeploy: fn, onCancel: fn }
    */
   open(template, opts = {}) {
     const mode = opts.mode || 'view';
     const onDeploy = opts.onDeploy || null;
+    const onCancel = opts.onCancel || null;
 
     // Parse the compose YAML into configurable fields
     const fields = this._parseCompose(template.compose);
@@ -64,8 +65,8 @@ const TemplateConfigurator = {
     this._updatePreview(el, fields, originalYaml);
 
     // Bind events
-    el.querySelector('#tplc-close').addEventListener('click', () => Modal.close());
-    el.querySelector('#tplc-cancel').addEventListener('click', () => Modal.close());
+    el.querySelector('#tplc-close').addEventListener('click', () => { Modal.close(); if (onCancel) setTimeout(onCancel, 250); });
+    el.querySelector('#tplc-cancel').addEventListener('click', () => { Modal.close(); if (onCancel) setTimeout(onCancel, 250); });
 
     el.querySelector('#tplc-copy').addEventListener('click', () => {
       const yaml = this._buildYaml(fields, originalYaml);

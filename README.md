@@ -154,6 +154,18 @@
 
 ## Quick Start
 
+### One-Line Install (recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bogdanpricop/docker-dash/main/install.sh | bash
+```
+
+This will detect your OS, check Docker, generate secure secrets, and start Docker Dash. Works on Ubuntu, Debian, CentOS, Fedora, and macOS (amd64/arm64).
+
+Set a custom install directory: `DOCKER_DASH_DIR=/opt/docker-dash curl -fsSL ... | bash`
+
+### Manual Install
+
 ```bash
 # Clone the repository
 git clone https://github.com/bogdanpricop/docker-dash.git

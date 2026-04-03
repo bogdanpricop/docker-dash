@@ -66,6 +66,9 @@ const App = {
     document.getElementById('app-shell').classList.add('hidden');
     WS.disconnect();
 
+    // Check if OIDC is enabled and show SSO button
+    this._initOidcButton();
+
     const form = document.getElementById('login-form');
 
     // Clone to remove old listeners
@@ -125,6 +128,42 @@ const App = {
         btn.innerHTML = `<i class="fas fa-sign-in-alt"></i> ${i18n.t('login.signIn')}`;
       }
     });
+  },
+
+  async _initOidcButton() {
+    const section = document.getElementById('oidc-section');
+    const btn = document.getElementById('oidc-login-btn');
+    if (!section || !btn) return;
+
+    try {
+      const result = await fetch('/api/auth/oidc/enabled').then(r => r.json());
+      if (result.enabled) {
+        section.classList.remove('hidden');
+        // Remove old listener by cloning
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        newBtn.addEventListener('click', async () => {
+          newBtn.disabled = true;
+          newBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Redirecting...';
+          try {
+            const loginRes = await fetch('/api/auth/oidc/login').then(r => r.json());
+            if (loginRes.url) {
+              window.location.href = loginRes.url;
+            } else {
+              newBtn.disabled = false;
+              newBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign in with SSO';
+            }
+          } catch (err) {
+            newBtn.disabled = false;
+            newBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign in with SSO';
+          }
+        });
+      } else {
+        section.classList.add('hidden');
+      }
+    } catch {
+      section.classList.add('hidden');
+    }
   },
 
   _showMfaPrompt(mfaToken, form, errEl) {
@@ -765,7 +804,8 @@ const App = {
       selector.style.display = '';
       select.innerHTML = hosts.map(h => {
         const status = h.healthy === true ? '🟢' : h.healthy === false ? '🔴' : '🟡';
-        return `<option value="${h.id}" ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}>${status} ${Utils.escapeHtml(h.name)}</option>`;
+        const envTag = h.environment && h.environment !== 'development' ? ` [${h.environment.substring(0, 4).toUpperCase()}]` : '';
+        return `<option value="${h.id}" ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}>${status} ${Utils.escapeHtml(h.name)}${envTag}</option>`;
       }).join('');
 
       if (!select._bound) {

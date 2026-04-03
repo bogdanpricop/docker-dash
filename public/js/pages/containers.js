@@ -2430,49 +2430,47 @@ const ContainersPage = {
       Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
 
-      // Category filter
+      // Category filter (case-insensitive partial match)
       Modal._content.querySelectorAll('[data-cat]').forEach(btn => {
         btn.addEventListener('click', () => {
           Modal._content.querySelectorAll('[data-cat]').forEach(b => b.className = 'btn btn-xs btn-secondary');
           btn.className = 'btn btn-xs btn-primary';
-          const cat = btn.dataset.cat;
+          const cat = btn.dataset.cat.toLowerCase();
           Modal._content.querySelectorAll('.template-card').forEach(card => {
-            card.style.display = (cat === 'all' || card.dataset.category === cat) ? '' : 'none';
+            const cardCat = (card.dataset.category || '').toLowerCase();
+            card.style.display = (cat === 'all' || cardCat.includes(cat)) ? '' : 'none';
           });
         });
       });
 
-      // View buttons — read-only YAML preview
+      // View buttons — read-only YAML preview (sub-modal over templates)
       Modal._content.querySelectorAll('.template-view-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const tmpl = templates.find(t => t.id === btn.dataset.tid);
           if (!tmpl) return;
-          Modal.close();
-          setTimeout(() => {
-            Modal.open(`
-              <div class="modal-header">
-                <h3><i class="${tmpl.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(tmpl.name)}</h3>
-                <button class="modal-close-btn" id="tpl-view-close"><i class="fas fa-times"></i></button>
-              </div>
-              <div class="modal-body">
-                <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(tmpl.compose)}</pre>
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-secondary" id="tpl-view-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
-                <button class="btn btn-primary" id="tpl-view-ok">${i18n.t('common.close')}</button>
-              </div>
-            `, { width: '600px' });
-            Modal._content.querySelector('#tpl-view-close').addEventListener('click', () => Modal.close());
-            Modal._content.querySelector('#tpl-view-ok').addEventListener('click', () => Modal.close());
-            Modal._content.querySelector('#tpl-view-copy').addEventListener('click', () => {
-              Utils.copyToClipboard(tmpl.compose).then(() => Toast.success(i18n.t('common.copied')));
-            });
-          }, 250);
+          const sub = Modal.openSub(`
+            <div class="modal-header">
+              <h3><i class="${tmpl.icon}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(tmpl.name)}</h3>
+              <button class="modal-close-btn" id="tpl-sub-close"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+              <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px">${Utils.escapeHtml(tmpl.compose)}</pre>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="tpl-sub-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+              <button class="btn btn-primary" id="tpl-sub-ok">${i18n.t('common.close')}</button>
+            </div>
+          `, { width: '600px' });
+          sub.querySelector('#tpl-sub-close').addEventListener('click', () => Modal.closeSub());
+          sub.querySelector('#tpl-sub-ok').addEventListener('click', () => Modal.closeSub());
+          sub.querySelector('#tpl-sub-copy').addEventListener('click', () => {
+            Utils.copyToClipboard(tmpl.compose).then(() => Toast.success(i18n.t('common.copied')));
+          });
         });
       });
 
-      // Edit buttons — open dynamic configurator
+      // Edit buttons — open dynamic configurator (closes templates, reopens on cancel)
       Modal._content.querySelectorAll('.template-edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -2491,6 +2489,10 @@ const ContainersPage = {
                 } catch (err) {
                   Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
                 }
+              },
+              onCancel: () => {
+                // Re-open templates dialog when configurator is cancelled
+                setTimeout(() => this._templatesDialog(), 250);
               },
             });
           }, 250);
@@ -2655,8 +2657,9 @@ const ContainersPage = {
     this._filesPath = '/';
     el.innerHTML = `
       <div class="card">
-        <div class="card-header">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
           <h3><i class="fas fa-folder-open" style="margin-right:8px"></i>File Browser</h3>
+          <button class="btn btn-sm btn-primary" id="file-upload-btn"><i class="fas fa-upload" style="margin-right:4px"></i>Upload</button>
         </div>
         <div class="card-body">
           <div id="files-breadcrumb" class="files-breadcrumb" style="margin-bottom:12px"></div>
@@ -2674,7 +2677,91 @@ const ContainersPage = {
     el.querySelector('#file-preview-close')?.addEventListener('click', () => {
       el.querySelector('#file-preview-panel').style.display = 'none';
     });
+
+    // Upload button
+    el.querySelector('#file-upload-btn')?.addEventListener('click', () => {
+      this._showUploadModal(el);
+    });
+
     await this._loadFiles(el);
+  },
+
+  _showUploadModal(filesEl) {
+    const currentDir = this._filesPath || '/';
+    Modal.open(`
+      <h3 style="margin-bottom:16px"><i class="fas fa-upload" style="margin-right:8px"></i>Upload File to Container</h3>
+      <div style="margin-bottom:12px">
+        <label class="text-sm text-muted" style="display:block;margin-bottom:4px">Destination Directory</label>
+        <input type="text" id="upload-dest-path" class="form-control" value="${Utils.escapeHtml(currentDir)}" placeholder="/">
+      </div>
+      <div style="margin-bottom:16px">
+        <label class="text-sm text-muted" style="display:block;margin-bottom:4px">Select File (max 50MB)</label>
+        <input type="file" id="upload-file-input" class="form-control">
+      </div>
+      <div id="upload-progress" style="display:none;margin-bottom:12px">
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);overflow:hidden;height:6px">
+          <div id="upload-progress-bar" style="width:0%;height:100%;background:var(--accent);transition:width 0.3s"></div>
+        </div>
+        <span class="text-sm text-muted" id="upload-status">Uploading...</span>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm btn-secondary" id="upload-cancel">Cancel</button>
+        <button class="btn btn-sm btn-primary" id="upload-submit"><i class="fas fa-upload" style="margin-right:4px"></i>Upload</button>
+      </div>
+    `);
+
+    Modal._content.querySelector('#upload-cancel').addEventListener('click', () => Modal.close());
+
+    Modal._content.querySelector('#upload-submit').addEventListener('click', async () => {
+      const destPath = Modal._content.querySelector('#upload-dest-path').value.trim();
+      const fileInput = Modal._content.querySelector('#upload-file-input');
+      const file = fileInput.files[0];
+
+      if (!file) { Toast.error('Please select a file'); return; }
+      if (!destPath || !destPath.startsWith('/')) { Toast.error('Destination must start with /'); return; }
+      if (destPath.includes('..')) { Toast.error('Path must not contain ..'); return; }
+      if (file.size > 50 * 1024 * 1024) { Toast.error('File exceeds 50MB limit'); return; }
+
+      const progressEl = Modal._content.querySelector('#upload-progress');
+      const progressBar = Modal._content.querySelector('#upload-progress-bar');
+      const statusEl = Modal._content.querySelector('#upload-status');
+      const submitBtn = Modal._content.querySelector('#upload-submit');
+
+      progressEl.style.display = '';
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px"></i>Uploading...';
+      statusEl.textContent = 'Reading file...';
+      progressBar.style.width = '30%';
+
+      try {
+        // Read file as base64
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = () => reject(new Error('Failed to read file'));
+          reader.readAsDataURL(file);
+        });
+
+        statusEl.textContent = 'Uploading to container...';
+        progressBar.style.width = '60%';
+
+        await Api.uploadFile(this._detailId, destPath, file.name, base64);
+
+        progressBar.style.width = '100%';
+        statusEl.textContent = 'Done!';
+        Toast.success(`Uploaded ${file.name} to ${destPath}`);
+
+        setTimeout(() => {
+          Modal.close();
+          this._loadFiles(filesEl);
+        }, 500);
+      } catch (err) {
+        Toast.error('Upload failed: ' + err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-upload" style="margin-right:4px"></i>Upload';
+        progressEl.style.display = 'none';
+      }
+    });
   },
 
   async _loadFiles(el) {
