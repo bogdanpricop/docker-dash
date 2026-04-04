@@ -9,6 +9,7 @@
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-384%20passing%20(100%25)-brightgreen" alt="Tests"></a>
+    <img src="https://img.shields.io/badge/version-5.3.0-blue" alt="Version">
     <a href="SECURITY.md#security-audit-history"><img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
     <img src="https://img.shields.io/badge/Docker-~80MB-blue" alt="Image Size">
@@ -24,7 +25,7 @@
   </p>
 </p>
 
-**Zero dependencies to deploy** — just Docker. No external database, no Redis, no build step.
+**Zero dependencies to deploy** — just Docker. No external database, no Redis, no build step. Current version: **v5.3.0**
 
 ## Screenshots
 
@@ -117,6 +118,7 @@
 
 ### Operations
 - **Stacks Page** — Unified Compose + Git stacks management with actions (up/down/restart/pull)
+- **Docker Swarm Mode** — Full UI for Nodes, Services, Tasks; init/leave swarm, scale services, drain nodes, join tokens
 - **Docker Compose Editor** — Edit, validate, save & deploy compose configs inline
 - **Terminal** — Full xterm.js terminal with shell selection (`sh`, `bash`, `zsh`, `ash`)
 - **Alerts** — CPU/memory threshold rules with 7 notification channels
@@ -132,14 +134,23 @@
 - **docker run → Compose** — Paste any docker run command, get docker-compose YAML
 - **AI Log Analysis** — Generate diagnostic prompts for ChatGPT/Claude from container logs
 - **Traefik/Caddy Labels** — Generate reverse proxy labels from domain + port
-- **App Templates** — 30 built-in + custom templates with CRUD, preview, and modification tracking
+- **App Templates** — 33 built-in + custom templates with CRUD, preview, Template Configurator and modification tracking
 - **Deploy Preview** — Check for image updates via digest comparison before pulling
 - **Resource Limits Editor** — Visual sliders with presets for CPU and memory
 - **Resource Recommendations** — Smart advice: over-provisioned, memory pressure, idle containers
 
+### Security & Compliance
+- **Enterprise Security Mode** — `SECURITY_MODE=strict`: cookie-only auth, 8h sessions, password expiry, WS query-string auth disabled
+- **TOTP / MFA** — Two-factor auth with RFC 6238 TOTP, encrypted secrets, 10 recovery codes
+- **LDAP / Active Directory** — Two-bind authentication, group filter, attribute mapping, auto-provision local accounts
+- **CIS Docker Benchmark** — 18 automated checks (daemon + container), scored report with remediation guidance
+- **Immutable Audit Log** — SHA-256 hash-chained, tamper detection, JSON/CSV/Syslog export
+- **Security Alerts** — 5 default rules (brute force, admin created, MFA disabled), threshold detection
+
 ### Platform
 - **Multi-user** — Admin, operator, viewer roles with session management
 - **SSO Authentication** — Authelia, Authentik, Caddy forward_auth, Traefik (header-based)
+- **SSL Zero-Config** — Caddy sidecar auto-reload via shared volume; enable HTTPS from UI with one click
 - **Audit Log** — Every action logged with user, timestamp, IP address
 - **Public Status Page** — Unauthenticated status page for selected services
 - **Container Metadata** — Custom labels, descriptions, links, categories, owner, notes
@@ -209,7 +220,7 @@ Default credentials: `admin` / `admin` — on first login, a **security setup wi
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Node.js 20, Express 4, dockerode, better-sqlite3, ws, ssh2 |
+| Backend | Node.js 20, Express 4, dockerode, better-sqlite3, ws, ssh2, ldapjs |
 | Frontend | Vanilla JavaScript SPA, Chart.js, xterm.js, Font Awesome (CDN) |
 | Database | SQLite with WAL mode, auto-aggregation, configurable retention |
 | Security | bcrypt, Helmet CSP, rate limiting, session-based auth, Bearer token fallback |
@@ -299,16 +310,16 @@ Currently supported: **English**, **Romanian**, **German**, **Italian**, **Frenc
 docker-dash/
 ├── src/
 │   ├── config/          # Environment-based configuration
-│   ├── db/              # SQLite setup + 32 auto-migrations
+│   ├── db/              # SQLite setup + 37 auto-migrations
 │   ├── middleware/       # Auth, rate limiting, hostId extraction
-│   ├── routes/          # REST API (containers, images, volumes, networks, hosts, ...)
-│   ├── services/        # Business logic (docker, stats, alerts, ssh-tunnel, registry)
+│   ├── routes/          # REST API (containers, images, volumes, networks, swarm, hosts, ...)
+│   ├── services/        # Business logic (docker, stats, alerts, ssh-tunnel, registry, ldap, cis-benchmark, ssl)
 │   ├── ws/              # WebSocket server (exec, live logs, live stats)
 │   └── utils/           # Logger, helpers
 ├── public/
 │   ├── js/
 │   │   ├── i18n/        # Language files (11 languages + TEMPLATE.js)
-│   │   ├── pages/       # SPA pages (dashboard, containers, images, security, hosts, ...)
+│   │   ├── pages/       # SPA pages (dashboard, containers, images, security, swarm, hosts, ...)
 │   │   ├── components/  # Reusable UI (modal, toast, data table)
 │   │   ├── api.js       # HTTP client with auto host-context
 │   │   ├── ws.js        # WebSocket client with reconnect
@@ -323,58 +334,50 @@ docker-dash/
 
 ## Comparison
 
-**75+ features compared, 40+ exclusive to Docker Dash.** See the interactive comparison at `#/compare` in the app, or via `GET /api/compare`.
+**60 features compared across 8 tools.** See the interactive comparison at `#/compare` in the app, or via `GET /api/compare`.
 
-| Feature | Docker Dash | Portainer CE | Dockge | Dockhand |
-|---------|:-----------:|:------------:|:------:|:--------:|
-| Container CRUD | Yes | Yes | Compose only | Yes |
-| Image Management | Yes | Yes | No | Yes |
-| Volume / Network Management | Yes | Yes | No | Yes |
-| **Network Topology** | **Yes** | No | No | No |
-| **Dependency Map** | **Yes** | No | No | No |
-| Real-time Stats (WebSocket) | Yes | Yes | Basic | Yes |
-| Terminal (xterm.js) | Yes | Yes | Yes | Yes |
-| **Container File Browser** | **Yes** | Yes ($) | No | No |
-| **Container Diff** | **Yes** | No | No | No |
-| Vulnerability Scanning | Trivy + Grype + Scout | No | No | Grype + Trivy |
-| **Safe-Pull + Pipeline** | **5-stage** | No | No | Basic |
-| **Container Rollback** | **Yes** | No | No | No |
-| Multi-Host (agentless) | Yes | Agent required | Agent | Yes |
-| **Git Integration** | **Yes** | BE only ($) | No | No |
-| **Webhooks + Polling** | **Yes** | BE only ($) | No | No |
-| **Audit Log** | **Yes** | BE only ($) | No | No |
-| **Alerts (7 channels)** | **Yes** | BE only ($) | No | No |
-| **SSO (Authelia/Authentik)** | **Yes** | BE only ($) | No | No |
-| **Health Score (0-100)** | **Yes** | No | No | No |
-| **AI Container Doctor** | **Yes** | No | No | No |
-| **Resource Forecasting** | **Yes** | No | No | No |
-| **Cost Optimizer** | **Yes** | No | No | No |
-| **Insights Dashboard** | **Yes** | No | No | No |
-| **Workflow Automation** | **Yes** | No | No | No |
-| **Scheduled Actions (cron)** | **Yes** | No | No | No |
-| **Bulk Actions** | **Yes** | Yes | No | No |
-| **Cross-Host Migration** | **Zero-downtime** | No | No | No |
-| **Stack Export/Import** | **Yes** | No | No | No |
-| **Compose Editor** | **Yes** | Yes ($) | Yes | No |
-| **Troubleshooting Wizard** | **Yes** | No | No | No |
-| **Public Status Page** | **Yes** | No | No | No |
-| **Daily Auto-Backup** | **Yes** | No | No | No |
-| **Notifications Center** | **Yes** | Basic | No | No |
-| **API Playground** | **Yes** | Swagger ($) | No | No |
-| **Container Groups** | **Yes** | No | No | No |
-| **Dashboard Widgets** | **Configurable** | Fixed | No | No |
-| App Templates | 30 + custom | 500+ community | No | No |
-| i18n | 11 languages | Partial | No | No |
-| Command Palette + Shortcuts | Yes | No | No | No |
-| Mobile Responsive | Yes | Yes | Yes | Yes |
-| Test Suite | **384 tests (100%)** | Yes | No | No |
-| Build Step | **None** | Angular | Required | Required |
-| Container Size | **~80MB** | ~250MB | ~100MB | ~80MB |
-| RAM Usage | **~50MB** | ~200MB | ~50MB | ~60MB |
-| License | **MIT** | Zlib | MIT | BSL 1.1 |
+| Feature | **Docker Dash** | Portainer CE | Portainer BE | Coolify | Yacht | Rancher | Dockge | Dockhand |
+|---------|:-----------:|:------------:|:------------:|:-------:|:-----:|:-------:|:------:|:--------:|
+| Container CRUD | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Compose only | ✅ |
+| Image / Volume / Network | ✅ | ✅ | ✅ | ✅ | partial | ✅ | No | ✅ |
+| **Network Topology** | ✅ | — | — | — | — | — | — | — |
+| **Dependency Map** | ✅ | — | — | — | — | — | — | — |
+| Real-time Stats | ✅ | ✅ | ✅ | ✅ | basic | ✅ | basic | ✅ |
+| Terminal (xterm.js) | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | ✅ |
+| Vulnerability Scanning | Trivy + Grype + Scout | — | — | — | — | NeuVector | — | Grype + Trivy |
+| **Safe-Pull + Pipeline** | **5-stage** | — | — | — | — | — | — | basic |
+| **Container Rollback** | ✅ | — | — | ✅ | — | ✅ | — | — |
+| Multi-Host (agentless) | ✅ | agent req. | agent req. | agent | — | ✅ | agent | ✅ |
+| Git Integration | ✅ | BE only | ✅ | ✅ | — | Fleet | — | — |
+| Webhooks + Polling | ✅ | BE only | ✅ | ✅ | — | ✅ | — | — |
+| **Docker Swarm Mode** | ✅ | ✅ | ✅ | — | — | K8s focus | — | — |
+| Audit Log | ✅ | BE only | ✅ | basic | — | ✅ | — | — |
+| **Alerts (7 channels)** | ✅ | BE only | ✅ | ✅ | — | ✅ | — | — |
+| SSO / LDAP / OAuth | ✅ | BE only | ✅ | ✅ | — | ✅ | — | — |
+| **CIS Docker Benchmark** | ✅ | — | — | — | — | partial | — | — |
+| **Health Score (0-100)** | ✅ | — | — | — | — | — | — | — |
+| **AI Container Doctor** | ✅ | — | — | — | — | — | — | — |
+| **Resource Forecasting** | ✅ | — | — | — | — | basic | — | — |
+| **Cost Optimizer** | ✅ | — | — | — | — | basic | — | — |
+| **Insights Dashboard** | ✅ | — | — | — | — | basic | — | — |
+| **Workflow Automation** | ✅ | — | — | — | — | — | — | — |
+| **Scheduled Actions** | ✅ | — | — | — | — | — | — | — |
+| **Cross-Host Migration** | zero-downtime | — | — | — | — | ✅ | — | — |
+| **Public Status Page** | ✅ | — | — | ✅ | — | — | — | — |
+| **Maintenance Windows** | ✅ | — | — | — | — | — | — | — |
+| **API Playground** | ✅ | Swagger ($) | ✅ | ✅ | — | ✅ | — | — |
+| App Templates | 33 + custom | 500+ community | 500+ | many | basic | Helm | — | — |
+| i18n | **11 languages** | partial | partial | partial | — | ✅ | — | — |
+| Command Palette | ✅ | — | — | — | — | — | — | — |
+| Mobile Responsive | ✅ | ✅ | ✅ | ✅ | ✅ | partial | ✅ | ✅ |
+| Build Step | **None** | Angular | Angular | required | none | none | required | required |
+| Container Size | **~80MB** | ~250MB | ~250MB | ~200MB | ~100MB | ~500MB+ | ~100MB | ~80MB |
+| RAM Usage | **~50MB** | ~200MB | ~200MB | ~150MB | ~50MB | ~500MB+ | ~50MB | ~60MB |
+| License | **MIT** | Zlib | commercial | Apache 2.0 | MIT | Apache 2.0 | MIT | BSL 1.1 |
 
-> **40+ features** are exclusive to Docker Dash — no competitor has them.
-> **6 features** that Portainer locks behind paid Business Edition are **free** in Docker Dash.
+> ✅ **30+ features exclusive to Docker Dash** (no other free tool has them).
+> Features Portainer Business locks behind paid license are **free** in Docker Dash.
+> Rancher / K3s targets Kubernetes clusters; Docker Dash targets single-host and small multi-host Docker deployments.
 
 ## License
 

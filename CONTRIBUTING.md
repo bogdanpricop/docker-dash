@@ -9,19 +9,19 @@ Thanks for your interest in contributing! Docker Dash is actively maintained and
 Looking for where to start? These are great first contributions:
 
 - **Add a language translation** — copy `public/js/i18n/TEMPLATE.js`, translate values, add one `<script>` tag. Currently: 11 languages (EN, RO, DE, IT, FR, ES, PT, ZH, JA, KO, Klingon).
-- **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML). Currently: 30 templates.
+- **Add an app template** — add an entry to `src/routes/templates.js` (JSON object with compose YAML). Currently: 33 templates.
 - **Improve i18n coverage** — some pages still have hardcoded English strings (grep for strings not using `i18n.t()`)
 - **Add tests** — 384 tests across 29 files; more coverage is always welcome, especially integration tests
 - **Documentation** — improve README, add examples, write tutorials
 - **Accessibility** — add ARIA attributes, improve screen reader support, test keyboard navigation
 
-### Project Stats (v5.0.4)
+### Project Stats (v5.3.0)
 
-- **22 pages** in the frontend SPA
+- **24 pages** in the frontend SPA (incl. Swarm, Compare with 8 tools)
 - **230+ API endpoints** (see `/api/docs` for full list)
 - **384 tests** (29 test files, 100% passing)
-- **30 app templates** (+ custom user templates)
-- **32 database migrations** (001-032)
+- **33 app templates** (+ custom user templates)
+- **37 database migrations** (001-037)
 - **11 languages** (EN, RO, DE, IT, FR, ES, PT, ZH, JA, KO, Klingon)
 
 ## Getting Started

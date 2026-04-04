@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.3.0] - 2026-04-04
+
+### Added
+- **Docker Swarm mode** — full UI: Nodes table (availability/role management, drain, remove), Services (create, scale, remove, tasks drill-down), Tasks (sorted by state, error display), Overview (init form, stat cards, join tokens, leave)
+- **Swarm beginner guide card** — explains Nodes (manager vs worker), Services (replicated vs global), Tasks, Overlay Networks + Ingress, CLI quickstart example
+- **Swarm official docs card** — 5 direct links: overview, tutorial, deploy services, overlay networking, secrets
+- **Extended comparison matrix** — 4 new tools added: Coolify, Yacht, Rancher, Portainer Business (8 tools total, 60 features)
+- **Sticky first column** in comparison table — feature name stays visible while scrolling 8 columns horizontally
+
+### Improved
+- Nav "Swarm" translation added to all 11 locale files (Klingon: `ramDaq veQ`)
+- Comparison matrix stat cards: "Dockge Missing" → "Coolify Missing" for more relevant callout
+- What's New page: added 5.1.0, 5.2.0 and 5.3.0 release entries (were missing)
+
+### Fixed
+- Latency tracking middleware crash (`ERR_HTTP_HEADERS_SENT`) — `res.setHeader` called after headers already sent by `sendFile()` for static streams; guarded with `!res.headersSent`
+
+## [5.2.0] - 2026-04-03
+
+### Added
+- **SSL zero-config** — Caddy sidecar reads shared `caddy-certs` volume; app writes Caddyfile + reloads via `docker exec`; enable HTTPS from System > SSL tab, no manual container restarts
+- **LDAP / Active Directory sync** — two-bind auth (service account bind → user search → user bind to verify password), group filter, attribute mapping, user preview list; auto-provisions local accounts on first LDAP login with unusable password hash
+- **CIS Docker Benchmark tab** — 18 checks (6 daemon: logging, experimental, live-restore, userland-proxy, seccomp, AppArmor; 12 container: privileged, cap-add, no-new-privileges, namespace sharing, read-only rootfs, memory/CPU limits, sensitive mounts, privileged ports, running as root), scored report with severity + remediation
+- **App marketplace logos** — walkxcode/dashboard-icons CDN integration with FontAwesome icon fallback on error
+- **LDAP config API** — `GET/PUT/DELETE /api/auth/ldap`, `POST /api/auth/ldap/test`, `GET /api/auth/ldap/users`
+- DB migration 037: `ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'local'`
+
+### Improved
+- System page tabs wrap on small screens (phone / RDP window) — added `flex-wrap: wrap` to `.tabs` CSS class
+- Caddy status shown in SSL card with badge + conditional "Enable HTTPS" button vs terminal command display
+
+### Fixed
+- SQLite `datetime("now")` bug in `registry.js` and `pipeline.js` — double-quoted identifiers treated as column names by SQLite; changed to single-quoted string literals `datetime('now')`
+
+## [5.1.0] - 2026-04-02
+
+### Added
+- **Docker Registry edit** — full edit modal pre-populated with current registry data, calls `PUT /api/registries/:id`; was a "coming soon" stub
+- **Registry test shows repo count** — inline table feedback with repository count; 0 repositories now correctly returns red failure with message (not success)
+- **Pull Image registry dropdown** — 7 presets (Docker Hub, GHCR, MCR, Quay, ECR Public, GCR, Custom) with auto-filled prefix and dynamic placeholder
+- **SSH Key authentication guide** on Hosts page — 3-step card (keygen → ssh-copy-id → paste) matching the SSH Tunnel Linux distros
+
 ## [5.0.5] - 2026-03-31
 
 ### Added
