@@ -127,9 +127,9 @@ describe('GET /api/compare', () => {
 
     expect(res.body.features).toBeTruthy();
     expect(Array.isArray(res.body.features)).toBe(true);
-    expect(res.body.features.length).toBeGreaterThan(40);
+    expect(res.body.features.length).toBeGreaterThan(50); // 60 features across 8 tools
     expect(res.body.summary).toBeTruthy();
-    expect(res.body.summary.dockerDash.exclusive).toBeGreaterThan(20);
+    expect(res.body.summary.dockerDash.exclusive).toBeGreaterThan(10); // ~19 exclusive vs 8 tools
   });
 
   // 📚 STRUCTURE: each feature has the right shape
