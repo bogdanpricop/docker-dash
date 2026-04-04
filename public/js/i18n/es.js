@@ -19,7 +19,7 @@ i18n.register('es', 'ES', 'Español', {
     dashboard: 'Panel', containers: 'Contenedores', images: 'Imágenes',
     volumes: 'Volúmenes', networks: 'Redes', security: 'Seguridad', alerts: 'Alertas',
     system: 'Sistema', firewall: 'Firewall', hosts: 'Hosts', about: 'Acerca de', whatsnew: 'Novedades', settings: 'Configuración', profile: 'Perfil',
-    insights: 'Estadísticas', 'git-stacks': 'Git Stacks', compare: 'Comparar',
+    insights: 'Estadísticas', 'git-stacks': 'Git Stacks', compare: 'Comparar', swarm: 'Swarm',
     sectionResources: 'Recursos', sectionOperations: 'Operaciones', sectionAdmin: 'Administración',
   },
   login: {
@@ -362,6 +362,16 @@ i18n.register('es', 'ES', 'Español', {
       guideArch: 'Arquitectura — Hub & Spoke',
       guideThisInstance: 'esta instancia',
       guideTip: 'Comience con TCP+TLS para servidores remotos — cubre el 80% de los casos de uso, incluyendo Docker Desktop. Use túnel SSH si no puede exponer el puerto de la API de Docker. Cada host obtiene recopilación de estadísticas y monitoreo de eventos independientes.',
+      guideSshKeyTitle: 'Autenticación por clave SSH — Guía de configuración',
+      guideSshKeyBadge: 'Recomendado',
+      guideSshKeyDesc: 'Más seguro que las contraseñas. La clave privada se almacena cifrada en la base de datos local y solo se usa para abrir el túnel SSH.',
+      guideSshKeyStep1: 'Paso 1 — Generar un par de claves SSH',
+      guideSshKeyStep1Sub: 'Ejecutar en la máquina local (donde corre Docker Dash):',
+      guideSshKeyStep2: 'Paso 2 — Copiar la clave pública al host remoto',
+      guideSshKeyStep2Sub: 'Instalar openssh-client (si es necesario) y ejecutar ssh-copy-id:',
+      guideSshKeyStep3: 'Paso 3 — Pegar la clave privada en Docker Dash',
+      guideSshKeyStep3Sub: 'Mostrar la clave privada y pegarla en el campo SSH Private Key al agregar un host:',
+      guideSshKeyNote: 'La clave privada solo se envía cuando se abre la conexión SSH y nunca se registra ni se expone por la API.',
     },
     // ── About ────────────────────────────────────
     about: {

@@ -337,11 +337,34 @@ router.get('/cost-analysis', requireAuth, (req, res) => {
 
       for (const s of stats) {
         const avgMemPct = s.mem_limit > 0 ? (s.avg_mem / s.mem_limit) * 100 : 0;
+        const containerCost = containers.find(c => c.container_id === s.container_id);
+        const containerMonthlyCost = containerCost?.estimated_monthly_cost || 0;
 
-        // Over-provisioned
+        // Idle — takes priority: stopping saves 100% of the container's cost.
+        // Skip over_provisioned for the same container to avoid double-counting.
+        if (s.avg_cpu < 1 && s.avg_mem < 50 * 1024 * 1024) {
+          recommendations.push({
+            container_name: s.container_name,
+            container_id: s.container_id,
+            type: 'idle',
+            severity: 'warning',
+            message: `Idle for 24h (CPU: ${s.avg_cpu.toFixed(1)}%, Mem: ${Math.round(s.avg_mem / 1024 / 1024)}MB). Consider stopping.`,
+            monthly_savings: Math.round(containerMonthlyCost * 100) / 100,
+          });
+          // Don't evaluate other rules for this container — stopping it already captures the full saving.
+          continue;
+        }
+
+        // Over-provisioned memory (using <20% of limit consistently).
+        // Savings = fraction of memory limit freed × container's actual cost.
+        // Capped at the container's full cost (can't save more than you spend).
         if (s.mem_limit > 0 && avgMemPct < 20 && s.mem_limit > 128 * 1024 * 1024) {
           const suggested = Math.max(128 * 1024 * 1024, Math.ceil(s.max_mem * 1.5));
-          const costSaving = (1 - suggested / s.mem_limit) * (monthlyCost * ((s.avg_mem / totalMem + s.avg_cpu / totalCpu) / 2));
+          const memFreedFraction = (s.mem_limit - suggested) / s.mem_limit;
+          const costSaving = Math.min(
+            Math.max(0, memFreedFraction) * containerMonthlyCost,
+            containerMonthlyCost,
+          );
           recommendations.push({
             container_name: s.container_name,
             container_id: s.container_id,
@@ -350,24 +373,11 @@ router.get('/cost-analysis', requireAuth, (req, res) => {
             message: `Using ${avgMemPct.toFixed(0)}% of ${Math.round(s.mem_limit / 1024 / 1024)}MB limit. Reduce to ${Math.round(suggested / 1024 / 1024)}MB.`,
             current: s.mem_limit,
             suggested,
-            monthly_savings: Math.round(Math.abs(costSaving) * 100) / 100,
+            monthly_savings: Math.round(costSaving * 100) / 100,
           });
         }
 
-        // Idle
-        if (s.avg_cpu < 1 && s.avg_mem < 50 * 1024 * 1024) {
-          const containerCost = containers.find(c => c.container_id === s.container_id);
-          recommendations.push({
-            container_name: s.container_name,
-            container_id: s.container_id,
-            type: 'idle',
-            severity: 'warning',
-            message: `Idle for 24h (CPU: ${s.avg_cpu.toFixed(1)}%, Mem: ${Math.round(s.avg_mem / 1024 / 1024)}MB). Consider stopping.`,
-            monthly_savings: containerCost?.estimated_monthly_cost || 0,
-          });
-        }
-
-        // Memory pressure
+        // Memory pressure — informational only, no cost saving.
         if (s.mem_limit > 0 && avgMemPct > 85) {
           const suggested = Math.ceil(s.max_mem * 1.3);
           recommendations.push({
@@ -392,7 +402,7 @@ router.get('/cost-analysis', requireAuth, (req, res) => {
       monthly_total: monthlyCost,
       containers,
       recommendations,
-      savings_potential: Math.round(totalSavings * 100) / 100,
+      savings_potential: Math.round(Math.min(totalSavings, monthlyCost) * 100) / 100,
       idle_count: idleContainers.length,
       idle_cost: Math.round(idleCost * 100) / 100,
       unallocated: Math.round((monthlyCost - containers.reduce((s, c) => s + c.estimated_monthly_cost, 0)) * 100) / 100,

@@ -61,7 +61,7 @@ class PipelineService {
     };
 
     const failPipeline = (error) => {
-      db.prepare('UPDATE deployment_pipelines SET status = ?, error = ?, completed_at = datetime("now") WHERE id = ?')
+      db.prepare("UPDATE deployment_pipelines SET status = ?, error = ?, completed_at = datetime('now') WHERE id = ?")
         .run('failed', error, pipelineId);
     };
 
@@ -203,7 +203,7 @@ class PipelineService {
       }
 
       // Mark pipeline complete
-      db.prepare('UPDATE deployment_pipelines SET status = ?, completed_at = datetime("now") WHERE id = ?')
+      db.prepare("UPDATE deployment_pipelines SET status = ?, completed_at = datetime('now') WHERE id = ?")
         .run('success', pipelineId);
 
       return this._getResult(pipelineId);

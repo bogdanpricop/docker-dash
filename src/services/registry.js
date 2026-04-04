@@ -53,7 +53,7 @@ class RegistryService {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
     const data = await this._apiCall(reg, `/v2/_catalog?n=${limit}`);
-    getDb().prepare('UPDATE registries SET last_used_at = datetime("now") WHERE id = ?').run(id);
+    getDb().prepare("UPDATE registries SET last_used_at = datetime('now') WHERE id = ?").run(id);
     return data.body?.repositories || [];
   }
 

@@ -10,6 +10,7 @@ const { getClientIp } = require('../utils/helpers');
 const { getDb } = require('../db');
 const config = require('../config');
 const sslService = require('../services/ssl');
+const cisBenchmark = require('../services/cis-benchmark');
 
 const { extractHostId } = require('../middleware/hostId');
 
@@ -1271,6 +1272,64 @@ router.delete('/ssl', requireAuth, requireRole('admin'), writeable, (req, res) =
 
     res.json({ ok: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── CIS Benchmark ──────────────────────────────────────────
+
+// GET /api/system/cis-benchmark — run CIS Docker benchmark on a host
+router.get('/cis-benchmark', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const result = await cisBenchmark.runBenchmark(docker);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'cis_benchmark_run',
+      targetType: 'system', targetId: String(req.hostId || 'local'),
+      ip: getClientIp(req),
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/system/ssl/caddy-status — Caddy container running status
+router.get('/ssl/caddy-status', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const status = await sslService.getCaddyStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/system/ssl/enable — write Caddyfile + reload Caddy in one step
+router.post('/ssl/enable', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const { domain, upstreamPort } = req.body;
+    if (!domain) return res.status(400).json({ error: 'domain is required' });
+
+    const result = await sslService.enableHttps(domain, parseInt(upstreamPort) || 8101);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ssl_enable_https',
+      targetType: 'ssl', targetId: domain,
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.message === 'caddy_not_running') {
+      return res.status(409).json({
+        error: 'caddy_not_running',
+        hint: 'Start Caddy first: docker compose --profile tls up -d',
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 });

@@ -41,7 +41,7 @@ const ComparePage = {
       return `<span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(String(v))}</span>`;
     };
 
-    const isExclusive = (f) => f.dockerDash === true && !f.portainerCE && !f.dockge && !f.dockhand;
+    const isExclusive = (f) => f.dockerDash === true && !f.portainerCE && !f.portainerBE && !f.dockge && !f.dockhand && !f.coolify && !f.yacht && !f.rancher;
 
     el.innerHTML = `
       <div class="stat-cards" style="margin-bottom:20px">
@@ -69,8 +69,8 @@ const ComparePage = {
         <div class="stat-card">
           <div class="stat-icon" style="background:rgba(248,81,73,0.1);color:var(--red)"><i class="fas fa-ban"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${features.filter(f => !f.dockge && f.dockerDash).length}</div>
-            <div class="stat-label">Dockge Missing (DD has)</div>
+            <div class="stat-value">${features.filter(f => !f.coolify && f.dockerDash).length}</div>
+            <div class="stat-label">Coolify Missing (DD has)</div>
           </div>
         </div>
       </div>
@@ -80,9 +80,13 @@ const ComparePage = {
           <table class="data-table" id="compare-table">
             <thead>
               <tr>
-                <th style="text-align:left;min-width:200px">Feature</th>
+                <th style="text-align:left;min-width:200px;position:sticky;left:0;background:var(--card-bg)">Feature</th>
                 <th style="min-width:100px"><strong style="color:var(--accent)">Docker Dash</strong></th>
-                <th style="min-width:100px">Portainer CE</th>
+                <th style="min-width:110px">Portainer CE</th>
+                <th style="min-width:110px">Portainer BE</th>
+                <th style="min-width:90px">Coolify</th>
+                <th style="min-width:80px">Yacht</th>
+                <th style="min-width:90px">Rancher</th>
                 <th style="min-width:80px">Dockge</th>
                 <th style="min-width:80px">Dockhand</th>
               </tr>
@@ -90,12 +94,16 @@ const ComparePage = {
             <tbody>
               ${features.map(f => `
                 <tr class="compare-row ${isExclusive(f) ? 'exclusive-row' : ''}" data-feature="${Utils.escapeHtml(f.feature.toLowerCase())}">
-                  <td style="text-align:left">
+                  <td style="text-align:left;position:sticky;left:0;background:var(--card-bg)">
                     ${isExclusive(f) ? '<i class="fas fa-star" style="color:#d29922;margin-right:6px;font-size:10px" title="Exclusive to Docker Dash"></i>' : ''}
                     ${Utils.escapeHtml(f.feature)}
                   </td>
                   <td>${fmt(f.dockerDash)}</td>
                   <td>${fmt(f.portainerCE)}</td>
+                  <td>${fmt(f.portainerBE)}</td>
+                  <td>${fmt(f.coolify)}</td>
+                  <td>${fmt(f.yacht)}</td>
+                  <td>${fmt(f.rancher)}</td>
                   <td>${fmt(f.dockge)}</td>
                   <td>${fmt(f.dockhand)}</td>
                 </tr>
@@ -109,7 +117,7 @@ const ComparePage = {
         <i class="fas fa-star" style="color:#d29922"></i> = Exclusive to Docker Dash &nbsp;|&nbsp;
         <span class="text-green"><i class="fas fa-check-circle"></i></span> = Available &nbsp;|&nbsp;
         <span class="badge badge-info" style="font-size:10px">label</span> = Partial/conditional &nbsp;|&nbsp;
-        — = Not available
+        — = Not available &nbsp;|&nbsp; BE = paid edition
       </div>
     `;
   },

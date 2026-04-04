@@ -73,14 +73,14 @@ const InsightsPage = {
               <div class="stat-label">Running</div>
             </div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" id="insights-card-issues" style="cursor:pointer;transition:box-shadow .15s" title="Click to see issues">
             <div class="stat-icon" style="background:rgba(248,81,73,0.1);color:var(--red)"><i class="fas fa-exclamation-circle"></i></div>
             <div class="stat-body">
               <div class="stat-value">${critical + warnings}</div>
               <div class="stat-label">Issues Found</div>
             </div>
           </div>
-          <div class="stat-card">
+          <div class="stat-card" id="insights-card-stale" style="cursor:pointer;transition:box-shadow .15s" title="Click to see stale images">
             <div class="stat-icon" style="background:rgba(210,153,34,0.1);color:#d29922"><i class="fas fa-image"></i></div>
             <div class="stat-body">
               <div class="stat-value">${staleImages}</div>
@@ -92,7 +92,7 @@ const InsightsPage = {
         <div class="info-grid" style="margin-top:0">
           <!-- Critical Containers -->
           ${critical > 0 ? `
-          <div class="card" style="border-left:3px solid var(--red)">
+          <div class="card" id="insights-section-issues" style="border-left:3px solid var(--red)">
             <div class="card-header"><h3><i class="fas fa-skull-crossbones" style="color:var(--red);margin-right:8px"></i>Critical Containers</h3></div>
             <div class="card-body" style="padding:0">
               <table class="data-table">
@@ -111,7 +111,7 @@ const InsightsPage = {
 
           <!-- Resource Recommendations -->
           ${warnings > 0 ? `
-          <div class="card" style="border-left:3px solid #d29922">
+          <div class="card" id="${critical === 0 ? 'insights-section-issues' : ''}" style="border-left:3px solid #d29922">
             <div class="card-header"><h3><i class="fas fa-lightbulb" style="color:#d29922;margin-right:8px"></i>Recommendations (${warnings})</h3></div>
             <div class="card-body" style="padding:0">
               <table class="data-table">
@@ -129,7 +129,7 @@ const InsightsPage = {
 
           <!-- Stale Images -->
           ${staleImages > 0 ? `
-          <div class="card" style="border-left:3px solid #d29922">
+          <div class="card" id="insights-section-stale" style="border-left:3px solid #d29922">
             <div class="card-header"><h3><i class="fas fa-clock" style="color:#d29922;margin-right:8px"></i>Stale Images (${staleImages})</h3></div>
             <div class="card-body" style="padding:0">
               <table class="data-table">
@@ -185,6 +185,39 @@ const InsightsPage = {
       el.querySelectorAll('[data-nav-container]').forEach(row => {
         row.addEventListener('click', () => { location.hash = '#/containers/' + row.dataset.navContainer; });
       });
+
+      // Wire up stat card clicks — scroll to relevant section
+      const issuesCard = document.getElementById('insights-card-issues');
+      if (issuesCard) {
+        issuesCard.addEventListener('click', () => {
+          const section = document.getElementById('insights-section-issues');
+          if (section) {
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            section.style.outline = '2px solid var(--red)';
+            setTimeout(() => { section.style.outline = ''; }, 1500);
+          } else {
+            if (window.App && App.showToast) App.showToast('No issues found — all systems healthy!', 'success');
+          }
+        });
+        issuesCard.addEventListener('mouseenter', () => { issuesCard.style.boxShadow = '0 0 0 2px var(--red)'; });
+        issuesCard.addEventListener('mouseleave', () => { issuesCard.style.boxShadow = ''; });
+      }
+
+      const staleCard = document.getElementById('insights-card-stale');
+      if (staleCard) {
+        staleCard.addEventListener('click', () => {
+          const section = document.getElementById('insights-section-stale');
+          if (section) {
+            section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            section.style.outline = '2px solid #d29922';
+            setTimeout(() => { section.style.outline = ''; }, 1500);
+          } else {
+            if (window.App && App.showToast) App.showToast('No stale images found!', 'success');
+          }
+        });
+        staleCard.addEventListener('mouseenter', () => { staleCard.style.boxShadow = '0 0 0 2px #d29922'; });
+        staleCard.addEventListener('mouseleave', () => { staleCard.style.boxShadow = ''; });
+      }
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error loading insights: ${err.message}</div>`;
     }

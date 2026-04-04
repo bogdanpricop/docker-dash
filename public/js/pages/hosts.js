@@ -17,6 +17,7 @@ const HostsPage = {
       </div>
       <div id="hosts-grid" class="hosts-grid"></div>
       ${this._renderGuide()}
+      ${this._renderSshKeyGuide()}
     `;
 
     container.querySelector('#host-add').addEventListener('click', () => this._addHostDialog());
@@ -33,6 +34,20 @@ const HostsPage = {
         guideBody.style.display = hidden ? '' : 'none';
         localStorage.setItem('dd-hosts-guide-collapsed', !hidden);
         guideToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
+          hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+      });
+    }
+
+    const sshKeyToggle = container.querySelector('#ssh-key-guide-toggle');
+    const sshKeyBody = container.querySelector('#ssh-key-guide-body');
+    if (sshKeyToggle && sshKeyBody) {
+      const saved = localStorage.getItem('dd-hosts-ssh-key-guide-collapsed');
+      if (saved === 'true') sshKeyBody.style.display = 'none';
+      sshKeyToggle.addEventListener('click', () => {
+        const hidden = sshKeyBody.style.display === 'none';
+        sshKeyBody.style.display = hidden ? '' : 'none';
+        localStorage.setItem('dd-hosts-ssh-key-guide-collapsed', !hidden);
+        sshKeyToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
           hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
       });
     }
@@ -71,7 +86,7 @@ const HostsPage = {
       const statusIcon = isOnline ? 'fa-check-circle' : isOffline ? 'fa-times-circle' : 'fa-spinner fa-spin';
       const connIcon = h.connectionType === 'tcp' ? 'fa-globe' : h.connectionType === 'ssh' ? 'fa-terminal' : 'fa-plug';
       const connLabel = h.connectionType === 'tcp' ? `TCP ${h.host}:${h.port || 2376}` :
-                         h.connectionType === 'ssh' ? `SSH ${h.sshHost || h.host}` :
+                         h.connectionType === 'ssh' ? `SSH ${h.sshHost || h.host || '—'}` :
                          h.socketPath || '/var/run/docker.sock';
       const isSelected = Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault);
 
@@ -633,6 +648,76 @@ ssh your-user@host "docker ps"</div>
               <strong>${i18n.t('common.tip')}:</strong> ${i18n.t('pages.hosts.guideTip')}
             </div>
           </div>
+
+        </div>
+      </div>
+    `;
+  },
+
+  _renderSshKeyGuide() {
+    const collapsed = localStorage.getItem('dd-hosts-ssh-key-guide-collapsed') === 'true';
+    return `
+      <div class="card" style="margin-top:16px">
+        <div class="card-header" id="ssh-key-guide-toggle" style="cursor:pointer;user-select:none">
+          <h3>
+            <i class="fas fa-key" style="color:var(--yellow);margin-right:8px"></i>${i18n.t('pages.hosts.guideSshKeyTitle')}
+            <span class="badge" style="font-size:10px;margin-left:8px;background:var(--green-dim,rgba(74,222,128,.15));color:var(--green)">${i18n.t('pages.hosts.guideSshKeyBadge')}</span>
+          </h3>
+          <i class="fas ${collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}" style="color:var(--text-dim)"></i>
+        </div>
+        <div class="card-body" id="ssh-key-guide-body" style="${collapsed ? 'display:none' : ''}">
+          <p class="text-sm text-muted" style="margin:0 0 16px">${i18n.t('pages.hosts.guideSshKeyDesc')}</p>
+
+          <!-- Step 1 -->
+          <div style="font-size:11px;margin-bottom:6px;font-weight:600"><i class="fas fa-terminal" style="margin-right:4px;color:var(--accent)"></i>${i18n.t('pages.hosts.guideSshKeyStep1')}</div>
+          <p class="text-sm text-muted" style="margin:0 0 6px">${i18n.t('pages.hosts.guideSshKeyStep1Sub')}</p>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+            ${[
+              { os: 'Ubuntu / Debian 12+', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-ubuntu' },
+              { os: 'CentOS 7 / RHEL 7', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-redhat' },
+              { os: 'CentOS Stream 8-9 / RHEL 8-9 / Rocky / Alma', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-redhat' },
+              { os: 'Fedora', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-fedora' },
+              { os: 'Alpine', cmd: 'apk add openssh-client && ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-linux' },
+              { os: 'SUSE / openSUSE', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-suse' },
+              { os: 'Arch / Manjaro', cmd: 'ssh-keygen -t ed25519 -C "docker-dash"', icon: 'fab fa-linux' },
+            ].map(d => `
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px">
+                <i class="${d.icon}" style="width:16px;text-align:center;color:var(--text-dim)"></i>
+                <span style="min-width:200px;font-weight:500">${d.os}</span>
+                <code style="font-family:'JetBrains Mono',monospace;flex:1;color:var(--accent)">${d.cmd}</code>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- Step 2 -->
+          <div style="font-size:11px;margin-bottom:6px;font-weight:600"><i class="fas fa-upload" style="margin-right:4px;color:var(--accent)"></i>${i18n.t('pages.hosts.guideSshKeyStep2')}</div>
+          <p class="text-sm text-muted" style="margin:0 0 6px">${i18n.t('pages.hosts.guideSshKeyStep2Sub')}</p>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+            ${[
+              { os: 'Ubuntu / Debian 12+', cmd: 'ssh-copy-id your-user@remote-host', icon: 'fab fa-ubuntu' },
+              { os: 'CentOS 7 / RHEL 7', cmd: 'sudo yum install -y openssh-clients && ssh-copy-id your-user@remote-host', icon: 'fab fa-redhat' },
+              { os: 'CentOS Stream 8-9 / RHEL 8-9 / Rocky / Alma', cmd: 'sudo dnf install -y openssh-clients && ssh-copy-id your-user@remote-host', icon: 'fab fa-redhat' },
+              { os: 'Fedora', cmd: 'sudo dnf install -y openssh-clients && ssh-copy-id your-user@remote-host', icon: 'fab fa-fedora' },
+              { os: 'Alpine', cmd: 'apk add openssh-client && ssh-copy-id your-user@remote-host', icon: 'fab fa-linux' },
+              { os: 'SUSE / openSUSE', cmd: 'sudo zypper install -y openssh && ssh-copy-id your-user@remote-host', icon: 'fab fa-suse' },
+              { os: 'Arch / Manjaro', cmd: 'sudo pacman -S openssh && ssh-copy-id your-user@remote-host', icon: 'fab fa-linux' },
+            ].map(d => `
+              <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);padding:6px 10px;border-radius:var(--radius-sm);font-size:11px">
+                <i class="${d.icon}" style="width:16px;text-align:center;color:var(--text-dim)"></i>
+                <span style="min-width:200px;font-weight:500">${d.os}</span>
+                <code style="font-family:'JetBrains Mono',monospace;flex:1;color:var(--accent)">${d.cmd}</code>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- Step 3 -->
+          <div style="font-size:11px;margin-bottom:6px;font-weight:600"><i class="fas fa-paste" style="margin-right:4px;color:var(--accent)"></i>${i18n.t('pages.hosts.guideSshKeyStep3')}</div>
+          <p class="text-sm text-muted" style="margin:0 0 6px">${i18n.t('pages.hosts.guideSshKeyStep3Sub')}</p>
+          <div class="code-block" style="font-size:11px;line-height:1.6;background:var(--surface2);padding:10px;border-radius:var(--radius-sm);white-space:pre;font-family:'JetBrains Mono',monospace">cat ~/.ssh/id_ed25519
+# Copy the entire output (including BEGIN/END lines)
+# Paste it in the "SSH Private Key" field when adding a host</div>
+
+          <div class="text-sm text-muted" style="margin-top:12px"><i class="fas fa-shield-alt" style="color:var(--green);margin-right:4px"></i>${i18n.t('pages.hosts.guideSshKeyNote')}</div>
         </div>
       </div>
     `;

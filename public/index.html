@@ -16,7 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
-<link rel="stylesheet" href="/css/app.css?v=5.2.0">
+<link rel="stylesheet" href="/css/app.css?v=5.3.0">
 </head>
 <body>
   <!-- Login Screen -->
@@ -118,6 +118,9 @@
         <a href="#/stacks" class="nav-item" data-page="stacks">
           <i class="fas fa-layer-group"></i><span>Stacks</span>
         </a>
+        <a href="#/swarm" class="nav-item" data-page="swarm">
+          <i class="fas fa-project-diagram"></i><span>Swarm</span>
+        </a>
         <a href="#/firewall" class="nav-item" data-page="firewall">
           <i class="fas fa-fire"></i><span>Firewall</span>
         </a>
@@ -200,53 +203,54 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0/lib/addon-fit.min.js"></script>
-  <script src="/js/i18n.js?v=5.2.0"></script>
+  <script src="/js/i18n.js?v=5.3.0"></script>
   <!-- Language files: add new languages here (order doesn't matter) -->
-  <script src="/js/i18n/en.js?v=5.2.0"></script>
-  <script src="/js/i18n/ro.js?v=5.2.0"></script>
-  <script src="/js/i18n/de.js?v=5.2.0"></script>
-  <script src="/js/i18n/it.js?v=5.2.0"></script>
-  <script src="/js/i18n/fr.js?v=5.2.0"></script>
-  <script src="/js/i18n/es.js?v=5.2.0"></script>
-  <script src="/js/i18n/pt.js?v=5.2.0"></script>
-  <script src="/js/i18n/zh.js?v=5.2.0"></script>
-  <script src="/js/i18n/ja.js?v=5.2.0"></script>
-  <script src="/js/i18n/ko.js?v=5.2.0"></script>
-  <script src="/js/i18n/tlh.js?v=5.2.0"></script>
-  <script src="/js/klingon.js?v=5.2.0"></script>
-  <script src="/js/qr.js?v=5.2.0"></script>
-  <script src="/js/utils.js?v=5.2.0"></script>
-  <script src="/js/api.js?v=5.2.0"></script>
-  <script src="/js/ws.js?v=5.2.0"></script>
+  <script src="/js/i18n/en.js?v=5.3.0"></script>
+  <script src="/js/i18n/ro.js?v=5.3.0"></script>
+  <script src="/js/i18n/de.js?v=5.3.0"></script>
+  <script src="/js/i18n/it.js?v=5.3.0"></script>
+  <script src="/js/i18n/fr.js?v=5.3.0"></script>
+  <script src="/js/i18n/es.js?v=5.3.0"></script>
+  <script src="/js/i18n/pt.js?v=5.3.0"></script>
+  <script src="/js/i18n/zh.js?v=5.3.0"></script>
+  <script src="/js/i18n/ja.js?v=5.3.0"></script>
+  <script src="/js/i18n/ko.js?v=5.3.0"></script>
+  <script src="/js/i18n/tlh.js?v=5.3.0"></script>
+  <script src="/js/klingon.js?v=5.3.0"></script>
+  <script src="/js/qr.js?v=5.3.0"></script>
+  <script src="/js/utils.js?v=5.3.0"></script>
+  <script src="/js/api.js?v=5.3.0"></script>
+  <script src="/js/ws.js?v=5.3.0"></script>
   <!-- Theme toggle on login page (before app loads) -->
-  <script src="/js/theme-init.js?v=5.2.0"></script>
-  <script src="/js/components/error-boundary.js?v=5.2.0"></script>
-  <script src="/js/components/toast.js?v=5.2.0"></script>
-  <script src="/js/components/modal.js?v=5.2.0"></script>
-  <script src="/js/components/template-configurator.js?v=5.2.0"></script>
-  <script src="/js/components/table.js?v=5.2.0"></script>
-  <script src="/js/pages/dashboard.js?v=5.2.0"></script>
-  <script src="/js/pages/containers.js?v=5.2.0"></script>
-  <script src="/js/pages/images.js?v=5.2.0"></script>
-  <script src="/js/pages/security.js?v=5.2.0"></script>
-  <script src="/js/pages/volumes.js?v=5.2.0"></script>
-  <script src="/js/pages/networks.js?v=5.2.0"></script>
-  <script src="/js/pages/alerts.js?v=5.2.0"></script>
-  <script src="/js/pages/system.js?v=5.2.0"></script>
-  <script src="/js/pages/settings.js?v=5.2.0"></script>
-  <script src="/js/pages/firewall.js?v=5.2.0"></script>
-  <script src="/js/pages/hosts.js?v=5.2.0"></script>
-  <script src="/js/pages/about.js?v=5.2.0"></script>
-  <script src="/js/pages/whatsnew.js?v=5.2.0"></script>
-  <script src="/js/pages/profile.js?v=5.2.0"></script>
-  <script src="/js/pages/git-stacks.js?v=5.2.0"></script>
-  <script src="/js/pages/compare.js?v=5.2.0"></script>
-  <script src="/js/pages/insights.js?v=5.2.0"></script>
-  <script src="/js/pages/cost-optimizer.js?v=5.2.0"></script>
-  <script src="/js/pages/dependency-map.js?v=5.2.0"></script>
-  <script src="/js/pages/notifications.js?v=5.2.0"></script>
-  <script src="/js/pages/stacks.js?v=5.2.0"></script>
-  <script src="/js/pages/api-playground.js?v=5.2.0"></script>
-  <script src="/js/app.js?v=5.2.0"></script>
+  <script src="/js/theme-init.js?v=5.3.0"></script>
+  <script src="/js/components/error-boundary.js?v=5.3.0"></script>
+  <script src="/js/components/toast.js?v=5.3.0"></script>
+  <script src="/js/components/modal.js?v=5.3.0"></script>
+  <script src="/js/components/template-configurator.js?v=5.3.0"></script>
+  <script src="/js/components/table.js?v=5.3.0"></script>
+  <script src="/js/pages/dashboard.js?v=5.3.0"></script>
+  <script src="/js/pages/containers.js?v=5.3.0"></script>
+  <script src="/js/pages/images.js?v=5.3.0"></script>
+  <script src="/js/pages/security.js?v=5.3.0"></script>
+  <script src="/js/pages/volumes.js?v=5.3.0"></script>
+  <script src="/js/pages/networks.js?v=5.3.0"></script>
+  <script src="/js/pages/alerts.js?v=5.3.0"></script>
+  <script src="/js/pages/system.js?v=5.3.0"></script>
+  <script src="/js/pages/settings.js?v=5.3.0"></script>
+  <script src="/js/pages/firewall.js?v=5.3.0"></script>
+  <script src="/js/pages/hosts.js?v=5.3.0"></script>
+  <script src="/js/pages/about.js?v=5.3.0"></script>
+  <script src="/js/pages/whatsnew.js?v=5.3.0"></script>
+  <script src="/js/pages/profile.js?v=5.3.0"></script>
+  <script src="/js/pages/git-stacks.js?v=5.3.0"></script>
+  <script src="/js/pages/compare.js?v=5.3.0"></script>
+  <script src="/js/pages/insights.js?v=5.3.0"></script>
+  <script src="/js/pages/cost-optimizer.js?v=5.3.0"></script>
+  <script src="/js/pages/dependency-map.js?v=5.3.0"></script>
+  <script src="/js/pages/notifications.js?v=5.3.0"></script>
+  <script src="/js/pages/stacks.js?v=5.3.0"></script>
+  <script src="/js/pages/swarm.js?v=5.3.0"></script>
+  <script src="/js/pages/api-playground.js?v=5.3.0"></script>
+  <script src="/js/app.js?v=5.3.0"></script>
 </body>
 </html>

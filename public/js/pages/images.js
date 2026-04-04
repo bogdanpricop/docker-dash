@@ -119,17 +119,55 @@ const ImagesPage = {
   },
 
   async _pullDialog() {
+    const REGISTRIES = [
+      { label: 'Docker Hub',                  prefix: '',                        example: 'nginx:latest' },
+      { label: 'GitHub Container Registry',   prefix: 'ghcr.io/',                example: 'ghcr.io/home-assistant/home-assistant:stable' },
+      { label: 'Microsoft (MCR)',             prefix: 'mcr.microsoft.com/',      example: 'mcr.microsoft.com/dotnet/aspnet:8.0' },
+      { label: 'Quay.io (Red Hat)',           prefix: 'quay.io/',                example: 'quay.io/prometheus/prometheus:latest' },
+      { label: 'Amazon ECR Public',           prefix: 'public.ecr.aws/',         example: 'public.ecr.aws/nginx/nginx:latest' },
+      { label: 'Google GCR',                  prefix: 'gcr.io/',                 example: 'gcr.io/google-containers/pause:latest' },
+      { label: 'Custom / Private registry',   prefix: '',                        example: 'registry.mycompany.com/myapp:v1.0' },
+    ];
+
     const result = await Modal.form(`
       <div class="form-group">
+        <label>Registry</label>
+        <select id="pull-registry" class="form-control" style="margin-bottom:8px">
+          ${REGISTRIES.map((r, i) => `<option value="${i}">${Utils.escapeHtml(r.label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
         <label>${i18n.t('pages.images.pullLabel')}</label>
-        <input type="text" id="pull-image-name" placeholder="${i18n.t('pages.images.pullPlaceholder')}" class="form-control">
+        <div style="display:flex;align-items:center;gap:0">
+          <span id="pull-prefix" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-right:none;border-radius:var(--radius-sm) 0 0 var(--radius-sm);font-size:12px;font-family:var(--mono);color:var(--text-dim);white-space:nowrap"></span>
+          <input type="text" id="pull-image-name" placeholder="nginx:latest" class="form-control" style="border-radius:0 var(--radius-sm) var(--radius-sm) 0;flex:1">
+        </div>
+        <small id="pull-hint" class="text-muted" style="margin-top:4px;display:block"></small>
       </div>
     `, {
       title: i18n.t('pages.images.pullTitle'),
-      width: '420px',
+      width: '480px',
+      onMount: (content) => {
+        const sel = content.querySelector('#pull-registry');
+        const prefixEl = content.querySelector('#pull-prefix');
+        const input = content.querySelector('#pull-image-name');
+        const hint = content.querySelector('#pull-hint');
+
+        const update = () => {
+          const r = REGISTRIES[parseInt(sel.value)];
+          prefixEl.style.display = r.prefix ? '' : 'none';
+          prefixEl.textContent = r.prefix;
+          input.placeholder = r.prefix ? r.example.replace(r.prefix, '') : r.example;
+          hint.textContent = `e.g. ${r.example}`;
+        };
+        update();
+        sel.addEventListener('change', update);
+      },
       onSubmit: (content) => {
-        const name = content.querySelector('#pull-image-name').value.trim();
-        if (!name) { Toast.warning(i18n.t('pages.images.pullNameRequired')); return false; }
+        const sel = content.querySelector('#pull-registry');
+        const r = REGISTRIES[parseInt(sel.value)];
+        const name = (r.prefix + content.querySelector('#pull-image-name').value.trim()).trim();
+        if (!name || name === r.prefix) { Toast.warning(i18n.t('pages.images.pullNameRequired')); return false; }
         return name;
       }
     });
@@ -512,48 +550,345 @@ const ImagesPage = {
   },
 
   async _buildDialog() {
-    const result = await Modal.form(`
-      <div class="form-group">
-        <label>Image Tag</label>
-        <input type="text" id="build-tag" class="form-control" placeholder="myapp:latest">
-      </div>
-      <div class="form-group">
-        <label>Dockerfile</label>
-        <textarea id="build-dockerfile" class="form-control" rows="12" style="font-family:monospace;font-size:12px" placeholder="FROM node:20-alpine\nWORKDIR /app\nCOPY . .\nRUN npm install\nCMD [&quot;node&quot;, &quot;server.js&quot;]"></textarea>
-      </div>
-    `, {
-      title: 'Build Image',
-      width: '600px',
-      onSubmit: (content) => ({
-        tag: content.querySelector('#build-tag').value.trim(),
-        dockerfile: content.querySelector('#build-dockerfile').value,
-      }),
+    // ── Dockerfile templates ──────────────────────────────────────
+    const TEMPLATES = [
+      { name: 'Node.js',     icon: 'fab fa-node-js',  color: '#3fb950',
+        dockerfile: 'FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --only=production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "server.js"]' },
+      { name: 'Python',      icon: 'fab fa-python',   color: '#4584b6',
+        dockerfile: 'FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nEXPOSE 8000\nCMD ["python", "app.py"]' },
+      { name: 'Nginx',       icon: 'fas fa-server',   color: '#d29922',
+        dockerfile: 'FROM nginx:alpine\nCOPY nginx.conf /etc/nginx/nginx.conf\nCOPY ./dist /usr/share/nginx/html\nEXPOSE 80\nCMD ["nginx", "-g", "daemon off;"]' },
+      { name: 'Go',          icon: 'fas fa-code',     color: '#79c0ff',
+        dockerfile: 'FROM golang:1.22-alpine AS builder\nWORKDIR /app\nCOPY go.mod go.sum ./\nRUN go mod download\nCOPY . .\nRUN CGO_ENABLED=0 go build -o main .\n\nFROM alpine:latest\nWORKDIR /app\nCOPY --from=builder /app/main .\nEXPOSE 8080\nCMD ["./main"]' },
+      { name: 'Java',        icon: 'fab fa-java',     color: '#f97316',
+        dockerfile: 'FROM eclipse-temurin:21-jdk-alpine AS builder\nWORKDIR /app\nCOPY . .\nRUN ./mvnw package -DskipTests\n\nFROM eclipse-temurin:21-jre-alpine\nWORKDIR /app\nCOPY --from=builder /app/target/*.jar app.jar\nEXPOSE 8080\nCMD ["java", "-jar", "app.jar"]' },
+      { name: 'Alpine',      icon: 'fas fa-mountain', color: '#8b949e',
+        dockerfile: 'FROM alpine:3.19\nRUN apk add --no-cache bash curl\nWORKDIR /app\nCOPY . .\nCMD ["/bin/bash"]' },
+      { name: 'PostgreSQL',  icon: 'fas fa-database', color: '#336791',
+        dockerfile: 'FROM postgres:16-alpine\nENV POSTGRES_DB=mydb\nENV POSTGRES_USER=user\nENV POSTGRES_PASSWORD=password\nCOPY init.sql /docker-entrypoint-initdb.d/\nEXPOSE 5432' },
+      { name: 'Blank',       icon: 'fas fa-file-alt', color: '#8b949e',
+        dockerfile: '' },
+    ];
+
+    // ── Live validation ───────────────────────────────────────────
+    const validateDockerfile = (text) => {
+      const warnings = [];
+      if (!text.trim()) return warnings;
+      const lines = text.split('\n').map(l => l.trim());
+      const hasNonRootUser = lines.some(l => /^USER\s+(?!root\b)/i.test(l));
+      const runCount = lines.filter(l => /^RUN\s+/i.test(l)).length;
+      const hasCopyAll = lines.some(l => /^COPY\s+\.\s+/i.test(l));
+      const hasAptGet = lines.some(l => /apt-get install/i.test(l));
+      const hasAptNoRec = lines.some(l => /--no-install-recommends/i.test(l));
+      const hasAptClean = lines.some(l => /apt-get clean|rm -rf \/var\/lib\/apt/i.test(l));
+      if (!hasNonRootUser)
+        warnings.push({ icon: 'fa-user-shield', color: 'var(--yellow)', msg: 'No non-root USER instruction — container will run as root' });
+      if (runCount > 4)
+        warnings.push({ icon: 'fa-layer-group', color: '#d29922', msg: `${runCount} RUN instructions — consider combining with && to reduce image layers` });
+      if (hasCopyAll)
+        warnings.push({ icon: 'fa-copy', color: '#58a6ff', msg: 'COPY . . detected — add a .dockerignore to exclude node_modules, .git, etc.' });
+      if (hasAptGet && !hasAptNoRec)
+        warnings.push({ icon: 'fa-box', color: 'var(--yellow)', msg: 'apt-get install without --no-install-recommends increases image size' });
+      if (hasAptGet && !hasAptClean)
+        warnings.push({ icon: 'fa-trash', color: 'var(--yellow)', msg: 'apt-get without cleanup — add && rm -rf /var/lib/apt/lists/*' });
+      return warnings;
+    };
+
+    const detectStages = (text) => {
+      const stages = [];
+      for (const line of text.split('\n')) {
+        const m = line.trim().match(/^FROM\s+\S+\s+AS\s+(\S+)/i);
+        if (m) stages.push(m[1]);
+      }
+      return stages;
+    };
+
+    // ── Build form modal ──────────────────────────────────────────
+    const templateCards = TEMPLATES.map((t, i) => `
+      <button class="build-tpl-btn" data-tpl="${i}" title="${t.name}" style="
+        background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);
+        padding:8px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;
+        gap:4px;font-size:11px;color:var(--text-muted);min-width:68px;transition:border-color .15s">
+        <i class="${t.icon}" style="font-size:17px;color:${t.color}"></i>
+        <span>${t.name}</span>
+      </button>`).join('');
+
+    const buildParams = await new Promise((resolve) => {
+      Modal.open(`
+        <div class="modal-header">
+          <h3><i class="fas fa-hammer" style="margin-right:8px;color:var(--accent)"></i>Build Image</h3>
+          <button class="modal-close-btn" id="bd-x"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+
+          <div class="form-group" style="margin:0">
+            <label style="display:block;margin-bottom:6px;font-weight:600">
+              Image Tag <span style="color:var(--red)">*</span>
+            </label>
+            <input type="text" id="bd-tag" class="form-control" placeholder="myapp:latest" style="font-family:monospace">
+            <div id="bd-tag-hint" class="text-sm text-muted" style="margin-top:4px;min-height:18px"></div>
+          </div>
+
+          <div>
+            <label style="display:block;margin-bottom:8px;font-weight:600;font-size:13px">Quick Templates</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px" id="bd-templates">${templateCards}</div>
+          </div>
+
+          <div class="form-group" style="margin:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <label style="font-weight:600;margin:0">Dockerfile <span style="color:var(--red)">*</span></label>
+              <button class="btn btn-sm btn-secondary" id="bd-upload-btn" style="font-size:11px;padding:3px 10px">
+                <i class="fas fa-upload" style="margin-right:4px"></i>Upload file
+              </button>
+              <input type="file" id="bd-upload-input" accept=".dockerfile,*" style="display:none">
+            </div>
+            <textarea id="bd-dockerfile" class="form-control" rows="11"
+              style="font-family:'Courier New',monospace;font-size:12px;line-height:1.6;tab-size:2;resize:vertical"
+              spellcheck="false"
+              placeholder="FROM alpine:latest&#10;WORKDIR /app&#10;COPY . .&#10;CMD [&quot;sh&quot;]"></textarea>
+          </div>
+
+          <div id="bd-warnings" style="display:none"></div>
+
+          <div>
+            <button class="btn btn-sm btn-secondary" id="bd-adv-toggle"
+              style="font-size:12px;padding:4px 12px">
+              <i class="fas fa-chevron-right" id="bd-adv-icon"
+                style="transition:transform .2s;margin-right:6px;font-size:10px"></i>Advanced Options
+            </button>
+            <div id="bd-advanced" style="display:none">
+              <div style="margin-top:10px;padding:14px;background:var(--surface2);border-radius:var(--radius-sm);
+                          display:flex;flex-direction:column;gap:14px">
+
+                <div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <label style="font-size:13px;font-weight:600;margin:0">Build Arguments</label>
+                    <button class="btn btn-sm btn-secondary" id="bd-arg-add"
+                      style="padding:2px 10px;font-size:11px"><i class="fas fa-plus"></i> Add</button>
+                  </div>
+                  <div id="bd-args-list" style="display:flex;flex-direction:column;gap:6px"></div>
+                  <div class="text-sm text-muted" style="margin-top:4px">
+                    Reference in Dockerfile as <code>ARG KEY</code> then <code>$KEY</code>
+                  </div>
+                </div>
+
+                <div id="bd-target-section" style="display:none">
+                  <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px">
+                    Target Stage <span class="text-muted" style="font-weight:400">(multi-stage)</span>
+                  </label>
+                  <select id="bd-target" class="form-control" style="font-family:monospace"></select>
+                </div>
+
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin:0">
+                  <input type="checkbox" id="bd-nocache" style="width:15px;height:15px">
+                  <span><strong>No cache</strong> — force rebuild all layers from scratch</span>
+                </label>
+
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="bd-cancel">Cancel</button>
+          <button class="btn btn-primary" id="bd-submit">
+            <i class="fas fa-hammer" style="margin-right:6px"></i>Build
+          </button>
+        </div>
+      `, { width: '680px', closeable: false });
+
+      const mc = Modal._content;
+      const tagEl       = mc.querySelector('#bd-tag');
+      const dfEl        = mc.querySelector('#bd-dockerfile');
+      const warningsEl  = mc.querySelector('#bd-warnings');
+      const advEl       = mc.querySelector('#bd-advanced');
+      const advIcon     = mc.querySelector('#bd-adv-icon');
+      const targetSect  = mc.querySelector('#bd-target-section');
+      const targetSel   = mc.querySelector('#bd-target');
+      const argsListEl  = mc.querySelector('#bd-args-list');
+
+      const closeResolve = (val) => { Modal.close(); resolve(val); };
+
+      mc.querySelector('#bd-x').addEventListener('click', () => closeResolve(null));
+      mc.querySelector('#bd-cancel').addEventListener('click', () => closeResolve(null));
+
+      // Template picker
+      mc.querySelector('#bd-templates').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-tpl]');
+        if (!btn) return;
+        const tpl = TEMPLATES[parseInt(btn.dataset.tpl)];
+        dfEl.value = tpl.dockerfile;
+        dfEl.dispatchEvent(new Event('input'));
+        mc.querySelectorAll('.build-tpl-btn').forEach(b => b.style.borderColor = '');
+        btn.style.borderColor = 'var(--accent)';
+      });
+
+      // Upload Dockerfile
+      mc.querySelector('#bd-upload-btn').addEventListener('click', () =>
+        mc.querySelector('#bd-upload-input').click());
+      mc.querySelector('#bd-upload-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => { dfEl.value = ev.target.result; dfEl.dispatchEvent(new Event('input')); };
+        reader.readAsText(file);
+        e.target.value = '';
+      });
+
+      // Tag hint
+      tagEl.addEventListener('input', () => {
+        const v = tagEl.value.trim();
+        const hint = mc.querySelector('#bd-tag-hint');
+        hint.textContent = (v && !v.includes(':')) ? 'Tip: add a tag, e.g. myapp:1.0.0 or myapp:latest' : '';
+      });
+
+      // Live validation
+      dfEl.addEventListener('input', () => {
+        const text = dfEl.value;
+        const warns = validateDockerfile(text);
+        if (warns.length === 0) {
+          warningsEl.style.display = 'none';
+        } else {
+          warningsEl.style.display = '';
+          warningsEl.innerHTML = warns.map(w => `
+            <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;
+              border-left:3px solid ${w.color};background:rgba(210,153,34,0.07);
+              border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+              margin-bottom:3px;font-size:12px">
+              <i class="fas ${w.icon}" style="color:${w.color};margin-top:2px;flex-shrink:0"></i>
+              <span>${w.msg}</span>
+            </div>`).join('');
+        }
+        // Multi-stage target dropdown
+        const stages = detectStages(text);
+        if (stages.length > 0) {
+          targetSect.style.display = '';
+          targetSel.innerHTML = '<option value="">— Final stage (default) —</option>' +
+            stages.map(s => `<option value="${Utils.escapeHtml(s)}">${Utils.escapeHtml(s)}</option>`).join('');
+        } else {
+          targetSect.style.display = 'none';
+        }
+      });
+
+      // Advanced toggle
+      mc.querySelector('#bd-adv-toggle').addEventListener('click', () => {
+        const open = advEl.style.display !== 'none';
+        advEl.style.display = open ? 'none' : '';
+        advIcon.style.transform = open ? '' : 'rotate(90deg)';
+      });
+
+      // Build args — add row
+      mc.querySelector('#bd-arg-add').addEventListener('click', () => {
+        const row = document.createElement('div');
+        row.className = 'bd-arg-row';
+        row.style.cssText = 'display:flex;gap:6px;align-items:center';
+        row.innerHTML = `
+          <input type="text" class="form-control arg-key" placeholder="KEY"
+            style="flex:1;font-family:monospace;font-size:12px">
+          <span style="color:var(--text-muted);flex-shrink:0">=</span>
+          <input type="text" class="form-control arg-val" placeholder="value"
+            style="flex:2;font-family:monospace;font-size:12px">
+          <button class="btn btn-sm btn-secondary" style="padding:3px 8px;flex-shrink:0">
+            <i class="fas fa-times"></i>
+          </button>`;
+        row.querySelector('button').addEventListener('click', () => row.remove());
+        argsListEl.appendChild(row);
+        row.querySelector('.arg-key').focus();
+      });
+
+      // Submit
+      mc.querySelector('#bd-submit').addEventListener('click', () => {
+        const tag = tagEl.value.trim();
+        const dockerfile = dfEl.value.trim();
+        if (!tag) {
+          tagEl.style.borderColor = 'var(--red)';
+          tagEl.focus();
+          return;
+        }
+        if (!dockerfile) {
+          dfEl.style.borderColor = 'var(--red)';
+          dfEl.focus();
+          return;
+        }
+        const buildArgs = {};
+        argsListEl.querySelectorAll('.bd-arg-row').forEach(row => {
+          const k = row.querySelector('.arg-key').value.trim();
+          const v = row.querySelector('.arg-val').value;
+          if (k) buildArgs[k] = v;
+        });
+        closeResolve({
+          tag,
+          dockerfile,
+          buildArgs,
+          target: targetSel.value || '',
+          noCache: mc.querySelector('#bd-nocache').checked,
+        });
+      });
     });
 
-    if (!result || !result.tag || !result.dockerfile) return;
+    if (!buildParams) return;
 
-    // Show build output modal
+    // ── Streaming output modal ────────────────────────────────────
+    const colorizeText = (text) => text.split('\n').map(line => {
+      const e = Utils.escapeHtml(line);
+      if (/^Step \d+\/\d+/i.test(line))               return `<span style="color:var(--accent);font-weight:700">${e}</span>`;
+      if (/Successfully (built|tagged)/i.test(line))   return `<span style="color:var(--green);font-weight:600">${e}</span>`;
+      if (/\berror\b/i.test(line))                     return `<span style="color:var(--red)">${e}</span>`;
+      if (/\bwarn/i.test(line))                        return `<span style="color:var(--yellow)">${e}</span>`;
+      if (/^--->/.test(line))                          return `<span style="color:var(--text-muted)">${e}</span>`;
+      if (/^Removing intermediate container/.test(line)) return `<span style="opacity:0.45">${e}</span>`;
+      return e;
+    }).join('\n');
+
+    const tagBadges = [
+      buildParams.noCache ? '<span class="badge badge-warning" style="margin-left:8px">no-cache</span>' : '',
+      buildParams.target  ? `<span class="badge badge-info" style="margin-left:4px">→ ${Utils.escapeHtml(buildParams.target)}</span>` : '',
+    ].join('');
+
     Modal.open(`
       <div class="modal-header">
-        <h3><i class="fas fa-hammer" style="margin-right:8px"></i>Building ${Utils.escapeHtml(result.tag)}</h3>
+        <h3><i class="fas fa-hammer" style="margin-right:8px;color:var(--accent)"></i>
+          Building <code style="font-size:14px">${Utils.escapeHtml(buildParams.tag)}</code>${tagBadges}
+        </h3>
       </div>
       <div class="modal-body">
-        <pre id="build-output" style="max-height:50vh;overflow:auto;background:var(--surface2);padding:12px;border-radius:var(--radius-sm);font-size:12px"></pre>
+        <div id="bd-out-status" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13px">
+          <i class="fas fa-spinner fa-spin" style="color:var(--accent)"></i>
+          <span>Building…</span>
+        </div>
+        <pre id="bd-output" style="max-height:55vh;overflow:auto;background:var(--surface2);padding:12px;
+          border-radius:var(--radius-sm);font-size:11.5px;line-height:1.6;margin:0;white-space:pre-wrap"></pre>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" id="build-close" disabled>Close</button>
+        <button class="btn btn-secondary" id="bd-copy-log"><i class="fas fa-copy"></i> Copy Log</button>
+        <button class="btn btn-primary" id="bd-out-close" disabled>Close</button>
       </div>
-    `, { width: '700px', closeable: false });
+    `, { width: '740px', closeable: false });
 
-    const outputEl = document.getElementById('build-output');
-    const closeBtn = document.getElementById('build-close');
+    const outputEl  = document.getElementById('bd-output');
+    const statusEl  = document.getElementById('bd-out-status');
+    const closeBtn  = document.getElementById('bd-out-close');
+    let rawLog = '';
+
+    document.getElementById('bd-copy-log').addEventListener('click', () =>
+      Utils.copyToClipboard(rawLog).then(() => Toast.success('Log copied!')));
+
+    const appendText = (text) => {
+      rawLog += text;
+      outputEl.innerHTML += colorizeText(text);
+      outputEl.scrollTop = outputEl.scrollHeight;
+    };
 
     try {
-      const response = await fetch('/api/images/build', {
+      const hostParam = Api.getHostId() ? `?hostId=${Api.getHostId()}` : '';
+      const response = await fetch(`/api/images/build${hostParam}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(Api._bearerToken ? { 'Authorization': `Bearer ${Api._bearerToken}` } : {}),
+        },
         credentials: 'same-origin',
-        body: JSON.stringify(result),
+        body: JSON.stringify(buildParams),
       });
 
       const reader = response.body.getReader();
@@ -571,20 +906,23 @@ const ImagesPage = {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'output' || data.type === 'status') {
-              outputEl.textContent += data.text;
+              appendText(data.text);
             } else if (data.type === 'error') {
-              outputEl.textContent += '\nERROR: ' + data.text + '\n';
+              appendText('\nERROR: ' + data.text + '\n');
             } else if (data.type === 'done') {
-              outputEl.textContent += '\nBuild complete!\n';
+              appendText('\n\u2713 Build complete!\n');
+              statusEl.innerHTML = `<i class="fas fa-check-circle" style="color:var(--green)"></i>
+                <span style="color:var(--green);font-weight:600">Build complete — ${Utils.escapeHtml(buildParams.tag)}</span>`;
               Toast.success('Image built successfully');
               this._load();
             }
-            outputEl.scrollTop = outputEl.scrollHeight;
           } catch {}
         }
       }
     } catch (err) {
-      outputEl.textContent += '\nBuild failed: ' + err.message;
+      appendText('\nBuild failed: ' + err.message + '\n');
+      statusEl.innerHTML = `<i class="fas fa-times-circle" style="color:var(--red)"></i>
+        <span style="color:var(--red)">Build failed</span>`;
       Toast.error('Build failed: ' + err.message);
     }
 

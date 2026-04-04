@@ -74,8 +74,8 @@ app.use((req, res, next) => {
     } else if (config.app.env === 'development') {
       log.debug(`${req.method} ${req.url} ${res.statusCode} ${duration}ms`);
     }
-    // Expose latency header for debugging
-    res.setHeader('X-Response-Time', `${duration}ms`);
+    // Expose latency header for debugging (guard: headers may already be sent for streamed responses)
+    if (!res.headersSent) res.setHeader('X-Response-Time', `${duration}ms`);
     origEnd.apply(this, args);
   };
   next();
@@ -116,6 +116,7 @@ app.use('/api/audit', apiLimiter, require('./routes/audit'));
 app.use('/api/security-alerts', apiLimiter, require('./routes/securityAlerts'));
 app.use('/api/secrets', apiLimiter, require('./routes/secrets'));
 app.use('/api/log-forwarders', apiLimiter, require('./routes/log-forwarders'));
+app.use('/api/swarm', apiLimiter, require('./routes/swarm'));
 app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────

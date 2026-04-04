@@ -35,6 +35,11 @@ router.get('/', requireAuth, async (req, res) => {
         // Don't expose secrets
         hasTls: !!(h.tls_config && h.tls_config !== '{}' && h.tls_config !== 'null'),
         hasSsh: !!(h.ssh_config && h.ssh_config !== '{}' && h.ssh_config !== 'null'),
+        // Include SSH host for display in cards (no credentials)
+        sshHost: (() => {
+          if (!h.ssh_config) return null;
+          try { return JSON.parse(h.ssh_config).host || null; } catch { return null; }
+        })(),
       };
     });
 

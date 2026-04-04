@@ -19,6 +19,8 @@ services:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
       # Persistent data (SQLite DB, stats)
       - docker-dash-data:/data
+      # Shared certs dir — Caddyfile written here by the app, read by Caddy
+      - caddy-certs:/data/certs
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${APP_PORT:-8101}/api/health"]
       interval: 30s
@@ -35,17 +37,20 @@ services:
       - no-new-privileges:true
 
   # Optional HTTPS reverse proxy — enable with: docker compose --profile tls up -d
-  # Access via https://YOUR_HOST:8443 (self-signed cert for internal network)
+  # Configure via Docker Dash UI: System → SSL/TLS → Enable HTTPS
   caddy:
     image: caddy:2-alpine
     container_name: docker-dash-caddy
     restart: unless-stopped
     ports:
       - "${TLS_PORT:-8443}:443"
+      - "${HTTP_REDIRECT_PORT:-80}:80"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Shared volume — Caddyfile written by app, reloaded automatically
+      - caddy-certs:/data/certs:ro
       - caddy-data:/data
       - caddy-config:/config
+    command: caddy run --config /data/certs/Caddyfile --adapter caddyfile
     depends_on:
       - app
     profiles:
@@ -54,5 +59,7 @@ services:
 volumes:
   docker-dash-data:
     name: docker-dash-data
+  caddy-certs:
+    name: docker-dash-caddy-certs
   caddy-data:
   caddy-config:

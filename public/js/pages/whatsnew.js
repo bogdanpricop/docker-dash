@@ -10,6 +10,45 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.3.0',
+      date: '2026-04-04',
+      title: 'Docker Swarm + Extended Comparison (8 tools)',
+      changes: [
+        { type: 'feature', text: 'Docker Swarm mode — full UI for Nodes, Services, Tasks; init/leave swarm, scale services, join tokens, drain nodes' },
+        { type: 'feature', text: 'Swarm beginner guide card — explains Nodes, Services, Tasks, Overlay Networks with CLI example' },
+        { type: 'feature', text: 'Swarm official docs card — 5 direct links to Docker documentation' },
+        { type: 'feature', text: 'Extended comparison matrix — 4 new tools: Coolify, Yacht, Rancher, Portainer Business (8 tools total, 60 features)' },
+        { type: 'feature', text: 'Comparison table sticky first column — feature name stays visible while scrolling 8 columns' },
+        { type: 'improvement', text: 'Nav "Swarm" translation added to all 11 locale files' },
+        { type: 'fix', text: 'Latency middleware crash (ERR_HTTP_HEADERS_SENT) on streamed static file responses' },
+      ],
+    },
+    {
+      version: '5.2.0',
+      date: '2026-04-03',
+      title: 'SSL Zero-Config + LDAP/AD + App Logos + Swarm Backend',
+      changes: [
+        { type: 'feature', text: 'SSL zero-config — Caddy sidecar auto-reload via shared volume; enable HTTPS from UI with one click, no manual container restarts' },
+        { type: 'feature', text: 'LDAP / Active Directory sync — bind, user search, group filter, attribute mapping; auto-provisions local accounts on first login' },
+        { type: 'feature', text: 'App marketplace logos — walkxcode/dashboard-icons CDN integration with FontAwesome fallback' },
+        { type: 'feature', text: 'CIS Docker Benchmark tab — 18 checks (6 daemon + 12 container), scored report with remediation hints' },
+        { type: 'improvement', text: 'System page tabs wrap on small screens (phone/RDP) — flex-wrap on .tabs' },
+        { type: 'fix', text: 'SQLite datetime("now") bug in registry.js and pipeline.js — double-quoted identifiers were interpreted as column names' },
+      ],
+    },
+    {
+      version: '5.1.0',
+      date: '2026-04-02',
+      title: 'Registry Edit + Pull Registry Dropdown + SSH Key Guide',
+      changes: [
+        { type: 'feature', text: 'Docker Registry edit — full edit modal pre-populated with existing data; was a stub before' },
+        { type: 'feature', text: 'Registry test shows repo count — 0 repositories = red failure (not success)' },
+        { type: 'feature', text: 'Pull Image registry dropdown — 7 presets (Docker Hub, GHCR, MCR, Quay, ECR Public, GCR, Custom) with prefix auto-fill' },
+        { type: 'feature', text: 'SSH Key authentication guide on Hosts page — 3-step guide (keygen → ssh-copy-id → paste) per Linux distro' },
+        { type: 'improvement', text: 'Comparison matrix updated with Rancher, Coolify, Yacht, Portainer Business parity data' },
+      ],
+    },
+    {
       version: '5.0.5',
       date: '2026-03-31',
       title: 'Template Configurator + Euro-Office Templates',

@@ -696,7 +696,7 @@ router.post('/import', requireAuth, requireRole('admin'), writeable, (req, res) 
 
 // ─── Image Build ────────────────────────────────────
 router.post('/build', requireAuth, requireRole('admin'), writeable, async (req, res) => {
-  const { dockerfile, tag, buildArgs = {} } = req.body;
+  const { dockerfile, tag, buildArgs = {}, noCache = false, target = '' } = req.body;
   if (!dockerfile || !tag) return res.status(400).json({ error: 'dockerfile and tag required' });
 
   try {
@@ -731,6 +731,8 @@ router.post('/build', requireAuth, requireRole('admin'), writeable, async (req, 
       t: tag,
       buildargs: JSON.stringify(buildArgs),
       rm: true,
+      nocache: !!noCache,
+      ...(target ? { target } : {}),
     });
 
     // Stream output as SSE

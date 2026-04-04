@@ -674,4 +674,91 @@ router.get('/oidc/callback', async (req, res) => {
   }
 });
 
+// ─── LDAP Configuration ──────────────────────────────────────────────────────
+
+const ldapService = require('../services/ldap');
+
+// GET /api/auth/ldap — get current LDAP config (password redacted)
+router.get('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+  const cfg = ldapService.getConfig();
+  if (!cfg) return res.json({ configured: false });
+  const safe = { ...cfg, bindPassword: cfg.bindPassword ? '••••••••' : '' };
+  res.json({ configured: true, ...safe });
+});
+
+// PUT /api/auth/ldap — save LDAP config
+router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn,
+            userFilter, uidAttr, requiredGroup, defaultRole, enabled } = req.body;
+    if (!host || !bindDn || !baseDn) {
+      return res.status(400).json({ error: 'host, bindDn and baseDn are required' });
+    }
+    const existing = ldapService.getConfig();
+    // Keep old password if not changed
+    const finalPassword = (bindPassword && bindPassword !== '••••••••')
+      ? bindPassword
+      : (existing?.bindPassword || '');
+    ldapService.saveConfig({
+      host, port: parseInt(port) || (tls ? 636 : 389),
+      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
+      bindDn, bindPassword: finalPassword,
+      baseDn, userFilter: userFilter || '',
+      uidAttr: uidAttr || 'uid',
+      requiredGroup: requiredGroup || '',
+      defaultRole: defaultRole || 'viewer',
+      enabled: enabled !== false,
+    });
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'ldap_config_saved', targetType: 'settings', targetId: host,
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/auth/ldap — remove LDAP config
+router.delete('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+  ldapService.deleteConfig();
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'ldap_config_deleted', targetType: 'settings', targetId: 'ldap',
+    ip: getClientIp(req),
+  });
+  res.json({ ok: true });
+});
+
+// POST /api/auth/ldap/test — test LDAP connection with provided config
+router.post('/ldap/test', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn, userFilter, uidAttr } = req.body;
+    if (!host || !bindDn || !bindPassword || !baseDn) {
+      return res.status(400).json({ error: 'host, bindDn, bindPassword and baseDn are required' });
+    }
+    const result = await ldapService.testConnection({
+      host, port: parseInt(port) || (tls ? 636 : 389),
+      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
+      bindDn, bindPassword, baseDn, userFilter, uidAttr,
+    });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/auth/ldap/users — list users from LDAP directory (preview)
+router.get('/ldap/users', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const cfg = ldapService.getConfig();
+    if (!cfg) return res.status(404).json({ error: 'LDAP not configured' });
+    const users = await ldapService.listUsers(cfg, 100);
+    res.json({ users, total: users.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

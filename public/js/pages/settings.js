@@ -28,6 +28,7 @@ const SettingsPage = {
         ${isAdmin ? `<button class="tab" data-tab="workflows"><i class="fas fa-cogs" style="margin-right:4px"></i> Workflows</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="secrets"><i class="fas fa-key" style="margin-right:4px"></i> Secrets</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="log-forwarding"><i class="fas fa-share-alt" style="margin-right:4px"></i> Log Forwarding</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="ldap"><i class="fas fa-sitemap" style="margin-right:4px"></i> LDAP / AD</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="general">${i18n.t('pages.settings.tabGeneral')}</button>` : ''}
       </div>
       <div id="settings-content"></div>
@@ -61,6 +62,7 @@ const SettingsPage = {
       else if (this._tab === 'workflows') await this._renderWorkflows(el);
       else if (this._tab === 'secrets') await this._renderSecrets(el);
       else if (this._tab === 'log-forwarding') await this._renderLogForwarding(el);
+      else if (this._tab === 'ldap') await this._renderLdap(el);
       else if (this._tab === 'general') await this._renderGeneral(el);
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
@@ -725,16 +727,115 @@ const SettingsPage = {
   },
 
   async _testRegistry(id) {
-    Toast.info(i18n.t('pages.settings.testingConnection'));
+    // Find the row in the table to show inline feedback
+    const el = document.getElementById('settings-content');
+    const row = el?.querySelector(`[data-action="test-registry"][data-reg-id="${id}"]`)?.closest('tr');
+    const btn = el?.querySelector(`[data-action="test-registry"][data-reg-id="${id}"]`);
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+
+    // Remove any previous result cell
+    row?.querySelector('.test-result-cell')?.remove();
+
     try {
+      // Test basic connectivity
       const result = await Api.testRegistry(id);
-      if (result.ok) Toast.success(i18n.t('pages.settings.connectionSuccessful'));
-      else Toast.error(i18n.t('pages.settings.connectionFailed', { message: result.error || 'Unknown error' }));
-    } catch (err) { Toast.error(err.message); }
+
+      // Attempt to fetch catalog to count repositories
+      let repoInfo = '';
+      let overallOk = result.ok;
+      if (result.ok) {
+        try {
+          const repos = await Api.getRegistryCatalog(id);
+          if (repos.length === 0) {
+            overallOk = false;
+            repoInfo = ' &mdash; 0 repositories (wrong URL, wrong credentials, or empty registry)';
+          } else {
+            repoInfo = ` &mdash; <strong>${repos.length}</strong> repositor${repos.length === 1 ? 'y' : 'ies'}`;
+          }
+        } catch {
+          repoInfo = ' &mdash; catalog unavailable (private/restricted)';
+        }
+      }
+
+      if (row) {
+        const td = document.createElement('td');
+        td.className = 'test-result-cell text-sm';
+        td.colSpan = 1;
+        if (overallOk) {
+          td.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Connected${repoInfo}</span>`;
+        } else {
+          const errMsg = result.ok ? repoInfo.replace(/^ &mdash; /, '') : Utils.escapeHtml(result.error || 'Failed');
+          td.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${errMsg}</span>`;
+        }
+        // Insert before the actions column
+        const actionsCell = row.querySelector('.action-btns')?.closest('td');
+        row.insertBefore(td, actionsCell);
+        setTimeout(() => td.remove(), 8000);
+      } else {
+        if (result.ok) Toast.success('Connected' + repoInfo.replace(/&mdash;/g, '—').replace(/<[^>]+>/g, ''));
+        else Toast.error(result.error || 'Connection failed');
+      }
+    } catch (err) {
+      if (row) {
+        const td = document.createElement('td');
+        td.className = 'test-result-cell text-sm';
+        td.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</span>`;
+        const actionsCell = row.querySelector('.action-btns')?.closest('td');
+        row.insertBefore(td, actionsCell);
+        setTimeout(() => td.remove(), 8000);
+      } else {
+        Toast.error(err.message);
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plug"></i>'; }
+    }
   },
 
   async _editRegistry(id) {
-    Toast.info(i18n.t('pages.settings.editComingSoon'));
+    // Load current registries to get data for this id
+    let reg;
+    try {
+      const list = await Api.getRegistries();
+      reg = list.find(r => r.id === id);
+    } catch { reg = null; }
+    if (!reg) { Toast.error('Registry not found'); return; }
+
+    const result = await Modal.form(`
+      <div class="form-group">
+        <label>Name <span class="text-red">*</span></label>
+        <input type="text" id="reg-name" class="form-control" value="${Utils.escapeHtml(reg.name)}">
+      </div>
+      <div class="form-group">
+        <label>URL <span class="text-red">*</span></label>
+        <input type="text" id="reg-url" class="form-control" value="${Utils.escapeHtml(reg.url)}">
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="reg-user" class="form-control" value="${Utils.escapeHtml(reg.username || '')}">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="reg-pass" class="form-control" placeholder="Leave blank to keep current password" autocomplete="new-password">
+        <small class="text-muted">Leave blank to keep the existing password unchanged.</small>
+      </div>
+    `, {
+      title: `Edit Registry — ${Utils.escapeHtml(reg.name)}`,
+      width: '450px',
+      onSubmit: (content) => ({
+        name: content.querySelector('#reg-name').value.trim(),
+        url: content.querySelector('#reg-url').value.trim(),
+        username: content.querySelector('#reg-user').value.trim(),
+        password: content.querySelector('#reg-pass').value || undefined,
+      }),
+    });
+
+    if (result && result.name && result.url) {
+      try {
+        await Api.updateRegistry(id, result);
+        Toast.success(`Registry "${result.name}" updated`);
+        this._renderTab();
+      } catch (err) { Toast.error(err.message); }
+    }
   },
 
   async _deleteRegistry(id) {
@@ -1501,6 +1602,171 @@ const SettingsPage = {
     Modal.open(html, { width: '620px' });
     Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
     Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+  },
+
+  async _renderLdap(el) {
+    let cfg = {};
+    try { cfg = await Api.getLdapConfig(); } catch { cfg = { configured: false }; }
+
+    const v = (field, fallback = '') => Utils.escapeHtml(String(cfg[field] ?? fallback));
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-sitemap" style="margin-right:8px;color:var(--accent)"></i>LDAP / Active Directory</h3>
+          <span class="badge" style="font-size:11px;background:${cfg.enabled ? 'var(--green)' : 'var(--surface2)'};color:${cfg.enabled ? '#000' : 'var(--text-dim)'}">
+            ${cfg.configured ? (cfg.enabled ? 'Enabled' : 'Disabled') : 'Not configured'}
+          </span>
+        </div>
+        <div class="card-body">
+          <p class="text-sm text-muted" style="margin-bottom:16px">
+            Configure LDAP or Active Directory for SSO. Users who log in via LDAP are automatically provisioned with the default role. Local admin account is always available as fallback.
+          </p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:700px">
+            <div class="form-group" style="grid-column:1/2">
+              <label>LDAP Host <span class="text-red">*</span></label>
+              <input id="ldap-host" class="form-control" placeholder="ldap.company.com" value="${v('host')}">
+            </div>
+            <div class="form-group">
+              <label>Port</label>
+              <input id="ldap-port" type="number" class="form-control" placeholder="389" value="${v('port', '389')}">
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Bind DN <span class="text-red">*</span></label>
+              <input id="ldap-bind-dn" class="form-control" placeholder="cn=service,dc=company,dc=com" value="${v('bindDn')}">
+              <small class="text-muted">Service account used to search the directory</small>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Bind Password <span class="text-red">*</span></label>
+              <input id="ldap-bind-pass" type="password" class="form-control" placeholder="${cfg.configured ? '(unchanged)' : 'Service account password'}" autocomplete="new-password">
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>Base DN <span class="text-red">*</span></label>
+              <input id="ldap-base-dn" class="form-control" placeholder="dc=company,dc=com" value="${v('baseDn')}">
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label>User Filter</label>
+              <input id="ldap-user-filter" class="form-control" placeholder="(objectClass=person)" value="${v('userFilter')}">
+              <small class="text-muted">LDAP filter to identify user objects. Leave blank for default.</small>
+            </div>
+            <div class="form-group">
+              <label>UID Attribute</label>
+              <input id="ldap-uid-attr" class="form-control" placeholder="uid" value="${v('uidAttr', 'uid')}">
+              <small class="text-muted">uid (LDAP), sAMAccountName (AD)</small>
+            </div>
+            <div class="form-group">
+              <label>Required Group (optional)</label>
+              <input id="ldap-group" class="form-control" placeholder="cn=docker-dash,ou=groups,dc=..." value="${v('requiredGroup')}">
+              <small class="text-muted">Only members of this group can log in</small>
+            </div>
+            <div class="form-group">
+              <label>Default Role for new users</label>
+              <select id="ldap-role" class="form-control">
+                <option value="viewer" ${cfg.defaultRole === 'viewer' || !cfg.defaultRole ? 'selected' : ''}>Viewer</option>
+                <option value="operator" ${cfg.defaultRole === 'operator' ? 'selected' : ''}>Operator</option>
+                <option value="admin" ${cfg.defaultRole === 'admin' ? 'selected' : ''}>Admin</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                <input id="ldap-tls" type="checkbox" ${cfg.tls ? 'checked' : ''}> Use LDAPS (TLS, port 636)
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
+                <input id="ldap-skip-verify" type="checkbox" ${cfg.tlsSkipVerify ? 'checked' : ''}> Skip TLS certificate verification
+              </label>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+            <button class="btn btn-secondary" id="ldap-test"><i class="fas fa-plug" style="margin-right:4px"></i>Test Connection</button>
+            <button class="btn btn-primary" id="ldap-save"><i class="fas fa-save" style="margin-right:4px"></i>Save</button>
+            ${cfg.configured ? `<button class="btn btn-danger" id="ldap-delete"><i class="fas fa-trash" style="margin-right:4px"></i>Remove LDAP</button>` : ''}
+            ${cfg.configured ? `<button class="btn btn-secondary" id="ldap-users"><i class="fas fa-users" style="margin-right:4px"></i>Preview Directory Users</button>` : ''}
+          </div>
+
+          <div id="ldap-result" style="margin-top:14px"></div>
+        </div>
+      </div>
+    `;
+
+    const collect = () => ({
+      host: el.querySelector('#ldap-host').value.trim(),
+      port: el.querySelector('#ldap-port').value.trim(),
+      bindDn: el.querySelector('#ldap-bind-dn').value.trim(),
+      bindPassword: el.querySelector('#ldap-bind-pass').value,
+      baseDn: el.querySelector('#ldap-base-dn').value.trim(),
+      userFilter: el.querySelector('#ldap-user-filter').value.trim(),
+      uidAttr: el.querySelector('#ldap-uid-attr').value.trim() || 'uid',
+      requiredGroup: el.querySelector('#ldap-group').value.trim(),
+      defaultRole: el.querySelector('#ldap-role').value,
+      tls: el.querySelector('#ldap-tls').checked,
+      tlsSkipVerify: el.querySelector('#ldap-skip-verify').checked,
+      enabled: true,
+    });
+
+    const resultDiv = el.querySelector('#ldap-result');
+
+    el.querySelector('#ldap-test')?.addEventListener('click', async () => {
+      const data = collect();
+      if (!data.host || !data.bindDn || !data.bindPassword || !data.baseDn) {
+        resultDiv.innerHTML = `<div class="tip-box" style="color:var(--yellow)"><i class="fas fa-exclamation-triangle"></i> Fill in host, bind DN, bind password and base DN first.</div>`;
+        return;
+      }
+      resultDiv.innerHTML = `<p class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Testing connection...</p>`;
+      try {
+        const res = await Api.testLdapConnection(data);
+        resultDiv.innerHTML = `<div class="tip-box" style="color:var(--green)"><i class="fas fa-check-circle"></i> Connection successful — ${res.usersFound > 0 ? 'users found in directory' : 'directory reachable (no users matched filter)'}.</div>`;
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="tip-box" style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+      }
+    });
+
+    el.querySelector('#ldap-save')?.addEventListener('click', async () => {
+      const data = collect();
+      if (!data.host || !data.bindDn || !data.baseDn) {
+        Toast.warning('Fill in required fields (host, bind DN, base DN)');
+        return;
+      }
+      try {
+        await Api.saveLdapConfig(data);
+        Toast.success('LDAP configuration saved');
+        await this._renderLdap(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelector('#ldap-delete')?.addEventListener('click', async () => {
+      if (!confirm('Remove LDAP configuration? Users provisioned via LDAP will keep their local accounts.')) return;
+      try {
+        await Api.deleteLdapConfig();
+        Toast.success('LDAP configuration removed');
+        await this._renderLdap(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelector('#ldap-users')?.addEventListener('click', async () => {
+      resultDiv.innerHTML = `<p class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Fetching users...</p>`;
+      try {
+        const res = await Api.getLdapUsers();
+        const rows = res.users.map(u => `
+          <tr>
+            <td>${Utils.escapeHtml(u.username)}</td>
+            <td>${Utils.escapeHtml(u.displayName)}</td>
+            <td>${Utils.escapeHtml(u.email)}</td>
+            <td class="text-sm text-muted mono" style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(u.dn)}</td>
+          </tr>`).join('');
+        resultDiv.innerHTML = `
+          <div style="margin-top:4px;font-weight:600;margin-bottom:8px"><i class="fas fa-users" style="margin-right:6px;color:var(--accent)"></i>${res.total} users found</div>
+          <div style="max-height:300px;overflow:auto">
+            <table class="data-table">
+              <thead><tr><th>Username</th><th>Display Name</th><th>Email</th><th>DN</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        resultDiv.innerHTML = `<div class="tip-box" style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+      }
+    });
   },
 
   destroy() {},

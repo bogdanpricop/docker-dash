@@ -10,6 +10,45 @@ const { getDb } = require('../db');
 
 const router = Router();
 
+// Logo URLs from walkxcode/dashboard-icons (PNG, CDN-hosted)
+// Using jsdelivr CDN for reliability — fallback to FontAwesome icon if image fails to load
+const LOGO_BASE = 'https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons@main/png';
+const TEMPLATE_LOGOS = {
+  'nginx':              `${LOGO_BASE}/nginx.png`,
+  'postgres':           `${LOGO_BASE}/postgresql.png`,
+  'redis':              `${LOGO_BASE}/redis.png`,
+  'mariadb':            `${LOGO_BASE}/mariadb.png`,
+  'mongo':              `${LOGO_BASE}/mongodb.png`,
+  'uptime-kuma':        `${LOGO_BASE}/uptime-kuma.png`,
+  'grafana':            `${LOGO_BASE}/grafana.png`,
+  'prometheus':         `${LOGO_BASE}/prometheus.png`,
+  'traefik':            `${LOGO_BASE}/traefik.png`,
+  'caddy':              `${LOGO_BASE}/caddy.png`,
+  'nextcloud':          `${LOGO_BASE}/nextcloud.png`,
+  'gitea':              `${LOGO_BASE}/gitea.png`,
+  'n8n':                `${LOGO_BASE}/n8n.png`,
+  'vaultwarden':        `${LOGO_BASE}/vaultwarden.png`,
+  'adminer':            `${LOGO_BASE}/adminer.png`,
+  'minio':              `${LOGO_BASE}/minio.png`,
+  'pihole':             `${LOGO_BASE}/pi-hole.png`,
+  'homeassistant':      `${LOGO_BASE}/home-assistant.png`,
+  'wordpress':          `${LOGO_BASE}/wordpress.png`,
+  'dozzle':             `${LOGO_BASE}/dozzle.png`,
+  'portainer':          `${LOGO_BASE}/portainer.png`,
+  'elasticsearch':      `${LOGO_BASE}/elasticsearch.png`,
+  'rabbitmq':           `${LOGO_BASE}/rabbitmq.png`,
+  'mailhog':            `${LOGO_BASE}/mailhog.png`,
+  'plausible':          `${LOGO_BASE}/plausible.png`,
+  'filebrowser':        `${LOGO_BASE}/filebrowser.png`,
+  'watchtower':         `${LOGO_BASE}/watchtower.png`,
+  'drone':              `${LOGO_BASE}/drone.png`,
+  'ghost':              `${LOGO_BASE}/ghost.png`,
+  'wireguard':          `${LOGO_BASE}/wireguard.png`,
+  'eurooffice':         `${LOGO_BASE}/onlyoffice.png`,
+  'eurooffice-nextcloud': `${LOGO_BASE}/nextcloud.png`,
+  'eurooffice-dev':     `${LOGO_BASE}/onlyoffice.png`,
+};
+
 /** Merge built-in templates with DB overrides and custom templates */
 function getMergedTemplates() {
   const db = getDb();
@@ -43,7 +82,7 @@ function getMergedTemplates() {
         originalCompose: t.compose,
       };
     }
-    return { ...t, isBuiltin: true };
+    return { ...t, isBuiltin: true, logoUrl: TEMPLATE_LOGOS[t.id] || null };
   });
 
   return [...merged, ...customOnly];

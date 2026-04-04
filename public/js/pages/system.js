@@ -29,6 +29,7 @@ const SystemPage = {
         <button class="tab" data-tab="tools"><i class="fas fa-toolbox" style="margin-right:4px"></i> Tools</button>
         <button class="tab" data-tab="templates"><i class="fas fa-rocket" style="margin-right:4px"></i> Templates</button>
         <button class="tab" data-tab="ssl"><i class="fas fa-shield-alt" style="margin-right:4px"></i> SSL/TLS</button>
+        <button class="tab" data-tab="cis"><i class="fas fa-clipboard-check" style="margin-right:4px"></i> CIS Benchmark</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
         <button class="tab" data-tab="audit">${i18n.t('pages.system.tabAudit')}</button>
       </div>
@@ -64,6 +65,7 @@ const SystemPage = {
       else if (this._tab === 'tools') this._renderTools(el);
       else if (this._tab === 'templates') await this._renderTemplates(el);
       else if (this._tab === 'ssl') await this._renderSsl(el);
+      else if (this._tab === 'cis') await this._renderCisBenchmark(el);
       else if (this._tab === 'prune') this._renderPrune(el);
       else if (this._tab === 'audit') await this._renderAudit(el);
     } catch (err) {
@@ -1678,11 +1680,19 @@ DB_PASS=secret"></textarea>
         const customBadge = t.isCustom
           ? `<span class="badge badge-info" style="font-size:9px;margin-left:6px"><i class="fas fa-user" style="margin-right:3px"></i>custom</span>`
           : '';
+        // Logo: show image with graceful fallback to FontAwesome icon
+        const logoHtml = t.logoUrl
+          ? `<img src="${Utils.escapeHtml(t.logoUrl)}" alt="${Utils.escapeHtml(t.name)}" style="width:28px;height:28px;object-fit:contain;flex-shrink:0" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'">`
+          + `<i class="${t.icon || 'fas fa-cube'}" style="display:none;font-size:18px;color:var(--accent)"></i>`
+          : `<i class="${t.icon || 'fas fa-cube'}" style="font-size:18px;color:var(--accent)"></i>`;
         return `
           <div class="card tpl-card" data-id="${t.id}" data-cat="${Utils.escapeHtml((t.category || '').toLowerCase())}" data-name="${Utils.escapeHtml((t.name || '').toLowerCase())} ${Utils.escapeHtml((t.description || '').toLowerCase())}">
-            <div class="card-header">
-              <h3><i class="${t.icon || 'fas fa-cube'}" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(t.name)}${modifiedBadge}${customBadge}</h3>
-              <span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(t.category)}</span>
+            <div class="card-header" style="gap:10px">
+              <div style="display:flex;align-items:center;gap:8px;min-width:0">
+                ${logoHtml}
+                <h3 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(t.name)}${modifiedBadge}${customBadge}</h3>
+              </div>
+              <span class="badge badge-info" style="font-size:10px;flex-shrink:0">${Utils.escapeHtml(t.category)}</span>
             </div>
             <div class="card-body">
               <p class="text-sm text-muted" style="margin-bottom:12px">${Utils.escapeHtml(t.description)}</p>
@@ -2672,11 +2682,12 @@ DB_PASS=secret"></textarea>
   // ═══════════════════════════════════════════════════
 
   async _renderSsl(el) {
-    let status;
+    let status, caddyStatus;
     try {
-      status = await Api.getSslStatus();
+      [status, caddyStatus] = await Promise.all([Api.getSslStatus(), Api.getCaddyStatus()]);
     } catch {
       status = { mode: 'none', hasCert: false, hasKey: false, hasCaddyfile: false };
+      caddyStatus = { exists: false, running: false, status: 'unknown' };
     }
 
     const modeLabel = {
@@ -2769,26 +2780,36 @@ DB_PASS=secret"></textarea>
           </div>
         </div>
 
-        <!-- Option 3: Caddy -->
-        <div class="card">
-          <div class="card-header"><h3><i class="fas fa-lock" style="margin-right:8px"></i>Caddy Reverse Proxy</h3></div>
+        <!-- Option 3: Caddy Zero-Config HTTPS -->
+        <div class="card" style="${caddyStatus.running ? 'border-color:var(--green)' : ''}">
+          <div class="card-header">
+            <h3><i class="fas fa-lock" style="margin-right:8px"></i>Automatic HTTPS (Let's Encrypt)</h3>
+            <span class="badge" style="font-size:10px;background:${caddyStatus.running ? 'var(--green)' : 'var(--surface2)'}; color:${caddyStatus.running ? '#000' : 'var(--text-dim)'}">
+              <i class="fas fa-circle" style="font-size:8px;margin-right:3px"></i>
+              Caddy ${caddyStatus.running ? 'running' : (caddyStatus.exists ? caddyStatus.status : 'not started')}
+            </span>
+          </div>
           <div class="card-body">
             <p class="text-sm text-muted" style="margin-bottom:12px">
-              Generate a Caddyfile for automatic HTTPS via Let's Encrypt. Requires a public domain pointing to this server.
+              Enter your public domain and click <strong>Enable HTTPS</strong>. Docker Dash will write the Caddyfile and reload Caddy automatically — no manual steps needed.
             </p>
             <div class="form-group">
               <label>Public Domain</label>
-              <input type="text" id="caddy-domain" class="form-control" placeholder="e.g. dash.example.com">
+              <input type="text" id="caddy-domain" class="form-control" placeholder="e.g. dash.example.com" ${!caddyStatus.running ? 'disabled' : ''}>
+              <small class="text-muted">Must resolve to this server's public IP for Let's Encrypt to work</small>
             </div>
             <div class="form-group">
-              <label>Upstream Port (Docker Dash)</label>
-              <input type="number" id="caddy-port" class="form-control" value="8101">
+              <label>Docker Dash Port</label>
+              <input type="number" id="caddy-port" class="form-control" value="8101" ${!caddyStatus.running ? 'disabled' : ''}>
             </div>
-            <button class="btn btn-sm btn-primary" id="caddy-save"><i class="fas fa-save" style="margin-right:4px"></i>Save Caddyfile</button>
-            <div class="tip-box" style="margin-top:12px">
-              <i class="fas fa-info-circle"></i>
-              After saving, run: <code>docker compose --profile tls up -d</code>
-            </div>
+            ${caddyStatus.running
+              ? `<button class="btn btn-sm btn-primary" id="caddy-enable"><i class="fas fa-magic" style="margin-right:4px"></i>Enable HTTPS</button>`
+              : `<div class="tip-box" style="margin-bottom:0">
+                  <i class="fas fa-terminal"></i>
+                  <div>Start Caddy first:<br><code>docker compose --profile tls up -d</code><br>
+                  <small class="text-muted" style="margin-top:4px;display:block">Then refresh this page — the button will activate.</small></div>
+                </div>`
+            }
           </div>
         </div>
       </div>
@@ -2806,15 +2827,22 @@ DB_PASS=secret"></textarea>
       } catch (err) { Toast.error(err.message); }
     });
 
-    el.querySelector('#caddy-save')?.addEventListener('click', async () => {
+    el.querySelector('#caddy-enable')?.addEventListener('click', async () => {
       const domain = el.querySelector('#caddy-domain').value.trim();
       const port = el.querySelector('#caddy-port').value.trim();
       if (!domain) { Toast.warning('Enter a domain'); return; }
       try {
-        const result = await Api.saveCaddyfile(domain, parseInt(port) || 8101);
-        Toast.success('Caddyfile saved for ' + domain);
+        Toast.info('Enabling HTTPS for ' + domain + '...');
+        await Api.enableHttps(domain, parseInt(port) || 8101);
+        Toast.success('HTTPS enabled — Caddy is now serving ' + domain);
         await this._renderSsl(el);
-      } catch (err) { Toast.error(err.message); }
+      } catch (err) {
+        if (err.message?.includes('caddy_not_running')) {
+          Toast.warning('Caddy is not running. Start it with: docker compose --profile tls up -d');
+        } else {
+          Toast.error(err.message);
+        }
+      }
     });
 
     el.querySelector('#ssl-remove')?.addEventListener('click', async () => {
@@ -2824,6 +2852,101 @@ DB_PASS=secret"></textarea>
         Toast.success('SSL configuration removed');
         await this._renderSsl(el);
       } catch (err) { Toast.error(err.message); }
+    });
+  },
+
+  async _renderCisBenchmark(el) {
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-clipboard-check" style="margin-right:8px;color:var(--accent)"></i>CIS Docker Benchmark</h3>
+          <button class="btn btn-sm btn-primary" id="cis-run"><i class="fas fa-play" style="margin-right:4px"></i>Run Benchmark</button>
+        </div>
+        <div class="card-body">
+          <p class="text-sm text-muted">
+            Automated security checks based on the CIS Docker Benchmark v1.6 — checks daemon configuration and all running containers for common security misconfigurations.
+          </p>
+          <div id="cis-results" style="margin-top:16px">
+            <p class="text-muted text-sm">Click <strong>Run Benchmark</strong> to start the analysis.</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const runBtn = el.querySelector('#cis-run');
+    const resultsDiv = el.querySelector('#cis-results');
+
+    const renderResults = (data) => {
+      const { checks, summary, score, runAt } = data;
+      const scoreColor = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+      // Group by category
+      const byCategory = {};
+      for (const c of checks) {
+        if (!byCategory[c.category]) byCategory[c.category] = [];
+        byCategory[c.category].push(c);
+      }
+
+      const statusIcon = s => ({
+        pass: '<i class="fas fa-check-circle" style="color:var(--green)"></i>',
+        warn: '<i class="fas fa-exclamation-triangle" style="color:var(--yellow)"></i>',
+        fail: '<i class="fas fa-times-circle" style="color:var(--red)"></i>',
+        info: '<i class="fas fa-info-circle" style="color:var(--accent)"></i>',
+      }[s] || '');
+
+      const categoryHtml = Object.entries(byCategory).map(([cat, items]) => `
+        <div style="margin-bottom:20px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">
+            ${cat === 'Daemon' ? '<i class="fas fa-cog" style="margin-right:6px;color:var(--accent)"></i>'
+            : cat === 'Container' ? '<i class="fas fa-box" style="margin-right:6px;color:var(--accent)"></i>'
+            : '<i class="fas fa-layer-group" style="margin-right:6px;color:var(--accent)"></i>'}
+            ${Utils.escapeHtml(cat)} <span class="text-muted" style="font-weight:400">(${items.length})</span>
+          </div>
+          ${items.map(item => `
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--surface2)">
+              <span style="width:18px;flex-shrink:0;margin-top:1px">${statusIcon(item.status)}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500">${Utils.escapeHtml(item.id)} — ${Utils.escapeHtml(item.title)}</div>
+                ${item.image ? `<div class="text-muted" style="font-size:11px;margin-top:2px"><i class="fas fa-layer-group" style="margin-right:4px"></i>${Utils.escapeHtml(item.image)}</div>` : ''}
+                <pre style="font-size:11px;color:var(--text-dim);white-space:pre-wrap;margin:4px 0 0;background:var(--surface2);padding:6px 8px;border-radius:var(--radius-sm)">${Utils.escapeHtml(item.details)}</pre>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+
+      resultsDiv.innerHTML = `
+        <!-- Score card -->
+        <div style="display:flex;align-items:center;gap:24px;margin-bottom:20px;padding:16px;background:var(--surface2);border-radius:var(--radius)">
+          <div style="text-align:center;min-width:80px">
+            <div style="font-size:36px;font-weight:700;color:${scoreColor}">${score}%</div>
+            <div class="text-muted" style="font-size:11px">Security Score</div>
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div><span class="badge" style="background:var(--green-dim,rgba(74,222,128,.15));color:var(--green);font-size:12px"><i class="fas fa-check" style="margin-right:4px"></i>${summary.pass || 0} passed</span></div>
+            <div><span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow);font-size:12px"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>${summary.warn || 0} warnings</span></div>
+            <div><span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);font-size:12px"><i class="fas fa-times" style="margin-right:4px"></i>${summary.fail || 0} failures</span></div>
+            <div><span class="badge" style="font-size:12px"><i class="fas fa-info-circle" style="margin-right:4px"></i>${summary.info || 0} informational</span></div>
+          </div>
+          <div class="text-muted text-sm" style="margin-left:auto">Run at ${new Date(runAt).toLocaleTimeString()}</div>
+        </div>
+        ${categoryHtml}
+      `;
+    };
+
+    runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px"></i>Running...';
+      resultsDiv.innerHTML = '<p class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Analyzing containers and daemon configuration...</p>';
+      try {
+        const data = await Api.runCisBenchmark(this._hostId);
+        renderResults(data);
+      } catch (err) {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<i class="fas fa-play" style="margin-right:4px"></i>Run Again';
+      }
     });
   },
 

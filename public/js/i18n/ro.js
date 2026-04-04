@@ -20,7 +20,7 @@ i18n.register('ro', 'RO', 'Română', {
     dashboard: 'Dashboard', containers: 'Containere', images: 'Imagini',
     volumes: 'Volume', networks: 'Retele', security: 'Securitate', alerts: 'Alerte',
     system: 'Sistem', firewall: 'Firewall', hosts: 'Hosturi', about: 'Despre', whatsnew: 'Noutati', settings: 'Setari', profile: 'Profil',
-    insights: 'Analize', 'git-stacks': 'Git Stacks', compare: 'Comparatie',
+    insights: 'Analize', 'git-stacks': 'Git Stacks', compare: 'Comparatie', swarm: 'Swarm',
     sectionResources: 'Resurse', sectionOperations: 'Operatiuni', sectionAdmin: 'Admin',
   },
   login: {
@@ -354,6 +354,16 @@ i18n.register('ro', 'RO', 'Română', {
       guideArch: 'Arhitectura — Hub & Spoke',
       guideThisInstance: 'aceasta instanta',
       guideTip: 'Incepe cu TCP+TLS pentru servere remote — acopera 80% din cazuri, inclusiv Docker Desktop. Foloseste SSH Tunnel daca nu poti expune portul Docker API. Fiecare host primeste colectare de statistici si monitorizare de evenimente independenta.',
+      guideSshKeyTitle: 'Autentificare cu cheie SSH — Ghid de configurare',
+      guideSshKeyBadge: 'Recomandat',
+      guideSshKeyDesc: 'Mai sigur decat parolele. Cheia privata este stocata criptat in baza de date locala si folosita doar pentru a deschide tunelul SSH.',
+      guideSshKeyStep1: 'Pasul 1 — Genereaza o pereche de chei SSH',
+      guideSshKeyStep1Sub: 'Ruleaza pe masina locala (unde ruleaza Docker Dash):',
+      guideSshKeyStep2: 'Pasul 2 — Copiaza cheia publica pe hostul remote',
+      guideSshKeyStep2Sub: 'Instaleaza openssh-client (daca e necesar) si ruleaza ssh-copy-id:',
+      guideSshKeyStep3: 'Pasul 3 — Lipeste cheia privata in Docker Dash',
+      guideSshKeyStep3Sub: 'Afiseaza cheia privata si lipeste-o in campul SSH Private Key cand adaugi un host:',
+      guideSshKeyNote: 'Cheia privata este trimisa doar cand se deschide conexiunea SSH si nu este niciodata logata sau expusa prin API.',
     },
     // ── About ────────────────────────────────────
     about: {

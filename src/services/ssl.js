@@ -3,17 +3,96 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const Docker = require('dockerode');
 const log = require('../utils/logger')('ssl');
 
 const CERTS_DIR = process.env.CERTS_DIR || '/data/certs';
+const CADDY_CONTAINER = process.env.CADDY_CONTAINER || 'docker-dash-caddy';
+
+function _localDocker() {
+  return new Docker({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
+}
 
 /**
- * Ensure certs directory exists
+ * Ensure certs directory exists and has a default Caddyfile so Caddy can start
  */
 function ensureCertsDir() {
   if (!fs.existsSync(CERTS_DIR)) {
     fs.mkdirSync(CERTS_DIR, { recursive: true });
   }
+  const caddyfilePath = path.join(CERTS_DIR, 'Caddyfile');
+  if (!fs.existsSync(caddyfilePath)) {
+    // Minimal Caddyfile — HTTP placeholder until user enables HTTPS via UI
+    fs.writeFileSync(caddyfilePath,
+      ':80 {\n  respond "Docker Dash — configure HTTPS via UI (System → SSL/TLS)" 200\n}\n',
+      'utf8'
+    );
+    log.info('Default Caddyfile written to ' + caddyfilePath);
+  }
+}
+
+/**
+ * Get Caddy container running status via local Docker API
+ */
+async function getCaddyStatus() {
+  try {
+    const docker = _localDocker();
+    const container = docker.getContainer(CADDY_CONTAINER);
+    const info = await container.inspect();
+    return {
+      exists: true,
+      running: info.State.Running,
+      status: info.State.Status,
+      startedAt: info.State.StartedAt,
+    };
+  } catch (err) {
+    if (err.statusCode === 404) return { exists: false, running: false, status: 'not found' };
+    log.warn('Cannot inspect Caddy container', err.message);
+    return { exists: false, running: false, status: 'error', error: err.message };
+  }
+}
+
+/**
+ * Reload Caddy config by exec-ing into the running container
+ */
+async function reloadCaddy() {
+  const docker = _localDocker();
+  const container = docker.getContainer(CADDY_CONTAINER);
+
+  const exec = await container.exec({
+    Cmd: ['caddy', 'reload', '--config', '/data/certs/Caddyfile', '--adapter', 'caddyfile'],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+
+  return new Promise((resolve, reject) => {
+    exec.start({ hijack: true }, (err, stream) => {
+      if (err) return reject(err);
+      let out = '';
+      stream.on('data', chunk => { out += chunk.toString(); });
+      stream.on('end', () => {
+        exec.inspect((e, data) => {
+          if (e) return reject(e);
+          if (data.ExitCode !== 0) return reject(new Error('caddy reload failed: ' + out));
+          resolve(out.trim());
+        });
+      });
+      stream.on('error', reject);
+    });
+  });
+}
+
+/**
+ * Enable HTTPS: write Caddyfile and reload Caddy in one step
+ */
+async function enableHttps(domain, upstreamPort) {
+  const result = saveCaddyfile(domain, upstreamPort);
+  const caddy = await getCaddyStatus();
+  if (!caddy.running) {
+    throw new Error('caddy_not_running');
+  }
+  await reloadCaddy();
+  return result;
 }
 
 /**
@@ -199,8 +278,11 @@ function removeSsl() {
 
 module.exports = {
   getStatus,
+  getCaddyStatus,
   generateSelfSigned,
   saveCaddyfile,
+  enableHttps,
+  reloadCaddy,
   readCert,
   removeSsl,
 };

@@ -199,6 +199,11 @@ const Api = {
   // ─── OIDC ────────────────────────────────────────
   getOidcEnabled() { return this.get('/auth/oidc/enabled'); },
   getOidcLoginUrl() { return this.get('/auth/oidc/login'); },
+  getLdapConfig() { return this.get('/auth/ldap'); },
+  saveLdapConfig(cfg) { return this.put('/auth/ldap', cfg); },
+  deleteLdapConfig() { return this.delete('/auth/ldap'); },
+  testLdapConnection(cfg) { return this.post('/auth/ldap/test', cfg); },
+  getLdapUsers() { return this.get('/auth/ldap/users'); },
 
   // ─── Watchtower ───────────────────────────────────
   detectWatchtower() { return this.get('/watchtower'); },
@@ -304,10 +309,28 @@ const Api = {
   setPermission(data) { return this.post('/permissions', data); },
   removePermission(stackName, userId) { return this.delete(`/permissions/${encodeURIComponent(stackName)}/${userId}`); },
 
+  // ─── Swarm ───────────────────────────────────────
+  getSwarmStatus()                    { return this.get('/swarm'); },
+  swarmInit(data)                     { return this.post('/swarm/init', data); },
+  swarmLeave(force)                   { return this.post('/swarm/leave', { force }); },
+  getSwarmJoinToken()                 { return this.get('/swarm/join-token'); },
+  getSwarmNodes()                     { return this.get('/swarm/nodes'); },
+  updateSwarmNode(id, data)           { return this.patch(`/swarm/nodes/${id}`, data); },
+  removeSwarmNode(id, force)          { return this.delete(`/swarm/nodes/${id}${force ? '?force=1' : ''}`); },
+  getSwarmServices()                  { return this.get('/swarm/services'); },
+  getSwarmService(id)                 { return this.get(`/swarm/services/${id}`); },
+  createSwarmService(data)            { return this.post('/swarm/services', data); },
+  scaleSwarmService(id, replicas)     { return this.post(`/swarm/services/${id}/scale`, { replicas }); },
+  removeSwarmService(id)              { return this.delete(`/swarm/services/${id}`); },
+  getSwarmTasks(serviceId)            { return this.get(`/swarm/tasks${serviceId ? `?service=${serviceId}` : ''}`); },
+
   // ─── SSL/TLS ──────────────────────────────────────
+  runCisBenchmark(hostId) { return this.get(`/system/cis-benchmark${hostId ? `?hostId=${hostId}` : ''}`); },
   getSslStatus() { return this.get('/system/ssl/status'); },
+  getCaddyStatus() { return this.get('/system/ssl/caddy-status'); },
   generateSelfSigned(domain) { return this.post('/system/ssl/self-signed', { domain }); },
   saveCaddyfile(domain, upstreamPort) { return this.post('/system/ssl/caddy', { domain, upstreamPort }); },
+  enableHttps(domain, upstreamPort) { return this.post('/system/ssl/enable', { domain, upstreamPort }); },
   removeSsl() { return this.delete('/system/ssl'); },
 
   // ─── Health Overview ─────────────────────────────

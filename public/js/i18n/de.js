@@ -20,7 +20,7 @@ i18n.register('de', 'DE', 'Deutsch', {
     dashboard: 'Dashboard', containers: 'Container', images: 'Images',
     volumes: 'Volumes', networks: 'Netzwerke', security: 'Sicherheit', alerts: 'Alarme',
     system: 'System', firewall: 'Firewall', hosts: 'Hosts', about: 'Über', whatsnew: 'Neuigkeiten', settings: 'Einstellungen', profile: 'Profil',
-    insights: 'Einblicke', 'git-stacks': 'Git Stacks', compare: 'Vergleich',
+    insights: 'Einblicke', 'git-stacks': 'Git Stacks', compare: 'Vergleich', swarm: 'Swarm',
     sectionResources: 'Ressourcen', sectionOperations: 'Betrieb', sectionAdmin: 'Admin',
   },
   login: {
@@ -363,6 +363,16 @@ i18n.register('de', 'DE', 'Deutsch', {
       guideArch: 'Architektur — Hub & Spoke',
       guideThisInstance: 'diese Instanz',
       guideTip: 'Beginne mit TCP+TLS für Remote-Server — das deckt 80% der Anwendungsfälle ab, einschließlich Docker Desktop. Verwende SSH-Tunnel, wenn die Docker-API nicht freigegeben werden kann. Jeder Host erhält unabhängige Statistikerfassung und Ereignis-Monitoring.',
+      guideSshKeyTitle: 'SSH-Schlüssel-Authentifizierung — Einrichtungsanleitung',
+      guideSshKeyBadge: 'Empfohlen',
+      guideSshKeyDesc: 'Sicherer als Passwörter. Der private Schlüssel wird verschlüsselt in der lokalen Datenbank gespeichert und nur zum Öffnen des SSH-Tunnels verwendet.',
+      guideSshKeyStep1: 'Schritt 1 — SSH-Schlüsselpaar generieren',
+      guideSshKeyStep1Sub: 'Auf der lokalen Maschine ausführen (wo Docker Dash läuft):',
+      guideSshKeyStep2: 'Schritt 2 — Öffentlichen Schlüssel auf den Remote-Host kopieren',
+      guideSshKeyStep2Sub: 'openssh-client installieren (falls nötig) und ssh-copy-id ausführen:',
+      guideSshKeyStep3: 'Schritt 3 — Privaten Schlüssel in Docker Dash einfügen',
+      guideSshKeyStep3Sub: 'Privaten Schlüssel ausgeben und in das Feld SSH Private Key einfügen:',
+      guideSshKeyNote: 'Der private Schlüssel wird nur beim Öffnen der SSH-Verbindung übertragen und wird nie protokolliert oder über die API exponiert.',
     },
     // ── About ────────────────────────────────────
     about: {

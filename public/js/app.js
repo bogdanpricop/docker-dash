@@ -31,6 +31,7 @@ const App = {
     profile:    () => ProfilePage,
     notifications: () => NotificationsPage,
     stacks:     () => StacksPage,
+    swarm:      () => SwarmPage,
     'api-playground': () => ApiPlaygroundPage,
   },
 

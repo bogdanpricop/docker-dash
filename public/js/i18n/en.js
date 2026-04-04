@@ -21,7 +21,7 @@ i18n.register('en', 'EN', 'English', {
     volumes: 'Volumes', networks: 'Networks', security: 'Security', alerts: 'Alerts',
     system: 'System', firewall: 'Firewall', hosts: 'Hosts', about: 'About', whatsnew: "What's New", settings: 'Settings', profile: 'Profile',
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare',
-    notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map',
+    notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
   },
   login: {
@@ -387,6 +387,16 @@ i18n.register('en', 'EN', 'English', {
       guideArch: 'Architecture — Hub & Spoke',
       guideThisInstance: 'this instance',
       guideTip: 'Start with TCP+TLS for remote servers — it covers 80% of use cases including Docker Desktop. Use SSH Tunnel if you cannot expose the Docker API port. Each host gets independent stats collection and event monitoring.',
+      guideSshKeyTitle: 'SSH Key Authentication — Setup Guide',
+      guideSshKeyBadge: 'Recommended',
+      guideSshKeyDesc: 'More secure than passwords. The private key is stored encrypted in the local database and used only to open the SSH tunnel.',
+      guideSshKeyStep1: 'Step 1 — Generate an SSH key pair',
+      guideSshKeyStep1Sub: 'Run on your local machine (where Docker Dash runs):',
+      guideSshKeyStep2: 'Step 2 — Copy public key to the remote host',
+      guideSshKeyStep2Sub: 'Install openssh-client (if needed) and run ssh-copy-id:',
+      guideSshKeyStep3: 'Step 3 — Paste private key in Docker Dash',
+      guideSshKeyStep3Sub: 'Print your private key, then paste it in the SSH Private Key field when adding a host:',
+      guideSshKeyNote: 'The private key is sent only when the SSH connection is opened and is never logged or exposed via the API.',
     },
     // ── About ────────────────────────────────────
     about: {

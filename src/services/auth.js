@@ -3,6 +3,7 @@
 const bcrypt = require('bcrypt');
 const { getDb } = require('../db');
 const config = require('../config');
+const ldapService = require('./ldap');
 const { generateToken, sha256, encrypt, decrypt } = require('../utils/crypto');
 const totp = require('../utils/totp');
 const { now, getClientIp } = require('../utils/helpers');
@@ -54,6 +55,37 @@ class AuthService {
   }
 
   /** Authenticate user by username + password */
+  /** Try LDAP authentication — returns ldapUser object or null */
+  async _tryLdapLogin(username, password) {
+    const cfg = ldapService.getConfig();
+    if (!cfg || !cfg.enabled) return null;
+    try {
+      return await ldapService.authenticate(username, password);
+    } catch (err) {
+      log.warn('LDAP auth failed', { username, error: err.message });
+      return null;
+    }
+  }
+
+  /** Create or update a local user record for an LDAP-authenticated user */
+  _provisionLdapUser(db, ldapUser) {
+    const existing = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(ldapUser.username);
+    if (existing) {
+      // Update email/displayName if changed
+      db.prepare("UPDATE users SET display_name = ?, email = ?, auth_source = 'ldap' WHERE id = ?")
+        .run(ldapUser.displayName, ldapUser.email, existing.id);
+      return db.prepare("SELECT * FROM users WHERE id = ?").get(existing.id);
+    }
+    // Provision new user with a random unusable password (login only via LDAP)
+    const unusableHash = bcrypt.hashSync('!' + ldapUser.ldapDn + Math.random(), 4);
+    const cfg = ldapService.getConfig();
+    const defaultRole = cfg.defaultRole || 'viewer';
+    db.prepare(`INSERT INTO users (username, display_name, email, password_hash, role, auth_source, is_active)
+                VALUES (?, ?, ?, ?, ?, 'ldap', 1)`)
+      .run(ldapUser.username, ldapUser.displayName, ldapUser.email, unusableHash, defaultRole);
+    return db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(ldapUser.username);
+  }
+
   async login(username, password, ip, userAgent) {
     const db = getDb();
 
@@ -63,10 +95,18 @@ class AuthService {
       return { error: 'Too many attempts. Try again later.', locked: true };
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
+    let user = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
     if (!user) {
-      this.logAttempt(ip, username, null, false, userAgent);
-      return { error: 'Invalid credentials' };
+      // Try LDAP authentication if configured
+      const ldapUser = await this._tryLdapLogin(username, password);
+      if (ldapUser) {
+        // Provision or update local user record for LDAP user
+        user = this._provisionLdapUser(db, ldapUser);
+      }
+      if (!user) {
+        this.logAttempt(ip, username, null, false, userAgent);
+        return { error: 'Invalid credentials' };
+      }
     }
 
     if (!user.is_active) {
