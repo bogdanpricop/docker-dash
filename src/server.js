@@ -1,10 +1,20 @@
 'use strict';
 
 const http = require('http');
+const fs = require('fs');
 const express = require('express');
 const path = require('path');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+
+// ─── Single source of truth for version ─────────────────────
+// index.html uses __VERSION__ placeholder — replaced here at startup.
+// To release a new version: bump package.json (npm version X.Y.Z) → restart. Done.
+// src/version.js is auto-updated by scripts/sync-version.js (npm lifecycle hook).
+const _appVersion = require('./version');
+const _indexHtml = fs
+  .readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8')
+  .replace(/__VERSION__/g, _appVersion);
 
 const config = require('./config');
 const { getDb, closeDb } = require('./db');
@@ -121,15 +131,27 @@ app.use('/api', apiLimiter, require('./routes/misc'));
 
 // ─── Static Files ───────────────────────────────────────────
 
+// index.html is served from memory (version already injected).
+// express.static must NOT serve it — intercept before static middleware.
+app.get(['/', '/index.html'], (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.send(_indexHtml);
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   maxAge: config.app.env === 'development' ? 0 : '1d',
   etag: true,
+  // Prevent static middleware from serving index.html for directory requests
+  index: false,
 }));
 
-// SPA fallback
+// SPA fallback — all non-static HTML requests get the version-injected index
 app.get('*', (req, res) => {
   if (req.accepts('html')) {
-    res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(_indexHtml);
   } else {
     res.status(404).json({ error: 'Not found' });
   }

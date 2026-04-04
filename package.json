@@ -9,7 +9,8 @@
     "test": "jest --verbose --forceExit",
     "test:watch": "jest --watch",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix"
+    "lint:fix": "eslint src/ --fix",
+    "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
