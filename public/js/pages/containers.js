@@ -2915,6 +2915,30 @@ const ContainersPage = {
     });
   },
 
+  // Popular images for the image picker
+  _popularImages: [
+    { name: 'nginx', desc: 'Web server & reverse proxy', icon: 'fa-globe' },
+    { name: 'postgres', desc: 'PostgreSQL database', icon: 'fa-database' },
+    { name: 'redis', desc: 'In-memory data store', icon: 'fa-bolt' },
+    { name: 'mysql', desc: 'MySQL database', icon: 'fa-database' },
+    { name: 'mariadb', desc: 'MariaDB database', icon: 'fa-database' },
+    { name: 'mongo', desc: 'MongoDB NoSQL database', icon: 'fa-leaf' },
+    { name: 'node', desc: 'Node.js runtime', icon: 'fa-code' },
+    { name: 'python', desc: 'Python runtime', icon: 'fa-code' },
+    { name: 'alpine', desc: 'Minimal Linux base (~5MB)', icon: 'fa-mountain' },
+    { name: 'ubuntu', desc: 'Ubuntu Linux', icon: 'fa-linux' },
+    { name: 'httpd', desc: 'Apache HTTP Server', icon: 'fa-server' },
+    { name: 'rabbitmq', desc: 'Message broker', icon: 'fa-envelope' },
+    { name: 'traefik', desc: 'Cloud-native reverse proxy', icon: 'fa-network-wired' },
+    { name: 'caddy', desc: 'Automatic HTTPS web server', icon: 'fa-lock' },
+    { name: 'grafana/grafana', desc: 'Monitoring dashboards', icon: 'fa-chart-line' },
+    { name: 'prom/prometheus', desc: 'Metrics & alerting', icon: 'fa-fire' },
+    { name: 'portainer/portainer-ce', desc: 'Container management', icon: 'fa-cubes' },
+    { name: 'dpage/pgadmin4', desc: 'PostgreSQL admin UI', icon: 'fa-table' },
+    { name: 'wordpress', desc: 'WordPress CMS', icon: 'fa-blog' },
+    { name: 'adminer', desc: 'Database management UI', icon: 'fa-columns' },
+  ],
+
   // ─── Container Creation Wizard ──────────────────
   async _createContainerDialog() {
     const result = await Modal.form(`
@@ -2924,7 +2948,19 @@ const ContainersPage = {
       </div>
       <div class="form-group">
         <label>${i18n.t('pages.containers.image')}</label>
-        <input type="text" id="cc-image" class="form-control" placeholder="${i18n.t('pages.containers.imagePlaceholder')}" required>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="cc-image" class="form-control" placeholder="${i18n.t('pages.containers.imagePlaceholder')}" required style="flex:1">
+          <button type="button" class="btn btn-sm btn-secondary" id="cc-browse-images" title="Browse popular images"><i class="fas fa-search"></i> Browse</button>
+        </div>
+        <div id="cc-image-picker" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2)">
+          ${this._popularImages.map(img => `
+            <div class="image-picker-item" data-image="${img.name}:latest" style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.15s">
+              <i class="fas ${img.icon}" style="width:16px;text-align:center;color:var(--accent)"></i>
+              <span class="mono text-sm" style="font-weight:600">${img.name}</span>
+              <span class="text-xs text-muted" style="flex:1">${img.desc}</span>
+            </div>
+          `).join('')}
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -2959,12 +2995,46 @@ const ContainersPage = {
         <label>${i18n.t('pages.containers.commandLabel')}</label>
         <input type="text" id="cc-cmd" class="form-control" placeholder="e.g. /bin/sh -c 'node app.js'">
       </div>
-      <label class="toggle-label" style="margin-top:8px">
-        <input type="checkbox" id="cc-start" checked> ${i18n.t('pages.containers.startAfterCreation')}
-      </label>
+      <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
+        <label class="toggle-label">
+          <input type="checkbox" id="cc-start" checked> ${i18n.t('pages.containers.startAfterCreation')}
+        </label>
+        <label class="toggle-label">
+          <input type="checkbox" id="cc-cis-harden"> <i class="fas fa-shield-alt" style="color:var(--green);margin-right:3px"></i> CIS Hardened
+        </label>
+      </div>
+      <div id="cc-cis-info" style="display:none;margin-top:8px;padding:8px 12px;background:var(--green-dim);border-radius:var(--radius);font-size:11px;color:var(--green)">
+        <strong>CIS Benchmark hardening:</strong> cap_drop ALL, no-new-privileges, read-only rootfs, memory limit 512MB, CPU 0.5, restart unless-stopped, tmpfs /tmp and /run
+      </div>
     `, {
       title: i18n.t('pages.containers.createTitle'),
-      width: '580px',
+      width: '700px',
+      onMount: (content) => {
+        // Image picker toggle
+        const browseBtn = content.querySelector('#cc-browse-images');
+        const picker = content.querySelector('#cc-image-picker');
+        const imageInput = content.querySelector('#cc-image');
+        browseBtn.addEventListener('click', () => {
+          picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+        picker.querySelectorAll('.image-picker-item').forEach(item => {
+          item.addEventListener('mouseenter', () => { item.style.background = 'var(--surface3)'; });
+          item.addEventListener('mouseleave', () => { item.style.background = ''; });
+          item.addEventListener('click', () => {
+            imageInput.value = item.dataset.image;
+            picker.style.display = 'none';
+          });
+        });
+        // CIS hardening toggle
+        const cisCheck = content.querySelector('#cc-cis-harden');
+        const cisInfo = content.querySelector('#cc-cis-info');
+        cisCheck.addEventListener('change', () => {
+          cisInfo.style.display = cisCheck.checked ? 'block' : 'none';
+          if (cisCheck.checked) {
+            content.querySelector('#cc-restart').value = 'unless-stopped';
+          }
+        });
+      },
       onSubmit: (content) => {
         const name = content.querySelector('#cc-name').value.trim();
         const image = content.querySelector('#cc-image').value.trim();
@@ -2994,17 +3064,31 @@ const ContainersPage = {
         const network = content.querySelector('#cc-network').value.trim();
         const cmd = content.querySelector('#cc-cmd').value.trim();
         const autoStart = content.querySelector('#cc-start').checked;
+        const cisHarden = content.querySelector('#cc-cis-harden').checked;
+
+        const hostConfig = {
+          PortBindings: portBindings,
+          Binds: binds.length ? binds : undefined,
+          RestartPolicy: restart ? { Name: restart } : undefined,
+          NetworkMode: network || undefined,
+        };
+
+        // CIS Benchmark hardening
+        if (cisHarden) {
+          hostConfig.CapDrop = ['ALL'];
+          hostConfig.SecurityOpt = ['no-new-privileges'];
+          hostConfig.ReadonlyRootfs = true;
+          hostConfig.Tmpfs = { '/tmp': 'rw,noexec,nosuid,size=64m', '/run': 'rw,noexec,nosuid,size=64m' };
+          hostConfig.Memory = 536870912; // 512MB
+          hostConfig.NanoCpus = 500000000; // 0.5 CPU
+          hostConfig.RestartPolicy = { Name: 'unless-stopped' };
+        }
 
         return {
           name,
           Image: image,
           ExposedPorts: exposedPorts,
-          HostConfig: {
-            PortBindings: portBindings,
-            Binds: binds.length ? binds : undefined,
-            RestartPolicy: restart ? { Name: restart } : undefined,
-            NetworkMode: network || undefined,
-          },
+          HostConfig: hostConfig,
           Env: env.length ? env : undefined,
           Cmd: cmd ? cmd.split(' ') : undefined,
           _autoStart: autoStart,
