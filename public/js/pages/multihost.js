@@ -426,11 +426,11 @@ const MultiHostPage = {
 
       return `
         <div class="card" style="margin-bottom:16px">
-          <div class="card-header" style="display:flex;align-items:center;gap:10px;cursor:pointer"
+          <div class="card-header" style="display:flex;align-items:center;gap:10px;cursor:pointer;justify-content:flex-start;text-align:left"
                data-mh-stack-toggle="${Utils.escapeHtml(key)}">
             <i class="fas ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'}" style="font-size:12px;color:var(--text-muted)"></i>
             <i class="fas fa-layer-group" style="color:var(--accent)"></i>
-            <strong>${label}</strong>
+            <strong style="text-align:left">${label}</strong>
             <span class="text-muted" style="font-size:12px">${entries.length} host${entries.length !== 1 ? 's' : ''} · ${totalContainers} container${totalContainers !== 1 ? 's' : ''}</span>
           </div>
           <div data-mh-stack-body="${Utils.escapeHtml(key)}"
