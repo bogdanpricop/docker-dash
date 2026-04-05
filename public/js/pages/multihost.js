@@ -102,12 +102,50 @@ const MultiHostPage = {
     try {
       this._data = await Api.getMultiHostOverview();
       this._renderStats();
+      this._loadRecommendations();
       this._renderContent();
       this._applySearch(this._searchFilter);
     } catch (err) {
       const el = document.getElementById('mh-content');
       if (el) el.innerHTML = `<div class="empty-msg"><i class="fas fa-exclamation-triangle"></i> Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  async _loadRecommendations() {
+    try {
+      const data = await Api.get('/recommendations/balancing');
+      const recs = data.recommendations || [];
+      const statsEl = document.getElementById('mh-stats');
+      if (!statsEl) return;
+
+      // Remove existing recommendations
+      document.getElementById('mh-recommendations')?.remove();
+
+      if (recs.length === 0 || (recs.length === 1 && recs[0].type === 'balanced')) return;
+
+      const recDiv = document.createElement('div');
+      recDiv.id = 'mh-recommendations';
+      recDiv.style.cssText = 'margin-bottom:16px';
+      recDiv.innerHTML = `
+        <div class="card">
+          <div class="card-header" style="display:flex;align-items:center;gap:8px">
+            <i class="fas fa-balance-scale" style="color:var(--yellow)"></i>
+            <h3 style="margin:0">Balancing Recommendations</h3>
+          </div>
+          <div class="card-body" style="padding:10px 14px">
+            ${recs.map(r => {
+              const icon = r.severity === 'critical' ? 'fa-exclamation-circle' : r.severity === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle';
+              const color = r.severity === 'critical' ? 'var(--red)' : r.severity === 'warning' ? 'var(--yellow)' : 'var(--accent)';
+              return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+                <i class="fas ${icon}" style="color:${color};margin-top:2px"></i>
+                <span style="font-size:13px">${Utils.escapeHtml(r.message)}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
+      statsEl.after(recDiv);
+    } catch { /* recommendations not available */ }
   },
 
   _renderStats() {
@@ -360,6 +398,9 @@ const MultiHostPage = {
             ${host.info.dockerVersion ? `&nbsp;&nbsp;<i class="fab fa-docker" style="margin-right:4px"></i>Docker ${Utils.escapeHtml(host.info.dockerVersion)}` : ''}
             ${host.info.cpus ? `&nbsp;&nbsp;<i class="fas fa-microchip" style="margin-right:4px"></i>${host.info.cpus} CPUs` : ''}
             ${host.info.memTotal ? `&nbsp;&nbsp;<i class="fas fa-memory" style="margin-right:4px"></i>${Utils.formatBytes(host.info.memTotal)} RAM` : ''}
+            ${host.info.kernelVersion ? `&nbsp;&nbsp;<i class="fas fa-code" style="margin-right:4px"></i>Kernel ${Utils.escapeHtml(host.info.kernelVersion)}` : ''}
+            ${host.info.storageDriver ? `&nbsp;&nbsp;<i class="fas fa-hdd" style="margin-right:4px"></i>${Utils.escapeHtml(host.info.storageDriver)}` : ''}
+            ${host.counts.images ? `&nbsp;&nbsp;<i class="fas fa-layer-group" style="margin-right:4px"></i>${host.counts.images} images` : ''}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;max-width:400px">
             <div>

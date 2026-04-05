@@ -20,7 +20,7 @@ i18n.register('de', 'DE', 'Deutsch', {
     dashboard: 'Dashboard', containers: 'Container', images: 'Images',
     volumes: 'Volumes', networks: 'Netzwerke', security: 'Sicherheit', alerts: 'Alarme',
     system: 'System', firewall: 'Firewall', hosts: 'Hosts', about: 'Über', whatsnew: 'Neuigkeiten', settings: 'Einstellungen', profile: 'Profil',
-    insights: 'Einblicke', 'git-stacks': 'Git Stacks', compare: 'Vergleich', swarm: 'Swarm',
+    insights: 'Einblicke', 'git-stacks': 'Git Stacks', compare: 'Vergleich', swarm: 'Swarm', 'multi-host': 'Multi-Host', timeline: 'Zeitachse', logs: 'Log Explorer',
     sectionResources: 'Ressourcen', sectionOperations: 'Betrieb', sectionAdmin: 'Admin',
     sectionCompute: 'Compute', sectionStorage: 'Speicher', sectionNetworking: 'Netzwerk', sectionMonitor: 'Überwachung',
   },

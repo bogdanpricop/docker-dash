@@ -19,7 +19,7 @@ i18n.register('ko', 'KR', '한국어', {
     dashboard: '대시보드', containers: 'Container', images: 'Image',
     volumes: 'Volume', networks: 'Network', security: '보안', alerts: '알림',
     system: '시스템', firewall: '방화벽', hosts: '호스트', about: '정보', whatsnew: '새로운 기능', settings: '설정', profile: '프로필',
-    insights: '인사이트', 'git-stacks': 'Git Stacks', compare: '비교', swarm: 'Swarm',
+    insights: '인사이트', 'git-stacks': 'Git Stacks', compare: '비교', swarm: 'Swarm', 'multi-host': 'Multi-Host', timeline: '타임라인', logs: '로그 탐색기',
     sectionResources: '리소스', sectionOperations: '운영', sectionAdmin: '관리',
     sectionCompute: '컴퓨팅', sectionStorage: '스토리지', sectionNetworking: '네트워킹', sectionMonitor: '모니터링',
   },

@@ -149,14 +149,59 @@ const CostOptimizerPage = {
         </div>
       `;
 
-      // Tabs for Recommendations + Cost Breakdown
+      // Build "By Team" grouping
+      let metaMap = {};
+      try {
+        const metaList = await Api.getAllContainerMeta();
+        (metaList || []).forEach(m => { if (m.container_name) metaMap[m.container_name] = m; });
+      } catch { /* meta not available */ }
+
+      const ownerCosts = {};
+      (data.containers || []).forEach(c => {
+        const owner = metaMap[c.container_name]?.owner || 'Unassigned';
+        if (!ownerCosts[owner]) ownerCosts[owner] = { count: 0, cpu: 0, memory: 0, cost: 0 };
+        ownerCosts[owner].count++;
+        ownerCosts[owner].cpu += c.cpu_share || 0;
+        ownerCosts[owner].memory += c.mem_share || 0;
+        ownerCosts[owner].cost += c.estimated_monthly_cost || 0;
+      });
+
+      const ownerRows = Object.entries(ownerCosts).sort((a, b) => b[1].cost - a[1].cost);
+      const teamHtml = `
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-users" style="color:var(--accent);margin-right:8px"></i>Cost by Team / Owner</h3></div>
+          <div class="card-body" style="padding:0">
+            ${ownerRows.length === 0
+              ? '<div class="empty-msg" style="padding:20px">No container metadata found. Tag containers with an owner in <strong>Container Details</strong> to see team breakdown.</div>'
+              : `<table class="data-table">
+                  <thead><tr><th>Team / Owner</th><th>Containers</th><th>CPU Share</th><th>Memory Share</th><th>Est. Monthly Cost</th></tr></thead>
+                  <tbody>
+                    ${ownerRows.map(([owner, stats]) => `
+                      <tr>
+                        <td><strong>${Utils.escapeHtml(owner)}</strong>${owner === 'Unassigned' ? ' <span class="badge badge-stopped" style="font-size:9px">no owner tag</span>' : ''}</td>
+                        <td>${stats.count}</td>
+                        <td class="mono text-sm">${stats.cpu.toFixed(1)}%</td>
+                        <td class="mono text-sm">${stats.memory.toFixed(1)}%</td>
+                        <td class="mono" style="font-weight:600;color:var(--text-bright)">$${stats.cost.toFixed(2)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>`
+            }
+          </div>
+        </div>
+      `;
+
+      // Tabs for Recommendations + Cost Breakdown + By Team
       const tabsHtml = `
         <div class="tabs" style="margin-bottom:16px">
           <button class="tab active" data-cost-tab="recommendations"><i class="fas fa-lightbulb" style="margin-right:4px"></i>${i18n.t('pages.costOptimizer.recommendations')} ${data.recommendations.length ? `<span class="badge badge-warning" style="margin-left:6px;font-size:10px">${data.recommendations.length}</span>` : ''}</button>
           <button class="tab" data-cost-tab="breakdown"><i class="fas fa-chart-bar" style="margin-right:4px"></i>${i18n.t('pages.costOptimizer.costBreakdown')} <span class="badge badge-info" style="margin-left:6px;font-size:10px">${data.containers.length}</span></button>
+          <button class="tab" data-cost-tab="by-team"><i class="fas fa-users" style="margin-right:4px"></i>By Team <span class="badge badge-info" style="margin-left:6px;font-size:10px">${ownerRows.length}</span></button>
         </div>
         <div id="cost-tab-recommendations">${recsHtml || '<div class="empty-msg"><i class="fas fa-check-circle" style="color:var(--green);margin-right:8px"></i>No recommendations — all containers are well-optimized!</div>'}</div>
         <div id="cost-tab-breakdown" style="display:none">${breakdownHtml}</div>
+        <div id="cost-tab-by-team" style="display:none">${teamHtml}</div>
       `;
 
       el.innerHTML = overviewHtml + savingsHtml + tabsHtml;
@@ -168,6 +213,7 @@ const CostOptimizerPage = {
           tab.classList.add('active');
           document.getElementById('cost-tab-recommendations').style.display = tab.dataset.costTab === 'recommendations' ? '' : 'none';
           document.getElementById('cost-tab-breakdown').style.display = tab.dataset.costTab === 'breakdown' ? '' : 'none';
+          document.getElementById('cost-tab-by-team').style.display = tab.dataset.costTab === 'by-team' ? '' : 'none';
         });
       });
 

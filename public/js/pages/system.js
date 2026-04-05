@@ -123,6 +123,113 @@ const SystemPage = {
     el.querySelector('#check-updates-btn').addEventListener('click', () => this._loadUpdates());
     // Auto-check updates
     this._loadUpdates();
+
+    // MOTD editor (admin only)
+    const motdCard = document.createElement('div');
+    motdCard.className = 'card';
+    motdCard.style.marginTop = '16px';
+    motdCard.innerHTML = `
+      <div class="card-header"><h3><i class="fas fa-bullhorn" style="margin-right:8px;color:var(--yellow)"></i>Login Banner (MOTD)</h3></div>
+      <div class="card-body">
+        <p class="text-muted text-sm" style="margin-bottom:8px">Display a message on the login page. Useful for maintenance notices, security policies, or environment identification.</p>
+        <textarea id="motd-editor" class="form-control" rows="4" placeholder="Enter login banner message..." style="font-family:var(--mono);font-size:12px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-sm btn-primary" id="motd-save"><i class="fas fa-save"></i> Save</button>
+          <button class="btn btn-sm btn-secondary" id="motd-clear"><i class="fas fa-times"></i> Clear</button>
+        </div>
+      </div>
+    `;
+    el.appendChild(motdCard);
+
+    // Load existing MOTD
+    try {
+      const { motd } = await Api.getMotd();
+      const editor = motdCard.querySelector('#motd-editor');
+      if (editor && motd) editor.value = motd;
+    } catch {}
+
+    motdCard.querySelector('#motd-save')?.addEventListener('click', async () => {
+      const motd = motdCard.querySelector('#motd-editor')?.value || '';
+      try {
+        await Api.setMotd(motd);
+        Toast.success('Login banner saved');
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    motdCard.querySelector('#motd-clear')?.addEventListener('click', async () => {
+      try {
+        await Api.setMotd('');
+        motdCard.querySelector('#motd-editor').value = '';
+        Toast.success('Login banner cleared');
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    // Theme Customizer card (all users)
+    const themeCard = document.createElement('div');
+    themeCard.className = 'card';
+    themeCard.style.marginTop = '16px';
+    themeCard.innerHTML = `
+      <div class="card-header"><h3><i class="fas fa-palette" style="margin-right:8px;color:var(--accent)"></i>Theme Customizer</h3></div>
+      <div class="card-body">
+        <p class="text-muted text-sm" style="margin-bottom:12px">Choose an accent color or select a preset theme. Changes apply instantly and are saved per user.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          <button class="theme-preset-btn" data-accent="#388bfd" title="Default Blue" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#388bfd;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#3fb950" title="Green" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#3fb950;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#d29922" title="Amber" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#d29922;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#f85149" title="Red" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#f85149;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#a371f7" title="Purple" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#a371f7;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#79c0ff" title="Sky" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#79c0ff;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#f778ba" title="Pink" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#f778ba;cursor:pointer"></button>
+          <button class="theme-preset-btn" data-accent="#ffa657" title="Orange" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:#ffa657;cursor:pointer"></button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <label class="text-sm" style="font-weight:600">Custom:</label>
+          <input type="color" id="theme-accent-picker" value="#388bfd" style="width:40px;height:28px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:none">
+          <button class="btn btn-sm btn-secondary" id="theme-reset">Reset to Default</button>
+        </div>
+      </div>
+    `;
+    el.appendChild(themeCard);
+
+    // Highlight active preset
+    const currentAccent = localStorage.getItem('dd-accent') || getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const picker = themeCard.querySelector('#theme-accent-picker');
+    if (picker && currentAccent) picker.value = currentAccent;
+
+    themeCard.querySelectorAll('.theme-preset-btn').forEach(btn => {
+      if (btn.dataset.accent === currentAccent) {
+        btn.style.borderColor = '#fff';
+        btn.style.boxShadow = '0 0 0 2px var(--text-bright)';
+      }
+      btn.addEventListener('click', () => {
+        this._applyAccent(btn.dataset.accent);
+        themeCard.querySelectorAll('.theme-preset-btn').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.boxShadow = 'none'; });
+        btn.style.borderColor = '#fff';
+        btn.style.boxShadow = '0 0 0 2px var(--text-bright)';
+        if (picker) picker.value = btn.dataset.accent;
+      });
+    });
+
+    picker?.addEventListener('input', (e) => {
+      this._applyAccent(e.target.value);
+      themeCard.querySelectorAll('.theme-preset-btn').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.boxShadow = 'none'; });
+    });
+
+    themeCard.querySelector('#theme-reset')?.addEventListener('click', () => {
+      this._applyAccent('#388bfd');
+      themeCard.querySelectorAll('.theme-preset-btn').forEach(b => { b.style.borderColor = 'var(--border)'; b.style.boxShadow = 'none'; });
+      const defaultBtn = themeCard.querySelector('.theme-preset-btn[data-accent="#388bfd"]');
+      if (defaultBtn) { defaultBtn.style.borderColor = '#fff'; defaultBtn.style.boxShadow = '0 0 0 2px var(--text-bright)'; }
+      if (picker) picker.value = '#388bfd';
+    });
+  },
+
+  _applyAccent(color) {
+    document.documentElement.style.setProperty('--accent', color);
+    document.documentElement.style.setProperty('--accent-hover', color);
+    document.documentElement.style.setProperty('--accent-dim', color + '26');
+    localStorage.setItem('dd-accent', color);
+    Api.saveUserPreference('accent', color).catch(() => {});
   },
 
   async _loadUpdates() {
@@ -591,6 +698,22 @@ DB_PASS=secret"></textarea>
           </div>
         </div>
 
+        <!-- Docker Engine Versions -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fab fa-docker" style="margin-right:8px;color:#2496ed"></i>Docker Engine Versions</h3></div>
+          <div class="card-body" id="docker-versions-panel">
+            <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Checking Docker versions...</div>
+          </div>
+        </div>
+
+        <!-- Local Backup Files -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fas fa-hdd" style="margin-right:8px;color:var(--accent)"></i>Local Backup Files</h3></div>
+          <div class="card-body" id="backup-list-panel">
+            <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading backup files...</div>
+          </div>
+        </div>
+
         <!-- TLS Certificates -->
         <div class="card" style="margin-top:16px">
           <div class="card-header"><h3><i class="fas fa-certificate" style="margin-right:8px;color:var(--green)"></i>TLS Certificates</h3></div>
@@ -636,6 +759,73 @@ DB_PASS=secret"></textarea>
           sessionsEl.innerHTML = '<div class="text-muted text-sm">No active sessions found.</div>';
         }
       } catch { /* sessions not available */ }
+
+      // Load Docker Engine versions
+      try {
+        const versionData = await Api.getDockerVersions();
+        const versionsEl = el.querySelector('#docker-versions-panel');
+        if (versionsEl) {
+          const versions = versionData.versions || [];
+          if (versions.length === 0) {
+            versionsEl.innerHTML = '<div class="text-muted text-sm">No Docker hosts found.</div>';
+          } else {
+            // Detect if all versions are the same
+            const uniqueVersions = new Set(versions.filter(v => !v.error).map(v => v.serverVersion));
+            const allSame = uniqueVersions.size <= 1;
+            versionsEl.innerHTML = `
+              ${!allSame ? '<div class="alert alert-warning" style="margin-bottom:12px;padding:10px 14px;background:rgba(255,193,7,0.1);border:1px solid var(--yellow);border-radius:6px;color:var(--yellow);font-size:13px"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>Docker versions differ across hosts — consider upgrading to a consistent version.</div>' : ''}
+              <table class="data-table compact">
+                <thead><tr><th>Host</th><th>Docker Version</th><th>API Version</th><th>OS</th><th>Arch</th><th>Kernel</th><th>Go</th></tr></thead>
+                <tbody>
+                  ${versions.map(v => v.error
+                    ? `<tr><td><strong>${Utils.escapeHtml(v.hostName)}</strong></td><td colspan="6"><span class="badge badge-stopped">unreachable</span></td></tr>`
+                    : `<tr>
+                        <td><strong>${Utils.escapeHtml(v.hostName)}</strong></td>
+                        <td class="mono" style="font-weight:600;color:${!allSame && uniqueVersions.size > 1 ? 'var(--yellow)' : 'var(--green)'}">${Utils.escapeHtml(v.serverVersion)}</td>
+                        <td class="mono text-sm">${Utils.escapeHtml(v.apiVersion)}</td>
+                        <td class="text-sm">${Utils.escapeHtml(v.os)}</td>
+                        <td class="mono text-sm">${Utils.escapeHtml(v.arch)}</td>
+                        <td class="mono text-sm">${Utils.escapeHtml(v.kernelVersion)}</td>
+                        <td class="mono text-sm">${Utils.escapeHtml(v.goVersion)}</td>
+                      </tr>`
+                  ).join('')}
+                </tbody>
+              </table>
+            `;
+          }
+        }
+      } catch { /* docker versions not available */ }
+
+      // Load local backup files
+      try {
+        const backupData = await Api.getBackupList();
+        const backupListEl = el.querySelector('#backup-list-panel');
+        if (backupListEl) {
+          const files = backupData.files || [];
+          if (files.length === 0) {
+            backupListEl.innerHTML = `<div class="text-muted text-sm">No backup files found in <code>${Utils.escapeHtml(backupData.dir || '/data')}</code>. Backups run daily at 02:00.</div>`;
+          } else {
+            backupListEl.innerHTML = `
+              <div class="text-muted text-sm" style="margin-bottom:10px">
+                <i class="fas fa-info-circle" style="margin-right:4px"></i>
+                Backups stored in <code>${Utils.escapeHtml(backupData.dir || '/data')}</code> — last 7 daily backups are kept automatically.
+              </div>
+              <table class="data-table compact">
+                <thead><tr><th style="text-align:left">File</th><th>Size</th><th>Created</th></tr></thead>
+                <tbody>
+                  ${files.map(f => `
+                    <tr>
+                      <td style="text-align:left" class="mono text-sm">${Utils.escapeHtml(f.name)}</td>
+                      <td>${Utils.formatBytes(f.size)}</td>
+                      <td class="text-sm text-muted">${Utils.timeAgo(f.created)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `;
+          }
+        }
+      } catch { /* backup list not available */ }
 
       // Load TLS certificates
       try {

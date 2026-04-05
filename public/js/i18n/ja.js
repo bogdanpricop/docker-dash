@@ -19,7 +19,7 @@ i18n.register('ja', 'JP', '日本語', {
     dashboard: 'ダッシュボード', containers: 'コンテナ', images: 'イメージ',
     volumes: 'ボリューム', networks: 'ネットワーク', security: 'セキュリティ', alerts: 'アラート',
     system: 'システム', firewall: 'ファイアウォール', hosts: 'ホスト', about: '情報', whatsnew: '新機能', settings: '設定', profile: 'プロフィール',
-    insights: 'インサイト', 'git-stacks': 'Git Stacks', compare: '比較', swarm: 'Swarm',
+    insights: 'インサイト', 'git-stacks': 'Git Stacks', compare: '比較', swarm: 'Swarm', 'multi-host': 'Multi-Host', timeline: 'タイムライン', logs: 'ログビューア',
     sectionResources: 'リソース', sectionOperations: 'オペレーション', sectionAdmin: '管理',
     sectionCompute: 'コンピュート', sectionStorage: 'ストレージ', sectionNetworking: 'ネットワーク', sectionMonitor: '監視',
   },

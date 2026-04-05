@@ -6,7 +6,7 @@ const { favorites, notifications, apiKeys } = require('../services/misc');
 const auditService = require('../services/audit');
 const settingsService = require('../services/settings');
 const statsService = require('../services/stats');
-const { requireAuth, optionalAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, optionalAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const config = require('../config');
@@ -928,6 +928,25 @@ router.put('/settings', requireAuth, requireRole('admin'), (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Login Banner (MOTD) ────────────────────────────────────
+
+// GET /motd — public, no auth required
+router.get('/motd', (req, res) => {
+  try {
+    const motd = settingsService.get('login_motd', '');
+    res.json({ motd });
+  } catch { res.json({ motd: '' }); }
+});
+
+// PUT /motd — admin only
+router.put('/motd', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { motd } = req.body;
+    settingsService.set('login_motd', motd || '', req.user?.id);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ─── Export ─────────────────────────────────────────────────
 
 router.get('/export/:type', requireAuth, requireRole('admin'), (req, res) => {
@@ -1241,6 +1260,46 @@ Respond with ONLY the docker-compose.yml content, no markdown fences, no explana
   }
 });
 
+// ─── Docker Version Checker ────────────────────────────────
+router.get('/docker-versions', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const hostList = dbHosts.length > 0
+      ? dbHosts.map(h => ({ id: h.id, name: h.name }))
+      : [{ id: 0, name: 'Local' }];
+
+    const results = await Promise.allSettled(hostList.map(async (host) => {
+      const docker = dockerService.getDocker(host.id);
+      const [info, version] = await Promise.all([
+        docker.info(),
+        docker.version(),
+      ]);
+      return {
+        hostId: host.id,
+        hostName: host.name,
+        serverVersion: info.ServerVersion || version?.Version || 'unknown',
+        apiVersion: version?.ApiVersion || 'unknown',
+        os: info.OperatingSystem || '',
+        arch: version?.Arch || '',
+        kernelVersion: info.KernelVersion || '',
+        goVersion: version?.GoVersion || '',
+        buildTime: version?.BuildTime || '',
+      };
+    }));
+
+    const versions = results.map((r, i) =>
+      r.status === 'fulfilled'
+        ? r.value
+        : { hostId: hostList[i].id, hostName: hostList[i].name, serverVersion: 'unreachable', error: true }
+    );
+
+    res.json({ versions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Multi-Host Overview ────────────────────────────────────
 
 router.get('/multi-host/overview', requireAuth, async (req, res) => {
@@ -1276,6 +1335,8 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
           dockerVersion: info.ServerVersion || '',
           cpus: info.NCPU || 0,
           memTotal: info.MemTotal || 0,
+          kernelVersion: info.KernelVersion || '',
+          storageDriver: info.Driver || '',
         },
         containers: containers.map(c => ({
           id: c.id?.substring(0, 12) || c.Id?.substring(0, 12),
@@ -1305,7 +1366,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
         ...hostList[i], healthy: false, containers: [],
         stats: { cpu: 0, memory: 0, memoryLimit: 0 },
         counts: { total: 0, running: 0, stopped: 0, images: 0 },
-        info: { hostname: hostList[i].name, os: '', dockerVersion: '', cpus: 0, memTotal: 0 },
+        info: { hostname: hostList[i].name, os: '', dockerVersion: '', cpus: 0, memTotal: 0, kernelVersion: '', storageDriver: '' },
       });
 
     const totals = {
@@ -1317,6 +1378,164 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
     };
 
     res.json({ hosts, totals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Event Timeline ─────────────────────────────────────────
+
+// GET /timeline — aggregated event timeline from all sources
+router.get('/timeline', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours) || 24;
+    const events = [];
+
+    // Audit log events (deployments, container actions, user actions)
+    try {
+      const audits = db.prepare(`
+        SELECT id, action, target_type, target_id, username, details, created_at
+        FROM audit_log
+        WHERE created_at > datetime('now', '-${hours} hours')
+        ORDER BY created_at DESC LIMIT 200
+      `).all();
+      audits.forEach(a => {
+        let category = 'action';
+        if (/deploy|stack_deploy|git/.test(a.action)) category = 'deploy';
+        else if (/create|remove|delete/.test(a.action)) category = 'lifecycle';
+        else if (/start|stop|restart|kill/.test(a.action)) category = 'action';
+        else if (/login|logout|password|mfa/.test(a.action)) category = 'auth';
+        else if (/scan|cis|security/.test(a.action)) category = 'security';
+        events.push({
+          id: `audit-${a.id}`, source: 'audit', category,
+          action: a.action, target: a.target_id, user: a.username,
+          details: a.details, time: a.created_at,
+        });
+      });
+    } catch { /* table may not exist */ }
+
+    // Alert events
+    try {
+      const alerts = db.prepare(`
+        SELECT id, rule_name, container_name, severity, message, triggered_at, resolved_at
+        FROM alert_events
+        WHERE triggered_at > datetime('now', '-${hours} hours')
+        ORDER BY triggered_at DESC LIMIT 100
+      `).all();
+      alerts.forEach(a => events.push({
+        id: `alert-${a.id}`, source: 'alert', category: 'alert',
+        action: a.rule_name, target: a.container_name,
+        severity: a.severity, message: a.message,
+        time: a.triggered_at, resolvedAt: a.resolved_at,
+      }));
+    } catch { /* table may not exist */ }
+
+    // Docker events (container lifecycle)
+    try {
+      const dkEvents = db.prepare(`
+        SELECT id, event_type, actor_name, event_action, event_time
+        FROM docker_events
+        WHERE event_time > datetime('now', '-${hours} hours')
+        ORDER BY event_time DESC LIMIT 200
+      `).all();
+      dkEvents.forEach(e => events.push({
+        id: `docker-${e.id}`, source: 'docker', category: 'lifecycle',
+        action: `${e.event_type}:${e.event_action}`, target: e.actor_name,
+        time: e.event_time,
+      }));
+    } catch { /* table may not exist */ }
+
+    // Sort all by time descending
+    events.sort((a, b) => (b.time || '').localeCompare(a.time || ''));
+
+    res.json({ events: events.slice(0, 300), hours });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Workload Balancing Recommendations ─────────────────────
+
+// GET /recommendations/balancing — workload balancing suggestions
+router.get('/recommendations/balancing', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const hostList = dbHosts.length > 0
+      ? dbHosts.map(h => ({ id: h.id, name: h.name }))
+      : [{ id: 0, name: 'Local' }];
+
+    if (hostList.length < 2) {
+      return res.json({ recommendations: [], message: 'Balancing requires at least 2 hosts.' });
+    }
+
+    const hostData = await Promise.allSettled(hostList.map(async (host) => {
+      const overview = statsService.getOverview(host.id);
+      const containers = await dockerService.listContainers(host.id).catch(() => []);
+      const running = containers.filter(c => c.state === 'running');
+      return {
+        id: host.id, name: host.name,
+        containerCount: running.length,
+        cpuUsage: overview?.totals?.cpu || 0,
+        memUsage: overview?.totals?.memory || 0,
+        memLimit: overview?.totals?.memoryLimit || 0,
+        containers: running.map(c => ({
+          name: c.name, image: c.image, stack: c.stack,
+        })),
+      };
+    }));
+
+    const hosts = hostData.filter(r => r.status === 'fulfilled').map(r => r.value);
+    if (hosts.length < 2) return res.json({ recommendations: [] });
+
+    const recommendations = [];
+    const avgContainers = hosts.reduce((s, h) => s + h.containerCount, 0) / hosts.length;
+
+    hosts.forEach(h => {
+      if (h.containerCount > avgContainers * 1.5 && h.containerCount > 3) {
+        const excess = Math.floor(h.containerCount - avgContainers);
+        const leastLoaded = hosts.reduce((min, x) => x.containerCount < min.containerCount && x.id !== h.id ? x : min, hosts[0]);
+        recommendations.push({
+          type: 'rebalance',
+          severity: 'warning',
+          message: `Host "${h.name}" has ${h.containerCount} containers (${excess} above average). Consider moving ${excess} container(s) to "${leastLoaded.name}" (${leastLoaded.containerCount} containers).`,
+          from: h.name, to: leastLoaded.name,
+          excess,
+        });
+      }
+      if (h.cpuUsage > 80) {
+        recommendations.push({
+          type: 'cpu_pressure',
+          severity: h.cpuUsage > 90 ? 'critical' : 'warning',
+          message: `Host "${h.name}" CPU at ${Math.round(h.cpuUsage)}%. Consider migrating CPU-intensive containers to less loaded hosts.`,
+          host: h.name,
+        });
+      }
+      const memPct = h.memLimit > 0 ? (h.memUsage / h.memLimit) * 100 : 0;
+      if (memPct > 80) {
+        recommendations.push({
+          type: 'memory_pressure',
+          severity: memPct > 90 ? 'critical' : 'warning',
+          message: `Host "${h.name}" RAM at ${Math.round(memPct)}%. Consider adding memory limits or migrating containers.`,
+          host: h.name,
+        });
+      }
+    });
+
+    if (recommendations.length === 0) {
+      recommendations.push({ type: 'balanced', severity: 'info', message: 'All hosts are well-balanced. No action needed.' });
+    }
+
+    res.json({
+      recommendations,
+      hosts: hosts.map(h => ({
+        name: h.name,
+        containers: h.containerCount,
+        cpu: Math.round(h.cpuUsage),
+        memPct: h.memLimit > 0 ? Math.round((h.memUsage / h.memLimit) * 100) : 0,
+      })),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

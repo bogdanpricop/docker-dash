@@ -36,6 +36,7 @@ const App = {
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
+    'timeline':       () => TimelinePage,
   },
 
   async init() {
@@ -72,6 +73,9 @@ const App = {
 
     // Check if OIDC is enabled and show SSO button
     this._initOidcButton();
+
+    // Load and display login banner (MOTD) if set
+    this._loadLoginMotd();
 
     const form = document.getElementById('login-form');
 
@@ -168,6 +172,24 @@ const App = {
     } catch {
       section.classList.add('hidden');
     }
+  },
+
+  async _loadLoginMotd() {
+    // Remove any existing MOTD element first (in case _showLogin is called multiple times)
+    const existing = document.getElementById('login-motd');
+    if (existing) existing.remove();
+    try {
+      const { motd } = await Api.getMotd();
+      if (motd) {
+        const motdEl = document.createElement('div');
+        motdEl.id = 'login-motd';
+        motdEl.style.cssText = 'margin-bottom:16px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;';
+        motdEl.textContent = motd; // Plain text — no HTML injection
+        const loginCard = document.querySelector('.login-card');
+        const loginForm = loginCard?.querySelector('form') || loginCard?.querySelector('.login-form') || loginCard?.firstElementChild;
+        if (loginCard && loginForm) loginCard.insertBefore(motdEl, loginForm);
+      }
+    } catch { /* no motd or network error — silently skip */ }
   },
 
   _showMfaPrompt(mfaToken, form, errEl) {
@@ -409,6 +431,130 @@ const App = {
 
     // Show welcome modal for first-time users (once per user)
     this._showWelcomeIfNeeded();
+
+    // Show onboarding wizard for fresh installs (few containers)
+    setTimeout(() => this._checkOnboarding(), 800);
+  },
+
+  async _checkOnboarding() {
+    // Only show once — check localStorage
+    if (localStorage.getItem('dd-onboarding-done')) return;
+
+    // Check if this is a fresh install (few containers)
+    try {
+      const containers = await Api.getContainers(true);
+      if (containers.length > 3) { localStorage.setItem('dd-onboarding-done', '1'); return; }
+    } catch { return; }
+
+    this._showOnboardingWizard();
+  },
+
+  _showOnboardingWizard() {
+    const overlay = document.createElement('div');
+    overlay.id = 'onboarding-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:11000;display:flex;align-items:center;justify-content:center';
+
+    let step = 0;
+    const steps = [
+      {
+        title: 'Welcome to Docker Dash! 🐳',
+        icon: 'fa-hand-sparkles',
+        content: `
+          <p style="font-size:15px;margin-bottom:16px">Your self-hosted Docker management dashboard is ready.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0">
+            <div style="padding:12px;background:var(--surface3);border-radius:var(--radius)">
+              <i class="fas fa-cube" style="color:var(--accent);margin-right:6px"></i><strong>Containers</strong>
+              <p class="text-sm text-muted" style="margin:4px 0 0">Manage, monitor, and debug containers</p>
+            </div>
+            <div style="padding:12px;background:var(--surface3);border-radius:var(--radius)">
+              <i class="fas fa-shield-alt" style="color:var(--green);margin-right:6px"></i><strong>Security</strong>
+              <p class="text-sm text-muted" style="margin:4px 0 0">Vulnerability scanning with Trivy/Grype</p>
+            </div>
+            <div style="padding:12px;background:var(--surface3);border-radius:var(--radius)">
+              <i class="fas fa-code-branch" style="color:var(--yellow);margin-right:6px"></i><strong>GitOps</strong>
+              <p class="text-sm text-muted" style="margin:4px 0 0">Deploy from Git repos with auto-update</p>
+            </div>
+            <div style="padding:12px;background:var(--surface3);border-radius:var(--radius)">
+              <i class="fas fa-flask" style="color:var(--red);margin-right:6px"></i><strong>Sandbox</strong>
+              <p class="text-sm text-muted" style="margin:4px 0 0">Test images risk-free with auto-cleanup</p>
+            </div>
+          </div>
+        `,
+      },
+      {
+        title: 'Quick Start Tips',
+        icon: 'fa-lightbulb',
+        content: `
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;background:var(--surface3);border-radius:var(--radius)">
+              <span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">1</span>
+              <div><strong>Deploy a stack</strong><p class="text-sm text-muted" style="margin:2px 0 0">Go to Containers → Templates to deploy pre-configured apps (Nginx, Redis, Postgres, etc.)</p></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;background:var(--surface3);border-radius:var(--radius)">
+              <span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">2</span>
+              <div><strong>Scan for vulnerabilities</strong><p class="text-sm text-muted" style="margin:2px 0 0">Go to Security → Scan All to check your images for CVEs</p></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;background:var(--surface3);border-radius:var(--radius)">
+              <span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">3</span>
+              <div><strong>Set up alerts</strong><p class="text-sm text-muted" style="margin:2px 0 0">Go to Alerts to get notified when containers crash or resources spike</p></div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;background:var(--surface3);border-radius:var(--radius)">
+              <span style="background:var(--accent);color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">4</span>
+              <div><strong>Try keyboard shortcuts</strong><p class="text-sm text-muted" style="margin:2px 0 0">Press <kbd style="background:var(--surface2);padding:1px 4px;border-radius:3px;font-size:10px">?</kbd> anywhere to see all shortcuts</p></div>
+            </div>
+          </div>
+        `,
+      },
+      {
+        title: 'Enterprise Mode Available',
+        icon: 'fa-building',
+        content: `
+          <p style="margin-bottom:12px">Docker Dash has two interface modes:</p>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1;padding:14px;background:var(--surface3);border-radius:var(--radius);border:2px solid var(--border)">
+              <div style="font-weight:700;margin-bottom:6px"><i class="fas fa-rocket" style="margin-right:6px;color:var(--accent)"></i>Standard</div>
+              <p class="text-sm text-muted">Clean, simple, familiar. Perfect for daily use.</p>
+            </div>
+            <div style="flex:1;padding:14px;background:var(--surface3);border-radius:var(--radius);border:2px solid var(--accent)">
+              <div style="font-weight:700;margin-bottom:6px"><i class="fas fa-building" style="margin-right:6px;color:var(--accent)"></i>Enterprise</div>
+              <p class="text-sm text-muted">Dense layout, right-click menus, task bar, pagination. Power-user mode.</p>
+            </div>
+          </div>
+          <p class="text-sm text-muted" style="margin-top:12px">Toggle anytime with the <i class="fas fa-rocket"></i> icon in the sidebar footer.</p>
+        `,
+      },
+    ];
+
+    const render = () => {
+      const s = steps[step];
+      overlay.innerHTML = `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:32px;max-width:560px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+          <div style="display:flex;gap:6px;margin-bottom:20px">
+            ${steps.map((_, i) => `<div style="flex:1;height:4px;border-radius:2px;background:${i <= step ? 'var(--accent)' : 'var(--surface3)'}"></div>`).join('')}
+          </div>
+          <h2 style="margin:0 0 16px;color:var(--text-bright)"><i class="fas ${s.icon}" style="margin-right:10px;color:var(--accent)"></i>${s.title}</h2>
+          ${s.content}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
+            <button id="ob-skip" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px">Skip tour</button>
+            <div style="display:flex;gap:8px">
+              ${step > 0 ? '<button class="btn btn-secondary" id="ob-back"><i class="fas fa-arrow-left"></i> Back</button>' : ''}
+              ${step < steps.length - 1
+                ? '<button class="btn btn-primary" id="ob-next">Next <i class="fas fa-arrow-right"></i></button>'
+                : '<button class="btn btn-accent" id="ob-finish"><i class="fas fa-check"></i> Get Started</button>'}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const close = () => { overlay.remove(); localStorage.setItem('dd-onboarding-done', '1'); };
+      overlay.querySelector('#ob-skip')?.addEventListener('click', close);
+      overlay.querySelector('#ob-back')?.addEventListener('click', () => { step--; render(); });
+      overlay.querySelector('#ob-next')?.addEventListener('click', () => { step++; render(); });
+      overlay.querySelector('#ob-finish')?.addEventListener('click', close);
+    };
+
+    document.body.appendChild(overlay);
+    render();
   },
 
   _showWelcomeIfNeeded() {
@@ -586,7 +732,7 @@ const App = {
         { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'swarm'] },
         { label: 'Storage',     items: ['images', 'volumes'] },
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
-        { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs'] },
+        { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
         { label: 'Operations',  items: ['system', 'workflows'] },
         { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'about', 'whatsnew'] },
       ];
@@ -688,6 +834,14 @@ const App = {
         this._updateDensityIcon(document.getElementById('density-toggle'), d,
           { comfortable: 'fa-align-justify', compact: 'fa-bars', dense: 'fa-grip-lines' },
           { comfortable: 'Comfortable', compact: 'Compact', dense: 'Dense' });
+      }
+      // Accent color: sync from server across devices
+      if (prefs.accent && prefs.accent !== localStorage.getItem('dd-accent')) {
+        const a = prefs.accent;
+        localStorage.setItem('dd-accent', a);
+        document.documentElement.style.setProperty('--accent', a);
+        document.documentElement.style.setProperty('--accent-hover', a);
+        document.documentElement.style.setProperty('--accent-dim', a + '26');
       }
     } catch {
       // Preferences table may not exist yet (migration pending) — ignore silently

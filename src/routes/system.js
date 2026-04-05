@@ -1380,6 +1380,116 @@ router.put('/backup/s3-config', requireAuth, requireRole('admin'), writeable, (r
   }
 });
 
+// POST /backup/s3 — one-shot backup to S3-compatible storage (body params, no saved config)
+router.post('/backup/s3', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const { endpoint, bucket, accessKey, secretKey, region, prefix } = req.body;
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      return res.status(400).json({ error: 'endpoint, bucket, accessKey, and secretKey are required' });
+    }
+
+    const fs = require('fs');
+    const https = require('https');
+    const http = require('http');
+    const crypto = require('crypto');
+    const dbPath = config.db.path;
+
+    if (!fs.existsSync(dbPath)) return res.status(404).json({ error: 'Database file not found' });
+
+    const fileContent = fs.readFileSync(dbPath);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const key = `${prefix || 'docker-dash'}/${timestamp}-docker-dash.db`;
+    const date = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const dateShort = date.substring(0, 8);
+    const reg = region || 'us-east-1';
+
+    // AWS Signature V4 (simplified for PUT object)
+    const host = endpoint.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const isHttps = endpoint.startsWith('https');
+    const path = `/${bucket}/${key}`;
+    const contentHash = crypto.createHash('sha256').update(fileContent).digest('hex');
+
+    const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${contentHash}\nx-amz-date:${date}\n`;
+    const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+    const canonicalRequest = `PUT\n${path}\n\n${canonicalHeaders}\n${signedHeaders}\n${contentHash}`;
+    const credentialScope = `${dateShort}/${reg}/s3/aws4_request`;
+    const stringToSign = `AWS4-HMAC-SHA256\n${date}\n${credentialScope}\n${crypto.createHash('sha256').update(canonicalRequest).digest('hex')}`;
+
+    const hmac = (k, data) => crypto.createHmac('sha256', k).update(data).digest();
+    const sigKey = hmac(hmac(hmac(hmac(`AWS4${secretKey}`, dateShort), reg), 's3'), 'aws4_request');
+    const signature = crypto.createHmac('sha256', sigKey).update(stringToSign).digest('hex');
+
+    const auth = `AWS4-HMAC-SHA256 Credential=${accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    const portMatch = endpoint.match(/:(\d+)(\/|$)/);
+    const result = await new Promise((resolve, reject) => {
+      const httpModule = isHttps ? https : http;
+      const req2 = httpModule.request({
+        hostname: host.split(':')[0],
+        port: portMatch ? parseInt(portMatch[1]) : (isHttps ? 443 : 80),
+        path,
+        method: 'PUT',
+        headers: {
+          'Host': host,
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': fileContent.length,
+          'x-amz-content-sha256': contentHash,
+          'x-amz-date': date,
+          'Authorization': auth,
+        },
+      }, (r) => {
+        let data = '';
+        r.on('data', d => { data += d; });
+        r.on('end', () => {
+          if (r.statusCode >= 200 && r.statusCode < 300) {
+            resolve({ ok: true, key, size: fileContent.length });
+          } else {
+            reject(new Error(`S3 error ${r.statusCode}: ${data.substring(0, 200)}`));
+          }
+        });
+      });
+      req2.on('error', reject);
+      req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('S3 upload timeout (30s)')); });
+      req2.write(fileContent);
+      req2.end();
+    });
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'backup_s3', details: { bucket, key: result.key, size: result.size },
+      ip: getClientIp(req),
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /backup/list — list local daily backup files
+router.get('/backup/list', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const backupDir = process.env.DATA_DIR || '/data';
+
+    const files = [];
+    if (fs.existsSync(backupDir)) {
+      const entries = fs.readdirSync(backupDir).filter(f => f.startsWith('backup-') && f.endsWith('.db'));
+      for (const f of entries.sort().reverse()) {
+        try {
+          const stat = fs.statSync(path.join(backupDir, f));
+          files.push({ name: f, size: stat.size, created: stat.mtime.toISOString() });
+        } catch { /* skip unreadable */ }
+      }
+    }
+
+    res.json({ files, dir: backupDir });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── SSL/TLS Management ─────────────────────────────────────
 
 // GET /api/system/ssl/status — current SSL status

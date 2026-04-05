@@ -19,7 +19,7 @@ i18n.register('tlh', '\u2694\uFE0F', 'tlhIngan Hol', {
     dashboard: 'SeHwI\' ravDaq', containers: 'Container', images: 'nagh beQ', volumes: 'Volume',
     networks: 'QonoS rarwI\'', security: 'Hung', alerts: 'ghuHmoHwI\'',
     system: 'pat', firewall: 'qul Hub', hosts: 'vengHom', about: 'meq', whatsnew: "nuq chu'", settings: 'teywI\'mey', profile: 'nuv De\'',
-    insights: 'leghbogh mIn', 'git-stacks': 'Git Stacks', compare: 'bej\'a\'', swarm: 'ramDaq veQ',
+    insights: 'leghbogh mIn', 'git-stacks': 'Git Stacks', compare: 'bej\'a\'', swarm: 'ramDaq veQ', 'multi-host': 'Multi-Host', timeline: 'poH mI\'', logs: 'ghItlh leS',
     sectionResources: 'jo\'mey', sectionOperations: 'ta\'mey', sectionAdmin: 'che\'wI\'',
     sectionCompute: 'mIvbogh', sectionStorage: 'tIn qach', sectionNetworking: 'jabbI\'ID', sectionMonitor: 'legh',
   },

@@ -25,3 +25,11 @@
   var d = localStorage.getItem('dd-density');
   if (d && d !== 'comfortable') document.documentElement.setAttribute('data-density', d);
 })();
+(function() {
+  var accent = localStorage.getItem('dd-accent');
+  if (accent) {
+    document.documentElement.style.setProperty('--accent', accent);
+    document.documentElement.style.setProperty('--accent-hover', accent);
+    document.documentElement.style.setProperty('--accent-dim', accent + '26');
+  }
+})();

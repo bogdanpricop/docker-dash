@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [6.0.0] - 2026-04-05
+
+### Added — 20 Features Across 5 Sprints
+
+**Sprint 1 — Quick Wins**
+- **Login Banner (MOTD)** — admins set a persistent message on the login page (System > Info)
+- **Clone/Duplicate Stack** — copy button on stack headers duplicates compose config with new name
+- **Custom Attributes** — add arbitrary key-value metadata to containers beyond Docker labels
+- **Install script** — `install.sh` existed already; verified and ready for `curl | sh` deployment
+
+**Sprint 2 — UX Enhancements**
+- **Onboarding Wizard** — 3-step welcome overlay for new installs (<3 containers), feature highlights, quick-start tips
+- **Resource Sparklines** — tiny 60x16 CPU line charts per running container in the list, updated from 1h stats data
+- **Host Hardware Info** — kernel version, storage driver, and image count added to Multi-Host host cards
+- **Container Metrics Comparison** — select 2-5 containers, compare CPU/RAM on side-by-side Chart.js line charts
+
+**Sprint 3 — Operations**
+- **S3 Backup Export** — one-shot backup of SQLite DB to any S3-compatible storage (AWS Signature V4, no SDK)
+- **Docker Version Checker** — System page card showing Docker Engine version per host with mismatch warnings
+- **Backup File List** — shows local backup files with sizes and dates in System page
+- **Cost Allocation by Team** — new "By Team" tab in Cost Optimizer grouping container costs by metadata owner
+
+**Sprint 4 — Large Features**
+- **Event Timeline** — new page aggregating audit log, alerts, and Docker events on a visual timeline with date groups, category icons, and severity badges; filters by time range, category, and text search
+- **Workload Balancing Recommendations** — Multi-Host Overview shows DRS-style suggestions for container rebalancing, CPU/RAM pressure warnings
+- **Container Migration Wizard** — right-click → Migrate to Host; inspects container, creates+starts on target host with same config
+
+**Sprint 5 — Polish**
+- **Theme Customizer** — 8 preset accent colors + custom color picker in System page; changes apply instantly and sync across devices
+- **i18n Completion** — nav keys for logs, timeline, multi-host added to all 11 languages with proper translations
+- **Accessibility** — `role` and `aria-label` attributes on sidebar, main content, and all footer buttons; `.sr-only` CSS utility class
+- **Smart Container Icons** — Topology and Dep Map canvas icons now match container type (database, cache, web, queue, auth, etc.)
+
+### Backend
+- `GET /motd`, `PUT /motd` — login banner management
+- `GET /timeline` — aggregated event timeline from 3 sources
+- `GET /recommendations/balancing` — workload balancing analysis
+- `POST /system/backup/s3` — S3 backup with AWS SigV4
+- `GET /docker-versions` — per-host Docker version info
+- `GET /system/backup/list` — local backup file inventory
+- `GET /stats/sparklines` — downsampled 1h CPU/RAM data for sparkline charts
+
 ## [5.10.0] - 2026-04-05
 
 ### Added — Enterprise Wave 4 (Final 3/23 ESXi gaps closed)

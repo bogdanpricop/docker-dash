@@ -271,6 +271,7 @@ const Api = {
     return this.get(`/stats/container/${id}?range=${range}`);
   },
 
+  getSparklines() { return this.get('/stats/sparklines'); },
   getUptimeReport() { return this.get('/stats/uptime'); },
   getResourceTrends(id) { return this.get(`/stats/trends/${id}`); },
   getCostEstimation(monthlyCost) { return this.get(`/stats/cost?monthly_cost=${monthlyCost}`); },
@@ -388,6 +389,11 @@ const Api = {
   // ─── Backup & Restore ───────────────────────────
   restoreConfig(data) { return this.post('/system/backup/restore', data); },
   restoreDatabase(base64Content) { return this.post('/backup/restore', { content: base64Content }); },
+  backupToS3(data) { return this.post('/system/backup/s3', data); },
+  getBackupList() { return this.get('/system/backup/list'); },
+
+  // ─── Docker Versions ─────────────────────────────
+  getDockerVersions() { return this.get('/docker-versions'); },
 
   // ─── Resource Limits ─────────────────────────────
   updateContainerResources(id, data) { return this.put(`/system/containers/${id}/resources`, data); },
@@ -477,6 +483,10 @@ const Api = {
   // ─── AI Chat ─────────────────────────────────────
   aiChat(prompt, provider, config) { return this.post('/ai/chat', { prompt, provider, config }); },
   aiGithubCompose(repoUrl, provider, config) { return this.post('/ai/github-compose', { repoUrl, provider, config }); },
+
+  // ─── MOTD ────────────────────────────────────────
+  getMotd() { return this.get('/motd'); },
+  setMotd(motd) { return this.put('/motd', { motd }); },
 
   // ─── Misc ────────────────────────────────────────
   health() { return this.get('/health'); },

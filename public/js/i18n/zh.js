@@ -19,7 +19,7 @@ i18n.register('zh', '中文', '中文', {
     dashboard: '仪表盘', containers: '容器', images: '镜像',
     volumes: '存储卷', networks: '网络', security: '安全', alerts: '告警',
     system: '系统', firewall: '防火墙', hosts: '主机', about: '关于', whatsnew: '更新日志', settings: '设置', profile: '个人资料',
-    insights: '洞察', 'git-stacks': 'Git Stacks', compare: '对比', swarm: 'Swarm',
+    insights: '洞察', 'git-stacks': 'Git Stacks', compare: '对比', swarm: 'Swarm', 'multi-host': 'Multi-Host', timeline: '时间线', logs: '日志浏览器',
     sectionResources: '资源', sectionOperations: '运维', sectionAdmin: '管理',
     sectionCompute: '计算', sectionStorage: '存储', sectionNetworking: '网络', sectionMonitor: '监控',
   },

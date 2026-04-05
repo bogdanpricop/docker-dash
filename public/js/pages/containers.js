@@ -210,6 +210,7 @@ const ContainersPage = {
     await this._loadList();
     this._refreshTimer = setInterval(() => this._loadList(), 10000);
     this._startStatsPolling();
+    this._loadSparklines();
   },
 
   _onKeyNav(e) {
@@ -416,6 +417,7 @@ const ContainersPage = {
                 <button class="action-btn" data-compose-action="pull" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.composePull')}"><i class="fas fa-cloud-download-alt"></i></button>
                 <button class="action-btn" data-compose-action="up" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.composeUp')}"><i class="fas fa-arrow-circle-up"></i></button>
                 <button class="action-btn" data-compose-action="config" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.composeConfig')}"><i class="fas fa-file-code"></i></button>
+                <button class="action-btn" data-stack-action="clone" data-stack="${Utils.escapeHtml(stack)}" title="Clone stack"><i class="fas fa-copy"></i></button>
               </div>` : ''}
             </div>
           </div>
@@ -540,6 +542,7 @@ const ContainersPage = {
           { type: 'separator' },
           { label: 'Inspect', icon: 'fa-info-circle', action: () => App.navigate(`/containers/${cid}`) },
           { label: 'Rename', icon: 'fa-edit', action: () => this._renameContainer(cid, c.name) },
+          { label: 'Migrate to Host', icon: 'fa-exchange-alt', action: () => this._migrateWizard(cid, c.name, c.image) },
           { type: 'separator' },
           { label: 'Remove', icon: 'fa-trash', action: () => this._containerAction(cid, 'remove'), danger: true },
         ]);
@@ -584,12 +587,27 @@ const ContainersPage = {
       });
     });
 
-    // Stack-level actions (start/stop/restart all in stack)
+    // Stack-level actions (start/stop/restart all in stack, clone)
     el.querySelectorAll('[data-stack-action]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const action = btn.dataset.stackAction;
         const stackName = btn.dataset.stack;
+
+        // Clone stack — handled separately
+        if (action === 'clone') {
+          const newName = prompt(`Clone stack "${stackName}" — enter new name:`, stackName + '-copy');
+          if (!newName || newName === stackName) return;
+          try {
+            const config = await Api.composeConfig(stackName);
+            const yaml = config.config || config.yaml || '';
+            if (!yaml) { Toast.warning('No compose config found for this stack'); return; }
+            await Api.saveStackConfig(newName, { config: yaml });
+            Toast.success(`Stack "${newName}" created from "${stackName}". Go to Stacks page to deploy.`);
+          } catch (err) { Toast.error('Clone failed: ' + err.message); }
+          return;
+        }
+
         const containers = (this._containers || []).filter(c =>
           (c.stack || c.labels?.['com.docker.compose.project']) === stackName
         );
@@ -1123,6 +1141,7 @@ const ContainersPage = {
       <button class="btn btn-sm btn-warning" data-bulk="stop"><i class="fas fa-stop"></i> Stop</button>
       <button class="btn btn-sm btn-secondary" data-bulk="restart"><i class="fas fa-redo"></i> Restart</button>
       <button class="btn btn-sm btn-danger" data-bulk="remove"><i class="fas fa-trash"></i> Remove</button>
+      <button class="btn btn-sm btn-secondary" data-bulk="compare"><i class="fas fa-chart-bar"></i> Compare</button>
       <button class="btn btn-sm btn-secondary" data-bulk="clear"><i class="fas fa-times"></i> Clear</button>
     `;
     bar.querySelectorAll('[data-bulk]').forEach(btn => {
@@ -1135,6 +1154,14 @@ const ContainersPage = {
       this._selectedIds.clear();
       this._updateBulkBar();
       this._renderGrouped();
+      return;
+    }
+
+    if (action === 'compare') {
+      const ids = [...this._selectedIds];
+      if (ids.length < 2) { Toast.warning('Select at least 2 containers'); return; }
+      if (ids.length > 5) { Toast.warning('Select at most 5 containers'); return; }
+      this._showComparisonChart(ids);
       return;
     }
 
@@ -1244,7 +1271,8 @@ const ContainersPage = {
           ${running ? `<div class="stats-bars" style="display:flex;gap:3px;margin-top:4px">
             <div class="stats-bar-wrap" title="CPU"><div class="stats-bar" data-stats-cpu="${c.id}" style="width:0%;background:var(--green)"></div></div>
             <div class="stats-bar-wrap" title="RAM"><div class="stats-bar" data-stats-mem="${c.id}" style="width:0%;background:var(--accent)"></div></div>
-          </div>` : ''}
+          </div>
+          <canvas class="sparkline-canvas" data-sparkline-id="${c.id}" width="60" height="16" style="margin-top:2px;display:block"></canvas>` : ''}
           </td>
         <td>${this._portLinksHtml(c)}</td>
         <td class="text-sm text-muted">${created}</td>
@@ -1578,6 +1606,107 @@ const ContainersPage = {
         await this._loadDetail();
       } catch (err) { Toast.error(err.message); }
     }
+  },
+
+  async _migrateWizard(containerId, containerName, image) {
+    // Get available hosts
+    let hosts;
+    try {
+      hosts = await Api.getHosts();
+    } catch { Toast.error('Failed to load hosts'); return; }
+
+    if (hosts.length < 2) { Toast.warning('Migration requires at least 2 configured hosts'); return; }
+
+    const currentHostId = Api.getHostId();
+    const otherHosts = hosts.filter(h => h.id !== currentHostId);
+
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-exchange-alt" style="margin-right:8px;color:var(--accent)"></i>Migrate Container</h3>
+        <button class="modal-close-btn" id="mig-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="padding:12px;background:var(--surface2);border-radius:var(--radius);margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="text-align:center">
+              <i class="fas fa-cube" style="font-size:24px;color:var(--accent)"></i>
+              <div class="text-sm" style="font-weight:600;margin-top:4px">${Utils.escapeHtml(containerName)}</div>
+              <div class="text-xs text-muted">${Utils.escapeHtml(image)}</div>
+            </div>
+            <i class="fas fa-arrow-right" style="font-size:18px;color:var(--text-dim)"></i>
+            <div style="flex:1">
+              <label class="text-sm" style="font-weight:600">Target Host</label>
+              <select id="mig-target" class="form-control" style="margin-top:4px">
+                ${otherHosts.map(h => `<option value="${h.id}">${Utils.escapeHtml(h.name)} ${h.environment ? '(' + h.environment + ')' : ''}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="text-sm text-muted" style="margin-bottom:12px">
+          <i class="fas fa-info-circle" style="margin-right:4px;color:var(--accent)"></i>
+          Migration will: pull the image on the target host, create a new container with the same configuration, and start it. The original container will NOT be removed automatically.
+        </div>
+        <div id="mig-status" style="display:none;padding:12px;background:var(--surface2);border-radius:var(--radius)"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="mig-cancel">Cancel</button>
+        <button class="btn btn-accent" id="mig-start"><i class="fas fa-exchange-alt"></i> Start Migration</button>
+      </div>
+    `, { width: '550px' });
+
+    Modal._content.querySelector('#mig-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#mig-cancel').addEventListener('click', () => Modal.close());
+
+    Modal._content.querySelector('#mig-start').addEventListener('click', async () => {
+      const targetHostId = parseInt(Modal._content.querySelector('#mig-target').value);
+      const btn = Modal._content.querySelector('#mig-start');
+      const statusEl = Modal._content.querySelector('#mig-status');
+
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Migrating...';
+      statusEl.style.display = 'block';
+      statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Inspecting container...';
+
+      try {
+        // Get container config from source
+        const inspect = await Api.getContainer(containerId);
+        statusEl.innerHTML = '<i class="fas fa-check" style="color:var(--green)"></i> Config read. Creating on target host...';
+
+        // Build create options from inspect
+        const createOpts = {
+          name: inspect.Name?.replace(/^\//, '') || containerName,
+          Image: inspect.Config?.Image || image,
+          Env: inspect.Config?.Env || [],
+          Cmd: inspect.Config?.Cmd || undefined,
+          ExposedPorts: inspect.Config?.ExposedPorts || {},
+          HostConfig: {
+            PortBindings: inspect.HostConfig?.PortBindings || {},
+            RestartPolicy: inspect.HostConfig?.RestartPolicy || { Name: 'unless-stopped' },
+            Binds: inspect.HostConfig?.Binds || [],
+          },
+          Labels: inspect.Config?.Labels || {},
+        };
+
+        // Switch to target host, create, switch back
+        const originalHost = Api.getHostId();
+        Api.setHost(targetHostId);
+
+        try {
+          const created = await Api.createContainer(createOpts);
+          statusEl.innerHTML += '<br><i class="fas fa-check" style="color:var(--green)"></i> Container created. Starting...';
+          await Api.containerAction(created.id, 'start');
+          statusEl.innerHTML += '<br><i class="fas fa-check" style="color:var(--green)"></i> <strong style="color:var(--green)">Migration complete!</strong> Container is running on target host.';
+          btn.innerHTML = '<i class="fas fa-check"></i> Done';
+          Toast.success('Container migrated successfully');
+        } finally {
+          Api.setHost(originalHost);
+        }
+      } catch (err) {
+        statusEl.innerHTML = `<i class="fas fa-times" style="color:var(--red)"></i> Migration failed: ${Utils.escapeHtml(err.message)}`;
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-exchange-alt"></i> Retry';
+      }
+    });
   },
 
   async _safeUpdateContainer(id, name, image) {
@@ -2299,13 +2428,25 @@ const ContainersPage = {
   async _loadMetaCard(el, containerName) {
     try {
       const meta = await Api.getContainerMeta(containerName);
-      const hasData = meta.app_name || meta.description || meta.lan_link || meta.web_link || meta.docs_url || meta.category || meta.owner || meta.notes;
+      const customFields = typeof meta.custom_fields === 'object' && meta.custom_fields !== null ? meta.custom_fields : {};
+      const userFields = Object.entries(customFields).filter(([k]) => k !== 'sandbox');
+      const hasData = meta.app_name || meta.description || meta.lan_link || meta.web_link || meta.docs_url || meta.category || meta.owner || meta.notes || userFields.length > 0;
       if (!hasData) return;
 
       const links = [];
       if (meta.lan_link) links.push(`<a href="${Utils.escapeHtml(meta.lan_link)}" target="_blank" rel="noopener"><i class="fas fa-home"></i> LAN</a>`);
       if (meta.web_link) links.push(`<a href="${Utils.escapeHtml(meta.web_link)}" target="_blank" rel="noopener"><i class="fas fa-globe"></i> WEB</a>`);
       if (meta.docs_url) links.push(`<a href="${Utils.escapeHtml(meta.docs_url)}" target="_blank" rel="noopener"><i class="fas fa-book"></i> Docs</a>`);
+
+      const customFieldsHtml = userFields.length > 0 ? `
+        <tr><td colspan="2" style="padding-top:12px;font-weight:600;color:var(--accent);font-size:11px;text-transform:uppercase">Custom Attributes</td></tr>
+        ${userFields.map(([k, v]) => `
+          <tr>
+            <td style="color:var(--text-dim)">${Utils.escapeHtml(k)}</td>
+            <td class="meta-editable" data-field="custom_val_${Utils.escapeHtml(k)}" data-custom-key="${Utils.escapeHtml(k)}">${Utils.escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</td>
+          </tr>
+        `).join('')}
+      ` : '';
 
       const card = document.createElement('div');
       card.className = 'card mt-md';
@@ -2320,7 +2461,9 @@ const ContainersPage = {
             ${meta.category ? `<tr><td>${i18n.t('pages.containers.meta.category')}</td><td class="meta-editable" data-field="category"><span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span></td></tr>` : ''}
             ${meta.owner ? `<tr><td>${i18n.t('pages.containers.meta.owner')}</td><td class="meta-editable" data-field="owner">${Utils.escapeHtml(meta.owner)}</td></tr>` : ''}
             ${meta.notes ? `<tr><td>${i18n.t('pages.containers.meta.notes')}</td><td class="text-sm meta-editable" data-field="notes">${Utils.escapeHtml(meta.notes)}</td></tr>` : ''}
+            ${customFieldsHtml}
           </table>
+          <button class="btn btn-xs btn-secondary" id="meta-add-custom" style="margin-top:8px"><i class="fas fa-plus"></i> Add Custom Field</button>
         </div>
       `;
 
@@ -2364,6 +2507,62 @@ const ContainersPage = {
             if (e.key === 'Escape') { cell.textContent = currentVal; }
           });
         });
+      });
+
+      // Wire inline editing for custom field values
+      card.querySelectorAll('[data-custom-key]').forEach(cell => {
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click to edit';
+        cell.addEventListener('click', async () => {
+          const customKey = cell.dataset.customKey;
+          const currentVal = cell.textContent.trim();
+          const input = document.createElement('input');
+          input.className = 'form-control';
+          input.value = currentVal;
+          input.style.cssText = 'padding:2px 6px;font-size:12px;width:100%;';
+          cell.textContent = '';
+          cell.appendChild(input);
+          input.focus();
+          input.select();
+
+          const save = async () => {
+            const newVal = input.value.trim();
+            cell.textContent = newVal || '\u2014';
+            if (newVal !== currentVal) {
+              try {
+                const currentMeta = await Api.getContainerMeta(containerName);
+                const cf = typeof currentMeta.custom_fields === 'object' && currentMeta.custom_fields !== null ? currentMeta.custom_fields : {};
+                cf[customKey] = newVal;
+                await Api.updateContainerMeta(containerName, { custom_fields: cf });
+                Toast.success(`${customKey} updated`);
+              } catch (err) { Toast.error(err.message); cell.textContent = currentVal; }
+            }
+          };
+
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { cell.textContent = currentVal; }
+          });
+        });
+      });
+
+      // Add Custom Field button
+      card.querySelector('#meta-add-custom')?.addEventListener('click', async () => {
+        const key = prompt('Field name:');
+        if (!key) return;
+        const value = prompt('Value:');
+        if (value === null) return;
+        try {
+          const currentMeta = await Api.getContainerMeta(containerName);
+          const cf = typeof currentMeta.custom_fields === 'object' && currentMeta.custom_fields !== null ? currentMeta.custom_fields : {};
+          cf[key] = value;
+          await Api.updateContainerMeta(containerName, { custom_fields: cf });
+          Toast.success(`Custom field "${key}" added`);
+          // Refresh the meta card
+          card.remove();
+          this._loadMetaCard(el, containerName);
+        } catch (err) { Toast.error(err.message); }
       });
     } catch { /* silently skip */ }
   },
@@ -4745,6 +4944,124 @@ const ContainersPage = {
   _startStatsPolling() {
     clearInterval(this._statsTimer);
     this._statsTimer = setInterval(() => this._tickStats(), 5000);
+  },
+
+  async _loadSparklines() {
+    try {
+      const data = await Api.getSparklines();
+      Object.entries(data).forEach(([containerId, points]) => {
+        const canvas = document.querySelector(`[data-sparkline-id="${containerId}"]`);
+        if (!canvas || !points.length) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const cpuVals = points.map(p => p.cpu);
+        const max = Math.max(...cpuVals, 1);
+        const step = w / (cpuVals.length - 1 || 1);
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#388bfd';
+        ctx.lineWidth = 1;
+        cpuVals.forEach((v, i) => {
+          const x = i * step;
+          const y = h - (v / max) * (h - 2) - 1;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+    } catch { /* sparklines not available */ }
+  },
+
+  async _showComparisonChart(ids) {
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-chart-bar" style="margin-right:8px;color:var(--accent)"></i>Container Comparison</h3>
+        <button class="modal-close-btn" id="compare-close"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <select id="compare-range" class="form-control" style="width:auto;font-size:12px">
+            <option value="1h">Last 1h</option>
+            <option value="6h" selected>Last 6h</option>
+            <option value="24h">Last 24h</option>
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div><canvas id="compare-cpu-chart"></canvas></div>
+          <div><canvas id="compare-mem-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" id="compare-close-btn">Close</button></div>
+    `, { width: '850px' });
+
+    Modal._content.querySelector('#compare-close').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#compare-close-btn').addEventListener('click', () => Modal.close());
+
+    const palette = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7'];
+
+    const loadCharts = async () => {
+      const range = Modal._content.querySelector('#compare-range')?.value || '6h';
+      const allData = await Promise.all(ids.map(id => Api.getContainerStatsHistory(id, range).catch(() => ({ points: [] }))));
+
+      // Find container names
+      const containers = this._lastContainers || [];
+      const names = ids.map(id => {
+        const c = containers.find(c => c.id === id);
+        return c?.name || id.substring(0, 8);
+      });
+
+      // CPU chart
+      const cpuCanvas = Modal._content.querySelector('#compare-cpu-chart');
+      if (cpuCanvas) {
+        const existing = Chart.getChart(cpuCanvas);
+        if (existing) existing.destroy();
+        new Chart(cpuCanvas, {
+          type: 'line',
+          data: {
+            labels: (allData[0]?.points || allData[0] || []).map(p => p.time ? new Date(p.time).toLocaleTimeString() : ''),
+            datasets: ids.map((id, i) => ({
+              label: names[i],
+              data: (allData[i]?.points || allData[i] || []).map(p => p.cpu),
+              borderColor: palette[i],
+              borderWidth: 1.5,
+              fill: false,
+              tension: 0.3,
+              pointRadius: 0,
+            })),
+          },
+          options: { responsive: true, plugins: { title: { display: true, text: 'CPU %' } }, scales: { y: { beginAtZero: true } } },
+        });
+      }
+
+      // Memory chart
+      const memCanvas = Modal._content.querySelector('#compare-mem-chart');
+      if (memCanvas) {
+        const existing = Chart.getChart(memCanvas);
+        if (existing) existing.destroy();
+        new Chart(memCanvas, {
+          type: 'line',
+          data: {
+            labels: (allData[0]?.points || allData[0] || []).map(p => p.time ? new Date(p.time).toLocaleTimeString() : ''),
+            datasets: ids.map((id, i) => ({
+              label: names[i],
+              data: (allData[i]?.points || allData[i] || []).map(p => p.mem ? p.mem / (1024 * 1024) : 0),
+              borderColor: palette[i],
+              borderWidth: 1.5,
+              fill: false,
+              tension: 0.3,
+              pointRadius: 0,
+            })),
+          },
+          options: { responsive: true, plugins: { title: { display: true, text: 'Memory (MB)' } }, scales: { y: { beginAtZero: true } } },
+        });
+      }
+    };
+
+    await loadCharts();
+    Modal._content.querySelector('#compare-range')?.addEventListener('change', loadCharts);
   },
 
   async _tickStats() {

@@ -20,6 +20,38 @@ router.get('/container/:id', requireAuth, (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ─── Sparklines (mini 1h CPU/RAM data for all containers) ────
+
+router.get('/sparklines', requireAuth, (req, res) => {
+  try {
+    const db = require('../db').getDb();
+    const rows = db.prepare(`
+      SELECT container_id, cpu_percent, mem_percent, recorded_at
+      FROM container_stats
+      WHERE host_id = ? AND recorded_at > datetime('now', '-1 hour')
+      ORDER BY recorded_at ASC
+    `).all(req.hostId || 0);
+
+    // Group by container, keep max 20 points
+    const map = {};
+    rows.forEach(r => {
+      if (!map[r.container_id]) map[r.container_id] = [];
+      map[r.container_id].push({ cpu: r.cpu_percent, mem: r.mem_percent });
+    });
+
+    // Downsample to max 20 points
+    const result = {};
+    Object.entries(map).forEach(([id, points]) => {
+      const step = Math.max(1, Math.floor(points.length / 20));
+      result[id] = points.filter((_, i) => i % step === 0).slice(-20);
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Uptime Report ────────────────────────────────────
 
 router.get('/uptime', requireAuth, (req, res) => {

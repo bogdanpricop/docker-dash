@@ -68,7 +68,7 @@
           <span class="sidebar-title">Docker Dash</span>
           <span class="sidebar-version" id="sidebar-version">v__VERSION__</span>
         </div>
-        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+        <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar" aria-label="Toggle sidebar">
           <i class="fas fa-bars"></i>
         </button>
       </div>
@@ -77,12 +77,15 @@
           <option value="0">Local</option>
         </select>
       </div>
-      <nav class="sidebar-nav" id="sidebar-nav">
+      <nav class="sidebar-nav" id="sidebar-nav" role="navigation" aria-label="Main navigation">
         <a href="#/" class="nav-item" data-page="dashboard">
           <i class="fas fa-chart-pie"></i><span>Dashboard</span>
         </a>
         <a href="#/insights" class="nav-item" data-page="insights">
           <i class="fas fa-brain"></i><span>Insights</span>
+        </a>
+        <a href="#/timeline" class="nav-item" data-page="timeline">
+          <i class="fas fa-stream"></i><span>Timeline</span>
         </a>
         <a href="#/cost-optimizer" class="nav-item" data-page="cost-optimizer">
           <i class="fas fa-dollar-sign"></i><span>Cost</span>
@@ -162,7 +165,7 @@
           </div>
         </div>
         <div class="sidebar-footer-row">
-          <button class="btn-icon notif-bell" id="notif-bell" title="Notifications">
+          <button class="btn-icon notif-bell" id="notif-bell" title="Notifications" aria-label="Notifications">
             <i class="fas fa-bell"></i>
             <span class="notif-count hidden" id="notif-count">0</span>
           </button>
@@ -172,7 +175,7 @@
           <button class="btn-icon" id="density-toggle" title="Density: Comfortable">
             <i class="fas fa-align-justify"></i>
           </button>
-          <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme">
+          <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme" aria-label="Toggle dark/light theme">
             <i class="fas fa-sun" id="theme-icon"></i>
           </button>
           <div style="position:relative">
@@ -181,7 +184,7 @@
             </button>
             <div class="lang-dropdown hidden" id="lang-dropdown"></div>
           </div>
-          <button class="btn-icon" id="logout-btn" title="Logout">
+          <button class="btn-icon" id="logout-btn" title="Logout" aria-label="Logout">
             <i class="fas fa-sign-out-alt"></i>
           </button>
         </div>
@@ -202,7 +205,7 @@
     </aside>
 
     <!-- Main Content -->
-    <main id="main-content" class="main-content">
+    <main id="main-content" class="main-content" role="main" aria-label="Main content">
       <div id="page-content"></div>
     </main>
 
@@ -266,6 +269,7 @@
   <script src="/js/pages/git-stacks.js?v=__VERSION__"></script>
   <script src="/js/pages/compare.js?v=__VERSION__"></script>
   <script src="/js/pages/insights.js?v=__VERSION__"></script>
+  <script src="/js/pages/timeline.js?v=__VERSION__"></script>
   <script src="/js/pages/cost-optimizer.js?v=__VERSION__"></script>
   <script src="/js/pages/dependency-map.js?v=__VERSION__"></script>
   <script src="/js/pages/notifications.js?v=__VERSION__"></script>

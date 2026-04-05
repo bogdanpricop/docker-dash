@@ -1538,6 +1538,12 @@ tr:hover .port-open-btn { opacity: 1; }
 a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 .modal-close-btn:focus-visible { outline: 2px solid var(--accent); }
 
+/* ── Accessibility: Screen Reader Only ───────────── */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
 /* ══════════════════════════════════════════════════
    Mobile-Responsive Enhancements (v3.3.0)
    ══════════════════════════════════════════════════ */

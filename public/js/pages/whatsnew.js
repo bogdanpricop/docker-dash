@@ -10,6 +10,32 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '6.0.0',
+      date: '2026-04-05',
+      title: 'v6.0 — 20 Features: Timeline, Migration, Onboarding, Theme Customizer & More',
+      changes: [
+        { type: 'feature', text: 'Event Timeline — new page showing deploys, restarts, alerts, and Docker events on a visual timeline with date groups, category icons, and severity badges' },
+        { type: 'feature', text: 'Container Migration Wizard — right-click → Migrate to Host; inspects container config and recreates it on target host' },
+        { type: 'feature', text: 'Onboarding Wizard — 3-step welcome overlay for new installations: feature overview, quick-start tips, and Standard vs Enterprise mode intro' },
+        { type: 'feature', text: 'Workload Balancing Recommendations — DRS-style suggestions in Multi-Host Overview for container rebalancing and resource pressure' },
+        { type: 'feature', text: 'Theme Customizer — 8 preset accent colors + custom color picker; changes apply instantly and sync across devices' },
+        { type: 'feature', text: 'S3 Backup Export — backup SQLite DB to any S3-compatible storage (AWS Signature V4, no SDK needed)' },
+        { type: 'feature', text: 'Container Metrics Comparison — select 2-5 containers, compare CPU/RAM on side-by-side Chart.js line charts' },
+        { type: 'feature', text: 'Resource Sparklines — tiny CPU line charts per running container in the list, from 1h stats history' },
+        { type: 'feature', text: 'Docker Version Checker — System page shows Docker Engine version per host with mismatch warnings' },
+        { type: 'feature', text: 'Login Banner (MOTD) — admins set a persistent message on the login page' },
+        { type: 'feature', text: 'Clone/Duplicate Stack — copy button on stack headers creates a new stack from existing compose config' },
+        { type: 'feature', text: 'Custom Attributes — add arbitrary key-value metadata to containers with inline editing' },
+        { type: 'feature', text: 'Cost Allocation by Team — cost optimizer groups costs by container owner/team' },
+        { type: 'feature', text: 'Event Timeline page with filterable categories, time ranges, and text search' },
+        { type: 'improvement', text: 'Host Hardware Info — kernel version, storage driver, and image count in Multi-Host cards' },
+        { type: 'improvement', text: 'Smart container icons in Topology and Dep Map (database, cache, web, queue, auth, etc.)' },
+        { type: 'improvement', text: 'i18n nav keys for logs, timeline, multi-host added to all 11 languages' },
+        { type: 'improvement', text: 'Accessibility: ARIA labels, role attributes, sr-only utility, focus-visible styles' },
+        { type: 'improvement', text: 'Backup file list in System page with sizes and dates' },
+      ],
+    },
+    {
       version: '5.10.0',
       date: '2026-04-05',
       title: 'Enterprise Wave 4 — 23/23 ESXi Gaps Closed',
