@@ -434,6 +434,9 @@ const Api = {
   deleteNotificationChannel(id) { return this.delete(`/notification-channels/${id}`); },
   testNotificationChannel(id) { return this.post(`/notification-channels/${id}/test`); },
 
+  // ─── Multi-Host ─────────────────────────────────
+  getMultiHostOverview() { return this.get('/multi-host/overview'); },
+
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },
   getHost(id) { return this.get(`/hosts/${id}`); },

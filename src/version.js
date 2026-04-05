@@ -2,4 +2,4 @@
 // Single source of truth for the application version.
 // Updated automatically by: npm version X.Y.Z  (via scripts/sync-version.js)
 // server.js reads this to inject into index.html at startup — no build step needed.
-module.exports = '5.5.1';
+module.exports = '5.6.0';

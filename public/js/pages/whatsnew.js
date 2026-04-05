@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.6.0',
+      date: '2026-04-05',
+      title: 'Multi-Host Overview — ESXi-style Unified Dashboard',
+      changes: [
+        { type: 'feature', text: 'Multi-Host Overview page — vCenter/ESXi-style unified view of all Docker hosts, stacks, and containers in one page' },
+        { type: 'feature', text: 'By Host tab — each host displayed as a card with CPU/RAM progress bars, Docker version, OS info, and collapsible stack groups with green/red/yellow health dots per container' },
+        { type: 'feature', text: 'By Stack tab — all stacks grouped across hosts, showing which hosts run each stack; perfect for comparing prod vs staging deployments' },
+        { type: 'feature', text: 'Aggregate stat cards — total hosts (with online count), containers, running, stopped, and images across all hosts' },
+        { type: 'feature', text: 'Cross-host navigation — click any container to auto-switch host context and jump to its detail page' },
+        { type: 'improvement', text: 'Host offline detection — red-bordered card with "Host offline" message for unreachable hosts (graceful fallback via Promise.allSettled)' },
+        { type: 'improvement', text: '15-second auto-refresh for live monitoring without manual reload' },
+      ],
+    },
+    {
       version: '5.5.1',
       date: '2026-04-05',
       title: 'Sandbox Project Source — GitHub Clone + Upload + Auto-detect',

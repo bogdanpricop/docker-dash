@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.6.0] - 2026-04-05
+
+### Added
+- **Multi-Host Overview page** — ESXi/vCenter-style unified view of ALL Docker hosts, stacks, and containers
+- **By Host tab** — each host as a card showing CPU/RAM bars, Docker version, OS info, and collapsible stack groups with health dots per container
+- **By Stack tab** — all stacks grouped across hosts, showing which hosts run each stack and their container health status
+- **Aggregate stat cards** — total hosts (online/offline), containers, running, stopped, images across all hosts
+- **Host offline detection** — red-bordered card with "Host offline" message for unreachable hosts
+- **Cross-host navigation** — clicking a container auto-switches host context and navigates to the container detail
+- **15-second auto-refresh** — live updating overview without manual refresh
+- **Sidebar nav item** — "Multi-Host" entry with network icon, shown in navigation
+
+### Backend
+- `GET /api/multi-host/overview` — parallel data fetch from all active hosts (containers, Docker info, stats overview) via `Promise.allSettled` with graceful offline fallback
+
 ## [5.5.1] - 2026-04-05
 
 ### Added

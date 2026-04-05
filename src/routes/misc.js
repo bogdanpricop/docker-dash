@@ -1183,4 +1183,87 @@ Respond with ONLY the docker-compose.yml content, no markdown fences, no explana
   }
 });
 
+// ─── Multi-Host Overview ────────────────────────────────────
+
+router.get('/multi-host/overview', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    // Get all hosts (including default host 0)
+    const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+
+    // Always include local/default host as id=0
+    const hostList = [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production' }];
+    dbHosts.forEach(h => hostList.push({
+      id: h.id, name: h.name, connectionType: h.connection_type,
+      environment: h.environment || 'production',
+    }));
+
+    // Fetch data from all hosts in parallel
+    const results = await Promise.allSettled(hostList.map(async (host) => {
+      const docker = dockerService.getDocker(host.id);
+
+      const [containers, info, statsOverview] = await Promise.all([
+        dockerService.listContainers(host.id).catch(() => []),
+        docker.info().catch(() => ({})),
+        statsService.getOverview(host.id),
+      ]);
+
+      return {
+        id: host.id,
+        name: host.name,
+        environment: host.environment,
+        connectionType: host.connectionType,
+        healthy: true,
+        info: {
+          hostname: info.Name || host.name,
+          os: info.OperatingSystem || '',
+          dockerVersion: info.ServerVersion || '',
+          cpus: info.NCPU || 0,
+          memTotal: info.MemTotal || 0,
+        },
+        containers: containers.map(c => ({
+          id: c.id?.substring(0, 12) || c.Id?.substring(0, 12),
+          name: c.name || (c.Names?.[0] || '').replace(/^\//, ''),
+          image: c.image || c.Image,
+          state: c.state || c.State,
+          stack: c.stack || c.Labels?.['com.docker.compose.project'] || '_standalone',
+          ports: c.ports || c.Ports || [],
+          created: c.created || c.Created,
+        })),
+        stats: {
+          cpu: statsOverview?.totals?.cpu || 0,
+          memory: statsOverview?.totals?.memory || 0,
+          memoryLimit: statsOverview?.totals?.memoryLimit || 0,
+        },
+        counts: {
+          total: containers.length,
+          running: containers.filter(c => (c.state || c.State) === 'running').length,
+          stopped: containers.filter(c => (c.state || c.State) !== 'running').length,
+          images: info.Images || 0,
+        },
+      };
+    }));
+
+    const hosts = results
+      .map((r, i) => r.status === 'fulfilled' ? r.value : {
+        ...hostList[i], healthy: false, containers: [],
+        stats: { cpu: 0, memory: 0, memoryLimit: 0 },
+        counts: { total: 0, running: 0, stopped: 0, images: 0 },
+        info: { hostname: hostList[i].name, os: '', dockerVersion: '', cpus: 0, memTotal: 0 },
+      });
+
+    const totals = {
+      hosts: hosts.length,
+      healthyHosts: hosts.filter(h => h.healthy).length,
+      containers: hosts.reduce((s, h) => s + h.counts.total, 0),
+      running: hosts.reduce((s, h) => s + h.counts.running, 0),
+      images: hosts.reduce((s, h) => s + h.counts.images, 0),
+    };
+
+    res.json({ hosts, totals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -33,6 +33,7 @@ const App = {
     stacks:     () => StacksPage,
     swarm:      () => SwarmPage,
     'api-playground': () => ApiPlaygroundPage,
+    'multi-host':     () => MultiHostPage,
   },
 
   async init() {
