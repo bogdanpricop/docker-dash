@@ -356,7 +356,7 @@ const MultiHostPage = {
         </div>
         <div class="card-body" style="padding:12px 16px">
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
-            ${host.info.os ? `<i class="fas fa-linux" style="margin-right:4px"></i>${Utils.escapeHtml(host.info.os)}` : ''}
+            ${host.info.os ? `<i class="fab fa-linux" style="margin-right:4px"></i>${Utils.escapeHtml(host.info.os)}` : ''}
             ${host.info.dockerVersion ? `&nbsp;&nbsp;<i class="fab fa-docker" style="margin-right:4px"></i>Docker ${Utils.escapeHtml(host.info.dockerVersion)}` : ''}
             ${host.info.cpus ? `&nbsp;&nbsp;<i class="fas fa-microchip" style="margin-right:4px"></i>${host.info.cpus} CPUs` : ''}
             ${host.info.memTotal ? `&nbsp;&nbsp;<i class="fas fa-memory" style="margin-right:4px"></i>${Utils.formatBytes(host.info.memTotal)} RAM` : ''}

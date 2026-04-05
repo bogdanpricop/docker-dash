@@ -367,7 +367,7 @@ const DashboardPage = {
       <span class="host-info-sep">|</span>
       <span class="host-info-item"><i class="fas fa-clock"></i> ${i18n.t('pages.dashboard.uptime')}: ${uptime}</span>
       <span class="host-info-sep">|</span>
-      <span class="host-info-item text-muted"><i class="fas fa-linux"></i> ${Utils.escapeHtml(info.os || '—')}</span>
+      <span class="host-info-item text-muted"><i class="fab fa-linux"></i> ${Utils.escapeHtml(info.os || '—')}</span>
     `;
   },
 

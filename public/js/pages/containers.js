@@ -3148,7 +3148,7 @@ const ContainersPage = {
     { name: 'node', desc: 'Node.js runtime', icon: 'fa-code' },
     { name: 'python', desc: 'Python runtime', icon: 'fa-code' },
     { name: 'alpine', desc: 'Minimal Linux base (~5MB)', icon: 'fa-mountain' },
-    { name: 'ubuntu', desc: 'Ubuntu Linux', icon: 'fa-linux' },
+    { name: 'ubuntu', desc: 'Ubuntu Linux', icon: 'fa-ubuntu', brand: true },
     { name: 'httpd', desc: 'Apache HTTP Server', icon: 'fa-server' },
     { name: 'rabbitmq', desc: 'Message broker', icon: 'fa-envelope' },
     { name: 'traefik', desc: 'Cloud-native reverse proxy', icon: 'fa-network-wired' },
@@ -3177,7 +3177,7 @@ const ContainersPage = {
         <div id="cc-image-picker" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2)">
           ${this._popularImages.map(img => `
             <div class="image-picker-item" data-image="${img.name}:latest" style="display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.15s">
-              <i class="fas ${img.icon}" style="width:16px;text-align:center;color:var(--accent)"></i>
+              <i class="${img.brand ? 'fab' : 'fas'} ${img.icon}" style="width:16px;text-align:center;color:var(--accent)"></i>
               <span class="mono text-sm" style="font-weight:600">${img.name}</span>
               <span class="text-xs text-muted" style="flex:1">${img.desc}</span>
             </div>
