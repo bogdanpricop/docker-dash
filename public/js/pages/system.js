@@ -159,41 +159,42 @@ const SystemPage = {
     // State
     let motdRandomList = [];
 
+    // Sync DOM inputs back to array before any destructive operation
+    const syncRandomFromDOM = () => {
+      motdCard.querySelectorAll('.motd-random-input').forEach(input => {
+        const idx = parseInt(input.dataset.idx);
+        if (!isNaN(idx) && idx < motdRandomList.length) motdRandomList[idx] = input.value;
+      });
+    };
+
     const renderRandomList = () => {
       const listEl = motdCard.querySelector('#motd-random-list');
       if (!listEl) return;
       listEl.innerHTML = motdRandomList.map((msg, i) => `
         <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" class="form-control motd-random-input" data-idx="${i}" value="${Utils.escapeHtml(msg)}" style="flex:1;font-size:12px;padding:4px 8px">
+          <input type="text" class="form-control motd-random-input" data-idx="${i}" value="${Utils.escapeHtml(msg)}" placeholder="Enter banner message..." style="flex:1;font-size:12px;padding:4px 8px">
           <button class="action-btn danger motd-random-remove" data-idx="${i}" title="Remove"><i class="fas fa-times"></i></button>
         </div>
       `).join('') || '<div class="text-muted text-sm">No random banners. Click "+ Add" to create one.</div>';
 
       listEl.querySelectorAll('.motd-random-remove').forEach(btn => {
         btn.addEventListener('click', () => {
+          syncRandomFromDOM();
           motdRandomList.splice(parseInt(btn.dataset.idx), 1);
           renderRandomList();
         });
       });
-      listEl.querySelectorAll('.motd-random-input').forEach(input => {
-        input.addEventListener('input', () => {
-          motdRandomList[parseInt(input.dataset.idx)] = input.value;
-        });
-      });
     };
 
-    // Load existing MOTD settings
+    // Load existing MOTD settings from server
     try {
-      const data = await Api.getMotd();
-      const editor = motdCard.querySelector('#motd-editor');
-      if (editor && data.motd && data.mode === 'fixed') editor.value = data.motd;
-
-      // Load full config from settings
       const settings = await Api.getSettings();
       const fixedVal = settings?.login_motd || '';
       const modeVal = settings?.login_motd_mode || 'fixed';
       try { motdRandomList = JSON.parse(settings?.login_motd_random || '[]'); } catch { motdRandomList = []; }
+      if (!Array.isArray(motdRandomList)) motdRandomList = [];
 
+      const editor = motdCard.querySelector('#motd-editor');
       if (editor) editor.value = fixedVal;
       const modeRadio = motdCard.querySelector(`input[name="motd-mode"][value="${modeVal}"]`);
       if (modeRadio) modeRadio.checked = true;
@@ -201,6 +202,7 @@ const SystemPage = {
     } catch {}
 
     motdCard.querySelector('#motd-add-random')?.addEventListener('click', () => {
+      syncRandomFromDOM(); // preserve current edits before re-render
       motdRandomList.push('');
       renderRandomList();
       // Focus last input
@@ -211,6 +213,7 @@ const SystemPage = {
     motdCard.querySelector('#motd-save')?.addEventListener('click', async () => {
       const motd = motdCard.querySelector('#motd-editor')?.value || '';
       const mode = motdCard.querySelector('input[name="motd-mode"]:checked')?.value || 'fixed';
+      syncRandomFromDOM(); // read latest values from DOM
       const randomList = motdRandomList.filter(m => m.trim());
       try {
         await Api.setMotd({ motd, mode, randomList });
