@@ -385,26 +385,30 @@ class DataTable {
     if (!wrapper) return;
 
     // Don't add twice
-    if (wrapper.querySelector('.col-config-btn')) return;
+    if (this._table.querySelector('.col-config-btn')) return;
+
+    // Add gear icon to the last <th> in the table header
+    const lastTh = this._table.querySelector('thead tr th:last-child');
+    if (!lastTh) return;
 
     const btn = document.createElement('button');
     btn.className = 'col-config-btn';
     btn.innerHTML = '<i class="fas fa-cog"></i>';
     btn.title = 'Configure columns';
-    btn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:5;background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;';
+    btn.style.cssText = 'background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);width:22px;height:22px;border-radius:3px;cursor:pointer;font-size:10px;display:inline-flex;align-items:center;justify-content:center;margin-left:4px;vertical-align:middle;';
 
-    wrapper.style.position = 'relative';
-    wrapper.appendChild(btn);
+    lastTh.appendChild(btn);
+    lastTh.style.position = 'relative';
 
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       // Remove existing dropdown
-      const existing = wrapper.querySelector('.col-config-dropdown');
+      const existing = lastTh.querySelector('.col-config-dropdown');
       if (existing) { existing.remove(); return; }
 
       const dropdown = document.createElement('div');
       dropdown.className = 'col-config-dropdown';
-      dropdown.style.cssText = 'position:absolute;top:34px;right:8px;z-index:10;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:8px 0;min-width:180px;';
+      dropdown.style.cssText = 'position:absolute;top:100%;right:0;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:8px 0;min-width:180px;';
 
       this.columns.forEach((col) => {
         if (!col.label) return; // skip action columns without labels
@@ -419,7 +423,7 @@ class DataTable {
         dropdown.appendChild(item);
       });
 
-      wrapper.appendChild(dropdown);
+      lastTh.appendChild(dropdown);
 
       // Close on click outside
       const close = (ev) => {
