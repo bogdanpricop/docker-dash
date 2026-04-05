@@ -2,6 +2,25 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [6.1.0] - 2026-04-06
+
+### Added
+- **How-To Knowledge Base** — new page with 46 built-in bilingual guides (EN + RO) across 9 categories: Docker basics, Linux, networking, security, Compose, troubleshooting, Docker Dash, backup, performance
+- **Guide Editor** — admins can create, edit, and delete custom guides with bilingual content (HTML)
+- **Full guide content** — all 46 guides have complete step-by-step instructions with code blocks (migrations 040 + 041)
+- **Comparison table expanded** — 105 features compared across 8 tools (was 63); all v5.4–v6.0 features added
+- **All 19 System Tools in Ctrl+K** — command palette now includes every tool: hash generator, regex tester, IP calculator, Base64, JSON formatter, etc.
+
+### Fixed
+- **Server crash on startup** — migration 040/041 had unescaped `${POSTGRES_USER}` in template literals, interpreted as JS interpolation
+- **Hash Generator crash on HTTP** — `crypto.subtle` unavailable on non-secure origins; added graceful fallback message
+- **Login theme not persisting** — dark/light toggle saved inconsistent values to localStorage
+- **Login MOTD appearing 2-3 times** — race condition on multiple `_showLogin()` calls; added mutex flag
+- **Login version text** — now links to GitHub repository with icon
+- **Column config button overlapping UI** — moved from absolute-positioned overlay to inline in last `<th>`
+- **Smart container icons** — Topology and Dep Map canvas now show contextual icons (database, cache, web, etc.) instead of generic cubes
+- **Linux icon missing** — `fas fa-linux` → `fab fa-linux` (Font Awesome brands) in multihost, dashboard, image picker
+
 ## [6.0.0] - 2026-04-05
 
 ### Added — 20 Features Across 5 Sprints

@@ -10,6 +10,22 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '6.1.0',
+      date: '2026-04-06',
+      title: 'How-To Knowledge Base + 105-Feature Comparison + Fixes',
+      changes: [
+        { type: 'feature', text: 'How-To Knowledge Base — 46 built-in bilingual guides (EN + RO) with search, categories, and admin editor for custom guides' },
+        { type: 'feature', text: '21 extra guides: Docker deep dives (10), Swarm (3), Security & CIS (3), Linux extras — RDP/VNC, Samba, SFTP, Firewall, Systemd (5)' },
+        { type: 'feature', text: 'Comparison table expanded to 105 features across 8 tools (from 63) — all v5.4–v6.0 features now listed' },
+        { type: 'feature', text: 'All 19 System Tools available in Ctrl+K command palette (hash gen, regex, IP calc, Base64, JSON, etc.)' },
+        { type: 'fix', text: 'Server crash: unescaped ${POSTGRES_USER} in migration template literals caused ReferenceError on startup' },
+        { type: 'fix', text: 'Hash Generator crash on HTTP: crypto.subtle unavailable on non-secure origins — graceful fallback added' },
+        { type: 'fix', text: 'Login theme toggle: dark/light saved inconsistent values; MOTD appearing 2-3 times (race condition); version now links to GitHub' },
+        { type: 'fix', text: 'Column config gear button moved inline (was absolute-positioned, overlapping other UI)' },
+        { type: 'fix', text: 'Smart container icons in Topology/Dep Map; Linux icon fix (fas → fab)' },
+      ],
+    },
+    {
       version: '6.0.0',
       date: '2026-04-05',
       title: 'v6.0 — 20 Features: Timeline, Migration, Onboarding, Theme Customizer & More',

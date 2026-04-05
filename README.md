@@ -9,7 +9,7 @@
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-384%20passing%20(100%25)-brightgreen" alt="Tests"></a>
-    <img src="https://img.shields.io/badge/version-6.0.0-blue" alt="Version">
+    <img src="https://img.shields.io/badge/version-6.1.0-blue" alt="Version">
     <a href="SECURITY.md#security-audit-history"><img src="https://img.shields.io/badge/production%20readiness-9.2%2F10-brightgreen" alt="Production Readiness"></a>
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
     <img src="https://img.shields.io/badge/Docker-~80MB-blue" alt="Image Size">
@@ -25,7 +25,7 @@
   </p>
 </p>
 
-**Zero dependencies to deploy** — just Docker. No external database, no Redis, no build step. Current version: **v6.0.0**
+**Zero dependencies to deploy** — just Docker. No external database, no Redis, no build step. Current version: **v6.1.0**
 
 ## Screenshots
 
@@ -165,6 +165,11 @@
 - **CIS Docker Benchmark** — 18 automated checks (daemon + container), scored report with remediation guidance
 - **Immutable Audit Log** — SHA-256 hash-chained, tamper detection, JSON/CSV/Syslog export
 - **Security Alerts** — 5 default rules (brute force, admin created, MFA disabled), threshold detection
+
+### Knowledge Base
+- **How-To Guides** — 46 built-in bilingual guides (EN + RO) covering Docker basics, Linux, networking, security, Compose, Swarm, troubleshooting, backup, and performance
+- **Guide Editor** — Admins can create, edit, and delete custom guides with HTML content in both languages
+- **Search & Categories** — Filter by 9 categories, difficulty level, and free-text search across all guides
 
 ### Platform
 - **Multi-user** — Admin, operator, viewer roles with session management
