@@ -1188,15 +1188,13 @@ Respond with ONLY the docker-compose.yml content, no markdown fences, no explana
 router.get('/multi-host/overview', requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    // Get all hosts (including default host 0)
     const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
 
-    // Always include local/default host as id=0
-    const hostList = [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production' }];
-    dbHosts.forEach(h => hostList.push({
-      id: h.id, name: h.name, connectionType: h.connection_type,
-      environment: h.environment || 'production',
-    }));
+    // If no hosts configured, use the default local connection (id=0)
+    // Otherwise, use only what's in the DB to avoid duplicates
+    const hostList = dbHosts.length > 0
+      ? dbHosts.map(h => ({ id: h.id, name: h.name, connectionType: h.connection_type, environment: h.environment || 'production' }))
+      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production' }];
 
     // Fetch data from all hosts in parallel
     const results = await Promise.allSettled(hostList.map(async (host) => {
