@@ -486,6 +486,7 @@ const Api = {
 
   // ─── MOTD ────────────────────────────────────────
   getMotd() { return this.get('/motd'); },
+  getMotdConfig() { return this.get('/motd/config'); },
   setMotd(data) { return this.put('/motd', typeof data === 'string' ? { motd: data } : data); },
 
   // ─── How-To ───────────────────────────────────

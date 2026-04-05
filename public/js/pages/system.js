@@ -186,20 +186,16 @@ const SystemPage = {
       });
     };
 
-    // Load existing MOTD settings from server
+    // Load existing MOTD config from dedicated endpoint
     try {
-      const settings = await Api.getSettings();
-      const fixedVal = settings?.login_motd || '';
-      const modeVal = settings?.login_motd_mode || 'fixed';
-      try { motdRandomList = JSON.parse(settings?.login_motd_random || '[]'); } catch { motdRandomList = []; }
-      if (!Array.isArray(motdRandomList)) motdRandomList = [];
-
+      const cfg = await Api.getMotdConfig();
       const editor = motdCard.querySelector('#motd-editor');
-      if (editor) editor.value = fixedVal;
-      const modeRadio = motdCard.querySelector(`input[name="motd-mode"][value="${modeVal}"]`);
+      if (editor) editor.value = cfg.motd || '';
+      const modeRadio = motdCard.querySelector(`input[name="motd-mode"][value="${cfg.mode || 'fixed'}"]`);
       if (modeRadio) modeRadio.checked = true;
+      motdRandomList = Array.isArray(cfg.randomList) ? cfg.randomList : [];
       renderRandomList();
-    } catch {}
+    } catch (err) { console.warn('MOTD config load failed:', err.message); }
 
     motdCard.querySelector('#motd-add-random')?.addEventListener('click', () => {
       syncRandomFromDOM(); // preserve current edits before re-render

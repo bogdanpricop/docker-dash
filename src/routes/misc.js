@@ -996,6 +996,18 @@ router.get('/motd', (req, res) => {
   } catch { res.json({ motd: '', mode: 'fixed' }); }
 });
 
+// GET /motd/config — admin, returns full MOTD configuration
+router.get('/motd/config', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const motd = settingsService.get('login_motd', '');
+    const mode = settingsService.get('login_motd_mode', 'fixed');
+    let randomList = [];
+    try { randomList = JSON.parse(settingsService.get('login_motd_random', '[]')); } catch { }
+    if (!Array.isArray(randomList)) randomList = [];
+    res.json({ motd, mode, randomList });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // PUT /motd — admin only
 router.put('/motd', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
