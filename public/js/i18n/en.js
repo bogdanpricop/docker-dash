@@ -21,7 +21,7 @@ i18n.register('en', 'EN', 'English', {
     volumes: 'Volumes', networks: 'Networks', security: 'Security', alerts: 'Alerts',
     system: 'System', firewall: 'Firewall', hosts: 'Hosts', about: 'About', whatsnew: "What's New", settings: 'Settings', profile: 'Profile',
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare',
-    notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm',
+    notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
   },
   login: {

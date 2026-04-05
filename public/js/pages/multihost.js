@@ -9,12 +9,17 @@ const MultiHostPage = {
   _tab: 'host', // 'host' | 'stack'
   _refreshTimer: null,
   _collapsed: {}, // track collapsed stack groups: key = "hostId:stackName" or "stack:stackName"
+  _searchFilter: '', // current search string
 
   async render(container) {
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-network-wired" style="color:var(--accent)"></i> Multi-Host Overview</h2>
         <div class="page-actions">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="mh-search" placeholder="Filter hosts, stacks, containers...">
+          </div>
           <div class="tabs" style="margin:0">
             <button class="tab ${this._tab === 'host' ? 'active' : ''}" data-mh-tab="host">
               <i class="fas fa-server" style="margin-right:4px"></i>By Host
@@ -23,6 +28,8 @@ const MultiHostPage = {
               <i class="fas fa-layer-group" style="margin-right:4px"></i>By Stack
             </button>
           </div>
+          <button class="btn-icon view-toggle" id="mh-collapse" title="Collapse all"><i class="fas fa-compress-alt"></i></button>
+          <button class="btn-icon view-toggle" id="mh-expand" title="Expand all"><i class="fas fa-expand-alt"></i></button>
           <button class="btn btn-sm btn-secondary" id="mh-refresh" title="Refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
@@ -37,10 +44,55 @@ const MultiHostPage = {
           b.classList.toggle('active', b.dataset.mhTab === this._tab);
         });
         this._renderContent();
+        this._applySearch(this._searchFilter);
       });
     });
 
     container.querySelector('#mh-refresh').addEventListener('click', () => this._load());
+
+    container.querySelector('#mh-collapse').addEventListener('click', () => {
+      document.querySelectorAll('[data-mh-stack-toggle]').forEach(btn => {
+        const key = btn.dataset.mhStackToggle;
+        this._collapsed[key] = true;
+        const body = document.querySelector(`[data-mh-stack-body="${CSS.escape(key)}"]`);
+        if (body) body.style.display = 'none';
+        const icon = btn.querySelector('i.fa-chevron-down, i.fa-chevron-right');
+        if (icon) icon.className = 'fas fa-chevron-right';
+      });
+      document.querySelectorAll('[data-mh-stack-host-toggle]').forEach(btn => {
+        const key = btn.dataset.mhStackHostToggle;
+        this._collapsed[key] = true;
+        const body = document.querySelector(`[data-mh-stack-host-body="${CSS.escape(key)}"]`);
+        if (body) body.style.display = 'none';
+        const icon = btn.querySelector('i.fa-chevron-down, i.fa-chevron-right');
+        if (icon) icon.className = 'fas fa-chevron-right';
+      });
+    });
+
+    container.querySelector('#mh-expand').addEventListener('click', () => {
+      document.querySelectorAll('[data-mh-stack-toggle]').forEach(btn => {
+        const key = btn.dataset.mhStackToggle;
+        this._collapsed[key] = false;
+        const body = document.querySelector(`[data-mh-stack-body="${CSS.escape(key)}"]`);
+        if (body) body.style.display = '';
+        const icon = btn.querySelector('i.fa-chevron-down, i.fa-chevron-right');
+        if (icon) icon.className = 'fas fa-chevron-down';
+      });
+      document.querySelectorAll('[data-mh-stack-host-toggle]').forEach(btn => {
+        const key = btn.dataset.mhStackHostToggle;
+        this._collapsed[key] = false;
+        const body = document.querySelector(`[data-mh-stack-host-body="${CSS.escape(key)}"]`);
+        if (body) body.style.display = '';
+        const icon = btn.querySelector('i.fa-chevron-down, i.fa-chevron-right');
+        if (icon) icon.className = 'fas fa-chevron-down';
+      });
+    });
+
+    container.querySelector('#mh-search').addEventListener('input',
+      Utils.debounce(e => {
+        this._searchFilter = (e.target.value || '').toLowerCase().trim();
+        this._applySearch(this._searchFilter);
+      }, 200));
 
     await this._load();
     this._refreshTimer = setInterval(() => this._load(), 15000);
@@ -51,6 +103,7 @@ const MultiHostPage = {
       this._data = await Api.getMultiHostOverview();
       this._renderStats();
       this._renderContent();
+      this._applySearch(this._searchFilter);
     } catch (err) {
       const el = document.getElementById('mh-content');
       if (el) el.innerHTML = `<div class="empty-msg"><i class="fas fa-exclamation-triangle"></i> Error: ${Utils.escapeHtml(err.message)}</div>`;
@@ -64,40 +117,40 @@ const MultiHostPage = {
     const stopped = totals.containers - totals.running;
 
     el.innerHTML = `
-      <div class="stat-cards">
-        <div class="stat-card">
-          <div class="stat-icon blue"><i class="fas fa-server"></i></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
+        <div class="stat-card" style="padding:10px 12px">
+          <div class="stat-icon blue" style="width:32px;height:32px;font-size:14px"><i class="fas fa-server"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${totals.hosts} <span style="font-size:13px;color:var(--text-muted);font-weight:400">/ ${totals.healthyHosts} online</span></div>
-            <div class="stat-label">Hosts</div>
+            <div class="stat-value" style="font-size:20px">${totals.hosts} <span style="font-size:11px;color:var(--text-muted);font-weight:400">/ ${totals.healthyHosts} online</span></div>
+            <div class="stat-label" style="font-size:11px">Hosts</div>
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon purple"><i class="fas fa-cube"></i></div>
+        <div class="stat-card" style="padding:10px 12px">
+          <div class="stat-icon purple" style="width:32px;height:32px;font-size:14px"><i class="fas fa-cube"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${totals.containers}</div>
-            <div class="stat-label">Total Containers</div>
+            <div class="stat-value" style="font-size:20px">${totals.containers}</div>
+            <div class="stat-label" style="font-size:11px">Total Containers</div>
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon green"><i class="fas fa-play-circle"></i></div>
+        <div class="stat-card" style="padding:10px 12px">
+          <div class="stat-icon green" style="width:32px;height:32px;font-size:14px"><i class="fas fa-play-circle"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${totals.running}</div>
-            <div class="stat-label">Running</div>
+            <div class="stat-value" style="font-size:20px">${totals.running}</div>
+            <div class="stat-label" style="font-size:11px">Running</div>
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon red"><i class="fas fa-stop-circle"></i></div>
+        <div class="stat-card" style="padding:10px 12px">
+          <div class="stat-icon red" style="width:32px;height:32px;font-size:14px"><i class="fas fa-stop-circle"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${stopped}</div>
-            <div class="stat-label">Stopped</div>
+            <div class="stat-value" style="font-size:20px">${stopped}</div>
+            <div class="stat-label" style="font-size:11px">Stopped</div>
           </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-icon volumes"><i class="fas fa-layer-group"></i></div>
+        <div class="stat-card" style="padding:10px 12px">
+          <div class="stat-icon volumes" style="width:32px;height:32px;font-size:14px"><i class="fas fa-layer-group"></i></div>
           <div class="stat-body">
-            <div class="stat-value">${totals.images}</div>
-            <div class="stat-label">Total Images</div>
+            <div class="stat-value" style="font-size:20px">${totals.images}</div>
+            <div class="stat-label" style="font-size:11px">Total Images</div>
           </div>
         </div>
       </div>
@@ -459,6 +512,122 @@ const MultiHostPage = {
     if (state === 'running') return 'badge-running';
     if (state === 'exited' || state === 'stopped') return 'badge-stopped';
     return 'badge-paused';
+  },
+
+  // ─── Search / Filter ─────────────────────────────
+
+  _applySearch(q) {
+    if (!q) {
+      // No filter — show everything
+      document.querySelectorAll('#mh-content .card, #mh-content [data-mh-host-card]').forEach(el => {
+        el.style.display = '';
+      });
+      document.querySelectorAll('#mh-content [data-mh-container]').forEach(el => {
+        el.style.display = '';
+      });
+      document.querySelectorAll('#mh-content [data-mh-stack-body]').forEach(el => {
+        // restore collapse state
+        const key = el.dataset.mhStackBody;
+        if (key && this._collapsed[key]) el.style.display = 'none';
+        else el.style.display = '';
+      });
+      return;
+    }
+
+    if (this._tab === 'host') {
+      // Each host is a .card at the top level of #mh-content
+      const hostCards = document.querySelectorAll('#mh-content > .card');
+      hostCards.forEach(card => {
+        // hostname text is in the card-header strong
+        const hostNameEl = card.querySelector('.card-header strong');
+        const hostName = (hostNameEl ? hostNameEl.textContent : '').toLowerCase();
+        let hostMatches = hostName.includes(q);
+
+        // For each stack group inside this host card
+        const stackGroups = card.querySelectorAll('[data-mh-stack-toggle]');
+        let anyStackVisible = false;
+        stackGroups.forEach(stackToggle => {
+          const key = stackToggle.dataset.mhStackToggle;
+          const stackLabelEl = stackToggle.querySelector('span[style*="font-weight"]') || stackToggle.querySelector('span');
+          const stackName = (stackLabelEl ? stackLabelEl.textContent : '').toLowerCase();
+          const body = card.querySelector(`[data-mh-stack-body="${CSS.escape(key)}"]`);
+
+          // Check containers within this stack
+          let anyContainerVisible = false;
+          if (body) {
+            body.querySelectorAll('[data-mh-container]').forEach(c => {
+              const nameEl = c.querySelector('span[style*="font-weight"]');
+              const imgEl = c.querySelector('.text-muted');
+              const cName = (nameEl ? nameEl.textContent : '').toLowerCase();
+              const cImg = (imgEl ? imgEl.textContent : '').toLowerCase();
+              const visible = hostMatches || stackName.includes(q) || cName.includes(q) || cImg.includes(q);
+              c.style.display = visible ? '' : 'none';
+              if (visible) anyContainerVisible = true;
+            });
+          }
+
+          const stackVisible = hostMatches || stackName.includes(q) || anyContainerVisible;
+          if (stackVisible) {
+            // Show stack toggle row
+            stackToggle.style.display = '';
+            // Expand the stack body so matches are visible
+            if (body) body.style.display = '';
+            anyStackVisible = true;
+          } else {
+            stackToggle.style.display = 'none';
+            if (body) body.style.display = 'none';
+          }
+        });
+
+        card.style.display = (hostMatches || anyStackVisible) ? '' : 'none';
+      });
+    } else {
+      // By Stack tab — each stack is a .card
+      const stackCards = document.querySelectorAll('#mh-content > .card');
+      stackCards.forEach(card => {
+        const headerEl = card.querySelector('.card-header strong');
+        const stackName = (headerEl ? headerEl.textContent : '').toLowerCase();
+
+        let anyVisible = false;
+        card.querySelectorAll('[data-mh-stack-host-toggle]').forEach(hostToggle => {
+          const hostKey = hostToggle.dataset.mhStackHostToggle;
+          const hostNameEl = hostToggle.querySelector('span[style*="font-weight"]');
+          const hostName = (hostNameEl ? hostNameEl.textContent : '').toLowerCase();
+          const body = card.querySelector(`[data-mh-stack-host-body="${CSS.escape(hostKey)}"]`);
+
+          let anyContainerVisible = false;
+          if (body) {
+            body.querySelectorAll('[data-mh-container]').forEach(c => {
+              const nameEl = c.querySelector('span[style*="font-weight"]');
+              const imgEl = c.querySelector('.text-muted');
+              const cName = (nameEl ? nameEl.textContent : '').toLowerCase();
+              const cImg = (imgEl ? imgEl.textContent : '').toLowerCase();
+              const visible = stackName.includes(q) || hostName.includes(q) || cName.includes(q) || cImg.includes(q);
+              c.style.display = visible ? '' : 'none';
+              if (visible) anyContainerVisible = true;
+            });
+          }
+
+          const hostVisible = stackName.includes(q) || hostName.includes(q) || anyContainerVisible;
+          hostToggle.style.display = hostVisible ? '' : 'none';
+          if (body) body.style.display = hostVisible ? '' : 'none';
+          if (hostVisible) anyVisible = true;
+        });
+
+        // If this card has no sub-host-toggles (edge case), check stack name alone
+        if (!card.querySelectorAll('[data-mh-stack-host-toggle]').length) {
+          anyVisible = stackName.includes(q);
+        }
+
+        card.style.display = anyVisible ? '' : 'none';
+        // Expand stack body when filter is active
+        const key = card.querySelector('[data-mh-stack-toggle]')?.dataset.mhStackToggle;
+        if (key) {
+          const body = card.querySelector(`[data-mh-stack-body="${CSS.escape(key)}"]`);
+          if (body && anyVisible) body.style.display = '';
+        }
+      });
+    }
   },
 
   destroy() {

@@ -20,7 +20,7 @@ i18n.register('ro', 'RO', 'Română', {
     dashboard: 'Dashboard', containers: 'Containere', images: 'Imagini',
     volumes: 'Volume', networks: 'Retele', security: 'Securitate', alerts: 'Alerte',
     system: 'Sistem', firewall: 'Firewall', hosts: 'Hosturi', about: 'Despre', whatsnew: 'Noutati', settings: 'Setari', profile: 'Profil',
-    insights: 'Analize', 'git-stacks': 'Git Stacks', compare: 'Comparatie', swarm: 'Swarm',
+    insights: 'Analize', 'git-stacks': 'Git Stacks', compare: 'Comparatie', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     sectionResources: 'Resurse', sectionOperations: 'Operatiuni', sectionAdmin: 'Admin',
   },
   login: {
