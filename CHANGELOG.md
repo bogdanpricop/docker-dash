@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.5.1] - 2026-04-05
+
+### Added
+- **Sandbox Project Source** — launch sandbox containers with pre-loaded source code from:
+  - **GitHub URL** — paste any public repo URL; Docker Dash downloads the tarball, auto-detects the tech stack, installs dependencies, and starts the app
+  - **Upload Archive** — upload a .tar or .tar.gz archive; same auto-detect + auto-run flow
+- **Tech stack auto-detection** — detects Node.js (package.json), Python (requirements.txt), Go (go.mod), Ruby (Gemfile), static HTML (index.html) and selects the appropriate base image automatically
+- **Auto-dependency install** — `npm install --ignore-scripts` for Node, `pip install` for Python, `go mod download` for Go
+- **Auto-start command** — reads `scripts.start` from package.json, or falls back to language-specific defaults
+- **Auto-port detection + expose** — detects port from stack defaults (3000 for Node, 5000 for Python, 8080 for Go) and auto-exposes it
+- **Progress indicator** — 5-step progress display in sandbox modal: pull image → download project → detect stack → install deps → start app
+- **Port access link** — on success, toast shows clickable "Open http://host:port" link
+- **Advanced overrides** — optional start command and port override fields when using project source
+
+### Backend
+- `_downloadGithubTarball(owner, repo, branch)` — GitHub API tarball download with redirect follow
+- `_peekTarFiles(tarBuffer)` — reads tar headers to list files without extraction (strips GitHub prefix)
+- `_detectStack(fileList)` — maps manifest files to stack/image/installCmd/startCmd/port
+- `_execWithTimeout(container, cmd, timeout)` — exec with 120s timeout for builds
+- `POST /sandbox` extended with: `projectSource`, `githubUrl`, `githubBranch`, `uploadContent`, `uploadFilename`, `autoDetect`, `startCommand`, `exposePort`
+
 ## [5.5.0] - 2026-04-05
 
 ### Added

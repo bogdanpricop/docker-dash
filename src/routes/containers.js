@@ -4,6 +4,8 @@ const express = require('express');
 const { Router } = require('express');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const https = require('https');
+const zlib = require('zlib');
 const dockerService = require('../services/docker');
 const auditService = require('../services/audit');
 const permService = require('../services/permissions');
@@ -367,6 +369,123 @@ router.post('/', requireAuth, requireRole('admin'), writeable, requireFeature('c
 
 // ─── Sandbox Containers ─────────────────────────────────
 
+// Download a GitHub repo as a gzipped tarball buffer
+async function _downloadGithubTarball(owner, repo, branch = 'main') {
+  const url = `https://api.github.com/repos/${owner}/${repo}/tarball/${branch}`;
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('GitHub download timeout (30s)')), 30000);
+    const doRequest = (reqUrl) => {
+      https.get(reqUrl, { headers: { 'User-Agent': 'docker-dash/1.0' } }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          clearTimeout(timeout);
+          const loc = res.headers['location'];
+          if (!loc) return reject(new Error('GitHub redirect missing Location header'));
+          // Follow redirect
+          const newTimeout = setTimeout(() => reject(new Error('GitHub download timeout (30s)')), 30000);
+          https.get(loc, { headers: { 'User-Agent': 'docker-dash/1.0' } }, (res2) => {
+            if (res2.statusCode !== 200) {
+              clearTimeout(newTimeout);
+              return reject(new Error(`GitHub tarball download failed: HTTP ${res2.statusCode}`));
+            }
+            const chunks = [];
+            res2.on('data', (chunk) => chunks.push(chunk));
+            res2.on('end', () => { clearTimeout(newTimeout); resolve(Buffer.concat(chunks)); });
+            res2.on('error', (err) => { clearTimeout(newTimeout); reject(err); });
+          }).on('error', (err) => { clearTimeout(newTimeout); reject(err); });
+          return;
+        }
+        if (res.statusCode !== 200) {
+          clearTimeout(timeout);
+          return reject(new Error(`GitHub tarball download failed: HTTP ${res.statusCode}`));
+        }
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => { clearTimeout(timeout); resolve(Buffer.concat(chunks)); });
+        res.on('error', (err) => { clearTimeout(timeout); reject(err); });
+      }).on('error', (err) => { clearTimeout(timeout); reject(err); });
+    };
+    doRequest(url);
+  });
+}
+
+// Detect project stack from a list of filenames
+function _detectStack(fileList) {
+  const files = fileList.map(f => f.split('/').pop());
+  if (files.includes('package.json')) {
+    return { stack: 'node', image: 'node:20-alpine', installCmd: 'cd /app && npm install --ignore-scripts --production', startCmd: 'cd /app && npm start', port: 3000 };
+  }
+  if (files.includes('requirements.txt') || files.includes('pyproject.toml')) {
+    return { stack: 'python', image: 'python:3.12-alpine', installCmd: 'cd /app && pip install --no-cache-dir -r requirements.txt', startCmd: 'cd /app && python app.py', port: 5000 };
+  }
+  if (files.includes('go.mod')) {
+    return { stack: 'go', image: 'golang:1.22-alpine', installCmd: 'cd /app && go mod download', startCmd: 'cd /app && go run .', port: 8080 };
+  }
+  if (files.includes('Gemfile')) {
+    return { stack: 'ruby', image: 'ruby:3.3-alpine', installCmd: 'cd /app && bundle install', startCmd: 'cd /app && ruby app.rb', port: 3000 };
+  }
+  if (files.includes('index.html')) {
+    return { stack: 'static', image: 'nginx:alpine', installCmd: '', startCmd: '', port: 80 };
+  }
+  return { stack: 'generic', image: 'alpine:latest', installCmd: '', startCmd: '', port: 8080 };
+}
+
+// Read tar headers to list filenames (gunzips first, strips GitHub prefix)
+function _peekTarFiles(tarBuffer) {
+  let buf;
+  try {
+    buf = zlib.gunzipSync(tarBuffer);
+  } catch {
+    buf = tarBuffer; // already uncompressed
+  }
+
+  const files = [];
+  let offset = 0;
+
+  while (offset + 512 <= buf.length) {
+    // Check for end-of-archive (two consecutive empty 512-byte blocks)
+    let allZero = true;
+    for (let i = 0; i < 512; i++) {
+      if (buf[offset + i] !== 0) { allZero = false; break; }
+    }
+    if (allZero) break;
+
+    // Read filename (offset 0, 100 bytes, null-terminated)
+    let nameEnd = 0;
+    while (nameEnd < 100 && buf[offset + nameEnd] !== 0) nameEnd++;
+    const rawName = buf.slice(offset, offset + nameEnd).toString('utf8');
+
+    // Read file size (offset 124, 12 bytes, octal)
+    const sizeStr = buf.slice(offset + 124, offset + 136).toString('utf8').trim().replace(/\0/g, '');
+    const size = parseInt(sizeStr, 8) || 0;
+
+    // Strip GitHub prefix (everything up to and including first '/')
+    const slashIdx = rawName.indexOf('/');
+    const relPath = slashIdx >= 0 ? rawName.slice(slashIdx + 1) : rawName;
+    if (relPath && !relPath.endsWith('/')) {
+      files.push(relPath);
+    }
+
+    // Advance past header + data blocks
+    const dataBlocks = Math.ceil(size / 512);
+    offset += 512 + dataBlocks * 512;
+  }
+
+  return files;
+}
+
+// Run exec inside container with timeout
+async function _execWithTimeout(container, cmd, timeoutMs = 120000) {
+  const exec = await container.exec({ Cmd: ['sh', '-c', cmd], AttachStdout: true, AttachStderr: true });
+  const stream = await exec.start({ Tty: false });
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timer = setTimeout(() => { stream.destroy(); reject(new Error(`Build timeout (${timeoutMs / 1000}s)`)); }, timeoutMs);
+    stream.on('data', (chunk) => { output += chunk.toString().replace(/[\x00-\x08]/g, ''); });
+    stream.on('end', () => { clearTimeout(timer); resolve(output); });
+    stream.on('error', (err) => { clearTimeout(timer); reject(err); });
+  });
+}
+
 // Ensure sandbox network exists (bridge, internal — no external access)
 async function _ensureSandboxNetwork(docker) {
   const nets = await docker.listNetworks();
@@ -378,39 +497,97 @@ async function _ensureSandboxNetwork(docker) {
 // POST /sandbox — create & start a sandbox container
 router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
   try {
-    const { image, mode = 'ephemeral', ttl = 3600, memLimit = 536870912, cpuLimit = 0.5, name, openTerminal, isolatedNetwork = true } = req.body;
-    if (!image) return res.status(400).json({ error: 'image is required' });
+    const {
+      mode = 'ephemeral', ttl = 3600, memLimit = 536870912, cpuLimit = 0.5, name, openTerminal,
+      // Project source params
+      projectSource = 'none',
+      githubUrl,
+      githubBranch = 'main',
+      uploadContent,
+      uploadFilename,
+      autoDetect = (projectSource !== 'none'),
+      startCommand,
+      exposePort,
+    } = req.body;
+
+    // When a project source is specified, network isolation must be off (need registry access)
+    const isolatedNetwork = projectSource !== 'none' ? false : (req.body.isolatedNetwork !== undefined ? req.body.isolatedNetwork : true);
+
+    // ── Phase 1: resolve archive + detect stack ──────────────────
+    let tarBuffer = null;
+    let detectedStack = null;
+    let resolvedImage = req.body.image;
+    let resolvedInstallCmd = '';
+    let resolvedStartCmd = '';
+    let resolvedPort = null;
+
+    if (projectSource === 'github') {
+      if (!githubUrl) return res.status(400).json({ error: 'githubUrl is required when projectSource is github' });
+      // Parse owner/repo from URL  (e.g. https://github.com/owner/repo or owner/repo)
+      const match = githubUrl.replace(/\.git$/, '').match(/(?:github\.com\/)?([^/]+)\/([^/]+)$/);
+      if (!match) return res.status(400).json({ error: 'Invalid githubUrl — expected https://github.com/owner/repo or owner/repo' });
+      const [, owner, repo] = match;
+      tarBuffer = await _downloadGithubTarball(owner, repo, githubBranch);
+    } else if (projectSource === 'upload') {
+      if (!uploadContent) return res.status(400).json({ error: 'uploadContent is required when projectSource is upload' });
+      const filename = uploadFilename || '';
+      if (filename.endsWith('.zip')) return res.status(400).json({ error: 'Only .tar and .tar.gz archives are supported' });
+      tarBuffer = Buffer.from(uploadContent, 'base64');
+    }
+
+    if (tarBuffer && autoDetect) {
+      const fileList = _peekTarFiles(tarBuffer);
+      detectedStack = _detectStack(fileList);
+      if (!resolvedImage) resolvedImage = detectedStack.image;
+      resolvedInstallCmd = detectedStack.installCmd;
+      resolvedStartCmd = detectedStack.startCmd;
+      resolvedPort = detectedStack.port;
+    }
+
+    // Override with explicit params
+    if (startCommand) resolvedStartCmd = startCommand;
+    if (exposePort) resolvedPort = Number(exposePort);
+
+    // Must have an image at this point
+    if (!resolvedImage) return res.status(400).json({ error: 'image is required' });
 
     const docker = dockerService.getDocker(req.hostId);
 
-    // Ensure sandbox network
+    // Ensure sandbox network (only when isolated)
     if (isolatedNetwork) await _ensureSandboxNetwork(docker);
 
-    const containerName = name || `sandbox-${image.split(':')[0].split('/').pop()}-${Math.random().toString(36).substring(2, 6)}`;
+    const containerName = name || `sandbox-${resolvedImage.split(':')[0].split('/').pop()}-${Math.random().toString(36).substring(2, 6)}`;
     const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 1000).toISOString() : '';
 
     // Pull image if not available
     try {
-      await docker.getImage(image).inspect();
+      await docker.getImage(resolvedImage).inspect();
     } catch {
       await new Promise((resolve, reject) => {
-        docker.pull(image, (err, stream) => {
+        docker.pull(resolvedImage, (err, stream) => {
           if (err) return reject(err);
           docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
         });
       });
     }
 
+    const labels = {
+      'docker-dash.sandbox': 'true',
+      'docker-dash.sandbox.mode': mode,
+      'docker-dash.sandbox.ttl': String(ttl),
+      'docker-dash.sandbox.expires': expiresAt,
+      'docker-dash.sandbox.user': req.user?.username || 'unknown',
+    };
+    if (detectedStack) {
+      labels['docker-dash.sandbox.stack'] = detectedStack.stack;
+      labels['docker-dash.sandbox.port'] = String(resolvedPort || detectedStack.port);
+      labels['docker-dash.sandbox.startCmd'] = resolvedStartCmd;
+    }
+
     const createOpts = {
       name: containerName,
-      Image: image,
-      Labels: {
-        'docker-dash.sandbox': 'true',
-        'docker-dash.sandbox.mode': mode,
-        'docker-dash.sandbox.ttl': String(ttl),
-        'docker-dash.sandbox.expires': expiresAt,
-        'docker-dash.sandbox.user': req.user?.username || 'unknown',
-      },
+      Image: resolvedImage,
+      Labels: labels,
       HostConfig: {
         Memory: memLimit,
         NanoCpus: Math.round(cpuLimit * 1e9),
@@ -421,8 +598,48 @@ router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable
       },
     };
 
+    // Expose detected/requested port
+    if (resolvedPort) {
+      createOpts.ExposedPorts = { [`${resolvedPort}/tcp`]: {} };
+      createOpts.HostConfig.PortBindings = { [`${resolvedPort}/tcp`]: [{ HostPort: '' }] };
+    }
+
     const container = await docker.createContainer(createOpts);
     await container.start();
+
+    // ── Phase 2: inject project files and run setup ──────────────
+    let installLog = '';
+    if (projectSource !== 'none' && tarBuffer) {
+      // Inject tarball (putArchive accepts gzip directly)
+      await container.putArchive(tarBuffer, { path: '/' });
+
+      if (projectSource === 'github') {
+        // GitHub tarballs unpack as owner-repo-sha/ — move contents to /app
+        await _execWithTimeout(container,
+          'mkdir -p /app && dir=$(ls / | grep -E \'^[a-zA-Z].*-[a-f0-9]{7,}$\' | head -1) && [ -n "$dir" ] && mv /"$dir"/* /app/ 2>/dev/null; ls /app/',
+          30000
+        );
+      }
+
+      // Run install command if present
+      if (resolvedInstallCmd) {
+        try {
+          installLog = await _execWithTimeout(container, resolvedInstallCmd, 120000);
+        } catch (err) {
+          installLog = `Install failed: ${err.message}`;
+        }
+      }
+
+      // Start application in background
+      if (resolvedStartCmd) {
+        const exec = await container.exec({
+          Cmd: ['sh', '-c', `nohup ${resolvedStartCmd} > /tmp/app.log 2>&1 &`],
+          AttachStdout: false,
+          AttachStderr: false,
+        });
+        await exec.start({ Detach: true });
+      }
+    }
 
     // Store sandbox metadata
     const db = getDb();
@@ -432,16 +649,25 @@ router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable
         INSERT INTO container_meta (container_name, app_name, category, custom_fields)
         VALUES (?, ?, 'sandbox', ?)
         ON CONFLICT(container_name) DO UPDATE SET category = 'sandbox', custom_fields = json_patch(custom_fields, ?)
-      `).run(containerName, `Sandbox: ${image}`, JSON.stringify(sandboxMeta), JSON.stringify(sandboxMeta));
+      `).run(containerName, `Sandbox: ${resolvedImage}`, JSON.stringify(sandboxMeta), JSON.stringify(sandboxMeta));
     } catch { /* table may not exist in older DBs */ }
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'sandbox_create', targetType: 'container', targetId: container.id,
-      details: { image, mode, ttl, memLimit, cpuLimit, name: containerName }, ip: getClientIp(req),
+      details: { image: resolvedImage, mode, ttl, memLimit, cpuLimit, name: containerName, projectSource, stack: detectedStack?.stack }, ip: getClientIp(req),
     });
 
-    res.status(201).json({ id: container.id, name: containerName, mode, expiresAt });
+    res.status(201).json({
+      id: container.id,
+      name: containerName,
+      mode,
+      expiresAt,
+      stack: detectedStack?.stack || null,
+      port: resolvedPort || null,
+      startCommand: resolvedStartCmd || null,
+      installLog: installLog || null,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

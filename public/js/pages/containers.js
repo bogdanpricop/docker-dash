@@ -4106,9 +4106,43 @@ const ContainersPage = {
       </div>
       <div class="modal-body">
         <p class="text-sm text-muted" style="margin-bottom:16px">Sandbox containers run with resource limits, network isolation, and auto-cleanup. Perfect for testing images risk-free.</p>
+
+        <!-- Project Source -->
+        <div class="form-group" style="margin-bottom:14px">
+          <label style="margin-bottom:8px;display:block">Project Source</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <label class="toggle-label"><input type="radio" name="sb-source" value="none" checked> <strong>None</strong> <span class="text-muted text-sm">— empty container</span></label>
+            <label class="toggle-label"><input type="radio" name="sb-source" value="github"> <i class="fab fa-github" style="margin-right:4px"></i><strong>GitHub Repository</strong></label>
+            <label class="toggle-label"><input type="radio" name="sb-source" value="upload"> <i class="fas fa-upload" style="margin-right:4px"></i><strong>Upload Archive</strong></label>
+          </div>
+        </div>
+
+        <!-- GitHub fields -->
+        <div id="sb-github-fields" style="display:none;margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:var(--radius)">
+          <div class="form-row">
+            <div class="form-group" style="flex:3">
+              <label>Repository URL</label>
+              <input id="sb-github-url" type="text" class="form-control" placeholder="https://github.com/owner/repo">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>Branch</label>
+              <input id="sb-github-branch" type="text" class="form-control" placeholder="main" value="main">
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload fields -->
+        <div id="sb-upload-fields" style="display:none;margin-bottom:14px;padding:12px;background:var(--surface2);border-radius:var(--radius)">
+          <div class="form-group">
+            <label>Archive File <span class="text-muted text-sm">(.tar or .tar.gz)</span></label>
+            <input id="sb-upload-file" type="file" class="form-control" accept=".tar,.tar.gz,.tgz">
+          </div>
+        </div>
+
+        <!-- Image + Name -->
         <div class="form-row">
           <div class="form-group" style="flex:2">
-            <label>Image</label>
+            <label>Image <span id="sb-image-hint" class="text-muted text-sm"></span></label>
             <input id="sb-image" type="text" class="form-control" placeholder="nginx:alpine" value="${Utils.escapeHtml(prefillImage)}">
           </div>
           <div class="form-group">
@@ -4116,6 +4150,8 @@ const ContainersPage = {
             <input id="sb-name" type="text" class="form-control" placeholder="auto-generated">
           </div>
         </div>
+
+        <!-- Mode -->
         <div class="form-group" style="margin-bottom:12px">
           <label>Mode</label>
           <div style="display:flex;gap:12px">
@@ -4123,6 +4159,8 @@ const ContainersPage = {
             <label class="toggle-label"><input type="radio" name="sb-mode" value="persistent"> <strong>Persistent</strong> <span class="text-muted text-sm">— survives stop, isolated</span></label>
           </div>
         </div>
+
+        <!-- TTL / RAM / CPU -->
         <div class="form-row">
           <div class="form-group">
             <label>TTL (auto-kill)</label>
@@ -4152,44 +4190,223 @@ const ContainersPage = {
             </select>
           </div>
         </div>
-        <div style="display:flex;gap:16px;margin-top:8px">
+
+        <!-- Advanced overrides (shown when project source active) -->
+        <div id="sb-advanced-fields" style="display:none;margin-bottom:12px">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Start Command <span class="text-muted text-sm">(override auto-detect)</span></label>
+              <input id="sb-start-cmd" type="text" class="form-control" placeholder="auto-detected">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>Expose Port <span class="text-muted text-sm">(override)</span></label>
+              <input id="sb-expose-port" type="number" class="form-control" placeholder="auto-detected" min="1" max="65535">
+            </div>
+          </div>
+        </div>
+
+        <!-- Checkboxes -->
+        <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
           <label class="toggle-label"><input type="checkbox" id="sb-terminal" checked> Open terminal after launch</label>
           <label class="toggle-label"><input type="checkbox" id="sb-isolated" checked> Isolated network</label>
+          <label class="toggle-label" id="sb-autodetect-wrap" style="display:none"><input type="checkbox" id="sb-autodetect" checked> Auto-detect &amp; run</label>
         </div>
+
+        <!-- Security notice -->
         <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius);font-size:11px;color:var(--text-dim)">
           <i class="fas fa-shield-alt" style="margin-right:6px;color:var(--yellow)"></i>
           Sandbox containers run with <code>no-new-privileges</code>, resource limits, no Docker socket access, and <code>restart: no</code>.
+        </div>
+
+        <!-- Progress section (hidden until launch with project source) -->
+        <div id="sb-progress" style="display:none;margin-top:16px;padding:14px;background:var(--surface2);border-radius:var(--radius)">
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em">Launch Progress</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="sb-step" id="sb-step-1" style="display:flex;align-items:center;gap:8px;font-size:13px">
+              <span class="sb-step-icon" style="width:16px;text-align:center;color:var(--text-dim)">⟳</span>
+              <span>Pulling image...</span>
+            </div>
+            <div class="sb-step" id="sb-step-2" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim)">
+              <span class="sb-step-icon" style="width:16px;text-align:center">⟳</span>
+              <span id="sb-step-2-label">Downloading project...</span>
+            </div>
+            <div class="sb-step" id="sb-step-3" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim)">
+              <span class="sb-step-icon" style="width:16px;text-align:center">⟳</span>
+              <span>Detecting stack...</span>
+            </div>
+            <div class="sb-step" id="sb-step-4" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim)">
+              <span class="sb-step-icon" style="width:16px;text-align:center">⟳</span>
+              <span>Installing dependencies...</span>
+            </div>
+            <div class="sb-step" id="sb-step-5" style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim)">
+              <span class="sb-step-icon" style="width:16px;text-align:center">⟳</span>
+              <span>Starting application...</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="sb-close-btn">Cancel</button>
         <button class="btn btn-warning" id="sb-launch"><i class="fas fa-flask"></i> Launch Sandbox</button>
       </div>
-    `, { width: '650px' });
+    `, { width: '720px' });
 
     const mc = Modal._content;
     mc.querySelector('#sb-close-x').addEventListener('click', () => Modal.close());
     mc.querySelector('#sb-close-btn').addEventListener('click', () => Modal.close());
 
-    mc.querySelector('#sb-launch').addEventListener('click', async () => {
-      const image = mc.querySelector('#sb-image').value.trim();
-      if (!image) { Toast.warning('Enter an image name'); return; }
+    // ── Project source radio toggle logic ──────────────────────────────────
+    const githubFields  = mc.querySelector('#sb-github-fields');
+    const uploadFields  = mc.querySelector('#sb-upload-fields');
+    const advancedFields = mc.querySelector('#sb-advanced-fields');
+    const autodetectWrap = mc.querySelector('#sb-autodetect-wrap');
+    const imageHint     = mc.querySelector('#sb-image-hint');
+    const isolatedCb    = mc.querySelector('#sb-isolated');
+    const imageInput    = mc.querySelector('#sb-image');
 
-      const mode = mc.querySelector('input[name="sb-mode"]:checked')?.value || 'ephemeral';
-      const ttl = parseInt(mc.querySelector('#sb-ttl').value) || 0;
-      const memLimit = parseInt(mc.querySelector('#sb-mem').value);
-      const cpuLimit = parseFloat(mc.querySelector('#sb-cpu').value);
-      const openTerminal = mc.querySelector('#sb-terminal').checked;
+    const onSourceChange = () => {
+      const source = mc.querySelector('input[name="sb-source"]:checked')?.value || 'none';
+      githubFields.style.display  = source === 'github' ? '' : 'none';
+      uploadFields.style.display  = source === 'upload' ? '' : 'none';
+      advancedFields.style.display = source !== 'none' ? '' : 'none';
+      autodetectWrap.style.display = source !== 'none' ? '' : 'none';
+
+      if (source !== 'none') {
+        imageHint.textContent = '(optional — auto-detect from project)';
+        imageInput.placeholder = 'auto-detected';
+        // Uncheck isolated network so registries are reachable
+        isolatedCb.checked = false;
+        // Update step 2 label
+        const step2Label = mc.querySelector('#sb-step-2-label');
+        if (step2Label) step2Label.textContent = source === 'github' ? 'Downloading project...' : 'Uploading archive...';
+      } else {
+        imageHint.textContent = '';
+        imageInput.placeholder = 'nginx:alpine';
+        isolatedCb.checked = true;
+      }
+    };
+
+    mc.querySelectorAll('input[name="sb-source"]').forEach(r => r.addEventListener('change', onSourceChange));
+
+    // ── Launch handler ─────────────────────────────────────────────────────
+    mc.querySelector('#sb-launch').addEventListener('click', async () => {
+      const source = mc.querySelector('input[name="sb-source"]:checked')?.value || 'none';
+      const image  = mc.querySelector('#sb-image').value.trim();
+
+      if (source === 'none' && !image) { Toast.warning('Enter an image name'); return; }
+      if (source === 'github') {
+        const url = mc.querySelector('#sb-github-url').value.trim();
+        if (!url) { Toast.warning('Enter a GitHub repository URL'); return; }
+      }
+      if (source === 'upload') {
+        const fileInput = mc.querySelector('#sb-upload-file');
+        if (!fileInput.files || !fileInput.files.length) { Toast.warning('Select an archive file to upload'); return; }
+      }
+
+      const mode           = mc.querySelector('input[name="sb-mode"]:checked')?.value || 'ephemeral';
+      const ttl            = parseInt(mc.querySelector('#sb-ttl').value) || 0;
+      const memLimit       = parseInt(mc.querySelector('#sb-mem').value);
+      const cpuLimit       = parseFloat(mc.querySelector('#sb-cpu').value);
+      const openTerminal   = mc.querySelector('#sb-terminal').checked;
       const isolatedNetwork = mc.querySelector('#sb-isolated').checked;
-      const name = mc.querySelector('#sb-name').value.trim() || undefined;
+      const name           = mc.querySelector('#sb-name').value.trim() || undefined;
+      const autoDetect     = source !== 'none' ? mc.querySelector('#sb-autodetect').checked : undefined;
+      const startCommand   = mc.querySelector('#sb-start-cmd')?.value.trim() || undefined;
+      const exposePortRaw  = mc.querySelector('#sb-expose-port')?.value.trim();
+      const exposePort     = exposePortRaw ? parseInt(exposePortRaw) : undefined;
 
       const btn = mc.querySelector('#sb-launch');
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Launching...';
 
+      // Build payload
+      const payload = { image: image || undefined, mode, ttl, memLimit, cpuLimit, name, openTerminal, isolatedNetwork, projectSource: source };
+      if (autoDetect !== undefined) payload.autoDetect = autoDetect;
+      if (startCommand) payload.startCommand = startCommand;
+      if (exposePort)   payload.exposePort   = exposePort;
+
+      if (source === 'github') {
+        payload.githubUrl    = mc.querySelector('#sb-github-url').value.trim();
+        payload.githubBranch = mc.querySelector('#sb-github-branch').value.trim() || 'main';
+      }
+
+      // Show progress section when using a project source
+      const progressEl = mc.querySelector('#sb-progress');
+      const formBody   = mc.querySelector('.modal-body');
+
+      const setStepState = (stepNum, state) => {
+        const stepEl = mc.querySelector(`#sb-step-${stepNum}`);
+        if (!stepEl) return;
+        const icon = stepEl.querySelector('.sb-step-icon');
+        if (state === 'pending') {
+          icon.textContent = '⟳';
+          stepEl.style.color = 'var(--text-dim)';
+        } else if (state === 'active') {
+          icon.textContent = '⟳';
+          icon.style.color = 'var(--yellow)';
+          stepEl.style.color = '';
+        } else if (state === 'done') {
+          icon.textContent = '✓';
+          icon.style.color = 'var(--green)';
+          stepEl.style.color = '';
+        } else if (state === 'error') {
+          icon.textContent = '✗';
+          icon.style.color = 'var(--red)';
+          stepEl.style.color = 'var(--red)';
+        }
+      };
+
+      if (source !== 'none') {
+        // Hide form rows, show progress
+        Array.from(formBody.children).forEach(el => {
+          if (el.id !== 'sb-progress') el.style.display = 'none';
+        });
+        progressEl.style.display = '';
+        // Mark all steps as active (indeterminate — we get result in one shot)
+        for (let i = 1; i <= 5; i++) setStepState(i, 'active');
+      }
+
+      // Handle file upload: read as base64
+      if (source === 'upload') {
+        const fileInput = mc.querySelector('#sb-upload-file');
+        const file = fileInput.files[0];
+        payload.uploadFilename = file.name;
+        try {
+          payload.uploadContent = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              // result is data:<mime>;base64,<data> — strip prefix
+              const b64 = reader.result.split(',')[1];
+              resolve(b64);
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+          });
+        } catch (readErr) {
+          Toast.error('Failed to read archive: ' + readErr.message);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-flask"></i> Launch Sandbox';
+          return;
+        }
+      }
+
       try {
-        const result = await Api.createSandbox({ image, mode, ttl, memLimit, cpuLimit, name, openTerminal, isolatedNetwork });
-        Toast.success(`Sandbox "${result.name}" launched`);
+        const result = await Api.createSandbox(payload);
+
+        if (source !== 'none') {
+          for (let i = 1; i <= 5; i++) setStepState(i, 'done');
+        }
+
+        const portMsg = result.port
+          ? ` — <a href="http://${window.location.hostname}:${result.port}" target="_blank" style="color:var(--accent)">Open http://${window.location.hostname}:${result.port}</a>`
+          : '';
+
+        if (result.port) {
+          Toast.success(`App running on port ${result.port} — Open http://${window.location.hostname}:${result.port}`);
+        } else {
+          Toast.success(`Sandbox "${result.name}" launched`);
+        }
+
         Modal.close();
         await this._loadList();
 
@@ -4200,6 +4417,9 @@ const ContainersPage = {
           }, 400);
         }
       } catch (err) {
+        if (source !== 'none') {
+          for (let i = 1; i <= 5; i++) setStepState(i, 'error');
+        }
         Toast.error('Sandbox launch failed: ' + err.message);
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-flask"></i> Launch Sandbox';

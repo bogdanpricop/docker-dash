@@ -10,6 +10,21 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.5.1',
+      date: '2026-04-05',
+      title: 'Sandbox Project Source — GitHub Clone + Upload + Auto-detect',
+      changes: [
+        { type: 'feature', text: 'Sandbox Project Source — paste a GitHub repo URL or upload .tar/.tar.gz; Docker Dash downloads the code, auto-detects the tech stack, installs dependencies, and starts the app in an isolated sandbox' },
+        { type: 'feature', text: 'Tech stack auto-detection — Node.js, Python, Go, Ruby, and static HTML recognized automatically from manifest files; appropriate base image selected (e.g. node:20-alpine for package.json)' },
+        { type: 'feature', text: 'Auto-dependency install — npm install --ignore-scripts (Node), pip install (Python), go mod download (Go), bundle install (Ruby) with 120-second timeout' },
+        { type: 'feature', text: 'Auto-start command detection — reads scripts.start from package.json; falls back to language defaults (python app.py, go run ., etc.)' },
+        { type: 'feature', text: 'Auto-port detection + expose — detects default port per stack (3000/5000/8080) and auto-exposes it; clickable "Open http://host:port" link on success' },
+        { type: 'feature', text: 'Progress indicator in sandbox modal — 5-step visual progress: pull image → download/upload → detect stack → install deps → start app' },
+        { type: 'feature', text: 'Advanced overrides — optional start command and port override fields for manual control' },
+        { type: 'security', text: 'npm install runs with --ignore-scripts to block postinstall supply-chain attacks; builds have 120s timeout; GitHub tarball API used instead of git clone (no git needed in container)' },
+      ],
+    },
+    {
       version: '5.5.0',
       date: '2026-04-05',
       title: 'Sandbox Mode — Ephemeral & Isolated Containers',
