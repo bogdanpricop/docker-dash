@@ -1529,10 +1529,32 @@ const App = {
       { icon: 'fa-history', label: 'Event Timeline', action: () => this.navigate('/timeline'), section: 'nav' },
       { icon: 'fa-file-alt', label: 'Log Explorer', action: () => this.navigate('/logs'), section: 'nav' },
       { icon: 'fa-globe', label: 'Multi-Host Overview', action: () => this.navigate('/multi-host'), section: 'nav' },
-      { icon: 'fa-exchange-alt', label: 'Docker Run → Compose Converter', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
-      { icon: 'fa-tags', label: 'Traefik Label Generator', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
-      { icon: 'fa-anchor', label: 'Caddy Label Generator', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
-      { icon: 'fa-stethoscope', label: 'Container Diagnostics / Doctor', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Docker tools
+      { icon: 'fa-terminal', label: 'docker run → Compose', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-tags', label: 'Reverse Proxy Labels (Traefik/Caddy)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-robot', label: 'AI Log Analysis', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Security tools
+      { icon: 'fa-key', label: 'Password Generator', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-shield-alt', label: 'Password Strength Checker', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-hashtag', label: 'Hash Generator (SHA-256)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Network tools
+      { icon: 'fa-network-wired', label: 'IP/Subnet Calculator', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-link', label: 'URL Encoder/Decoder', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Converters
+      { icon: 'fa-exchange-alt', label: 'Base64 Encode/Decode', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-code', label: 'JSON Formatter', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-clock', label: 'Epoch/Date Converter', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-hdd', label: 'Storage Unit Converter', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Text tools
+      { icon: 'fa-asterisk', label: 'Regex Tester', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-columns', label: 'Text Diff', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-paragraph', label: 'Lorem Ipsum Generator', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Reference
+      { icon: 'fa-globe', label: 'HTTP Status Codes Reference', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-server', label: 'Port Reference', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      // Converters extra
+      { icon: 'fa-file-code', label: 'HTML → Markdown', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
+      { icon: 'fa-file-alt', label: 'Markdown → HTML', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
       { icon: 'fa-sync-alt', label: i18n.t('common.refresh'), action: () => { if (this._currentPage?.destroy) this._currentPage.destroy(); this._route(); }, shortcut: 'R', section: 'action' },
       { icon: 'fa-broom', label: 'System Prune', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="prune"]')?.click(), 300); }, section: 'action' },
       { icon: 'fa-download', label: i18n.t('pages.system.checkUpdates'), action: () => { this.navigate('/system'); }, section: 'action' },
