@@ -60,10 +60,13 @@ const Modal = {
   },
 
   // Convenience: confirmation dialog
-  confirm(message, { title, confirmText, danger = false } = {}) {
+  confirm(message, { title, confirmText, danger = false, typeToConfirm } = {}) {
     title = title || i18n.t('common.confirm');
     confirmText = confirmText || i18n.t('common.confirm');
     return new Promise((resolve) => {
+      const typeBlock = typeToConfirm
+        ? `<div style="margin-top:12px"><p class="text-sm" style="color:var(--yellow)">Type <strong>${Utils.escapeHtml(typeToConfirm)}</strong> to confirm:</p><input type="text" class="form-control" id="modal-type-confirm" autocomplete="off" style="margin-top:6px"></div>`
+        : '';
       const html = `
         <div class="modal-header">
           <h3>${Utils.escapeHtml(title)}</h3>
@@ -73,10 +76,11 @@ const Modal = {
         </div>
         <div class="modal-body">
           <p>${Utils.escapeHtml(message)}</p>
+          ${typeBlock}
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
-          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-ok">
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-ok" ${typeToConfirm ? 'disabled' : ''}>
             ${Utils.escapeHtml(confirmText)}
           </button>
         </div>
@@ -86,7 +90,15 @@ const Modal = {
       const ok = () => { this.close(); resolve(true); };
       const cancel = () => { this.close(); resolve(false); };
 
-      this._content.querySelector('#modal-ok').addEventListener('click', ok);
+      const okBtn = this._content.querySelector('#modal-ok');
+      if (typeToConfirm) {
+        const input = this._content.querySelector('#modal-type-confirm');
+        input.addEventListener('input', () => {
+          okBtn.disabled = input.value !== typeToConfirm;
+        });
+      }
+
+      okBtn.addEventListener('click', ok);
       this._content.querySelector('#modal-cancel').addEventListener('click', cancel);
       this._content.querySelector('#modal-x').addEventListener('click', cancel);
       this._onClose = () => resolve(false);

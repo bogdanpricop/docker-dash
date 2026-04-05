@@ -207,6 +207,74 @@ router.post('/database/cleanup-aggressive', requireAuth, requireRole('admin'), w
   }
 });
 
+// GET /database/diagnostics — download full system diagnostic bundle
+router.get('/database/diagnostics', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const db = getDb();
+
+    const [info, containers, images, volumes, networks] = await Promise.all([
+      docker.info().catch(() => ({})),
+      dockerService.listContainers(req.hostId).catch(() => []),
+      docker.listImages().catch(() => []),
+      docker.listVolumes().then(r => r.Volumes || []).catch(() => []),
+      docker.listNetworks().catch(() => []),
+    ]);
+
+    // Collect recent logs per container (last 20 lines each)
+    const containerLogs = {};
+    for (const c of containers.slice(0, 20)) {
+      try {
+        const id = c.id || c.Id;
+        const container = docker.getContainer(id);
+        const logs = await container.logs({ stdout: true, stderr: true, tail: 20, timestamps: true });
+        containerLogs[c.name || id] = logs.toString('utf8').replace(/[\x00-\x08]/g, '').trim().split('\n');
+      } catch { /* skip */ }
+    }
+
+    // DB stats
+    const dbStats = {};
+    const tables = ['container_stats', 'audit_log', 'docker_events', 'alert_events', 'scan_results', 'notifications', 'users'];
+    for (const t of tables) {
+      try { dbStats[t] = db.prepare(`SELECT COUNT(*) AS cnt FROM ${t}`).get()?.cnt || 0; } catch { }
+    }
+
+    const bundle = {
+      generated: new Date().toISOString(),
+      version: require('../version'),
+      dockerInfo: {
+        serverVersion: info.ServerVersion,
+        os: info.OperatingSystem,
+        kernel: info.KernelVersion,
+        cpus: info.NCPU,
+        memTotal: info.MemTotal,
+        containers: info.Containers,
+        images: info.Images,
+        storageDriver: info.Driver,
+      },
+      containers: containers.map(c => ({
+        name: c.name, image: c.image, state: c.state, status: c.status,
+        created: c.created, stack: c.stack,
+      })),
+      images: images.slice(0, 50).map(i => ({
+        repoTags: i.RepoTags, size: i.Size, created: i.Created,
+      })),
+      volumes: volumes.length,
+      networks: networks.map(n => ({ name: n.Name, driver: n.Driver })),
+      recentLogs: containerLogs,
+      databaseStats: dbStats,
+      memoryUsage: process.memoryUsage(),
+      uptime: process.uptime(),
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="docker-dash-diagnostics-${new Date().toISOString().slice(0,10)}.json"`);
+    res.json(bundle);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/database/vacuum', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const db = getDb();

@@ -471,6 +471,64 @@ router.get('/search', requireAuth, async (req, res) => {
   }
 });
 
+// ─── Cluster Health Score ────────────────────────────────────
+
+router.get('/cluster-health', requireAuth, async (req, res) => {
+  try {
+    const hostId = req.query.hostId ? parseInt(req.query.hostId) : 0;
+    const containers = await dockerService.listContainers(hostId).catch(() => []);
+    const overview = statsService.getOverview(hostId);
+
+    const total = containers.length;
+    const running = containers.filter(c => c.state === 'running').length;
+    const unhealthy = containers.filter(c => /unhealthy/i.test(c.status || '')).length;
+    const restarting = containers.filter(c => /restarting/i.test(c.state || c.status || '')).length;
+    const exited = containers.filter(c => c.state === 'exited').length;
+
+    const cpuTotal = overview?.totals?.cpu || 0;
+    const memUsed = overview?.totals?.memory || 0;
+    const memLimit = overview?.totals?.memoryLimit || 1;
+    const memPct = memLimit > 0 ? (memUsed / memLimit) * 100 : 0;
+
+    // Scoring (100 = perfect)
+    let score = 100;
+
+    // Container health (max -40 points)
+    if (total > 0) {
+      const runRatio = running / total;
+      score -= Math.round((1 - runRatio) * 25); // -25 if all stopped
+    }
+    score -= unhealthy * 5;  // -5 per unhealthy container
+    score -= restarting * 3; // -3 per restarting container
+
+    // Resource pressure (max -30 points)
+    if (cpuTotal > 80) score -= Math.round((cpuTotal - 80) * 0.5);
+    if (memPct > 80) score -= Math.round((memPct - 80) * 0.5);
+
+    // Stopped containers penalty (max -10 points)
+    if (total > 0) score -= Math.min(10, Math.round((exited / total) * 10));
+
+    score = Math.max(0, Math.min(100, score));
+    const status = score >= 80 ? 'healthy' : score >= 50 ? 'degraded' : 'critical';
+
+    res.json({
+      score,
+      status,
+      breakdown: {
+        containersRunning: running,
+        containersTotal: total,
+        unhealthy,
+        restarting,
+        exited,
+        cpuUsage: Math.round(cpuTotal * 10) / 10,
+        memoryUsage: Math.round(memPct * 10) / 10,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── System Overview (complete infrastructure snapshot) ──────
 
 router.get('/overview', requireAuth, async (req, res) => {

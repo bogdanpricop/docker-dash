@@ -63,6 +63,21 @@ const DashboardPage = {
             <div class="stat-label">${i18n.t('pages.dashboard.volumes')}</div>
           </div>
         </div>
+        <!-- Cluster Health Score -->
+        <div class="stat-card" id="stat-health-card" style="flex-direction:row;align-items:center;gap:12px;min-width:200px">
+          <div style="position:relative;width:64px;height:64px;flex-shrink:0">
+            <svg id="health-gauge-svg" viewBox="0 0 36 36" style="width:100%;height:100%;transform:rotate(-90deg)">
+              <circle cx="18" cy="18" r="15.915" fill="none" stroke="var(--surface3)" stroke-width="3"/>
+              <circle id="health-gauge-arc" cx="18" cy="18" r="15.915" fill="none" stroke="var(--text-dim)" stroke-width="3" stroke-dasharray="0 100" stroke-linecap="round" style="transition:stroke-dasharray 0.8s ease,stroke 0.5s ease"/>
+            </svg>
+            <div id="health-score-text" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--text-dim)">—</div>
+          </div>
+          <div class="stat-body">
+            <div class="stat-label" style="margin-bottom:2px"><i class="fas fa-heartbeat" style="margin-right:4px;color:var(--accent)"></i>Cluster Health</div>
+            <div id="health-status-text" style="font-size:12px;color:var(--text-dim)">Loading...</div>
+            <div id="health-detail-text" style="font-size:10px;color:var(--text-dim);margin-top:2px"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Host Info -->
@@ -155,12 +170,13 @@ const DashboardPage = {
 
   async _load() {
     try {
-      const [containers, images, volumes, overview, sysInfo] = await Promise.all([
+      const [containers, images, volumes, overview, sysInfo, health] = await Promise.all([
         Api.getContainers(true),
         Api.getImages(),
         Api.getVolumes(),
         Api.getStatsOverview().catch(() => null),
         Api.getSystemInfo().catch(() => null),
+        Api.getClusterHealth().catch(() => null),
       ]);
 
       // Backend returns lowercase keys: state, not State
@@ -179,6 +195,7 @@ const DashboardPage = {
       this._renderMemoryChart(overview);
       this._renderEvents();
       this._renderHostInfo(sysInfo);
+      this._renderClusterHealth(health);
 
       // Update "last updated" indicator
       const updEl = document.getElementById('dash-last-updated');
@@ -352,6 +369,45 @@ const DashboardPage = {
       <span class="host-info-sep">|</span>
       <span class="host-info-item text-muted"><i class="fas fa-linux"></i> ${Utils.escapeHtml(info.os || '—')}</span>
     `;
+  },
+
+  _renderClusterHealth(health) {
+    const arc = document.getElementById('health-gauge-arc');
+    const scoreText = document.getElementById('health-score-text');
+    const statusText = document.getElementById('health-status-text');
+    const detailText = document.getElementById('health-detail-text');
+    if (!arc || !scoreText) return;
+
+    if (!health) {
+      scoreText.textContent = '—';
+      if (statusText) statusText.textContent = 'Unavailable';
+      return;
+    }
+
+    const score = health.score ?? 0;
+    const status = health.status || 'unknown';
+    const b = health.breakdown || {};
+
+    const color = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+    arc.setAttribute('stroke-dasharray', `${score} 100`);
+    arc.setAttribute('stroke', color);
+    scoreText.textContent = score;
+    scoreText.style.color = color;
+
+    const statusLabel = status === 'healthy' ? 'Healthy' : status === 'degraded' ? 'Degraded' : 'Critical';
+    if (statusText) {
+      statusText.textContent = statusLabel;
+      statusText.style.color = color;
+    }
+    if (detailText) {
+      const parts = [];
+      if (b.containersTotal > 0) parts.push(`${b.containersRunning}/${b.containersTotal} running`);
+      if (b.cpuUsage !== undefined) parts.push(`CPU ${b.cpuUsage}%`);
+      if (b.memoryUsage !== undefined) parts.push(`RAM ${b.memoryUsage}%`);
+      if (b.unhealthy > 0) parts.push(`${b.unhealthy} unhealthy`);
+      detailText.textContent = parts.join(' · ');
+    }
   },
 
   async _renderEvents() {

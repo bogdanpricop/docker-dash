@@ -572,10 +572,62 @@ DB_PASS=secret"></textarea>
                 </button>
                 <div id="db-vacuum-result" style="margin-top:8px"></div>
               </div>
+              <div class="card" style="flex:1;min-width:260px;padding:20px">
+                <h4><i class="fas fa-file-archive" style="color:var(--accent);margin-right:8px"></i>Diagnostic Bundle</h4>
+                <p class="text-muted text-sm" style="margin:8px 0">Download a JSON file with Docker info, container states, recent logs, database stats, and system health. Useful for troubleshooting or support.</p>
+                <button class="btn btn-sm btn-secondary" id="db-diagnostics-btn">
+                  <i class="fas fa-download"></i> Download Diagnostics
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        <!-- Active Sessions -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fas fa-users" style="margin-right:8px"></i>Active Sessions</h3></div>
+          <div class="card-body" id="sessions-panel">
+            <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading sessions...</div>
+          </div>
+        </div>
       `;
+
+      // Load sessions
+      try {
+        const sessions = await Api.getSessions();
+        const sessionsEl = el.querySelector('#sessions-panel');
+        if (sessionsEl && sessions.length > 0) {
+          sessionsEl.innerHTML = `
+            <table class="data-table compact">
+              <thead><tr><th>User</th><th>IP</th><th>Started</th><th>Browser / Client</th><th></th></tr></thead>
+              <tbody>
+                ${sessions.map(s => `
+                  <tr>
+                    <td><i class="fas fa-user-circle" style="margin-right:6px;color:var(--accent)"></i>${Utils.escapeHtml(s.username)}${s.isCurrent ? ' <span class="badge badge-info" style="font-size:9px">you</span>' : ''}</td>
+                    <td class="mono text-sm">${Utils.escapeHtml(s.ip || '—')}</td>
+                    <td class="text-sm text-muted">${s.createdAt ? Utils.timeAgo(s.createdAt) : '—'}</td>
+                    <td class="text-sm text-muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${Utils.escapeHtml(s.userAgent || '')}">${Utils.escapeHtml((s.userAgent || '—').substring(0, 60))}${(s.userAgent || '').length > 60 ? '…' : ''}</td>
+                    <td>${!s.isCurrent ? `<button class="action-btn danger" data-terminate-session="${s.id}" title="Terminate session"><i class="fas fa-times"></i></button>` : ''}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `;
+          sessionsEl.querySelectorAll('[data-terminate-session]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const ok = await Modal.confirm('Terminate this session? The user will be logged out.', { danger: true, confirmText: 'Terminate' });
+              if (!ok) return;
+              try {
+                await Api.terminateSession(btn.dataset.terminateSession);
+                Toast.success('Session terminated');
+                btn.closest('tr').remove();
+              } catch (err) { Toast.error(err.message); }
+            });
+          });
+        } else if (sessionsEl) {
+          sessionsEl.innerHTML = '<div class="text-muted text-sm">No active sessions found.</div>';
+        }
+      } catch { /* sessions not available */ }
 
       // Backup button
       el.querySelector('#db-backup-now')?.addEventListener('click', async () => {
@@ -693,6 +745,12 @@ DB_PASS=secret"></textarea>
         }
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-compress-arrows-alt"></i> Run Vacuum Now';
+      });
+
+      // Diagnostics download button
+      el.querySelector('#db-diagnostics-btn')?.addEventListener('click', () => {
+        window.open('/api/system/database/diagnostics', '_blank');
+        Toast.success('Generating diagnostic bundle...');
       });
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;

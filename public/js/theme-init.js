@@ -21,3 +21,7 @@
     document.documentElement.setAttribute('data-uimode', 'enterprise');
   }
 })();
+(function() {
+  var d = localStorage.getItem('dd-density');
+  if (d && d !== 'comfortable') document.documentElement.setAttribute('data-density', d);
+})();

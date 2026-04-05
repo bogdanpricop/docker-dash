@@ -10,6 +10,23 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.8.0',
+      date: '2026-04-05',
+      title: 'Enterprise Wave 2 — 9 Features (Log Explorer, Health Score, Sessions, Search)',
+      changes: [
+        { type: 'feature', text: 'Centralized Log Explorer — new page aggregating logs from all containers; severity filtering, regex search, multi-container color-coded view, Ctrl+Click multi-select, TSV download' },
+        { type: 'feature', text: 'Cluster Health Score — SVG gauge on dashboard (0-100); scores container health, CPU/RAM pressure, stopped containers ratio' },
+        { type: 'feature', text: 'Global Search enhanced — Ctrl+K now searches containers, images, volumes, networks live; results grouped by type with colored icons' },
+        { type: 'feature', text: 'Session Management — System page shows active sessions; admins can terminate others; shows IP, user agent, login time' },
+        { type: 'feature', text: 'Support Bundle — one-click diagnostic JSON download with Docker info, container states, recent logs, DB stats, memory/uptime' },
+        { type: 'feature', text: 'Chart export — PNG and CSV export buttons on container stats charts (CPU, Memory, Network, Block I/O)' },
+        { type: 'feature', text: 'View Density toggle — 3 levels (Comfortable/Compact/Dense) in sidebar footer; saved per user' },
+        { type: 'feature', text: 'Saved Filter Presets — quick filter pills above containers list: All, Running, Stopped, Unhealthy, Sandbox' },
+        { type: 'feature', text: 'Deep Cleanup (24h) — aggressive cleanup button in System; deletes ALL data older than 24 hours with detailed confirmation dialog' },
+        { type: 'security', text: 'Type-to-confirm for running container removal — must type container name to confirm deletion' },
+      ],
+    },
+    {
       version: '5.7.0',
       date: '2026-04-05',
       title: 'Enterprise UI Mode — ESXi-Inspired Switchable Interface',

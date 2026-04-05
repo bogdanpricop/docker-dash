@@ -4,7 +4,7 @@ const { Router } = require('express');
 const authService = require('../services/auth');
 const auditService = require('../services/audit');
 const emailService = require('../services/email');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { rateLimit } = require('../middleware/rateLimit');
 const config = require('../config');
 const { getClientIp } = require('../utils/helpers');
@@ -671,6 +671,51 @@ router.get('/oidc/callback', async (req, res) => {
     res.redirect('/');
   } catch (err) {
     res.status(500).send('OIDC callback error: ' + err.message);
+  }
+});
+
+// ─── Session Management (Admin only) ─────────────────────────────────────────
+
+router.get('/sessions', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const db = getDb();
+    const sessions = db.prepare(`
+      SELECT s.id, s.user_id, u.username, s.token_hash, s.created_at, s.ip, s.user_agent
+      FROM sessions s
+      LEFT JOIN users u ON s.user_id = u.id
+      WHERE s.is_valid = 1 AND s.expires_at > datetime('now')
+      ORDER BY s.created_at DESC
+    `).all();
+
+    const currentTokenHash = sha256(req.authToken);
+    res.json(sessions.map(s => ({
+      id: s.id,
+      userId: s.user_id,
+      username: s.username || 'unknown',
+      createdAt: s.created_at,
+      lastActive: s.created_at,
+      ip: s.ip,
+      userAgent: s.user_agent,
+      isCurrent: s.token_hash === currentTokenHash,
+    })));
+  } catch (err) {
+    // Sessions table may not exist or have different schema
+    res.json([]);
+  }
+});
+
+router.delete('/sessions/:id', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const db = getDb();
+    db.prepare('UPDATE sessions SET is_valid = 0 WHERE id = ?').run(parseInt(req.params.id));
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'session_terminate', targetType: 'session', targetId: String(req.params.id),
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

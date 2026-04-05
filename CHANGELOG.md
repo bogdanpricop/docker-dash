@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.8.0] - 2026-04-05
+
+### Added — Enterprise Wave 2 (9 features)
+- **Support Bundle / Diagnostic Export** — one-click JSON download with Docker info, container states, recent logs (20 lines/container), DB stats, memory/uptime
+- **Type-to-confirm for destructive ops** — running container removal requires typing the container name; Modal.confirm() now supports `typeToConfirm` option
+- **View Density toggle** — 3 levels (Comfortable / Compact / Dense) in sidebar footer; per-user preference synced to server
+- **Global Search enhanced** — Ctrl+K command palette now also searches containers, images, volumes, networks live via API; results grouped by type with icons
+- **Chart export (PNG/CSV)** — export buttons on each container stats chart (CPU, Memory, Network, Block I/O)
+- **Cluster Health Score** — dashboard gauge (0-100) with SVG ring chart; scores container health, CPU/RAM pressure, stopped ratio
+- **Session Management** — System page shows active sessions with user, IP, start time, user agent; admins can terminate other sessions
+- **Saved Filter Presets** — quick filter pills above containers list: All / Running / Stopped / Unhealthy / Sandbox
+- **Centralized Log Explorer** — new page aggregating logs from all running containers; severity filtering (error/warn/info/debug), regex search, multi-container color-coded interleaved view, Ctrl+Click multi-select, TSV download
+
+### Backend
+- `GET /system/database/diagnostics` — diagnostic bundle download
+- `POST /system/database/cleanup-aggressive` — deep cleanup (keep last N hours only)
+- `GET /cluster-health` — composite health score with breakdown
+- `GET /auth/sessions` + `DELETE /auth/sessions/:id` — session list + terminate
+- `GET /containers/logs/multi` — cross-container log aggregation with severity detection
+
 ## [5.7.0] - 2026-04-05
 
 ### Added

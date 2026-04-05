@@ -35,6 +35,7 @@ const App = {
     swarm:      () => SwarmPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
+    'logs':           () => LogsPage,
   },
 
   async init() {
@@ -382,6 +383,9 @@ const App = {
     // Setup UI mode toggle (standard / enterprise)
     this._initUiModeToggle();
 
+    // Setup density toggle (comfortable / compact / dense)
+    this._initDensityToggle();
+
     // Initialize task bar (Enterprise mode only)
     TaskBar.init();
 
@@ -534,6 +538,38 @@ const App = {
     icon.title = this._uiMode === 'enterprise' ? 'Switch to Standard mode' : 'Switch to Enterprise mode';
   },
 
+  _initDensityToggle() {
+    const btn = document.getElementById('density-toggle');
+    if (!btn) return;
+
+    const densities = ['comfortable', 'compact', 'dense'];
+    const icons = { comfortable: 'fa-align-justify', compact: 'fa-bars', dense: 'fa-grip-lines' };
+    const labels = { comfortable: 'Comfortable', compact: 'Compact', dense: 'Dense' };
+
+    let current = localStorage.getItem('dd-density') || 'comfortable';
+    if (current !== 'comfortable') document.documentElement.setAttribute('data-density', current);
+    this._updateDensityIcon(btn, current, icons, labels);
+
+    btn.addEventListener('click', () => {
+      const idx = (densities.indexOf(current) + 1) % densities.length;
+      current = densities[idx];
+      if (current === 'comfortable') {
+        document.documentElement.removeAttribute('data-density');
+      } else {
+        document.documentElement.setAttribute('data-density', current);
+      }
+      localStorage.setItem('dd-density', current);
+      this._updateDensityIcon(btn, current, icons, labels);
+      Api.saveUserPreference('density', current).catch(() => {});
+    });
+  },
+
+  _updateDensityIcon(btn, density, icons, labels) {
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = `fas ${icons[density]}`;
+    btn.title = `Density: ${labels[density]}`;
+  },
+
   _renderSidebarForMode(mode) {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return;
@@ -550,7 +586,7 @@ const App = {
         { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'swarm'] },
         { label: 'Storage',     items: ['images', 'volumes'] },
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
-        { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security'] },
+        { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs'] },
         { label: 'Operations',  items: ['system', 'workflows'] },
         { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'about', 'whatsnew'] },
       ];
@@ -642,6 +678,16 @@ const App = {
         this._uiMode = mode;
         this._updateUiModeIcon(document.getElementById('uimode-icon'));
         this._renderSidebarForMode(mode);
+      }
+      // Density: sync from server if it differs from localStorage
+      if (prefs.density && prefs.density !== (localStorage.getItem('dd-density') || 'comfortable')) {
+        const d = prefs.density;
+        localStorage.setItem('dd-density', d);
+        if (d === 'comfortable') document.documentElement.removeAttribute('data-density');
+        else document.documentElement.setAttribute('data-density', d);
+        this._updateDensityIcon(document.getElementById('density-toggle'), d,
+          { comfortable: 'fa-align-justify', compact: 'fa-bars', dense: 'fa-grip-lines' },
+          { comfortable: 'Comfortable', compact: 'Compact', dense: 'Dense' });
       }
     } catch {
       // Preferences table may not exist yet (migration pending) — ignore silently
@@ -1494,30 +1540,129 @@ const App = {
       commands = commands.filter(c => c.label.toLowerCase().includes(q));
     }
 
-    if (commands.length === 0) {
-      results.innerHTML = `<div class="cmd-palette-empty">${i18n.t('cmdPalette.noResults')}</div>`;
-      return;
-    }
-
-    results.innerHTML = commands.map((c, i) => `
-      <div class="cmd-palette-item ${i === this._cmdSelectedIdx ? 'selected' : ''}" data-idx="${i}">
+    // Build static commands section HTML
+    const renderStaticItems = (cmds, offset = 0) => cmds.map((c, i) => `
+      <div class="cmd-palette-item ${(offset + i) === this._cmdSelectedIdx ? 'selected' : ''}" data-idx="${offset + i}">
         <i class="fas ${c.icon}"></i>
         <span class="cmd-label">${Utils.escapeHtml(c.label)}</span>
         ${c.shortcut ? `<span class="cmd-shortcut">${c.shortcut}</span>` : ''}
       </div>
     `).join('');
 
-    results.querySelectorAll('.cmd-palette-item').forEach((item, idx) => {
-      item.addEventListener('click', () => {
-        const cmd = commands[idx];
-        this._closeCommandPalette();
-        if (cmd?.action) cmd.action();
+    const wireItems = (container, allCmds) => {
+      container.querySelectorAll('.cmd-palette-item').forEach((item) => {
+        const idx = parseInt(item.dataset.idx, 10);
+        item.addEventListener('click', () => {
+          const cmd = allCmds[idx];
+          this._closeCommandPalette();
+          if (cmd?.action) cmd.action();
+        });
+        item.addEventListener('mouseenter', () => {
+          this._cmdSelectedIdx = idx;
+          this._highlightCmd(container.querySelectorAll('.cmd-palette-item'));
+        });
       });
-      item.addEventListener('mouseenter', () => {
-        this._cmdSelectedIdx = idx;
-        this._highlightCmd(results.querySelectorAll('.cmd-palette-item'));
-      });
-    });
+    };
+
+    if (commands.length === 0 && (!query || query.length < 2)) {
+      results.innerHTML = `<div class="cmd-palette-empty">${i18n.t('cmdPalette.noResults')}</div>`;
+      return;
+    }
+
+    // Show static commands immediately
+    results.innerHTML = commands.length > 0
+      ? `<div class="cmd-palette-section-label" style="padding:4px 12px 2px;font-size:10px;text-transform:uppercase;color:var(--text-dim);font-weight:600">Navigation</div>` + renderStaticItems(commands)
+      : '';
+
+    wireItems(results, commands);
+
+    // If query is long enough, also do async Docker resource search
+    if (query && query.length >= 2) {
+      const searchSection = document.createElement('div');
+      searchSection.id = 'cmd-search-section';
+      searchSection.innerHTML = `<div style="padding:8px 12px;color:var(--text-dim);font-size:12px"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Searching resources...</div>`;
+      results.appendChild(searchSection);
+
+      clearTimeout(this._cmdSearchTimer);
+      this._cmdSearchTimer = setTimeout(async () => {
+        try {
+          const data = await Api.globalSearch(query);
+          const hits = data.results || [];
+          const sec = document.getElementById('cmd-search-section');
+          if (!sec) return;
+
+          if (hits.length === 0) {
+            if (commands.length === 0) {
+              results.innerHTML = `<div class="cmd-palette-empty">${i18n.t('cmdPalette.noResults')}</div>`;
+            } else {
+              sec.remove();
+            }
+            return;
+          }
+
+          const typeIcons = { container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
+          const typeColors = { container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
+
+          // Group by type
+          const grouped = {};
+          hits.forEach(r => { (grouped[r.type] = grouped[r.type] || []).push(r); });
+
+          // Build search result commands so keyboard nav still works
+          const searchCmds = hits.map(r => ({
+            icon: typeIcons[r.type] || 'fa-circle',
+            label: r.name || r.id,
+            action: () => {
+              if (r.url) {
+                if (r.url.startsWith('#')) location.hash = r.url;
+                else App.navigate(r.url);
+              }
+            },
+          }));
+
+          const baseOffset = commands.length;
+          let html = `<div class="cmd-palette-section-label" style="padding:4px 12px 2px;font-size:10px;text-transform:uppercase;color:var(--text-dim);font-weight:600">Resources</div>`;
+          let globalIdx = baseOffset;
+          Object.entries(grouped).forEach(([type, items]) => {
+            html += `<div style="padding:2px 12px 1px;font-size:9px;text-transform:uppercase;color:var(--text-dim);letter-spacing:0.05em">${type}s</div>`;
+            items.forEach(r => {
+              const icon = typeIcons[type] || 'fa-circle';
+              const color = typeColors[type] || 'var(--text-dim)';
+              const isSelected = globalIdx === this._cmdSelectedIdx;
+              html += `<div class="cmd-palette-item ${isSelected ? 'selected' : ''}" data-idx="${globalIdx}" style="display:flex;align-items:center;gap:8px;padding:7px 12px">
+                <i class="fas ${icon}" style="color:${color};width:14px;text-align:center;flex-shrink:0"></i>
+                <span class="cmd-label" style="flex:1">${Utils.escapeHtml(r.name || r.id)}</span>
+                <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(r.detail || '')}</span>
+              </div>`;
+              globalIdx++;
+            });
+          });
+
+          sec.innerHTML = html;
+
+          // Wire only the newly added search result items
+          wireItems(sec, searchCmds.map((cmd, i) => ({ ...cmd, _offset: baseOffset + i })));
+          // Patch wireItems for search section: use actual searchCmds lookup by (idx - baseOffset)
+          sec.querySelectorAll('.cmd-palette-item').forEach(item => {
+            const idx = parseInt(item.dataset.idx, 10);
+            // Remove and re-add click listener with correct command lookup
+            const newItem = item.cloneNode(true);
+            item.replaceWith(newItem);
+            newItem.addEventListener('click', () => {
+              const cmd = searchCmds[idx - baseOffset];
+              this._closeCommandPalette();
+              if (cmd?.action) cmd.action();
+            });
+            newItem.addEventListener('mouseenter', () => {
+              this._cmdSelectedIdx = idx;
+              this._highlightCmd(results.querySelectorAll('.cmd-palette-item'));
+            });
+          });
+        } catch {
+          const sec = document.getElementById('cmd-search-section');
+          if (sec) sec.remove();
+        }
+      }, 250);
+    }
   },
 
   _highlightCmd(items) {

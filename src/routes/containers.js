@@ -47,6 +47,73 @@ router.get('/_meta', requireAuth, (req, res) => {
   }
 });
 
+// ─── Multi-Container Log Aggregation ──────────────────
+
+// GET /logs/multi — aggregate logs from multiple containers
+// NOTE: Must be registered BEFORE any /:id routes to avoid route conflicts
+router.get('/logs/multi', requireAuth, async (req, res) => {
+  try {
+    const { containers: containerIds, tail = 100, since, search, level } = req.query;
+    const docker = dockerService.getDocker(req.hostId);
+
+    // If no containers specified, get all running
+    let targetIds = containerIds ? containerIds.split(',') : [];
+    if (targetIds.length === 0) {
+      const all = await docker.listContainers();
+      targetIds = all.slice(0, 20).map(c => c.Id.substring(0, 12)); // max 20
+    }
+
+    const results = await Promise.allSettled(targetIds.map(async (id) => {
+      const container = docker.getContainer(id);
+      const inspect = await container.inspect();
+      const name = inspect.Name.replace(/^\//, '');
+      const opts = { stdout: true, stderr: true, tail: parseInt(tail) || 100, timestamps: true };
+      if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
+
+      const logBuffer = await container.logs(opts);
+      const lines = logBuffer.toString('utf8').replace(/[\x00-\x08]/g, '').trim().split('\n').filter(Boolean);
+
+      return lines.map(line => {
+        // Parse timestamp from Docker log format: 2026-04-05T12:00:00.123456789Z message
+        const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+        const ts = tsMatch ? tsMatch[1] : '';
+        const msg = tsMatch ? line.substring(tsMatch[0].length).replace(/^[.\d]*Z\s*/, '') : line;
+
+        // Detect severity
+        let severity = 'info';
+        if (/\b(error|fatal|panic|exception|fail|critical)\b/i.test(msg)) severity = 'error';
+        else if (/\b(warn|warning)\b/i.test(msg)) severity = 'warn';
+        else if (/\b(debug|trace)\b/i.test(msg)) severity = 'debug';
+
+        return { ts, msg, container: name, containerId: id, severity };
+      });
+    }));
+
+    // Merge all logs and sort by timestamp
+    let allLogs = [];
+    results.forEach(r => {
+      if (r.status === 'fulfilled') allLogs.push(...r.value);
+    });
+    allLogs.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+
+    // Apply filters
+    if (level && level !== 'all') {
+      allLogs = allLogs.filter(l => l.severity === level);
+    }
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      allLogs = allLogs.filter(l => regex.test(l.msg) || regex.test(l.container));
+    }
+
+    // Limit output
+    allLogs = allLogs.slice(-500);
+
+    res.json({ logs: allLogs, count: allLogs.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Dependency Graph (all containers) ───────────────
 
 router.get('/dependency-graph', requireAuth, async (req, res) => {

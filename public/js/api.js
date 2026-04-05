@@ -118,6 +118,15 @@ const Api = {
     if (since) url += `&since=${encodeURIComponent(since)}`;
     return this.get(url);
   },
+  getMultiLogs(opts = {}) {
+    const params = new URLSearchParams();
+    if (opts.containers) params.set('containers', opts.containers);
+    if (opts.tail) params.set('tail', opts.tail);
+    if (opts.since) params.set('since', opts.since);
+    if (opts.search) params.set('search', opts.search);
+    if (opts.level) params.set('level', opts.level);
+    return this.get(`/containers/logs/multi?${params.toString()}`);
+  },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
   containerAction(id, action) { return this.post(`/containers/${id}/${action}`); },
   removeContainer(id, force = false) { return this.delete(`/containers/${id}?force=${force}`); },
@@ -208,6 +217,9 @@ const Api = {
   // ─── OIDC ────────────────────────────────────────
   getOidcEnabled() { return this.get('/auth/oidc/enabled'); },
   getOidcLoginUrl() { return this.get('/auth/oidc/login'); },
+  getSessions() { return this.get('/auth/sessions'); },
+  terminateSession(id) { return this.delete(`/auth/sessions/${id}`); },
+
   getLdapConfig() { return this.get('/auth/ldap'); },
   saveLdapConfig(cfg) { return this.put('/auth/ldap', cfg); },
   deleteLdapConfig() { return this.delete('/auth/ldap'); },
@@ -244,6 +256,7 @@ const Api = {
 
   // ─── Search & Graph ───────────────────────────────
   globalSearch(q) { return this.get(`/search?q=${encodeURIComponent(q)}`); },
+  getClusterHealth() { return this.get('/cluster-health'); },
   getDependencyGraph() { return this.get('/dependencies'); },
   getTopology() { return this.get('/system/topology'); },
   getStacks() { return this.get('/system/stacks'); },

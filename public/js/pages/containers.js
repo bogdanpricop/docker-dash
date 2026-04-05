@@ -84,6 +84,13 @@ const ContainersPage = {
           </button>
         </div>
       </div>
+      <div id="container-filter-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn btn-xs filter-preset active" data-filter-preset="">All</button>
+        <button class="btn btn-xs filter-preset" data-filter-preset="running">Running</button>
+        <button class="btn btn-xs filter-preset" data-filter-preset="stopped">Stopped</button>
+        <button class="btn btn-xs filter-preset" data-filter-preset="unhealthy">Unhealthy</button>
+        <button class="btn btn-xs filter-preset" data-filter-preset="sandbox">Sandbox</button>
+      </div>
       <div id="container-groups-section"></div>
       <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
     `;
@@ -129,6 +136,16 @@ const ContainersPage = {
         g.classList.remove('collapsed');
         const stack = g.querySelector('.stack-header')?.dataset.stack;
         if (stack) this._collapsed[stack] = false;
+      });
+    });
+
+    // Filter preset buttons
+    container.querySelectorAll('[data-filter-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('[data-filter-preset]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._stateFilter = btn.dataset.filterPreset;
+        this._renderGrouped();
       });
     });
 
@@ -282,6 +299,9 @@ const ContainersPage = {
     // Apply state filter (after computing summary counts)
     if (this._stateFilter === 'running') containers = containers.filter(c => c.state === 'running');
     else if (this._stateFilter === 'exited') containers = containers.filter(c => c.state === 'exited');
+    else if (this._stateFilter === 'stopped') containers = containers.filter(c => c.state !== 'running');
+    else if (this._stateFilter === 'unhealthy') containers = containers.filter(c => (c.status || '').toLowerCase().includes('unhealthy'));
+    else if (this._stateFilter === 'sandbox') containers = containers.filter(c => c.labels?.['docker-dash.sandbox'] === 'true');
     else if (this._stateFilter === 'other') containers = containers.filter(c => c.state !== 'running' && c.state !== 'exited');
     else if (this._stateFilter === 'attention') containers = containers.filter(c => _getScore(c) < 80);
 
@@ -1142,7 +1162,7 @@ const ContainersPage = {
               ? `<button class="action-btn" data-action="unpause" data-id="${c.id}" title="${i18n.t('common.unpause')}"><i class="fas fa-play"></i></button>`
               : `<button class="action-btn" data-action="start" data-id="${c.id}" title="${i18n.t('common.start')}"><i class="fas fa-play"></i></button>`
             }
-            <button class="action-btn danger" data-action="remove" data-id="${c.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
+            <button class="action-btn danger" data-action="remove" data-id="${c.id}" data-name="${Utils.escapeHtml(c.name)}" data-state="${c.state}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
           </div>
         </td>
       </tr>
@@ -1829,7 +1849,13 @@ const ContainersPage = {
 
   async _containerAction(id, action) {
     if (action === 'remove') {
-      const ok = await Modal.confirm(i18n.t('pages.containers.removeConfirm'), { danger: true, confirmText: i18n.t('common.remove') });
+      const info = this._detailData || {};
+      const name = info.name || id.substring(0, 12);
+      const isRunning = info.state === 'running';
+      const ok = await Modal.confirm(
+        `Remove container "${name}"? This action cannot be undone.`,
+        { danger: true, confirmText: i18n.t('common.remove'), typeToConfirm: isRunning ? name : undefined }
+      );
       if (!ok) return;
       try {
         await Api.removeContainer(id, true);
@@ -2566,10 +2592,10 @@ const ContainersPage = {
         <button class="btn btn-sm btn-secondary" id="stats-refresh"><i class="fas fa-sync-alt"></i></button>
       </div>
       <div class="stats-grid">
-        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.cpuPercent')}</h3></div><div class="card-body chart-container"><canvas id="sc-cpu"></canvas></div></div>
-        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.memory')}</h3></div><div class="card-body chart-container"><canvas id="sc-mem"></canvas></div></div>
-        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.networkIO')}</h3></div><div class="card-body chart-container"><canvas id="sc-net"></canvas></div></div>
-        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.blockIO')}</h3></div><div class="card-body chart-container"><canvas id="sc-blk"></canvas></div></div>
+        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.cpuPercent')}</h3><div class="chart-export-btns" style="display:flex;gap:4px;margin-left:auto"><button class="btn btn-xs btn-secondary chart-export-png" data-canvas="sc-cpu" title="Export PNG"><i class="fas fa-image"></i></button><button class="btn btn-xs btn-secondary chart-export-csv" data-canvas="sc-cpu" title="Export CSV"><i class="fas fa-file-csv"></i></button></div></div><div class="card-body chart-container"><canvas id="sc-cpu"></canvas></div></div>
+        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.memory')}</h3><div class="chart-export-btns" style="display:flex;gap:4px;margin-left:auto"><button class="btn btn-xs btn-secondary chart-export-png" data-canvas="sc-mem" title="Export PNG"><i class="fas fa-image"></i></button><button class="btn btn-xs btn-secondary chart-export-csv" data-canvas="sc-mem" title="Export CSV"><i class="fas fa-file-csv"></i></button></div></div><div class="card-body chart-container"><canvas id="sc-mem"></canvas></div></div>
+        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.networkIO')}</h3><div class="chart-export-btns" style="display:flex;gap:4px;margin-left:auto"><button class="btn btn-xs btn-secondary chart-export-png" data-canvas="sc-net" title="Export PNG"><i class="fas fa-image"></i></button><button class="btn btn-xs btn-secondary chart-export-csv" data-canvas="sc-net" title="Export CSV"><i class="fas fa-file-csv"></i></button></div></div><div class="card-body chart-container"><canvas id="sc-net"></canvas></div></div>
+        <div class="card"><div class="card-header"><h3>${i18n.t('pages.containers.blockIO')}</h3><div class="chart-export-btns" style="display:flex;gap:4px;margin-left:auto"><button class="btn btn-xs btn-secondary chart-export-png" data-canvas="sc-blk" title="Export PNG"><i class="fas fa-image"></i></button><button class="btn btn-xs btn-secondary chart-export-csv" data-canvas="sc-blk" title="Export CSV"><i class="fas fa-file-csv"></i></button></div></div><div class="card-body chart-container"><canvas id="sc-blk"></canvas></div></div>
       </div>
     `;
 
@@ -2588,6 +2614,41 @@ const ContainersPage = {
     el.querySelector('#stats-refresh').addEventListener('click', loadStats);
 
     await loadStats();
+
+    // Wire chart export buttons
+    el.querySelectorAll('.chart-export-png').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const canvasId = btn.dataset.canvas;
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const link = document.createElement('a');
+        link.download = `docker-dash-${canvasId}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        Toast.success('Chart exported as PNG');
+      });
+    });
+
+    el.querySelectorAll('.chart-export-csv').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const canvasId = btn.dataset.canvas;
+        const canvas = document.getElementById(canvasId);
+        const chart = canvas ? Chart.getChart(canvas) : null;
+        if (!chart) { Toast.error('Chart not ready'); return; }
+        const labels = chart.data.labels || [];
+        const datasets = chart.data.datasets || [];
+        let csv = 'Time,' + datasets.map(d => d.label).join(',') + '\n';
+        labels.forEach((label, i) => {
+          csv += label + ',' + datasets.map(d => (d.data[i] !== undefined ? Number(d.data[i]).toFixed(2) : '')).join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const link = document.createElement('a');
+        link.download = `docker-dash-${canvasId}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        Toast.success('Chart exported as CSV');
+      });
+    });
   },
 
   _renderStatsCharts(points) {
@@ -4619,7 +4680,12 @@ document.addEventListener('click', (e) => {
   }
 
   if (action === 'remove') {
-    Modal.confirm(i18n.t('pages.containers.removeConfirmShort'), { danger: true, confirmText: i18n.t('common.remove') }).then(ok => {
+    const containerName = btn.dataset.name || id.substring(0, 12);
+    const isRunning = btn.dataset.state === 'running';
+    Modal.confirm(
+      `Remove container "${containerName}"? This action cannot be undone.`,
+      { danger: true, confirmText: i18n.t('common.remove'), typeToConfirm: isRunning ? containerName : undefined }
+    ).then(ok => {
       if (ok) Api.removeContainer(id, true).then(() => {
         Toast.success(i18n.t('pages.containers.removed'));
         if (ContainersPage._view === 'list') ContainersPage._loadList();
