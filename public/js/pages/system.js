@@ -557,6 +557,14 @@ DB_PASS=secret"></textarea>
                 <div id="db-cleanup-result" style="margin-top:8px"></div>
               </div>
               <div class="card" style="flex:1;min-width:260px;padding:20px">
+                <h4><i class="fas fa-fire" style="color:var(--red);margin-right:8px"></i>Deep Cleanup (24h)</h4>
+                <p class="text-muted text-sm" style="margin:8px 0">Delete <strong>everything</strong> except the last 24 hours: stats, logs, audit trail, alerts, events, scan results, notifications. Useful to free up disk space quickly.</p>
+                <button class="btn btn-sm btn-danger" id="db-deep-cleanup-btn">
+                  <i class="fas fa-fire"></i> Deep Cleanup
+                </button>
+                <div id="db-deep-cleanup-result" style="margin-top:8px"></div>
+              </div>
+              <div class="card" style="flex:1;min-width:260px;padding:20px">
                 <h4><i class="fas fa-compress-arrows-alt" style="color:var(--green);margin-right:8px"></i>Vacuum Database</h4>
                 <p class="text-muted text-sm" style="margin:8px 0">Reclaim disk space by compacting the database file. Runs automatically daily at 03:30. May briefly slow down the app.</p>
                 <button class="btn btn-sm btn-secondary" id="db-vacuum-btn">
@@ -607,6 +615,52 @@ DB_PASS=secret"></textarea>
         }
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-broom"></i> Run Cleanup Now';
+      });
+
+      // Deep cleanup button (keep last 24h only)
+      el.querySelector('#db-deep-cleanup-btn').addEventListener('click', async () => {
+        const ok = await Modal.confirm(
+          `<div style="max-width:450px">
+            <p style="margin:0 0 12px"><strong style="color:var(--red)">Deep Cleanup — Keep last 24 hours only</strong></p>
+            <p class="text-sm" style="margin:0 0 12px">This will <strong>permanently delete</strong> all data older than 24 hours from:</p>
+            <ul class="text-sm" style="margin:0 0 12px;padding-left:20px;color:var(--text)">
+              <li>Container stats (CPU, RAM, network metrics)</li>
+              <li>Aggregated stats (1-minute and 1-hour buckets)</li>
+              <li>Audit log entries</li>
+              <li>Docker events</li>
+              <li>Alert and health events</li>
+              <li>Webhook delivery history</li>
+              <li>Scan results</li>
+              <li>Notifications</li>
+              <li>Schedule execution history</li>
+              <li>Login attempts</li>
+            </ul>
+            <p class="text-sm" style="margin:0;color:var(--red)"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>This action is irreversible. Historical trends and reports will be lost.</p>
+          </div>`,
+          { confirmText: 'Delete Everything Older Than 24h', danger: true }
+        );
+        if (!ok) return;
+
+        const btn = el.querySelector('#db-deep-cleanup-btn');
+        const resultEl = el.querySelector('#db-deep-cleanup-result');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cleaning...';
+
+        try {
+          const result = await Api.databaseCleanupAggressive(24);
+          const entries = Object.entries(result.deleted || {});
+          if (entries.length > 0) {
+            resultEl.innerHTML = `<div class="text-sm" style="color:var(--green)"><i class="fas fa-check"></i> Deleted ${result.totalDeleted.toLocaleString()} rows: ${entries.map(([k, v]) => `${k} (${v})`).join(', ')}</div>`;
+          } else {
+            resultEl.innerHTML = `<div class="text-sm" style="color:var(--green)"><i class="fas fa-check"></i> Nothing to delete — all data is already within 24 hours.</div>`;
+          }
+          Toast.success(`Deep cleanup done: ${result.totalDeleted} rows deleted`);
+        } catch (err) {
+          resultEl.innerHTML = `<div class="text-sm" style="color:var(--red)"><i class="fas fa-times"></i> ${err.message}</div>`;
+          Toast.error(err.message);
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-fire"></i> Deep Cleanup';
       });
 
       // Vacuum button

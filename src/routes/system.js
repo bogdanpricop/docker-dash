@@ -163,6 +163,50 @@ router.post('/database/cleanup', requireAuth, requireRole('admin'), writeable, (
   }
 });
 
+// Aggressive cleanup — keep only last N hours (default 24)
+router.post('/database/cleanup-aggressive', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const hours = parseInt(req.body.hours) || 24;
+    const db = getDb();
+    const deleted = {};
+
+    const tables = [
+      { name: 'container_stats', col: 'recorded_at' },
+      { name: 'container_stats_1m', col: 'bucket' },
+      { name: 'container_stats_1h', col: 'bucket' },
+      { name: 'docker_events', col: 'event_time' },
+      { name: 'audit_log', col: 'created_at' },
+      { name: 'health_events', col: 'recorded_at' },
+      { name: 'alert_events', col: 'triggered_at' },
+      { name: 'webhook_deliveries', col: 'delivered_at' },
+      { name: 'login_attempts', col: 'attempted_at' },
+      { name: 'notifications', col: 'created_at' },
+      { name: 'scan_results', col: 'scanned_at' },
+      { name: 'schedule_history', col: 'executed_at' },
+      { name: 'password_reset_tokens', col: 'expires_at' },
+    ];
+
+    for (const { name, col } of tables) {
+      try {
+        const r = db.prepare(`DELETE FROM ${name} WHERE ${col} < datetime('now', '-${hours} hours')`).run();
+        if (r.changes) deleted[name] = r.changes;
+      } catch { /* table may not exist */ }
+    }
+
+    const totalDeleted = Object.values(deleted).reduce((a, b) => a + b, 0);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'database_cleanup_aggressive', details: { hours, deleted, totalDeleted },
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, hours, deleted, totalDeleted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/database/vacuum', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const db = getDb();

@@ -163,6 +163,7 @@ const Api = {
   prune(type) { return this.post(`/system/prune/${type}`); },
   getDatabaseInfo() { return this.get('/system/database'); },
   databaseCleanup() { return this.post('/system/database/cleanup'); },
+  databaseCleanupAggressive(hours = 24) { return this.post('/system/database/cleanup-aggressive', { hours }); },
   databaseVacuum() { return this.post('/system/database/vacuum'); },
   updateContainer(id) { return this.post(`/containers/${id}/update`); },
   getDeployPreview(id) { return this.get(`/containers/${id}/deploy-preview`); },
