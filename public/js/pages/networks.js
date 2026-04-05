@@ -404,7 +404,7 @@ const NetworksPage = {
           ctx.lineWidth = isHovered ? 3 : 2.5;
           ctx.stroke();
 
-          ctx.font = '12px "Font Awesome 5 Free"';
+          ctx.font = '900 12px "Font Awesome 6 Free"';
           ctx.fillStyle = isHovered ? '#58a6ff' : color;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';

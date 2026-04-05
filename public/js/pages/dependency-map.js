@@ -333,7 +333,7 @@ const DependencyMapPage = {
 
       // Node icon
       ctx.fillStyle = n.state === 'running' ? '#3fb950' : n.state === 'exited' ? '#f85149' : '#6e7681';
-      ctx.font = '14px "Font Awesome 6 Free"';
+      ctx.font = '900 14px "Font Awesome 6 Free"';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('\uf1b2', n.x, n.y); // cube icon fallback
