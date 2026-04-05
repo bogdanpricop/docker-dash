@@ -1139,7 +1139,7 @@ docker build --target builder -t myapp:test .</code></pre>
 
 <h3>Named Build Arguments Across Stages</h3>
 <pre><code>ARG NODE_VERSION=20
-FROM node:${NODE_VERSION}-alpine AS builder</code></pre>`,
+FROM node:\${NODE_VERSION}-alpine AS builder</code></pre>`,
 
     `<h2>Build-uri Docker multi-etapă</h2>
 <p>Build-urile multi-etapă îți permit să folosești o imagine pentru construirea aplicației și o imagine separată, minimală, pentru rularea ei. Rezultat: imagini cu 80–95% mai mici.</p>

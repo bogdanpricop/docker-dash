@@ -1300,13 +1300,13 @@ APP_PORT=3000</code></pre>
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: \${POSTGRES_USER}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
+      POSTGRES_DB: \${POSTGRES_DB}
   app:
     image: myapp
     ports:
-      - "${APP_PORT}:3000"</code></pre>
+      - "\${APP_PORT}:3000"</code></pre>
 
 <h2>The env_file directive</h2>
 <p>Load all variables from a file without listing them individually:</p>
@@ -1322,7 +1322,7 @@ APP_PORT=3000</code></pre>
   app:
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/mydb</code></pre>
+      DATABASE_URL: postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@db/mydb</code></pre>
 
 <h2>Provide a .env.example file</h2>
 <p>Commit a <code>.env.example</code> (with placeholder values) so teammates know which variables are required:</p>
@@ -1360,13 +1360,13 @@ APP_PORT=3000</code></pre>
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: \${POSTGRES_USER}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD}
+      POSTGRES_DB: \${POSTGRES_DB}
   app:
     image: myapp
     ports:
-      - "${APP_PORT}:3000"</code></pre>
+      - "\${APP_PORT}:3000"</code></pre>
 
 <h2>Directiva env_file</h2>
 <p>Încarcă toate variabilele dintr-un fișier fără a le lista individual:</p>
@@ -1382,7 +1382,7 @@ APP_PORT=3000</code></pre>
   app:
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/mydb</code></pre>
+      DATABASE_URL: postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@db/mydb</code></pre>
 
 <h2>Furnizează un fișier .env.example</h2>
 <p>Commit-ează un <code>.env.example</code> (cu valori placeholder) pentru ca membrii echipei să știe ce variabile sunt necesare:</p>
@@ -1434,7 +1434,7 @@ APP_PORT=3000</code></pre>
 <pre><code>  db:
     image: postgres:16
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER} -d \${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -1493,7 +1493,7 @@ docker inspect --format='{{json .State.Health}}' container_name | jq</code></pre
 <pre><code>  db:
     image: postgres:16
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER} -d \${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
