@@ -152,29 +152,33 @@
           <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block" id="status-dot"></span>
           <span class="text-muted" id="status-text">Connected</span>
         </div>
-        <div class="user-info" id="user-info">
-          <i class="fas fa-user-circle"></i>
-          <span id="username-display">admin</span>
-        </div>
-        <button class="btn-icon notif-bell" id="notif-bell" title="Notifications">
-          <i class="fas fa-bell"></i>
-          <span class="notif-count hidden" id="notif-count">0</span>
-        </button>
-        <button class="btn-icon" id="uimode-toggle" title="Switch UI mode">
-          <i class="fas fa-rocket" id="uimode-icon"></i>
-        </button>
-        <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme">
-          <i class="fas fa-sun" id="theme-icon"></i>
-        </button>
-        <div style="position:relative">
-          <button class="btn-icon lang-toggle" id="lang-toggle" title="Language">
-            <span class="lang-code" id="lang-code">EN</span>
+        <div class="sidebar-footer-row">
+          <div class="user-info" id="user-info">
+            <i class="fas fa-user-circle"></i>
+            <span id="username-display">admin</span>
+          </div>
+          <button class="btn-icon notif-bell" id="notif-bell" title="Notifications">
+            <i class="fas fa-bell"></i>
+            <span class="notif-count hidden" id="notif-count">0</span>
           </button>
-          <div class="lang-dropdown hidden" id="lang-dropdown"></div>
+          <button class="btn-icon" id="uimode-toggle" title="Switch UI mode">
+            <i class="fas fa-rocket" id="uimode-icon"></i>
+          </button>
         </div>
-        <button class="btn-icon" id="logout-btn" title="Logout">
-          <i class="fas fa-sign-out-alt"></i>
-        </button>
+        <div class="sidebar-footer-row">
+          <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme">
+            <i class="fas fa-sun" id="theme-icon"></i>
+          </button>
+          <div style="position:relative">
+            <button class="btn-icon lang-toggle" id="lang-toggle" title="Language">
+              <span class="lang-code" id="lang-code">EN</span>
+            </button>
+            <div class="lang-dropdown hidden" id="lang-dropdown"></div>
+          </div>
+          <button class="btn-icon" id="logout-btn" title="Logout">
+            <i class="fas fa-sign-out-alt"></i>
+          </button>
+        </div>
       </div>
       <!-- Notification Dropdown -->
       <div class="notif-dropdown hidden" id="notif-dropdown">

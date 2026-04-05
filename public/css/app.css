@@ -232,9 +232,12 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .nav-divider { height: 1px; background: var(--border); margin: 10px 14px; }
 .sidebar-footer {
-  display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 14px 18px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 16px; border-top: 1px solid var(--border);
   background: rgba(0,0,0,0.15);
+}
+.sidebar-footer-row {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
 }
 .user-info { display: flex; align-items: center; gap: 10px; flex: 1; color: var(--text-dim); font-size: 12px; overflow: hidden; }
 .user-info i { font-size: 18px; }
