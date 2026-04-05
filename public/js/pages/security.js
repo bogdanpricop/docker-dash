@@ -394,12 +394,12 @@ Please:
 
     el.querySelector('#hist-expand-all')?.addEventListener('click', () => {
       document.querySelectorAll('.hist-group-body').forEach(b => b.style.display = '');
-      document.querySelectorAll('.hist-group-toggle').forEach(i => i.className = 'fas fa-chevron-down');
+      document.querySelectorAll('.hist-group-toggle').forEach(i => { if (i) i.className = 'fas fa-chevron-down hist-group-toggle'; });
     });
 
     el.querySelector('#hist-collapse-all')?.addEventListener('click', () => {
       document.querySelectorAll('.hist-group-body').forEach(b => b.style.display = 'none');
-      document.querySelectorAll('.hist-group-toggle').forEach(i => i.className = 'fas fa-chevron-right');
+      document.querySelectorAll('.hist-group-toggle').forEach(i => { if (i) i.className = 'fas fa-chevron-right hist-group-toggle'; });
     });
 
     this._renderHistoryBody();
@@ -473,12 +473,13 @@ Please:
         if (e.target.closest('.hist-group-delete')) return;
         const groupBody = header.nextElementSibling;
         const icon = header.querySelector('.hist-group-toggle');
+        if (!groupBody) return;
         if (groupBody.style.display === 'none') {
           groupBody.style.display = '';
-          icon.className = 'fas fa-chevron-down hist-group-toggle';
+          if (icon) icon.className = 'fas fa-chevron-down hist-group-toggle';
         } else {
           groupBody.style.display = 'none';
-          icon.className = 'fas fa-chevron-right hist-group-toggle';
+          if (icon) icon.className = 'fas fa-chevron-right hist-group-toggle';
         }
       });
     });
