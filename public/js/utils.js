@@ -296,6 +296,48 @@ const Utils = {
       document.body.removeChild(textarea);
     }
   },
+  // Guess a Font Awesome 6 Solid unicode glyph for a container based on image/name
+  // Used in canvas-based Topology and Dependency Map visualizations
+  guessContainerIcon(image, name) {
+    const s = ((image || '') + ' ' + (name || '')).toLowerCase();
+    // Databases
+    if (/mysql|mariadb|postgres|pgsql|pgadmin|mongo|couchdb|influxdb|cassandra|cockroach/i.test(s)) return '\uf1c0'; // database
+    if (/redis|memcache|keydb|valkey|dragonfly/i.test(s)) return '\uf0e7'; // bolt (fast cache)
+    if (/elastic|opensearch|solr|meilisearch/i.test(s)) return '\uf002'; // search
+    // Web servers / proxies
+    if (/nginx|apache|httpd|caddy|traefik|haproxy|envoy/i.test(s)) return '\uf0ac'; // globe
+    // Message brokers
+    if (/rabbit|kafka|nats|mosquitto|mqtt|pulsar|activemq/i.test(s)) return '\uf0e0'; // envelope
+    // Monitoring
+    if (/grafana|prometheus|loki|jaeger|zipkin|tempo|alertmanager/i.test(s)) return '\uf201'; // chart-line
+    if (/zabbix|nagios|icinga|checkmk|datadog/i.test(s)) return '\uf201'; // chart-line
+    // CI/CD / Git
+    if (/jenkins|gitlab|gitea|drone|woodpecker|github|argocd/i.test(s)) return '\uf126'; // code-branch
+    // Container management
+    if (/portainer|docker-dash|dockge|yacht|watchtower/i.test(s)) return '\uf1b3'; // cubes
+    // Node.js / API
+    if (/node|express|nestjs|fastify|next|nuxt|api|gateway|backend|graphql/i.test(s)) return '\uf121'; // code
+    // Python
+    if (/python|flask|django|fastapi|celery|gunicorn|uvicorn/i.test(s)) return '\uf121'; // code
+    // PHP
+    if (/php|laravel|symfony|wordpress|drupal|joomla/i.test(s)) return '\uf121'; // code
+    // Worker / queue
+    if (/worker|cron|scheduler|sidekiq|resque|bull/i.test(s)) return '\uf085'; // cogs
+    // Mail
+    if (/mail|smtp|postfix|dovecot|roundcube/i.test(s)) return '\uf0e0'; // envelope
+    // Storage / S3
+    if (/minio|s3|storage|backup|restic|borg|duplicati/i.test(s)) return '\uf0a0'; // hdd
+    // Auth / SSO
+    if (/keycloak|auth|oauth|ldap|openldap|authentik|authelia/i.test(s)) return '\uf023'; // lock
+    // DNS
+    if (/pihole|adguard|dns|unbound|coredns/i.test(s)) return '\uf0e8'; // sitemap
+    // VPN / network
+    if (/wireguard|openvpn|tailscale|headscale/i.test(s)) return '\uf3ed'; // shield-alt
+    // Media
+    if (/plex|jellyfin|emby|sonarr|radarr|lidarr/i.test(s)) return '\uf008'; // film
+    // Default: cube
+    return '\uf1b2'; // cube
+  },
 };
 
 // Make globally available

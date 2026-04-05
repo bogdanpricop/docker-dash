@@ -336,7 +336,7 @@ const DependencyMapPage = {
       ctx.font = '900 14px "Font Awesome 6 Free"';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('\uf1b2', n.x, n.y); // cube icon fallback
+      ctx.fillText(Utils.guessContainerIcon(n.image || '', n.name || ''), n.x, n.y);
 
       // Node label
       ctx.fillStyle = '#b1bac4';

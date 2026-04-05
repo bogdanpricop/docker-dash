@@ -1123,7 +1123,7 @@ router.get('/topology', requireAuth, async (req, res) => {
 
     // Add container nodes
     for (const c of containers) {
-      nodes.push({ id: c.id, label: c.name, type: 'container', state: c.state });
+      nodes.push({ id: c.id, label: c.name, type: 'container', state: c.state, image: c.image });
     }
 
     // Inspect each network to find connections

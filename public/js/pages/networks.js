@@ -404,11 +404,12 @@ const NetworksPage = {
           ctx.lineWidth = isHovered ? 3 : 2.5;
           ctx.stroke();
 
+          const nodeIcon = Utils.guessContainerIcon(n.image || '', n.label || '');
           ctx.font = '900 12px "Font Awesome 6 Free"';
           ctx.fillStyle = isHovered ? '#58a6ff' : color;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText('\uf1b2', n.x, n.y);
+          ctx.fillText(nodeIcon, n.x, n.y);
 
           ctx.font = isHovered ? 'bold 11px "Inter", sans-serif' : '11px "Inter", sans-serif';
           ctx.fillStyle = isLight ? '#333' : '#e6edf3';
