@@ -486,7 +486,7 @@ const Api = {
 
   // ─── MOTD ────────────────────────────────────────
   getMotd() { return this.get('/motd'); },
-  setMotd(motd) { return this.put('/motd', { motd }); },
+  setMotd(data) { return this.put('/motd', typeof data === 'string' ? { motd: data } : data); },
 
   // ─── How-To ───────────────────────────────────
   getHowtoGuides(params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/howto${qs ? '?' + qs : ''}`); },

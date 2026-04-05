@@ -131,35 +131,100 @@ const SystemPage = {
     motdCard.innerHTML = `
       <div class="card-header"><h3><i class="fas fa-bullhorn" style="margin-right:8px;color:var(--yellow)"></i>Login Banner (MOTD)</h3></div>
       <div class="card-body">
-        <p class="text-muted text-sm" style="margin-bottom:8px">Display a message on the login page. Useful for maintenance notices, security policies, or environment identification.</p>
-        <textarea id="motd-editor" class="form-control" rows="4" placeholder="Enter login banner message..." style="font-family:var(--mono);font-size:12px"></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-sm btn-primary" id="motd-save"><i class="fas fa-save"></i> Save</button>
-          <button class="btn btn-sm btn-secondary" id="motd-clear"><i class="fas fa-times"></i> Clear</button>
+        <p class="text-muted text-sm" style="margin-bottom:10px">Display a message on the login page. Choose fixed, random, or both.</p>
+        <div style="display:flex;gap:12px;margin-bottom:12px">
+          <label class="toggle-label"><input type="radio" name="motd-mode" value="fixed" checked> <strong>Fixed</strong> <span class="text-muted text-sm">— always show the same message</span></label>
+          <label class="toggle-label"><input type="radio" name="motd-mode" value="random"> <strong>Random</strong> <span class="text-muted text-sm">— pick one from a list</span></label>
+          <label class="toggle-label"><input type="radio" name="motd-mode" value="both"> <strong>Both</strong> <span class="text-muted text-sm">— random from fixed + list</span></label>
+        </div>
+        <div id="motd-fixed-section">
+          <label class="text-sm" style="font-weight:600">Fixed Banner</label>
+          <textarea id="motd-editor" class="form-control" rows="3" placeholder="Enter login banner message..." style="font-family:var(--mono);font-size:12px;margin-top:4px"></textarea>
+        </div>
+        <div id="motd-random-section" style="margin-top:12px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <label class="text-sm" style="font-weight:600">Random Banner List</label>
+            <button class="btn btn-xs btn-secondary" id="motd-add-random"><i class="fas fa-plus"></i> Add</button>
+          </div>
+          <div id="motd-random-list" style="display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-sm btn-primary" id="motd-save"><i class="fas fa-save"></i> Save All</button>
+          <button class="btn btn-sm btn-secondary" id="motd-clear"><i class="fas fa-times"></i> Clear All</button>
         </div>
       </div>
     `;
     el.appendChild(motdCard);
 
-    // Load existing MOTD
+    // State
+    let motdRandomList = [];
+
+    const renderRandomList = () => {
+      const listEl = motdCard.querySelector('#motd-random-list');
+      if (!listEl) return;
+      listEl.innerHTML = motdRandomList.map((msg, i) => `
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" class="form-control motd-random-input" data-idx="${i}" value="${Utils.escapeHtml(msg)}" style="flex:1;font-size:12px;padding:4px 8px">
+          <button class="action-btn danger motd-random-remove" data-idx="${i}" title="Remove"><i class="fas fa-times"></i></button>
+        </div>
+      `).join('') || '<div class="text-muted text-sm">No random banners. Click "+ Add" to create one.</div>';
+
+      listEl.querySelectorAll('.motd-random-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          motdRandomList.splice(parseInt(btn.dataset.idx), 1);
+          renderRandomList();
+        });
+      });
+      listEl.querySelectorAll('.motd-random-input').forEach(input => {
+        input.addEventListener('input', () => {
+          motdRandomList[parseInt(input.dataset.idx)] = input.value;
+        });
+      });
+    };
+
+    // Load existing MOTD settings
     try {
-      const { motd } = await Api.getMotd();
+      const data = await Api.getMotd();
       const editor = motdCard.querySelector('#motd-editor');
-      if (editor && motd) editor.value = motd;
+      if (editor && data.motd && data.mode === 'fixed') editor.value = data.motd;
+
+      // Load full config from settings
+      const settings = await Api.getSettings();
+      const fixedVal = settings?.login_motd || '';
+      const modeVal = settings?.login_motd_mode || 'fixed';
+      try { motdRandomList = JSON.parse(settings?.login_motd_random || '[]'); } catch { motdRandomList = []; }
+
+      if (editor) editor.value = fixedVal;
+      const modeRadio = motdCard.querySelector(`input[name="motd-mode"][value="${modeVal}"]`);
+      if (modeRadio) modeRadio.checked = true;
+      renderRandomList();
     } catch {}
+
+    motdCard.querySelector('#motd-add-random')?.addEventListener('click', () => {
+      motdRandomList.push('');
+      renderRandomList();
+      // Focus last input
+      const inputs = motdCard.querySelectorAll('.motd-random-input');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    });
 
     motdCard.querySelector('#motd-save')?.addEventListener('click', async () => {
       const motd = motdCard.querySelector('#motd-editor')?.value || '';
+      const mode = motdCard.querySelector('input[name="motd-mode"]:checked')?.value || 'fixed';
+      const randomList = motdRandomList.filter(m => m.trim());
       try {
-        await Api.setMotd(motd);
-        Toast.success('Login banner saved');
+        await Api.setMotd({ motd, mode, randomList });
+        Toast.success('Login banner settings saved');
       } catch (err) { Toast.error(err.message); }
     });
 
     motdCard.querySelector('#motd-clear')?.addEventListener('click', async () => {
       try {
-        await Api.setMotd('');
+        await Api.setMotd({ motd: '', mode: 'fixed', randomList: [] });
         motdCard.querySelector('#motd-editor').value = '';
+        motdCard.querySelector('input[name="motd-mode"][value="fixed"]').checked = true;
+        motdRandomList = [];
+        renderRandomList();
         Toast.success('Login banner cleared');
       } catch (err) { Toast.error(err.message); }
     });
