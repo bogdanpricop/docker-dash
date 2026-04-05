@@ -175,22 +175,32 @@ const App = {
     }
   },
 
+  _motdLoading: false,
+
   async _loadLoginMotd() {
-    // Remove any existing MOTD element first (in case _showLogin is called multiple times)
-    const existing = document.getElementById('login-motd');
-    if (existing) existing.remove();
+    // Prevent concurrent/duplicate loads
+    if (this._motdLoading) return;
+    this._motdLoading = true;
+
+    // Remove ALL existing MOTD elements
+    document.querySelectorAll('#login-motd').forEach(el => el.remove());
+
     try {
       const { motd } = await Api.getMotd();
       if (motd) {
+        // Double-check no MOTD was added while we were fetching
+        document.querySelectorAll('#login-motd').forEach(el => el.remove());
+
         const motdEl = document.createElement('div');
         motdEl.id = 'login-motd';
         motdEl.style.cssText = 'margin-bottom:16px;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text);max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;';
-        motdEl.textContent = motd; // Plain text — no HTML injection
+        motdEl.textContent = motd;
         const loginCard = document.querySelector('.login-card');
-        const loginForm = loginCard?.querySelector('form') || loginCard?.querySelector('.login-form') || loginCard?.firstElementChild;
+        const loginForm = loginCard?.querySelector('form');
         if (loginCard && loginForm) loginCard.insertBefore(motdEl, loginForm);
       }
-    } catch { /* no motd or network error — silently skip */ }
+    } catch { /* silently skip */ }
+    finally { this._motdLoading = false; }
   },
 
   _showMfaPrompt(mfaToken, form, errEl) {
