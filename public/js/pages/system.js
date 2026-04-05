@@ -1459,6 +1459,12 @@ DB_PASS=secret"></textarea>
           const text = mc.querySelector('#tm-hash-input').value;
           if (!text) { Toast.warning('Enter some text'); return; }
           const enc = new TextEncoder().encode(text);
+          if (!crypto.subtle) {
+            // crypto.subtle not available on non-secure origins (HTTP with IP)
+            // Fallback: simple hash via server or show warning
+            mc.querySelector('#tm-hash-output').innerHTML = '<div class="text-muted" style="padding:12px"><i class="fas fa-exclamation-triangle" style="color:var(--yellow);margin-right:6px"></i>Hash generation requires HTTPS or localhost. Enable SSL in System &gt; SSL/TLS or access via localhost.</div>';
+            return;
+          }
           const [sha1, sha256, sha512] = await Promise.all([
             crypto.subtle.digest('SHA-1', enc),
             crypto.subtle.digest('SHA-256', enc),
