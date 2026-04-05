@@ -22,6 +22,7 @@ i18n.register('ro', 'RO', 'Română', {
     system: 'Sistem', firewall: 'Firewall', hosts: 'Hosturi', about: 'Despre', whatsnew: 'Noutati', settings: 'Setari', profile: 'Profil',
     insights: 'Analize', 'git-stacks': 'Git Stacks', compare: 'Comparatie', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     sectionResources: 'Resurse', sectionOperations: 'Operatiuni', sectionAdmin: 'Admin',
+    sectionCompute: 'Compute', sectionStorage: 'Stocare', sectionNetworking: 'Retea', sectionMonitor: 'Monitorizare',
   },
   login: {
     title: 'Docker Dash', username: 'Utilizator', password: 'Parola',

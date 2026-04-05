@@ -2543,3 +2543,89 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
   .tpl-field-item { flex-direction: column; gap: 4px; }
   .tpl-field-label { width: auto; padding-top: 0; }
 }
+
+/* ═══════════════════════════════════════════════════
+   Enterprise UI Mode — compact, dense, ESXi-inspired
+   ═══════════════════════════════════════════════════ */
+[data-uimode="enterprise"] {
+  --radius: 4px;
+  --sidebar-w: 210px;
+}
+
+[data-uimode="enterprise"] .page-header h2 { font-size: 16px; }
+[data-uimode="enterprise"] .page-header { padding: 12px 0; min-height: auto; }
+
+[data-uimode="enterprise"] .data-table th { padding: 6px 10px; font-size: 11px; }
+[data-uimode="enterprise"] .data-table td { padding: 5px 10px; font-size: 12px; }
+
+[data-uimode="enterprise"] .card-header { padding: 8px 14px; font-size: 13px; }
+[data-uimode="enterprise"] .card-body { padding: 10px 14px; }
+
+[data-uimode="enterprise"] .stat-card { padding: 10px 12px; }
+[data-uimode="enterprise"] .stat-value { font-size: 20px; }
+[data-uimode="enterprise"] .stat-label { font-size: 10px; }
+[data-uimode="enterprise"] .stat-icon { width: 36px; height: 36px; font-size: 14px; }
+
+[data-uimode="enterprise"] .nav-item { padding: 6px 16px; font-size: 12px; }
+[data-uimode="enterprise"] .nav-item i { font-size: 13px; width: 20px; }
+[data-uimode="enterprise"] .nav-section-label { padding: 12px 16px 4px; font-size: 9px; }
+
+[data-uimode="enterprise"] .btn { padding: 5px 12px; font-size: 12px; }
+[data-uimode="enterprise"] .btn-sm { padding: 3px 8px; font-size: 11px; }
+
+[data-uimode="enterprise"] .modal-content { border-radius: 4px; }
+[data-uimode="enterprise"] .badge { font-size: 10px; padding: 2px 6px; }
+
+[data-uimode="enterprise"] .action-btns { gap: 2px; }
+[data-uimode="enterprise"] .action-btn { width: 26px; height: 26px; font-size: 11px; }
+
+/* Enterprise mode: slightly more information density */
+[data-uimode="enterprise"] .log-viewer { font-size: 11px; line-height: 1.4; }
+[data-uimode="enterprise"] .inspect-json { font-size: 11px; }
+[data-uimode="enterprise"] .form-control { padding: 6px 10px; font-size: 13px; }
+[data-uimode="enterprise"] select.form-control { padding: 5px 8px; font-size: 13px; }
+
+/* ── Context Menu ─────────────────────────────── */
+.context-menu {
+  position: fixed; z-index: 10000;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px); box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  min-width: 200px; max-width: 280px; padding: 4px 0;
+  animation: ctx-fadein 0.1s ease;
+}
+@keyframes ctx-fadein { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+.context-menu-item {
+  display: flex; align-items: center; padding: 6px 14px;
+  font-size: 13px; color: var(--text); cursor: pointer;
+  transition: background 0.1s;
+}
+.context-menu-item:hover { background: var(--accent-dim, rgba(56,139,253,0.1)); color: var(--text-bright); }
+.context-menu-item.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.context-menu-item.danger:hover { background: var(--red-dim, rgba(248,81,73,0.1)); color: var(--red); }
+.context-menu-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+.context-menu-shortcut { margin-left: auto; font-size: 11px; color: var(--text-dim); opacity: 0.6; }
+
+/* ── Task Bar (Enterprise) ────────────────────── */
+.taskbar {
+  position: fixed; bottom: 0; left: var(--sidebar-w); right: 0;
+  height: 32px; background: var(--surface); border-top: 1px solid var(--border);
+  z-index: 900; font-size: 12px; overflow: hidden;
+  transition: left 0.3s;
+}
+.sidebar.collapsed ~ .main-content .taskbar,
+.sidebar.collapsed ~ .taskbar { left: var(--sidebar-collapsed-w); }
+.taskbar-inner { display: flex; align-items: center; height: 100%; padding: 0 16px; gap: 12px; }
+.taskbar-tasks { display: flex; gap: 16px; flex: 1; overflow-x: auto; }
+.taskbar-task { display: flex; align-items: center; gap: 6px; white-space: nowrap; opacity: 1; transition: opacity 0.5s; }
+.taskbar-task.completed { opacity: 0.5; }
+.taskbar-task.error { opacity: 0.8; }
+.taskbar-desc { color: var(--text); max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
+.taskbar-time { color: var(--text-dim); font-size: 10px; min-width: 24px; }
+.taskbar-progress { width: 60px; height: 4px; background: var(--surface3); border-radius: 2px; overflow: hidden; }
+.taskbar-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+.taskbar-badge { background: var(--accent); color: #fff; font-size: 10px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+.taskbar-idle { color: var(--text-dim); font-size: 11px; }
+
+@media (max-width: 768px) {
+  .taskbar { left: 0; }
+}

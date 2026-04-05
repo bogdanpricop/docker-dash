@@ -21,6 +21,7 @@ i18n.register('ja', 'JP', '日本語', {
     system: 'システム', firewall: 'ファイアウォール', hosts: 'ホスト', about: '情報', whatsnew: '新機能', settings: '設定', profile: 'プロフィール',
     insights: 'インサイト', 'git-stacks': 'Git Stacks', compare: '比較', swarm: 'Swarm',
     sectionResources: 'リソース', sectionOperations: 'オペレーション', sectionAdmin: '管理',
+    sectionCompute: 'コンピュート', sectionStorage: 'ストレージ', sectionNetworking: 'ネットワーク', sectionMonitor: '監視',
   },
   login: {
     title: 'Docker Dash', username: 'ユーザー名', password: 'パスワード',

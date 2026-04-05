@@ -21,6 +21,7 @@ i18n.register('zh', '中文', '中文', {
     system: '系统', firewall: '防火墙', hosts: '主机', about: '关于', whatsnew: '更新日志', settings: '设置', profile: '个人资料',
     insights: '洞察', 'git-stacks': 'Git Stacks', compare: '对比', swarm: 'Swarm',
     sectionResources: '资源', sectionOperations: '运维', sectionAdmin: '管理',
+    sectionCompute: '计算', sectionStorage: '存储', sectionNetworking: '网络', sectionMonitor: '监控',
   },
   login: {
     title: 'Docker Dash', username: '用户名', password: '密码',

@@ -21,6 +21,7 @@ i18n.register('ko', 'KR', '한국어', {
     system: '시스템', firewall: '방화벽', hosts: '호스트', about: '정보', whatsnew: '새로운 기능', settings: '설정', profile: '프로필',
     insights: '인사이트', 'git-stacks': 'Git Stacks', compare: '비교', swarm: 'Swarm',
     sectionResources: '리소스', sectionOperations: '운영', sectionAdmin: '관리',
+    sectionCompute: '컴퓨팅', sectionStorage: '스토리지', sectionNetworking: '네트워킹', sectionMonitor: '모니터링',
   },
   login: {
     title: 'Docker Dash', username: '사용자명', password: '비밀번호',

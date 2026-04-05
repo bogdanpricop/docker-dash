@@ -23,6 +23,7 @@ i18n.register('en', 'EN', 'English', {
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare',
     notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
+    sectionCompute: 'Compute', sectionStorage: 'Storage', sectionNetworking: 'Networking', sectionMonitor: 'Monitor',
   },
   login: {
     title: 'Docker Dash', username: 'Username', password: 'Password',

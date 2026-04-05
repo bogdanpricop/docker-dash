@@ -82,6 +82,9 @@ class DataTable {
     this._emptyEl.className = 'table-empty';
     this._emptyEl.textContent = this.emptyText;
     this.container.appendChild(this._emptyEl);
+
+    // Enterprise: column visibility gear icon
+    this._renderColumnConfig();
   }
 
   setData(data) {
@@ -198,6 +201,9 @@ class DataTable {
 
       this._tbody.appendChild(tr);
     }
+
+    // Re-apply column visibility after body re-render (Enterprise mode)
+    this._applyColumnVisibility();
   }
 
   _emitSelectionChange() {
@@ -208,6 +214,83 @@ class DataTable {
 
   onSelectionChange(fn) {
     this._onSelectionChange = fn;
+  }
+
+  // ─── Enterprise: Column Visibility ────────────
+
+  _renderColumnConfig() {
+    if (document.documentElement.getAttribute('data-uimode') !== 'enterprise') return;
+    if (!this._table) return;
+
+    const wrapper = this.container.closest('.card') || this.container.parentElement;
+    if (!wrapper) return;
+
+    // Don't add twice
+    if (wrapper.querySelector('.col-config-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'col-config-btn';
+    btn.innerHTML = '<i class="fas fa-cog"></i>';
+    btn.title = 'Configure columns';
+    btn.style.cssText = 'position:absolute;top:8px;right:8px;z-index:5;background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;';
+
+    wrapper.style.position = 'relative';
+    wrapper.appendChild(btn);
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Remove existing dropdown
+      const existing = wrapper.querySelector('.col-config-dropdown');
+      if (existing) { existing.remove(); return; }
+
+      const dropdown = document.createElement('div');
+      dropdown.className = 'col-config-dropdown';
+      dropdown.style.cssText = 'position:absolute;top:34px;right:8px;z-index:10;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:8px 0;min-width:180px;';
+
+      this.columns.forEach((col) => {
+        if (!col.label) return; // skip action columns without labels
+        const isHidden = col._hidden || false;
+        const item = document.createElement('label');
+        item.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 12px;font-size:12px;color:var(--text);cursor:pointer;';
+        item.innerHTML = `<input type="checkbox" ${isHidden ? '' : 'checked'}> ${typeof Utils !== 'undefined' ? Utils.escapeHtml(col.label) : col.label}`;
+        item.querySelector('input').addEventListener('change', (ev) => {
+          col._hidden = !ev.target.checked;
+          this._applyColumnVisibility();
+        });
+        dropdown.appendChild(item);
+      });
+
+      wrapper.appendChild(dropdown);
+
+      // Close on click outside
+      const close = (ev) => {
+        if (!dropdown.contains(ev.target) && ev.target !== btn) {
+          dropdown.remove();
+          document.removeEventListener('click', close);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    });
+  }
+
+  _applyColumnVisibility() {
+    if (!this._table) return;
+
+    // Account for optional leading select column
+    const offset = this.selectable ? 1 : 0;
+    const ths = this._table.querySelectorAll('thead th');
+    const rows = this._table.querySelectorAll('tbody tr');
+
+    this.columns.forEach((col, i) => {
+      const display = col._hidden ? 'none' : '';
+      const th = ths[i + offset];
+      if (th) th.style.display = display;
+      rows.forEach(row => {
+        const tds = row.querySelectorAll('td');
+        const td = tds[i + offset];
+        if (td) td.style.display = display;
+      });
+    });
   }
 }
 

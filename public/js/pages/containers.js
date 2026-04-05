@@ -212,6 +212,7 @@ const ContainersPage = {
         Api.getMyPermissions().catch(() => ({ permissions: [] })),
       ]);
       this._containers = containers;
+      this._lastContainers = containers;
       this._metaMap = metaMap || {};
       this._userGroups = userGroups || [];
       // Build stack permission map for visual indicators
@@ -403,6 +404,29 @@ const ContainersPage = {
       tr.addEventListener('click', (e) => {
         if (e.target.closest('.action-btn, button, .bulk-checkbox')) return;
         App.navigate(`/containers/${tr.dataset.cid}`);
+      });
+      tr.addEventListener('contextmenu', (e) => {
+        const cid = tr.dataset.cid;
+        const containers = this._lastContainers || [];
+        const c = containers.find(ct => ct.id === cid);
+        if (!c) return;
+        const running = c.state === 'running';
+        const paused = c.state === 'paused';
+
+        ContextMenu.show(e, [
+          { label: 'Open Details', icon: 'fa-external-link-alt', action: () => App.navigate(`/containers/${cid}`) },
+          { label: 'Open Terminal', icon: 'fa-terminal', action: () => { App.navigate(`/containers/${cid}`); setTimeout(() => document.querySelector('[data-tab="terminal"]')?.click(), 400); }, disabled: !running },
+          { label: 'View Logs', icon: 'fa-file-alt', action: () => { App.navigate(`/containers/${cid}`); setTimeout(() => document.querySelector('[data-tab="logs"]')?.click(), 400); } },
+          { type: 'separator' },
+          { label: running ? 'Stop' : 'Start', icon: running ? 'fa-stop' : 'fa-play', action: () => this._containerAction(cid, running ? 'stop' : 'start') },
+          { label: 'Restart', icon: 'fa-redo', action: () => this._containerAction(cid, 'restart'), disabled: !running },
+          { label: paused ? 'Unpause' : 'Pause', icon: paused ? 'fa-play' : 'fa-pause', action: () => this._containerAction(cid, paused ? 'unpause' : 'pause'), disabled: !running && !paused },
+          { type: 'separator' },
+          { label: 'Inspect', icon: 'fa-info-circle', action: () => App.navigate(`/containers/${cid}`) },
+          { label: 'Rename', icon: 'fa-edit', action: () => this._renameContainer(cid, c.name) },
+          { type: 'separator' },
+          { label: 'Remove', icon: 'fa-trash', action: () => this._containerAction(cid, 'remove'), danger: true },
+        ]);
       });
     });
 
@@ -1815,11 +1839,15 @@ const ContainersPage = {
       return;
     }
 
+    const taskId = TaskBar.add(`${action} container ${id.substring(0, 8)}...`);
     try {
       await Api.containerAction(id, action);
+      TaskBar.complete(taskId, `${action} completed`);
       Toast.success(i18n.t('pages.containers.actionSuccess', { action }));
-      await this._loadDetail();
+      if (this._view === 'list') await this._loadList();
+      else await this._loadDetail();
     } catch (err) {
+      TaskBar.error(taskId, `${action} failed: ${err.message}`);
       Toast.error(i18n.t('pages.containers.actionFailed', { action, message: err.message }));
     }
   },

@@ -10,6 +10,21 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.7.0',
+      date: '2026-04-05',
+      title: 'Enterprise UI Mode — ESXi-Inspired Switchable Interface',
+      changes: [
+        { type: 'feature', text: 'Enterprise UI Mode — switchable interface with compact density, ESXi-inspired sidebar (Compute/Storage/Networking/Monitor/Operations/Admin), bottom task bar, and column configuration' },
+        { type: 'feature', text: 'UI mode toggle in sidebar footer — rocket (Standard) / building (Enterprise) icon; preference saved per user, restored on login, synced across devices' },
+        { type: 'feature', text: 'Right-click context menus — state-aware menus on container rows (12 actions) and image rows (8 actions); works in both modes' },
+        { type: 'feature', text: 'Persistent bottom task bar (Enterprise) — global operation tracker showing container actions with progress bars and elapsed time; auto-fades completed tasks' },
+        { type: 'feature', text: 'Enterprise sidebar — ESXi-style nav groups: Compute, Storage, Networking, Monitor, Operations, Admin; DOM-swapped dynamically on mode toggle' },
+        { type: 'feature', text: 'Column configuration (Enterprise) — gear icon on DataTable headers; show/hide columns via checkboxes; visibility preserved across data refreshes' },
+        { type: 'feature', text: 'Keyboard shortcuts overlay — press ? to see all shortcuts in a two-column modal; g+key navigation (g→d Dashboard, g→c Containers, etc.); / to focus search' },
+        { type: 'improvement', text: 'Enterprise density — reduced padding, smaller fonts, sharper corners (4px radius), compact tables and stat cards for more information per screen' },
+      ],
+    },
+    {
       version: '5.6.0',
       date: '2026-04-05',
       title: 'Multi-Host Overview — ESXi-style Unified Dashboard',

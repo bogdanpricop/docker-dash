@@ -90,6 +90,28 @@ const ImagesPage = {
       else if (btn.dataset.action === 'remove') this._remove(id);
     });
 
+    // Right-click context menu on image rows
+    container.querySelector('#images-table').addEventListener('contextmenu', (e) => {
+      const btn = e.target.closest('[data-id]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const row = (this._table._data || []).find(r => r.id === id);
+      if (!row) return;
+      const fullName = (row._repo && row._tag) ? `${row._repo}:${row._tag}` : id;
+
+      ContextMenu.show(e, [
+        { label: 'Inspect', icon: 'fa-info-circle', action: () => this._inspect(id) },
+        { label: 'View Layers', icon: 'fa-layer-group', action: () => this._showLayers(id) },
+        { label: 'Scan for Vulnerabilities', icon: 'fa-shield-alt', action: () => Api.scanImage(id).then(() => Toast.success('Scan started')).catch(err => Toast.error(err.message)) },
+        { label: 'Run in Sandbox', icon: 'fa-flask', action: () => ContainersPage._sandboxDialog(fullName) },
+        { type: 'separator' },
+        { label: 'Tag', icon: 'fa-tag', action: () => this._tagDialog(id) },
+        { label: 'Export', icon: 'fa-file-export', action: () => this._exportImage(id) },
+        { type: 'separator' },
+        { label: 'Remove', icon: 'fa-trash', action: () => this._remove(id), danger: true },
+      ]);
+    });
+
     await this._load();
   },
 

@@ -21,6 +21,7 @@ i18n.register('tlh', '\u2694\uFE0F', 'tlhIngan Hol', {
     system: 'pat', firewall: 'qul Hub', hosts: 'vengHom', about: 'meq', whatsnew: "nuq chu'", settings: 'teywI\'mey', profile: 'nuv De\'',
     insights: 'leghbogh mIn', 'git-stacks': 'Git Stacks', compare: 'bej\'a\'', swarm: 'ramDaq veQ',
     sectionResources: 'jo\'mey', sectionOperations: 'ta\'mey', sectionAdmin: 'che\'wI\'',
+    sectionCompute: 'mIvbogh', sectionStorage: 'tIn qach', sectionNetworking: 'jabbI\'ID', sectionMonitor: 'legh',
   },
   login: {
     title: 'Docker Dash', username: 'pong lo\'wI\'', password: 'mu\' pegh',

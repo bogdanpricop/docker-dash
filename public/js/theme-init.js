@@ -15,3 +15,9 @@
   });
   if (icon) icon.className = (saved === 'light' || (!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches)) ? 'fas fa-moon' : 'fas fa-sun';
 })();
+(function() {
+  var mode = localStorage.getItem('dd-uimode') || 'standard';
+  if (mode === 'enterprise') {
+    document.documentElement.setAttribute('data-uimode', 'enterprise');
+  }
+})();

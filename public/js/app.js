@@ -7,6 +7,7 @@ const App = {
   user: null,
   _currentPage: null,
   _currentPageName: null,
+  _uiMode: 'standard',
 
   // Page registry
   _pages: {
@@ -378,6 +379,12 @@ const App = {
     // Setup theme toggle
     this._initThemeToggle();
 
+    // Setup UI mode toggle (standard / enterprise)
+    this._initUiModeToggle();
+
+    // Initialize task bar (Enterprise mode only)
+    TaskBar.init();
+
     // Sync preferences from server (fire-and-forget, localStorage wins for instant display)
     this._syncUserPreferences();
 
@@ -392,6 +399,9 @@ const App = {
 
     // Start router
     this._initRouter();
+
+    // Apply sidebar layout for saved UI mode (router sets _currentPageName first)
+    this._renderSidebarForMode(this._uiMode);
 
     // Show welcome modal for first-time users (once per user)
     this._showWelcomeIfNeeded();
@@ -494,6 +504,108 @@ const App = {
     icon.className = isLight ? 'fas fa-moon' : 'fas fa-sun';
   },
 
+  _initUiModeToggle() {
+    const btn = document.getElementById('uimode-toggle');
+    const icon = document.getElementById('uimode-icon');
+    if (!btn) return;
+
+    this._uiMode = document.documentElement.getAttribute('data-uimode') || 'standard';
+    this._updateUiModeIcon(icon);
+
+    btn.addEventListener('click', () => {
+      const next = this._uiMode === 'standard' ? 'enterprise' : 'standard';
+      this._uiMode = next;
+      if (next === 'enterprise') {
+        document.documentElement.setAttribute('data-uimode', 'enterprise');
+      } else {
+        document.documentElement.removeAttribute('data-uimode');
+      }
+      localStorage.setItem('dd-uimode', next);
+      this._updateUiModeIcon(icon);
+      this._renderSidebarForMode(next);
+      TaskBar._updateVisibility();
+      Api.saveUserPreference('uiMode', next).catch(() => {});
+    });
+  },
+
+  _updateUiModeIcon(icon) {
+    if (!icon) return;
+    icon.className = this._uiMode === 'enterprise' ? 'fas fa-building' : 'fas fa-rocket';
+    icon.title = this._uiMode === 'enterprise' ? 'Switch to Standard mode' : 'Switch to Enterprise mode';
+  },
+
+  _renderSidebarForMode(mode) {
+    const nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+
+    if (mode === 'enterprise') {
+      // Save the original HTML so we can restore it perfectly
+      if (!this._standardNavHTML) {
+        this._standardNavHTML = nav.innerHTML;
+      }
+
+      // Enterprise grouping (ESXi-inspired)
+      const enterpriseGroups = [
+        { label: null,          items: ['dashboard'] },
+        { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'swarm'] },
+        { label: 'Storage',     items: ['images', 'volumes'] },
+        { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
+        { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security'] },
+        { label: 'Operations',  items: ['system', 'workflows'] },
+        { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'about', 'whatsnew'] },
+      ];
+
+      // Collect all existing nav items by data-page
+      const navItems = {};
+      nav.querySelectorAll('.nav-item').forEach(item => {
+        const page = item.getAttribute('data-page');
+        if (page) navItems[page] = item.outerHTML;
+      });
+
+      // Build enterprise nav HTML
+      let html = '';
+      enterpriseGroups.forEach(group => {
+        if (group.label) {
+          const labelKey = 'section' + group.label; // e.g. sectionCompute
+          const labelRaw = i18n.t('nav.' + labelKey);
+          const labelText = (labelRaw === 'nav.' + labelKey) ? group.label : labelRaw;
+          html += `<div class="nav-section-label" data-enterprise-section="${group.label}"><span>${labelText}</span></div>`;
+        }
+        group.items.forEach(page => {
+          if (navItems[page]) html += navItems[page];
+        });
+      });
+
+      nav.innerHTML = html;
+    } else {
+      // Restore standard sidebar
+      if (this._standardNavHTML) {
+        nav.innerHTML = this._standardNavHTML;
+      }
+    }
+
+    // Re-apply active state and re-translate nav item labels
+    // Fall back to URL hash if _currentPageName not yet set (async page load in progress)
+    const hashPage = (location.hash.slice(1) || '/').split('/').filter(Boolean)[0] || 'dashboard';
+    const currentPage = this._currentPageName || hashPage;
+    nav.querySelectorAll('.nav-item').forEach(item => {
+      item.classList.toggle('active', item.getAttribute('data-page') === currentPage);
+      const page = item.getAttribute('data-page');
+      const span = item.querySelector('span');
+      if (span && page) span.textContent = i18n.t('nav.' + page);
+    });
+    // Re-translate section labels in the current mode
+    nav.querySelectorAll('.nav-section-label span').forEach(span => {
+      const section = span.closest('[data-enterprise-section]');
+      if (section) {
+        const label = section.getAttribute('data-enterprise-section');
+        const key = 'section' + label;
+        const raw = i18n.t('nav.' + key);
+        span.textContent = (raw === 'nav.' + key) ? label : raw;
+      }
+    });
+  },
+
   async _syncUserPreferences() {
     try {
       const prefs = await Api.getUserPreferences();
@@ -517,6 +629,19 @@ const App = {
       if (prefs.lang && prefs.lang !== i18n.lang) {
         localStorage.setItem('dd-lang', prefs.lang);
         i18n.setLanguage(prefs.lang);
+      }
+      // UI Mode: sync from server if it differs from localStorage
+      if (prefs.uiMode && prefs.uiMode !== (localStorage.getItem('dd-uimode') || 'standard')) {
+        const mode = prefs.uiMode;
+        localStorage.setItem('dd-uimode', mode);
+        if (mode === 'enterprise') {
+          document.documentElement.setAttribute('data-uimode', 'enterprise');
+        } else {
+          document.documentElement.removeAttribute('data-uimode');
+        }
+        this._uiMode = mode;
+        this._updateUiModeIcon(document.getElementById('uimode-icon'));
+        this._renderSidebarForMode(mode);
       }
     } catch {
       // Preferences table may not exist yet (migration pending) — ignore silently
@@ -602,11 +727,23 @@ const App = {
       const span = item.querySelector('span');
       if (span && page) span.textContent = i18n.t('nav.' + page);
     });
-    // Sidebar section labels
-    const sectionLabels = document.querySelectorAll('.nav-section-label span');
-    const sectionKeys = ['sectionResources', 'sectionOperations', 'sectionAdmin'];
-    sectionLabels.forEach((span, i) => {
-      if (sectionKeys[i]) span.textContent = i18n.t('nav.' + sectionKeys[i]);
+    // Sidebar section labels — handle both standard and enterprise modes
+    document.querySelectorAll('.nav-section-label').forEach(label => {
+      const span = label.querySelector('span');
+      if (!span) return;
+      const enterpriseSection = label.getAttribute('data-enterprise-section');
+      if (enterpriseSection) {
+        // Enterprise mode label — translate using sectionCompute, sectionStorage, etc.
+        const key = 'section' + enterpriseSection;
+        const raw = i18n.t('nav.' + key);
+        span.textContent = (raw === 'nav.' + key) ? enterpriseSection : raw;
+      } else {
+        // Standard mode — use index-based keys (Resources, Operations, Admin)
+        const sectionKeys = ['sectionResources', 'sectionOperations', 'sectionAdmin'];
+        const allStandardLabels = Array.from(document.querySelectorAll('.nav-section-label:not([data-enterprise-section]) span'));
+        const idx = allStandardLabels.indexOf(span);
+        if (idx >= 0 && sectionKeys[idx]) span.textContent = i18n.t('nav.' + sectionKeys[idx]);
+      }
     });
 
     // Notification dropdown
@@ -836,6 +973,12 @@ const App = {
     this.user = null;
     this._loginPassword = null;
     this._securityFlags = null;
+    // Restore sidebar to standard layout so the next login snapshots the correct HTML
+    if (this._standardNavHTML) {
+      const nav = document.querySelector('.sidebar-nav');
+      if (nav) nav.innerHTML = this._standardNavHTML;
+    }
+    this._standardNavHTML = null;
     WS.disconnect();
     if (this._notifTimer) { clearInterval(this._notifTimer); this._notifTimer = null; }
     if (this._currentPage?.destroy) this._currentPage.destroy();
@@ -1090,6 +1233,8 @@ const App = {
 
   // ─── Keyboard Shortcuts ────────────────────────
 
+  _gPressed: false,
+
   _initShortcuts() {
     document.addEventListener('keydown', (e) => {
       // Ctrl+K / Cmd+K — Command palette
@@ -1100,28 +1245,56 @@ const App = {
       }
 
       // Skip if typing in an input
-      if (e.target.matches('input, textarea, select')) return;
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
       if (e.key === 'r' || e.key === 'R') {
         if (this._currentPage?.destroy) this._currentPage.destroy();
         this._route();
+        return;
       }
 
-      // ? — Show keyboard shortcuts help
-      if (e.key === '?') {
-        this._showShortcutsHelp();
+      // ? — Show keyboard shortcuts overlay
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        this._showShortcutsOverlay();
+        return;
       }
 
-      // g then d/c/i/s — vim-style navigation
+      // / — Focus search box on current page
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+        const search = document.querySelector('.search-box input') ||
+                       document.querySelector('#container-search') ||
+                       document.querySelector('#image-search') ||
+                       document.querySelector('input[type="search"]');
+        if (search) { e.preventDefault(); search.focus(); }
+        return;
+      }
+
+      // g then d/c/i/v/n/s/m/a/h — vim-style navigation
       if (e.key === 'g' && !this._gPressed) {
         this._gPressed = true;
-        setTimeout(() => { this._gPressed = false; }, 500);
+        setTimeout(() => { this._gPressed = false; }, 1000);
         return;
       }
       if (this._gPressed) {
         this._gPressed = false;
-        const nav = { d: '#/', c: '#/containers', i: '#/images', s: '#/system', n: '#/networks', a: '#/alerts', h: '#/hosts', g: '#/git-stacks', p: '#/insights' };
-        if (nav[e.key]) { location.hash = nav[e.key]; return; }
+        const routes = {
+          d: '/',
+          c: '/containers',
+          i: '/images',
+          v: '/volumes',
+          n: '/networks',
+          s: '/stacks',
+          m: '/multi-host',
+          a: '/alerts',
+          h: '/hosts',
+          y: '/system',
+          g: '/git-stacks',
+          p: '/insights',
+        };
+        if (routes[e.key]) { e.preventDefault(); App.navigate(routes[e.key]); }
+        return;
       }
     });
   },
@@ -1160,43 +1333,86 @@ const App = {
   },
 
   _showShortcutsHelp() {
-    const shortcuts = [
-      { keys: 'Ctrl+K', desc: 'Command palette — search and navigate anywhere' },
-      { keys: '?', desc: 'This shortcuts help' },
-      { keys: 'R', desc: 'Refresh current page' },
-      { keys: 'g d', desc: 'Go to Dashboard' },
-      { keys: 'g c', desc: 'Go to Containers' },
-      { keys: 'g i', desc: 'Go to Images' },
-      { keys: 'g n', desc: 'Go to Networks' },
-      { keys: 'g s', desc: 'Go to System' },
-      { keys: 'g a', desc: 'Go to Alerts' },
-      { keys: 'g h', desc: 'Go to Hosts' },
-      { keys: 'g g', desc: 'Go to Git Stacks' },
-      { keys: 'g p', desc: 'Go to Insights' },
-      { keys: 'Esc', desc: 'Close modal / dialog' },
+    this._showShortcutsOverlay();
+  },
+
+  _showShortcutsOverlay() {
+    // Remove existing overlay
+    document.getElementById('shortcuts-overlay')?.remove();
+
+    const globalShortcuts = [
+      { key: 'Ctrl+K', desc: 'Command palette' },
+      { key: '?', desc: 'Show this help' },
+      { key: '/', desc: 'Focus search' },
+      { key: 'R', desc: 'Refresh current page' },
+      { key: 'Esc', desc: 'Close modal / overlay' },
+      { key: 'g → d', desc: 'Go to Dashboard' },
+      { key: 'g → c', desc: 'Go to Containers' },
+      { key: 'g → i', desc: 'Go to Images' },
+      { key: 'g → v', desc: 'Go to Volumes' },
+      { key: 'g → n', desc: 'Go to Networks' },
+      { key: 'g → s', desc: 'Go to Stacks' },
+      { key: 'g → m', desc: 'Go to Multi-Host' },
+      { key: 'g → a', desc: 'Go to Alerts' },
+      { key: 'g → h', desc: 'Go to Hosts' },
+      { key: 'g → y', desc: 'Go to System' },
+      { key: 'g → p', desc: 'Go to Insights' },
     ];
 
-    const html = `
-      <div class="modal-header">
-        <h3 style="margin:0"><i class="fas fa-keyboard" style="margin-right:8px;color:var(--accent)"></i>Keyboard Shortcuts</h3>
-        <button class="modal-close-btn" id="shortcuts-x"><i class="fas fa-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <table class="data-table" style="margin:0">
-          <thead><tr><th style="text-align:left;width:120px">Shortcut</th><th style="text-align:left">Action</th></tr></thead>
-          <tbody>
-            ${shortcuts.map(s => `<tr><td><kbd style="background:var(--surface3);padding:2px 8px;border-radius:4px;font-family:var(--mono);font-size:12px">${s.keys}</kbd></td><td>${s.desc}</td></tr>`).join('')}
-          </tbody>
-        </table>
-        <p class="text-muted text-sm" style="margin-top:12px">Shortcuts work when not typing in an input field.</p>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" id="shortcuts-ok">Got it</button>
+    const containerShortcuts = [
+      { key: '↑ / ↓', desc: 'Navigate container rows' },
+      { key: 'Enter', desc: 'Open container detail' },
+      { key: 'r', desc: 'Restart focused container' },
+      { key: 's', desc: 'Start / Stop focused container' },
+      { key: 'l', desc: 'Open Logs tab' },
+      { key: 'RMB', desc: 'Context menu on any row' },
+    ];
+
+    const kbdStyle = 'background:var(--surface3);border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:11px;color:var(--text-bright);font-family:var(--mono);min-width:32px;text-align:center;white-space:nowrap';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'shortcuts-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10500;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px 32px;max-width:640px;width:90%;max-height:85vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,0.5)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0;color:var(--text-bright)"><i class="fas fa-keyboard" style="margin-right:8px;color:var(--accent)"></i>Keyboard Shortcuts</h3>
+          <button id="shortcuts-close" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px"><i class="fas fa-times"></i></button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+          <div>
+            <h4 style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px">Global</h4>
+            ${globalShortcuts.map(s => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;gap:8px">
+                <span style="color:var(--text)">${s.desc}</span>
+                <kbd style="${kbdStyle}">${s.key}</kbd>
+              </div>
+            `).join('')}
+          </div>
+          <div>
+            <h4 style="color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px">Containers Page</h4>
+            ${containerShortcuts.map(s => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px;gap:8px">
+                <span style="color:var(--text)">${s.desc}</span>
+                <kbd style="${kbdStyle}">${s.key}</kbd>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div style="margin-top:16px;text-align:center;color:var(--text-dim);font-size:11px">
+          Press <kbd style="${kbdStyle}">Esc</kbd> or click outside to close &nbsp;·&nbsp; Shortcuts are inactive while typing in an input
+        </div>
       </div>
     `;
-    Modal.open(html, { width: '480px' });
-    Modal._content.querySelector('#shortcuts-x')?.addEventListener('click', () => Modal.close());
-    Modal._content.querySelector('#shortcuts-ok')?.addEventListener('click', () => Modal.close());
+
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#shortcuts-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
   },
 
   _toggleCommandPalette() {

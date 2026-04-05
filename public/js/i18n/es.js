@@ -21,6 +21,7 @@ i18n.register('es', 'ES', 'Español', {
     system: 'Sistema', firewall: 'Firewall', hosts: 'Hosts', about: 'Acerca de', whatsnew: 'Novedades', settings: 'Configuración', profile: 'Perfil',
     insights: 'Estadísticas', 'git-stacks': 'Git Stacks', compare: 'Comparar', swarm: 'Swarm',
     sectionResources: 'Recursos', sectionOperations: 'Operaciones', sectionAdmin: 'Administración',
+    sectionCompute: 'Compute', sectionStorage: 'Almacenamiento', sectionNetworking: 'Red', sectionMonitor: 'Monitoreo',
   },
   login: {
     title: 'Docker Dash', username: 'Usuario', password: 'Contraseña',
