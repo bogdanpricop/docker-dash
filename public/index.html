@@ -148,15 +148,17 @@
         </a>
       </nav>
       <div class="sidebar-footer">
-        <div id="sidebar-status" style="padding:4px 16px;font-size:10px;display:flex;align-items:center;gap:6px">
-          <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block" id="status-dot"></span>
-          <span class="text-muted" id="status-text">Connected</span>
-        </div>
         <div class="sidebar-footer-row">
-          <div class="user-info" id="user-info">
+          <div id="sidebar-status" style="font-size:10px;display:flex;align-items:center;gap:5px">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block" id="status-dot"></span>
+            <span class="text-muted" id="status-text">Connected</span>
+          </div>
+          <div class="user-info" id="user-info" style="margin-left:auto">
             <i class="fas fa-user-circle"></i>
             <span id="username-display">admin</span>
           </div>
+        </div>
+        <div class="sidebar-footer-row">
           <button class="btn-icon notif-bell" id="notif-bell" title="Notifications">
             <i class="fas fa-bell"></i>
             <span class="notif-count hidden" id="notif-count">0</span>
@@ -164,8 +166,6 @@
           <button class="btn-icon" id="uimode-toggle" title="Switch UI mode">
             <i class="fas fa-rocket" id="uimode-icon"></i>
           </button>
-        </div>
-        <div class="sidebar-footer-row">
           <button class="btn-icon theme-toggle" id="theme-toggle" title="Toggle theme">
             <i class="fas fa-sun" id="theme-icon"></i>
           </button>
