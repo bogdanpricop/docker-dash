@@ -1,0 +1,272 @@
+[
+  {
+    "id": "install-docker",
+    "title_en": "Install Docker on Ubuntu/Debian",
+    "title_ro": "Instalarea Docker pe Ubuntu/Debian",
+    "category": "basics",
+    "difficulty": "beginner",
+    "icon": "fas fa-download",
+    "summary_en": "Step-by-step guide to install Docker Engine and Docker Compose on Ubuntu or Debian servers using the official repository.",
+    "summary_ro": "Ghid pas cu pas pentru instalarea Docker Engine și Docker Compose pe servere Ubuntu sau Debian folosind repository-ul oficial.",
+    "content_en": "<h4>What is Docker?</h4><p>Docker is a platform that lets you package applications into lightweight, portable containers. Instead of installing software directly on your server, you run it inside isolated containers.</p><h4>Why Install from the Official Repository?</h4><p>The Docker version in your distro's default repos is often outdated. The official Docker repository always has the latest stable release with security patches.</p><h4>Step-by-Step Installation</h4><p><strong>1. Remove old versions (if any):</strong></p><pre><code>sudo apt remove docker docker-engine docker.io containerd runc</code></pre><p><strong>2. Install prerequisites:</strong></p><pre><code>sudo apt update\nsudo apt install ca-certificates curl gnupg</code></pre><p><strong>3. Add Docker's official GPG key:</strong></p><pre><code>sudo install -m 0755 -d /etc/apt/keyrings\ncurl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg\nsudo chmod a+r /etc/apt/keyrings/docker.gpg</code></pre><p><strong>4. Set up the repository:</strong></p><pre><code>echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release &amp;&amp; echo $VERSION_CODENAME) stable\" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null</code></pre><p><strong>5. Install Docker Engine:</strong></p><pre><code>sudo apt update\nsudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin</code></pre><p><strong>6. Verify installation:</strong></p><pre><code>sudo docker run hello-world</code></pre><p><strong>7. (Optional) Run Docker without sudo:</strong></p><pre><code>sudo usermod -aG docker $USER\nnewgrp docker</code></pre><h4>Common Pitfalls</h4><ul><li>Don't install <code>docker.io</code> from Ubuntu repos — it's outdated.</li><li>After adding your user to the <code>docker</code> group, you must log out and back in.</li><li>On Debian, replace <code>ubuntu</code> with <code>debian</code> in the repository URL.</li></ul><h4>Related Guides</h4><p>→ First Steps After Installing Docker · → Understanding Docker Images vs Containers</p>",
+    "content_ro": "<h4>Ce este Docker?</h4><p>Docker este o platformă care îți permite să împachetezi aplicații în containere ușoare și portabile. În loc să instalezi software direct pe server, îl rulezi în containere izolate.</p><h4>De ce să instalezi din repository-ul oficial?</h4><p>Versiunea Docker din repository-urile implicite ale distribuției este adesea depășită. Repository-ul oficial Docker are întotdeauna ultima versiune stabilă cu patch-uri de securitate.</p><h4>Instalare pas cu pas</h4><p><strong>1. Elimină versiunile vechi (dacă există):</strong></p><pre><code>sudo apt remove docker docker-engine docker.io containerd runc</code></pre><p><strong>2. Instalează prerequisitele:</strong></p><pre><code>sudo apt update\nsudo apt install ca-certificates curl gnupg</code></pre><p><strong>3. Adaugă cheia GPG oficială Docker:</strong></p><pre><code>sudo install -m 0755 -d /etc/apt/keyrings\ncurl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg\nsudo chmod a+r /etc/apt/keyrings/docker.gpg</code></pre><p><strong>4. Configurează repository-ul:</strong></p><pre><code>echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release &amp;&amp; echo $VERSION_CODENAME) stable\" | sudo tee /etc/apt/sources.list.d/docker.list &gt; /dev/null</code></pre><p><strong>5. Instalează Docker Engine:</strong></p><pre><code>sudo apt update\nsudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin</code></pre><p><strong>6. Verifică instalarea:</strong></p><pre><code>sudo docker run hello-world</code></pre><p><strong>7. (Opțional) Rulează Docker fără sudo:</strong></p><pre><code>sudo usermod -aG docker $USER\nnewgrp docker</code></pre><h4>Greșeli frecvente</h4><ul><li>Nu instala <code>docker.io</code> din repo-urile Ubuntu — este depășit.</li><li>După adăugarea userului în grupul <code>docker</code>, trebuie să te deloghezi și să te loghezi din nou.</li><li>Pe Debian, înlocuiește <code>ubuntu</code> cu <code>debian</code> în URL-ul repository-ului.</li></ul><h4>Ghiduri asociate</h4><p>→ Primii pași după instalarea Docker · → Înțelegerea imaginilor vs containerelor Docker</p>"
+  },
+  {
+    "id": "docker-images-vs-containers",
+    "title_en": "Understanding Images vs Containers",
+    "title_ro": "Înțelegerea imaginilor vs containerelor",
+    "category": "basics",
+    "difficulty": "beginner",
+    "icon": "fas fa-layer-group",
+    "summary_en": "Learn the fundamental difference between Docker images (blueprints) and containers (running instances), and how they relate to each other.",
+    "summary_ro": "Învață diferența fundamentală între imagini Docker (planuri) și containere (instanțe care rulează) și cum se leagă între ele.",
+    "content_en": "<h4>What's the Difference?</h4><p>Think of a Docker <strong>image</strong> as a recipe, and a <strong>container</strong> as the dish you cook from that recipe. The image is a read-only template containing your application code, runtime, libraries, and configuration. A container is a running instance created from an image.</p><h4>Why This Matters</h4><p>Understanding this distinction is critical because: you can create many containers from one image, containers are disposable but images persist, and data changes in a container don't affect the image unless you explicitly commit them.</p><h4>Key Commands</h4><p><strong>Working with images:</strong></p><pre><code># Pull an image from Docker Hub\ndocker pull nginx:latest\n\n# List all local images\ndocker images\n\n# Remove an image\ndocker rmi nginx:latest</code></pre><p><strong>Working with containers:</strong></p><pre><code># Create and start a container from an image\ndocker run -d --name my-web nginx:latest\n\n# List running containers\ndocker ps\n\n# List ALL containers (including stopped)\ndocker ps -a\n\n# Stop a container\ndocker stop my-web\n\n# Remove a container\ndocker rm my-web</code></pre><h4>The Lifecycle</h4><ol><li><strong>Pull</strong> an image (or build one from a Dockerfile)</li><li><strong>Run</strong> a container from that image</li><li><strong>Stop</strong> the container when done</li><li><strong>Remove</strong> the container (the image stays)</li><li>Run a new container from the same image anytime</li></ol><h4>Common Pitfalls</h4><ul><li>Stopped containers still take disk space — use <code>docker rm</code> or <code>docker container prune</code> to clean up.</li><li>Data stored inside a container is lost when you remove it. Use <strong>volumes</strong> for persistent data.</li><li>Don't confuse <code>docker rmi</code> (remove image) with <code>docker rm</code> (remove container).</li></ul><h4>Related Guides</h4><p>→ Install Docker on Ubuntu/Debian · → Working with Docker Volumes</p>",
+    "content_ro": "<h4>Care este diferența?</h4><p>Gândește-te la o <strong>imagine</strong> Docker ca la o rețetă, iar la un <strong>container</strong> ca la mâncarea gătită după acea rețetă. Imaginea este un șablon read-only care conține codul aplicației, runtime-ul, bibliotecile și configurarea. Un container este o instanță care rulează, creată dintr-o imagine.</p><h4>De ce contează</h4><p>Înțelegerea acestei distincții este critică deoarece: poți crea multe containere dintr-o singură imagine, containerele sunt dispensabile dar imaginile persistă, iar modificările de date într-un container nu afectează imaginea decât dacă le comiți explicit.</p><h4>Comenzi cheie</h4><p><strong>Lucrul cu imagini:</strong></p><pre><code># Descarcă o imagine de pe Docker Hub\ndocker pull nginx:latest\n\n# Listează toate imaginile locale\ndocker images\n\n# Șterge o imagine\ndocker rmi nginx:latest</code></pre><p><strong>Lucrul cu containere:</strong></p><pre><code># Creează și pornește un container dintr-o imagine\ndocker run -d --name my-web nginx:latest\n\n# Listează containerele care rulează\ndocker ps\n\n# Listează TOATE containerele (inclusiv cele oprite)\ndocker ps -a\n\n# Oprește un container\ndocker stop my-web\n\n# Șterge un container\ndocker rm my-web</code></pre><h4>Ciclul de viață</h4><ol><li><strong>Descarcă</strong> o imagine (sau construiește una din Dockerfile)</li><li><strong>Rulează</strong> un container din acea imagine</li><li><strong>Oprește</strong> containerul când ai terminat</li><li><strong>Șterge</strong> containerul (imaginea rămâne)</li><li>Rulează un container nou din aceeași imagine oricând</li></ol><h4>Greșeli frecvente</h4><ul><li>Containerele oprite încă ocupă spațiu pe disc — folosește <code>docker rm</code> sau <code>docker container prune</code> pentru curățare.</li><li>Datele stocate în interiorul unui container se pierd când îl ștergi. Folosește <strong>volume</strong> pentru date persistente.</li><li>Nu confunda <code>docker rmi</code> (șterge imagine) cu <code>docker rm</code> (șterge container).</li></ul><h4>Ghiduri asociate</h4><p>→ Instalarea Docker pe Ubuntu/Debian · → Lucrul cu volume Docker</p>"
+  },
+  {
+    "id": "docker-compose-basics",
+    "title_en": "Docker Compose: Your First Stack",
+    "title_ro": "Docker Compose: Primul tău stack",
+    "category": "compose",
+    "difficulty": "beginner",
+    "icon": "fas fa-file-code",
+    "summary_en": "Learn how to define multi-container applications with docker-compose.yml. Create your first stack with a web server and database.",
+    "summary_ro": "Învață cum să definești aplicații multi-container cu docker-compose.yml. Creează primul tău stack cu un server web și o bază de date.",
+    "content_en": "<h4>What is Docker Compose?</h4><p>Docker Compose lets you define and run multi-container applications using a single YAML file. Instead of running multiple <code>docker run</code> commands with complex flags, you describe your entire stack in <code>docker-compose.yml</code> and bring it up with one command.</p><h4>Why Use Compose?</h4><p>Real applications need multiple services — a web server, a database, a cache, maybe a queue. Compose lets you define all of them together, with networking, volumes, and environment variables, in a single file you can version-control.</p><h4>Your First docker-compose.yml</h4><pre><code>version: '3.8'\n\nservices:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8080:80\"\n    volumes:\n      - ./html:/usr/share/nginx/html:ro\n    depends_on:\n      - db\n\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: myapp\n      POSTGRES_USER: admin\n      POSTGRES_PASSWORD: secret123\n    volumes:\n      - db_data:/var/lib/postgresql/data\n\nvolumes:\n  db_data:</code></pre><h4>Essential Commands</h4><pre><code># Start all services (detached)\ndocker compose up -d\n\n# View running services\ndocker compose ps\n\n# View logs\ndocker compose logs -f\n\n# Stop everything\ndocker compose down\n\n# Stop and remove volumes (DESTROYS DATA)\ndocker compose down -v</code></pre><h4>Key Concepts</h4><ul><li><strong>services</strong> — each container in your stack</li><li><strong>ports</strong> — map host:container ports</li><li><strong>volumes</strong> — persist data beyond container lifecycle</li><li><strong>depends_on</strong> — control startup order</li><li><strong>environment</strong> — pass config to containers</li></ul><h4>Common Pitfalls</h4><ul><li>Use <code>docker compose</code> (v2, no hyphen), not <code>docker-compose</code> (v1, deprecated).</li><li><code>depends_on</code> only waits for the container to start, NOT for the service inside to be ready.</li><li>Never put real passwords in the YAML file in production — use <code>.env</code> files or Docker secrets.</li></ul><h4>Related Guides</h4><p>→ Understanding Images vs Containers · → Docker Compose Environment Variables</p>",
+    "content_ro": "<h4>Ce este Docker Compose?</h4><p>Docker Compose îți permite să definești și să rulezi aplicații multi-container folosind un singur fișier YAML. În loc să rulezi multiple comenzi <code>docker run</code> cu flag-uri complexe, descrii întregul stack în <code>docker-compose.yml</code> și îl pornești cu o singură comandă.</p><h4>De ce să folosești Compose?</h4><p>Aplicațiile reale au nevoie de multiple servicii — un server web, o bază de date, un cache, poate o coadă. Compose îți permite să le definești pe toate împreună, cu networking, volume și variabile de mediu, într-un singur fișier pe care îl poți versiona.</p><h4>Primul tău docker-compose.yml</h4><pre><code>version: '3.8'\n\nservices:\n  web:\n    image: nginx:alpine\n    ports:\n      - \"8080:80\"\n    volumes:\n      - ./html:/usr/share/nginx/html:ro\n    depends_on:\n      - db\n\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_DB: myapp\n      POSTGRES_USER: admin\n      POSTGRES_PASSWORD: secret123\n    volumes:\n      - db_data:/var/lib/postgresql/data\n\nvolumes:\n  db_data:</code></pre><h4>Comenzi esențiale</h4><pre><code># Pornește toate serviciile (detached)\ndocker compose up -d\n\n# Vezi serviciile care rulează\ndocker compose ps\n\n# Vezi log-urile\ndocker compose logs -f\n\n# Oprește totul\ndocker compose down\n\n# Oprește și șterge volumele (DISTRUGE DATELE)\ndocker compose down -v</code></pre><h4>Concepte cheie</h4><ul><li><strong>services</strong> — fiecare container din stack-ul tău</li><li><strong>ports</strong> — mapare porturi host:container</li><li><strong>volumes</strong> — persistă datele dincolo de ciclul de viață al containerului</li><li><strong>depends_on</strong> — controlează ordinea de pornire</li><li><strong>environment</strong> — transmite configurări containerelor</li></ul><h4>Greșeli frecvente</h4><ul><li>Folosește <code>docker compose</code> (v2, fără cratimă), nu <code>docker-compose</code> (v1, depreciat).</li><li><code>depends_on</code> așteaptă doar pornirea containerului, NU ca serviciul din interior să fie gata.</li><li>Nu pune niciodată parole reale în fișierul YAML în producție — folosește fișiere <code>.env</code> sau Docker secrets.</li></ul><h4>Ghiduri asociate</h4><p>→ Înțelegerea imaginilor vs containerelor · → Variabile de mediu în Docker Compose</p>"
+  },
+  {
+    "id": "linux-basic-commands",
+    "title_en": "Essential Linux Commands for Docker",
+    "title_ro": "Comenzi Linux esențiale pentru Docker",
+    "category": "linux",
+    "difficulty": "beginner",
+    "icon": "fas fa-terminal",
+    "summary_en": "The 20 most important Linux commands you need to know for managing Docker servers — files, processes, networking, and system info.",
+    "summary_ro": "Cele mai importante 20 de comenzi Linux pe care trebuie să le cunoști pentru gestionarea serverelor Docker — fișiere, procese, rețea și informații de sistem.",
+    "content_en": "<h4>Why Linux Commands?</h4><p>Docker runs on Linux. Even if you use Docker Desktop on Mac/Windows, your production servers are Linux. Knowing these commands lets you troubleshoot, manage files, and understand what's happening on your server.</p><h4>File System</h4><pre><code># List files (detailed)\nls -la\n\n# Navigate directories\ncd /var/lib/docker\npwd   # print current directory\n\n# View file contents\ncat file.txt        # entire file\nhead -n 20 file.txt # first 20 lines\ntail -f /var/log/syslog  # follow log in real-time\n\n# Copy, move, delete\ncp file.txt backup.txt\nmv old.txt new.txt\nrm file.txt\nrm -rf directory/   # recursive delete (CAREFUL!)</code></pre><h4>Processes &amp; Resources</h4><pre><code># Running processes\nps aux | grep docker\n\n# Interactive process monitor\nhtop   # or top\n\n# Disk space\ndf -h          # filesystem usage\ndu -sh /var/*  # directory sizes\n\n# Memory\nfree -h</code></pre><h4>Networking</h4><pre><code># Check open ports\nss -tlnp\n\n# Test connectivity\nping google.com\ncurl -I http://localhost:8080\n\n# DNS lookup\nnslookup example.com</code></pre><h4>System</h4><pre><code># System info\nuname -a\ncat /etc/os-release\n\n# Service management (systemd)\nsudo systemctl status docker\nsudo systemctl restart docker\n\n# View system logs\njournalctl -u docker -f</code></pre><h4>Common Pitfalls</h4><ul><li><code>rm -rf</code> has no confirmation and no undo — always double-check the path.</li><li>Use <code>sudo</code> only when needed. Don't run everything as root.</li><li><code>tail -f</code> is your best friend for watching logs in real-time.</li></ul><h4>Related Guides</h4><p>→ Install Docker on Ubuntu/Debian · → SSH Key Authentication</p>",
+    "content_ro": "<h4>De ce comenzi Linux?</h4><p>Docker rulează pe Linux. Chiar dacă folosești Docker Desktop pe Mac/Windows, serverele tale de producție sunt Linux. Cunoașterea acestor comenzi îți permite să depanezi, să gestionezi fișiere și să înțelegi ce se întâmplă pe server.</p><h4>Sistem de fișiere</h4><pre><code># Listează fișiere (detaliat)\nls -la\n\n# Navighează directoare\ncd /var/lib/docker\npwd   # afișează directorul curent\n\n# Vezi conținutul fișierelor\ncat file.txt        # fișierul întreg\nhead -n 20 file.txt # primele 20 de linii\ntail -f /var/log/syslog  # urmărește log-ul în timp real\n\n# Copiere, mutare, ștergere\ncp file.txt backup.txt\nmv old.txt new.txt\nrm file.txt\nrm -rf directory/   # ștergere recursivă (ATENȚIE!)</code></pre><h4>Procese și resurse</h4><pre><code># Procese care rulează\nps aux | grep docker\n\n# Monitor interactiv de procese\nhtop   # sau top\n\n# Spațiu pe disc\ndf -h          # utilizare filesystem\ndu -sh /var/*  # dimensiuni directoare\n\n# Memorie\nfree -h</code></pre><h4>Rețea</h4><pre><code># Verifică porturile deschise\nss -tlnp\n\n# Testează conectivitatea\nping google.com\ncurl -I http://localhost:8080\n\n# Căutare DNS\nnslookup example.com</code></pre><h4>Sistem</h4><pre><code># Informații sistem\nuname -a\ncat /etc/os-release\n\n# Gestionare servicii (systemd)\nsudo systemctl status docker\nsudo systemctl restart docker\n\n# Vezi log-urile de sistem\njournalctl -u docker -f</code></pre><h4>Greșeli frecvente</h4><ul><li><code>rm -rf</code> nu are confirmare și nu are undo — verifică întotdeauna calea.</li><li>Folosește <code>sudo</code> doar când e necesar. Nu rula totul ca root.</li><li><code>tail -f</code> e cel mai bun prieten al tău pentru urmărirea log-urilor în timp real.</li></ul><h4>Ghiduri asociate</h4><p>→ Instalarea Docker pe Ubuntu/Debian · → Autentificarea cu chei SSH</p>"
+  },
+  {
+    "id": "expose-ports-safely",
+    "title_en": "Exposing Ports Safely",
+    "title_ro": "Expunerea porturilor în siguranță",
+    "category": "networking",
+    "difficulty": "beginner",
+    "icon": "fas fa-network-wired",
+    "summary_en": "Learn how Docker port mapping works, the difference between exposing to localhost vs the world, and how to avoid accidentally making services public.",
+    "summary_ro": "Învață cum funcționează maparea porturilor Docker, diferența între expunerea pe localhost vs public, și cum să eviți expunerea accidentală a serviciilor.",
+    "content_en": "<h4>What is Port Mapping?</h4><p>Docker containers run in their own network. To access a service inside a container from outside, you need to map a port from the host to the container using the <code>-p</code> flag.</p><h4>Why This Matters</h4><p>One of the most common security mistakes is accidentally exposing a database or admin panel to the entire internet. Understanding port binding is critical for keeping your services safe.</p><h4>The Basics</h4><pre><code># Expose to ALL interfaces (0.0.0.0) — accessible from internet!\ndocker run -d -p 8080:80 nginx\n\n# Expose to localhost ONLY — safe, only accessible from server\ndocker run -d -p 127.0.0.1:8080:80 nginx\n\n# Expose to specific interface\ndocker run -d -p 10.0.0.5:8080:80 nginx</code></pre><h4>In Docker Compose</h4><pre><code>services:\n  db:\n    image: postgres:16\n    ports:\n      # DANGEROUS: accessible from internet\n      - \"5432:5432\"\n\n      # SAFE: only accessible from server itself\n      - \"127.0.0.1:5432:5432\"\n\n  web:\n    image: nginx\n    ports:\n      # OK: web servers usually need to be public\n      - \"80:80\"\n      - \"443:443\"</code></pre><h4>Docker Bypasses UFW/iptables!</h4><p><strong>This is the #1 gotcha.</strong> Docker manipulates iptables directly. Even if you have UFW blocking port 5432, Docker's <code>-p 5432:5432</code> will make it accessible from the internet anyway.</p><p><strong>The fix:</strong></p><pre><code># Option 1: Bind to localhost\n- \"127.0.0.1:5432:5432\"\n\n# Option 2: Use Docker networks (no port mapping needed)\n# Services on the same Docker network can talk to each other\n# without exposing ports to the host</code></pre><h4>Best Practices</h4><ul><li>Only expose ports that need to be public (web servers, reverse proxies).</li><li>Always bind databases and admin tools to <code>127.0.0.1</code>.</li><li>Use Docker networks for inter-service communication instead of port mapping.</li><li>Use a reverse proxy (Nginx, Traefik, Caddy) as a single entry point.</li></ul><h4>Related Guides</h4><p>→ Setting Up a Reverse Proxy with Nginx · → Docker Network Basics</p>",
+    "content_ro": "<h4>Ce este maparea porturilor?</h4><p>Containerele Docker rulează în propria lor rețea. Pentru a accesa un serviciu din interiorul unui container din exterior, trebuie să mapezi un port de pe host la container folosind flag-ul <code>-p</code>.</p><h4>De ce contează</h4><p>Una dintre cele mai frecvente greșeli de securitate este expunerea accidentală a unei baze de date sau a unui panou de administrare către întregul internet. Înțelegerea port binding-ului este critică pentru siguranța serviciilor.</p><h4>Bazele</h4><pre><code># Expune pe TOATE interfețele (0.0.0.0) — accesibil de pe internet!\ndocker run -d -p 8080:80 nginx\n\n# Expune DOAR pe localhost — sigur, accesibil doar de pe server\ndocker run -d -p 127.0.0.1:8080:80 nginx\n\n# Expune pe o interfață specifică\ndocker run -d -p 10.0.0.5:8080:80 nginx</code></pre><h4>În Docker Compose</h4><pre><code>services:\n  db:\n    image: postgres:16\n    ports:\n      # PERICULOS: accesibil de pe internet\n      - \"5432:5432\"\n\n      # SIGUR: accesibil doar de pe serverul însuși\n      - \"127.0.0.1:5432:5432\"\n\n  web:\n    image: nginx\n    ports:\n      # OK: serverele web trebuie de obicei să fie publice\n      - \"80:80\"\n      - \"443:443\"</code></pre><h4>Docker ocolește UFW/iptables!</h4><p><strong>Aceasta este capcana nr. 1.</strong> Docker manipulează iptables direct. Chiar dacă ai UFW care blochează portul 5432, flag-ul Docker <code>-p 5432:5432</code> îl va face accesibil de pe internet oricum.</p><p><strong>Soluția:</strong></p><pre><code># Opțiunea 1: Bind pe localhost\n- \"127.0.0.1:5432:5432\"\n\n# Opțiunea 2: Folosește rețele Docker (nu e nevoie de mapare porturi)\n# Serviciile din aceeași rețea Docker pot comunica între ele\n# fără a expune porturi pe host</code></pre><h4>Bune practici</h4><ul><li>Expune doar porturile care trebuie să fie publice (servere web, reverse proxy-uri).</li><li>Leagă întotdeauna bazele de date și uneltele de admin pe <code>127.0.0.1</code>.</li><li>Folosește rețele Docker pentru comunicarea între servicii în loc de mapare de porturi.</li><li>Folosește un reverse proxy (Nginx, Traefik, Caddy) ca punct unic de intrare.</li></ul><h4>Ghiduri asociate</h4><p>→ Configurarea unui Reverse Proxy cu Nginx · → Bazele rețelelor Docker</p>"
+  },
+  {
+    "id": "docker-volumes",
+    "title_en": "Working with Docker Volumes",
+    "title_ro": "Lucrul cu volume Docker",
+    "category": "basics",
+    "difficulty": "beginner",
+    "icon": "fas fa-hdd",
+    "summary_en": "Understand the three types of Docker storage — volumes, bind mounts, and tmpfs — and when to use each for persistent data.",
+    "summary_ro": "Înțelege cele trei tipuri de stocare Docker — volume, bind mounts și tmpfs — și când să folosești fiecare pentru date persistente."
+  },
+  {
+    "id": "reverse-proxy-nginx",
+    "title_en": "Setting Up a Reverse Proxy with Nginx",
+    "title_ro": "Configurarea unui Reverse Proxy cu Nginx",
+    "category": "networking",
+    "difficulty": "intermediate",
+    "icon": "fas fa-shield-alt",
+    "summary_en": "Run multiple web applications on one server using Nginx as a reverse proxy with automatic HTTPS via Let's Encrypt.",
+    "summary_ro": "Rulează multiple aplicații web pe un singur server folosind Nginx ca reverse proxy cu HTTPS automat prin Let's Encrypt."
+  },
+  {
+    "id": "tls-letsencrypt",
+    "title_en": "Free HTTPS with Let's Encrypt",
+    "title_ro": "HTTPS gratuit cu Let's Encrypt",
+    "category": "security",
+    "difficulty": "intermediate",
+    "icon": "fas fa-lock",
+    "summary_en": "Get free TLS certificates for your Docker services using Certbot or Caddy, with automatic renewal.",
+    "summary_ro": "Obține certificate TLS gratuite pentru serviciile tale Docker folosind Certbot sau Caddy, cu reînnoire automată."
+  },
+  {
+    "id": "backup-docker-volumes",
+    "title_en": "Backing Up Docker Volumes",
+    "title_ro": "Backup-ul volumelor Docker",
+    "category": "backup",
+    "difficulty": "intermediate",
+    "icon": "fas fa-archive",
+    "summary_en": "Create reliable backups of your Docker volume data using tar archives, rsync, or dedicated backup containers.",
+    "summary_ro": "Creează backup-uri fiabile ale datelor din volumele Docker folosind arhive tar, rsync sau containere dedicate de backup."
+  },
+  {
+    "id": "docker-network-basics",
+    "title_en": "Docker Network Basics",
+    "title_ro": "Bazele rețelelor Docker",
+    "category": "networking",
+    "difficulty": "beginner",
+    "icon": "fas fa-project-diagram",
+    "summary_en": "Understand Docker's network types — bridge, host, and overlay — and how containers communicate with each other.",
+    "summary_ro": "Înțelege tipurile de rețele Docker — bridge, host și overlay — și cum comunică containerele între ele."
+  },
+  {
+    "id": "compose-env-variables",
+    "title_en": "Docker Compose Environment Variables",
+    "title_ro": "Variabile de mediu în Docker Compose",
+    "category": "compose",
+    "difficulty": "intermediate",
+    "icon": "fas fa-key",
+    "summary_en": "Master the three ways to pass environment variables to containers: inline, .env files, and env_file directive.",
+    "summary_ro": "Stăpânește cele trei moduri de a transmite variabile de mediu containerelor: inline, fișiere .env și directiva env_file."
+  },
+  {
+    "id": "container-wont-start",
+    "title_en": "Fixing \"Container Won't Start\" Errors",
+    "title_ro": "Rezolvarea erorilor „Containerul nu pornește"",
+    "category": "troubleshooting",
+    "difficulty": "beginner",
+    "icon": "fas fa-exclamation-triangle",
+    "summary_en": "Diagnose and fix the most common reasons a Docker container fails to start — port conflicts, missing images, permission errors, and OOM kills.",
+    "summary_ro": "Diagnostichează și repară cele mai frecvente motive pentru care un container Docker nu pornește — conflicte de porturi, imagini lipsă, erori de permisiuni și OOM kills."
+  },
+  {
+    "id": "docker-logs-debugging",
+    "title_en": "Reading Docker Logs Like a Pro",
+    "title_ro": "Citirea log-urilor Docker ca un profesionist",
+    "category": "troubleshooting",
+    "difficulty": "beginner",
+    "icon": "fas fa-scroll",
+    "summary_en": "Use docker logs effectively — filtering by time, following in real-time, and understanding common log patterns.",
+    "summary_ro": "Folosește docker logs eficient — filtrare pe timp, urmărire în timp real și înțelegerea pattern-urilor comune de log."
+  },
+  {
+    "id": "ssh-key-auth",
+    "title_en": "SSH Key Authentication",
+    "title_ro": "Autentificarea cu chei SSH",
+    "category": "linux",
+    "difficulty": "beginner",
+    "icon": "fas fa-key",
+    "summary_en": "Replace password authentication with SSH keys for secure, convenient server access. Includes key generation and server setup.",
+    "summary_ro": "Înlocuiește autentificarea cu parolă cu chei SSH pentru acces securizat și convenabil la server. Include generarea cheilor și configurarea serverului."
+  },
+  {
+    "id": "docker-dash-getting-started",
+    "title_en": "Getting Started with Docker Dash",
+    "title_ro": "Primii pași cu Docker Dash",
+    "category": "docker-dash",
+    "difficulty": "beginner",
+    "icon": "fas fa-tachometer-alt",
+    "summary_en": "A quick tour of Docker Dash — navigate the dashboard, manage containers, view logs, and configure settings.",
+    "summary_ro": "Un tur rapid al Docker Dash — navighează dashboard-ul, gestionează containere, vezi log-uri și configurează setările."
+  },
+  {
+    "id": "docker-dash-multi-host",
+    "title_en": "Managing Multiple Hosts in Docker Dash",
+    "title_ro": "Gestionarea mai multor hosturi în Docker Dash",
+    "category": "docker-dash",
+    "difficulty": "intermediate",
+    "icon": "fas fa-server",
+    "summary_en": "Connect and manage multiple Docker servers from a single Docker Dash instance using SSH tunnels or remote Docker APIs.",
+    "summary_ro": "Conectează și gestionează mai multe servere Docker dintr-o singură instanță Docker Dash folosind tuneluri SSH sau API-uri Docker remote."
+  },
+  {
+    "id": "docker-dash-alerts",
+    "title_en": "Setting Up Alerts in Docker Dash",
+    "title_ro": "Configurarea alertelor în Docker Dash",
+    "category": "docker-dash",
+    "difficulty": "intermediate",
+    "icon": "fas fa-bell",
+    "summary_en": "Configure email, webhook, and push notifications for container health, resource usage, and security events.",
+    "summary_ro": "Configurează notificări email, webhook și push pentru sănătatea containerelor, utilizarea resurselor și evenimente de securitate."
+  },
+  {
+    "id": "harden-docker-host",
+    "title_en": "Hardening Your Docker Host",
+    "title_ro": "Securizarea hostului Docker",
+    "category": "security",
+    "difficulty": "advanced",
+    "icon": "fas fa-shield-virus",
+    "summary_en": "A comprehensive checklist for securing your Docker host — disable root SSH, configure firewall, enable audit logging, and limit Docker privileges.",
+    "summary_ro": "O listă completă pentru securizarea hostului Docker — dezactivează SSH root, configurează firewall, activează logarea de audit și limitează privilegiile Docker."
+  },
+  {
+    "id": "rootless-docker",
+    "title_en": "Running Docker in Rootless Mode",
+    "title_ro": "Rularea Docker în mod rootless",
+    "category": "security",
+    "difficulty": "advanced",
+    "icon": "fas fa-user-shield",
+    "summary_en": "Run the Docker daemon and containers without root privileges, significantly reducing the attack surface of your server.",
+    "summary_ro": "Rulează daemon-ul Docker și containerele fără privilegii root, reducând semnificativ suprafața de atac a serverului."
+  },
+  {
+    "id": "compose-healthchecks",
+    "title_en": "Health Checks in Docker Compose",
+    "title_ro": "Health Checks în Docker Compose",
+    "category": "compose",
+    "difficulty": "intermediate",
+    "icon": "fas fa-heartbeat",
+    "summary_en": "Add health checks to your services so Docker knows when a container is truly ready, not just running.",
+    "summary_ro": "Adaugă health checks serviciilor tale ca Docker să știe când un container e cu adevărat gata, nu doar pornit."
+  },
+  {
+    "id": "docker-prune-cleanup",
+    "title_en": "Cleaning Up Docker Disk Space",
+    "title_ro": "Curățarea spațiului pe disc Docker",
+    "category": "performance",
+    "difficulty": "beginner",
+    "icon": "fas fa-broom",
+    "summary_en": "Reclaim disk space by removing unused images, stopped containers, dangling volumes, and build cache.",
+    "summary_ro": "Recuperează spațiu pe disc ștergând imagini neutilizate, containere oprite, volume orfane și cache-ul de build."
+  },
+  {
+    "id": "resource-limits",
+    "title_en": "Setting CPU and Memory Limits",
+    "title_ro": "Setarea limitelor de CPU și memorie",
+    "category": "performance",
+    "difficulty": "intermediate",
+    "icon": "fas fa-microchip",
+    "summary_en": "Prevent a single container from consuming all server resources by setting CPU and memory limits in Docker Compose.",
+    "summary_ro": "Previne consumul tuturor resurselor serverului de către un singur container setând limite de CPU și memorie în Docker Compose."
+  },
+  {
+    "id": "database-backup-restore",
+    "title_en": "Database Backup and Restore in Docker",
+    "title_ro": "Backup și restaurare baze de date în Docker",
+    "category": "backup",
+    "difficulty": "intermediate",
+    "icon": "fas fa-database",
+    "summary_en": "Backup and restore PostgreSQL, MySQL, and SQLite databases running inside Docker containers with zero downtime.",
+    "summary_ro": "Backup și restaurare baze de date PostgreSQL, MySQL și SQLite care rulează în containere Docker fără downtime."
+  },
+  {
+    "id": "docker-update-containers",
+    "title_en": "Updating Containers Without Downtime",
+    "title_ro": "Actualizarea containerelor fără downtime",
+    "category": "compose",
+    "difficulty": "intermediate",
+    "icon": "fas fa-sync-alt",
+    "summary_en": "Pull new images and recreate containers with minimal or zero downtime using Docker Compose and rolling updates.",
+    "summary_ro": "Descarcă imagini noi și recreează containere cu downtime minim sau zero folosind Docker Compose și actualizări progresive."
+  },
+  {
+    "id": "dns-domain-setup",
+    "title_en": "Pointing a Domain to Your Docker Server",
+    "title_ro": "Direcționarea unui domeniu către serverul Docker",
+    "category": "networking",
+    "difficulty": "beginner",
+    "icon": "fas fa-globe",
+    "summary_en": "Configure DNS records to point your domain name to your server's IP address, including A records, CNAME, and common DNS providers.",
+    "summary_ro": "Configurează înregistrări DNS pentru a direcționa numele de domeniu către adresa IP a serverului, inclusiv înregistrări A, CNAME și provideri DNS comuni."
+  },
+  {
+    "id": "monitoring-ctop-lazydocker",
+    "title_en": "Monitoring Containers with ctop and lazydocker",
+    "title_ro": "Monitorizarea containerelor cu ctop și lazydocker",
+    "category": "performance",
+    "difficulty": "beginner",
+    "icon": "fas fa-chart-bar",
+    "summary_en": "Install and use lightweight terminal tools like ctop and lazydocker for real-time container monitoring on your server.",
+    "summary_ro": "Instalează și folosește unelte terminale ușoare ca ctop și lazydocker pentru monitorizarea containerelor în timp real pe server."
+  }
+]

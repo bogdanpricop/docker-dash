@@ -2674,3 +2674,16 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .dt-page-btn:disabled { opacity: 0.3; cursor: default; }
 .dt-col-filter { transition: opacity 0.15s; }
 .dt-col-filter:hover { opacity: 1 !important; color: var(--accent); }
+
+/* ── How-To Content ───────────────────────────── */
+.howto-content h2 { font-size: 16px; color: var(--text-bright); margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.howto-content h3 { font-size: 14px; color: var(--text-bright); margin: 16px 0 6px; }
+.howto-content p { margin: 8px 0; }
+.howto-content pre { background: var(--surface2); padding: 10px 14px; border-radius: var(--radius-sm, 6px); overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; margin: 8px 0; }
+.howto-content code { background: var(--surface3); padding: 1px 5px; border-radius: 3px; font-family: var(--mono); font-size: 12px; }
+.howto-content pre code { background: none; padding: 0; }
+.howto-content ul, .howto-content ol { margin: 8px 0; padding-left: 24px; }
+.howto-content li { margin: 4px 0; }
+.howto-content strong { color: var(--text-bright); }
+.howto-content a { color: var(--accent); text-decoration: none; }
+.howto-content a:hover { text-decoration: underline; }

@@ -37,6 +37,7 @@ const App = {
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
     'timeline':       () => TimelinePage,
+    'howto':          () => HowToPage,
   },
 
   async init() {
@@ -734,7 +735,7 @@ const App = {
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
         { label: 'Operations',  items: ['system', 'workflows'] },
-        { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'about', 'whatsnew'] },
+        { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
 
       // Collect all existing nav items by data-page

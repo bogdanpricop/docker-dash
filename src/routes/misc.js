@@ -1541,4 +1541,88 @@ router.get('/recommendations/balancing', requireAuth, async (req, res) => {
   }
 });
 
+// ─── How-To Knowledge Base ─────────────────────────────
+
+// GET /howto — list all guides
+router.get('/howto', requireAuth, (req, res) => {
+  try {
+    const db = getDb();
+    const { category, difficulty, search } = req.query;
+    let sql = 'SELECT id, slug, title, title_ro, category, difficulty, icon, summary, summary_ro, is_builtin, created_at FROM howto_guides';
+    const conditions = [];
+    const params = [];
+
+    if (category) { conditions.push('category = ?'); params.push(category); }
+    if (difficulty) { conditions.push('difficulty = ?'); params.push(difficulty); }
+    if (search) { conditions.push('(title LIKE ? OR summary LIKE ? OR title_ro LIKE ? OR summary_ro LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`); }
+
+    if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+    sql += ' ORDER BY is_builtin DESC, category, difficulty, title';
+
+    const guides = db.prepare(sql).all(...params);
+    res.json({ guides });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /howto/:slug — get full guide
+router.get('/howto/:slug', requireAuth, (req, res) => {
+  try {
+    const guide = getDb().prepare('SELECT * FROM howto_guides WHERE slug = ?').get(req.params.slug);
+    if (!guide) return res.status(404).json({ error: 'Guide not found' });
+    res.json(guide);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /howto — create guide (admin)
+router.post('/howto', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { slug, title, title_ro, category, difficulty, icon, summary, summary_ro, content, content_ro } = req.body;
+    if (!slug || !title) return res.status(400).json({ error: 'slug and title are required' });
+
+    getDb().prepare(`
+      INSERT INTO howto_guides (slug, title, title_ro, category, difficulty, icon, summary, summary_ro, content, content_ro, is_builtin, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(slug, title, title_ro || '', category || 'general', difficulty || 'beginner', icon || 'fas fa-book', summary || '', summary_ro || '', content || '', content_ro || '', req.user?.id);
+
+    res.status(201).json({ ok: true, slug });
+  } catch (err) {
+    if (err.message?.includes('UNIQUE')) return res.status(409).json({ error: 'Guide with this slug already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /howto/:slug — update guide (admin)
+router.put('/howto/:slug', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const { title, title_ro, category, difficulty, icon, summary, summary_ro, content, content_ro } = req.body;
+    const result = getDb().prepare(`
+      UPDATE howto_guides SET title = ?, title_ro = ?, category = ?, difficulty = ?, icon = ?, summary = ?, summary_ro = ?, content = ?, content_ro = ?, updated_at = datetime('now')
+      WHERE slug = ?
+    `).run(title, title_ro || '', category || 'general', difficulty || 'beginner', icon || 'fas fa-book', summary || '', summary_ro || '', content || '', content_ro || '', req.params.slug);
+
+    if (result.changes === 0) return res.status(404).json({ error: 'Guide not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /howto/:slug — delete custom guide (admin, not built-in)
+router.delete('/howto/:slug', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const guide = getDb().prepare('SELECT is_builtin FROM howto_guides WHERE slug = ?').get(req.params.slug);
+    if (!guide) return res.status(404).json({ error: 'Guide not found' });
+    if (guide.is_builtin) return res.status(400).json({ error: 'Cannot delete built-in guides' });
+
+    getDb().prepare('DELETE FROM howto_guides WHERE slug = ?').run(req.params.slug);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

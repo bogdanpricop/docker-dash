@@ -27,7 +27,7 @@ const Api = {
   _appendHostId(path) {
     if (this._currentHostId === 0) return path;
     // Skip host parameter for auth, settings, hosts, and other non-Docker endpoints
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -487,6 +487,13 @@ const Api = {
   // ─── MOTD ────────────────────────────────────────
   getMotd() { return this.get('/motd'); },
   setMotd(motd) { return this.put('/motd', { motd }); },
+
+  // ─── How-To ───────────────────────────────────
+  getHowtoGuides(params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/howto${qs ? '?' + qs : ''}`); },
+  getHowtoGuide(slug) { return this.get(`/howto/${encodeURIComponent(slug)}`); },
+  createHowtoGuide(data) { return this.post('/howto', data); },
+  updateHowtoGuide(slug, data) { return this.put(`/howto/${encodeURIComponent(slug)}`, data); },
+  deleteHowtoGuide(slug) { return this.delete(`/howto/${encodeURIComponent(slug)}`); },
 
   // ─── Misc ────────────────────────────────────────
   health() { return this.get('/health'); },
