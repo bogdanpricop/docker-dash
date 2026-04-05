@@ -65,6 +65,9 @@ const ContainersPage = {
           <button class="btn btn-sm btn-primary" id="container-create">
             <i class="fas fa-plus"></i> ${i18n.t('common.new')}
           </button>
+          <button class="btn btn-sm btn-warning" id="container-sandbox" title="Launch a sandboxed container with resource limits and network isolation">
+            <i class="fas fa-flask"></i> Sandbox
+          </button>
           <button class="btn btn-sm btn-secondary" id="container-templates">
             <i class="fas fa-th"></i> ${i18n.t('pages.containers.templates')}
           </button>
@@ -90,6 +93,7 @@ const ContainersPage = {
     container.querySelector('#show-all').addEventListener('change', () => this._loadList());
     container.querySelector('#containers-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#container-create').addEventListener('click', () => this._createContainerDialog());
+    container.querySelector('#container-sandbox').addEventListener('click', () => this._sandboxDialog());
     container.querySelector('#container-templates').addEventListener('click', () => this._templatesDialog());
     container.querySelector('#container-groups').addEventListener('click', () => this._manageGroupsDialog());
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
@@ -132,6 +136,13 @@ const ContainersPage = {
     this._kbRow = -1;
     this._boundKbHandler = this._onKeyNav.bind(this);
     document.addEventListener('keydown', this._boundKbHandler);
+
+    // Sandbox expiry notifications
+    this._sandboxExpiredHandler = WS.on('sandbox:expired', (msg) => {
+      const d = msg.data || {};
+      Toast.warning(`Sandbox "${d.name}" expired and was removed`);
+      this._loadList();
+    });
 
     await this._loadList();
     this._refreshTimer = setInterval(() => this._loadList(), 10000);
@@ -1044,15 +1055,35 @@ const ContainersPage = {
     const hColor = Utils.healthScoreColor(hScore);
     const hLabel = Utils.healthScoreLabel(hScore);
 
+    // Sandbox detection
+    const isSandbox = c.labels?.['docker-dash.sandbox'] === 'true';
+    const sandboxMode = c.labels?.['docker-dash.sandbox.mode'] || '';
+    const sandboxExpires = c.labels?.['docker-dash.sandbox.expires'] || '';
+    let sandboxBadge = '';
+    if (isSandbox) {
+      if (sandboxMode === 'ephemeral') {
+        let ttlStr = '';
+        if (sandboxExpires) {
+          const remaining = Math.max(0, Math.round((new Date(sandboxExpires).getTime() - Date.now()) / 60000));
+          ttlStr = remaining > 0 ? ` ${remaining}m` : ' expired';
+        }
+        sandboxBadge = `<span class="badge badge-ephemeral"><i class="fas fa-clock" style="margin-right:3px"></i>EPHEMERAL${ttlStr}</span>`;
+      } else {
+        sandboxBadge = `<span class="badge badge-sandbox"><i class="fas fa-flask" style="margin-right:3px"></i>SANDBOX</span>`;
+      }
+    }
+
     // Container metadata
     const meta = this._metaMap?.[c.name] || {};
     let metaLine = '';
+    if (isSandbox) metaLine += sandboxBadge + ' ';
     if (meta.app_name) metaLine += `<span class="meta-app-name">${Utils.escapeHtml(meta.app_name)}</span>`;
     if (meta.lan_link) metaLine += ` <a href="${Utils.escapeHtml(meta.lan_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="LAN"><i class="fas fa-home"></i></a>`;
     if (meta.web_link) metaLine += ` <a href="${Utils.escapeHtml(meta.web_link)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="WEB"><i class="fas fa-globe"></i></a>`;
     if (meta.docs_url) metaLine += ` <a href="${Utils.escapeHtml(meta.docs_url)}" class="meta-link" target="_blank" rel="noopener" data-stop-propagation title="Docs"><i class="fas fa-book"></i></a>`;
     if (meta.category) metaLine += ` <span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span>`;
-    const colorStyle = meta.color ? `border-left: 3px solid ${meta.color}; padding-left: 8px;` : '';
+    const sandboxBorderColor = isSandbox ? (sandboxMode === 'ephemeral' ? 'var(--red)' : 'var(--yellow)') : '';
+    const colorStyle = sandboxBorderColor ? `border-left: 3px solid ${sandboxBorderColor}; padding-left: 8px;` : (meta.color ? `border-left: 3px solid ${meta.color}; padding-left: 8px;` : '');
 
     const isSelf = c.isSelf || false;
 
@@ -1992,7 +2023,41 @@ const ContainersPage = {
 
     const resources = info.resources || {};
 
+    // Sandbox info card
+    const sbLabels = info.labels || {};
+    const isSandbox = sbLabels['docker-dash.sandbox'] === 'true';
+    let sandboxCard = '';
+    if (isSandbox) {
+      const sbMode = sbLabels['docker-dash.sandbox.mode'] || 'unknown';
+      const sbExpires = sbLabels['docker-dash.sandbox.expires'] || '';
+      const sbUser = sbLabels['docker-dash.sandbox.user'] || '';
+      const sbMem = resources.memory ? Utils.formatBytes(resources.memory) : '—';
+      const sbCpu = resources.nanoCpus ? (resources.nanoCpus / 1e9).toFixed(2) : '—';
+      let ttlLine = '';
+      if (sbExpires) {
+        const remaining = Math.max(0, Math.round((new Date(sbExpires).getTime() - Date.now()) / 60000));
+        ttlLine = remaining > 0 ? `${remaining} minutes remaining (expires ${new Date(sbExpires).toLocaleTimeString()})` : '<span style="color:var(--red)">Expired</span>';
+      } else {
+        ttlLine = 'No time limit';
+      }
+      sandboxCard = `
+        <div class="card mb-md" style="border:1px solid ${sbMode === 'ephemeral' ? 'var(--red)' : 'var(--yellow)'};border-left:4px solid ${sbMode === 'ephemeral' ? 'var(--red)' : 'var(--yellow)'}">
+          <div class="card-body" style="padding:14px 18px">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <span style="font-size:24px;color:${sbMode === 'ephemeral' ? 'var(--red)' : 'var(--yellow)'}"><i class="fas fa-flask"></i></span>
+              <div style="flex:1">
+                <div style="font-weight:700;font-size:14px;color:var(--text-bright)">Sandbox Mode: ${sbMode.charAt(0).toUpperCase() + sbMode.slice(1)}</div>
+                <div class="text-sm text-muted">TTL: ${ttlLine} &nbsp;|&nbsp; Limits: ${sbMem} RAM / ${sbCpu} CPU &nbsp;|&nbsp; User: ${Utils.escapeHtml(sbUser)}</div>
+              </div>
+              <button class="btn btn-sm btn-secondary" id="sb-extend-btn"><i class="fas fa-clock"></i> Extend +1h</button>
+              <button class="btn btn-sm btn-danger" id="sb-remove-btn"><i class="fas fa-trash"></i> Stop &amp; Remove</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
     el.innerHTML = `
+      ${sandboxCard}
       <div class="info-grid">
         <div class="card">
           <div class="card-header"><h3>${i18n.t('pages.containers.general')}</h3></div>
@@ -2059,6 +2124,26 @@ const ContainersPage = {
 
     // Load and display container metadata card
     this._loadMetaCard(el, info.name);
+
+    // Wire sandbox buttons
+    if (isSandbox) {
+      el.querySelector('#sb-extend-btn')?.addEventListener('click', async () => {
+        try {
+          const r = await Api.extendSandbox(this._detailId);
+          Toast.success(`Sandbox extended to ${new Date(r.expiresAt).toLocaleTimeString()}`);
+          this._renderTab('info');
+        } catch (err) { Toast.error(err.message); }
+      });
+      el.querySelector('#sb-remove-btn')?.addEventListener('click', async () => {
+        const ok = await Modal.confirm('Stop and permanently remove this sandbox container?', { danger: true, confirmText: 'Remove' });
+        if (!ok) return;
+        try {
+          await Api.removeSandbox(this._detailId);
+          Toast.success('Sandbox removed');
+          App.navigate('/containers');
+        } catch (err) { Toast.error(err.message); }
+      });
+    }
   },
 
   async _loadMetaCard(el, containerName) {
@@ -3929,6 +4014,115 @@ const ContainersPage = {
     });
   },
 
+  _sandboxDialog(prefillImage = '') {
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-flask" style="margin-right:8px;color:var(--yellow)"></i>Launch Sandbox Container</h3>
+        <button class="modal-close-btn" id="sb-close-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-sm text-muted" style="margin-bottom:16px">Sandbox containers run with resource limits, network isolation, and auto-cleanup. Perfect for testing images risk-free.</p>
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>Image</label>
+            <input id="sb-image" type="text" class="form-control" placeholder="nginx:alpine" value="${Utils.escapeHtml(prefillImage)}">
+          </div>
+          <div class="form-group">
+            <label>Name (optional)</label>
+            <input id="sb-name" type="text" class="form-control" placeholder="auto-generated">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Mode</label>
+          <div style="display:flex;gap:12px">
+            <label class="toggle-label"><input type="radio" name="sb-mode" value="ephemeral" checked> <strong>Ephemeral</strong> <span class="text-muted text-sm">— auto-delete on stop</span></label>
+            <label class="toggle-label"><input type="radio" name="sb-mode" value="persistent"> <strong>Persistent</strong> <span class="text-muted text-sm">— survives stop, isolated</span></label>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>TTL (auto-kill)</label>
+            <select id="sb-ttl" class="form-control">
+              <option value="1800">30 minutes</option>
+              <option value="3600" selected>1 hour</option>
+              <option value="14400">4 hours</option>
+              <option value="0">No limit</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>RAM Limit</label>
+            <select id="sb-mem" class="form-control">
+              <option value="268435456">256 MB</option>
+              <option value="536870912" selected>512 MB</option>
+              <option value="1073741824">1 GB</option>
+              <option value="2147483648">2 GB</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>CPU Limit</label>
+            <select id="sb-cpu" class="form-control">
+              <option value="0.25">0.25 cores</option>
+              <option value="0.5" selected>0.5 cores</option>
+              <option value="1">1 core</option>
+              <option value="2">2 cores</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px">
+          <label class="toggle-label"><input type="checkbox" id="sb-terminal" checked> Open terminal after launch</label>
+          <label class="toggle-label"><input type="checkbox" id="sb-isolated" checked> Isolated network</label>
+        </div>
+        <div style="margin-top:12px;padding:10px;background:var(--surface2);border-radius:var(--radius);font-size:11px;color:var(--text-dim)">
+          <i class="fas fa-shield-alt" style="margin-right:6px;color:var(--yellow)"></i>
+          Sandbox containers run with <code>no-new-privileges</code>, resource limits, no Docker socket access, and <code>restart: no</code>.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="sb-close-btn">Cancel</button>
+        <button class="btn btn-warning" id="sb-launch"><i class="fas fa-flask"></i> Launch Sandbox</button>
+      </div>
+    `, { width: '650px' });
+
+    const mc = Modal._content;
+    mc.querySelector('#sb-close-x').addEventListener('click', () => Modal.close());
+    mc.querySelector('#sb-close-btn').addEventListener('click', () => Modal.close());
+
+    mc.querySelector('#sb-launch').addEventListener('click', async () => {
+      const image = mc.querySelector('#sb-image').value.trim();
+      if (!image) { Toast.warning('Enter an image name'); return; }
+
+      const mode = mc.querySelector('input[name="sb-mode"]:checked')?.value || 'ephemeral';
+      const ttl = parseInt(mc.querySelector('#sb-ttl').value) || 0;
+      const memLimit = parseInt(mc.querySelector('#sb-mem').value);
+      const cpuLimit = parseFloat(mc.querySelector('#sb-cpu').value);
+      const openTerminal = mc.querySelector('#sb-terminal').checked;
+      const isolatedNetwork = mc.querySelector('#sb-isolated').checked;
+      const name = mc.querySelector('#sb-name').value.trim() || undefined;
+
+      const btn = mc.querySelector('#sb-launch');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Launching...';
+
+      try {
+        const result = await Api.createSandbox({ image, mode, ttl, memLimit, cpuLimit, name, openTerminal, isolatedNetwork });
+        Toast.success(`Sandbox "${result.name}" launched`);
+        Modal.close();
+        await this._loadList();
+
+        if (openTerminal) {
+          App.navigate(`/containers/${result.id}`);
+          setTimeout(() => {
+            document.querySelector('[data-tab="terminal"]')?.click();
+          }, 400);
+        }
+      } catch (err) {
+        Toast.error('Sandbox launch failed: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-flask"></i> Launch Sandbox';
+      }
+    });
+  },
+
   _githubComposeDialog() {
     Modal.open(`
       <div class="modal-header">
@@ -4059,6 +4253,7 @@ const ContainersPage = {
     if (this._logStream) this._logStream();
     this._stopLogFollow();
     if (this._boundKbHandler) { document.removeEventListener('keydown', this._boundKbHandler); this._boundKbHandler = null; }
+    if (this._sandboxExpiredHandler) { this._sandboxExpiredHandler(); this._sandboxExpiredHandler = null; }
     if (this._execUnsub) this._execUnsub.forEach(fn => fn());
     if (this._termDataDisposable) { this._termDataDisposable.dispose(); this._termDataDisposable = null; }
     if (this._termResizeObserver) { this._termResizeObserver.disconnect(); this._termResizeObserver = null; }

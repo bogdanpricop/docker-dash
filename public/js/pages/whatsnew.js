@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.5.0',
+      date: '2026-04-05',
+      title: 'Sandbox Mode — Ephemeral & Isolated Containers',
+      changes: [
+        { type: 'feature', text: 'Sandbox Mode — launch containers with resource limits, network isolation, and auto-cleanup; two modes: Ephemeral (auto-delete on stop + TTL) and Persistent Sandbox (isolated but survives restart)' },
+        { type: 'feature', text: 'Sandbox launch modal — image selector, mode toggle, TTL (30m/1h/4h/off), RAM limit (256MB-2GB), CPU limit (0.25-2 cores), isolated network checkbox, auto-open terminal' },
+        { type: 'feature', text: 'Run in Sandbox from Images page — per-image flask button to instantly launch a sandbox with that image pre-filled' },
+        { type: 'feature', text: 'Sandbox badges in containers list — EPHEMERAL (red + countdown) or SANDBOX (yellow) badges with colored left border for visual distinction' },
+        { type: 'feature', text: 'Sandbox info card in container detail — shows mode, remaining TTL, limits, user; Extend +1h and Stop & Remove buttons' },
+        { type: 'feature', text: 'TTL auto-cleanup — background timer removes expired sandbox containers every 30 seconds with toast notification via WebSocket' },
+        { type: 'security', text: 'Sandbox security defaults — no-new-privileges, restart:no, dedicated dd-sandbox internal bridge network, no Docker socket, no privileged mode' },
+      ],
+    },
+    {
       version: '5.4.0',
       date: '2026-04-05',
       title: 'Lazydocker Inspiration Wave — 7 UX + AI Features',

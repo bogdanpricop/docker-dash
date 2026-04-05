@@ -365,6 +365,177 @@ router.post('/', requireAuth, requireRole('admin'), writeable, requireFeature('c
   }
 });
 
+// ─── Sandbox Containers ─────────────────────────────────
+
+// Ensure sandbox network exists (bridge, internal — no external access)
+async function _ensureSandboxNetwork(docker) {
+  const nets = await docker.listNetworks();
+  if (!nets.find(n => n.Name === 'dd-sandbox')) {
+    await docker.createNetwork({ Name: 'dd-sandbox', Driver: 'bridge', Internal: true, Labels: { 'docker-dash.managed': 'true' } });
+  }
+}
+
+// POST /sandbox — create & start a sandbox container
+router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  try {
+    const { image, mode = 'ephemeral', ttl = 3600, memLimit = 536870912, cpuLimit = 0.5, name, openTerminal, isolatedNetwork = true } = req.body;
+    if (!image) return res.status(400).json({ error: 'image is required' });
+
+    const docker = dockerService.getDocker(req.hostId);
+
+    // Ensure sandbox network
+    if (isolatedNetwork) await _ensureSandboxNetwork(docker);
+
+    const containerName = name || `sandbox-${image.split(':')[0].split('/').pop()}-${Math.random().toString(36).substring(2, 6)}`;
+    const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 1000).toISOString() : '';
+
+    // Pull image if not available
+    try {
+      await docker.getImage(image).inspect();
+    } catch {
+      await new Promise((resolve, reject) => {
+        docker.pull(image, (err, stream) => {
+          if (err) return reject(err);
+          docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
+        });
+      });
+    }
+
+    const createOpts = {
+      name: containerName,
+      Image: image,
+      Labels: {
+        'docker-dash.sandbox': 'true',
+        'docker-dash.sandbox.mode': mode,
+        'docker-dash.sandbox.ttl': String(ttl),
+        'docker-dash.sandbox.expires': expiresAt,
+        'docker-dash.sandbox.user': req.user?.username || 'unknown',
+      },
+      HostConfig: {
+        Memory: memLimit,
+        NanoCpus: Math.round(cpuLimit * 1e9),
+        SecurityOpt: ['no-new-privileges'],
+        RestartPolicy: { Name: 'no' },
+        NetworkMode: isolatedNetwork ? 'dd-sandbox' : 'bridge',
+        Privileged: false,
+      },
+    };
+
+    const container = await docker.createContainer(createOpts);
+    await container.start();
+
+    // Store sandbox metadata
+    const db = getDb();
+    const sandboxMeta = { sandbox: { mode, ttl, createdAt: new Date().toISOString(), expiresAt, memLimit, cpuLimit } };
+    try {
+      db.prepare(`
+        INSERT INTO container_meta (container_name, app_name, category, custom_fields)
+        VALUES (?, ?, 'sandbox', ?)
+        ON CONFLICT(container_name) DO UPDATE SET category = 'sandbox', custom_fields = json_patch(custom_fields, ?)
+      `).run(containerName, `Sandbox: ${image}`, JSON.stringify(sandboxMeta), JSON.stringify(sandboxMeta));
+    } catch { /* table may not exist in older DBs */ }
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'sandbox_create', targetType: 'container', targetId: container.id,
+      details: { image, mode, ttl, memLimit, cpuLimit, name: containerName }, ip: getClientIp(req),
+    });
+
+    res.status(201).json({ id: container.id, name: containerName, mode, expiresAt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /sandbox/active — list active sandbox containers
+router.get('/sandbox/active', requireAuth, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const containers = await docker.listContainers({ all: true, filters: { label: ['docker-dash.sandbox=true'] } });
+    const result = containers.map(c => ({
+      id: c.Id.substring(0, 12),
+      name: (c.Names?.[0] || '').replace(/^\//, ''),
+      image: c.Image,
+      state: c.State,
+      mode: c.Labels?.['docker-dash.sandbox.mode'] || 'unknown',
+      expires: c.Labels?.['docker-dash.sandbox.expires'] || '',
+      user: c.Labels?.['docker-dash.sandbox.user'] || '',
+      created: c.Created,
+    }));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /sandbox/:id — stop & remove a sandbox container
+router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+
+    // Verify it's a sandbox
+    if (inspect.Config?.Labels?.['docker-dash.sandbox'] !== 'true') {
+      return res.status(400).json({ error: 'Container is not a sandbox' });
+    }
+
+    try { await container.stop({ t: 5 }); } catch { /* may already be stopped */ }
+    await container.remove({ force: true });
+
+    // Clean up metadata
+    try { getDb().prepare('DELETE FROM container_meta WHERE container_name = ?').run(name); } catch { }
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'sandbox_remove', targetType: 'container', targetId: req.params.id,
+      details: { name }, ip: getClientIp(req),
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /sandbox/:id/extend — extend TTL by 1 hour
+router.post('/sandbox/:id/extend', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const container = docker.getContainer(req.params.id);
+    const inspect = await container.inspect();
+    const name = inspect.Name.replace(/^\//, '');
+
+    if (inspect.Config?.Labels?.['docker-dash.sandbox'] !== 'true') {
+      return res.status(400).json({ error: 'Container is not a sandbox' });
+    }
+
+    const currentExpires = inspect.Config.Labels['docker-dash.sandbox.expires'];
+    const base = currentExpires ? new Date(currentExpires) : new Date();
+    const newExpires = new Date(Math.max(base.getTime(), Date.now()) + 3600000).toISOString();
+
+    // Docker doesn't allow label updates on running containers, so we store in DB
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT custom_fields FROM container_meta WHERE container_name = ?').get(name);
+      const cf = row ? JSON.parse(row.custom_fields || '{}') : {};
+      if (cf.sandbox) cf.sandbox.expiresAt = newExpires;
+      db.prepare('UPDATE container_meta SET custom_fields = ? WHERE container_name = ?').run(JSON.stringify(cf), name);
+    } catch { }
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'sandbox_extend', targetType: 'container', targetId: req.params.id,
+      details: { name, newExpires }, ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, expiresAt: newExpires });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Clone/duplicate container
 router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireFeature('create'), async (req, res) => {
   try {

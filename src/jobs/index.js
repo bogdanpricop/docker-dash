@@ -282,6 +282,45 @@ function startAll() {
   // Run initial purge on startup (in case the app was down for a while)
   setTimeout(purgeAllOldData, 30000);
 
+  // Sandbox TTL cleanup — check every 30 seconds for expired sandbox containers
+  _sandboxInterval = setInterval(async () => {
+    try {
+      const docker = require('../services/docker').getDocker(0);
+      const containers = await docker.listContainers({ all: true, filters: { label: ['docker-dash.sandbox=true'] } });
+      const now = Date.now();
+      for (const c of containers) {
+        let expires = c.Labels?.['docker-dash.sandbox.expires'] || '';
+        // Also check DB for extended TTL
+        if (expires) {
+          try {
+            const name = (c.Names?.[0] || '').replace(/^\//, '');
+            const row = require('../db').getDb().prepare('SELECT custom_fields FROM container_meta WHERE container_name = ?').get(name);
+            if (row?.custom_fields) {
+              const cf = JSON.parse(row.custom_fields);
+              if (cf.sandbox?.expiresAt) expires = cf.sandbox.expiresAt;
+            }
+          } catch { }
+        }
+        if (expires && new Date(expires).getTime() < now && c.State === 'running') {
+          const container = docker.getContainer(c.Id);
+          const name = (c.Names?.[0] || '').replace(/^\//, '');
+          try { await container.stop({ t: 3 }); } catch { }
+          try { await container.remove({ force: true }); } catch { }
+          try { require('../db').getDb().prepare('DELETE FROM container_meta WHERE container_name = ?').run(name); } catch { }
+          log.info(`Sandbox expired: ${name}`);
+          try {
+            require('../services/audit').log({
+              action: 'sandbox_expired', targetType: 'container', targetId: c.Id.substring(0, 12),
+              details: { name, image: c.Image },
+            });
+          } catch { }
+          // Notify via WebSocket
+          try { require('../ws').broadcast('sandbox:expired', { name, image: c.Image }); } catch { }
+        }
+      }
+    } catch { /* Docker may be unreachable */ }
+  }, 30000);
+
   log.info('Background jobs started');
 
   _alertInterval = alertInterval;
@@ -317,12 +356,14 @@ function cronMatchesNow(cronExpr, now) {
 
 let _alertInterval = null;
 let _securityAlertInterval = null;
+let _sandboxInterval = null;
 
 function stopAll() {
   jobs.forEach(j => j.stop());
   jobs.length = 0;
   if (_alertInterval) { clearInterval(_alertInterval); _alertInterval = null; }
   if (_securityAlertInterval) { clearInterval(_securityAlertInterval); _securityAlertInterval = null; }
+  if (_sandboxInterval) { clearInterval(_sandboxInterval); _sandboxInterval = null; }
   try { require('../services/gitPolling').stopAll(); } catch { /* git polling may not be initialized */ }
 }
 

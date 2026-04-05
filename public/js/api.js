@@ -124,6 +124,12 @@ const Api = {
   renameContainer(id, name) { return this.post(`/containers/${id}/rename`, { name }); },
   bulkContainerAction(ids, action) { return this.post('/containers/bulk', { ids, action }); },
 
+  // ─── Sandbox ─────────────────────────────────────
+  createSandbox(data) { return this.post('/containers/sandbox', data); },
+  getActiveSandboxes() { return this.get('/containers/sandbox/active'); },
+  removeSandbox(id) { return this.delete(`/containers/sandbox/${id}`); },
+  extendSandbox(id) { return this.post(`/containers/sandbox/${id}/extend`); },
+
   // ─── Container Metadata ─────────────────────────
   getAllContainerMeta() { return this.get('/containers/_meta'); },
   getContainerMeta(name) { return this.get(`/containers/${encodeURIComponent(name)}/meta`); },

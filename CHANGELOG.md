@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.5.0] - 2026-04-05
+
+### Added
+- **Sandbox Mode** — launch containers with resource limits, network isolation, and auto-cleanup. Two modes:
+  - **Ephemeral** — auto-deletes when stopped, with optional TTL (30m / 1h / 4h)
+  - **Persistent Sandbox** — survives stop/start, isolated network, resource-limited
+- **Sandbox launch modal** — configurable image, mode, TTL, RAM (256MB-2GB), CPU (0.25-2 cores), network isolation
+- **Three entry points** — Containers "Sandbox" button, Images "Run in Sandbox" per image, Templates (future)
+- **Sandbox visual badges** — `EPHEMERAL` (red) with countdown or `SANDBOX` (yellow) badges in containers list, colored left border
+- **Sandbox detail card** — info card in container detail showing mode, remaining TTL, limits, user, with "Extend +1h" and "Stop & Remove" buttons
+- **TTL auto-cleanup** — background timer checks every 30s for expired sandbox containers, auto-removes them, sends WebSocket notification
+- **Security defaults** — `no-new-privileges`, `restart: no`, dedicated `dd-sandbox` bridge network (internal, no external access), no Docker socket mount, no privileged mode
+
+### Backend
+- `POST /api/containers/sandbox` — create & start sandbox container with labels, limits, isolated network
+- `GET /api/containers/sandbox/active` — list active sandbox containers
+- `DELETE /api/containers/sandbox/:id` — stop & remove sandbox (with safety check for sandbox label)
+- `POST /api/containers/sandbox/:id/extend` — extend TTL by 1 hour
+- Sandbox TTL timer in `src/jobs/index.js` — 30s interval cleanup with audit logging
+- `dd-sandbox` Docker network auto-created (bridge, internal) on first sandbox launch
+
 ## [5.4.0] - 2026-04-05
 
 ### Added

@@ -54,6 +54,7 @@ const ImagesPage = {
             </div>
             <button class="action-btn" data-action="tag" data-id="${row.id}" title="Tag"><i class="fas fa-tag"></i></button>
             <button class="action-btn" data-action="export" data-id="${row.id}" title="Export"><i class="fas fa-file-export"></i></button>
+            <button class="action-btn" data-action="sandbox" data-id="${row.id}" data-image="${Utils.escapeHtml((row._repo && row._tag) ? row._repo + ':' + row._tag : row.id)}" title="Run in Sandbox" style="color:var(--yellow)"><i class="fas fa-flask"></i></button>
             <button class="action-btn" data-action="layers" data-id="${row.id}" title="View layers"><i class="fas fa-layer-group"></i></button>
             <button class="action-btn" data-action="inspect" data-id="${row.id}" title="${i18n.t('pages.images.inspect')}"><i class="fas fa-info-circle"></i></button>
             <button class="action-btn danger" data-action="remove" data-id="${row.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
@@ -83,6 +84,7 @@ const ImagesPage = {
       if (btn.dataset.action === 'scan') this._showScanMenu(e, id, btn);
       else if (btn.dataset.action === 'tag') this._tagDialog(id);
       else if (btn.dataset.action === 'export') this._exportImage(id);
+      else if (btn.dataset.action === 'sandbox') ContainersPage._sandboxDialog(btn.dataset.image || id);
       else if (btn.dataset.action === 'layers') this._showLayers(id);
       else if (btn.dataset.action === 'inspect') this._inspect(id);
       else if (btn.dataset.action === 'remove') this._remove(id);
