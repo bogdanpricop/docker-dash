@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.4.0',
+      date: '2026-04-05',
+      title: 'Lazydocker Inspiration Wave — 7 UX + AI Features',
+      changes: [
+        { type: 'feature', text: 'One-click port access — each exposed TCP port in the containers list gets a clickable external-link button that opens http(s)://host:port directly in a new tab' },
+        { type: 'feature', text: 'Log time filter — "since" dropdown (All time / Last 1h / 6h / 24h / 7d) added to the container log viewer toolbar' },
+        { type: 'feature', text: 'Keyboard navigation — Arrow Up/Down to move between container rows, Enter to open detail, r to restart, s to stop/start, l to jump to Logs tab' },
+        { type: 'feature', text: 'Live CPU/RAM mini-bars — two 4px color bars per running container row, updated every 5 s from /stats/overview; green→yellow→red by usage' },
+        { type: 'feature', text: 'Dual AI provider (OpenAI + Ollama) — Container Doctor "Copy AI Prompt" button replaced with a provider selector + "Ask AI" button that calls OpenAI or a local Ollama instance and shows the response inline in the modal' },
+        { type: 'feature', text: 'Image layer visualization — new Layers button (<i class="fas fa-layer-group"></i>) in the images table opens a modal with all image layers, command, size, and relative-size bar per layer' },
+        { type: 'feature', text: 'Generate docker-compose from GitHub — new "From GitHub" button in Containers; paste a public repo URL + AI provider config, Docker Dash fetches README/package.json/etc. and generates a production-ready docker-compose.yml' },
+      ],
+    },
+    {
       version: '5.3.1',
       date: '2026-04-05',
       title: 'Security UX Polish + Actions Guides + Fix Round',
@@ -620,6 +634,9 @@ const WhatsNewPage = {
         <h2><i class="fas fa-bullhorn"></i> What's New</h2>
         <div class="page-actions">
           <span class="badge badge-info" style="font-size:12px">v${Utils.escapeHtml(current)}</span>
+          <a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none">
+            <i class="fab fa-github"></i> GitHub
+          </a>
         </div>
       </div>
       <div id="whatsnew-content">${this._renderReleases()}</div>

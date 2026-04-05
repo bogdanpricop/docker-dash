@@ -1395,6 +1395,26 @@ input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px;
   background: var(--accent-dim);
   color: var(--accent);
 }
+
+/* ── Keyboard Navigation ──────────────────────── */
+tr.row-kb-focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-dim) !important; }
+
+/* ── Live Stats Mini-bars ─────────────────────── */
+.stats-bar-wrap { flex: 1; height: 4px; border-radius: 2px; background: var(--surface3); overflow: hidden; max-width: 40px; }
+.stats-bar { height: 100%; border-radius: 2px; transition: width 1s ease, background 1s ease; }
+
+/* ── Port Links ───────────────────────────────── */
+.port-link-wrap { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.port-open-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 3px;
+  background: var(--accent-dim); color: var(--accent);
+  font-size: 9px; text-decoration: none; opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+tr:hover .port-open-btn { opacity: 1; }
+.port-open-btn:hover { background: var(--accent); color: #fff; }
+
 .badge-meta-cat {
   background: var(--purple-dim);
   color: var(--purple);

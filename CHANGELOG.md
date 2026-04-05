@@ -2,6 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.4.0] - 2026-04-05
+
+### Added
+- **One-click port access** — each exposed TCP port in the Containers list gets a clickable external-link button; opens `http(s)://host:port` in a new tab; icon appears on row hover
+- **Log time filter** — "since" dropdown (All time / Last 1h / 6h / 24h / 7d) added to the container log viewer toolbar alongside tail count
+- **Keyboard navigation in Containers list** — Arrow Up/Down to move between rows, Enter to open detail view, `r` to restart, `s` to stop/start, `l` to jump to Logs tab; focused row highlighted in blue
+- **Live CPU/RAM mini-bars** — two 4px color-coded progress bars per running container row, updated every 5 s via `/stats/overview`; color shifts green→yellow→red by utilization
+- **Dual AI provider (OpenAI + Ollama)** — Container Doctor "Ask AI" button with provider/model/key inputs; calls OpenAI API or local Ollama and streams the response directly into the modal; config persisted in localStorage
+- **Image layer visualization** — new Layers button in the Images table; opens a modal showing all image layers with command, size, and a relative-size bar per layer (color-coded by size)
+- **Generate docker-compose from GitHub** — new "From GitHub" button in Containers; fetches README/package.json/go.mod/requirements.txt from any public GitHub repo, sends to AI (OpenAI or Ollama), returns a production-ready docker-compose.yml with health checks, volumes, networks, and resource limits
+
+### Backend
+- `POST /api/ai/chat` — generic AI chat endpoint supporting OpenAI and Ollama providers
+- `POST /api/ai/github-compose` — fetches GitHub repo context (5 files max) and generates docker-compose via AI
+- `GET /images/:id/history` already existed; wired to new frontend Layers modal
+- `GET /containers/:id/logs` already accepted `since` param; now passed from frontend log-time selector
+
 ## [5.3.1] - 2026-04-05
 
 ### Added

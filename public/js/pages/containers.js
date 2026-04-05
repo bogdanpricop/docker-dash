@@ -12,6 +12,9 @@ const ContainersPage = {
   _statsChart: null,
   _metaMap: {},
   _selectedIds: new Set(),
+  _kbRow: -1,        // keyboard-focused row index
+  _kbRows: [],       // live NodeList cache for keyboard nav
+  _boundKbHandler: null,
 
   async render(container, params = {}) {
     if (params.id) {
@@ -65,6 +68,9 @@ const ContainersPage = {
           <button class="btn btn-sm btn-secondary" id="container-templates">
             <i class="fas fa-th"></i> ${i18n.t('pages.containers.templates')}
           </button>
+          <button class="btn btn-sm btn-secondary" id="container-github-compose" title="Generate docker-compose from a GitHub repository using AI">
+            <i class="fab fa-github"></i> From GitHub
+          </button>
           <button class="btn btn-sm btn-secondary" id="container-groups" title="Manage groups">
             <i class="fas fa-folder"></i> Groups
           </button>
@@ -88,6 +94,7 @@ const ContainersPage = {
     container.querySelector('#container-groups').addEventListener('click', () => this._manageGroupsDialog());
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#containers-guide').addEventListener('click', () => this._showActionsGuide());
+    container.querySelector('#container-github-compose').addEventListener('click', () => this._githubComposeDialog());
 
     // Layout toggles
     container.querySelector('#layout-1col').addEventListener('click', () => {
@@ -121,8 +128,67 @@ const ContainersPage = {
       });
     });
 
+    // Keyboard navigation
+    this._kbRow = -1;
+    this._boundKbHandler = this._onKeyNav.bind(this);
+    document.addEventListener('keydown', this._boundKbHandler);
+
     await this._loadList();
     this._refreshTimer = setInterval(() => this._loadList(), 10000);
+    this._startStatsPolling();
+  },
+
+  _onKeyNav(e) {
+    // Ignore if focus is inside an input/textarea/select
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (this._view !== 'list') return;
+
+    this._kbRows = Array.from(document.querySelectorAll('#containers-grouped tr[data-cid]'));
+    if (!this._kbRows.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this._kbRow = Math.min(this._kbRow + 1, this._kbRows.length - 1);
+      this._highlightKbRow();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this._kbRow = Math.max(this._kbRow - 1, 0);
+      this._highlightKbRow();
+    } else if (this._kbRow >= 0) {
+      const row = this._kbRows[this._kbRow];
+      const cid = row?.dataset.cid;
+      if (!cid) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        App.navigate(`/containers/${cid}`);
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        const btn = row.querySelector('[data-action="restart"]');
+        if (btn) { btn.click(); Toast.info('Restarting…'); }
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        const stopBtn = row.querySelector('[data-action="stop"]');
+        const startBtn = row.querySelector('[data-action="start"]');
+        if (stopBtn) { stopBtn.click(); Toast.info('Stopping…'); }
+        else if (startBtn) { startBtn.click(); Toast.info('Starting…'); }
+      } else if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        App.navigate(`/containers/${cid}`);
+        // Switch to logs tab after navigation (slight delay for render)
+        setTimeout(() => {
+          document.querySelector('[data-tab="logs"]')?.click();
+        }, 300);
+      }
+    }
+  },
+
+  _highlightKbRow() {
+    this._kbRows.forEach((r, i) => {
+      r.classList.toggle('row-kb-focus', i === this._kbRow);
+    });
+    const focused = this._kbRows[this._kbRow];
+    if (focused) focused.scrollIntoView({ block: 'nearest' });
   },
 
   async _loadList() {
@@ -1003,8 +1069,13 @@ const ContainersPage = {
         <td><span class="mono text-sm">${Utils.escapeHtml(imgName)}</span></td>
         <td><span class="badge badge-version">${Utils.escapeHtml(version)}</span></td>
         <td><span class="badge ${Utils.statusBadgeClass(c.state)}">${c.state}</span> <span class="health-dot" style="background:${hColor}" title="${hScore}/100 — ${hLabel}"></span>
-          <div class="text-xs text-muted" style="margin-top:2px">${Utils.escapeHtml(statusStr.replace(/^(Up|Exited \(\d+\))\s*/, '$1 ').trim())}</div></td>
-        <td>${ports ? `<span class="mono text-sm">${ports}</span>` : '<span class="text-muted">—</span>'}</td>
+          <div class="text-xs text-muted" style="margin-top:2px">${Utils.escapeHtml(statusStr.replace(/^(Up|Exited \(\d+\))\s*/, '$1 ').trim())}</div>
+          ${running ? `<div class="stats-bars" style="display:flex;gap:3px;margin-top:4px">
+            <div class="stats-bar-wrap" title="CPU"><div class="stats-bar" data-stats-cpu="${c.id}" style="width:0%;background:var(--green)"></div></div>
+            <div class="stats-bar-wrap" title="RAM"><div class="stats-bar" data-stats-mem="${c.id}" style="width:0%;background:var(--accent)"></div></div>
+          </div>` : ''}
+          </td>
+        <td>${this._portLinksHtml(c)}</td>
         <td class="text-sm text-muted">${created}</td>
         <td>
           <div class="action-btns">
@@ -1021,6 +1092,29 @@ const ContainersPage = {
         </td>
       </tr>
     `;
+  },
+
+  _portLinksHtml(c) {
+    const tcpPorts = (c.ports || []).filter(p => {
+      const pub = p.public || p.PublicPort;
+      const type = (p.type || p.Type || 'tcp').toLowerCase();
+      return pub && type === 'tcp';
+    });
+    if (tcpPorts.length === 0) {
+      const txt = Utils.formatPorts(c.ports);
+      return txt ? `<span class="mono text-sm text-muted">${txt}</span>` : '<span class="text-muted">—</span>';
+    }
+    const host = window.location.hostname;
+    return tcpPorts.map(p => {
+      const pub = p.public || p.PublicPort;
+      const priv = p.private || p.PrivatePort;
+      const scheme = pub === 443 || pub === 8443 ? 'https' : 'http';
+      const url = `${scheme}://${host}:${pub}`;
+      return `<span class="port-link-wrap" data-stop-propagation>
+        <span class="mono text-sm">${pub}→${priv}</span>
+        <a href="${url}" target="_blank" rel="noopener" class="port-open-btn" title="Open ${url}"><i class="fas fa-external-link-alt"></i></a>
+      </span>`;
+    }).join(' ');
   },
 
   // ═══════════════════════════════════════════════
@@ -1443,8 +1537,17 @@ const ContainersPage = {
               <pre class="inspect-json" style="margin-top:8px;max-height:200px;overflow:auto;font-size:11px">${Utils.escapeHtml(result.logText)}</pre>
             </details>` : ''}
           <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-            <button class="btn btn-sm btn-accent" id="doctor-copy-ai" style="margin-right:8px"><i class="fas fa-robot"></i> Copy AI Prompt</button>
-            <span class="text-sm text-muted">Copy a structured prompt for ChatGPT/Claude with full container context</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+              <select id="doctor-ai-provider" class="form-control" style="width:auto;padding:4px 8px;font-size:12px">
+                <option value="ollama">Ollama (local)</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <input id="doctor-ai-model" type="text" class="form-control" placeholder="Model (e.g. llama3 / gpt-4o-mini)" style="width:180px;padding:4px 8px;font-size:12px">
+              <input id="doctor-ai-config" type="text" class="form-control" placeholder="Ollama URL or OpenAI API key" style="width:220px;padding:4px 8px;font-size:12px">
+              <button class="btn btn-sm btn-accent" id="doctor-ask-ai"><i class="fas fa-robot"></i> Ask AI</button>
+              <button class="btn btn-sm btn-secondary" id="doctor-copy-ai"><i class="fas fa-copy"></i> Copy Prompt</button>
+            </div>
+            <div id="doctor-ai-response" style="display:none;margin-top:8px;padding:12px;background:var(--surface2);border-radius:var(--radius);font-size:12px;white-space:pre-wrap;max-height:300px;overflow-y:auto;border:1px solid var(--border)"></div>
           </div>
         </div>
         <div class="modal-footer"><button class="btn btn-primary" id="doctor-ok">Close</button></div>
@@ -1454,6 +1557,42 @@ const ContainersPage = {
       Modal._content.querySelector('#doctor-ok')?.addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#doctor-copy-ai')?.addEventListener('click', () => {
         Utils.copyToClipboard(result.aiPrompt || '').then(() => Toast.success('AI prompt copied to clipboard'));
+      });
+
+      // Restore last-used AI config from localStorage
+      const aiProviderEl = Modal._content.querySelector('#doctor-ai-provider');
+      const aiModelEl = Modal._content.querySelector('#doctor-ai-model');
+      const aiConfigEl = Modal._content.querySelector('#doctor-ai-config');
+      aiProviderEl.value = localStorage.getItem('dd-ai-provider') || 'ollama';
+      aiModelEl.value = localStorage.getItem('dd-ai-model') || '';
+      aiConfigEl.value = localStorage.getItem('dd-ai-config') || '';
+
+      Modal._content.querySelector('#doctor-ask-ai')?.addEventListener('click', async () => {
+        const provider = aiProviderEl.value;
+        const model = aiModelEl.value.trim();
+        const configVal = aiConfigEl.value.trim();
+        localStorage.setItem('dd-ai-provider', provider);
+        localStorage.setItem('dd-ai-model', model);
+        localStorage.setItem('dd-ai-config', configVal);
+
+        const config = provider === 'openai'
+          ? { apiKey: configVal, model: model || 'gpt-4o-mini' }
+          : { baseUrl: configVal || 'http://localhost:11434', model: model || 'llama3' };
+
+        const respEl = Modal._content.querySelector('#doctor-ai-response');
+        respEl.style.display = 'block';
+        respEl.textContent = 'Asking AI…';
+
+        const askBtn = Modal._content.querySelector('#doctor-ask-ai');
+        askBtn.disabled = true;
+        try {
+          const r = await Api.aiChat(result.aiPrompt, provider, config);
+          respEl.textContent = r.response || 'No response';
+        } catch (err) {
+          respEl.textContent = 'Error: ' + err.message;
+        } finally {
+          askBtn.disabled = false;
+        }
       });
     } catch (err) { Toast.error('Doctor analysis failed: ' + err.message); }
   },
@@ -1967,6 +2106,13 @@ const ContainersPage = {
           <option value="500" selected>${i18n.t('pages.containers.last', { n: 500 })}</option>
           <option value="2000">${i18n.t('pages.containers.last', { n: 2000 })}</option>
         </select>
+        <select id="log-since" title="Time range">
+          <option value="">All time</option>
+          <option value="1h">Last 1h</option>
+          <option value="6h">Last 6h</option>
+          <option value="24h">Last 24h</option>
+          <option value="168h">Last 7d</option>
+        </select>
         <label class="toggle-label"><input type="checkbox" id="log-follow" checked> ${i18n.t('pages.containers.follow')}</label>
         <div class="search-box" style="flex:1;max-width:260px">
           <i class="fas fa-search"></i>
@@ -2008,10 +2154,11 @@ const ContainersPage = {
 
     const loadLogs = async () => {
       const tail = el.querySelector('#log-tail').value;
+      const since = el.querySelector('#log-since')?.value || '';
       const searchInput = el.querySelector('#log-search');
       const search = searchInput?.value?.trim() || '';
       try {
-        const data = await Api.getContainerLogs(this._detailId, tail, search);
+        const data = await Api.getContainerLogs(this._detailId, tail, search, since);
         const lines = Array.isArray(data.lines) ? data.lines : [];
         if (!search) this._allLogLines = lines;
         const countEl = el.querySelector('#log-search-count');
@@ -2024,6 +2171,7 @@ const ContainersPage = {
     };
 
     el.querySelector('#log-tail').addEventListener('change', loadLogs);
+    el.querySelector('#log-since').addEventListener('change', loadLogs);
     el.querySelector('#log-refresh').addEventListener('click', loadLogs);
 
     // Server-side search
@@ -2032,8 +2180,11 @@ const ContainersPage = {
     // Download
     el.querySelector('#log-download').addEventListener('click', () => {
       const tail = el.querySelector('#log-tail').value;
+      const since = el.querySelector('#log-since')?.value || '';
       const search = el.querySelector('#log-search')?.value?.trim() || '';
-      const url = `/api/containers/${this._detailId}/logs?tail=${tail}&download=true${search ? '&search=' + encodeURIComponent(search) : ''}`;
+      let url = `/api/containers/${this._detailId}/logs?tail=${tail}&download=true`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (since) url += `&since=${encodeURIComponent(since)}`;
       const a = document.createElement('a');
       a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove();
     });
@@ -3778,10 +3929,136 @@ const ContainersPage = {
     });
   },
 
+  _githubComposeDialog() {
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fab fa-github" style="margin-right:8px;color:var(--accent)"></i>Generate docker-compose from GitHub</h3>
+        <button class="modal-close-btn" id="ghc-close-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-sm" style="margin-bottom:16px">Paste a public GitHub repository URL. Docker Dash will fetch the project files and use AI to generate a production-ready docker-compose.yml.</p>
+        <div class="form-group">
+          <label>GitHub Repository URL</label>
+          <input id="ghc-url" type="text" class="form-control" placeholder="https://github.com/owner/repo">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <select id="ghc-provider" class="form-control" style="width:auto;padding:4px 8px;font-size:12px">
+            <option value="ollama">Ollama (local)</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <input id="ghc-model" type="text" class="form-control" placeholder="Model (llama3 / gpt-4o-mini)" style="width:180px;padding:4px 8px;font-size:12px">
+          <input id="ghc-config" type="text" class="form-control" placeholder="Ollama URL or OpenAI API key" style="flex:1;min-width:180px;padding:4px 8px;font-size:12px">
+        </div>
+        <div id="ghc-result" style="display:none;margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span class="text-sm text-muted" id="ghc-result-label"></span>
+            <button class="btn btn-sm btn-secondary" id="ghc-copy"><i class="fas fa-copy"></i> Copy</button>
+          </div>
+          <pre class="inspect-json" id="ghc-compose-output" style="max-height:50vh;overflow:auto;font-size:12px"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="ghc-close-btn">Close</button>
+        <button class="btn btn-accent" id="ghc-generate"><i class="fas fa-robot"></i> Generate</button>
+      </div>
+    `, { width: '750px' });
+
+    const mc = Modal._content;
+    mc.querySelector('#ghc-close-x').addEventListener('click', () => Modal.close());
+    mc.querySelector('#ghc-close-btn').addEventListener('click', () => Modal.close());
+
+    // Restore last AI config
+    const provEl = mc.querySelector('#ghc-provider');
+    const modelEl = mc.querySelector('#ghc-model');
+    const cfgEl = mc.querySelector('#ghc-config');
+    provEl.value = localStorage.getItem('dd-ai-provider') || 'ollama';
+    modelEl.value = localStorage.getItem('dd-ai-model') || '';
+    cfgEl.value = localStorage.getItem('dd-ai-config') || '';
+
+    mc.querySelector('#ghc-copy').addEventListener('click', () => {
+      const txt = mc.querySelector('#ghc-compose-output')?.textContent || '';
+      Utils.copyToClipboard(txt).then(() => Toast.success('Copied!'));
+    });
+
+    mc.querySelector('#ghc-generate').addEventListener('click', async () => {
+      const repoUrl = mc.querySelector('#ghc-url').value.trim();
+      if (!repoUrl) { Toast.warning('Enter a GitHub repository URL'); return; }
+
+      const provider = provEl.value;
+      const model = modelEl.value.trim();
+      const configVal = cfgEl.value.trim();
+      localStorage.setItem('dd-ai-provider', provider);
+      localStorage.setItem('dd-ai-model', model);
+      localStorage.setItem('dd-ai-config', configVal);
+
+      const config = provider === 'openai'
+        ? { apiKey: configVal, model: model || 'gpt-4o-mini' }
+        : { baseUrl: configVal || 'http://localhost:11434', model: model || 'llama3' };
+
+      const genBtn = mc.querySelector('#ghc-generate');
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+      const resultEl = mc.querySelector('#ghc-result');
+      const outputEl = mc.querySelector('#ghc-compose-output');
+      const labelEl = mc.querySelector('#ghc-result-label');
+
+      resultEl.style.display = 'block';
+      outputEl.textContent = 'Fetching repository and generating compose…';
+
+      try {
+        const r = await Api.aiGithubCompose(repoUrl, provider, config);
+        outputEl.textContent = r.compose || 'No output';
+        labelEl.textContent = `Generated for ${r.repo}`;
+      } catch (err) {
+        outputEl.textContent = 'Error: ' + err.message;
+        labelEl.textContent = '';
+      } finally {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-robot"></i> Generate';
+      }
+    });
+  },
+
+  _statsTimer: null,
+
+  _startStatsPolling() {
+    clearInterval(this._statsTimer);
+    this._statsTimer = setInterval(() => this._tickStats(), 5000);
+  },
+
+  async _tickStats() {
+    if (this._view !== 'list') return;
+    try {
+      const data = await Api.getStatsOverview();
+      const containers = data.containers || [];
+      containers.forEach(s => {
+        const cpuEl = document.querySelector(`[data-stats-cpu="${s.container_id}"]`);
+        const memEl = document.querySelector(`[data-stats-mem="${s.container_id}"]`);
+        if (cpuEl) {
+          const pct = Math.min(s.cpu_percent || 0, 100).toFixed(1);
+          const color = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
+          cpuEl.style.width = `${pct}%`;
+          cpuEl.style.background = color;
+          cpuEl.parentElement.title = `CPU: ${pct}%`;
+        }
+        if (memEl) {
+          const pct = Math.min(s.mem_percent || 0, 100).toFixed(1);
+          const color = pct > 80 ? 'var(--red)' : pct > 50 ? 'var(--yellow)' : 'var(--accent)';
+          memEl.style.width = `${pct}%`;
+          memEl.style.background = color;
+          memEl.parentElement.title = `RAM: ${pct}%`;
+        }
+      });
+    } catch { /* stats unavailable */ }
+  },
+
   destroy() {
     clearInterval(this._refreshTimer);
+    clearInterval(this._statsTimer);
     if (this._logStream) this._logStream();
     this._stopLogFollow();
+    if (this._boundKbHandler) { document.removeEventListener('keydown', this._boundKbHandler); this._boundKbHandler = null; }
     if (this._execUnsub) this._execUnsub.forEach(fn => fn());
     if (this._termDataDisposable) { this._termDataDisposable.dispose(); this._termDataDisposable = null; }
     if (this._termResizeObserver) { this._termResizeObserver.disconnect(); this._termResizeObserver = null; }

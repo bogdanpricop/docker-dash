@@ -54,6 +54,7 @@ const ImagesPage = {
             </div>
             <button class="action-btn" data-action="tag" data-id="${row.id}" title="Tag"><i class="fas fa-tag"></i></button>
             <button class="action-btn" data-action="export" data-id="${row.id}" title="Export"><i class="fas fa-file-export"></i></button>
+            <button class="action-btn" data-action="layers" data-id="${row.id}" title="View layers"><i class="fas fa-layer-group"></i></button>
             <button class="action-btn" data-action="inspect" data-id="${row.id}" title="${i18n.t('pages.images.inspect')}"><i class="fas fa-info-circle"></i></button>
             <button class="action-btn danger" data-action="remove" data-id="${row.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>
           </div>
@@ -82,6 +83,7 @@ const ImagesPage = {
       if (btn.dataset.action === 'scan') this._showScanMenu(e, id, btn);
       else if (btn.dataset.action === 'tag') this._tagDialog(id);
       else if (btn.dataset.action === 'export') this._exportImage(id);
+      else if (btn.dataset.action === 'layers') this._showLayers(id);
       else if (btn.dataset.action === 'inspect') this._inspect(id);
       else if (btn.dataset.action === 'remove') this._remove(id);
     });
@@ -278,6 +280,63 @@ const ImagesPage = {
 
     closeBtn.disabled = false;
     closeBtn.addEventListener('click', () => Modal.close());
+  },
+
+  async _showLayers(id) {
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-layer-group" style="color:var(--accent);margin-right:8px"></i>Image Layers</h3>
+        <button class="modal-close-btn" id="layers-close-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="layers-body" style="max-height:70vh;overflow-y:auto">
+        <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading layers...</div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" id="layers-close-btn">Close</button></div>
+    `, { width: '700px' });
+    Modal._content.querySelector('#layers-close-x').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#layers-close-btn').addEventListener('click', () => Modal.close());
+
+    try {
+      const history = await Api.getImageHistory(id);
+      const el = Modal._content.querySelector('#layers-body');
+      if (!history || history.length === 0) { el.innerHTML = '<p class="text-muted">No layer history available.</p>'; return; }
+
+      const totalSize = history.reduce((s, l) => s + (l.Size || 0), 0);
+      const maxSize = Math.max(...history.map(l => l.Size || 0), 1);
+
+      const rows = history.map((layer, i) => {
+        const size = layer.Size || 0;
+        const barPct = Math.round((size / maxSize) * 100);
+        const cmd = (layer.CreatedBy || '').replace(/^\/bin\/sh -c #\(nop\)\s*/i, '').replace(/^\/bin\/sh -c /i, 'RUN ').trim();
+        const sizeStr = size > 0 ? Utils.formatBytes(size) : '<span class="text-muted">—</span>';
+        const barColor = size > 50 * 1024 * 1024 ? 'var(--red)' : size > 5 * 1024 * 1024 ? 'var(--yellow)' : 'var(--accent)';
+        return `
+          <tr>
+            <td class="text-muted text-sm" style="width:30px;text-align:right">${history.length - i}</td>
+            <td style="padding:8px 12px;max-width:350px">
+              <div class="mono text-xs" style="word-break:break-all;white-space:pre-wrap">${Utils.escapeHtml(cmd || '(empty layer)')}</div>
+            </td>
+            <td style="width:100px;text-align:right" class="mono text-sm">${sizeStr}</td>
+            <td style="width:120px;padding:8px">
+              ${size > 0 ? `<div style="height:6px;border-radius:3px;background:var(--surface3);overflow:hidden">
+                <div style="height:100%;width:${barPct}%;background:${barColor};border-radius:3px"></div>
+              </div>` : ''}
+            </td>
+          </tr>`;
+      }).join('');
+
+      el.innerHTML = `
+        <p class="text-muted text-sm" style="margin-bottom:12px">${history.length} layers — total size: <strong>${Utils.formatBytes(totalSize)}</strong></p>
+        <div style="overflow:auto">
+          <table class="data-table compact" style="width:100%">
+            <thead><tr><th>#</th><th>Command</th><th>Size</th><th>Relative size</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    } catch (err) {
+      const el = Modal._content.querySelector('#layers-body');
+      if (el) el.innerHTML = `<div class="text-muted" style="color:var(--red)">${Utils.escapeHtml(err.message)}</div>`;
+    }
   },
 
   async _inspect(id) {

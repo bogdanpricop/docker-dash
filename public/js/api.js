@@ -112,9 +112,10 @@ const Api = {
   // ─── Containers ──────────────────────────────────
   getContainers(all = true) { return this.get(`/containers?all=${all}`); },
   getContainer(id) { return this.get(`/containers/${id}/inspect`); },
-  getContainerLogs(id, tail = 200, search = '') {
+  getContainerLogs(id, tail = 200, search = '', since = '') {
     let url = `/containers/${id}/logs?tail=${tail}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (since) url += `&since=${encodeURIComponent(since)}`;
     return this.get(url);
   },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
@@ -131,6 +132,7 @@ const Api = {
   // ─── Images ──────────────────────────────────────
   getImages() { return this.get('/images'); },
   getImage(id) { return this.get(`/images/${id}/inspect`); },
+  getImageHistory(id) { return this.get(`/images/${id}/history`); },
   pullImage(name) { return this.post('/images/pull', { image: name }); },
   removeImage(id, force = false) { return this.delete(`/images/${id}?force=${force}`); },
   scanImage(id, scanner = 'auto') { return this.get(`/images/${id}/scan?scanner=${scanner}`); },
@@ -445,6 +447,10 @@ const Api = {
   // ─── User Preferences ─────────────────────────────
   getUserPreferences() { return this.get('/preferences'); },
   saveUserPreference(key, value) { return this.put('/preferences', { key, value }); },
+
+  // ─── AI Chat ─────────────────────────────────────
+  aiChat(prompt, provider, config) { return this.post('/ai/chat', { prompt, provider, config }); },
+  aiGithubCompose(repoUrl, provider, config) { return this.post('/ai/github-compose', { repoUrl, provider, config }); },
 
   // ─── Misc ────────────────────────────────────────
   health() { return this.get('/health'); },
