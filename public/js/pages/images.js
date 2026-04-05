@@ -30,6 +30,7 @@ const ImagesPage = {
           </button>
           <input type="file" id="import-file" accept=".tar,.tar.gz" style="display:none">
           <button class="prune-help-btn" id="images-help" title="${i18n.t('pages.images.helpTooltip')}">?</button>
+          <button class="prune-help-btn" id="images-guide" title="Actions guide" style="background:var(--accent);color:#fff;border-color:var(--accent)">i</button>
           <button class="btn btn-sm btn-secondary" id="images-refresh">
             <i class="fas fa-sync-alt"></i>
           </button>
@@ -69,6 +70,7 @@ const ImagesPage = {
     container.querySelector('#import-btn').addEventListener('click', () => document.getElementById('import-file').click());
     container.querySelector('#import-file').addEventListener('change', (e) => this._importImage(e));
     container.querySelector('#images-help').addEventListener('click', () => this._showHelp());
+    container.querySelector('#images-guide').addEventListener('click', () => this._showActionsGuide());
     container.querySelector('#images-refresh').addEventListener('click', () => this._load());
     container.querySelector('#registry-browse-btn').addEventListener('click', () => this._registryBrowser());
 
@@ -77,7 +79,7 @@ const ImagesPage = {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const id = btn.dataset.id;
-      if (btn.dataset.action === 'scan') this._showScanMenu(e, id);
+      if (btn.dataset.action === 'scan') this._showScanMenu(e, id, btn);
       else if (btn.dataset.action === 'tag') this._tagDialog(id);
       else if (btn.dataset.action === 'export') this._exportImage(id);
       else if (btn.dataset.action === 'inspect') this._inspect(id);
@@ -319,12 +321,12 @@ const ImagesPage = {
     }
   },
 
-  _showScanMenu(event, id) {
+  _showScanMenu(event, id, triggerBtn) {
     event.stopPropagation();
     // Remove any existing scan menu
     document.querySelectorAll('.scan-context-menu').forEach(el => el.remove());
 
-    const btn = event.currentTarget;
+    const btn = triggerBtn || event.currentTarget;
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'scan-context-menu';
@@ -334,6 +336,9 @@ const ImagesPage = {
       </div>
       <div class="scan-menu-item" data-scanner="trivy">
         <i class="fas fa-search"></i> Trivy
+      </div>
+      <div class="scan-menu-item" data-scanner="grype">
+        <i class="fas fa-shield-alt"></i> Grype
       </div>
       <div class="scan-menu-item" data-scanner="docker-scout">
         <i class="fab fa-docker"></i> Docker Scout
@@ -928,6 +933,129 @@ const ImagesPage = {
 
     closeBtn.disabled = false;
     closeBtn.addEventListener('click', () => Modal.close());
+  },
+
+  _showActionsGuide() {
+    const overlay = document.createElement('div');
+    overlay.id = 'images-guide-overlay';
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:10000;
+      background:rgba(0,0,0,.65);backdrop-filter:blur(3px);
+      display:flex;align-items:center;justify-content:center;padding:16px;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background:var(--surface);border:1px solid var(--border);border-radius:var(--radius,8px);
+        max-width:960px;width:100%;max-height:90vh;display:flex;flex-direction:column;
+        box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden;
+      ">
+        <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fas fa-images" style="color:#fff;font-size:15px"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:16px">Images — Actions Guide</div>
+            <div style="font-size:12px;color:var(--text-dim)">Every button, every action — explained</div>
+          </div>
+          <button id="img-guide-close" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:4px;line-height:1" title="Close">&times;</button>
+        </div>
+
+        <div style="overflow-y:auto;padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- Image actions -->
+          <div style="grid-column:1/-1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-th-large" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Image actions</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { icon:'fa-shield-alt', color:'var(--yellow)', label:'Scan for vulnerabilities', desc:'Opens a scanner picker (Auto / Trivy / Grype / Docker Scout). Scans the image for known CVEs in OS packages and language dependencies. Results show Critical → Low counts with per-CVE detail and fix versions.' },
+            { icon:'fa-tag', color:'var(--accent)', label:'Tag', desc:'Adds a new tag to the image locally (e.g. <code>myapp:stable</code>). Does not push to a registry — use the registry page for that.' },
+            { icon:'fa-file-export', color:'var(--accent)', label:'Export', desc:'Exports the image as a <code>.tar</code> archive (<code>docker save</code>). Download it and import on another host with <code>docker load</code>.' },
+            { icon:'fa-search', color:'var(--accent)', label:'Inspect', desc:'Shows the raw Docker inspect output: layers, environment variables, entrypoint, exposed ports, labels, and creation metadata.' },
+            { icon:'fa-trash', color:'var(--red)', label:'Remove', desc:'Deletes the image from the local Docker daemon. Fails if a container (even stopped) is still using it — remove the container first.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas ${a.icon}" style="color:${a.color};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+          <!-- Toolbar actions -->
+          <div style="grid-column:1/-1;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-tools" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Toolbar actions</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { icon:'fa-search-plus', color:'var(--yellow)', label:'Scan All', desc:'Queues a vulnerability scan for every image in the list using the auto-detected scanner. Results appear in Security → Scan History.' },
+            { icon:'fa-file-import', color:'var(--accent)', label:'Import (.tar)', desc:'Loads an image from a <code>.tar</code> archive exported with <code>docker save</code> or this app\'s Export action. The image is loaded with its original name and tag.' },
+            { icon:'fa-server', color:'var(--accent)', label:'Browse Registry', desc:'Opens the registry browser to pull images from configured private or public registries. Search by name, pick a tag, and pull directly into the local daemon.' },
+            { icon:'fa-broom', color:'var(--red)', label:'Prune', desc:'Removes <strong>all dangling images</strong> (untagged images not referenced by any container). Optionally removes all unused images (not used by any container, even stopped). Frees disk space.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas ${a.icon}" style="color:${a.color};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+          <!-- Scan scanners -->
+          <div style="grid-column:1/-1;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-microscope" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Vulnerability scanners</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { icon:'fa-magic', color:'var(--accent)', label:'Auto', desc:'Tries Trivy first, then Grype, then Docker Scout. Picks the first available scanner. Recommended for most users.' },
+            { icon:'fa-search', color:'#38bdf8', label:'Trivy', desc:'Open-source scanner by Aqua Security. Scans OS packages + language dependencies (npm, pip, gem, etc.). No authentication needed. <strong>Recommended.</strong>' },
+            { icon:'fa-shield-alt', color:'#a855f7', label:'Grype', desc:'Open-source scanner by Anchore. Checks against NVD, GitHub Advisories, Alpine SecDB, and more. Fast and accurate. No authentication needed.' },
+            { icon:'fab fa-docker', color:'#388bfd', label:'Docker Scout', desc:'Official Docker tool. Requires Docker Hub authentication. Provides supply chain insights, base image recommendations, and CVE tracking with policy evaluation.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="${a.icon.startsWith('fab') ? a.icon : 'fas ' + a.icon}" style="color:${a.color};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+        </div>
+
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0">
+          <button id="img-guide-close-footer" class="btn btn-secondary">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#img-guide-close').addEventListener('click', close);
+    overlay.querySelector('#img-guide-close-footer').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
   },
 
   _showHelp() {

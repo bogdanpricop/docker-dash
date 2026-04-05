@@ -326,6 +326,7 @@ const Api = {
 
   // ─── SSL/TLS ──────────────────────────────────────
   runCisBenchmark(hostId) { return this.get(`/system/cis-benchmark${hostId ? `?hostId=${hostId}` : ''}`); },
+  getCisHardenedCompose(containerName, hostId) { return this.get(`/system/cis/container/${encodeURIComponent(containerName)}/hardened-compose${hostId ? `?hostId=${hostId}` : ''}`); },
   getSslStatus() { return this.get('/system/ssl/status'); },
   getCaddyStatus() { return this.get('/system/ssl/caddy-status'); },
   generateSelfSigned(domain) { return this.post('/system/ssl/self-signed', { domain }); },

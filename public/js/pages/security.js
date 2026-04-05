@@ -15,6 +15,9 @@ const SecurityPage = {
           <button class="btn btn-sm btn-primary" id="scan-all-btn">
             <i class="fas fa-search"></i> Scan All Images
           </button>
+          <button class="btn btn-sm btn-secondary" id="cis-header-btn" title="CIS Docker Benchmark">
+            <i class="fas fa-clipboard-check" style="margin-right:4px"></i> CIS Benchmark
+          </button>
           <button class="btn btn-sm btn-secondary" id="sec-refresh">
             <i class="fas fa-sync-alt"></i>
           </button>
@@ -39,6 +42,10 @@ const SecurityPage = {
 
     container.querySelector('#sec-refresh').addEventListener('click', () => this._renderTab());
     container.querySelector('#scan-all-btn').addEventListener('click', () => this._scanAll());
+    container.querySelector('#cis-header-btn').addEventListener('click', () => {
+      App.navigate('/system');
+      setTimeout(() => document.querySelector('[data-tab="cis"]')?.click(), 350);
+    });
 
     await this._renderTab();
   },
@@ -163,6 +170,24 @@ const SecurityPage = {
         </div>
       </div>
 
+      <!-- CIS Benchmark Card -->
+      <div class="card" style="margin-top:16px;border-left:3px solid var(--green,#4ade80)">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <h3 style="margin:0"><i class="fas fa-clipboard-check" style="margin-right:8px;color:var(--green,#4ade80)"></i>CIS Docker Benchmark</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-secondary" id="cis-quick-run"><i class="fas fa-play" style="margin-right:4px"></i>Run</button>
+            <a href="#/system" id="cis-full-link" style="font-size:12px;color:var(--accent);text-decoration:none" onclick="event.preventDefault();window.location.hash='/system';setTimeout(()=>{document.querySelector('[data-tab=cis]')?.click()},300)">
+              View full results <i class="fas fa-arrow-right" style="margin-left:3px"></i>
+            </a>
+          </div>
+        </div>
+        <div class="card-body" id="cis-quick-body">
+          <div id="cis-quick-result" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div class="text-muted text-sm"><i class="fas fa-info-circle" style="margin-right:5px"></i>Checks Docker daemon and container runtime against CIS security controls. Click Run for a quick score.</div>
+          </div>
+        </div>
+      </div>
+
       <!-- AI Remediation Card -->
       <div class="card" style="margin-top:16px;border-left:3px solid var(--accent)">
         <div class="card-header">
@@ -219,6 +244,30 @@ Please:
         const text = btn.previousElementSibling?.textContent;
         if (text) Utils.copyToClipboard(text).then(() => Toast.success('Copied!'));
       });
+    });
+
+    // CIS quick run
+    const cisRunBtn = el.querySelector('#cis-quick-run');
+    const cisResultEl = el.querySelector('#cis-quick-result');
+    // Restore last result from session if available
+    const _cisCache = sessionStorage.getItem('cis-quick-last');
+    if (_cisCache) {
+      try { cisResultEl.innerHTML = this._cisBriefHtml(JSON.parse(_cisCache)); } catch { /* ignore */ }
+    }
+    cisRunBtn?.addEventListener('click', async () => {
+      cisRunBtn.disabled = true;
+      cisRunBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px"></i>Running...';
+      cisResultEl.innerHTML = '<span class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:5px"></i>Running benchmark…</span>';
+      try {
+        const data = await Api.runCisBenchmark();
+        sessionStorage.setItem('cis-quick-last', JSON.stringify(data));
+        cisResultEl.innerHTML = this._cisBriefHtml(data);
+      } catch (err) {
+        cisResultEl.innerHTML = `<span class="text-muted text-sm" style="color:var(--red)"><i class="fas fa-exclamation-triangle" style="margin-right:5px"></i>${Utils.escapeHtml(err.message)}</span>`;
+      } finally {
+        cisRunBtn.disabled = false;
+        cisRunBtn.innerHTML = '<i class="fas fa-sync-alt" style="margin-right:4px"></i>Run Again';
+      }
     });
 
     // Scan All button
@@ -372,6 +421,9 @@ Please:
 
     if (this._historyView === 'list') {
       body.innerHTML = this._renderHistoryTable(filtered);
+      body.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
+        btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
+      });
       return;
     }
 
@@ -409,6 +461,11 @@ Please:
           </div>
         </div>`;
     }).join('');
+
+    // Wire view-scan buttons in all group tables
+    body.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
+      btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
+    });
 
     // Toggle groups
     body.querySelectorAll('.hist-group-header').forEach(header => {
@@ -473,11 +530,6 @@ Please:
         </tr>
       `).join('')}</tbody>
     </table>`;
-
-    // Wire up view scan detail buttons in history
-    el.querySelectorAll('[data-action="view-scan"]').forEach(btn => {
-      btn.addEventListener('click', () => this._viewScanDetail(parseInt(btn.dataset.scanId)));
-    });
   },
 
   async _renderScanners(el) {
@@ -509,7 +561,7 @@ Please:
             </div>
 
             <!-- Grype -->
-            <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0">
               <div style="width:40px;height:40px;border-radius:8px;background:rgba(168,85,247,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
                 <i class="fas fa-shield-alt" style="font-size:18px;color:#a855f7"></i>
               </div>
@@ -552,6 +604,8 @@ grype version</pre>
                 </div>
               </details>
             </div>` : ''}
+
+            <div style="border-top:1px solid var(--border);margin:4px 0"></div>
 
             <!-- Docker Scout -->
             <div style="display:flex;align-items:flex-start;gap:12px;padding:14px 0">
@@ -901,6 +955,30 @@ Generate a professional report with:
 
     Toast.success(`Scan complete: ${completed}/${images.length} images scanned`);
     this._renderTab();
+  },
+
+  _cisBriefHtml(data) {
+    const { score, summary, checks } = data;
+    const scoreColor = score >= 80 ? 'var(--green,#4ade80)' : score >= 50 ? 'var(--yellow,#ffc107)' : 'var(--red,#ef4444)';
+    const containerIssues = (checks || []).filter(c => c.category === 'Container' && c.status !== 'pass').length;
+    const daemonIssues = (checks || []).filter(c => c.category === 'Daemon' && c.status !== 'pass' && c.status !== 'info').length;
+    return `
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+        <div style="text-align:center">
+          <div style="font-size:36px;font-weight:700;color:${scoreColor};line-height:1">${score}%</div>
+          <div class="text-muted" style="font-size:10px;margin-top:2px">Security Score</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <span class="badge" style="background:rgba(74,222,128,.15);color:var(--green,#4ade80)"><i class="fas fa-check" style="margin-right:4px"></i>${summary.pass || 0} passed</span>
+          <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red,#ef4444)"><i class="fas fa-times" style="margin-right:4px"></i>${summary.fail || 0} failed</span>
+          <span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow,#ffc107)"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>${summary.warn || 0} warnings</span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${daemonIssues ? `<span class="badge" style="background:rgba(234,179,8,.1);color:var(--text-dim);font-size:11px"><i class="fas fa-cog" style="margin-right:4px"></i>${daemonIssues} daemon issue${daemonIssues > 1 ? 's' : ''}</span>` : ''}
+          ${containerIssues ? `<span class="badge" style="background:rgba(239,68,68,.1);color:var(--text-dim);font-size:11px"><i class="fas fa-box" style="margin-right:4px"></i>${containerIssues} container issue${containerIssues > 1 ? 's' : ''}</span>` : ''}
+        </div>
+      </div>
+    `;
   },
 
   _copyAiPrompt(type) {

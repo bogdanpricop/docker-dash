@@ -76,25 +76,25 @@ const ComparePage = {
       </div>
 
       <div class="card">
-        <div class="card-body" style="padding:0;overflow-x:auto">
+        <div class="card-body" style="padding:0;overflow:auto;max-height:calc(100vh - 280px)">
           <table class="data-table" id="compare-table">
             <thead>
               <tr>
-                <th style="text-align:left;min-width:200px;position:sticky;left:0;background:var(--card-bg)">Feature</th>
-                <th style="min-width:100px"><strong style="color:var(--accent)">Docker Dash</strong></th>
-                <th style="min-width:110px">Portainer CE</th>
-                <th style="min-width:110px">Portainer BE</th>
-                <th style="min-width:90px">Coolify</th>
-                <th style="min-width:80px">Yacht</th>
-                <th style="min-width:90px">Rancher</th>
-                <th style="min-width:80px">Dockge</th>
-                <th style="min-width:80px">Dockhand</th>
+                <th style="text-align:left;min-width:200px;position:sticky;top:0;left:0;z-index:3;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border),2px 0 0 var(--border)">Feature</th>
+                <th style="min-width:100px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)"><strong style="color:var(--accent)">Docker Dash</strong></th>
+                <th style="min-width:110px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Portainer CE</th>
+                <th style="min-width:110px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Portainer BE</th>
+                <th style="min-width:90px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Coolify</th>
+                <th style="min-width:80px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Yacht</th>
+                <th style="min-width:90px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Rancher</th>
+                <th style="min-width:80px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Dockge</th>
+                <th style="min-width:80px;position:sticky;top:0;z-index:2;background:var(--surface2,#16161e);box-shadow:inset 0 -2px 0 var(--border)">Dockhand</th>
               </tr>
             </thead>
             <tbody>
               ${features.map(f => `
                 <tr class="compare-row ${isExclusive(f) ? 'exclusive-row' : ''}" data-feature="${Utils.escapeHtml(f.feature.toLowerCase())}">
-                  <td style="text-align:left;position:sticky;left:0;background:var(--card-bg)">
+                  <td style="text-align:left;position:sticky;left:0;background:var(--surface2,#16161e);box-shadow:2px 0 0 var(--border)">
                     ${isExclusive(f) ? '<i class="fas fa-star" style="color:#d29922;margin-right:6px;font-size:10px" title="Exclusive to Docker Dash"></i>' : ''}
                     ${Utils.escapeHtml(f.feature)}
                   </td>
@@ -109,15 +109,19 @@ const ComparePage = {
                 </tr>
               `).join('')}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="9" style="position:sticky;bottom:0;left:0;background:var(--surface2,#16161e);box-shadow:inset 0 2px 0 var(--border);padding:10px 16px;text-align:center;font-size:12px;color:var(--text-dim);white-space:nowrap">
+                  <i class="fas fa-star" style="color:#d29922;margin-right:4px"></i> Exclusive to Docker Dash &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span style="color:var(--green)"><i class="fas fa-check-circle" style="margin-right:2px"></i></span> Available &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span class="badge badge-info" style="font-size:10px;vertical-align:middle">label</span> Partial / conditional &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span style="font-weight:600">—</span> Not available &nbsp;&nbsp;|&nbsp;&nbsp;
+                  <span style="color:var(--yellow)">BE</span> = paid Portainer edition
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
-      </div>
-
-      <div class="text-sm text-muted" style="margin-top:12px;text-align:center">
-        <i class="fas fa-star" style="color:#d29922"></i> = Exclusive to Docker Dash &nbsp;|&nbsp;
-        <span class="text-green"><i class="fas fa-check-circle"></i></span> = Available &nbsp;|&nbsp;
-        <span class="badge badge-info" style="font-size:10px">label</span> = Partial/conditional &nbsp;|&nbsp;
-        — = Not available &nbsp;|&nbsp; BE = paid edition
       </div>
     `;
   },

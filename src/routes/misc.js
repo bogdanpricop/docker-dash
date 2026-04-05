@@ -14,8 +14,8 @@ const dockerService = require('../services/docker');
 
 const router = Router();
 
-// Cache package version at startup
-const _pkgVersion = require('../../package.json').version;
+// Version — read from src/version.js (mounted volume, updated without image rebuild)
+const _pkgVersion = require('../version');
 
 // ─── Health ─────────────────────────────────────────────────
 
@@ -957,10 +957,7 @@ router.get('/about/files', requireAuth, (req, res) => {
     } catch (err) { /* file may not exist */ }
     return { name, exists, size };
   });
-  // Also include package.json version
-  let version = '?';
-  try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch (err) { /* fallback to '?' */ }
-  res.json({ files, version });
+  res.json({ files, version: _pkgVersion });
 });
 
 router.get('/about/file/:name', requireAuth, (req, res) => {

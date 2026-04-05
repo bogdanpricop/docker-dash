@@ -33,7 +33,7 @@ app.use(helmet({
       scriptSrcAttr: ["'none'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
       connectSrc: ["'self'", "ws:", "wss:", "https://cdn.jsdelivr.net"],
       upgradeInsecureRequests: null,
     },

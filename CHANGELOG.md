@@ -2,6 +2,31 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.3.1] - 2026-04-05
+
+### Added
+- **Stack-level security buttons** — Security Scan (🟡) and CIS Benchmark (🟢) directly in the stack header in Containers page
+- **Scan Detail overlay** — "View Details" per image after a Security Scan opens full CVE breakdown *over* the scan modal without closing it; includes Critical/High/Medium/Low grid, recommendations, full CVE table with fix versions, and AI prompt copy
+- **CIS Benchmark card in Security overview** — run benchmark and see score + issue counts without leaving Security page; result cached in sessionStorage
+- **CIS Benchmark header button** in Security page — one-click navigation to System > CIS tab
+- **Actions Guide (i button)** in Containers and Images — full 2-column overlay reference documenting every stack action, container action, and status indicator
+- **Generated docker-compose.yml** — View Composer reconstructs YAML from container inspect metadata with a "Generated" notice when no real file is found on disk
+- **Comparison table sticky header + footer** — column headers and legend always visible; table scrolls internally with `max-height: calc(100vh - 280px)`
+
+### Improved
+- CIS Benchmark reorganized into sub-tabs: Guide, Daemon, Containers, All results; per-container hardened compose generator
+- Template images loading — `cdn.jsdelivr.net` added to Content Security Policy `imgSrc`
+- Version in System > Info and About now reads from `src/version.js` (mounted volume) — no longer shows stale baked image version
+- Grype added to image scan dropdown menu (was missing)
+- Comparison table first-column sticky cells use `--surface2` with `box-shadow` to eliminate transparency bleed-through at scroll
+
+### Fixed
+- Scan History "View Details" eye button did nothing — event listeners were placed after a `return` statement (dead code)
+- Image scan dropdown positioned off-screen — `event.currentTarget` resolved to the delegated table element instead of the actual button
+- Actions Guide overlay background transparent on light theme — `--card-bg` variable undefined; replaced with `--surface`
+- CIS Benchmark header button non-functional — inline `onclick` blocked by CSP `scriptSrcAttr: none`; replaced with addEventListener
+- Grype install instructions appeared visually grouped with Docker Scout — separator div moved to correct position
+
 ## [5.3.0] - 2026-04-04
 
 ### Added

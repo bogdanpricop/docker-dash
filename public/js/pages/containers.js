@@ -69,6 +69,7 @@ const ContainersPage = {
             <i class="fas fa-folder"></i> Groups
           </button>
           <button class="prune-help-btn" id="containers-help" title="${i18n.t('pages.containers.helpTooltip')}">?</button>
+          <button class="prune-help-btn" id="containers-guide" title="Actions guide" style="background:var(--accent);color:#fff;border-color:var(--accent)">i</button>
           <button class="btn btn-sm btn-secondary" id="containers-refresh">
             <i class="fas fa-sync-alt"></i>
           </button>
@@ -86,6 +87,7 @@ const ContainersPage = {
     container.querySelector('#container-templates').addEventListener('click', () => this._templatesDialog());
     container.querySelector('#container-groups').addEventListener('click', () => this._manageGroupsDialog());
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
+    container.querySelector('#containers-guide').addEventListener('click', () => this._showActionsGuide());
 
     // Layout toggles
     container.querySelector('#layout-1col').addEventListener('click', () => {
@@ -256,6 +258,11 @@ const ContainersPage = {
               <span class="stack-status ${allRunning ? 'all-running' : ''}">
                 <i class="fas fa-circle"></i> ${running}/${total}
               </span>
+              <div class="stack-actions" data-stop-propagation style="display:flex;align-items:center;gap:2px">
+                <button class="action-btn" data-stack-sec="vuln" data-stack="${Utils.escapeHtml(stack)}" title="Security scan — scan all images in this stack" style="color:var(--yellow,#ffc107)"><i class="fas fa-search-plus"></i></button>
+                <button class="action-btn" data-stack-sec="cis" data-stack="${Utils.escapeHtml(stack)}" title="CIS Benchmark — check containers in this stack" style="color:var(--green,#4ade80)"><i class="fas fa-clipboard-check"></i></button>
+                ${!isStandalone ? `<span class="toggle-divider" style="margin:0 2px;width:1px;height:16px;background:var(--border)"></span>` : ''}
+              </div>
               ${!isStandalone ? `
               <div class="stack-actions" data-stop-propagation>
                 ${running < total ? `<button class="action-btn" data-stack-action="start" data-stack="${Utils.escapeHtml(stack)}" title="${i18n.t('pages.containers.startAll')}"><i class="fas fa-play"></i></button>` : ''}
@@ -408,6 +415,7 @@ const ContainersPage = {
                 <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
               </div>
               <div class="modal-body">
+                ${data.generated ? `<div style="margin-bottom:10px;padding:8px 12px;background:var(--yellow-dim,rgba(255,193,7,.12));border:1px solid var(--yellow,#ffc107);border-radius:var(--radius-sm);font-size:12px;color:var(--text-dim)"><i class="fas fa-magic" style="margin-right:6px;color:var(--yellow,#ffc107)"></i><strong>Generated from container metadata</strong> — no compose file found on disk. Edit and save to create one.</div>` : ''}
                 <textarea id="compose-editor" style="width:100%;min-height:400px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:12px;padding:12px;resize:vertical;outline:none;border-radius:var(--radius-sm);tab-size:2">${Utils.escapeHtml(data.config || '')}</textarea>
                 <div id="compose-validation-msg" style="margin-top:8px;display:none" class="text-sm"></div>
               </div>
@@ -487,6 +495,397 @@ const ContainersPage = {
         }
       });
     });
+
+    // Stack security buttons (vuln scan + CIS)
+    el.querySelectorAll('[data-stack-sec]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const type = btn.dataset.stackSec;
+        const stackName = btn.dataset.stack;
+        const stackContainers = (this._containers || []).filter(c =>
+          (c.stack || c.labels?.['com.docker.compose.project'] || '_standalone') === stackName
+        );
+        if (type === 'vuln') {
+          await this._showStackVulnModal(stackName, stackContainers);
+        } else {
+          await this._showStackCisModal(stackName, stackContainers);
+        }
+      });
+    });
+  },
+
+  async _showStackVulnModal(stackName, containers) {
+    const images = [...new Set(containers.map(c => c.image).filter(Boolean))];
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-search-plus" style="color:var(--yellow,#ffc107);margin-right:10px"></i>
+          Security Scan — <span style="color:var(--accent)">${Utils.escapeHtml(stackName)}</span>
+        </h3>
+        <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="stack-vuln-body">
+        <div style="margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <span class="text-muted text-sm"><i class="fas fa-layer-group" style="margin-right:5px"></i>${containers.length} container${containers.length > 1 ? 's' : ''}, ${images.length} unique image${images.length > 1 ? 's' : ''} to scan</span>
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap">
+            ${images.map(img => `<span class="badge" style="font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${Utils.escapeHtml(img)}">${Utils.escapeHtml(img.split('/').pop().substring(0, 30))}</span>`).join('')}
+          </div>
+        </div>
+        <div id="stack-scan-results" style="display:flex;flex-direction:column;gap:12px">
+          <div class="text-muted text-sm"><i class="fas fa-info-circle" style="margin-right:5px"></i>Click "Scan All" to start vulnerability scanning for all images in this stack.</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+        <span id="stack-scan-summary" style="flex:1;font-size:12px;line-height:1.5;align-self:center"></span>
+        <button class="btn btn-primary" id="stack-scan-btn"><i class="fas fa-play" style="margin-right:6px"></i>Scan All</button>
+        <button class="btn btn-secondary" id="modal-ok">Close</button>
+      </div>
+    `, { width: '860px' });
+
+    Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+
+    Modal._content.querySelector('#stack-scan-btn').addEventListener('click', async () => {
+      const scanBtn = Modal._content.querySelector('#stack-scan-btn');
+      const resultsEl = Modal._content.querySelector('#stack-scan-results');
+      const summaryEl = Modal._content.querySelector('#stack-scan-summary');
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Scanning...';
+
+      // Render per-image placeholders
+      resultsEl.innerHTML = images.map(img => `
+        <div id="scan-img-${Utils.escapeHtml(img.replace(/[^a-z0-9]/gi,'_'))}" style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)">
+            <i class="fas fa-spinner fa-spin" style="color:var(--accent);width:16px"></i>
+            <span class="mono text-sm" style="flex:1">${Utils.escapeHtml(img)}</span>
+            <span class="badge" style="font-size:10px">Scanning…</span>
+          </div>
+        </div>
+      `).join('');
+
+      let totalC = 0, totalH = 0, totalM = 0, totalL = 0, totalFix = 0;
+      await Promise.all(images.map(async (img) => {
+        const safeId = img.replace(/[^a-z0-9]/gi,'_');
+        const el = resultsEl.querySelector(`#scan-img-${safeId}`);
+        try {
+          await Api.scanImage(encodeURIComponent(img), 'auto');
+          const history = await Api.get(`/images/scan-history?image=${encodeURIComponent(img)}&limit=1`);
+          const r = history[0];
+          if (!r) throw new Error('No result');
+          totalC += r.summary_critical; totalH += r.summary_high;
+          totalM += r.summary_medium; totalL += r.summary_low; totalFix += r.fixable_count;
+          const sevColor = r.summary_critical > 0 ? 'var(--red)' : r.summary_high > 0 ? '#f97316' : r.summary_total > 0 ? 'var(--yellow)' : 'var(--green)';
+          const badge = r.summary_critical > 0 ? `badge-stopped` : r.summary_high > 0 ? `badge-warning` : r.summary_total > 0 ? `badge-warning` : `badge-running`;
+          if (el) {
+            el.innerHTML = `
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)">
+                <i class="fas fa-shield-alt" style="color:${sevColor};width:16px"></i>
+                <span class="mono text-sm" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(img)}</span>
+                <span class="badge ${badge}" style="font-size:10px">${r.summary_total} vulns</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:16px;padding:10px 14px;flex-wrap:wrap">
+                ${r.summary_critical > 0 ? `<span style="font-size:12px;color:var(--red)"><strong>${r.summary_critical}</strong> Critical</span>` : ''}
+                ${r.summary_high > 0 ? `<span style="font-size:12px;color:#f97316"><strong>${r.summary_high}</strong> High</span>` : ''}
+                ${r.summary_medium > 0 ? `<span style="font-size:12px;color:var(--yellow)"><strong>${r.summary_medium}</strong> Medium</span>` : ''}
+                ${r.summary_low > 0 ? `<span style="font-size:12px;color:var(--text-dim)"><strong>${r.summary_low}</strong> Low</span>` : ''}
+                ${r.fixable_count > 0 ? `<span style="font-size:12px;color:var(--green)"><i class="fas fa-tools" style="margin-right:3px"></i>${r.fixable_count} fixable</span>` : ''}
+                ${r.summary_total === 0 ? `<span style="font-size:12px;color:var(--green)"><i class="fas fa-check-circle" style="margin-right:4px"></i>No vulnerabilities found</span>` : ''}
+                <button class="btn btn-sm btn-secondary stack-scan-detail-btn" data-scan-id="${r.id}" style="margin-left:auto;font-size:11px">
+                  <i class="fas fa-list-ul" style="margin-right:4px"></i>View Details
+                </button>
+              </div>`;
+            el.querySelector('.stack-scan-detail-btn').addEventListener('click', () => this._openScanDetailOverlay(r.id));
+          }
+        } catch (err) {
+          if (el) el.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2)">
+              <i class="fas fa-exclamation-triangle" style="color:var(--yellow);width:16px"></i>
+              <span class="mono text-sm" style="flex:1">${Utils.escapeHtml(img)}</span>
+              <span class="badge badge-warning" style="font-size:10px">Error</span>
+            </div>
+            <div style="padding:8px 14px;font-size:12px;color:var(--text-dim)">${Utils.escapeHtml(err.message)}</div>`;
+        }
+      }));
+
+      const overallColor = totalC > 0 ? 'var(--red)' : totalH > 0 ? '#f97316' : (totalM + totalL) > 0 ? 'var(--yellow)' : 'var(--green)';
+      summaryEl.innerHTML = `
+        <span style="font-weight:600;color:${overallColor}"><i class="fas fa-shield-alt" style="margin-right:5px"></i>Total:</span>
+        ${totalC > 0 ? `<span style="margin-left:8px;color:var(--red)">${totalC} Critical</span>` : ''}
+        ${totalH > 0 ? `<span style="margin-left:8px;color:#f97316">${totalH} High</span>` : ''}
+        ${totalM > 0 ? `<span style="margin-left:8px;color:var(--yellow)">${totalM} Med</span>` : ''}
+        ${totalL > 0 ? `<span style="margin-left:8px;color:var(--text-dim)">${totalL} Low</span>` : ''}
+        ${totalFix > 0 ? `<span style="margin-left:8px;color:var(--green)">${totalFix} fixable</span>` : ''}
+        ${(totalC + totalH + totalM + totalL) === 0 ? `<span style="margin-left:8px;color:var(--green)">All clear!</span>` : ''}
+      `;
+      scanBtn.disabled = false;
+      scanBtn.innerHTML = '<i class="fas fa-sync-alt" style="margin-right:6px"></i>Re-scan';
+    });
+  },
+
+  async _openScanDetailOverlay(scanId) {
+    // Opens scan detail over the existing Security Scan modal (does not close it)
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:10500;
+      background:rgba(0,0,0,.6);backdrop-filter:blur(2px);
+      display:flex;align-items:center;justify-content:center;padding:16px;
+    `;
+    overlay.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius,8px);max-width:860px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <i class="fas fa-shield-alt" style="color:var(--accent);font-size:16px"></i>
+        <h3 id="sd-title" style="margin:0;flex:1;font-size:15px">Loading…</h3>
+        <button id="sd-close" style="background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1">&times;</button>
+      </div>
+      <div id="sd-body" style="overflow-y:auto;padding:20px;flex:1">
+        <div class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Loading scan details…</div>
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0">
+        <button id="sd-copy-prompt" class="btn btn-sm btn-secondary" style="display:none"><i class="fas fa-robot" style="margin-right:5px"></i>Copy AI Prompt</button>
+        <button id="sd-close-footer" class="btn btn-secondary">Close</button>
+      </div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#sd-close').addEventListener('click', close);
+    overlay.querySelector('#sd-close-footer').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+
+    try {
+      const data = await Api.get(`/images/scan-history/${scanId}`);
+      const vulns = data.vulnerabilities || [];
+      const recs = data.recommendations || [];
+      const s = { critical: data.summary_critical, high: data.summary_high, medium: data.summary_medium, low: data.summary_low, total: data.summary_total };
+      const sevColor = sev => ({ critical: 'var(--red)', high: '#f97316', medium: 'var(--yellow)', low: 'var(--text-dim)' }[sev] || 'var(--text)');
+      const dedup = arr => [...new Map(arr.map(v => [`${v.id}|${v.package}`, v])).values()];
+      const criticalVulns = dedup(vulns.filter(v => v.severity === 'critical'));
+      const highVulns = dedup(vulns.filter(v => v.severity === 'high'));
+      const fixableVulns = dedup(vulns.filter(v => v.fixedIn));
+      const uniqueVulns = dedup(vulns);
+      const sevOrder = { critical: 0, high: 1, medium: 2, low: 3, unknown: 4 };
+      const sortedVulns = [...vulns].sort((a, b) => (sevOrder[a.severity] ?? 5) - (sevOrder[b.severity] ?? 5));
+
+      overlay.querySelector('#sd-title').textContent = `Scan: ${data.image_name}`;
+
+      overlay.querySelector('#sd-body').innerHTML = `
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+          Scanner: <strong>${Utils.escapeHtml(data.scanner)}</strong> &nbsp;|&nbsp;
+          Scanned: ${Utils.formatDate(data.scanned_at)} &nbsp;|&nbsp;
+          Fixable: <strong style="color:var(--green)">${data.fixable_count}</strong> / ${s.total}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+          <div style="text-align:center;padding:10px;background:rgba(239,68,68,.1);border-radius:var(--radius-sm)">
+            <div style="font-size:24px;font-weight:700;color:var(--red)">${s.critical}</div><div style="font-size:11px;margin-top:2px">Critical</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:rgba(249,115,22,.1);border-radius:var(--radius-sm)">
+            <div style="font-size:24px;font-weight:700;color:#f97316">${s.high}</div><div style="font-size:11px;margin-top:2px">High</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:rgba(234,179,8,.1);border-radius:var(--radius-sm)">
+            <div style="font-size:24px;font-weight:700;color:var(--yellow)">${s.medium}</div><div style="font-size:11px;margin-top:2px">Medium</div>
+          </div>
+          <div style="text-align:center;padding:10px;background:var(--surface2);border-radius:var(--radius-sm)">
+            <div style="font-size:24px;font-weight:700">${s.low}</div><div style="font-size:11px;margin-top:2px">Low</div>
+          </div>
+        </div>
+
+        ${recs.filter(r => r.type !== 'summary').length > 0 ? `
+        <div style="margin-bottom:16px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px"><i class="fas fa-lightbulb" style="color:var(--yellow);margin-right:5px"></i>Recommendations</div>
+          ${recs.filter(r => r.type !== 'summary').map(r => {
+            const c = r.priority === 'critical' ? 'var(--red)' : r.priority === 'high' ? '#f97316' : r.priority === 'medium' ? 'var(--yellow)' : 'var(--text-dim)';
+            return `<div style="padding:6px 10px;margin-bottom:4px;border-left:3px solid ${c};background:var(--surface2);border-radius:0 4px 4px 0;font-size:12px">
+              <strong>${Utils.escapeHtml(r.title)}</strong>
+              <div style="color:var(--text-dim)">${Utils.escapeHtml(r.description)}</div>
+              ${r.command ? `<code style="display:block;margin-top:4px;padding:4px 8px;background:var(--surface);border-radius:3px;font-size:11px;color:var(--accent)">${Utils.escapeHtml(r.command)}</code>` : ''}
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+
+        ${vulns.length > 0 ? `
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">Vulnerabilities (${vulns.length}${vulns.length > 100 ? ', showing top 100' : ''})</div>
+        <table class="data-table compact" style="font-size:12px">
+          <thead><tr><th>Sev</th><th>CVE</th><th>Package</th><th>Version</th><th>Fix Available</th></tr></thead>
+          <tbody>${sortedVulns.slice(0, 100).map(v => `
+            <tr>
+              <td class="mono" style="color:${sevColor(v.severity)};font-weight:700;font-size:11px">${v.severity.toUpperCase()}</td>
+              <td class="mono" style="font-size:11px">${v.url ? `<a href="${Utils.escapeHtml(v.url)}" target="_blank" style="color:var(--accent)">${Utils.escapeHtml(v.id)}</a>` : Utils.escapeHtml(v.id)}</td>
+              <td style="font-size:12px">${Utils.escapeHtml(v.package)}</td>
+              <td class="mono" style="font-size:11px">${Utils.escapeHtml(v.version)}</td>
+              <td style="font-size:11px">${v.fixedIn ? `<span style="color:var(--green)">${Utils.escapeHtml(v.fixedIn)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : `<div style="color:var(--green);font-size:13px;padding:16px 0;text-align:center"><i class="fas fa-check-circle" style="margin-right:6px"></i>No vulnerabilities found — image is clean.</div>`}
+      `;
+
+      // AI prompt
+      if (s.total > 0) {
+        const aiPrompt = `I have a Docker image "${data.image_name}" scanned with ${data.scanner}.\n\nSummary: ${criticalVulns.length} critical, ${highVulns.length} high, ${uniqueVulns.length} unique CVEs, ${fixableVulns.length} fixable.\n\nTop CVEs:\n${[...criticalVulns, ...highVulns].slice(0,15).map(v=>`- ${v.severity.toUpperCase()} ${v.id}: ${v.package} ${v.version}${v.fixedIn?' (fix: '+v.fixedIn+')':' (no fix)'}`).join('\n')}\n\nPlease:\n1. Generate a fixed Dockerfile resolving all fixable vulnerabilities\n2. Add OS package upgrades appropriate for the base image\n3. Recommend a more secure base image if applicable\n4. For unfixable CVEs, suggest mitigations`;
+        const copyBtn = overlay.querySelector('#sd-copy-prompt');
+        copyBtn.style.display = '';
+        copyBtn.addEventListener('click', () => Utils.copyToClipboard(aiPrompt).then(() => Toast.success('AI prompt copied!')));
+      }
+    } catch (err) {
+      overlay.querySelector('#sd-body').innerHTML = `<div class="text-muted" style="color:var(--red)"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _showStackCisModal(stackName, containers) {
+    const runningContainers = containers.filter(c => c.state === 'running');
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-clipboard-check" style="color:var(--green,#4ade80);margin-right:10px"></i>
+          CIS Benchmark — <span style="color:var(--accent)">${Utils.escapeHtml(stackName)}</span>
+        </h3>
+        <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" id="stack-cis-body">
+        <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="text-muted text-sm"><i class="fas fa-box" style="margin-right:5px"></i>${runningContainers.length} running container${runningContainers.length > 1 ? 's' : ''} will be checked</span>
+          ${containers.length > runningContainers.length ? `<span class="badge badge-warning" style="font-size:10px"><i class="fas fa-info-circle" style="margin-right:3px"></i>${containers.length - runningContainers.length} stopped (skipped)</span>` : ''}
+        </div>
+        <div id="stack-cis-score" style="display:none;margin-bottom:16px"></div>
+        <div id="stack-cis-results"><div class="text-muted text-sm"><i class="fas fa-info-circle" style="margin-right:5px"></i>Click "Run Benchmark" to check CIS Docker security controls for containers in this stack.</div></div>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+        <button class="btn btn-secondary" id="cis-hardened-all" style="display:none;margin-right:auto"><i class="fas fa-shield-alt" style="margin-right:6px;color:var(--green)"></i>Get Hardened Compose</button>
+        <button class="btn btn-primary" id="stack-cis-btn"><i class="fas fa-play" style="margin-right:6px"></i>Run Benchmark</button>
+        <button class="btn btn-secondary" id="modal-ok">Close</button>
+      </div>
+    `, { width: '860px' });
+
+    Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+
+    const runBenchmark = async () => {
+      const cisBtn = Modal._content.querySelector('#stack-cis-btn');
+      const scoreEl = Modal._content.querySelector('#stack-cis-score');
+      const resultsEl = Modal._content.querySelector('#stack-cis-results');
+      const hardenBtn = Modal._content.querySelector('#cis-hardened-all');
+      cisBtn.disabled = true;
+      cisBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Running…';
+      resultsEl.innerHTML = `<div class="text-muted text-sm"><i class="fas fa-spinner fa-spin" style="margin-right:5px"></i>Running CIS benchmark…</div>`;
+
+      try {
+        const data = await Api.runCisBenchmark(Api.getHostId() || undefined);
+        const containerNames = new Set(runningContainers.map(c => (c.name || '').replace(/^\//, '')));
+        const stackChecks = (data.checks || []).filter(c => c.category === 'Container' && containerNames.has(c.title));
+
+        if (stackChecks.length === 0) {
+          resultsEl.innerHTML = `<div class="empty-msg"><i class="fas fa-info-circle"></i><p>No CIS container results found for this stack's containers. They may not be running.</p></div>`;
+          cisBtn.disabled = false; cisBtn.innerHTML = '<i class="fas fa-sync-alt" style="margin-right:6px"></i>Run Again';
+          return;
+        }
+
+        const pass = stackChecks.filter(c => c.status === 'pass').length;
+        const fail = stackChecks.filter(c => c.status === 'fail').length;
+        const warn = stackChecks.filter(c => c.status === 'warn').length;
+        const total = stackChecks.length;
+        const score = Math.round((pass / total) * 100);
+        const scoreColor = score >= 80 ? 'var(--green,#4ade80)' : score >= 50 ? 'var(--yellow,#ffc107)' : 'var(--red,#ef4444)';
+
+        scoreEl.style.display = '';
+        scoreEl.innerHTML = `
+          <div style="display:flex;align-items:center;gap:20px;padding:14px 16px;background:var(--surface2);border-radius:var(--radius);flex-wrap:wrap">
+            <div style="text-align:center;min-width:64px">
+              <div style="font-size:36px;font-weight:700;color:${scoreColor};line-height:1">${score}%</div>
+              <div class="text-muted" style="font-size:10px;margin-top:2px">Stack Score</div>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <span class="badge" style="background:rgba(74,222,128,.15);color:var(--green)"><i class="fas fa-check" style="margin-right:4px"></i>${pass} passed</span>
+              <span class="badge" style="background:rgba(239,68,68,.15);color:var(--red)"><i class="fas fa-times" style="margin-right:4px"></i>${fail} failed</span>
+              <span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow)"><i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>${warn} warnings</span>
+            </div>
+            <div class="text-muted" style="font-size:11px;margin-left:auto">${total} container${total > 1 ? 's' : ''} checked</div>
+          </div>`;
+
+        const statusIcon = s => s === 'pass' ? '<i class="fas fa-check-circle" style="color:var(--green)"></i>'
+          : s === 'fail' ? '<i class="fas fa-times-circle" style="color:var(--red)"></i>'
+          : s === 'warn' ? '<i class="fas fa-exclamation-triangle" style="color:var(--yellow)"></i>'
+          : '<i class="fas fa-info-circle" style="color:var(--text-dim)"></i>';
+
+        resultsEl.innerHTML = stackChecks.map(item => {
+          const findings = item.findings || [];
+          const failCount = findings.filter(f => f.severity === 'fail').length;
+          const warnCount = findings.filter(f => f.severity === 'warn').length;
+          const isClean = item.status === 'pass';
+          return `
+            <details style="margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden" ${item.status === 'fail' ? 'open' : ''}>
+              <summary style="cursor:pointer;padding:10px 14px;display:flex;align-items:center;gap:10px;list-style:none;background:var(--surface2)">
+                <span>${statusIcon(item.status)}</span>
+                <span style="font-weight:600;flex:1">${Utils.escapeHtml(item.title)}</span>
+                ${item.image ? `<span class="text-muted mono" style="font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${Utils.escapeHtml(item.image.split('/').pop())}</span>` : ''}
+                ${failCount ? `<span class="badge" style="background:rgba(239,68,68,.15);color:var(--red);font-size:10px">${failCount} fail</span>` : ''}
+                ${warnCount ? `<span class="badge" style="background:rgba(234,179,8,.15);color:var(--yellow);font-size:10px">${warnCount} warn</span>` : ''}
+                ${isClean ? `<span class="badge" style="background:rgba(74,222,128,.15);color:var(--green);font-size:10px">clean</span>` : ''}
+              </summary>
+              <div style="padding:12px 14px">
+                ${isClean
+                  ? `<div style="color:var(--green);font-size:13px"><i class="fas fa-check-circle" style="margin-right:6px"></i>All checks passed.</div>`
+                  : findings.map(f => `
+                      <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--surface2)">
+                        <span style="width:16px;flex-shrink:0;margin-top:1px">${statusIcon(f.severity)}</span>
+                        <div style="flex:1;font-size:12px">${Utils.escapeHtml(f.msg)}</div>
+                      </div>`).join('')
+                }
+                ${!isClean ? `<div style="margin-top:10px;text-align:right"><button class="btn btn-sm btn-accent cis-stack-harden-btn" data-container="${Utils.escapeHtml(item.title)}" style="font-size:11px"><i class="fas fa-shield-alt" style="margin-right:4px"></i>Hardened compose</button></div>` : ''}
+              </div>
+            </details>`;
+        }).join('');
+
+        // Wire hardened compose buttons
+        resultsEl.querySelectorAll('.cis-stack-harden-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:4px"></i>';
+            try {
+              const result = await Api.getCisHardenedCompose(btn.dataset.container, Api.getHostId() || undefined);
+              const changesHtml = result.changes.length
+                ? `<div style="margin-bottom:12px;padding:10px 14px;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.25);border-radius:var(--radius-sm)"><div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:6px"><i class="fas fa-check-circle" style="margin-right:5px"></i>${result.changes.length} fixes applied</div><ul style="margin:0;padding-left:18px;font-size:11px;color:var(--text-dim)">${result.changes.map(c => `<li>${Utils.escapeHtml(c)}</li>`).join('')}</ul></div>`
+                : '';
+              Modal.open(`
+                <div class="modal-header">
+                  <h3><i class="fas fa-shield-alt" style="color:var(--green);margin-right:8px"></i>Hardened compose — ${Utils.escapeHtml(btn.dataset.container)}</h3>
+                  <button class="modal-close-btn" id="modal-x2"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                  <div style="margin-bottom:10px;padding:8px 12px;background:rgba(56,139,253,.08);border:1px solid var(--accent);border-radius:var(--radius-sm);font-size:12px;color:var(--text-dim)">
+                    <i class="fas fa-info-circle" style="margin-right:6px;color:var(--accent)"></i><strong>Generated &amp; hardened from container metadata.</strong> Adjust <code>mem_limit</code>, <code>cpus</code>, <code>user</code> to match your app.
+                  </div>
+                  ${changesHtml}
+                  <textarea id="harden-out" style="width:100%;min-height:400px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--mono);font-size:12px;padding:12px;resize:vertical;outline:none;border-radius:var(--radius-sm)">${Utils.escapeHtml(result.compose)}</textarea>
+                </div>
+                <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+                  <button class="btn btn-secondary" id="harden-copy"><i class="fas fa-copy"></i> Copy</button>
+                  <button class="btn btn-secondary" id="modal-ok2">Close</button>
+                </div>`, { width: '800px' });
+              Modal._content.querySelector('#modal-x2').addEventListener('click', () => Modal.close());
+              Modal._content.querySelector('#modal-ok2').addEventListener('click', () => Modal.close());
+              Modal._content.querySelector('#harden-copy').addEventListener('click', () => {
+                Utils.copyToClipboard(Modal._content.querySelector('#harden-out').value).then(() => Toast.success('Copied!'));
+              });
+            } catch (err) { Toast.error(err.message); }
+            finally { btn.disabled = false; btn.innerHTML = '<i class="fas fa-shield-alt" style="margin-right:4px"></i>Hardened compose'; }
+          });
+        });
+
+        if (fail > 0 || warn > 0) hardenBtn.style.display = '';
+        hardenBtn.onclick = () => {
+          const firstFail = stackChecks.find(c => c.status !== 'pass');
+          if (firstFail) resultsEl.querySelector(`.cis-stack-harden-btn[data-container="${firstFail.title}"]`)?.click();
+        };
+
+      } catch (err) {
+        resultsEl.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>${Utils.escapeHtml(err.message)}</div>`;
+      } finally {
+        cisBtn.disabled = false;
+        cisBtn.innerHTML = '<i class="fas fa-sync-alt" style="margin-right:6px"></i>Run Again';
+      }
+    };
+
+    Modal._content.querySelector('#stack-cis-btn').addEventListener('click', runBenchmark);
   },
 
   _updateBulkBar() {
@@ -2617,6 +3016,142 @@ const ContainersPage = {
     } catch (err) {
       Toast.error(err.message);
     }
+  },
+
+  _showActionsGuide() {
+    // Build overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'actions-guide-overlay';
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:10000;
+      background:rgba(0,0,0,.65);backdrop-filter:blur(3px);
+      display:flex;align-items:center;justify-content:center;padding:16px;
+    `;
+
+    overlay.innerHTML = `
+      <div style="
+        background:var(--surface);border:1px solid var(--border);border-radius:var(--radius,8px);
+        max-width:960px;width:100%;max-height:90vh;display:flex;flex-direction:column;
+        box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden;
+      ">
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid var(--border);flex-shrink:0">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fas fa-map" style="color:#fff;font-size:15px"></i>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:16px">Actions Guide</div>
+            <div style="font-size:12px;color:var(--text-dim)">Every button, every action — explained</div>
+          </div>
+          <button id="guide-close" style="margin-left:auto;background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:4px;line-height:1" title="Close">&times;</button>
+        </div>
+
+        <!-- Body — 2 columns -->
+        <div style="overflow-y:auto;padding:20px 24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+          <!-- ── STACK ACTIONS ── -->
+          <div style="grid-column:1/-1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-layer-group" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Stack-level actions</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { icon:'fa-play', color:'var(--green)', label:'Start all', desc:'Starts all stopped containers in the stack simultaneously. Only visible when at least one container is stopped.' },
+            { icon:'fa-redo', color:'var(--yellow)', label:'Restart all', desc:'Restarts every running container in the stack. Useful after a config change that doesn\'t require a full redeploy.' },
+            { icon:'fa-stop', color:'var(--red)', label:'Stop all', desc:'Stops all running containers in the stack gracefully (SIGTERM → SIGKILL after timeout). Only visible when containers are running.' },
+            { icon:'fa-cloud-download-alt', color:'var(--accent)', label:'Pull latest images', desc:'Runs <code>docker compose pull</code> for the stack — fetches updated images from the registry without recreating containers.' },
+            { icon:'fa-arrow-circle-up', color:'var(--accent)', label:'Up (redeploy)', desc:'Runs <code>docker compose up -d</code> — recreates containers that have changed image or config. Running containers with no changes are left untouched.' },
+            { icon:'fa-file-code', color:'var(--accent)', label:'View / Edit compose', desc:'Opens the docker-compose.yml for this stack. If no file is found on disk, a best-effort YAML is generated from container metadata. You can edit and save directly from the modal.' },
+            { icon:'fa-search-plus', color:'var(--yellow)', label:'Security scan', desc:'Scans all unique images in the stack for known CVEs using the auto-detected scanner (Trivy → Grype → Docker Scout). Results show Critical / High / Medium / Low counts per image.' },
+            { icon:'fa-clipboard-check', color:'var(--green)', label:'CIS Benchmark', desc:'Runs the CIS Docker Benchmark v1.6 and filters results to containers in this stack. Shows a stack security score, per-container findings, and a "Hardened compose" generator for failing containers.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas ${a.icon}" style="color:${a.color};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+          <!-- ── CONTAINER ACTIONS ── -->
+          <div style="grid-column:1/-1;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-cube" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Container-level actions</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { icon:'fa-play', color:'var(--green)', label:'Start', desc:'Starts a stopped container. The container retains its configuration — volumes, ports, environment — from when it was created.' },
+            { icon:'fa-stop', color:'var(--red)', label:'Stop', desc:'Sends SIGTERM to the main process, then SIGKILL after the stop timeout (default 10 s). Data on volumes is preserved.' },
+            { icon:'fa-redo', color:'var(--yellow)', label:'Restart', desc:'Equivalent to stop + start in sequence. Useful for applying env changes or recovering from a crash without losing state.' },
+            { icon:'fa-terminal', color:'var(--accent)', label:'Exec / Terminal', desc:'Opens an interactive terminal inside the running container. Defaults to <code>sh</code>. Useful for debugging, inspecting logs, or running one-off commands.' },
+            { icon:'fa-scroll', color:'var(--accent)', label:'Logs', desc:'Streams the container\'s stdout/stderr in real time. You can tail a fixed number of lines, search output, or download the full log as a text file.' },
+            { icon:'fa-chart-bar', color:'var(--accent)', label:'Stats', desc:'Shows live CPU %, memory usage, network I/O, and block I/O for the container. Refreshes every 2 seconds via WebSocket.' },
+            { icon:'fa-edit', color:'var(--accent)', label:'Edit / Rename', desc:'Opens the container detail view where you can rename the container, change environment variables, update port mappings, and set resource limits (CPU / memory).' },
+            { icon:'fa-trash', color:'var(--red)', label:'Remove', desc:'Removes the container permanently. Running containers must be stopped first (or force-remove is used). Volumes attached to the container are <strong>not</strong> deleted.' },
+            { icon:'fa-clone', color:'var(--accent)', label:'Duplicate', desc:'Creates a new container with the same image, environment, port mappings, and volume configuration as the selected container.' },
+            { icon:'fa-tag', color:'var(--accent)', label:'Commit / Tag', desc:'Commits the container\'s current filesystem state as a new image and optionally tags it. Useful for saving a manually configured state.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas ${a.icon}" style="color:${a.color};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+          <!-- ── STATUS INDICATORS ── -->
+          <div style="grid-column:1/-1;margin-top:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+              <i class="fas fa-circle" style="color:var(--accent);font-size:14px"></i>
+              <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim)">Status indicators</span>
+              <div style="flex:1;height:1px;background:var(--border);margin-left:4px"></div>
+            </div>
+          </div>
+
+          ${[
+            { dot:'var(--green)', label:'Running', desc:'Container is active and its main process is alive.' },
+            { dot:'var(--red)', label:'Exited / Stopped', desc:'Container has stopped — either intentionally or due to a crash. Check logs for exit code.' },
+            { dot:'var(--yellow)', label:'Restarting / Paused', desc:'Container is in a transient state: restarting after a crash, paused via <code>docker pause</code>, or being created.' },
+            { dot:'#6b7280', label:'Needs attention', desc:'Container has restarted multiple times recently — likely a crash-loop. Check logs immediately.' },
+          ].map(a => `
+            <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fas fa-circle" style="color:${a.dot};font-size:14px"></i>
+              </div>
+              <div>
+                <div style="font-weight:600;font-size:13px;margin-bottom:3px">${a.label}</div>
+                <div style="font-size:12px;color:var(--text-dim);line-height:1.5">${a.desc}</div>
+              </div>
+            </div>
+          `).join('')}
+
+        </div><!-- /grid -->
+
+        <!-- Footer -->
+        <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;flex-shrink:0">
+          <button id="guide-close-footer" class="btn btn-secondary">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#guide-close').addEventListener('click', close);
+    overlay.querySelector('#guide-close-footer').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
   },
 
   _showHelp() {

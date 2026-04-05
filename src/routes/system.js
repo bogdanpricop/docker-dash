@@ -283,7 +283,7 @@ router.get('/check-updates', requireAuth, async (req, res) => {
     }
 
     // ── Docker Dash app version ──
-    result.app = { version: require('../../package.json').version };
+    result.app = { version: require('../version') };
 
     res.json(result);
   } catch (err) {
@@ -493,6 +493,74 @@ router.post('/compose/:stack/:action', requireAuth, requireRole('admin', 'operat
   }
 });
 
+/** Reconstruct a best-effort docker-compose.yml from a container inspect result */
+function _generateComposeFromInspect(inspection, stackName) {
+  const labels = inspection.Config?.Labels || {};
+  const rawName = labels['com.docker.compose.service'] || (inspection.Name || '').replace(/^\//, '');
+  const serviceName = rawName.replace(/[^a-z0-9_-]/gi, '_') || 'app';
+  const image = inspection.Config?.Image || 'unknown';
+
+  // Ports
+  const portBindings = inspection.HostConfig?.PortBindings || {};
+  const ports = [];
+  for (const [containerPort, bindings] of Object.entries(portBindings)) {
+    if (!bindings) continue;
+    const cp = containerPort.replace(/\/tcp$/, '');
+    for (const b of bindings) {
+      ports.push(b.HostPort ? `"${b.HostPort}:${cp}"` : `"${cp}"`);
+    }
+  }
+
+  // Environment — filter Docker/compose-injected internal vars
+  const internalPrefixes = ['PATH=', 'HOME=', 'HOSTNAME='];
+  const env = (inspection.Config?.Env || []).filter(e => !internalPrefixes.some(p => e.startsWith(p)));
+
+  // Mounts: bind mounts + named volumes
+  const mounts = inspection.Mounts || [];
+  const bindMounts = mounts.filter(m => m.Type === 'bind')
+    .map(m => `${m.Source}:${m.Destination}${m.RW === false ? ':ro' : ''}`);
+  const namedVolumes = mounts.filter(m => m.Type === 'volume')
+    .map(m => `${m.Name}:${m.Destination}`);
+  const allMounts = [...bindMounts, ...namedVolumes];
+
+  // Restart policy
+  const rp = inspection.HostConfig?.RestartPolicy?.Name;
+  const restart = (rp === 'always' || rp === 'unless-stopped' || rp === 'on-failure') ? rp : null;
+
+  // Networks (skip default bridge)
+  const networks = Object.keys(inspection.NetworkSettings?.Networks || {})
+    .filter(n => n !== 'bridge' && n !== 'host' && n !== 'none');
+
+  // Build YAML lines
+  const lines = ['services:'];
+  lines.push(`  ${serviceName}:`);
+  lines.push(`    image: ${image}`);
+  if (ports.length) { lines.push('    ports:'); ports.forEach(p => lines.push(`      - ${p}`)); }
+  if (env.length) { lines.push('    environment:'); env.forEach(e => lines.push(`      - ${JSON.stringify(e)}`)); }
+  if (allMounts.length) { lines.push('    volumes:'); allMounts.forEach(v => lines.push(`      - ${v}`)); }
+  if (restart) lines.push(`    restart: ${restart}`);
+  if (networks.length) {
+    lines.push('    networks:');
+    networks.forEach(n => lines.push(`      - ${n}`));
+  }
+
+  // Named volumes section
+  if (namedVolumes.length) {
+    lines.push('');
+    lines.push('volumes:');
+    namedVolumes.forEach(v => lines.push(`  ${v.split(':')[0]}:`));
+  }
+
+  // External networks section
+  if (networks.length) {
+    lines.push('');
+    lines.push('networks:');
+    networks.forEach(n => lines.push(`  ${n}:\n    external: true`));
+  }
+
+  return lines.join('\n');
+}
+
 router.get('/compose/:stack/config', requireAuth, async (req, res) => {
   try {
     const containers = await dockerService.listContainers(req.hostId);
@@ -504,22 +572,30 @@ router.get('/compose/:stack/config', requireAuth, async (req, res) => {
     const workingDir = firstContainer.Config.Labels?.['com.docker.compose.project.working_dir'] || '';
     const configFile = firstContainer.Config.Labels?.['com.docker.compose.project.config_files'] || '';
 
-    if (!workingDir) return res.status(400).json({ error: 'Cannot determine compose directory' });
-
     let config = '';
-    try {
-      config = execFileSync('docker', ['compose', 'config'], { cwd: workingDir, timeout: 10000, encoding: 'utf8', stdio: 'pipe' });
-    } catch {
-      // Try reading compose files directly
-      const fs = require('fs');
-      const path = require('path');
-      for (const fname of ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']) {
-        const fp = path.join(workingDir, fname);
-        if (fs.existsSync(fp)) { config = fs.readFileSync(fp, 'utf8'); break; }
+    let generated = false;
+
+    if (workingDir) {
+      try {
+        config = execFileSync('docker', ['compose', 'config'], { cwd: workingDir, timeout: 10000, encoding: 'utf8', stdio: 'pipe' });
+      } catch {
+        // Try reading compose files directly
+        const fsSync = require('fs');
+        const pathSync = require('path');
+        for (const fname of ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']) {
+          const fp = pathSync.join(workingDir, fname);
+          if (fsSync.existsSync(fp)) { config = fsSync.readFileSync(fp, 'utf8'); break; }
+        }
       }
     }
 
-    res.json({ stack: req.params.stack, workingDir, configFile, config });
+    // Fallback: generate from container inspect metadata
+    if (!config) {
+      config = _generateComposeFromInspect(firstContainer, req.params.stack);
+      generated = true;
+    }
+
+    res.json({ stack: req.params.stack, workingDir, configFile, config, generated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1292,6 +1368,158 @@ router.get('/cis-benchmark', requireAuth, requireRole('admin'), async (req, res)
     });
 
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/system/cis/container/:name/hardened-compose
+// Generate a CIS-compliant docker-compose.yml from container inspect data
+const DANGEROUS_CAPS = ['NET_ADMIN', 'SYS_ADMIN', 'SYS_PTRACE', 'SYS_MODULE', 'SYS_RAWIO', 'SYS_CHROOT', 'SYS_BOOT', 'SETUID', 'SETGID', 'MKNOD', 'AUDIT_WRITE', 'NET_RAW'];
+const SENSITIVE_MOUNTS = ['/etc', '/proc', '/sys', '/boot', '/dev', '/run', '/var/run'];
+
+router.get('/cis/container/:name/hardened-compose', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const docker = dockerService.getDocker(req.hostId);
+    const containers = await docker.listContainers({ all: false });
+    const match = containers.find(c =>
+      (c.Names || []).some(n => n.replace(/^\//, '') === req.params.name) || c.Id.startsWith(req.params.name)
+    );
+    if (!match) return res.status(404).json({ error: 'Container not found' });
+
+    const inspection = await docker.getContainer(match.Id).inspect();
+    const hc = inspection.HostConfig || {};
+    const cfg = inspection.Config || {};
+    const labels = cfg.Labels || {};
+
+    const changes = [];
+
+    // --- Service name + image ---
+    const rawName = labels['com.docker.compose.service'] || (inspection.Name || '').replace(/^\//, '');
+    const serviceName = rawName.replace(/[^a-z0-9_-]/gi, '_') || 'app';
+    const image = cfg.Image || 'unknown';
+
+    // --- Ports ---
+    const portBindings = hc.PortBindings || {};
+    const ports = [];
+    for (const [cp, bindings] of Object.entries(portBindings)) {
+      if (!bindings) continue;
+      const port = cp.replace(/\/tcp$/, '');
+      for (const b of bindings) {
+        ports.push(b.HostPort ? `"${b.HostPort}:${port}"` : `"${port}"`);
+      }
+    }
+
+    // --- Environment (filter internal) ---
+    const internalPrefixes = ['PATH=', 'HOME=', 'HOSTNAME='];
+    const env = (cfg.Env || []).filter(e => !internalPrefixes.some(p => e.startsWith(p)));
+
+    // --- Volumes: harden sensitive bind mounts to :ro ---
+    const mounts = inspection.Mounts || [];
+    const bindMounts = mounts.filter(m => m.Type === 'bind').map(m => {
+      const isSensitive = SENSITIVE_MOUNTS.some(s => m.Source === s || m.Source.startsWith(s + '/'));
+      const isSocket = m.Source === '/var/run/docker.sock';
+      const forceRo = isSensitive && m.RW;
+      if (forceRo) changes.push(`Bind mount ${m.Source} changed to read-only (:ro)`);
+      if (isSocket) changes.push(`Docker socket mount kept — consider docker-socket-proxy instead`);
+      const ro = (!m.RW || forceRo) ? ':ro' : '';
+      return `${m.Source}:${m.Destination}${ro}`;
+    });
+    const namedVolumes = mounts.filter(m => m.Type === 'volume').map(m => `${m.Name}:${m.Destination}`);
+    const allMounts = [...bindMounts, ...namedVolumes];
+
+    // --- Restart policy ---
+    const rp = hc.RestartPolicy?.Name;
+    const restart = (rp === 'always' || rp === 'unless-stopped' || rp === 'on-failure') ? rp : 'unless-stopped';
+
+    // --- CIS fixes ---
+    // C-1: Remove privileged
+    if (hc.Privileged) changes.push('Removed: privileged: true (C-1)');
+
+    // C-2: Remove dangerous caps
+    let capAdd = (hc.CapAdd || []).filter(c => c !== 'ALL');
+    const removedCaps = capAdd.filter(c => DANGEROUS_CAPS.includes(c));
+    capAdd = capAdd.filter(c => !DANGEROUS_CAPS.includes(c));
+    if (hc.CapAdd?.includes('ALL')) changes.push('Removed cap_add: ALL — all capabilities dropped (C-2)');
+    if (removedCaps.length) changes.push(`Removed dangerous capabilities: ${removedCaps.join(', ')} (C-2)`);
+
+    // C-3: Add no-new-privileges
+    const hadNoNewPriv = (hc.SecurityOpt || []).some(s => s.includes('no-new-privileges'));
+    if (!hadNoNewPriv) changes.push('Added security_opt: no-new-privileges:true (C-3)');
+
+    // C-4: Remove pid=host
+    if (hc.PidMode === 'host') changes.push('Removed pid: host (C-4)');
+
+    // C-5: Remove network=host
+    const netMode = hc.NetworkMode || '';
+    if (netMode.startsWith('host')) changes.push('Removed network_mode: host — use named networks (C-5)');
+
+    // C-6: Remove ipc=host
+    if (hc.IpcMode === 'host') changes.push('Removed ipc: host (C-6)');
+
+    // C-7: read_only (note as recommendation — may break apps)
+    changes.push('Added read_only: true (C-7) — add tmpfs for /tmp if app needs writable space');
+
+    // C-8: Memory limit
+    const hadMemory = hc.Memory && hc.Memory > 0;
+    const memLimit = hadMemory ? `${Math.round(hc.Memory / 1024 / 1024)}m` : '512m';
+    if (!hadMemory) changes.push('Added mem_limit: 512m (C-8) — adjust to actual needs');
+
+    // C-9: CPU limit
+    const hadCpu = hc.NanoCpus && hc.NanoCpus > 0;
+    const cpuVal = hadCpu ? (hc.NanoCpus / 1e9).toFixed(2) : '1.0';
+    if (!hadCpu) changes.push('Added cpus: "1.0" (C-9) — adjust to actual needs');
+
+    // C-12: Non-root user
+    const user = cfg.User || '';
+    const isRoot = !user || user === 'root' || user === '0' || user === '0:0';
+    if (isRoot) changes.push('Added user: "1000:1000" (C-12) — adjust to actual UID/GID');
+
+    // --- Networks (skip host) ---
+    const networks = Object.keys(inspection.NetworkSettings?.Networks || {})
+      .filter(n => n !== 'bridge' && n !== 'host' && n !== 'none' && !netMode.startsWith('host'));
+
+    // --- Build YAML ---
+    const lines = ['services:'];
+    lines.push(`  ${serviceName}:`);
+    lines.push(`    image: ${image}`);
+    if (ports.length) { lines.push('    ports:'); ports.forEach(p => lines.push(`      - ${p}`)); }
+    if (env.length) { lines.push('    environment:'); env.forEach(e => lines.push(`      - ${JSON.stringify(e)}`)); }
+    if (allMounts.length) { lines.push('    volumes:'); allMounts.forEach(v => lines.push(`      - ${v}`)); }
+    lines.push(`    restart: ${restart}`);
+
+    // Security hardening block
+    lines.push('    read_only: true');
+    lines.push('    tmpfs:');
+    lines.push('      - /tmp:mode=1777');
+    if (isRoot) lines.push('    user: "1000:1000"');
+    const secOpts = (hc.SecurityOpt || []).filter(s => !s.includes('no-new-privileges'));
+    secOpts.push('no-new-privileges:true');
+    lines.push('    security_opt:');
+    secOpts.forEach(s => lines.push(`      - ${s}`));
+    if (capAdd.length) { lines.push('    cap_add:'); capAdd.forEach(c => lines.push(`      - ${c}`)); }
+    lines.push('    cap_drop:');
+    lines.push('      - ALL');
+    lines.push(`    mem_limit: ${memLimit}`);
+    lines.push(`    cpus: "${cpuVal}"`);
+
+    if (networks.length) {
+      lines.push('    networks:');
+      networks.forEach(n => lines.push(`      - ${n}`));
+    }
+
+    if (namedVolumes.length) {
+      lines.push('');
+      lines.push('volumes:');
+      namedVolumes.forEach(v => lines.push(`  ${v.split(':')[0]}:`));
+    }
+    if (networks.length) {
+      lines.push('');
+      lines.push('networks:');
+      networks.forEach(n => lines.push(`  ${n}:\n    external: true`));
+    }
+
+    res.json({ compose: lines.join('\n'), changes });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

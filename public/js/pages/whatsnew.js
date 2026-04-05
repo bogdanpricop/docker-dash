@@ -10,6 +10,29 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.3.1',
+      date: '2026-04-05',
+      title: 'Security UX Polish + Actions Guides + Fix Round',
+      changes: [
+        { type: 'feature', text: 'Stack-level security buttons — Security Scan and CIS Benchmark directly from the stack header in Containers' },
+        { type: 'feature', text: 'Security Scan detail overlay — View Details per image opens a full CVE breakdown over the scan modal without closing it' },
+        { type: 'feature', text: 'CIS Benchmark card in Security overview — run benchmark and see stack score without leaving the Security page' },
+        { type: 'feature', text: 'CIS Benchmark link in Security page header — one click to System > CIS Benchmark tab' },
+        { type: 'feature', text: 'Actions Guide (i button) in Containers and Images — full overlay reference for every action, 2-column layout' },
+        { type: 'feature', text: 'Generated docker-compose.yml from container metadata — View Composer shows best-effort YAML with "Generated" notice when no real file exists' },
+        { type: 'feature', text: 'Comparison table sticky header + footer — column headers and legend always visible while scrolling; table scrolls in its own viewport' },
+        { type: 'improvement', text: 'CIS Benchmark sub-tabs (Guide, Daemon, Containers, All) + per-container hardened compose generator' },
+        { type: 'improvement', text: 'Template images now load — CDN (cdn.jsdelivr.net) added to Content Security Policy imgSrc' },
+        { type: 'improvement', text: 'Version display fixed in System > Info and About — now reads from src/version.js (mounted volume) instead of baked package.json' },
+        { type: 'improvement', text: 'Scan History eye button fixed — view-scan event listeners were dead code after a return statement' },
+        { type: 'improvement', text: 'Image scan menu fixed — event.currentTarget pointed to table instead of button due to delegation; scan dropdown now positions correctly' },
+        { type: 'improvement', text: 'Grype added to image scan menu (was missing alongside Trivy and Docker Scout)' },
+        { type: 'fix', text: 'Actions Guide overlay background transparent on light theme — replaced missing --card-bg with --surface' },
+        { type: 'fix', text: 'CIS Benchmark button in Security header used inline onclick (blocked by CSP scriptSrcAttr none) — replaced with event listener' },
+        { type: 'fix', text: 'Grype install instructions appeared below the divider (looked like Docker Scout docs) — separator moved correctly' },
+      ],
+    },
+    {
       version: '5.3.0',
       date: '2026-04-04',
       title: 'Docker Swarm + Extended Comparison (8 tools)',
