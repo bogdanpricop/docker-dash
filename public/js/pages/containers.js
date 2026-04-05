@@ -91,13 +91,16 @@ const ContainersPage = {
           </button>
         </div>
       </div>
-      <div id="container-filter-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="btn btn-xs filter-preset active" data-filter-preset="">All</button>
-        <button class="btn btn-xs filter-preset" data-filter-preset="running">Running</button>
-        <button class="btn btn-xs filter-preset" data-filter-preset="stopped">Stopped</button>
-        <button class="btn btn-xs filter-preset" data-filter-preset="unhealthy">Unhealthy</button>
-        <button class="btn btn-xs filter-preset" data-filter-preset="sandbox">Sandbox</button>
-        <button class="btn btn-xs" id="save-filter-btn" style="margin-left:auto;color:var(--accent)"><i class="fas fa-plus"></i> Save</button>
+      <div id="container-filter-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <div id="container-filter-presets" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-xs filter-preset active" data-filter-preset="">All</button>
+          <button class="btn btn-xs filter-preset" data-filter-preset="running">Running</button>
+          <button class="btn btn-xs filter-preset" data-filter-preset="stopped">Stopped</button>
+          <button class="btn btn-xs filter-preset" data-filter-preset="unhealthy">Unhealthy</button>
+          <button class="btn btn-xs filter-preset" data-filter-preset="sandbox">Sandbox</button>
+          <button class="btn btn-xs" id="save-filter-btn" style="color:var(--accent)"><i class="fas fa-plus"></i> Save</button>
+        </div>
+        <div id="container-summary-inline" style="margin-left:auto;display:flex;align-items:center;gap:0"></div>
       </div>
       <div id="container-groups-section"></div>
       <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
@@ -353,17 +356,27 @@ const ContainersPage = {
     else if (this._stateFilter === 'attention') containers = containers.filter(c => _getScore(c) < 80);
 
     const activeFilter = this._stateFilter || '';
-    const summaryHtml = `
-      <div class="containers-summary">
-        <span class="summary-item"><i class="fas fa-cube"></i> <strong>${total}</strong> ${i18n.t('pages.containers.total')}</span>
-        <span class="summary-sep">|</span>
-        <span class="summary-item summary-filter ${activeFilter === 'running' ? 'active' : ''} text-green" data-state-filter="running"><i class="fas fa-play"></i> ${running} ${i18n.t('common.running')}</span>
-        <span class="summary-sep">|</span>
-        <span class="summary-item summary-filter ${activeFilter === 'exited' ? 'active' : ''} text-muted" data-state-filter="exited"><i class="fas fa-stop"></i> ${stopped} ${i18n.t('common.stopped')}</span>
-        ${other > 0 ? `<span class="summary-sep">|</span><span class="summary-item summary-filter ${activeFilter === 'other' ? 'active' : ''} text-yellow" data-state-filter="other"><i class="fas fa-exclamation-triangle"></i> ${other} ${i18n.t('common.other')}</span>` : ''}
-        ${needsAttention > 0 ? `<span class="summary-sep">|</span><span class="summary-item summary-filter ${activeFilter === 'attention' ? 'active' : ''} text-orange" data-state-filter="attention"><i class="fas fa-heartbeat"></i> ${needsAttention} ${i18n.t('pages.containers.needsAttention')}</span>` : ''}
-      </div>
-    `;
+    // Render summary stats into the inline container (right side of filter bar)
+    const summaryInline = document.getElementById('container-summary-inline');
+    if (summaryInline) {
+      summaryInline.innerHTML = `
+        <span class="summary-item" style="font-size:11px"><i class="fas fa-cube"></i> <strong>${total}</strong></span>
+        <span class="summary-sep" style="font-size:11px">|</span>
+        <span class="summary-item summary-filter ${activeFilter === 'running' ? 'active' : ''} text-green" data-state-filter="running" style="font-size:11px;cursor:pointer"><i class="fas fa-play"></i> ${running}</span>
+        <span class="summary-sep" style="font-size:11px">|</span>
+        <span class="summary-item summary-filter ${activeFilter === 'exited' ? 'active' : ''} text-muted" data-state-filter="exited" style="font-size:11px;cursor:pointer"><i class="fas fa-stop"></i> ${stopped}</span>
+        ${other > 0 ? `<span class="summary-sep" style="font-size:11px">|</span><span class="summary-item summary-filter ${activeFilter === 'other' ? 'active' : ''} text-yellow" data-state-filter="other" style="font-size:11px;cursor:pointer"><i class="fas fa-exclamation-triangle"></i> ${other}</span>` : ''}
+        ${needsAttention > 0 ? `<span class="summary-sep" style="font-size:11px">|</span><span class="summary-item summary-filter ${activeFilter === 'attention' ? 'active' : ''} text-orange" data-state-filter="attention" style="font-size:11px;cursor:pointer"><i class="fas fa-heartbeat"></i> ${needsAttention}</span>` : ''}
+      `;
+      summaryInline.querySelectorAll('[data-state-filter]').forEach(item => {
+        item.addEventListener('click', () => {
+          const f = item.dataset.stateFilter;
+          this._stateFilter = this._stateFilter === f ? '' : f;
+          this._renderGrouped();
+        });
+      });
+    }
+    const summaryHtml = '';
 
     const groups = {};
     containers.forEach(c => {
