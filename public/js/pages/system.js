@@ -124,106 +124,46 @@ const SystemPage = {
     // Auto-check updates
     this._loadUpdates();
 
-    // MOTD editor (admin only)
+    // MOTD editor (admin only) — simple: one textarea, one message per line, checkbox for random
     const motdCard = document.createElement('div');
     motdCard.className = 'card';
     motdCard.style.marginTop = '16px';
     motdCard.innerHTML = `
       <div class="card-header"><h3><i class="fas fa-bullhorn" style="margin-right:8px;color:var(--yellow)"></i>Login Banner (MOTD)</h3></div>
       <div class="card-body">
-        <p class="text-muted text-sm" style="margin-bottom:10px">Display a message on the login page. Choose fixed, random, or both.</p>
-        <div style="display:flex;gap:12px;margin-bottom:12px">
-          <label class="toggle-label"><input type="radio" name="motd-mode" value="fixed" checked> <strong>Fixed</strong> <span class="text-muted text-sm">— always show the same message</span></label>
-          <label class="toggle-label"><input type="radio" name="motd-mode" value="random"> <strong>Random</strong> <span class="text-muted text-sm">— pick one from a list</span></label>
-          <label class="toggle-label"><input type="radio" name="motd-mode" value="both"> <strong>Both</strong> <span class="text-muted text-sm">— random from fixed + list</span></label>
-        </div>
-        <div id="motd-fixed-section">
-          <label class="text-sm" style="font-weight:600">Fixed Banner</label>
-          <textarea id="motd-editor" class="form-control" rows="3" placeholder="Enter login banner message..." style="font-family:var(--mono);font-size:12px;margin-top:4px"></textarea>
-        </div>
-        <div id="motd-random-section" style="margin-top:12px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <label class="text-sm" style="font-weight:600">Random Banner List</label>
-            <button class="btn btn-xs btn-secondary" id="motd-add-random"><i class="fas fa-plus"></i> Add</button>
-          </div>
-          <div id="motd-random-list" style="display:flex;flex-direction:column;gap:4px"></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-sm btn-primary" id="motd-save"><i class="fas fa-save"></i> Save All</button>
-          <button class="btn btn-sm btn-secondary" id="motd-clear"><i class="fas fa-times"></i> Clear All</button>
+        <p class="text-muted text-sm" style="margin-bottom:10px">Enter one message per line. If "Pick random" is checked, a random line is shown on the login page each time. Otherwise the first line is always shown.</p>
+        <textarea id="motd-editor" class="form-control" rows="6" placeholder="Welcome to Docker Dash!&#10;Maintenance window: Sunday 02:00-04:00&#10;Contact admin@example.com for access" style="font-family:var(--mono);font-size:12px"></textarea>
+        <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+          <label class="toggle-label"><input type="checkbox" id="motd-random"> Pick random line each login</label>
+          <span style="flex:1"></span>
+          <button class="btn btn-sm btn-primary" id="motd-save"><i class="fas fa-save"></i> Save</button>
+          <button class="btn btn-sm btn-secondary" id="motd-clear"><i class="fas fa-times"></i> Clear</button>
         </div>
       </div>
     `;
     el.appendChild(motdCard);
 
-    // State
-    let motdRandomList = [];
-
-    // Sync DOM inputs back to array before any destructive operation
-    const syncRandomFromDOM = () => {
-      motdCard.querySelectorAll('.motd-random-input').forEach(input => {
-        const idx = parseInt(input.dataset.idx);
-        if (!isNaN(idx) && idx < motdRandomList.length) motdRandomList[idx] = input.value;
-      });
-    };
-
-    const renderRandomList = () => {
-      const listEl = motdCard.querySelector('#motd-random-list');
-      if (!listEl) return;
-      listEl.innerHTML = motdRandomList.map((msg, i) => `
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="text" class="form-control motd-random-input" data-idx="${i}" value="${Utils.escapeHtml(msg)}" placeholder="Enter banner message..." style="flex:1;font-size:12px;padding:4px 8px">
-          <button class="action-btn danger motd-random-remove" data-idx="${i}" title="Remove"><i class="fas fa-times"></i></button>
-        </div>
-      `).join('') || '<div class="text-muted text-sm">No random banners. Click "+ Add" to create one.</div>';
-
-      listEl.querySelectorAll('.motd-random-remove').forEach(btn => {
-        btn.addEventListener('click', () => {
-          syncRandomFromDOM();
-          motdRandomList.splice(parseInt(btn.dataset.idx), 1);
-          renderRandomList();
-        });
-      });
-    };
-
-    // Load existing MOTD config from dedicated endpoint
+    // Load
     try {
       const cfg = await Api.getMotdConfig();
-      const editor = motdCard.querySelector('#motd-editor');
-      if (editor) editor.value = cfg.motd || '';
-      const modeRadio = motdCard.querySelector(`input[name="motd-mode"][value="${cfg.mode || 'fixed'}"]`);
-      if (modeRadio) modeRadio.checked = true;
-      motdRandomList = Array.isArray(cfg.randomList) ? cfg.randomList : [];
-      renderRandomList();
-    } catch (err) { console.warn('MOTD config load failed:', err.message); }
-
-    motdCard.querySelector('#motd-add-random')?.addEventListener('click', () => {
-      syncRandomFromDOM(); // preserve current edits before re-render
-      motdRandomList.push('');
-      renderRandomList();
-      // Focus last input
-      const inputs = motdCard.querySelectorAll('.motd-random-input');
-      if (inputs.length) inputs[inputs.length - 1].focus();
-    });
+      motdCard.querySelector('#motd-editor').value = cfg.lines || '';
+      motdCard.querySelector('#motd-random').checked = !!cfg.random;
+    } catch {}
 
     motdCard.querySelector('#motd-save')?.addEventListener('click', async () => {
-      const motd = motdCard.querySelector('#motd-editor')?.value || '';
-      const mode = motdCard.querySelector('input[name="motd-mode"]:checked')?.value || 'fixed';
-      syncRandomFromDOM(); // read latest values from DOM
-      const randomList = motdRandomList.filter(m => m.trim());
+      const lines = motdCard.querySelector('#motd-editor')?.value || '';
+      const random = motdCard.querySelector('#motd-random')?.checked || false;
       try {
-        await Api.setMotd({ motd, mode, randomList });
-        Toast.success('Login banner settings saved');
+        await Api.setMotd({ lines, random });
+        Toast.success('Login banner saved');
       } catch (err) { Toast.error(err.message); }
     });
 
     motdCard.querySelector('#motd-clear')?.addEventListener('click', async () => {
       try {
-        await Api.setMotd({ motd: '', mode: 'fixed', randomList: [] });
+        await Api.setMotd({ lines: '', random: false });
         motdCard.querySelector('#motd-editor').value = '';
-        motdCard.querySelector('input[name="motd-mode"][value="fixed"]').checked = true;
-        motdRandomList = [];
-        renderRandomList();
+        motdCard.querySelector('#motd-random').checked = false;
         Toast.success('Login banner cleared');
       } catch (err) { Toast.error(err.message); }
     });

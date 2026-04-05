@@ -974,47 +974,35 @@ router.put('/settings', requireAuth, requireRole('admin'), (req, res) => {
 
 // ─── Login Banner (MOTD) ────────────────────────────────────
 
-// GET /motd — public, no auth required
+// GET /motd — public, returns one message to display on login
 router.get('/motd', (req, res) => {
   try {
-    const mode = settingsService.get('login_motd_mode', 'fixed');
-    const fixedMotd = settingsService.get('login_motd', '');
-    let randomList = [];
-    try { randomList = JSON.parse(settingsService.get('login_motd_random', '[]')); } catch { randomList = []; }
-
+    const linesStr = settingsService.get('login_motd_lines', '');
+    const random = settingsService.get('login_motd_random_flag', 'false') === 'true';
+    const lines = linesStr.split('\n').map(l => l.trim()).filter(Boolean);
     let motd = '';
-    if (mode === 'fixed') {
-      motd = fixedMotd;
-    } else if (mode === 'random' && randomList.length > 0) {
-      motd = randomList[Math.floor(Math.random() * randomList.length)];
-    } else if (mode === 'both') {
-      const all = [fixedMotd, ...randomList].filter(Boolean);
-      motd = all.length > 0 ? all[Math.floor(Math.random() * all.length)] : '';
+    if (lines.length > 0) {
+      motd = random ? lines[Math.floor(Math.random() * lines.length)] : lines[0];
     }
-
-    res.json({ motd, mode });
-  } catch { res.json({ motd: '', mode: 'fixed' }); }
+    res.json({ motd });
+  } catch { res.json({ motd: '' }); }
 });
 
-// GET /motd/config — admin, returns full MOTD configuration
+// GET /motd/config — admin, returns full config for editor
 router.get('/motd/config', requireAuth, requireRole('admin'), (req, res) => {
   try {
-    const motd = settingsService.get('login_motd', '');
-    const mode = settingsService.get('login_motd_mode', 'fixed');
-    let randomList = [];
-    try { randomList = JSON.parse(settingsService.get('login_motd_random', '[]')); } catch { }
-    if (!Array.isArray(randomList)) randomList = [];
-    res.json({ motd, mode, randomList });
+    const lines = settingsService.get('login_motd_lines', '');
+    const random = settingsService.get('login_motd_random_flag', 'false') === 'true';
+    res.json({ lines, random });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// PUT /motd — admin only
+// PUT /motd — admin only, saves lines + random flag
 router.put('/motd', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
-    const { motd, mode, randomList } = req.body;
-    if (motd !== undefined) settingsService.set('login_motd', motd || '', req.user?.id);
-    if (mode !== undefined) settingsService.set('login_motd_mode', mode, req.user?.id);
-    if (randomList !== undefined) settingsService.set('login_motd_random', JSON.stringify(randomList), req.user?.id);
+    const { lines, random } = req.body;
+    if (lines !== undefined) settingsService.set('login_motd_lines', lines, req.user?.id);
+    if (random !== undefined) settingsService.set('login_motd_random_flag', String(!!random), req.user?.id);
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
