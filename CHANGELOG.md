@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.9.0] - 2026-04-05
+
+### Added — Enterprise Wave 3 (5 features)
+- **Maintenance Mode / Node Drain** — drain button per host in Multi-Host Overview; stops all non-system containers, marks host as "maintenance" (orange badge); Activate button restores to production
+- **Certificate Management UI** — System page card showing TLS certificates per host (Docker TLS configs + app-level certs) with CA/key indicators
+- **Saved Filter Presets (Advanced)** — save custom filter combinations with names; dashed-border pills in filter bar; persists in localStorage; removable via ×
+- **Inline Edit for Container Metadata** — click any metadata field (app name, description, category, owner, notes) in container detail to edit in-place; saves on Enter/blur, cancel on Escape
+- **Stack Creation Wizard** — 3-step guided wizard: Stack Name → Add Services (name, image, ports, dynamic add/remove) → Review & Edit YAML → Deploy; generates docker-compose.yml automatically
+
+### Backend
+- `POST /hosts/:id/drain` — stops all running containers (skips docker-dash), sets environment=maintenance
+- `POST /hosts/:id/activate` — restores environment=production
+- `GET /system/ssl/certificates` — lists TLS certificates from host configs + app cert paths
+
 ## [5.8.0] - 2026-04-05
 
 ### Added — Enterprise Wave 2 (9 features)

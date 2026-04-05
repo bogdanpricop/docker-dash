@@ -74,6 +74,9 @@ const ContainersPage = {
           <button class="btn btn-sm btn-secondary" id="container-github-compose" title="Generate docker-compose from a GitHub repository using AI">
             <i class="fab fa-github"></i> From GitHub
           </button>
+          <button class="btn btn-sm btn-secondary" id="container-stack-wizard" title="Create a new stack with step-by-step wizard">
+            <i class="fas fa-magic"></i> Stack Wizard
+          </button>
           <button class="btn btn-sm btn-secondary" id="container-groups" title="Manage groups">
             <i class="fas fa-folder"></i> Groups
           </button>
@@ -90,6 +93,7 @@ const ContainersPage = {
         <button class="btn btn-xs filter-preset" data-filter-preset="stopped">Stopped</button>
         <button class="btn btn-xs filter-preset" data-filter-preset="unhealthy">Unhealthy</button>
         <button class="btn btn-xs filter-preset" data-filter-preset="sandbox">Sandbox</button>
+        <button class="btn btn-xs" id="save-filter-btn" style="margin-left:auto;color:var(--accent)"><i class="fas fa-plus"></i> Save</button>
       </div>
       <div id="container-groups-section"></div>
       <div id="containers-grouped" class="${this._layout === '2col' ? 'stacks-grid-2col' : ''}"></div>
@@ -106,6 +110,23 @@ const ContainersPage = {
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#containers-guide').addEventListener('click', () => this._showActionsGuide());
     container.querySelector('#container-github-compose').addEventListener('click', () => this._githubComposeDialog());
+    container.querySelector('#container-stack-wizard').addEventListener('click', () => this._createStackWizard());
+
+    // Save Filter button
+    container.querySelector('#save-filter-btn')?.addEventListener('click', async () => {
+      const currentSearch = this._filter || '';
+      const currentState = this._stateFilter || '';
+      if (!currentSearch && !currentState) { Toast.warning('Apply a filter first before saving'); return; }
+
+      const label = prompt('Name this filter preset:', `${currentState || 'custom'}${currentSearch ? ' \u2014 ' + currentSearch : ''}`);
+      if (!label) return;
+
+      const saved = JSON.parse(localStorage.getItem('dd-saved-filters') || '[]');
+      saved.push({ label, search: currentSearch, state: currentState });
+      localStorage.setItem('dd-saved-filters', JSON.stringify(saved));
+      this._renderSavedFilters(container);
+      Toast.success(`Filter "${label}" saved`);
+    });
 
     // Layout toggles
     container.querySelector('#layout-1col').addEventListener('click', () => {
@@ -148,6 +169,9 @@ const ContainersPage = {
         this._renderGrouped();
       });
     });
+
+    // Render any previously saved filter presets from localStorage
+    this._renderSavedFilters(container);
 
     // Keyboard navigation
     this._kbRow = -1;
@@ -2218,12 +2242,12 @@ const ContainersPage = {
         <div class="card-header"><h3><i class="fas fa-tag" style="color:var(--accent);margin-right:6px"></i>${i18n.t('pages.containers.meta.title')}</h3></div>
         <div class="card-body">
           <table class="info-table">
-            ${meta.app_name ? `<tr><td>${i18n.t('pages.containers.meta.appName')}</td><td class="text-bright" style="font-weight:600">${Utils.escapeHtml(meta.app_name)}</td></tr>` : ''}
-            ${meta.description ? `<tr><td>${i18n.t('pages.containers.meta.description')}</td><td>${Utils.escapeHtml(meta.description)}</td></tr>` : ''}
+            ${meta.app_name ? `<tr><td>${i18n.t('pages.containers.meta.appName')}</td><td class="text-bright meta-editable" data-field="app_name" style="font-weight:600">${Utils.escapeHtml(meta.app_name)}</td></tr>` : ''}
+            ${meta.description ? `<tr><td>${i18n.t('pages.containers.meta.description')}</td><td class="meta-editable" data-field="description">${Utils.escapeHtml(meta.description)}</td></tr>` : ''}
             ${links.length ? `<tr><td>Links</td><td><div class="meta-card-links">${links.join('')}</div></td></tr>` : ''}
-            ${meta.category ? `<tr><td>${i18n.t('pages.containers.meta.category')}</td><td><span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span></td></tr>` : ''}
-            ${meta.owner ? `<tr><td>${i18n.t('pages.containers.meta.owner')}</td><td>${Utils.escapeHtml(meta.owner)}</td></tr>` : ''}
-            ${meta.notes ? `<tr><td>${i18n.t('pages.containers.meta.notes')}</td><td class="text-sm">${Utils.escapeHtml(meta.notes)}</td></tr>` : ''}
+            ${meta.category ? `<tr><td>${i18n.t('pages.containers.meta.category')}</td><td class="meta-editable" data-field="category"><span class="badge badge-meta-cat">${Utils.escapeHtml(meta.category)}</span></td></tr>` : ''}
+            ${meta.owner ? `<tr><td>${i18n.t('pages.containers.meta.owner')}</td><td class="meta-editable" data-field="owner">${Utils.escapeHtml(meta.owner)}</td></tr>` : ''}
+            ${meta.notes ? `<tr><td>${i18n.t('pages.containers.meta.notes')}</td><td class="text-sm meta-editable" data-field="notes">${Utils.escapeHtml(meta.notes)}</td></tr>` : ''}
           </table>
         </div>
       `;
@@ -2232,6 +2256,43 @@ const ContainersPage = {
       const firstGrid = el.querySelector('.info-grid');
       if (firstGrid) el.insertBefore(card, firstGrid);
       else el.prepend(card);
+
+      // Wire inline editing for editable meta cells
+      card.querySelectorAll('.meta-editable').forEach(cell => {
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click to edit';
+        cell.addEventListener('click', async () => {
+          const field = cell.dataset.field;
+          const currentVal = cell.textContent.trim();
+          const input = document.createElement('input');
+          input.className = 'form-control';
+          input.value = currentVal;
+          input.style.cssText = 'padding:2px 6px;font-size:12px;width:100%;';
+          cell.textContent = '';
+          cell.appendChild(input);
+          input.focus();
+          input.select();
+
+          const save = async () => {
+            const newVal = input.value.trim();
+            cell.textContent = newVal || '\u2014';
+            if (newVal !== currentVal) {
+              try {
+                const update = {};
+                update[field] = newVal;
+                await Api.updateContainerMeta(containerName, update);
+                Toast.success(`${field} updated`);
+              } catch (err) { Toast.error(err.message); cell.textContent = currentVal; }
+            }
+          };
+
+          input.addEventListener('blur', save);
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { cell.textContent = currentVal; }
+          });
+        });
+      });
     } catch { /* silently skip */ }
   },
 
@@ -4638,6 +4699,202 @@ const ContainersPage = {
         }
       });
     } catch { /* stats unavailable */ }
+  },
+
+  _renderSavedFilters(container) {
+    const bar = container.querySelector('#container-filter-presets') || document.getElementById('container-filter-presets');
+    if (!bar) return;
+    // Remove existing saved filter buttons
+    bar.querySelectorAll('.saved-filter').forEach(b => b.remove());
+
+    const saved = JSON.parse(localStorage.getItem('dd-saved-filters') || '[]');
+    const saveBtn = bar.querySelector('#save-filter-btn');
+    saved.forEach((f, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-xs filter-preset saved-filter';
+      btn.style.cssText = 'border-style:dashed;';
+      btn.innerHTML = `${Utils.escapeHtml(f.label)} <i class="fas fa-times" data-remove-filter="${i}" style="margin-left:4px;font-size:9px;opacity:0.5"></i>`;
+      btn.addEventListener('click', (e) => {
+        if (e.target.dataset.removeFilter !== undefined) {
+          saved.splice(parseInt(e.target.dataset.removeFilter), 1);
+          localStorage.setItem('dd-saved-filters', JSON.stringify(saved));
+          this._renderSavedFilters(container);
+          return;
+        }
+        bar.querySelectorAll('.filter-preset').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._filter = f.search || '';
+        this._stateFilter = f.state || '';
+        const searchInput = document.getElementById('container-search');
+        if (searchInput) searchInput.value = f.search || '';
+        this._renderGrouped();
+      });
+      if (saveBtn) bar.insertBefore(btn, saveBtn);
+      else bar.appendChild(btn);
+    });
+  },
+
+  _createStackWizard() {
+    let step = 1;
+    const state = { name: '', services: [{ name: 'web', image: 'nginx:alpine', ports: '80:80' }], network: '', volumes: [] };
+
+    const renderStep = () => {
+      const steps = [
+        { num: 1, label: 'Stack Name' },
+        { num: 2, label: 'Services' },
+        { num: 3, label: 'Review & Deploy' },
+      ];
+
+      const stepBar = steps.map(s =>
+        `<div style="display:flex;align-items:center;gap:6px;${s.num === step ? 'color:var(--accent);font-weight:600' : 'color:var(--text-dim)'}">
+          <span style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;
+            ${s.num < step ? 'background:var(--green);color:#fff' : s.num === step ? 'background:var(--accent);color:#fff' : 'background:var(--surface3);color:var(--text-dim)'}">
+            ${s.num < step ? '<i class="fas fa-check"></i>' : s.num}
+          </span>
+          <span style="font-size:12px">${s.label}</span>
+          ${s.num < steps.length ? '<span style="flex:1;height:1px;background:var(--border);margin:0 8px"></span>' : ''}
+        </div>`
+      ).join('');
+
+      let content = '';
+      if (step === 1) {
+        content = `
+          <div class="form-group">
+            <label>Stack / Project Name</label>
+            <input id="wiz-name" class="form-control" value="${Utils.escapeHtml(state.name)}" placeholder="my-stack" autofocus>
+            <p class="text-muted text-sm" style="margin-top:6px">This becomes the Docker Compose project name. Use lowercase letters, numbers, and hyphens.</p>
+          </div>
+        `;
+      } else if (step === 2) {
+        content = `
+          <div id="wiz-services">
+            ${state.services.map((s, i) => `
+              <div class="card" style="padding:12px;margin-bottom:8px;border:1px solid var(--border)">
+                <div style="display:flex;gap:8px;align-items:center">
+                  <span style="font-weight:600;color:var(--accent);min-width:60px">Service ${i + 1}</span>
+                  ${i > 0 ? `<button class="btn btn-xs btn-danger wiz-remove-svc" data-idx="${i}" style="margin-left:auto"><i class="fas fa-times"></i></button>` : ''}
+                </div>
+                <div class="form-row" style="margin-top:8px">
+                  <div class="form-group"><label>Name</label><input class="form-control wiz-svc-name" data-idx="${i}" value="${Utils.escapeHtml(s.name)}"></div>
+                  <div class="form-group"><label>Image</label><input class="form-control wiz-svc-image" data-idx="${i}" value="${Utils.escapeHtml(s.image)}" placeholder="nginx:alpine"></div>
+                  <div class="form-group"><label>Ports</label><input class="form-control wiz-svc-ports" data-idx="${i}" value="${Utils.escapeHtml(s.ports)}" placeholder="8080:80"></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          <button class="btn btn-sm btn-secondary" id="wiz-add-svc"><i class="fas fa-plus"></i> Add Service</button>
+        `;
+      } else if (step === 3) {
+        const yaml = ['version: "3.8"', 'services:'];
+        state.services.forEach(s => {
+          yaml.push(`  ${s.name}:`);
+          yaml.push(`    image: ${s.image}`);
+          yaml.push(`    restart: unless-stopped`);
+          if (s.ports) {
+            yaml.push(`    ports:`);
+            s.ports.split(',').forEach(p => yaml.push(`      - "${p.trim()}"`));
+          }
+        });
+        const yamlStr = yaml.join('\n');
+
+        content = `
+          <div class="form-group">
+            <label>Generated docker-compose.yml</label>
+            <textarea id="wiz-yaml" class="form-control" rows="12" style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(yamlStr)}</textarea>
+          </div>
+          <p class="text-muted text-sm"><i class="fas fa-info-circle" style="margin-right:4px"></i>You can edit the YAML before deploying. Changes will be used as-is.</p>
+        `;
+      }
+
+      Modal.open(`
+        <div class="modal-header">
+          <h3><i class="fas fa-magic" style="margin-right:8px;color:var(--accent)"></i>Create Stack</h3>
+          <button class="modal-close-btn" id="wiz-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div style="display:flex;gap:4px;margin-bottom:20px">${stepBar}</div>
+          ${content}
+        </div>
+        <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+          ${step > 1 ? '<button class="btn btn-secondary" id="wiz-back"><i class="fas fa-arrow-left"></i> Back</button>' : ''}
+          <span style="flex:1"></span>
+          ${step < 3 ? '<button class="btn btn-primary" id="wiz-next">Next <i class="fas fa-arrow-right"></i></button>' : ''}
+          ${step === 3 ? '<button class="btn btn-accent" id="wiz-deploy"><i class="fas fa-rocket"></i> Deploy Stack</button>' : ''}
+        </div>
+      `, { width: '650px' });
+
+      Modal._content.querySelector('#wiz-close').addEventListener('click', () => Modal.close());
+
+      if (step === 1) {
+        Modal._content.querySelector('#wiz-name')?.focus();
+      }
+
+      Modal._content.querySelector('#wiz-back')?.addEventListener('click', () => { saveCurrentStep(); step--; renderStep(); });
+      Modal._content.querySelector('#wiz-next')?.addEventListener('click', () => {
+        if (!saveCurrentStep()) return;
+        step++;
+        renderStep();
+      });
+
+      Modal._content.querySelector('#wiz-add-svc')?.addEventListener('click', () => {
+        saveCurrentStep();
+        state.services.push({ name: `svc${state.services.length + 1}`, image: '', ports: '' });
+        renderStep();
+      });
+
+      Modal._content.querySelectorAll('.wiz-remove-svc').forEach(btn => {
+        btn.addEventListener('click', () => {
+          saveCurrentStep();
+          state.services.splice(parseInt(btn.dataset.idx), 1);
+          renderStep();
+        });
+      });
+
+      Modal._content.querySelector('#wiz-deploy')?.addEventListener('click', async () => {
+        const yaml = Modal._content.querySelector('#wiz-yaml').value;
+        const deployBtn = Modal._content.querySelector('#wiz-deploy');
+        deployBtn.disabled = true;
+        deployBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deploying...';
+        try {
+          await Api.saveStackConfig(state.name, { config: yaml });
+          await Api.deployStack(state.name, {});
+          Toast.success(`Stack "${state.name}" deployed!`);
+          Modal.close();
+          await this._loadList();
+        } catch (err) {
+          Toast.error('Deploy failed: ' + err.message);
+          deployBtn.disabled = false;
+          deployBtn.innerHTML = '<i class="fas fa-rocket"></i> Deploy Stack';
+        }
+      });
+    };
+
+    const saveCurrentStep = () => {
+      const mc = Modal._content;
+      if (step === 1) {
+        const name = mc.querySelector('#wiz-name')?.value?.trim();
+        if (!name) { Toast.warning('Enter a stack name'); return false; }
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { Toast.warning('Use lowercase letters, numbers, and hyphens'); return false; }
+        state.name = name;
+      } else if (step === 2) {
+        mc.querySelectorAll('.wiz-svc-name').forEach(input => {
+          const idx = parseInt(input.dataset.idx);
+          state.services[idx].name = input.value.trim();
+        });
+        mc.querySelectorAll('.wiz-svc-image').forEach(input => {
+          const idx = parseInt(input.dataset.idx);
+          state.services[idx].image = input.value.trim();
+        });
+        mc.querySelectorAll('.wiz-svc-ports').forEach(input => {
+          const idx = parseInt(input.dataset.idx);
+          state.services[idx].ports = input.value.trim();
+        });
+        if (state.services.some(s => !s.name || !s.image)) { Toast.warning('All services need a name and image'); return false; }
+      }
+      return true;
+    };
+
+    renderStep();
   },
 
   destroy() {

@@ -590,6 +590,14 @@ DB_PASS=secret"></textarea>
             <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading sessions...</div>
           </div>
         </div>
+
+        <!-- TLS Certificates -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><h3><i class="fas fa-certificate" style="margin-right:8px;color:var(--green)"></i>TLS Certificates</h3></div>
+          <div class="card-body" id="certs-panel">
+            <div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading certificates...</div>
+          </div>
+        </div>
       `;
 
       // Load sessions
@@ -628,6 +636,38 @@ DB_PASS=secret"></textarea>
           sessionsEl.innerHTML = '<div class="text-muted text-sm">No active sessions found.</div>';
         }
       } catch { /* sessions not available */ }
+
+      // Load TLS certificates
+      try {
+        const certData = await Api.getCertificates();
+        const certsEl = el.querySelector('#certs-panel');
+        if (certsEl) {
+          const certs = certData.certificates || [];
+          if (certs.length === 0) {
+            certsEl.innerHTML = '<div class="text-muted text-sm">No TLS certificates configured. Connections use unencrypted HTTP.</div>';
+          } else {
+            certsEl.innerHTML = `
+              <table class="data-table compact">
+                <thead><tr><th>Host</th><th>Type</th><th>Status</th><th>Details</th></tr></thead>
+                <tbody>
+                  ${certs.map(c => `
+                    <tr>
+                      <td>${Utils.escapeHtml(c.host)}</td>
+                      <td><span class="badge badge-info" style="font-size:10px">${Utils.escapeHtml(c.type)}</span></td>
+                      <td><span style="color:var(--green)"><i class="fas fa-check-circle"></i></span> ${c.hasCert ? 'Valid' : 'Missing'}</td>
+                      <td class="text-sm text-muted">
+                        ${c.hasCa ? '<i class="fas fa-shield-alt" title="CA cert" style="margin-right:4px;color:var(--accent)"></i>' : ''}
+                        ${c.hasKey ? '<i class="fas fa-key" title="Private key" style="margin-right:4px;color:var(--yellow)"></i>' : ''}
+                        ${c.path ? Utils.escapeHtml(c.path) : (c.subject || '')}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `;
+          }
+        }
+      } catch { /* certs not available */ }
 
       // Backup button
       el.querySelector('#db-backup-now')?.addEventListener('click', async () => {

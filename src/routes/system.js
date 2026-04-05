@@ -1674,4 +1674,56 @@ router.post('/ssl/enable', requireAuth, requireRole('admin'), writeable, async (
   }
 });
 
+// GET /ssl/certificates — list all TLS certificates with expiry
+router.get('/ssl/certificates', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const db = getDb();
+    const hosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const certs = [];
+
+    // Check each host's TLS config
+    for (const host of hosts) {
+      if (host.tls_config) {
+        try {
+          const tls = JSON.parse(host.tls_config);
+          if (tls.cert) {
+            certs.push({
+              host: host.name,
+              hostId: host.id,
+              type: 'Docker TLS',
+              subject: host.host || 'N/A',
+              hasCert: true,
+              hasCa: !!tls.ca,
+              hasKey: !!tls.key,
+            });
+          }
+        } catch { /* invalid JSON, skip */ }
+      }
+    }
+
+    // Check app's own SSL/TLS status
+    const fs = require('fs');
+    const certPaths = ['/data/certs/cert.pem', '/data/certs/server.crt', '/etc/ssl/certs/docker-dash.pem'];
+    for (const p of certPaths) {
+      try {
+        if (fs.existsSync(p)) {
+          const stat = fs.statSync(p);
+          certs.push({
+            host: 'Docker Dash (self)',
+            type: 'App TLS',
+            path: p,
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+            hasCert: true,
+          });
+        }
+      } catch { /* file not accessible */ }
+    }
+
+    res.json({ certificates: certs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -215,6 +215,36 @@ const MultiHostPage = {
         App.navigate('/containers');
       });
     });
+
+    // Drain host button
+    el.querySelectorAll('.mh-drain-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const hostId = btn.dataset.hostId;
+        const ok = await Modal.confirm('Put this host in maintenance mode? All non-system containers will be stopped.', { danger: true, confirmText: 'Drain Host' });
+        if (!ok) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Draining...';
+        try {
+          const result = await Api.drainHost(hostId);
+          Toast.success(`Host drained: ${result.totalStopped} containers stopped`);
+          await this._load();
+        } catch (err) { Toast.error(err.message); btn.disabled = false; btn.innerHTML = '<i class="fas fa-pause"></i> Drain'; }
+      });
+    });
+
+    // Activate host button
+    el.querySelectorAll('.mh-activate-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const hostId = btn.dataset.hostId;
+        try {
+          await Api.activateHost(hostId);
+          Toast.success('Host activated');
+          await this._load();
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
   },
 
   _renderHostCard(host) {
@@ -298,6 +328,12 @@ const MultiHostPage = {
     const cpuColor = cpuPct > 80 ? 'var(--red)' : cpuPct > 60 ? 'var(--yellow)' : 'var(--green)';
     const memColor = memPct > 80 ? 'var(--red)' : memPct > 60 ? 'var(--yellow)' : 'var(--accent)';
 
+    const isDraining = host.environment === 'maintenance';
+    const drainBtn = host.id > 0 ? (isDraining
+      ? `<button class="btn btn-sm btn-secondary mh-activate-btn" data-host-id="${host.id}" style="margin-left:8px;font-size:11px"><i class="fas fa-play"></i> Activate</button>`
+      : `<button class="btn btn-sm btn-warning mh-drain-btn" data-host-id="${host.id}" style="margin-left:8px;font-size:11px"><i class="fas fa-pause"></i> Drain</button>`
+    ) : '';
+
     return `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -315,6 +351,7 @@ const MultiHostPage = {
               <strong style="color:var(--green)">${host.counts.running}</strong> running
               ${host.counts.stopped > 0 ? `, <strong style="color:var(--red)">${host.counts.stopped}</strong> stopped` : ''}
             </span>
+            ${drainBtn}
           </span>
         </div>
         <div class="card-body" style="padding:12px 16px">
@@ -487,6 +524,7 @@ const MultiHostPage = {
 
   _envBadge(env) {
     if (!env || env === 'production') return '';
+    if (env === 'maintenance') return '<span class="badge" style="background:rgba(248,81,73,0.15);color:var(--red);font-size:9px">MAINTENANCE</span>';
     const colors = {
       development: 'var(--yellow)',
       staging: 'var(--accent)',

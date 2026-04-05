@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.9.0',
+      date: '2026-04-05',
+      title: 'Enterprise Wave 3 — Drain, Certs, Wizard, Inline Edit, Saved Filters',
+      changes: [
+        { type: 'feature', text: 'Maintenance Mode — drain button per host in Multi-Host; stops all non-system containers, "MAINTENANCE" badge; Activate to restore' },
+        { type: 'feature', text: 'Certificate Management — TLS certificates card in System page showing Docker TLS configs and app-level certs with CA/key indicators' },
+        { type: 'feature', text: 'Stack Creation Wizard — 3-step guided wizard: name → services (dynamic add/remove) → review YAML → deploy; generates docker-compose.yml automatically' },
+        { type: 'feature', text: 'Inline Edit for Metadata — click any metadata field (app name, description, category, owner, notes) in container detail to edit in-place' },
+        { type: 'feature', text: 'Saved Filter Presets — save named filter combinations; dashed-border pills with × to remove; persisted in localStorage' },
+      ],
+    },
+    {
       version: '5.8.0',
       date: '2026-04-05',
       title: 'Enterprise Wave 2 — 9 Features (Log Explorer, Health Score, Sessions, Search)',

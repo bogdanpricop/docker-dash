@@ -326,6 +326,75 @@ router.post('/:id/test', requireAuth, async (req, res) => {
   }
 });
 
+// POST /hosts/:id/drain — put host in maintenance mode
+router.post('/:id/drain', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const hostId = parseInt(req.params.id);
+    const docker = dockerService.getDocker(hostId);
+
+    // List running containers on this host
+    const containers = await docker.listContainers();
+    const running = containers.filter(c => c.State === 'running');
+
+    // Stop all non-essential containers (skip docker-dash itself)
+    const results = [];
+    for (const c of running) {
+      const name = (c.Names?.[0] || '').replace(/^\//, '');
+      if (name === 'docker-dash' || name === 'docker-dash-caddy') {
+        results.push({ name, status: 'skipped', reason: 'System container' });
+        continue;
+      }
+      try {
+        const container = docker.getContainer(c.Id);
+        await container.stop({ t: 10 });
+        results.push({ name, status: 'stopped', image: c.Image });
+      } catch (err) {
+        results.push({ name, status: 'error', error: err.message });
+      }
+    }
+
+    // Mark host as in maintenance in DB
+    const db = getDb();
+    try {
+      db.prepare('UPDATE docker_hosts SET environment = ? WHERE id = ?').run('maintenance', hostId);
+    } catch {}
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'host_drain', targetType: 'host', targetId: String(hostId),
+      details: { stopped: results.filter(r => r.status === 'stopped').length, skipped: results.filter(r => r.status === 'skipped').length },
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true, results, totalStopped: results.filter(r => r.status === 'stopped').length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /hosts/:id/activate — exit maintenance mode
+router.post('/:id/activate', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  try {
+    const hostId = parseInt(req.params.id);
+    const db = getDb();
+    const host = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+    if (!host) return res.status(404).json({ error: 'Host not found' });
+
+    // Restore environment (default to production)
+    db.prepare('UPDATE docker_hosts SET environment = ? WHERE id = ?').run('production', hostId);
+
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'host_activate', targetType: 'host', targetId: String(hostId),
+      ip: getClientIp(req),
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Set host as default
 router.post('/:id/default', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {

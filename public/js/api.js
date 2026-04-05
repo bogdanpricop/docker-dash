@@ -351,6 +351,7 @@ const Api = {
   getCisHardenedCompose(containerName, hostId) { return this.get(`/system/cis/container/${encodeURIComponent(containerName)}/hardened-compose${hostId ? `?hostId=${hostId}` : ''}`); },
   getSslStatus() { return this.get('/system/ssl/status'); },
   getCaddyStatus() { return this.get('/system/ssl/caddy-status'); },
+  getCertificates() { return this.get('/system/ssl/certificates'); },
   generateSelfSigned(domain) { return this.post('/system/ssl/self-signed', { domain }); },
   saveCaddyfile(domain, upstreamPort) { return this.post('/system/ssl/caddy', { domain, upstreamPort }); },
   enableHttps(domain, upstreamPort) { return this.post('/system/ssl/enable', { domain, upstreamPort }); },
@@ -461,6 +462,8 @@ const Api = {
   testHost(id) { return this.post(`/hosts/${id}/test`); },
   getHostInfo(id) { return this.get(`/hosts/${id}/info`); },
   setDefaultHost(id) { return this.post(`/hosts/${id}/default`); },
+  drainHost(id) { return this.post(`/hosts/${id}/drain`); },
+  activateHost(id) { return this.post(`/hosts/${id}/activate`); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
