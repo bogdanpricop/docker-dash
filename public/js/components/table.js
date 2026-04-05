@@ -25,6 +25,9 @@ class DataTable {
     this._sortDir = 'asc';
     this._selected = new Set();
     this._filter = '';
+    this._page = 1;
+    this._pageSize = 25;
+    this._totalFiltered = 0;
 
     this._build();
   }
@@ -63,6 +66,19 @@ class DataTable {
       if (col.sortable !== false) {
         th.classList.add('sortable');
         th.addEventListener('click', () => this._sort(col.key));
+
+        if (document.documentElement.getAttribute('data-uimode') === 'enterprise') {
+          const filterIcon = document.createElement('i');
+          filterIcon.className = 'fas fa-filter dt-col-filter';
+          filterIcon.style.cssText = 'margin-left:4px;font-size:9px;opacity:0.3;cursor:pointer;';
+          filterIcon.title = `Filter by ${col.label}`;
+          th.appendChild(filterIcon);
+
+          filterIcon.addEventListener('click', (e) => {
+            e.stopPropagation(); // Don't trigger sort
+            this._showColumnFilter(col, th, filterIcon);
+          });
+        }
       }
       th.dataset.key = col.key;
       tr.appendChild(th);
@@ -90,11 +106,13 @@ class DataTable {
   setData(data) {
     this._data = data || [];
     this._selected.clear();
+    this._page = 1;
     this._renderBody();
   }
 
   setFilter(text) {
     this._filter = (text || '').toLowerCase();
+    this._page = 1;
     this._renderBody();
   }
 
@@ -114,6 +132,7 @@ class DataTable {
       th.classList.remove('sort-asc', 'sort-desc');
       if (th.dataset.key === key) th.classList.add(`sort-${this._sortDir}`);
     });
+    this._page = 1;
     this._renderBody();
   }
 
@@ -130,6 +149,23 @@ class DataTable {
         });
       });
     }
+
+    // Column-specific filters
+    data = data.filter(row => {
+      return this.columns.every(col => {
+        if (!col._filterValue) return true;
+        let val = row[col.key];
+        if (col.render) {
+          const temp = document.createElement('span');
+          const rendered = col.render(val, row);
+          if (typeof rendered === 'string') temp.innerHTML = rendered;
+          val = temp.textContent?.trim() || String(val || '');
+        } else {
+          val = String(val || '');
+        }
+        return val === col._filterValue;
+      });
+    });
 
     // Sort
     if (this._sortKey) {
@@ -151,13 +187,23 @@ class DataTable {
   }
 
   _renderBody() {
-    const data = this._getFilteredData();
+    const allData = this._getFilteredData();
+    this._totalFiltered = allData.length;
+
+    // Pagination in enterprise mode
+    const isEnterprise = document.documentElement.getAttribute('data-uimode') === 'enterprise';
+    const pageSize = isEnterprise ? this._pageSize : allData.length;
+    const totalPages = Math.ceil(allData.length / pageSize) || 1;
+    if (this._page > totalPages) this._page = totalPages;
+    const start = (this._page - 1) * pageSize;
+    const pageData = allData.slice(start, start + pageSize);
+
     this._tbody.innerHTML = '';
 
-    this._emptyEl.style.display = data.length === 0 ? 'block' : 'none';
-    this._table.style.display = data.length === 0 ? 'none' : '';
+    this._emptyEl.style.display = allData.length === 0 ? 'block' : 'none';
+    this._table.style.display = allData.length === 0 ? 'none' : '';
 
-    for (const item of data) {
+    for (const item of pageData) {
       const tr = document.createElement('tr');
       if (this.rowClass) {
         const cls = this.rowClass(item);
@@ -204,6 +250,119 @@ class DataTable {
 
     // Re-apply column visibility after body re-render (Enterprise mode)
     this._applyColumnVisibility();
+
+    // Render pagination controls
+    this._renderPagination(allData.length, pageSize, totalPages);
+  }
+
+  _renderPagination(totalItems, pageSize, totalPages) {
+    // Remove existing pagination
+    const existing = this._el ? this._el.parentElement?.querySelector('.dt-pagination') : this.container.querySelector('.dt-pagination');
+    if (existing) existing.remove();
+
+    if (totalPages <= 1) return; // No pagination needed
+
+    const pag = document.createElement('div');
+    pag.className = 'dt-pagination';
+    pag.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;font-size:12px;color:var(--text-dim);border-top:1px solid var(--border)';
+
+    pag.innerHTML = `
+      <span>${totalItems} items · Page ${this._page} of ${totalPages}</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-xs dt-page-btn" data-page="1" ${this._page === 1 ? 'disabled' : ''}><i class="fas fa-angle-double-left"></i></button>
+        <button class="btn btn-xs dt-page-btn" data-page="${this._page - 1}" ${this._page === 1 ? 'disabled' : ''}><i class="fas fa-angle-left"></i></button>
+        <button class="btn btn-xs dt-page-btn" data-page="${this._page + 1}" ${this._page === totalPages ? 'disabled' : ''}><i class="fas fa-angle-right"></i></button>
+        <button class="btn btn-xs dt-page-btn" data-page="${totalPages}" ${this._page === totalPages ? 'disabled' : ''}><i class="fas fa-angle-double-right"></i></button>
+        <select class="dt-page-size" style="padding:2px 4px;font-size:11px;background:var(--surface3);border:1px solid var(--border);color:var(--text);border-radius:3px">
+          <option value="25" ${this._pageSize === 25 ? 'selected' : ''}>25/page</option>
+          <option value="50" ${this._pageSize === 50 ? 'selected' : ''}>50/page</option>
+          <option value="100" ${this._pageSize === 100 ? 'selected' : ''}>100/page</option>
+        </select>
+      </div>
+    `;
+
+    pag.querySelectorAll('.dt-page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._page = parseInt(btn.dataset.page);
+        this._renderBody();
+      });
+    });
+
+    pag.querySelector('.dt-page-size')?.addEventListener('change', (e) => {
+      this._pageSize = parseInt(e.target.value);
+      this._page = 1;
+      this._renderBody();
+    });
+
+    // Insert after the table inside the container
+    this.container.appendChild(pag);
+  }
+
+  _showColumnFilter(col, th, icon) {
+    // Remove existing dropdown
+    document.querySelector('.dt-col-filter-dropdown')?.remove();
+
+    // Get unique values for this column
+    const values = new Set();
+    (this._data || []).forEach(row => {
+      let val = row[col.key];
+      if (col.render) {
+        const temp = document.createElement('span');
+        const rendered = col.render(val, row);
+        if (typeof rendered === 'string') temp.innerHTML = rendered;
+        val = temp.textContent?.trim() || String(val || '');
+      } else {
+        val = String(val || '');
+      }
+      if (val && val !== '—') values.add(val);
+    });
+
+    const sortedValues = [...values].sort().slice(0, 20); // Max 20 unique values
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'dt-col-filter-dropdown';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:6px 0;min-width:160px;max-height:200px;overflow-y:auto;font-size:12px;';
+
+    const escFn = typeof Utils !== 'undefined' ? Utils.escapeHtml.bind(Utils) : (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    dropdown.innerHTML = `
+      <div style="padding:4px 10px;cursor:pointer;color:var(--accent)" class="dt-filter-clear">Clear filter</div>
+      <div style="height:1px;background:var(--border);margin:4px 0"></div>
+      ${sortedValues.map(v => `
+        <div class="dt-filter-val" style="padding:3px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" data-val="${escFn(v)}">${escFn(v)}</div>
+      `).join('')}
+    `;
+
+    th.style.position = 'relative';
+    th.appendChild(dropdown);
+
+    dropdown.querySelector('.dt-filter-clear')?.addEventListener('click', () => {
+      col._filterValue = null;
+      icon.style.opacity = '0.3';
+      icon.style.color = '';
+      dropdown.remove();
+      this._page = 1;
+      this._renderBody();
+    });
+
+    dropdown.querySelectorAll('.dt-filter-val').forEach(el => {
+      el.addEventListener('mouseenter', () => { el.style.background = 'var(--surface3)'; });
+      el.addEventListener('mouseleave', () => { el.style.background = ''; });
+      el.addEventListener('click', () => {
+        col._filterValue = el.dataset.val;
+        icon.style.opacity = '1';
+        icon.style.color = 'var(--accent)';
+        dropdown.remove();
+        this._page = 1;
+        this._renderBody();
+      });
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+      const close = (e) => { if (!dropdown.contains(e.target)) { dropdown.remove(); document.removeEventListener('click', close); } };
+      document.addEventListener('click', close);
+    }, 0);
   }
 
   _emitSelectionChange() {

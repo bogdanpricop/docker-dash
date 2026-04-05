@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '5.10.0',
+      date: '2026-04-05',
+      title: 'Enterprise Wave 4 — 23/23 ESXi Gaps Closed',
+      changes: [
+        { type: 'feature', text: 'Enterprise Datagrid — client-side pagination (25/50/100 rows/page), per-column filter dropdowns with unique values, page navigation controls' },
+        { type: 'feature', text: 'Volumes Detail View — tabbed detail page: Overview (name, driver, scope, labels), Connected Containers, and raw Inspect JSON' },
+        { type: 'feature', text: 'Networks Detail View — tabbed detail page: Overview (IPAM config, driver options), Connected Containers (IP/MAC), and raw Inspect JSON' },
+        { type: 'feature', text: 'Master/Detail Split View (Enterprise) — click a container row to see summary in a bottom panel without leaving the list; toggle button in view controls' },
+        { type: 'feature', text: 'Right-click context menus for Volumes — View Details, Inspect JSON, Remove' },
+        { type: 'improvement', text: 'All 23 must-have improvements from the VMware ESXi/vCenter gap analysis are now implemented' },
+      ],
+    },
+    {
       version: '5.9.0',
       date: '2026-04-05',
       title: 'Enterprise Wave 3 — Drain, Certs, Wizard, Inline Edit, Saved Filters',

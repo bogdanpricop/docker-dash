@@ -8,7 +8,12 @@ const NetworksPage = {
 
   _tab: 'list',
 
-  async render(container) {
+  async render(container, params = {}) {
+    if (params.id) {
+      await this._renderNetworkDetail(container, params.id);
+      return;
+    }
+
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-network-wired"></i> ${i18n.t('pages.networks.title')}</h2>
@@ -81,12 +86,143 @@ const NetworksPage = {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const id = btn.dataset.id;
-      if (btn.dataset.action === 'inspect') this._inspect(id);
+      if (btn.dataset.action === 'inspect') App.navigate(`/networks/${id}`);
       else if (btn.dataset.action === 'remove') this._remove(id);
     });
 
     const searchEl = container.querySelector('#net-search');
     if (searchEl) searchEl.addEventListener('input', Utils.debounce(e => this._table.setFilter(e.target.value), 200));
+  },
+
+  // ─── Network Detail View ────────────
+  async _renderNetworkDetail(container, networkId) {
+    container.innerHTML = `
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="#/networks"><i class="fas fa-arrow-left"></i> Networks</a>
+          <span class="bc-sep">/</span>
+          <span id="net-detail-name">Loading...</span>
+        </div>
+      </div>
+      <div class="tabs" id="net-detail-tabs">
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="containers">Connected Containers</button>
+        <button class="tab" data-tab="inspect">Inspect</button>
+      </div>
+      <div id="net-detail-content"></div>
+    `;
+
+    try {
+      const net = await Api.getNetwork(networkId);
+      this._netData = net;
+      container.querySelector('#net-detail-name').textContent = net.Name || networkId;
+
+      container.querySelectorAll('#net-detail-tabs .tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          container.querySelectorAll('#net-detail-tabs .tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          this._renderNetTab(tab.dataset.tab);
+        });
+      });
+
+      this._renderNetTab('overview');
+    } catch (err) {
+      container.querySelector('#net-detail-content').innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+    }
+  },
+
+  _renderNetTab(tab) {
+    const el = document.getElementById('net-detail-content');
+    const net = this._netData;
+    if (!el || !net) return;
+
+    if (tab === 'overview') {
+      const ipam = net.IPAM?.Config?.[0] || {};
+      const options = Object.entries(net.Options || {}).map(([k, v]) =>
+        `<tr><td class="mono text-sm">${Utils.escapeHtml(k)}</td><td class="mono text-sm">${Utils.escapeHtml(v)}</td></tr>`
+      ).join('') || '<tr><td colspan="2" class="text-muted">No options</td></tr>';
+
+      el.innerHTML = `
+        <div class="info-grid">
+          <div class="card">
+            <div class="card-header"><h3>General</h3></div>
+            <div class="card-body">
+              <table class="info-table">
+                <tr><td>Name</td><td class="mono">${Utils.escapeHtml(net.Name)}</td></tr>
+                <tr><td>ID</td><td class="mono text-sm">${Utils.escapeHtml((net.Id || '').substring(0, 12))}</td></tr>
+                <tr><td>Driver</td><td><span class="badge badge-info">${Utils.escapeHtml(net.Driver)}</span></td></tr>
+                <tr><td>Scope</td><td>${Utils.escapeHtml(net.Scope)}</td></tr>
+                <tr><td>Internal</td><td>${net.Internal ? '<span style="color:var(--yellow)">Yes (isolated)</span>' : 'No'}</td></tr>
+                <tr><td>Attachable</td><td>${net.Attachable ? 'Yes' : 'No'}</td></tr>
+                <tr><td>Created</td><td>${net.Created ? Utils.timeAgo(net.Created) : '—'}</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>IPAM Configuration</h3></div>
+            <div class="card-body">
+              <table class="info-table">
+                <tr><td>Subnet</td><td class="mono">${Utils.escapeHtml(ipam.Subnet || '—')}</td></tr>
+                <tr><td>Gateway</td><td class="mono">${Utils.escapeHtml(ipam.Gateway || '—')}</td></tr>
+                <tr><td>IP Range</td><td class="mono">${Utils.escapeHtml(ipam.IPRange || '—')}</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="card" style="grid-column:1/-1">
+            <div class="card-header"><h3>Driver Options</h3></div>
+            <div class="card-body">
+              <table class="data-table compact"><thead><tr><th>Option</th><th>Value</th></tr></thead><tbody>${options}</tbody></table>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (tab === 'containers') {
+      const containers = Object.entries(net.Containers || {});
+      if (containers.length === 0) {
+        el.innerHTML = '<div class="empty-msg"><i class="fas fa-inbox"></i><p>No containers connected to this network.</p></div>';
+      } else {
+        const rows = containers.map(([id, c]) => {
+          const tr = document.createElement('tr');
+          tr.style.cursor = 'pointer';
+          tr.innerHTML = `
+            <td>${Utils.escapeHtml(c.Name || id.substring(0, 12))}</td>
+            <td class="mono text-sm">${Utils.escapeHtml(c.IPv4Address || '—')}</td>
+            <td class="mono text-sm">${Utils.escapeHtml(c.IPv6Address || '—')}</td>
+            <td class="mono text-sm">${Utils.escapeHtml(c.MacAddress || '—')}</td>
+          `;
+          tr.addEventListener('click', () => App.navigate(`/containers/${id.substring(0, 12)}`));
+          return tr;
+        });
+        el.innerHTML = `
+          <div class="card">
+            <div class="card-header"><h3>${containers.length} Connected Container(s)</h3></div>
+            <div class="card-body">
+              <table class="data-table compact">
+                <thead><tr><th>Container</th><th>IPv4 Address</th><th>IPv6 Address</th><th>MAC Address</th></tr></thead>
+                <tbody id="net-containers-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        `;
+        const tbody = el.querySelector('#net-containers-tbody');
+        rows.forEach(tr => tbody.appendChild(tr));
+      }
+    } else if (tab === 'inspect') {
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Raw Inspect</h3>
+            <button class="btn btn-sm btn-secondary" id="net-copy-inspect"><i class="fas fa-copy"></i> Copy</button>
+          </div>
+          <div class="card-body">
+            <pre class="inspect-json" style="max-height:60vh;overflow:auto">${Utils.escapeHtml(JSON.stringify(net, null, 2))}</pre>
+          </div>
+        </div>
+      `;
+      el.querySelector('#net-copy-inspect')?.addEventListener('click', () => {
+        Utils.copyToClipboard(JSON.stringify(net, null, 2)).then(() => Toast.success('Copied'));
+      });
+    }
   },
 
   // ─── Network Topology Visualization ────────────

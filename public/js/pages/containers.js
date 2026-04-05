@@ -61,6 +61,10 @@ const ContainersPage = {
             <button class="btn-icon view-toggle" id="expand-all" title="${i18n.t('pages.containers.expandAll')}">
               <i class="fas fa-expand-alt"></i>
             </button>
+            <span class="toggle-divider" id="split-view-divider" style="${document.documentElement.getAttribute('data-uimode') === 'enterprise' ? '' : 'display:none'}"></span>
+            <button class="btn-icon view-toggle" id="split-view-toggle" title="Split view (Enterprise)" style="${document.documentElement.getAttribute('data-uimode') === 'enterprise' ? '' : 'display:none'}">
+              <i class="fas fa-columns"></i>
+            </button>
           </div>
           <button class="btn btn-sm btn-primary" id="container-create">
             <i class="fas fa-plus"></i> ${i18n.t('common.new')}
@@ -158,6 +162,24 @@ const ContainersPage = {
         const stack = g.querySelector('.stack-header')?.dataset.stack;
         if (stack) this._collapsed[stack] = false;
       });
+    });
+
+    // Split view toggle (Enterprise only)
+    this._splitView = false;
+    container.querySelector('#split-view-toggle')?.addEventListener('click', () => {
+      this._splitView = !this._splitView;
+      container.querySelector('#split-view-toggle')?.classList.toggle('active', this._splitView);
+      const panel = document.getElementById('split-detail-panel');
+      if (this._splitView) {
+        if (!panel) {
+          const p = document.createElement('div');
+          p.id = 'split-detail-panel';
+          p.style.cssText = 'border-top:2px solid var(--border);margin-top:12px;padding-top:12px;max-height:40vh;overflow-y:auto;display:none';
+          document.getElementById('containers-grouped')?.after(p);
+        }
+      } else {
+        if (panel) panel.remove();
+      }
     });
 
     // Filter preset buttons
@@ -445,9 +467,59 @@ const ContainersPage = {
     });
 
     el.querySelectorAll('tr[data-cid]').forEach(tr => {
-      tr.addEventListener('click', (e) => {
+      tr.addEventListener('click', async (e) => {
         if (e.target.closest('.action-btn, button, .bulk-checkbox')) return;
-        App.navigate(`/containers/${tr.dataset.cid}`);
+        const cid = tr.dataset.cid;
+        if (this._splitView) {
+          const panel = document.getElementById('split-detail-panel');
+          if (panel) {
+            panel.style.display = '';
+            panel.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            try {
+              const data = await Api.getContainer(cid);
+              const name = data.Name?.replace(/^\//, '') || cid;
+              const statusClass = Utils.statusBadgeClass(data.State?.Status || 'unknown');
+              const networks = Object.keys(data.NetworkSettings?.Networks || {}).join(', ') || '—';
+              const ports = Object.keys(data.NetworkSettings?.Ports || {}).filter(p => data.NetworkSettings.Ports[p]).join(', ') || '—';
+              const mounts = (data.Mounts || []).length;
+              panel.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <h4 style="margin:0"><i class="fas fa-cube" style="color:var(--accent);margin-right:6px"></i>${Utils.escapeHtml(name)}</h4>
+                  <div style="display:flex;gap:6px" id="split-panel-btns"></div>
+                </div>
+                <div class="info-grid" style="grid-template-columns:1fr 1fr">
+                  <table class="info-table">
+                    <tr><td>Image</td><td class="mono text-sm">${Utils.escapeHtml(data.Config?.Image || '')}</td></tr>
+                    <tr><td>Status</td><td><span class="badge ${statusClass}">${data.State?.Status || 'unknown'}</span></td></tr>
+                    <tr><td>Created</td><td>${data.Created ? Utils.timeAgo(data.Created) : '—'}</td></tr>
+                    <tr><td>Restart Count</td><td>${data.RestartCount || 0}</td></tr>
+                  </table>
+                  <table class="info-table">
+                    <tr><td>Network</td><td class="mono text-sm">${Utils.escapeHtml(networks)}</td></tr>
+                    <tr><td>Ports</td><td class="mono text-sm">${Utils.escapeHtml(ports)}</td></tr>
+                    <tr><td>Mounts</td><td>${mounts} volume(s)</td></tr>
+                    <tr><td>PID</td><td class="mono">${data.State?.Pid || '—'}</td></tr>
+                  </table>
+                </div>
+              `;
+              const btnContainer = panel.querySelector('#split-panel-btns');
+              const fullViewBtn = document.createElement('button');
+              fullViewBtn.className = 'btn btn-xs btn-secondary';
+              fullViewBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> Full View';
+              fullViewBtn.addEventListener('click', () => App.navigate(`/containers/${cid}`));
+              const closeBtn = document.createElement('button');
+              closeBtn.className = 'btn btn-xs btn-secondary';
+              closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+              closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+              btnContainer.appendChild(fullViewBtn);
+              btnContainer.appendChild(closeBtn);
+            } catch (err) {
+              panel.innerHTML = `<div class="text-muted" style="color:var(--red)">${err.message}</div>`;
+            }
+          }
+        } else {
+          App.navigate(`/containers/${cid}`);
+        }
       });
       tr.addEventListener('contextmenu', (e) => {
         const cid = tr.dataset.cid;

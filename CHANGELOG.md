@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [5.10.0] - 2026-04-05
+
+### Added — Enterprise Wave 4 (Final 3/23 ESXi gaps closed)
+- **Enterprise Datagrid** — DataTable component upgraded with client-side pagination (25/50/100 rows/page in Enterprise mode), per-column filter dropdowns (click filter icon → unique values), page navigation (first/prev/next/last + page size selector)
+- **Volumes Detail View** — click any volume to see tabbed detail: Overview (name, driver, scope, mountpoint, labels), Connected Containers (which containers use this volume), Inspect (raw JSON with copy)
+- **Networks Detail View** — click any network to see tabbed detail: Overview (driver, IPAM config, options), Connected Containers (with IP/MAC addresses), Inspect (raw JSON)
+- **Master/Detail Split View** (Enterprise only) — toggle button in containers list; click a row to see container summary in a bottom panel (image, status, ports, mounts) without leaving the page; "Full View" button to navigate
+- **Right-click context menus for Volumes** — View Details, Inspect JSON, Remove
+
+### ESXi Gap Analysis: 23/23 COMPLETE
+All 23 must-have improvements from the VMware ESXi/vCenter gap analysis are now implemented.
+
 ## [5.9.0] - 2026-04-05
 
 ### Added — Enterprise Wave 3 (5 features)
