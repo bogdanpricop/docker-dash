@@ -72,8 +72,14 @@
 - **Volume Management** — Create, remove, inspect with real disk usage sizes
 - **Network Management** — Create, remove, connect/disconnect containers, inspect IPAM config
 - **Bulk Actions** — Checkbox selection + floating bar for batch start/stop/restart/remove
-- **Container File Browser** — Navigate, view, and download files inside running containers
+- **One-click Port Access** — Each exposed TCP port shows a clickable link to open `http://host:port` directly
+- **Keyboard Navigation** — Arrow keys to navigate container rows, `r` to restart, `s` to stop/start, `Enter` to open detail, `l` for logs
+- **Live CPU/RAM Mini-bars** — Two 4px color-coded progress bars per running container, updated every 5 seconds
+- **Container File Browser** — Navigate, view, upload, and download files inside running containers
 - **Container Diff** — See filesystem changes vs base image with color-coded entries
+- **Image Picker** — Browse 20 popular images (nginx, postgres, redis, etc.) when creating containers
+- **CIS Hardened Creation** — One-click CIS benchmark hardening: cap_drop ALL, read-only rootfs, no-new-privileges, resource limits
+- **Log Time Filter** — Filter container logs by time range: last 1h, 6h, 24h, 7 days
 
 ### Monitoring & Intelligence
 - **Real-time Dashboard** — Customizable live CPU/memory charts (WebSocket, 10s interval, toggle widgets)
@@ -94,7 +100,7 @@
 - **Safe-Pull Updates** — Pull new image → scan for vulns → only swap if clean (blocks critical CVEs)
 - **Deployment Pipelines** — Staged pull → scan → swap → verify → notify with full history
 - **Security Dashboard** — Scan history, per-image status, AI-assisted remediation prompts
-- **AI Container Doctor** — Diagnostics + 30 log pattern matchers + AI prompt generator
+- **AI Container Doctor** — Diagnostics + 30 log pattern matchers + Ask AI (OpenAI/Ollama) directly from modal
 - **Guided Troubleshooting** — 8-step diagnostic wizard (state, health, logs, ports, volumes, resources)
 - **Container Rollback** — One-click revert to previous image with version history
 - **First-login Setup Wizard** — Forces password change, recommends disabling default admin
@@ -129,12 +135,25 @@
 - **Firewall** — View and manage UFW rules (Linux)
 - **Container Groups** — User-defined grouping with colors, beyond Docker Compose projects
 
+### Sandbox Mode
+- **Ephemeral Sandbox** — Launch a container with auto-delete on stop + optional TTL (30m / 1h / 4h); perfect for testing images risk-free
+- **Persistent Sandbox** — Isolated container with resource limits that survives stop/restart
+- **Project Source (GitHub)** — Paste a GitHub repo URL; Docker Dash downloads the tarball, auto-detects the tech stack (Node/Python/Go/Ruby/static), installs dependencies, and starts the app
+- **Project Source (Upload)** — Upload a .tar/.tar.gz archive; same auto-detect + auto-run flow
+- **Auto-detect Stack** — Recognizes package.json, requirements.txt, go.mod, Gemfile, index.html and selects the right base image (node:20-alpine, python:3.12-alpine, etc.)
+- **Security Defaults** — Sandbox containers run with `no-new-privileges`, dedicated internal `dd-sandbox` network, resource limits, restart: no
+- **TTL Auto-cleanup** — Background timer removes expired sandboxes every 30 seconds with WebSocket notification
+- **Visual Badges** — `EPHEMERAL` (red + countdown) or `SANDBOX` (yellow) badges in containers list, detail card with Extend +1h / Remove buttons
+
 ### Developer Tools
 - **API Playground** — Browse and test all 230+ API endpoints from the UI with response viewer
 - **docker run → Compose** — Paste any docker run command, get docker-compose YAML
+- **Dual AI Provider** — Container Doctor supports OpenAI API and local Ollama; provider/model/key selector + inline response
 - **AI Log Analysis** — Generate diagnostic prompts for ChatGPT/Claude from container logs
+- **Generate Compose from GitHub** — Paste a public repo URL, AI (OpenAI or Ollama) generates a production-ready docker-compose.yml
 - **Traefik/Caddy Labels** — Generate reverse proxy labels from domain + port
 - **App Templates** — 33 built-in + custom templates with CRUD, preview, Template Configurator and modification tracking
+- **Image Layer Visualization** — View all layers of any image with command, size, and relative-size bar per layer
 - **Deploy Preview** — Check for image updates via digest comparison before pulling
 - **Resource Limits Editor** — Visual sliders with presets for CPU and memory
 - **Resource Recommendations** — Smart advice: over-provisioned, memory pressure, idle containers

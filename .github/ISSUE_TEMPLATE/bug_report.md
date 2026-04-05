@@ -20,7 +20,7 @@ What you expected to happen.
 If applicable, add screenshots.
 
 ## Environment
-- Docker Dash version: (e.g., v3.10.2)
+- Docker Dash version: (e.g., v5.5.1)
 - Browser: (e.g., Chrome 120)
 - OS: (e.g., Ubuntu 24.04)
 - Docker version: (e.g., 27.0)
