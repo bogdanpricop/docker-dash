@@ -10,6 +10,7 @@ const MultiHostPage = {
   _refreshTimer: null,
   _collapsed: {}, // track collapsed stack groups: key = "hostId:stackName" or "stack:stackName"
   _searchFilter: '', // current search string
+  _hostView: 'list', // 'list' | 'tabs'
 
   async render(container) {
     container.innerHTML = `
@@ -192,7 +193,24 @@ const MultiHostPage = {
           </div>
         </div>
       </div>
+      <div id="mh-host-view-toggle" style="display:flex;gap:4px;margin-top:10px">
+        <button class="btn-icon view-toggle ${this._hostView === 'list' ? 'active' : ''}" data-host-view="list" title="List view — all hosts stacked">
+          <i class="fas fa-bars"></i>
+        </button>
+        <button class="btn-icon view-toggle ${this._hostView === 'tabs' ? 'active' : ''}" data-host-view="tabs" title="Tab view — one host at a time">
+          <i class="fas fa-folder"></i>
+        </button>
+      </div>
     `;
+
+    el.querySelectorAll('[data-host-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._hostView = btn.dataset.hostView;
+        el.querySelectorAll('[data-host-view]').forEach(b => b.classList.toggle('active', b.dataset.hostView === this._hostView));
+        this._renderContent();
+        this._applySearch(this._searchFilter);
+      });
+    });
   },
 
   _renderContent() {
@@ -212,6 +230,12 @@ const MultiHostPage = {
 
     if (!this._data.hosts.length) {
       el.innerHTML = '<div class="empty-msg">No hosts configured.</div>';
+      return;
+    }
+
+    // Tab view: show host tabs at top, render one host at a time
+    if (this._hostView === 'tabs') {
+      this._renderByHostTabs(el);
       return;
     }
 
@@ -422,6 +446,153 @@ const MultiHostPage = {
         </div>
       </div>
     `;
+  },
+
+  // ─── By Host — Tab View ──────────────────────────
+
+  _renderByHostTabs(el) {
+    const hosts = this._data.hosts;
+    if (!this._activeHostTab || !hosts.find(h => h.id === this._activeHostTab)) {
+      this._activeHostTab = hosts[0]?.id;
+    }
+
+    const tabsHtml = hosts.map(h => {
+      const isActive = h.id === this._activeHostTab;
+      const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${h.healthy ? 'var(--green)' : 'var(--red)'};margin-right:5px"></span>`;
+      return `<button class="tab ${isActive ? 'active' : ''}" data-host-tab="${h.id}" style="font-size:12px;padding:6px 14px">
+        ${dot}${Utils.escapeHtml(h.name)}
+        <span style="font-size:10px;color:var(--text-dim);margin-left:4px">(${h.counts.running}/${h.counts.total})</span>
+      </button>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="tabs" style="margin-bottom:12px;flex-wrap:wrap">${tabsHtml}</div>
+      <div id="mh-host-tab-content"></div>
+    `;
+
+    // Wire tab clicks
+    el.querySelectorAll('[data-host-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._activeHostTab = parseInt(btn.dataset.hostTab) || btn.dataset.hostTab;
+        el.querySelectorAll('[data-host-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._renderSingleHost(el.querySelector('#mh-host-tab-content'));
+      });
+    });
+
+    this._renderSingleHost(el.querySelector('#mh-host-tab-content'));
+  },
+
+  _renderSingleHost(el) {
+    if (!el) return;
+    const host = this._data.hosts.find(h => h.id === this._activeHostTab);
+    if (!host) { el.innerHTML = '<div class="text-muted">Host not found</div>'; return; }
+
+    if (!host.healthy) {
+      el.innerHTML = `<div class="card" style="border:1px solid var(--red);border-left:4px solid var(--red);padding:20px;text-align:center">
+        <i class="fas fa-exclamation-triangle" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
+        <h3 style="color:var(--red)">Host Offline</h3>
+        <p class="text-muted">Cannot reach ${Utils.escapeHtml(host.name)}.</p>
+      </div>`;
+      return;
+    }
+
+    // Resource bars
+    const cpuPct = Math.min(100, Math.round(host.stats.cpu));
+    const memPct = host.stats.memoryLimit > 0 ? Math.min(100, Math.round((host.stats.memory / host.stats.memoryLimit) * 100)) : 0;
+    const cpuColor = cpuPct > 80 ? 'var(--red)' : cpuPct > 50 ? 'var(--yellow)' : 'var(--green)';
+    const memColor = memPct > 80 ? 'var(--red)' : memPct > 50 ? 'var(--yellow)' : 'var(--accent)';
+
+    // Group containers by stack
+    const stacks = {};
+    host.containers.forEach(c => {
+      const s = c.stack || '_standalone';
+      if (!stacks[s]) stacks[s] = [];
+      stacks[s].push(c);
+    });
+    const stackNames = Object.keys(stacks).sort((a, b) => a === '_standalone' ? 1 : b === '_standalone' ? -1 : a.localeCompare(b));
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card" style="padding:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <i class="fas fa-microchip" style="color:var(--accent)"></i>
+            <span style="font-weight:600">CPU</span>
+            <span style="margin-left:auto;font-weight:700;color:${cpuColor}">${cpuPct}%</span>
+          </div>
+          <div style="height:8px;background:var(--surface3);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${cpuPct}%;background:${cpuColor};border-radius:4px;transition:width 0.5s"></div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <i class="fas fa-memory" style="color:var(--accent)"></i>
+            <span style="font-weight:600">RAM</span>
+            <span style="margin-left:auto;font-weight:700;color:${memColor}">${memPct}% (${Utils.formatBytes(host.stats.memory)} / ${Utils.formatBytes(host.stats.memoryLimit)})</span>
+          </div>
+          <div style="height:8px;background:var(--surface3);border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${memPct}%;background:${memColor};border-radius:4px;transition:width 0.5s"></div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">
+        ${host.info.os ? `<i class="fab fa-linux" style="margin-right:4px"></i>${Utils.escapeHtml(host.info.os)}` : ''}
+        ${host.info.dockerVersion ? `&nbsp;&nbsp;<i class="fab fa-docker" style="margin-right:4px"></i>Docker ${Utils.escapeHtml(host.info.dockerVersion)}` : ''}
+        ${host.info.cpus ? `&nbsp;&nbsp;<i class="fas fa-microchip" style="margin-right:4px"></i>${host.info.cpus} CPUs` : ''}
+        ${host.info.memTotal ? `&nbsp;&nbsp;<i class="fas fa-memory" style="margin-right:4px"></i>${Utils.formatBytes(host.info.memTotal)} RAM` : ''}
+        ${host.info.kernelVersion ? `&nbsp;&nbsp;<i class="fas fa-code" style="margin-right:4px"></i>${Utils.escapeHtml(host.info.kernelVersion)}` : ''}
+      </div>
+      ${stackNames.map(stackName => {
+        const containers = stacks[stackName];
+        const label = stackName === '_standalone' ? 'Standalone' : Utils.escapeHtml(stackName);
+        const dots = this._healthDots(containers);
+        return `
+          <div class="card" style="margin-bottom:8px">
+            <div class="card-header" style="display:flex;align-items:center;gap:8px;padding:8px 14px;justify-content:flex-start;text-align:left;cursor:pointer" data-mh-stack-toggle="tab:${host.id}:${stackName}">
+              <i class="fas ${this._collapsed['tab:' + host.id + ':' + stackName] ? 'fa-chevron-right' : 'fa-chevron-down'}" style="font-size:11px;color:var(--text-dim)"></i>
+              <i class="fas fa-layer-group" style="color:var(--accent);font-size:11px"></i>
+              <strong style="font-size:12px">${label}</strong>
+              <span class="text-muted" style="font-size:11px">${containers.length} container${containers.length !== 1 ? 's' : ''}</span>
+              <span style="margin-left:auto;display:flex;gap:3px">${dots}</span>
+            </div>
+            <div data-mh-stack-body="tab:${host.id}:${stackName}" style="${this._collapsed['tab:' + host.id + ':' + stackName] ? 'display:none' : ''}">
+              <div class="card-body" style="padding:6px 14px">
+                ${containers.map(c => `
+                  <div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:12px"
+                       data-mh-container="${Utils.escapeHtml(c.id || '')}" data-mh-host-id="${host.id}">
+                    <span class="badge ${this._stateClass(c.state)}" style="min-width:56px;text-align:center;font-size:10px">${Utils.escapeHtml(c.state || 'unknown')}</span>
+                    <span style="font-weight:500">${Utils.escapeHtml(c.name)}</span>
+                    <span class="text-muted" style="font-size:11px;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${Utils.escapeHtml(c.image || '')}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>`;
+      }).join('')}
+    `;
+
+    // Wire stack toggles
+    el.querySelectorAll('[data-mh-stack-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.mhStackToggle;
+        this._collapsed[key] = !this._collapsed[key];
+        const body = el.querySelector(`[data-mh-stack-body="${CSS.escape(key)}"]`);
+        if (body) body.style.display = this._collapsed[key] ? 'none' : '';
+        const icon = btn.querySelector('i.fa-chevron-down, i.fa-chevron-right');
+        if (icon) icon.className = `fas ${this._collapsed[key] ? 'fa-chevron-right' : 'fa-chevron-down'}`;
+      });
+    });
+
+    // Wire container clicks
+    el.querySelectorAll('[data-mh-container]').forEach(item => {
+      item.addEventListener('click', () => {
+        const hostId = parseInt(item.dataset.mhHostId) || 0;
+        Api.setHost(hostId);
+        App.navigate(`/containers/${item.dataset.mhContainer}`);
+      });
+      item.addEventListener('mouseenter', () => { item.style.background = 'var(--surface3)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    });
   },
 
   // ─── By Stack view ───────────────────────────────
