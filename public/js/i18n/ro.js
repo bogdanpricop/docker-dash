@@ -82,6 +82,9 @@ i18n.register('ro', 'RO', 'Română', {
     navigate: 'Navigare', select: 'Selecteaza', close: 'Inchide',
     noResults: 'Niciun rezultat gasit',
   },
+  detail: {
+    tabs: { summary: 'Sumar', monitor: 'Monitor', configure: 'Configurare', events: 'Evenimente', inspect: 'Inspectare' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

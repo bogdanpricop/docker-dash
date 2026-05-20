@@ -442,6 +442,14 @@ textarea { resize: vertical; min-height: 80px; }
 .tab:hover { color: var(--text-bright); }
 .tab.active { color: var(--accent-hover); border-bottom-color: var(--accent); font-weight: 600; }
 
+/* ── Detail shell (Phase 3 standardized detail views) ── */
+.detail-shell-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.detail-shell-title { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.detail-shell-subtitle { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+.detail-shell-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.detail-shell-meta { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
+.detail-shell-panel { margin-top: 4px; }
+
 /* ── Charts ──────────────────────────────────────── */
 .chart-container { position: relative; height: 220px; width: 100%; }
 .chart-container.tall { height: 300px; }

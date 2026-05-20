@@ -44,6 +44,9 @@ i18n.register('zh', '中文', '中文', {
     navigate: '导航', select: '选择', close: '关闭',
     noResults: '未找到结果',
   },
+  detail: {
+    tabs: { summary: '概览', monitor: '监控', configure: '配置', events: '事件', inspect: '检查' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

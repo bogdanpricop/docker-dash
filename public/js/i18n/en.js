@@ -106,6 +106,9 @@ i18n.register('en', 'EN', 'English', {
     navigate: 'Navigate', select: 'Select', close: 'Close',
     noResults: 'No results found',
   },
+  detail: {
+    tabs: { summary: 'Summary', monitor: 'Monitor', configure: 'Configure', events: 'Events', inspect: 'Inspect' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

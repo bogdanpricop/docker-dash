@@ -44,6 +44,9 @@ i18n.register('pt', 'PT', 'Portugu\u00eas', {
     navigate: 'Navegar', select: 'Selecionar', close: 'Fechar',
     noResults: 'Nenhum resultado encontrado',
   },
+  detail: {
+    tabs: { summary: 'Resumo', monitor: 'Monitor', configure: 'Configurar', events: 'Eventos', inspect: 'Inspecionar' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

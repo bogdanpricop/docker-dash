@@ -44,6 +44,9 @@ i18n.register('tlh', '\u2694\uFE0F', 'tlhIngan Hol', {
     navigate: 'ghoS', select: 'wIv', close: 'SoQmoH',
     noResults: 'pagh tu\'lu\'',
   },
+  detail: {
+    tabs: { summary: 'nav', monitor: 'Daq', configure: 'choH', events: 'wanI\'', inspect: 'waH' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

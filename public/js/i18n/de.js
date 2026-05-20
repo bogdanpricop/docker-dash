@@ -45,6 +45,9 @@ i18n.register('de', 'DE', 'Deutsch', {
     navigate: 'Navigieren', select: 'Auswählen', close: 'Schließen',
     noResults: 'Keine Ergebnisse gefunden',
   },
+  detail: {
+    tabs: { summary: 'Übersicht', monitor: 'Überwachung', configure: 'Konfiguration', events: 'Ereignisse', inspect: 'Inspizieren' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

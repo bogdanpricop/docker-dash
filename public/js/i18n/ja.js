@@ -44,6 +44,9 @@ i18n.register('ja', 'JP', '日本語', {
     navigate: '移動', select: '選択', close: '閉じる',
     noResults: '結果が見つかりません',
   },
+  detail: {
+    tabs: { summary: '概要', monitor: 'モニター', configure: '設定', events: 'イベント', inspect: '検査' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {

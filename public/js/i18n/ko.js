@@ -44,6 +44,9 @@ i18n.register('ko', 'KR', '한국어', {
     navigate: '이동', select: '선택', close: '닫기',
     noResults: '결과를 찾을 수 없습니다',
   },
+  detail: {
+    tabs: { summary: '요약', monitor: '모니터', configure: '구성', events: '이벤트', inspect: '검사' },
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {
