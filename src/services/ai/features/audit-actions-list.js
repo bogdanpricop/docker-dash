@@ -13,7 +13,7 @@
 //     | grep -oE "['\"][a-z_]+['\"]" \
 //     | tr -d "'\"" | sort -u
 //
-// 174 entries as of 2026-05-05 (v8.2.0).
+// 175 entries as of 2026-05-20 (v8.3.0 — +git_drift_detected).
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -66,6 +66,7 @@ const auditActionsList = [
   "git_credential_create",
   "git_credential_delete",
   "git_credential_update",
+  "git_drift_detected",
   "git_stack_create",
   "git_stack_delete",
   "git_stack_deploy",

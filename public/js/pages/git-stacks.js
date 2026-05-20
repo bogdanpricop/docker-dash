@@ -50,6 +50,9 @@ const GitStacksPage = {
 
     try {
       const stacks = await Api.getGitStacks();
+      // v8.3.0 — drift badges (best-effort; don't block list render if it fails)
+      let driftMap = {};
+      try { driftMap = await Api.getGitDriftAll(); } catch { /* ignore */ }
 
       if (stacks.length === 0) {
         el.innerHTML = `
@@ -70,7 +73,10 @@ const GitStacksPage = {
                   <i class="fab fa-git-alt" style="margin-right:8px;color:var(--accent)"></i>
                   ${Utils.escapeHtml(s.stack_name)}
                 </h3>
-                <span class="badge ${this._statusBadge(s.status)}">${s.status}</span>
+                <span style="display:flex;gap:6px;align-items:center">
+                  ${this._driftBadge(driftMap[s.id])}
+                  <span class="badge ${this._statusBadge(s.status)}">${s.status}</span>
+                </span>
               </div>
               <div class="card-body">
                 <div class="text-sm text-muted" style="margin-bottom:4px">${Utils.escapeHtml(s.repo_url)}</div>
@@ -225,6 +231,7 @@ const GitStacksPage = {
             <button class="btn btn-sm btn-secondary" id="gs-edit-push"><i class="fas fa-edit"></i> Edit</button>
             <button class="btn btn-sm btn-secondary" id="gs-diff"><i class="fas fa-code-branch"></i> Diff</button>
             <button class="btn btn-sm btn-secondary" id="gs-check"><i class="fas fa-search"></i> Check</button>
+            <button class="btn btn-sm btn-secondary" id="gs-drift-scan"><i class="fas fa-wave-square"></i> Scan Drift</button>
             <button class="btn btn-sm btn-primary" id="gs-redeploy" ${stack.status === 'deploying' || stack.status === 'cloning' ? 'disabled' : ''}>
               <i class="fas fa-sync"></i> Redeploy
             </button>
@@ -272,6 +279,7 @@ const GitStacksPage = {
           </div>
         </div>
 
+        <div id="gs-drift-panel" style="margin-top:16px"></div>
         <div id="gs-update-result" style="margin-top:16px"></div>
         <div id="gs-deployments" style="margin-top:16px"></div>
       `;
@@ -283,9 +291,11 @@ const GitStacksPage = {
       container.querySelector('#gs-redeploy').addEventListener('click', () => this._redeploy(stack));
       container.querySelector('#gs-delete').addEventListener('click', () => this._deleteStack(stack));
       container.querySelector('#gs-webhook-setup').addEventListener('click', () => this._configureAutoDeploy(stack));
+      container.querySelector('#gs-drift-scan').addEventListener('click', () => this._scanDrift(stack));
 
-      // Load deployment history
+      // Load deployment history + stored drift
       this._loadDeployments(stack.id);
+      this._loadDriftPanel(stack.id);
 
       // Auto-refresh if deploying/cloning
       if (stack.status === 'deploying' || stack.status === 'cloning') {
@@ -610,6 +620,92 @@ const GitStacksPage = {
 
   // ─── Helpers ─────────────────────────────────────
 
+  // ─── Drift detection (v8.3.0) ─────────────────────────────
+  async _loadDriftPanel(stackId) {
+    const el = document.getElementById('gs-drift-panel');
+    if (!el) return;
+    try {
+      const drift = await Api.getGitDrift(stackId);
+      this._renderDriftPanel(el, drift);
+    } catch {
+      el.innerHTML = '';
+    }
+  },
+
+  async _scanDrift(stack) {
+    const el = document.getElementById('gs-drift-panel');
+    if (el) el.innerHTML = `<div class="card"><div class="card-body text-muted"><i class="fas fa-spinner fa-spin"></i> Scanning drift…</div></div>`;
+    try {
+      const drift = await Api.scanGitDrift(stack.id);
+      if (el) this._renderDriftPanel(el, drift);
+      Toast.success(drift.inSync ? 'In sync with git' : `${drift.drifts.length} drift(s) detected`);
+    } catch (err) {
+      Toast.error('Drift scan failed: ' + err.message);
+      if (el) el.innerHTML = '';
+    }
+  },
+
+  _renderDriftPanel(el, drift) {
+    if (!drift || (!drift.checkedAt && !drift.error)) {
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header"><h3><i class="fas fa-wave-square" style="margin-right:8px"></i>Drift Detection</h3></div>
+          <div class="card-body text-muted text-sm">Not scanned yet. Click <strong>Scan Drift</strong> to compare the running state against the git-checked-out compose. Runs automatically every 5 minutes.</div>
+        </div>`;
+      return;
+    }
+
+    const driftRow = (d) => {
+      const labels = {
+        missing: { icon: 'fa-ghost', color: 'var(--red)', text: `Service <strong>${Utils.escapeHtml(d.service)}</strong> is declared in git but has no container (expected <code>${Utils.escapeHtml(d.expected || '')}</code>)` },
+        extra: { icon: 'fa-plus-circle', color: 'var(--yellow)', text: `Container <strong>${Utils.escapeHtml(d.container || '')}</strong> (service ${Utils.escapeHtml(d.service)}) is running but NOT declared in git` },
+        stopped: { icon: 'fa-stop-circle', color: 'var(--yellow)', text: `Service <strong>${Utils.escapeHtml(d.service)}</strong> exists but is <code>${Utils.escapeHtml(d.state || 'not running')}</code>` },
+        image_mismatch: { icon: 'fa-exchange-alt', color: 'var(--accent)', text: `Service <strong>${Utils.escapeHtml(d.service)}</strong> runs <code>${Utils.escapeHtml(d.actual || '')}</code> but git declares <code>${Utils.escapeHtml(d.expected || '')}</code>` },
+      };
+      const l = labels[d.type] || { icon: 'fa-question', color: 'var(--text-muted)', text: Utils.escapeHtml(JSON.stringify(d)) };
+      return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)">
+        <i class="fas ${l.icon}" style="color:${l.color};margin-top:3px;width:18px;text-align:center"></i>
+        <div class="text-sm">${l.text}</div>
+      </div>`;
+    };
+
+    if (drift.error) {
+      el.innerHTML = `
+        <div class="card" style="border-left:3px solid var(--text-muted)">
+          <div class="card-header"><h3><i class="fas fa-wave-square" style="margin-right:8px"></i>Drift Detection</h3></div>
+          <div class="card-body text-muted text-sm"><i class="fas fa-question-circle"></i> Could not scan: ${Utils.escapeHtml(drift.error)}</div>
+        </div>`;
+      return;
+    }
+
+    if (drift.inSync) {
+      el.innerHTML = `
+        <div class="card" style="border-left:3px solid var(--green,#4ade80)">
+          <div class="card-header"><h3><i class="fas fa-wave-square" style="margin-right:8px"></i>Drift Detection</h3>
+            <span class="badge badge-running"><i class="fas fa-check" style="margin-right:3px"></i>In sync</span>
+          </div>
+          <div class="card-body text-sm text-muted">Running state matches the git-checked-out compose. Last checked ${Utils.timeAgo(drift.checkedAt)}.</div>
+        </div>`;
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="card" style="border-left:3px solid var(--yellow)">
+        <div class="card-header"><h3><i class="fas fa-wave-square" style="margin-right:8px"></i>Drift Detection</h3>
+          <span class="badge badge-warning">${drift.drifts.length} drift(s)</span>
+        </div>
+        <div class="card-body">
+          <p class="text-sm text-muted" style="margin-bottom:8px">The running state has diverged from what git declares. Last checked ${Utils.timeAgo(drift.checkedAt)}.</p>
+          ${drift.drifts.map(driftRow).join('')}
+          <div style="margin-top:12px">
+            <button class="btn btn-sm btn-primary" id="gs-drift-redeploy"><i class="fas fa-sync"></i> Re-deploy from git to fix</button>
+          </div>
+        </div>
+      </div>`;
+    const fixBtn = el.querySelector('#gs-drift-redeploy');
+    if (fixBtn) fixBtn.addEventListener('click', () => this._redeploy({ id: this._stackId, stack_name: '' }));
+  },
+
   _statusBadge(status) {
     const map = {
       running: 'badge-running', error: 'badge-danger',
@@ -617,6 +713,19 @@ const GitStacksPage = {
       stopped: 'badge-stopped', pending: 'badge-stopped',
     };
     return map[status] || 'badge-info';
+  },
+
+  // v8.3.0 — drift badge for the list cards. `d` is the per-stack summary from
+  // /git/stacks/drift, or undefined if never scanned.
+  _driftBadge(d) {
+    if (!d || !d.checkedAt) return ''; // not scanned yet — show nothing
+    if (d.error) {
+      return `<span class="badge badge-stopped" title="Drift scan error: ${Utils.escapeHtml(d.error)}"><i class="fas fa-question-circle" style="margin-right:3px"></i>drift?</span>`;
+    }
+    if (d.inSync) {
+      return `<span class="badge badge-running" title="Running state matches git (checked ${Utils.escapeHtml(d.checkedAt)})"><i class="fas fa-check" style="margin-right:3px"></i>in sync</span>`;
+    }
+    return `<span class="badge badge-warning" title="Running state has drifted from git — click for details"><i class="fas fa-code-branch" style="margin-right:3px"></i>${d.driftCount} drift</span>`;
   },
 
   destroy() {

@@ -482,6 +482,14 @@ function startAll() {
     return require('../services/retention-cron').runAllPolicies();
   })));
 
+  // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each
+  // running git-managed stack's actual container state against the git-checked-
+  // out compose. Detection only — never starts/stops/deploys. Leader-gated.
+  jobs.push(cron.schedule('*/5 * * * *', _m('git-drift-scan', () => {
+    const gitDrift = require('../services/git-drift');
+    return gitDrift.scanAll(dockerService);
+  })));
+
   // v7.4.0 — Sample feature cron tick (CONTRIBUTOR DEMO). Auto-increments
   // the demo counter every minute so contributors see the cron pattern fire
   // without external triggers. Leader-only via _m() default; skipped entirely

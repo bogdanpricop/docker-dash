@@ -2,6 +2,8 @@
 
 const { Router } = require('express');
 const gitService = require('../services/git');
+const gitDrift = require('../services/git-drift');
+const dockerService = require('../services/docker');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
@@ -85,6 +87,16 @@ router.get('/stacks', requireAuth, (req, res) => {
   res.json(gitService.listStacks(hostId));
 });
 
+// Drift summary for ALL git stacks (for list-page badges). MUST be registered
+// before '/stacks/:id' or Express matches "drift" as the :id param.
+router.get('/stacks/drift', requireAuth, (req, res) => {
+  try {
+    res.json(gitDrift.getAllStoredDrift());
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/stacks/:id', requireAuth, (req, res) => {
   const stack = gitService.getStack(parseInt(req.params.id));
   if (!stack) return res.status(404).json({ error: 'Git stack not found' });
@@ -162,6 +174,33 @@ router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'),
 router.post('/stacks/:id/check', requireAuth, async (req, res) => {
   try {
     const result = await gitService.checkForUpdates(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// ─── GitOps Drift Detection (read-only, v8.3.0) ──────────────
+// "Does the RUNNING state match the git-checked-out compose?" — complementary
+// to /check (which is git-ahead detection). Detection only; never acts.
+
+// Latest stored drift result for one stack
+router.get('/stacks/:id/drift', requireAuth, (req, res) => {
+  try {
+    const stack = gitService.getStack(parseInt(req.params.id));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    res.json(gitDrift.getStoredDrift(parseInt(req.params.id)));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Run a fresh scan now (read-only, but triggers work → operator+)
+router.post('/stacks/:id/drift-scan', requireAuth, requireRole('admin', 'operator'), async (req, res) => {
+  try {
+    const stack = gitService.getStack(parseInt(req.params.id));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    const result = await gitDrift.scanAndStore(stack, dockerService);
     res.json(result);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
