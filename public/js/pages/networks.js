@@ -101,38 +101,45 @@ const NetworksPage = {
         <div class="breadcrumb">
           <a href="#/networks"><i class="fas fa-arrow-left"></i> Networks</a>
           <span class="bc-sep">/</span>
-          <span id="net-detail-name">Loading...</span>
+          <span id="net-detail-name">${Utils.escapeHtml(networkId)}</span>
         </div>
       </div>
-      <div class="tabs" id="net-detail-tabs">
-        <button class="tab active" data-tab="overview">Overview</button>
-        <button class="tab" data-tab="containers">Connected Containers</button>
-        <button class="tab" data-tab="inspect">Inspect</button>
-      </div>
-      <div id="net-detail-content"></div>
+      <div id="net-detail-shell"></div>
     `;
 
+    const hostEl = container.querySelector('#net-detail-shell');
+    let net;
     try {
-      const net = await Api.getNetwork(networkId);
+      net = await Api.getNetwork(networkId);
       this._netData = net;
-      container.querySelector('#net-detail-name').textContent = net.Name || networkId;
-
-      container.querySelectorAll('#net-detail-tabs .tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          container.querySelectorAll('#net-detail-tabs .tab').forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          this._renderNetTab(tab.dataset.tab);
-        });
-      });
-
-      this._renderNetTab('overview');
+      const nameEl = container.querySelector('#net-detail-name');
+      if (nameEl) nameEl.textContent = net.Name || networkId;
     } catch (err) {
-      container.querySelector('#net-detail-content').innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+      hostEl.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      return;
     }
+
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
+    this._detailShell = DetailShell.create({
+      resourceKey: 'networks',
+      id: networkId,
+      header: {
+        icon: 'fa-network-wired',
+        title: () => net.Name || networkId,
+        subtitle: () => [net.Driver, net.Scope].filter(Boolean).join(' · '),
+      },
+      tabs: [
+        { key: 'summary', label: i18n.t('detail.tabs.summary'), render: (el) => this._renderNetTab('overview', el) },
+        { key: 'monitor', label: i18n.t('detail.tabs.monitor'), render: (el) => this._renderNetTab('containers', el) },
+        { key: 'inspect', label: i18n.t('detail.tabs.inspect'), render: (el) => this._renderNetTab('inspect', el) },
+      ],
+      defaultTab: 'summary',
+    });
+    this._detailShell.mount(hostEl);
   },
 
-  _renderNetTab(tab) {
-    const el = document.getElementById('net-detail-content');
+  _renderNetTab(tab, el) {
+    el = el || document.getElementById('net-detail-content');
     const net = this._netData;
     if (!el || !net) return;
 
@@ -694,6 +701,7 @@ const NetworksPage = {
 
   destroy() {
     if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
   },
 };
 

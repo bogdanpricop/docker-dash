@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.5.1',
+      date: '2026-05-21',
+      title: 'Standardized detail views — networks',
+      changes: [
+        { type: 'improvement', text: 'Network detail is the second page migrated onto the new DetailShell, with standardized Summary / Monitor / Inspect tabs (general + IPAM + driver options / connected containers with IPs and MAC / raw JSON). Same information as before, now with keyboard tab navigation and the same consistent chrome as volume detail.' },
+        { type: 'improvement', text: 'Part of the safest-first detail-view standardization rollout (volumes shipped in 8.5.0). Verified in-browser, and volumes re-checked for no shared-component regression. Next: images gets a real tabbed detail view (replacing its JSON modal), then container and stacks.' },
+      ],
+    },
+    {
       version: '8.5.0',
       date: '2026-05-21',
       title: 'Standardized detail views — shell + volumes',

@@ -2,6 +2,10 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.5.1] - 2026-05-21 — Standardized detail views: networks (Phase 3, step 3.2)
+
+Second page migrated onto `DetailShell`. Network detail now uses the standard **Summary** (general + IPAM + driver options) / **Monitor** (connected containers with IPs/MAC) / **Inspect** (raw JSON) taxonomy, replacing the bespoke `#net-detail-tabs` wiring. Behaviour-preserving; adds keyboard tab nav + consistent chrome. Browser-verified (network detail tab switching + no new console errors) and volumes re-verified for no shared-component regression.
+
 ## [8.5.0] - 2026-05-21 — Standardized detail views: shell + volumes (Phase 3, steps 3.0–3.1)
 
 First slice of the standardized-detail-views roadmap item (`plans/deep-spec-standardized-detail-views.md`, accepted: 5 grouped tabs Summary/Monitor/Configure/Events/Inspect, safest-first sequencing). Until now container, volume, and network detail each had **bespoke** tab wiring (different IDs, duplicated click/swap logic) and images had only a JSON-inspect modal. This introduces one shared shell and migrates the lowest-risk page (volumes) onto it.
