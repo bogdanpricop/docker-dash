@@ -87,44 +87,49 @@ const VolumesPage = {
   },
 
   async _renderDetail(container, volumeName) {
+    const name = decodeURIComponent(volumeName);
     container.innerHTML = `
       <div class="page-header">
         <div class="breadcrumb">
           <a href="#/volumes"><i class="fas fa-arrow-left"></i> Volumes</a>
           <span class="bc-sep">/</span>
-          <span id="vol-detail-name">Loading...</span>
+          <span>${Utils.escapeHtml(name)}</span>
         </div>
       </div>
-      <div class="tabs" id="vol-tabs">
-        <button class="tab active" data-tab="overview">Overview</button>
-        <button class="tab" data-tab="containers">Connected Containers</button>
-        <button class="tab" data-tab="inspect">Inspect</button>
-      </div>
-      <div id="vol-detail-content"></div>
+      <div id="vol-detail-shell"></div>
     `;
 
+    const host = container.querySelector('#vol-detail-shell');
+    let vol;
     try {
-      const vol = await Api.getVolume(decodeURIComponent(volumeName));
+      vol = await Api.getVolume(name);
       this._volData = vol;
-      container.querySelector('#vol-detail-name').textContent = vol.Name || volumeName;
-
-      // Tab switching
-      container.querySelectorAll('#vol-tabs .tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          container.querySelectorAll('#vol-tabs .tab').forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          this._renderVolTab(tab.dataset.tab);
-        });
-      });
-
-      this._renderVolTab('overview');
     } catch (err) {
-      container.querySelector('#vol-detail-content').innerHTML = `<div class="empty-msg">Error: ${err.message}</div>`;
+      host.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+      return;
     }
+
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
+    this._detailShell = DetailShell.create({
+      resourceKey: 'volumes',
+      id: name,
+      header: {
+        icon: 'fa-database',
+        title: () => vol.Name || name,
+        subtitle: () => [vol.Driver, vol.Scope].filter(Boolean).join(' · '),
+      },
+      tabs: [
+        { key: 'summary', label: i18n.t('detail.tabs.summary'), render: (el) => this._renderVolTab('overview', el) },
+        { key: 'monitor', label: i18n.t('detail.tabs.monitor'), render: (el) => this._renderVolTab('containers', el) },
+        { key: 'inspect', label: i18n.t('detail.tabs.inspect'), render: (el) => this._renderVolTab('inspect', el) },
+      ],
+      defaultTab: 'summary',
+    });
+    this._detailShell.mount(host);
   },
 
-  _renderVolTab(tab) {
-    const el = document.getElementById('vol-detail-content');
+  _renderVolTab(tab, el) {
+    el = el || document.getElementById('vol-detail-content');
     const vol = this._volData;
     if (!el || !vol) return;
 
@@ -331,6 +336,7 @@ const VolumesPage = {
 
   destroy() {
     if (this._refreshTimer) { clearInterval(this._refreshTimer); this._refreshTimer = null; }
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
   },
 };
 

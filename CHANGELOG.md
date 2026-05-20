@@ -2,6 +2,25 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.5.0] - 2026-05-21 — Standardized detail views: shell + volumes (Phase 3, steps 3.0–3.1)
+
+First slice of the standardized-detail-views roadmap item (`plans/deep-spec-standardized-detail-views.md`, accepted: 5 grouped tabs Summary/Monitor/Configure/Events/Inspect, safest-first sequencing). Until now container, volume, and network detail each had **bespoke** tab wiring (different IDs, duplicated click/swap logic) and images had only a JSON-inspect modal. This introduces one shared shell and migrates the lowest-risk page (volumes) onto it.
+
+### 3.0 — `DetailShell` component (foundation)
+
+- `public/js/components/detail-shell.js` — `DetailShell.create({ header, tabs, ... })`: a reusable tabbed detail shell with lazy render-once (tabs flagged `live` re-render on every entry), an `onLeave` stream-teardown hook, ←/→ keyboard tab navigation, ARIA `tablist`/`tab`/`tabpanel` roles, optional deep-linking via `history.replaceState` (no app-router reload), and `destroy()` for cleanup.
+- **Non-reactive by design** — Phase 4 owns reactivity; the shell's public API is forward-compatible with it.
+- DOM-independent decision logic factored into `DetailShell._pure` (initial-tab resolution, hash building, keyboard index math, render decision) so it is unit-testable in the project's jsdom-free Jest; the DOM wiring is covered by per-page browser regression.
+- `detail.tabs.{summary,monitor,configure,events,inspect}` i18n keys across all 12 locales; minimal `.detail-shell-*` CSS reusing the existing `.tabs`/`.tab` classes.
+
+### 3.1 — Volumes detail migrated
+
+- Volume detail now renders through `DetailShell` with the standard taxonomy: **Summary** (general + labels), **Monitor** (connected containers), **Inspect** (raw JSON). Same content as before, plus keyboard tab nav and consistent shell chrome. Behaviour-preserving; verified in-browser (login → volume detail → tab switching → no new console errors).
+
+### Tests
+
+- `detail-shell.test.js` — 15 unit cases against `_pure`. Suite: 1429 → 1444.
+
 ## [8.4.1] - 2026-05-21 — Drift notifications
 
 Follow-up to the v8.3.0 GitOps drift detection. Until now drift only surfaced as a badge you had to *open the page* to see. Now, when a git-managed stack transitions from in-sync → drifted, Docker Dash pushes a notification to all active channels (Slack/Discord/Telegram/ntfy/Gotify/email/webhook).

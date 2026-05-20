@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.5.0',
+      date: '2026-05-21',
+      title: 'Standardized detail views — shell + volumes',
+      changes: [
+        { type: 'feature', text: 'New reusable DetailShell powering resource detail views. Until now container, volume, and network detail each re-invented their own tab wiring and images had only a JSON modal. The shell gives every detail view the same tab bar with lazy rendering, keyboard ←/→ navigation, ARIA roles, and clean stream teardown when you leave a tab — the foundation for making all five resources feel like one coherent tool.' },
+        { type: 'feature', text: 'Volume detail is the first page migrated onto it, with the standardized Summary / Monitor / Inspect tabs (general + labels / connected containers / raw JSON). Same information as before, now with keyboard tab navigation and consistent chrome. More resources (networks, images, container, stacks) follow in upcoming releases.' },
+        { type: 'improvement', text: 'Non-reactive by design (a future reactivity layer can adopt the shell without API changes). Standard tab labels translated across all 12 locales. 15 new unit tests for the shell\'s decision logic; suite 1429 → 1444. Built strategy-first from an accepted deep-spec.' },
+      ],
+    },
+    {
       version: '8.4.1',
       date: '2026-05-21',
       title: 'Drift notifications',
