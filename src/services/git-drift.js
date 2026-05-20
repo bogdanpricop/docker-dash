@@ -221,8 +221,36 @@ function _saveDrift(stackId, result) {
 }
 
 /**
- * Scan one stack, persist the result, and emit an audit entry on a newly-drifted
- * transition (was in-sync, now not). Returns the fresh result.
+ * Build the notification-channel message for a newly-drifted stack. Pure (no I/O)
+ * so the wording/severity is unit-testable. Mirrors the eventNotifier message
+ * shape: { title, text, severity, event }.
+ */
+function buildDriftMessage(stack, result) {
+  const types = [...new Set((result.drifts || []).map(d => d.type))];
+  const count = (result.drifts || []).length;
+  const lines = (result.drifts || []).slice(0, 8).map(d => {
+    switch (d.type) {
+      case 'missing': return `• missing: \`${d.service}\` (expected ${d.expected})`;
+      case 'extra': return `• extra: \`${d.container}\` (service ${d.service})`;
+      case 'stopped': return `• stopped: \`${d.service}\` is ${d.state}`;
+      case 'image_mismatch': return `• image: \`${d.service}\` runs ${d.actual}, git wants ${d.expected}`;
+      default: return `• ${d.type}: ${d.service || ''}`;
+    }
+  });
+  if (count > 8) lines.push(`• …and ${count - 8} more`);
+  return {
+    title: '⚠️ Stack drift detected',
+    text: `**${stack.stack_name}** has drifted from git (${count} ${count === 1 ? 'difference' : 'differences'}: ${types.join(', ')}).\n${lines.join('\n')}\n\nRe-deploy from git to reconcile.`,
+    severity: 'warning',
+    event: 'git_drift_detected',
+  };
+}
+
+/**
+ * Scan one stack, persist the result, and on a newly-drifted transition (was
+ * in-sync, now not) emit an audit entry AND push a notification to all active
+ * channels. Both are best-effort and only fire on the transition, so a stack
+ * that stays drifted across scans won't re-notify. Returns the fresh result.
  */
 async function scanAndStore(stack, dockerService) {
   const previous = getStoredDrift(stack.id);
@@ -237,6 +265,11 @@ async function scanAndStore(stack, dockerService) {
         details: JSON.stringify({ stack: stack.stack_name, driftCount: result.drifts.length, types: [...new Set(result.drifts.map(d => d.type))] }),
       });
     } catch (err) { log.debug('drift audit log failed', err.message); }
+
+    try {
+      require('./notificationChannels').sendToAll(buildDriftMessage(stack, result))
+        .catch(err => log.debug('drift notification failed', err.message));
+    } catch (err) { log.debug('drift notification dispatch failed', err.message); }
   }
   return result;
 }
@@ -264,5 +297,5 @@ async function scanAll(dockerService) {
 
 module.exports = {
   normalizeImage, parseComposeServices, detectDrift, scanStack,
-  getStoredDrift, getAllStoredDrift, scanAndStore, scanAll,
+  getStoredDrift, getAllStoredDrift, scanAndStore, scanAll, buildDriftMessage,
 };

@@ -10,7 +10,7 @@ process.env.APP_SECRET = 'test-secret';
 process.env.ENCRYPTION_KEY = 'test-encryption-key-for-jest-32chars';
 process.env.DB_PATH = ':memory:';
 
-const { normalizeImage, parseComposeServices, detectDrift } = require('../services/git-drift');
+const { normalizeImage, parseComposeServices, detectDrift, buildDriftMessage } = require('../services/git-drift');
 
 describe('normalizeImage', () => {
   it('expands a bare name to docker.io/library/name:latest', () => {
@@ -147,5 +147,43 @@ describe('detectDrift', () => {
     ];
     const r = detectDrift(desired, actual);
     expect(r.inSync).toBe(true); // null-service container is not counted as extra
+  });
+});
+
+// v8.4.1 — drift notification message (sent to channels on the in-sync → drifted
+// transition). Pure builder, so the wording/severity is pinned here.
+describe('buildDriftMessage', () => {
+  const stack = { stack_name: 'prod-web' };
+
+  it('uses warning severity and the drift event key', () => {
+    const msg = buildDriftMessage(stack, { drifts: [{ type: 'stopped', service: 'web', state: 'exited' }] });
+    expect(msg.severity).toBe('warning');
+    expect(msg.event).toBe('git_drift_detected');
+    expect(msg.title).toContain('drift');
+  });
+
+  it('names the stack and counts a single difference in the singular', () => {
+    const msg = buildDriftMessage(stack, { drifts: [{ type: 'missing', service: 'db', expected: 'postgres:16' }] });
+    expect(msg.text).toContain('**prod-web**');
+    expect(msg.text).toContain('1 difference');
+    expect(msg.text).toContain('missing: `db`');
+  });
+
+  it('pluralizes and lists distinct drift types', () => {
+    const msg = buildDriftMessage(stack, { drifts: [
+      { type: 'missing', service: 'db', expected: 'postgres:16' },
+      { type: 'image_mismatch', service: 'web', actual: 'nginx:1.26', expected: 'nginx:1.25' },
+    ] });
+    expect(msg.text).toContain('2 differences');
+    expect(msg.text).toContain('missing, image_mismatch');
+    expect(msg.text).toContain('image: `web` runs nginx:1.26, git wants nginx:1.25');
+  });
+
+  it('truncates long drift lists to 8 with an overflow line', () => {
+    const drifts = Array.from({ length: 11 }, (_, i) => ({ type: 'stopped', service: `svc${i}`, state: 'exited' }));
+    const msg = buildDriftMessage(stack, { drifts });
+    expect(msg.text).toContain('…and 3 more');
+    // 8 listed + overflow line, none of svc8/svc9/svc10 individually shown
+    expect(msg.text).not.toContain('svc8');
   });
 });

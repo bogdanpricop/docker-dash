@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.4.1] - 2026-05-21 — Drift notifications
+
+Follow-up to the v8.3.0 GitOps drift detection. Until now drift only surfaced as a badge you had to *open the page* to see. Now, when a git-managed stack transitions from in-sync → drifted, Docker Dash pushes a notification to all active channels (Slack/Discord/Telegram/ntfy/Gotify/email/webhook).
+
+### Behaviour
+
+- Fires **only on the transition** (in-sync → drifted), reusing the same guard that already gates the `git_drift_detected` audit entry. A stack that stays drifted across the 5-minute scans does **not** re-notify — no alert spam. It re-notifies only after going back in-sync and drifting again.
+- Best-effort and non-blocking: a channel failure is logged at debug and never interrupts the scan. No active channels → silent no-op (same as the existing event notifier).
+- Message lists up to 8 specific differences (missing / extra / stopped / image_mismatch) with a "…and N more" overflow line, severity `warning`, and a "Re-deploy from git to reconcile" hint.
+
+### Implementation
+
+- `git-drift.js` — new pure `buildDriftMessage(stack, result)` (testable wording/severity) + `notificationChannels.sendToAll()` dispatch at the transition in `scanAndStore()`.
+- 4 new tests in `git-drift.test.js` (severity/event key, singular vs plural difference count, distinct-type listing, 8-item truncation). Suite: 1425 → 1429.
+
 ## [8.4.0] - 2026-05-20 — 30-day metrics tier (daily rollup)
 
 Second feature of the v8.3+ roadmap. The metrics chart already offered a **30 Days** range, but it silently lied: that range queried `container_stats_1h`, which the purge job trims at 7 days. Anything past a week returned nothing. This adds the missing 4th aggregation tier so long-range charts show real data.

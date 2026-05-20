@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.4.1',
+      date: '2026-05-21',
+      title: 'Drift notifications',
+      changes: [
+        { type: 'feature', text: 'GitOps drift now notifies you. When a git-managed stack transitions from in-sync to drifted, Docker Dash pushes a notification to all active channels (Slack / Discord / Telegram / ntfy / Gotify / email / webhook) — you no longer have to open the Git Stacks page to discover that prod was changed by hand.' },
+        { type: 'improvement', text: 'No alert spam: the notification fires only on the in-sync → drifted transition (same guard as the git_drift_detected audit entry). A stack that stays drifted across the 5-minute scans does not re-notify; it re-fires only after going back in-sync and drifting again. Best-effort and non-blocking — a channel failure never interrupts the scan, and no active channels means a silent no-op.' },
+        { type: 'improvement', text: 'The message lists up to 8 specific differences (missing / extra / stopped / image_mismatch) with a "…and N more" overflow line and a "Re-deploy from git to reconcile" hint. 4 new tests pin the wording/severity. Suite: 1425 → 1429.' },
+      ],
+    },
+    {
       version: '8.4.0',
       date: '2026-05-20',
       title: '30-day metrics tier (daily rollup)',
