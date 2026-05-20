@@ -7,7 +7,10 @@ const ImagesPage = {
   _table: null,
   _refreshTimer: null,
 
-  async render(container) {
+  async render(container, params = {}) {
+    if (params.id) {
+      return this._renderDetail(container, params.id);
+    }
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-layer-group"></i> ${i18n.t('pages.images.title')}</h2>
@@ -88,7 +91,7 @@ const ImagesPage = {
       else if (btn.dataset.action === 'push') this._pushDialog(id, btn.dataset.image || id);
       else if (btn.dataset.action === 'sandbox') ContainersPage._sandboxDialog(btn.dataset.image || id);
       else if (btn.dataset.action === 'layers') this._showLayers(id);
-      else if (btn.dataset.action === 'inspect') this._inspect(id);
+      else if (btn.dataset.action === 'inspect') App.navigate(`/images/${encodeURIComponent(id)}`);
       else if (btn.dataset.action === 'remove') this._remove(id);
     });
 
@@ -102,7 +105,7 @@ const ImagesPage = {
       const fullName = (row._repo && row._tag) ? `${row._repo}:${row._tag}` : id;
 
       ContextMenu.show(e, [
-        { label: 'Inspect', icon: 'fa-info-circle', action: () => this._inspect(id) },
+        { label: 'View Details', icon: 'fa-info-circle', action: () => App.navigate(`/images/${encodeURIComponent(id)}`) },
         { label: 'View Layers', icon: 'fa-layer-group', action: () => this._showLayers(id) },
         { label: 'Scan for Vulnerabilities', icon: 'fa-shield-alt', action: () => Api.scanImage(id).then(() => Toast.success('Scan started')).catch(err => Toast.error(err.message)) },
         { label: 'Run in Sandbox', icon: 'fa-flask', action: () => ContainersPage._sandboxDialog(fullName) },
@@ -366,32 +369,135 @@ const ImagesPage = {
     }
   },
 
-  async _inspect(id) {
+  // ─── Image Detail View (Phase 3.3 — DetailShell) ────────────
+  async _renderDetail(container, imageId) {
+    const id = decodeURIComponent(imageId);
+    container.innerHTML = `
+      <div class="page-header">
+        <div class="breadcrumb">
+          <a href="#/images"><i class="fas fa-arrow-left"></i> ${i18n.t('pages.images.title')}</a>
+          <span class="bc-sep">/</span>
+          <span id="img-detail-name">${Utils.escapeHtml(Utils.shortImageId(id))}</span>
+        </div>
+      </div>
+      <div id="img-detail-shell"></div>
+    `;
+
+    const hostEl = container.querySelector('#img-detail-shell');
+    let data;
     try {
-      const data = await Api.getImage(id);
+      data = await Api.getImage(id);
+      this._imgData = data;
+    } catch (err) {
+      hostEl.innerHTML = `<div class="empty-msg">${i18n.t('pages.images.inspectFailed', { message: Utils.escapeHtml(err.message) })}</div>`;
+      return;
+    }
+
+    const repoTag = (data.RepoTags || [])[0] || null;
+    const nameEl = container.querySelector('#img-detail-name');
+    if (nameEl) nameEl.textContent = repoTag || Utils.shortImageId(data.Id || id);
+
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
+    this._detailShell = DetailShell.create({
+      resourceKey: 'images',
+      id,
+      header: {
+        icon: 'fa-layer-group',
+        title: () => repoTag || Utils.shortImageId(data.Id || id),
+        subtitle: () => [data.Architecture, data.Os].filter(Boolean).join('/'),
+      },
+      tabs: [
+        { key: 'summary', label: i18n.t('detail.tabs.summary'), render: (el) => this._renderImgTab('summary', el) },
+        { key: 'monitor', label: i18n.t('detail.tabs.monitor'), render: (el) => this._renderImgTab('layers', el) },
+        { key: 'inspect', label: i18n.t('detail.tabs.inspect'), render: (el) => this._renderImgTab('inspect', el) },
+      ],
+      defaultTab: 'summary',
+    });
+    this._detailShell.mount(hostEl);
+  },
+
+  _renderImgTab(tab, el) {
+    const data = this._imgData;
+    if (!el || !data) return;
+
+    if (tab === 'summary') {
+      const labels = Object.entries((data.Config && data.Config.Labels) || {}).map(([k, v]) =>
+        `<tr><td class="mono text-sm">${Utils.escapeHtml(k)}</td><td class="mono text-sm">${Utils.escapeHtml(v)}</td></tr>`
+      ).join('') || '<tr><td colspan="2" class="text-muted">No labels</td></tr>';
+      const tags = (data.RepoTags || []).map(t => `<span class="badge badge-info" style="margin:2px">${Utils.escapeHtml(t)}</span>`).join('') || '<span class="text-muted">&lt;none&gt;</span>';
+      const digest = (data.RepoDigests || [])[0] || '—';
+
+      el.innerHTML = `
+        <div class="info-grid">
+          <div class="card">
+            <div class="card-header"><h3>General</h3></div>
+            <div class="card-body">
+              <table class="info-table">
+                <tr><td>Tags</td><td>${tags}</td></tr>
+                <tr><td>ID</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(data.Id || '')}</td></tr>
+                <tr><td>Digest</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(digest)}</td></tr>
+                <tr><td>${i18n.t('pages.images.size')}</td><td>${data.Size != null ? Utils.formatBytes(data.Size) : '—'}</td></tr>
+                <tr><td>Architecture</td><td>${Utils.escapeHtml([data.Os, data.Architecture].filter(Boolean).join('/') || '—')}</td></tr>
+                <tr><td>${i18n.t('pages.images.created')}</td><td>${data.Created ? Utils.timeAgo(data.Created) : '—'}</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Labels</h3></div>
+            <div class="card-body">
+              <table class="data-table compact"><thead><tr><th>Key</th><th>Value</th></tr></thead><tbody>${labels}</tbody></table>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (tab === 'layers') {
+      el.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading layers...</div>';
+      Api.getImageHistory(data.Id || this._imgData.Id).then(history => {
+        if (!history || history.length === 0) { el.innerHTML = '<div class="empty-msg"><i class="fas fa-inbox"></i><p>No layer history available.</p></div>'; return; }
+        const totalSize = history.reduce((s, l) => s + (l.Size || 0), 0);
+        const maxSize = Math.max(...history.map(l => l.Size || 0), 1);
+        const rows = history.map((layer, i) => {
+          const size = layer.Size || 0;
+          const barPct = Math.round((size / maxSize) * 100);
+          const cmd = (layer.CreatedBy || '').replace(/^\/bin\/sh -c #\(nop\)\s*/i, '').replace(/^\/bin\/sh -c /i, 'RUN ').trim();
+          const sizeStr = size > 0 ? Utils.formatBytes(size) : '<span class="text-muted">—</span>';
+          const barColor = size > 50 * 1024 * 1024 ? 'var(--red)' : size > 5 * 1024 * 1024 ? 'var(--yellow)' : 'var(--accent)';
+          return `
+            <tr>
+              <td class="text-muted text-sm" style="width:30px;text-align:right">${history.length - i}</td>
+              <td style="padding:8px 12px;max-width:350px"><div class="mono text-xs" style="word-break:break-all;white-space:pre-wrap">${Utils.escapeHtml(cmd || '(empty layer)')}</div></td>
+              <td style="width:100px;text-align:right" class="mono text-sm">${sizeStr}</td>
+              <td style="width:120px;padding:8px">${size > 0 ? `<div style="height:6px;border-radius:3px;background:var(--surface3);overflow:hidden"><div style="height:100%;width:${barPct}%;background:${barColor};border-radius:3px"></div></div>` : ''}</td>
+            </tr>`;
+        }).join('');
+        el.innerHTML = `
+          <div class="card">
+            <div class="card-header"><h3>${history.length} layers — total ${Utils.formatBytes(totalSize)}</h3></div>
+            <div class="card-body" style="overflow:auto">
+              <table class="data-table compact" style="width:100%">
+                <thead><tr><th>#</th><th>Command</th><th>Size</th><th>Relative size</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }).catch(err => { el.innerHTML = `<div class="empty-msg">${Utils.escapeHtml(err.message)}</div>`; });
+    } else if (tab === 'inspect') {
       const json = JSON.stringify(data, null, 2);
-      Modal.open(`
-        <div class="modal-header">
-          <h3>${i18n.t('pages.images.inspectTitle')}</h3>
-          <button class="modal-close-btn" id="img-inspect-close-x"><i class="fas fa-times"></i></button>
+      el.innerHTML = `
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+            <h3>Raw Inspect</h3>
+            <button class="btn btn-sm btn-secondary" id="img-copy-inspect"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+          </div>
+          <div class="card-body">
+            <pre class="inspect-json" style="max-height:60vh;overflow:auto">${Utils.escapeHtml(json)}</pre>
+          </div>
         </div>
-        <div class="modal-body">
-          <pre class="inspect-json" style="max-height:60vh;overflow:auto">${Utils.escapeHtml(json)}</pre>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="inspect-copy-btn">
-            <i class="fas fa-copy"></i> ${i18n.t('common.copy')}
-          </button>
-          <button class="btn btn-primary" id="img-inspect-close-btn">${i18n.t('common.close')}</button>
-        </div>
-      `, { width: '700px' });
-      Modal._content.querySelector('#img-inspect-close-x').addEventListener('click', () => Modal.close());
-      Modal._content.querySelector('#img-inspect-close-btn').addEventListener('click', () => Modal.close());
-      Modal._content.querySelector('#inspect-copy-btn')?.addEventListener('click', () => {
+      `;
+      el.querySelector('#img-copy-inspect')?.addEventListener('click', () => {
         Utils.copyToClipboard(json).then(() => Toast.success(i18n.t('common.copied')));
       });
-    } catch (err) {
-      Toast.error(i18n.t('pages.images.inspectFailed', { message: err.message }));
     }
   },
 
@@ -1589,6 +1695,7 @@ const ImagesPage = {
 
   destroy() {
     clearInterval(this._refreshTimer);
+    if (this._detailShell) { this._detailShell.destroy(); this._detailShell = null; }
   },
 };
 

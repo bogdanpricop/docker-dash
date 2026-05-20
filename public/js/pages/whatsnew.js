@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.5.2',
+      date: '2026-05-21',
+      title: 'Standardized detail views — images',
+      changes: [
+        { type: 'feature', text: 'Images now have a real detail view at #/images/<id> — previously everything was a modal. Three standardized tabs: Summary (tags, full ID, digest, size, architecture/OS, labels), Monitor (layer history with per-layer commands and relative-size bars), and Inspect (raw JSON). This is the first net-new view in the detail-standardization rollout (volumes + networks shipped earlier).' },
+        { type: 'improvement', text: 'The image list\'s Inspect action (and the context-menu "View Details") now opens this detail page instead of a JSON modal — the old inspect modal is retired. The separate "View Layers" modal still works alongside the new Monitor tab. Vulnerability-scan integration into the detail is deferred for a later step.' },
+        { type: 'improvement', text: 'Browser-verified end to end (direct navigation + list-button navigation + all three tabs); volumes and networks re-checked for shared-component regression. Built from a per-page feature-spec under the accepted deep-spec.' },
+      ],
+    },
+    {
       version: '8.5.1',
       date: '2026-05-21',
       title: 'Standardized detail views — networks',

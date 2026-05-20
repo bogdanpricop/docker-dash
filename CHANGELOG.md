@@ -2,6 +2,17 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.5.2] - 2026-05-21 — Standardized detail views: images (Phase 3, step 3.3)
+
+Third page onto `DetailShell` — and the first **net-new** detail view (images had no detail page, only modals). Images now have a proper detail at `#/images/<id>` with the standard taxonomy: **Summary** (tags, full ID, digest, size, architecture/OS, labels), **Monitor** (layer history — count, total size, per-layer command + relative-size bars), **Inspect** (raw JSON + copy).
+
+### Behaviour change
+- The image list's **Inspect** action (and context-menu, renamed **View Details**) now opens the detail page instead of a JSON modal — the modal is retired (`_inspect` method removed). The standalone **View Layers** modal is unchanged and remains available alongside the new Monitor tab.
+
+### Notes
+- Vulnerability-scan integration into the detail is deliberately deferred (async workflow with its own menu/results UI); Monitor = layer analysis for now. Per-page feature-spec: `plans/feature-spec-detail-views-3.3-images.md`.
+- Browser-verified (direct nav + list-button nav + all 3 tabs + no new console errors); volumes & networks re-checked for shared-shell regression. Suite unchanged at 1444 green.
+
 ## [8.5.1] - 2026-05-21 — Standardized detail views: networks (Phase 3, step 3.2)
 
 Second page migrated onto `DetailShell`. Network detail now uses the standard **Summary** (general + IPAM + driver options) / **Monitor** (connected containers with IPs/MAC) / **Inspect** (raw JSON) taxonomy, replacing the bespoke `#net-detail-tabs` wiring. Behaviour-preserving; adds keyboard tab nav + consistent chrome. Browser-verified (network detail tab switching + no new console errors) and volumes re-verified for no shared-component regression.
