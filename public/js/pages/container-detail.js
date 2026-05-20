@@ -1784,6 +1784,8 @@ const ContainersPageDetail = {
           <option value="6h">${i18n.t('pages.containers.statsRange6h')}</option>
           <option value="24h">${i18n.t('pages.containers.statsRange24h')}</option>
           <option value="7d">${i18n.t('pages.containers.statsRange7d')}</option>
+          <option value="30d">${i18n.t('pages.containers.statsRange30d')}</option>
+          <option value="90d">${i18n.t('pages.containers.statsRange90d')}</option>
         </select>
         <button class="btn btn-sm btn-secondary" id="stats-refresh"><i class="fas fa-sync-alt"></i></button>
       </div>

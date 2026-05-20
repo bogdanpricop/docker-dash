@@ -148,7 +148,7 @@ i18n.register('ro', 'RO', 'Română', {
       terminalPlaceholder: 'Apasa <strong>Conecteaza</strong> pentru a deschide o sesiune shell',
       terminalError: 'Terminal: {{message}}',
       cpuPercent: 'CPU %', memory: 'Memorie', networkIO: 'Retea I/O', blockIO: 'Disc I/O',
-      statsRange1h: '1 Ora', statsRange6h: '6 Ore', statsRange24h: '24 Ore', statsRange7d: '7 Zile',
+      statsRange1h: '1 Ora', statsRange6h: '6 Ore', statsRange24h: '24 Ore', statsRange7d: '7 Zile', statsRange30d: '30 Zile', statsRange90d: '90 Zile',
       statsFailed: 'Eroare la incarcarea statisticilor: {{message}}',
       copyJson: 'Copiaza JSON',
       // Compose

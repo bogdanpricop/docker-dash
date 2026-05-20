@@ -149,14 +149,36 @@ class StatsService extends EventEmitter {
     `);
   }
 
+  /** Aggregate 1h stats into 1-day buckets (UTC day boundary) */
+  aggregate1d() {
+    const db = getDb();
+    db.exec(`
+      INSERT OR IGNORE INTO container_stats_1d (host_id, container_id, container_name,
+        cpu_avg, cpu_max, mem_avg, mem_max, mem_limit,
+        net_rx_total, net_tx_total, blk_read_total, blk_write_total,
+        pids_avg, sample_count, bucket)
+      SELECT host_id, container_id, container_name,
+        AVG(cpu_avg), MAX(cpu_max),
+        AVG(mem_avg), MAX(mem_max), MAX(mem_limit),
+        SUM(net_rx_total), SUM(net_tx_total),
+        SUM(blk_read_total), SUM(blk_write_total),
+        AVG(pids_avg), SUM(sample_count),
+        strftime('%Y-%m-%d 00:00:00', bucket)
+      FROM container_stats_1h
+      WHERE bucket < datetime('now', '-25 hours')
+      GROUP BY host_id, container_id, strftime('%Y-%m-%d', bucket)
+    `);
+  }
+
   /** Purge old data based on retention settings */
   purge() {
     const db = getDb();
     const r1 = db.prepare(`DELETE FROM container_stats WHERE recorded_at < datetime('now', '-' || ? || ' hours')`).run(config.stats.retentionRawHours);
     const r2 = db.prepare(`DELETE FROM container_stats_1m WHERE bucket < datetime('now', '-' || ? || ' days')`).run(config.stats.retention1mDays);
     const r3 = db.prepare(`DELETE FROM container_stats_1h WHERE bucket < datetime('now', '-' || ? || ' days')`).run(config.stats.retention1hDays);
-    if (r1.changes + r2.changes + r3.changes > 0) {
-      log.debug('Stats purged', { raw: r1.changes, '1m': r2.changes, '1h': r3.changes });
+    const r4 = db.prepare(`DELETE FROM container_stats_1d WHERE bucket < datetime('now', '-' || ? || ' days')`).run(config.stats.retention1dDays);
+    if (r1.changes + r2.changes + r3.changes + r4.changes > 0) {
+      log.debug('Stats purged', { raw: r1.changes, '1m': r2.changes, '1h': r3.changes, '1d': r4.changes });
     }
   }
 
@@ -168,7 +190,8 @@ class StatsService extends EventEmitter {
       '6h': { table: 'container_stats', since: "datetime('now', '-6 hours')", cols: 'cpu_percent as cpu, mem_usage as mem, mem_limit, net_rx, net_tx, blk_read, blk_write, pids, recorded_at as time' },
       '24h': { table: 'container_stats_1m', since: "datetime('now', '-24 hours')", cols: 'cpu_avg as cpu, mem_avg as mem, mem_limit, net_rx_total as net_rx, net_tx_total as net_tx, blk_read_total as blk_read, blk_write_total as blk_write, pids_avg as pids, bucket as time' },
       '7d': { table: 'container_stats_1h', since: "datetime('now', '-7 days')", cols: 'cpu_avg as cpu, mem_avg as mem, mem_limit, net_rx_total as net_rx, net_tx_total as net_tx, blk_read_total as blk_read, blk_write_total as blk_write, pids_avg as pids, bucket as time' },
-      '30d': { table: 'container_stats_1h', since: "datetime('now', '-30 days')", cols: 'cpu_avg as cpu, mem_avg as mem, mem_limit, net_rx_total as net_rx, net_tx_total as net_tx, blk_read_total as blk_read, blk_write_total as blk_write, pids_avg as pids, bucket as time' },
+      '30d': { table: 'container_stats_1d', since: "datetime('now', '-30 days')", cols: 'cpu_avg as cpu, mem_avg as mem, mem_limit, net_rx_total as net_rx, net_tx_total as net_tx, blk_read_total as blk_read, blk_write_total as blk_write, pids_avg as pids, bucket as time' },
+      '90d': { table: 'container_stats_1d', since: "datetime('now', '-90 days')", cols: 'cpu_avg as cpu, mem_avg as mem, mem_limit, net_rx_total as net_rx, net_tx_total as net_tx, blk_read_total as blk_read, blk_write_total as blk_write, pids_avg as pids, bucket as time' },
     };
     const r = ranges[range] || ranges['1h'];
     return db.prepare(`SELECT ${r.cols} FROM ${r.table} WHERE container_id = ? AND host_id = ? AND time >= ${r.since} ORDER BY time ASC`).all(containerId, hostId);

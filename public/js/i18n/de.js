@@ -117,7 +117,7 @@ i18n.register('de', 'DE', 'Deutsch', {
       terminalError: 'Terminal: {{message}}',
       // Stats
       cpuPercent: 'CPU %', memory: 'Speicher', networkIO: 'Netzwerk-I/O', blockIO: 'Block-I/O',
-      statsRange1h: '1 Stunde', statsRange6h: '6 Stunden', statsRange24h: '24 Stunden', statsRange7d: '7 Tage',
+      statsRange1h: '1 Stunde', statsRange6h: '6 Stunden', statsRange24h: '24 Stunden', statsRange7d: '7 Tage', statsRange30d: '30 Tage', statsRange90d: '90 Tage',
       statsFailed: 'Fehler beim Laden der Statistiken: {{message}}',
       // Inspect
       copyJson: 'JSON kopieren',

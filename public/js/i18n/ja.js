@@ -116,7 +116,7 @@ i18n.register('ja', 'JP', '日本語', {
       terminalError: 'ターミナル: {{message}}',
       // Stats
       cpuPercent: 'CPU %', memory: 'メモリ', networkIO: 'ネットワーク I/O', blockIO: 'ブロック I/O',
-      statsRange1h: '1時間', statsRange6h: '6時間', statsRange24h: '24時間', statsRange7d: '7日間',
+      statsRange1h: '1時間', statsRange6h: '6時間', statsRange24h: '24時間', statsRange7d: '7日間', statsRange30d: '30日間', statsRange90d: '90日間',
       statsFailed: '統計の読み込みに失敗しました: {{message}}',
       // Inspect
       copyJson: 'JSONをコピー',

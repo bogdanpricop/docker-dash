@@ -116,7 +116,7 @@ i18n.register('ko', 'KR', '한국어', {
       terminalError: '터미널: {{message}}',
       // Stats
       cpuPercent: 'CPU %', memory: 'Memory', networkIO: 'Network I/O', blockIO: 'Block I/O',
-      statsRange1h: '1시간', statsRange6h: '6시간', statsRange24h: '24시간', statsRange7d: '7일',
+      statsRange1h: '1시간', statsRange6h: '6시간', statsRange24h: '24시간', statsRange7d: '7일', statsRange30d: '30일', statsRange90d: '90일',
       statsFailed: '통계 로딩 실패: {{message}}',
       // Inspect
       copyJson: 'JSON 복사',

@@ -116,7 +116,7 @@ i18n.register('zh', '中文', '中文', {
       terminalError: '终端：{{message}}',
       // Stats
       cpuPercent: 'CPU %', memory: '内存', networkIO: '网络 I/O', blockIO: '块 I/O',
-      statsRange1h: '1 小时', statsRange6h: '6 小时', statsRange24h: '24 小时', statsRange7d: '7 天',
+      statsRange1h: '1 小时', statsRange6h: '6 小时', statsRange24h: '24 小时', statsRange7d: '7 天', statsRange30d: '30 天', statsRange90d: '90 天',
       statsFailed: '加载统计失败：{{message}}',
       // Inspect
       copyJson: '复制 JSON',

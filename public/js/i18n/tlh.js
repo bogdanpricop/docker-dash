@@ -116,7 +116,7 @@ i18n.register('tlh', '\u2694\uFE0F', 'tlhIngan Hol', {
       terminalError: 'ra\'wI\' paq: {{message}}',
       // Stats
       cpuPercent: 'CPU %', memory: 'qawHaq', networkIO: 'QonoS rarwI\' I/O', blockIO: 'Block I/O',
-      statsRange1h: '1 rep', statsRange6h: '6 rep', statsRange24h: '24 rep', statsRange7d: '7 jaj',
+      statsRange1h: '1 rep', statsRange6h: '6 rep', statsRange24h: '24 rep', statsRange7d: '7 jaj', statsRange30d: '30 jaj', statsRange90d: '90 jaj',
       statsFailed: 'ngoQ De\' laDlaHbe\'lu\': {{message}}',
       // Inspect
       copyJson: 'JSON qon',

@@ -194,6 +194,10 @@ function startAll() {
   // Aggregate 1m → 1h every 10 minutes
   jobs.push(cron.schedule('*/10 * * * *', _m('stats-aggregate-1h', () => statsService.aggregate1h())));
 
+  // Aggregate 1h → 1d daily at 00:20 (v8.4.0 — feeds the 30d/90d metric ranges,
+  // retained 90 days so long-range charts no longer fall off the 7-day 1h cliff)
+  jobs.push(cron.schedule('20 0 * * *', _m('stats-aggregate-1d', () => statsService.aggregate1d())));
+
   // Alert evaluation every 10 seconds (via setInterval for precision)
   const alertInterval = setInterval(_m('alert-evaluate', () => alertService.evaluate()), 10000);
 

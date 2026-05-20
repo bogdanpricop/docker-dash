@@ -59,6 +59,7 @@ module.exports = {
     retentionRawHours: int('STATS_RAW_RETENTION_HOURS', 24),
     retention1mDays: int('STATS_1M_RETENTION_DAYS', 7),
     retention1hDays: int('STATS_1H_RETENTION_DAYS', 7),
+    retention1dDays: int('STATS_1D_RETENTION_DAYS', 90),
   },
   retention: {
     auditDays: int('AUDIT_RETENTION_DAYS', 365),

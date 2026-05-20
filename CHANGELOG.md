@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.4.0] - 2026-05-20 — 30-day metrics tier (daily rollup)
+
+Second feature of the v8.3+ roadmap. The metrics chart already offered a **30 Days** range, but it silently lied: that range queried `container_stats_1h`, which the purge job trims at 7 days. Anything past a week returned nothing. This adds the missing 4th aggregation tier so long-range charts show real data.
+
+### The bug it fixes
+
+`stats.query()` mapped `'30d'` → `container_stats_1h`, but `STATS_1H_RETENTION_DAYS` defaults to 7. So a "30 days" chart was capped at 7 days of points with no error — just a short line. The fix is a proper daily rollup retained long enough to back the range.
+
+### What changed
+
+- **New tier `container_stats_1d`** (migration `067_stats_1d.js`) — same columns as the 1h table, unique on `(container_id, bucket)` so `INSERT OR IGNORE` aggregation is idempotent (mirrors the v009 fix for 1m/1h).
+- **`statsService.aggregate1d()`** — rolls `container_stats_1h` into UTC-day buckets (`AVG`/`MAX` for gauges, `SUM` for counters), guarded at `bucket < now-25h` so the current day isn't half-aggregated.
+- **Daily cron `stats-aggregate-1d`** at 00:20, leader-gated like the other rollups.
+- **Retention** — new `STATS_1D_RETENTION_DAYS` (default **90**); `purge()` now trims the 1d table too.
+- **Query ranges** — `'30d'` now reads `container_stats_1d`; added a `'90d'` range backed by the same tier.
+- **UI** — container Stats tab range selector gains **30 Days** / **90 Days** options, with i18n keys (`statsRange30d`/`statsRange90d`) across all 12 locales.
+
+### Tests
+
+- `stats-aggregate1d.test.js` — 5 cases: multi-bucket same-day rollup (avg/max/sum correctness), day separation, idempotency, 25h guard, and `'30d'` range reads from the 1d tier. Suite: 1420 → 1425.
+
 ## [8.3.0] - 2026-05-20 — GitOps drift detection (read-only)
 
 First feature of the v8.3+ roadmap. Tells operators when a git-managed stack's **running** state has diverged from the git-checked-out compose — the "someone touched prod by hand" case that ArgoCD/Flux/Komodo surface but no Docker-focused dashboard in our comparison set does.

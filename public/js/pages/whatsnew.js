@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.4.0',
+      date: '2026-05-20',
+      title: '30-day metrics tier (daily rollup)',
+      changes: [
+        { type: 'fix', text: 'The container Stats "30 Days" range silently showed only 7 days of data. It queried the 1-hour rollup table, which the purge job trims at 7 days — so anything older just fell off with no error. Now backed by a real daily-rollup tier retained 90 days.' },
+        { type: 'feature', text: 'New 4th aggregation tier container_stats_1d (migration 067). statsService.aggregate1d() rolls the 1-hour buckets into UTC-day buckets (AVG/MAX for gauges, SUM for counters), guarded at now-25h so the current day is never half-aggregated. Daily leader-gated cron at 00:20. Unique (container_id, bucket) index makes the INSERT OR IGNORE idempotent.' },
+        { type: 'feature', text: 'Stats range selector gains "30 Days" and "90 Days" options (both backed by the new daily tier), with i18n keys across all 12 locales. New STATS_1D_RETENTION_DAYS env var (default 90); the purge job now trims the daily tier too.' },
+        { type: 'improvement', text: '5 new tests (multi-bucket rollup math, day separation, idempotency, 25h guard, 30d query reads daily tier). Suite: 1420 → 1425. Roadmap Phase 2 of v8.3+.' },
+      ],
+    },
+    {
       version: '8.3.0',
       date: '2026-05-20',
       title: 'GitOps drift detection (read-only)',
