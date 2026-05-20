@@ -2,6 +2,44 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.3.0] - 2026-05-20 — GitOps drift detection (read-only)
+
+First feature of the v8.3+ roadmap. Tells operators when a git-managed stack's **running** state has diverged from the git-checked-out compose — the "someone touched prod by hand" case that ArgoCD/Flux/Komodo surface but no Docker-focused dashboard in our comparison set does.
+
+### Why this is distinct from the existing "Check"
+
+`git/stacks/:id/check` answers *"are there new commits I haven't deployed?"* (git-ahead). Drift answers a complementary question: *"does the actually-running container state match the compose file git currently has checked out?"* — catching manual `docker stop` / `rm` / re-tag / out-of-band container additions.
+
+### Read-only by design
+
+Detection only. Nothing in the drift path ever starts/stops/removes/deploys a container — the fix is the existing manual "Re-deploy from git" button. Auto-sync was deliberately NOT built (it re-introduces unwanted-deploy risk).
+
+### What it detects
+
+- **missing** — service declared in compose, no container running
+- **extra** — container running under the stack's compose project but not declared
+- **stopped** — declared service exists but isn't running
+- **image_mismatch** — running image differs from what compose declares (with registry-normalized comparison so `nginx` == `docker.io/library/nginx:latest`)
+
+v1 deliberately compares **presence + image only** — env/port/volume deep-diff is too noisy (compose defaults vs runtime-resolved values legitimately differ). Build-only services (no `image:`) are matched by compose-service label, not image.
+
+### Implementation
+
+- `src/services/git-drift.js` — pure `detectDrift(desired, actual)` core (no I/O, fully unit-tested) + `normalizeImage` + `parseComposeServices` + DB-backed `scanStack`/`scanAndStore`/`scanAll`.
+- Migration `066_git_stack_drift.js` — one row per git stack (latest result; no history in v1).
+- Leader-gated cron `git-drift-scan` every 5 min; manual `POST /git/stacks/:id/drift-scan`.
+- Routes: `GET /git/stacks/drift` (all, for badges — registered before `/stacks/:id` to avoid param shadowing), `GET /git/stacks/:id/drift`, `POST /git/stacks/:id/drift-scan` (operator+).
+- New audit action `git_drift_detected` (emitted on in-sync → drifted transition; recognised by AI audit search).
+- UI: drift badge on the git-stacks list cards + a drift panel on the detail view (per-drift explanation + "Re-deploy from git to fix" + "Scan Drift" button).
+
+### Tests
+
+- `git-drift.test.js` — 22 cases pinning `normalizeImage` (8), `parseComposeServices` (4), and `detectDrift` (10: in-sync, missing, extra, stopped, image_mismatch, build-only no-false-positive, bare-vs-qualified-image equality, multiple simultaneous, empty compose, null-service container ignored). Suite: 1398 → 1420.
+
+### Roadmap context
+
+Part of `plans/feature-roadmap-v8.3+.md`. Key finding from the survey: the product is dramatically more complete than a gap exercise assumes (customizable dashboard, build-from-Dockerfile, historical metrics, per-stack RBAC, etc. are all already shipped). Remaining genuine gaps prioritized as: drift detection (this, Phase 1) → 30d metrics tier → standardized tabbed detail views → frontend reactivity layer → custom named roles.
+
 ## [Unreleased — 8.2.x maintenance, wave 7] - 2026-05-15 — One-line install restart-loop bug
 
 User reported: fresh `curl ... | bash` install on Ubuntu 25.10 → container downloads, then enters a restart loop forever. Root-caused to **three independent bugs** stacking; all three fixed.

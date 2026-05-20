@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.3.0',
+      date: '2026-05-20',
+      title: 'GitOps drift detection (read-only)',
+      changes: [
+        { type: 'feature', text: 'GitOps drift detection for git-managed stacks. Tells you when a stack\'s RUNNING state has diverged from the git-checked-out compose — the "someone changed prod by hand" case. Complementary to "Check" (which detects new commits to deploy); drift detects manual docker stop / rm / re-tag / out-of-band container additions. Surfaced as a badge on the Git Stacks list + a drift panel on the detail view.' },
+        { type: 'feature', text: 'Detects four drift types: missing (service declared in git, no container), extra (container running but not declared), stopped (declared service not running), and image_mismatch (running a different image than git declares — with registry-normalized comparison so nginx == docker.io/library/nginx:latest). v1 compares presence + image only; env/port/volume deep-diff deliberately skipped (too noisy from compose-default vs runtime-resolved differences).' },
+        { type: 'feature', text: 'Read-only by design — nothing in the drift path ever starts/stops/removes/deploys a container. The fix is the existing manual "Re-deploy from git" button. Auto-sync was deliberately NOT built (re-introduces unwanted-deploy risk). Leader-gated cron scans every 5 minutes; manual "Scan Drift" button for instant checks. New audit action git_drift_detected fires on the in-sync → drifted transition.' },
+        { type: 'improvement', text: '22 new tests (pure detectDrift + normalizeImage + parseComposeServices core, no Docker/FS needed). Suite: 1398 → 1420 / 84 suites. Migration 066 adds git_stack_drift (one row per stack, latest result). Strategy-first: deep-spec written before code (plans/, gitignored).' },
+        { type: 'improvement', text: 'Roadmap note: a full backend+frontend survey found the product is far more complete than a gap exercise assumes (customizable dashboard, build-from-Dockerfile, historical metrics, per-stack RBAC all already shipped). Next genuine gaps: 30-day metrics tier, standardized tabbed detail views, a frontend reactivity layer, and custom named roles.' },
+      ],
+    },
+    {
       version: '8.2.0',
       date: '2026-05-05',
       title: 'pCloud backup target + stack & audit off-site archives',
