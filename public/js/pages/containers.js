@@ -416,7 +416,7 @@ const ContainersPage = {
         <div id="exposed-ports-table"></div>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" id="exposed-close-btn">${i18n.t('common.close')}</button></div>
-    `, { width: '920px' });
+    `, { width: 'min(1320px, 96vw)' });
 
     Modal._content.querySelector('#exposed-close-x').addEventListener('click', () => Modal.close());
     Modal._content.querySelector('#exposed-close-btn').addEventListener('click', () => Modal.close());

@@ -2,6 +2,10 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.6.1] - 2026-05-22 — Wider Exposed Ports dialog
+
+The Exposed Ports modal now opens at `min(1320px, 96vw)` (was 920px) so the eight columns breathe instead of crowding. Browser-verified at 1320px on a 1600px viewport.
+
 ## [8.6.0] - 2026-05-22 — Exposed Ports audit
 
 New **Exposed Ports** button on the Containers page opens a modal auditing every container that publishes a port to the host — the "what's reachable from outside?" view, in one place.
