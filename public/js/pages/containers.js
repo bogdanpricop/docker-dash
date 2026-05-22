@@ -118,6 +118,9 @@ const ContainersPage = {
           <button class="btn btn-sm btn-secondary" id="container-groups" title="Manage groups">
             <i class="fas fa-folder"></i> Groups
           </button>
+          <button class="btn btn-sm btn-secondary" id="container-exposed-ports" title="Audit all containers with ports published to the host">
+            <i class="fas fa-network-wired"></i> Exposed Ports
+          </button>
           <button class="prune-help-btn" id="containers-help" title="${i18n.t('pages.containers.helpTooltip')}">?</button>
           <button class="prune-help-btn" id="containers-guide" title="Actions guide" style="background:var(--accent);color:#fff;border-color:var(--accent)">i</button>
           <button class="btn btn-sm btn-secondary" id="containers-refresh">
@@ -148,6 +151,7 @@ const ContainersPage = {
     container.querySelector('#container-sandbox').addEventListener('click', () => this._sandboxDialog());
     container.querySelector('#container-templates').addEventListener('click', () => this._templatesDialog());
     container.querySelector('#container-groups').addEventListener('click', () => this._manageGroupsDialog());
+    container.querySelector('#container-exposed-ports').addEventListener('click', () => this._exposedPortsDialog());
     container.querySelector('#containers-help').addEventListener('click', () => this._showHelp());
     container.querySelector('#containers-guide').addEventListener('click', () => this._showActionsGuide());
     container.querySelector('#container-github-compose').addEventListener('click', () => this._githubComposeDialog());
@@ -326,6 +330,136 @@ const ContainersPage = {
     } catch (err) {
       Toast.error(i18n.t('pages.containers.loadFailed', { message: err.message }));
     }
+  },
+
+  // ─── Exposed Ports audit (modal) ──────────────────────────────────
+  // Common service names by container (private) port, for a quick "what is
+  // this" hint in the audit. Sensitive ones get flagged when public.
+  _PORT_SERVICES: {
+    20: 'FTP', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
+    80: 'HTTP', 110: 'POP3', 143: 'IMAP', 389: 'LDAP', 443: 'HTTPS', 445: 'SMB',
+    1433: 'MSSQL', 1521: 'Oracle', 2375: 'Docker API', 2376: 'Docker API (TLS)',
+    3000: 'HTTP (dev)', 3306: 'MySQL', 3389: 'RDP', 5000: 'HTTP (dev)',
+    5432: 'PostgreSQL', 5601: 'Kibana', 5672: 'RabbitMQ', 6379: 'Redis',
+    8080: 'HTTP-alt', 8086: 'InfluxDB', 8443: 'HTTPS-alt', 9000: 'MinIO/FPM',
+    9090: 'Prometheus', 9200: 'Elasticsearch', 11211: 'Memcached',
+    15672: 'RabbitMQ UI', 27017: 'MongoDB',
+  },
+  _SENSITIVE_PORTS: new Set([22, 23, 445, 1433, 1521, 2375, 2376, 3306, 3389, 5432, 6379, 9200, 11211, 27017, 5601, 15672, 8086]),
+
+  async _exposedPortsDialog() {
+    let containers;
+    try {
+      containers = await Api.getContainers(true);
+    } catch (err) { Toast.error(err.message); return; }
+
+    const classify = (ip) => {
+      if (!ip || ip === '0.0.0.0' || ip === '::') return { label: 'Public (all interfaces)', pub: true, color: 'var(--red)' };
+      if (ip === '127.0.0.1' || ip === '::1') return { label: 'Localhost only', pub: false, color: 'var(--green)' };
+      return { label: ip, pub: false, color: 'var(--text-dim)' };
+    };
+
+    // One row per published mapping, deduped across IPv4/IPv6 (prefer public).
+    const byKey = new Map();
+    for (const c of containers) {
+      for (const p of (c.ports || [])) {
+        const pub = p.public || p.PublicPort;
+        if (!pub) continue;
+        const priv = p.private || p.PrivatePort || 0;
+        const proto = (p.type || p.Type || 'tcp').toLowerCase();
+        const ip = p.ip || p.IP || '';
+        const ex = classify(ip);
+        const service = this._PORT_SERVICES[priv] || '';
+        const sensitive = this._SENSITIVE_PORTS.has(Number(priv));
+        const key = `${c.id}|${pub}|${priv}|${proto}`;
+        const existing = byKey.get(key);
+        if (!existing || (ex.pub && !existing._pub)) {
+          byKey.set(key, {
+            id: c.id, name: c.name, image: c.image, state: c.state,
+            stack: c.stack || '', hostIp: ip || '0.0.0.0',
+            publicPort: Number(pub), privatePort: Number(priv), proto,
+            service, exposure: ex.label,
+            _pub: ex.pub, _color: ex.color, _sensitive: sensitive,
+          });
+        }
+      }
+    }
+    const rows = [...byKey.values()].sort((a, b) => a.publicPort - b.publicPort);
+    this._exposedRows = rows;
+
+    const containerCount = new Set(rows.map(r => r.id)).size;
+    const publicCount = rows.filter(r => r._pub).length;
+    const riskyCount = rows.filter(r => r._pub && r._sensitive).length;
+
+    const summary = rows.length === 0
+      ? `<div class="text-muted">No containers are publishing ports to the host.</div>`
+      : `<strong>${rows.length}</strong> published port${rows.length === 1 ? '' : 's'} across <strong>${containerCount}</strong> container${containerCount === 1 ? '' : 's'}` +
+        ` · <span style="color:var(--red)">${publicCount}</span> reachable on all interfaces` +
+        (riskyCount > 0 ? ` · <span style="color:var(--red)"><i class="fas fa-triangle-exclamation"></i> ${riskyCount} sensitive service${riskyCount === 1 ? '' : 's'} publicly exposed</span>` : '');
+
+    Modal.open(`
+      <div class="modal-header">
+        <h3><i class="fas fa-network-wired" style="color:var(--accent);margin-right:8px"></i> Exposed Ports</h3>
+        <button class="modal-close-btn" id="exposed-close-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body" style="max-height:72vh;overflow:auto">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+          <div class="search-box" style="flex:1;min-width:200px">
+            <i class="fas fa-search"></i>
+            <input type="text" id="exposed-search" placeholder="Filter by container, port, service...">
+          </div>
+          <button class="btn btn-sm btn-secondary" id="exposed-copy" ${rows.length ? '' : 'disabled'}><i class="fas fa-copy"></i> Copy</button>
+          <button class="btn btn-sm btn-secondary" id="exposed-csv" ${rows.length ? '' : 'disabled'}><i class="fas fa-file-csv"></i> CSV</button>
+          <button class="btn btn-sm btn-primary" id="exposed-xlsx" ${rows.length ? '' : 'disabled'}><i class="fas fa-file-excel"></i> XLSX</button>
+        </div>
+        <div id="exposed-summary" style="margin-bottom:10px;font-size:13px">${summary}</div>
+        <div id="exposed-ports-table"></div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" id="exposed-close-btn">${i18n.t('common.close')}</button></div>
+    `, { width: '920px' });
+
+    Modal._content.querySelector('#exposed-close-x').addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#exposed-close-btn').addEventListener('click', () => Modal.close());
+
+    if (rows.length === 0) return;
+
+    const portCell = v => `<span class="mono">${Utils.escapeHtml(String(v))}</span>`;
+    const table = new DataTable(Modal._content.querySelector('#exposed-ports-table'), {
+      columns: [
+        { key: 'name', label: 'Container', render: (v, row) => `<span class="badge ${Utils.statusBadgeClass(row.state)}" style="margin-right:6px">${Utils.escapeHtml(row.state)}</span><span class="mono">${Utils.escapeHtml(v)}</span>` },
+        { key: 'stack', label: 'Stack', render: v => v ? Utils.escapeHtml(v) : '<span class="text-muted">—</span>' },
+        { key: 'hostIp', label: 'Host IP', render: v => `<span class="mono text-sm">${Utils.escapeHtml(v)}</span>` },
+        { key: 'publicPort', label: 'Host Port', render: portCell },
+        { key: 'privatePort', label: 'Container Port', render: portCell },
+        { key: 'proto', label: 'Proto' },
+        { key: 'service', label: 'Service', render: (v, row) => v ? `${Utils.escapeHtml(v)}${row._sensitive && row._pub ? ' <i class="fas fa-triangle-exclamation" title="Sensitive service exposed on all interfaces" style="color:var(--red)"></i>' : ''}` : '<span class="text-muted">—</span>' },
+        { key: 'exposure', label: 'Exposure', render: (v, row) => `<span style="color:${row._color}">${Utils.escapeHtml(v)}</span>` },
+      ],
+      rowClass: (row) => (row._pub && row._sensitive) ? 'row-risk' : '',
+      onRowClick: (row) => { Modal.close(); App.navigate(`/containers/${row.id}`); },
+      emptyText: 'No matching ports',
+    });
+    table.setData(rows);
+
+    Modal._content.querySelector('#exposed-search').addEventListener('input',
+      Utils.debounce(e => table.setFilter(e.target.value), 150));
+
+    const stamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const headers = ['Container', 'Stack', 'State', 'Host IP', 'Host Port', 'Container Port', 'Protocol', 'Service', 'Exposure'];
+    const toRows = () => this._exposedRows.map(r => [r.name, r.stack, r.state, r.hostIp, r.publicPort, r.privatePort, r.proto, r.service, r.exposure]);
+
+    Modal._content.querySelector('#exposed-csv').addEventListener('click', () => {
+      Utils.exportCsv(`exposed-ports-${stamp()}.csv`, headers, toRows());
+      Toast.success(`Exported ${this._exposedRows.length} rows`);
+    });
+    Modal._content.querySelector('#exposed-xlsx').addEventListener('click', () => {
+      Utils.exportXlsx(`exposed-ports-${stamp()}.xlsx`, 'Exposed Ports', headers, toRows());
+      Toast.success(`Exported ${this._exposedRows.length} rows`);
+    });
+    Modal._content.querySelector('#exposed-copy').addEventListener('click', () => {
+      const text = [headers.join('\t'), ...toRows().map(r => r.join('\t'))].join('\n');
+      Utils.copyToClipboard(text).then(() => Toast.success('Copied to clipboard')).catch(() => Toast.error('Copy failed'));
+    });
   },
 
   _getVersion(row) {

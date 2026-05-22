@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.6.0',
+      date: '2026-05-22',
+      title: 'Exposed Ports audit',
+      changes: [
+        { type: 'feature', text: 'New "Exposed Ports" button on the Containers page opens a modal auditing every container that publishes a port to the host — your "what is reachable from outside?" view in one place. One row per published mapping (deduped across IPv4/IPv6), sortable on every column (numeric for ports) with a live filter, and click-through to the container detail.' },
+        { type: 'feature', text: 'Security-minded extras: exposure classification (0.0.0.0/:: = Public on all interfaces in red, 127.0.0.1 = Localhost only in green, or the specific bind IP), service-name hints from a common container-port map (SSH, MySQL, Redis, MongoDB, PostgreSQL, …), and flagging of sensitive services (databases, SSH, RDP, Docker API) reachable on all interfaces — with a tinted row, a ⚠ marker, and a headline "N sensitive services publicly exposed" count.' },
+        { type: 'feature', text: 'Export the audit to CSV or real .xlsx, or Copy to clipboard. The .xlsx and CSV writers are new zero-dependency, no-build Utils helpers (the .xlsx builds valid OOXML via stored ZIP entries + CRC32, numbers as numeric cells) — now reusable by any page. Purely client-side; no backend changes.' },
+      ],
+    },
+    {
       version: '8.5.2',
       date: '2026-05-21',
       title: 'Standardized detail views — images',

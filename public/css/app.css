@@ -450,6 +450,9 @@ textarea { resize: vertical; min-height: 80px; }
 .detail-shell-meta { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
 .detail-shell-panel { margin-top: 4px; }
 
+/* Exposed-ports audit: highlight sensitive services reachable on all interfaces */
+tr.row-risk td { background: rgba(248, 81, 73, 0.08); }
+
 /* ── Charts ──────────────────────────────────────── */
 .chart-container { position: relative; height: 220px; width: 100%; }
 .chart-container.tall { height: 300px; }

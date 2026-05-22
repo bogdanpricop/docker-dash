@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.6.0] - 2026-05-22 — Exposed Ports audit
+
+New **Exposed Ports** button on the Containers page opens a modal auditing every container that publishes a port to the host — the "what's reachable from outside?" view, in one place.
+
+### What it shows
+- One row per published mapping (deduped across IPv4/IPv6), with columns: Container (+ state badge, click-through to detail), Stack, Host IP, Host Port, Container Port, Protocol, Service, Exposure.
+- **Sortable on every column** (numeric for ports) via the existing DataTable, plus a live text filter.
+
+### Security-minded value-adds
+- **Exposure classification**: `0.0.0.0`/`::`/empty → "Public (all interfaces)" (red); `127.0.0.1`/`::1` → "Localhost only" (green); a specific bind IP shown verbatim.
+- **Service hints** from a common container-port map (22 SSH, 3306 MySQL, 6379 Redis, 27017 MongoDB, 5432 PostgreSQL, …).
+- **Sensitive-exposure flagging**: sensitive services (databases, SSH, RDP, Docker API, …) reachable on all interfaces get a ⚠ marker + tinted row, and a headline count ("N sensitive services publicly exposed").
+- Summary line: total published ports, container count, public count, risky count.
+
+### Export
+- **CSV** and real **.xlsx** export, plus **Copy** (TSV) to clipboard.
+- New reusable, zero-dependency `Utils.exportCsv` / `Utils.exportXlsx` / `Utils.downloadBlob` / `Utils.crc32` — the `.xlsx` writer builds valid OOXML via stored ZIP entries + CRC32 (numbers as numeric cells), with no library and no build step. Available to any page now.
+
+### Notes
+- Purely client-side over the existing container list — no new backend endpoint. Browser-verified (modal, sorting, filter, exports, no console errors); `.xlsx` integrity validated with `unzip -t`. Feature-spec: `plans/feature-spec-exposed-ports-audit.md`.
+
 ## [8.5.2] - 2026-05-21 — Standardized detail views: images (Phase 3, step 3.3)
 
 Third page onto `DetailShell` — and the first **net-new** detail view (images had no detail page, only modals). Images now have a proper detail at `#/images/<id>` with the standard taxonomy: **Summary** (tags, full ID, digest, size, architecture/OS, labels), **Monitor** (layer history — count, total size, per-layer command + relative-size bars), **Inspect** (raw JSON + copy).

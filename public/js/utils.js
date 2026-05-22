@@ -296,6 +296,93 @@ const Utils = {
       document.body.removeChild(textarea);
     }
   },
+
+  // ─── Tabular export (CSV + real .xlsx, zero dependencies) ──────────
+  // headers: string[]   rows: Array<Array<string|number>>
+
+  downloadBlob(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  exportCsv(filename, headers, rows) {
+    const esc = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+    const lines = [headers.map(esc).join(',')];
+    for (const r of rows) lines.push(r.map(esc).join(','));
+    // Leading BOM so Excel reads UTF-8 correctly.
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    this.downloadBlob(filename, blob);
+  },
+
+  _xmlEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  },
+
+  crc32(bytes) {
+    if (!Utils._crcTable) {
+      const t = new Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      Utils._crcTable = t;
+    }
+    const t = Utils._crcTable;
+    let crc = -1;
+    for (let i = 0; i < bytes.length; i++) crc = t[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ -1) >>> 0;
+  },
+
+  // Build a minimal-but-valid .xlsx (OOXML) using stored (uncompressed) ZIP
+  // entries — no external library, no build step. One sheet; numbers are
+  // emitted as numeric cells, everything else as inline strings.
+  exportXlsx(filename, sheetName, headers, rows) {
+    const enc = new TextEncoder();
+    const colLetter = (n) => { let s = ''; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+    const cellXml = (val, ci, ri) => {
+      const ref = colLetter(ci) + ri;
+      if (typeof val === 'number' && isFinite(val)) return `<c r="${ref}"><v>${val}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${this._xmlEsc(val)}</t></is></c>`;
+    };
+    const allRows = [headers, ...rows];
+    let body = '';
+    allRows.forEach((r, ri) => {
+      body += `<row r="${ri + 1}">${r.map((v, ci) => cellXml(v, ci, ri + 1)).join('')}</row>`;
+    });
+    const safeSheet = (sheetName || 'Sheet1').replace(/[\\/?*[\]:]/g, ' ').substring(0, 31) || 'Sheet1';
+    const files = {
+      '[Content_Types].xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`,
+      '_rels/.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${this._xmlEsc(safeSheet)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      'xl/_rels/workbook.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+      'xl/worksheets/sheet1.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`,
+    };
+    const u16 = n => [n & 0xFF, (n >>> 8) & 0xFF];
+    const u32 = n => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    for (const [name, content] of Object.entries(files)) {
+      const nameBytes = enc.encode(name);
+      const data = enc.encode(content);
+      const crc = this.crc32(data);
+      const local = [].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0));
+      chunks.push(new Uint8Array(local), nameBytes, data);
+      const cen = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameBytes.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset));
+      central.push({ header: new Uint8Array(cen), nameBytes });
+      offset += local.length + nameBytes.length + data.length;
+    }
+    const cdStart = offset;
+    let cdSize = 0;
+    for (const c of central) { chunks.push(c.header, c.nameBytes); cdSize += c.header.length + c.nameBytes.length; }
+    chunks.push(new Uint8Array([].concat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length), u32(cdSize), u32(cdStart), u16(0))));
+    this.downloadBlob(filename, new Blob(chunks, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  },
   // Guess a Font Awesome 6 Solid unicode glyph for a container based on image/name
   // Used in canvas-based Topology and Dependency Map visualizations
   guessContainerIcon(image, name) {
