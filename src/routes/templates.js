@@ -71,6 +71,8 @@ const BUILTIN_VERIFICATION = {
   'ai-n8n':                      { verified_at: '2026-05-05' },
   'ai-litellm':                  { verified_at: '2026-05-05' },
   'ai-flowise':                  { verified_at: '2026-05-05' },
+  // Verified 2026-05-27
+  'unifi-network-application':   { verified_at: '2026-05-27' },
   // Older built-ins — not re-verified yet. UI shows neutral state, no warning.
   // Add entries here as you re-validate.
 };
@@ -412,6 +414,99 @@ const TEMPLATES = [
     id: 'ai-flowise', name: 'Flowise (drag-drop LLM apps)', category: 'AI', icon: 'fas fa-stream',
     description: 'Drag-and-drop builder for LLM applications: chatbots, agents, RAG. Similar to Langflow but more polished UX. 100+ integrations. Web UI at :3000.',
     compose: `services:\n  flowise:\n    image: flowiseai/flowise:latest\n    container_name: flowise\n    restart: unless-stopped\n    ports:\n      - "3000:3000"\n    environment:\n      FLOWISE_USERNAME: admin\n      FLOWISE_PASSWORD: changeme\n    volumes:\n      - flowise-data:/root/.flowise\n    command: /bin/sh -c "sleep 3; flowise start"\nvolumes:\n  flowise-data:`,
+  },
+  {
+    // v8.6.x — UniFi Network Application (self-hosted Ubiquiti controller).
+    //
+    // Built on linuxserver.io's image since Ubiquiti discontinued the official
+    // Docker controller. Two services: the controller + a dedicated MongoDB
+    // 7.0 (highest supported by UniFi <9.0). A Compose `configs:` block ships
+    // the mongo user-creation script inline so the stack is self-contained
+    // (no host file to mount). Requires Docker Compose 2.23+ for `content:`.
+    //
+    // After deploy:
+    //   1. Open https://<host>:8443 — accept the self-signed cert, run the
+    //      setup wizard (create the first admin account).
+    //   2. UniFi devices: set Inform URL to http://<host>:8080 (Settings →
+    //      System → Advanced) or via SSH `set-inform`.
+    //   3. **CHANGE THE MONGO PASSWORD** before first deploy: replace
+    //      `changeme` in BOTH MONGO_PASS env vars AND in the init-mongo.js
+    //      `pwd:` fields — they must match. The script runs ONCE on first
+    //      Mongo start; rotating later means either dropping the unifi-db
+    //      volume OR updating the user via mongosh.
+    //
+    // Notes:
+    //   - Mongo image pinned (never `latest`) per LSIO guidance.
+    //   - Mongo >4.4 on x86-64 needs a CPU with AVX (most modern hardware).
+    //   - Self-signed cert by default; if fronted by a reverse proxy, allow
+    //     unverified upstream.
+    //   - In-place migration from the legacy `unifi-controller` image is NOT
+    //     supported by upstream — backup in the old, restore in the new.
+    id: 'unifi-network-application', name: 'UniFi Network Application', category: 'Networking', icon: 'fas fa-wifi',
+    description: 'Self-hosted Ubiquiti UniFi controller (LinuxServer.io image) with a dedicated MongoDB 7.0 sidecar. Inline init script auto-creates the unifi DB user on first start, healthcheck gates the controller until Mongo is ready. Web UI at https://<host>:8443.',
+    compose: [
+      '# UniFi Network Application (LinuxServer.io) + dedicated MongoDB 7.0.',
+      '# CHANGE every "changeme" before first deploy. MONGO_PASS and the init-mongo',
+      '# pwd fields MUST match — the init script runs ONCE on first Mongo start.',
+      '',
+      'configs:',
+      '  init-mongo.js:',
+      '    content: |',
+      '      db.getSiblingDB("unifi").createUser({user: "unifi", pwd: "changeme", roles: [{role: "dbOwner", db: "unifi"}]});',
+      '      db.getSiblingDB("unifi_stat").createUser({user: "unifi", pwd: "changeme", roles: [{role: "dbOwner", db: "unifi_stat"}]});',
+      '',
+      'services:',
+      '  unifi-db:',
+      '    image: mongo:7.0',
+      '    container_name: unifi-db',
+      '    restart: unless-stopped',
+      '    volumes:',
+      '      - unifi-db:/data/db',
+      '    configs:',
+      '      - source: init-mongo.js',
+      '        target: /docker-entrypoint-initdb.d/init-mongo.js',
+      '    healthcheck:',
+      '      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]',
+      '      interval: 10s',
+      '      timeout: 5s',
+      '      retries: 6',
+      '      start_period: 40s',
+      '',
+      '  unifi-network-application:',
+      '    image: lscr.io/linuxserver/unifi-network-application:latest',
+      '    container_name: unifi-network-application',
+      '    restart: unless-stopped',
+      '    depends_on:',
+      '      unifi-db:',
+      '        condition: service_healthy',
+      '    environment:',
+      '      - PUID=1000',
+      '      - PGID=1000',
+      '      - TZ=Etc/UTC',
+      '      - MONGO_HOST=unifi-db',
+      '      - MONGO_PORT=27017',
+      '      - MONGO_USER=unifi',
+      '      - MONGO_PASS=changeme',
+      '      - MONGO_DBNAME=unifi',
+      '      - MEM_LIMIT=1024',
+      '      - MEM_STARTUP=1024',
+      '    volumes:',
+      '      - unifi-config:/config',
+      '    ports:',
+      '      - "8443:8443"          # Web admin UI — required',
+      '      - "8080:8080"          # Device communication — required',
+      '      - "3478:3478/udp"      # STUN — required for AP discovery',
+      '      - "10001:10001/udp"    # AP discovery — required',
+      '      - "1900:1900/udp"      # L2 discovery — optional',
+      '      - "8843:8843"          # Guest portal HTTPS — optional',
+      '      - "8880:8880"          # Guest portal HTTP — optional',
+      '      - "6789:6789"          # Mobile throughput test — optional',
+      '      - "5514:5514/udp"      # Remote syslog — optional',
+      '',
+      'volumes:',
+      '  unifi-db:',
+      '  unifi-config:',
+    ].join('\n'),
   },
 ];
 

@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.6.2',
+      date: '2026-05-27',
+      title: 'UniFi Network Application template',
+      changes: [
+        { type: 'feature', text: 'New built-in template "UniFi Network Application" (Networking category) — a self-hosted Ubiquiti UniFi controller (LinuxServer.io image) with a dedicated MongoDB 7.0 sidecar. The mongo user-creation script ships inline via Compose configs: { content: } so the stack is self-contained (no host file to bind-mount), and the controller is gated on a mongosh healthcheck so it waits for Mongo to be ready instead of crash-looping on first start.' },
+        { type: 'feature', text: 'All 9 standard UniFi ports declared with role comments (4 required: 8443 admin / 8080 device / 3478 STUN / 10001 AP discovery; 5 optional). Header comment documents the post-deploy steps and the critical "rotate MONGO_PASS and the init script pwd together before first deploy" gotcha. Requires Docker Compose 2.23+ for the inline configs content.' },
+      ],
+    },
+    {
       version: '8.6.0',
       date: '2026-05-22',
       title: 'Exposed Ports audit',

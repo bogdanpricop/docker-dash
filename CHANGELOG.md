@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.6.2] - 2026-05-27 — UniFi Network Application template
+
+New built-in template **UniFi Network Application** (category Networking) — a self-hosted Ubiquiti UniFi controller built on the LinuxServer.io image (the community-maintained successor since Ubiquiti discontinued their official Docker controller).
+
+### What's in the stack
+- `lscr.io/linuxserver/unifi-network-application:latest` — the controller.
+- `mongo:7.0` — dedicated MongoDB sidecar (pinned per LSIO guidance; 7.0 is the highest version supported by UniFi <9.0).
+- **Inline mongo init script** via Compose `configs:` with `content:` (requires Compose 2.23+) — auto-creates the `unifi` user with `dbOwner` on the `unifi` and `unifi_stat` databases on first start, so the stack is self-contained (no host file to bind-mount).
+- **Healthcheck-gated startup**: the controller `depends_on: { unifi-db: { condition: service_healthy } }` with a `mongosh ping` healthcheck — solves the LSIO-documented "restart container after Mongo is ready" footgun.
+- All 9 standard ports declared (4 required: 8443 admin / 8080 device / 3478 STUN / 10001 AP discovery; 5 optional commented with their purpose).
+- Named volumes for `/config` and `/data/db`.
+- Header comment block documents post-deploy steps + the critical "MONGO_PASS and the init script `pwd:` MUST match before first start" gotcha.
+
+Registered in `BUILTIN_VERIFICATION` (verified 2026-05-27); YAML round-trip parsed cleanly through the project's `yaml` lib; template-tests + full suite green (1444).
+
 ## [8.6.1] - 2026-05-22 — Wider Exposed Ports dialog
 
 The Exposed Ports modal now opens at `min(1320px, 96vw)` (was 920px) so the eight columns breathe instead of crowding. Browser-verified at 1320px on a 1600px viewport.
