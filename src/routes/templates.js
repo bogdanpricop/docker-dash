@@ -935,6 +935,34 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
     const docker = dockerService.getDocker(req.hostId);
     const results = [];
 
+    // v8.7.3: create a per-stack user-defined bridge network and attach every
+    // service to it with its service-name as an alias — exactly what
+    // `docker compose up` does as `<project>_default`. Required for
+    // inter-service DNS: on the default `bridge` network Docker does NOT
+    // resolve container names (so MONGO_HOST=unifi-db etc. would silently
+    // fail). Idempotent: reuse an existing network with the same name.
+    const networkName = `${stackName}_default`;
+    let networkAttached = true;
+    try {
+      await docker.createNetwork({
+        Name: networkName,
+        Driver: 'bridge',
+        CheckDuplicate: true,
+        Labels: { 'com.docker.compose.project': stackName, 'docker-dash.template': t.id },
+      });
+    } catch (err) {
+      const msg = (err && err.message) || '';
+      // 409 / "already exists" is fine — reuse it. Any other error is fatal:
+      // without the network, multi-service stacks won't talk to each other.
+      if (!/already exists|409/i.test(msg)) {
+        networkAttached = false;
+        return res.status(500).json({
+          error: `Failed to create stack network "${networkName}": ${msg}`,
+          stackName,
+        });
+      }
+    }
+
     for (const svc of services) {
       if (!svc.image) {
         return res.status(400).json({
@@ -982,6 +1010,15 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
       if (svc.cmd && svc.cmd.length) createOpts.Cmd = svc.cmd;
       if (svc.env && svc.env.length > 0) createOpts.Env = svc.env;
       if (svc.ports && svc.ports.length > 0) createOpts.ExposedPorts = {};
+
+      // Attach to the per-stack network so siblings resolve by service name.
+      if (networkAttached) {
+        createOpts.NetworkingConfig = {
+          EndpointsConfig: {
+            [networkName]: { Aliases: [svc.name] },
+          },
+        };
+      }
 
       // Ports — support "HOSTIP:HOSTPORT:CONTAINERPORT[/proto]" and the
       // shorter "HOSTPORT:CONTAINERPORT[/proto]" forms.

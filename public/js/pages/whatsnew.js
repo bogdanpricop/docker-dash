@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.3',
+      date: '2026-05-27',
+      title: 'Template deploy: per-stack network (service-name DNS)',
+      changes: [
+        { type: 'fix', text: 'Multi-service template stacks (UniFi, WordPress, ai-rag-stack…) silently broke because the default Docker bridge network does NOT resolve container names — the UniFi MONGO_HOST=unifi-db failed with "unifi-db is not reachable". Fixed: the deploy now creates a per-stack <stackName>_default user-defined bridge network and attaches every container with the service name as alias, exactly like docker compose up does. Sibling services now resolve each other by name.' },
+      ],
+    },
+    {
       version: '8.7.2',
       date: '2026-05-27',
       title: 'Template deploy: parser rewrite + persistent error dialog',

@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.3] - 2026-05-27 — Template deploy: per-stack network (service-name DNS now works)
+
+### Fixed
+Multi-service template deploys (UniFi, WordPress, eurooffice-nextcloud, ai-rag-stack…) silently broke because Docker's **default `bridge` network does NOT resolve container names**. UniFi's `MONGO_HOST=unifi-db` failed with `unifi-db is not reachable, cannot proceed`; WordPress's `WORDPRESS_DB_HOST: db` would have failed the same way; every stack that referenced a sibling by name was broken.
+
+`docker compose up` solves this by creating a `<project>_default` user-defined bridge network where Docker provides automatic DNS by container name and alias. The Docker-API deploy path skipped that step entirely.
+
+- The deploy now **creates a `<stackName>_default` user-defined bridge network** before iterating services (idempotent — reuses existing) and attaches every container via `NetworkingConfig.EndpointsConfig` with the service name as an **alias**. Sibling services now resolve each other exactly as they do under `docker compose up`.
+- Network creation failure (non-409) is fatal with a clear error — without the network the stack will silently misbehave.
+- Network is labeled with `com.docker.compose.project` so it shows up correctly grouped in the Containers page.
+
+### Verified
+- Browser-deployed `lsio-ddclient` end-to-end → response OK, container attached **only** to `dd-test-net-ddclient_default` with `aliases=[ddclient]` (not the default bridge).
+- Multi-service stacks (UniFi, WordPress) now share a project network so sibling DNS works.
+- Suite green (1444).
+
 ## [8.7.2] - 2026-05-27 — Template deploy: parser rewrite + persistent error dialog + UniFi simplified
 
 ### Fixed (long-standing latent bug)
