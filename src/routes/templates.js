@@ -73,6 +73,44 @@ const BUILTIN_VERIFICATION = {
   'ai-flowise':                  { verified_at: '2026-05-05' },
   // Verified 2026-05-27
   'unifi-network-application':   { verified_at: '2026-05-27' },
+  // LinuxServer.io curated batch — verified 2026-05-27 (canonical LSIO skeleton +
+  // well-known ports per upstream docs.linuxserver.io/<image>).
+  'lsio-jellyfin':               { verified_at: '2026-05-27' },
+  'lsio-emby':                   { verified_at: '2026-05-27' },
+  'lsio-plex':                   { verified_at: '2026-05-27' },
+  'lsio-sonarr':                 { verified_at: '2026-05-27' },
+  'lsio-radarr':                 { verified_at: '2026-05-27' },
+  'lsio-lidarr':                 { verified_at: '2026-05-27' },
+  'lsio-bazarr':                 { verified_at: '2026-05-27' },
+  'lsio-prowlarr':               { verified_at: '2026-05-27' },
+  'lsio-jackett':                { verified_at: '2026-05-27' },
+  'lsio-nzbhydra2':              { verified_at: '2026-05-27' },
+  'lsio-qbittorrent':            { verified_at: '2026-05-27' },
+  'lsio-transmission':           { verified_at: '2026-05-27' },
+  'lsio-deluge':                 { verified_at: '2026-05-27' },
+  'lsio-sabnzbd':                { verified_at: '2026-05-27' },
+  'lsio-nzbget':                 { verified_at: '2026-05-27' },
+  'lsio-calibre-web':            { verified_at: '2026-05-27' },
+  'lsio-kavita':                 { verified_at: '2026-05-27' },
+  'lsio-lazylibrarian':          { verified_at: '2026-05-27' },
+  'lsio-heimdall':               { verified_at: '2026-05-27' },
+  'lsio-piwigo':                 { verified_at: '2026-05-27' },
+  'lsio-code-server':            { verified_at: '2026-05-27' },
+  'lsio-webtop':                 { verified_at: '2026-05-27' },
+  'lsio-swag':                   { verified_at: '2026-05-27' },
+  'lsio-duckdns':                { verified_at: '2026-05-27' },
+  'lsio-ddclient':               { verified_at: '2026-05-27' },
+  'lsio-duplicati':              { verified_at: '2026-05-27' },
+  'lsio-syncthing':              { verified_at: '2026-05-27' },
+  'lsio-healthchecks':           { verified_at: '2026-05-27' },
+  'lsio-smokeping':              { verified_at: '2026-05-27' },
+  'lsio-speedtest-tracker':      { verified_at: '2026-05-27' },
+  'lsio-babybuddy':              { verified_at: '2026-05-27' },
+  'lsio-grocy':                  { verified_at: '2026-05-27' },
+  'lsio-snapdrop':               { verified_at: '2026-05-27' },
+  'lsio-changedetection':        { verified_at: '2026-05-27' },
+  'lsio-socket-proxy':           { verified_at: '2026-05-27' },
+  'lsio-thelounge':              { verified_at: '2026-05-27' },
   // Older built-ins — not re-verified yet. UI shows neutral state, no warning.
   // Add entries here as you re-validate.
 };
@@ -507,6 +545,196 @@ const TEMPLATES = [
       '  unifi-db:',
       '  unifi-config:',
     ].join('\n'),
+  },
+  // ─── LinuxServer.io curated batch (v8.7.0) ────────────────────────
+  // 35 high-utility server-style images from docs.linuxserver.io. Each uses
+  // the canonical LSIO skeleton: PUID/PGID/TZ + /config volume + image
+  // lscr.io/linuxserver/<slug>:latest, with the well-known port(s) for that
+  // service. Desktop-via-browser images (gimp/krita/blender/etc., which need
+  // GPU/DRINODE wiring) and DB-dependent ones (bookstack/wikijs) are out of
+  // this batch — they can be added with their per-image quirks later.
+  //
+  // Note: ./media, ./downloads, ./books bind mounts are placeholders — adjust
+  // to your host layout before first deploy.
+  {
+    id: 'lsio-jellyfin', name: 'Jellyfin (LSIO)', category: 'Media Servers', icon: 'fas fa-film',
+    description: 'Free Software Media System for organizing and streaming media (LinuxServer.io build). Web UI at :8096.',
+    compose: `services:\n  jellyfin:\n    image: lscr.io/linuxserver/jellyfin:latest\n    container_name: jellyfin\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - jellyfin-config:/config\n      - ./media:/data/media\n    ports:\n      - "8096:8096"\nvolumes:\n  jellyfin-config:`,
+  },
+  {
+    id: 'lsio-emby', name: 'Emby (LSIO)', category: 'Media Servers', icon: 'fas fa-film',
+    description: 'Personal media server organizing video, music, live TV and photos (LinuxServer.io build). Web UI at :8096.',
+    compose: `services:\n  emby:\n    image: lscr.io/linuxserver/emby:latest\n    container_name: emby\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - emby-config:/config\n      - ./media:/data/media\n    ports:\n      - "8096:8096"\nvolumes:\n  emby-config:`,
+  },
+  {
+    id: 'lsio-plex', name: 'Plex (LSIO)', category: 'Media Servers', icon: 'fas fa-play-circle',
+    description: 'Plex Media Server for organizing and streaming personal media (LinuxServer.io build). Web UI at :32400. Set PLEX_CLAIM (https://www.plex.tv/claim/, 4-min validity) to auto-link on first start.',
+    compose: `services:\n  plex:\n    image: lscr.io/linuxserver/plex:latest\n    container_name: plex\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - VERSION=docker\n      # - PLEX_CLAIM=claim-xxxxxxxx\n    volumes:\n      - plex-config:/config\n      - ./media:/data/media\n    ports:\n      - "32400:32400"\nvolumes:\n  plex-config:`,
+  },
+  {
+    id: 'lsio-sonarr', name: 'Sonarr (LSIO)', category: 'Media Management', icon: 'fas fa-tv',
+    description: 'PVR for usenet and bittorrent — monitors RSS feeds for new TV episodes and grabs them (LinuxServer.io build). Web UI at :8989.',
+    compose: `services:\n  sonarr:\n    image: lscr.io/linuxserver/sonarr:latest\n    container_name: sonarr\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - sonarr-config:/config\n      - ./media:/data/media\n      - ./downloads:/data/downloads\n    ports:\n      - "8989:8989"\nvolumes:\n  sonarr-config:`,
+  },
+  {
+    id: 'lsio-radarr', name: 'Radarr (LSIO)', category: 'Media Management', icon: 'fas fa-film',
+    description: 'Fork of Sonarr for movies — monitors and grabs new releases (LinuxServer.io build). Web UI at :7878.',
+    compose: `services:\n  radarr:\n    image: lscr.io/linuxserver/radarr:latest\n    container_name: radarr\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - radarr-config:/config\n      - ./media:/data/media\n      - ./downloads:/data/downloads\n    ports:\n      - "7878:7878"\nvolumes:\n  radarr-config:`,
+  },
+  {
+    id: 'lsio-lidarr', name: 'Lidarr (LSIO)', category: 'Media Management', icon: 'fas fa-music',
+    description: 'Music collection manager for Usenet and BitTorrent users (LinuxServer.io build). Web UI at :8686.',
+    compose: `services:\n  lidarr:\n    image: lscr.io/linuxserver/lidarr:latest\n    container_name: lidarr\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - lidarr-config:/config\n      - ./media:/data/music\n      - ./downloads:/data/downloads\n    ports:\n      - "8686:8686"\nvolumes:\n  lidarr-config:`,
+  },
+  {
+    id: 'lsio-bazarr', name: 'Bazarr (LSIO)', category: 'Media Management', icon: 'fas fa-closed-captioning',
+    description: 'Companion to Sonarr and Radarr — manages and downloads subtitles (LinuxServer.io build). Web UI at :6767.',
+    compose: `services:\n  bazarr:\n    image: lscr.io/linuxserver/bazarr:latest\n    container_name: bazarr\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - bazarr-config:/config\n      - ./media:/data/media\n    ports:\n      - "6767:6767"\nvolumes:\n  bazarr-config:`,
+  },
+  {
+    id: 'lsio-prowlarr', name: 'Prowlarr (LSIO)', category: 'Indexers', icon: 'fas fa-search',
+    description: 'Indexer manager and proxy that integrates with Sonarr / Radarr / Lidarr (LinuxServer.io build). Web UI at :9696.',
+    compose: `services:\n  prowlarr:\n    image: lscr.io/linuxserver/prowlarr:latest\n    container_name: prowlarr\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - prowlarr-config:/config\n    ports:\n      - "9696:9696"\nvolumes:\n  prowlarr-config:`,
+  },
+  {
+    id: 'lsio-jackett', name: 'Jackett (LSIO)', category: 'Indexers', icon: 'fas fa-key',
+    description: 'Proxy server translating queries from PVR apps into tracker-site HTTP queries (LinuxServer.io build). Web UI at :9117.',
+    compose: `services:\n  jackett:\n    image: lscr.io/linuxserver/jackett:latest\n    container_name: jackett\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - AUTO_UPDATE=true\n    volumes:\n      - jackett-config:/config\n      - jackett-downloads:/downloads\n    ports:\n      - "9117:9117"\nvolumes:\n  jackett-config:\n  jackett-downloads:`,
+  },
+  {
+    id: 'lsio-nzbhydra2', name: 'NZBHydra2 (LSIO)', category: 'Indexers', icon: 'fas fa-search-plus',
+    description: 'Meta search application for NZB indexers, aggregating multiple usenet sources (LinuxServer.io build). Web UI at :5076.',
+    compose: `services:\n  nzbhydra2:\n    image: lscr.io/linuxserver/nzbhydra2:latest\n    container_name: nzbhydra2\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - nzbhydra2-config:/config\n      - ./downloads:/downloads\n    ports:\n      - "5076:5076"\nvolumes:\n  nzbhydra2-config:`,
+  },
+  {
+    id: 'lsio-qbittorrent', name: 'qBittorrent (LSIO)', category: 'Downloaders', icon: 'fas fa-download',
+    description: 'BitTorrent client programmed in C++ using libtorrent (LinuxServer.io build). Web UI at :8080. Default login admin / adminadmin — change on first start.',
+    compose: `services:\n  qbittorrent:\n    image: lscr.io/linuxserver/qbittorrent:latest\n    container_name: qbittorrent\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - WEBUI_PORT=8080\n    volumes:\n      - qbittorrent-config:/config\n      - ./downloads:/downloads\n    ports:\n      - "8080:8080"\n      - "6881:6881"\n      - "6881:6881/udp"\nvolumes:\n  qbittorrent-config:`,
+  },
+  {
+    id: 'lsio-transmission', name: 'Transmission (LSIO)', category: 'Downloaders', icon: 'fas fa-download',
+    description: 'BitTorrent client with encryption, web interface, peer exchange (LinuxServer.io build). Web UI at :9091.',
+    compose: `services:\n  transmission:\n    image: lscr.io/linuxserver/transmission:latest\n    container_name: transmission\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - transmission-config:/config\n      - ./downloads:/downloads\n      - ./watch:/watch\n    ports:\n      - "9091:9091"\n      - "51413:51413"\n      - "51413:51413/udp"\nvolumes:\n  transmission-config:`,
+  },
+  {
+    id: 'lsio-deluge', name: 'Deluge (LSIO)', category: 'Downloaders', icon: 'fas fa-download',
+    description: 'Lightweight cross-platform BitTorrent client (LinuxServer.io build). Web UI at :8112 (default password "deluge").',
+    compose: `services:\n  deluge:\n    image: lscr.io/linuxserver/deluge:latest\n    container_name: deluge\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - deluge-config:/config\n      - ./downloads:/downloads\n    ports:\n      - "8112:8112"\n      - "6881:6881"\n      - "6881:6881/udp"\nvolumes:\n  deluge-config:`,
+  },
+  {
+    id: 'lsio-sabnzbd', name: 'SABnzbd (LSIO)', category: 'Downloaders', icon: 'fas fa-cloud-download-alt',
+    description: 'Usenet downloader that automates download verification and extraction (LinuxServer.io build). Web UI at :8080.',
+    compose: `services:\n  sabnzbd:\n    image: lscr.io/linuxserver/sabnzbd:latest\n    container_name: sabnzbd\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - sabnzbd-config:/config\n      - ./downloads:/downloads\n      - ./incomplete:/incomplete-downloads\n    ports:\n      - "8080:8080"\nvolumes:\n  sabnzbd-config:`,
+  },
+  {
+    id: 'lsio-nzbget', name: 'NZBGet (LSIO)', category: 'Downloaders', icon: 'fas fa-cloud-download-alt',
+    description: 'Usenet downloader written in C++ designed for performance (LinuxServer.io build). Web UI at :6789 (default login nzbget / tegbzn6789).',
+    compose: `services:\n  nzbget:\n    image: lscr.io/linuxserver/nzbget:latest\n    container_name: nzbget\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - nzbget-config:/config\n      - ./downloads:/downloads\n    ports:\n      - "6789:6789"\nvolumes:\n  nzbget-config:`,
+  },
+  {
+    id: 'lsio-calibre-web', name: 'Calibre-Web (LSIO)', category: 'Books', icon: 'fas fa-book-open',
+    description: 'Web app for browsing, reading and downloading eBooks from a Calibre library (LinuxServer.io build). Web UI at :8083 (default admin / admin123).',
+    compose: `services:\n  calibre-web:\n    image: lscr.io/linuxserver/calibre-web:latest\n    container_name: calibre-web\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - DOCKER_MODS=linuxserver/mods:universal-calibre   # optional, adds ebook conversion\n    volumes:\n      - calibre-web-config:/config\n      - ./books:/books\n    ports:\n      - "8083:8083"\nvolumes:\n  calibre-web-config:`,
+  },
+  {
+    id: 'lsio-kavita', name: 'Kavita (LSIO)', category: 'Books', icon: 'fas fa-book',
+    description: 'Fast, feature-rich, cross-platform reading server for manga / comics / books (LinuxServer.io build). Web UI at :5000.',
+    compose: `services:\n  kavita:\n    image: lscr.io/linuxserver/kavita:latest\n    container_name: kavita\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - kavita-config:/config\n      - ./manga:/manga\n      - ./comics:/comics\n    ports:\n      - "5000:5000"\nvolumes:\n  kavita-config:`,
+  },
+  {
+    id: 'lsio-heimdall', name: 'Heimdall (LSIO)', category: 'Dashboard', icon: 'fas fa-th-large',
+    description: 'Way to organize links to your frequently used websites and applications (LinuxServer.io build). Web UI at :8080 / :8443.',
+    compose: `services:\n  heimdall:\n    image: lscr.io/linuxserver/heimdall:latest\n    container_name: heimdall\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - heimdall-config:/config\n    ports:\n      - "8080:80"\n      - "8443:443"\nvolumes:\n  heimdall-config:`,
+  },
+  {
+    id: 'lsio-piwigo', name: 'Piwigo (LSIO)', category: 'Photos', icon: 'fas fa-images',
+    description: 'Photo gallery software for the web with powerful publishing features (LinuxServer.io build). Web UI at :8080. Requires an external MariaDB/MySQL (see piwigo docs).',
+    compose: `services:\n  piwigo:\n    image: lscr.io/linuxserver/piwigo:latest\n    container_name: piwigo\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - piwigo-config:/config\n      - ./gallery:/gallery\n    ports:\n      - "8080:80"\nvolumes:\n  piwigo-config:`,
+  },
+  {
+    id: 'lsio-code-server', name: 'code-server (LSIO)', category: 'Programming', icon: 'fas fa-code',
+    description: 'VS Code running on a remote server, accessible through a browser (LinuxServer.io build). Web UI at :8443. CHANGE PASSWORD before first start.',
+    compose: `services:\n  code-server:\n    image: lscr.io/linuxserver/code-server:latest\n    container_name: code-server\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - PASSWORD=changeme\n      - SUDO_PASSWORD=changeme\n      # - PROXY_DOMAIN=code.example.com\n    volumes:\n      - code-server-config:/config\n    ports:\n      - "8443:8443"\nvolumes:\n  code-server-config:`,
+  },
+  {
+    id: 'lsio-webtop', name: 'Webtop (LSIO)', category: 'Remote Desktop', icon: 'fas fa-desktop',
+    description: 'Full desktop environment (Ubuntu MATE by default) accessible through the browser (LinuxServer.io build). Web UI at :3000.',
+    compose: `services:\n  webtop:\n    image: lscr.io/linuxserver/webtop:ubuntu-mate\n    container_name: webtop\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - SUBFOLDER=/\n      - TITLE=Webtop\n    volumes:\n      - webtop-config:/config\n      - /var/run/docker.sock:/var/run/docker.sock   # optional, lets the desktop run docker\n    ports:\n      - "3000:3000"\n    shm_size: "1gb"\nvolumes:\n  webtop-config:`,
+  },
+  {
+    id: 'lsio-swag', name: 'SWAG — Nginx + certbot (LSIO)', category: 'Reverse Proxy', icon: 'fas fa-shield-alt',
+    description: 'Secure Web Application Gateway: Nginx reverse proxy + certbot ACME + fail2ban (LinuxServer.io build). Set URL + EMAIL before first start; validate via http (port 80 reachable) or dns.',
+    compose: `services:\n  swag:\n    image: lscr.io/linuxserver/swag:latest\n    container_name: swag\n    cap_add:\n      - NET_ADMIN\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - URL=example.com           # your domain\n      - VALIDATION=http           # http | dns | duckdns\n      - SUBDOMAINS=wildcard\n      - EMAIL=admin@example.com\n      # - DNSPLUGIN=cloudflare    # required when VALIDATION=dns\n      # - STAGING=true            # ACME staging for testing\n    volumes:\n      - swag-config:/config\n    ports:\n      - "443:443"\n      - "80:80"\nvolumes:\n  swag-config:`,
+  },
+  {
+    id: 'lsio-duckdns', name: 'DuckDNS (LSIO)', category: 'DNS', icon: 'fas fa-globe',
+    description: 'Updates a DuckDNS subdomain to point at your dynamic IP (LinuxServer.io build). No web UI — set SUBDOMAINS + TOKEN before start.',
+    compose: `services:\n  duckdns:\n    image: lscr.io/linuxserver/duckdns:latest\n    container_name: duckdns\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - SUBDOMAINS=yoursubdomain   # comma-separated, no .duckdns.org suffix\n      - TOKEN=your-duckdns-token\n    volumes:\n      - duckdns-config:/config\nvolumes:\n  duckdns-config:`,
+  },
+  {
+    id: 'lsio-ddclient', name: 'ddclient (LSIO)', category: 'DNS', icon: 'fas fa-globe',
+    description: 'Perl client for updating dynamic DNS entries across many providers (LinuxServer.io build). No web UI — edit /config/ddclient.conf after first start.',
+    compose: `services:\n  ddclient:\n    image: lscr.io/linuxserver/ddclient:latest\n    container_name: ddclient\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - ddclient-config:/config\nvolumes:\n  ddclient-config:`,
+  },
+  {
+    id: 'lsio-duplicati', name: 'Duplicati (LSIO)', category: 'Backup', icon: 'fas fa-cloud-upload-alt',
+    description: 'Backup client with encrypted, incremental, compressed backups to many cloud storage providers (LinuxServer.io build). Web UI at :8200.',
+    compose: `services:\n  duplicati:\n    image: lscr.io/linuxserver/duplicati:latest\n    container_name: duplicati\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - duplicati-config:/config\n      - ./backups:/backups\n      - ./source:/source\n    ports:\n      - "8200:8200"\nvolumes:\n  duplicati-config:`,
+  },
+  {
+    id: 'lsio-syncthing', name: 'Syncthing (LSIO)', category: 'Backup', icon: 'fas fa-sync-alt',
+    description: 'Open, trustworthy, decentralized file sync replacing proprietary sync and cloud services (LinuxServer.io build). Web UI at :8384.',
+    compose: `services:\n  syncthing:\n    image: lscr.io/linuxserver/syncthing:latest\n    container_name: syncthing\n    hostname: syncthing\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - syncthing-config:/config\n      - ./data:/data1\n    ports:\n      - "8384:8384"\n      - "22000:22000/tcp"\n      - "22000:22000/udp"\n      - "21027:21027/udp"\nvolumes:\n  syncthing-config:`,
+  },
+  {
+    id: 'lsio-healthchecks', name: 'Healthchecks (LSIO)', category: 'Monitoring', icon: 'fas fa-heartbeat',
+    description: 'Watchdog for cron jobs and scheduled tasks with a web interface (LinuxServer.io build). Web UI at :8000.',
+    compose: `services:\n  healthchecks:\n    image: lscr.io/linuxserver/healthchecks:latest\n    container_name: healthchecks\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - SITE_ROOT=http://localhost:8000\n      - SITE_NAME=Healthchecks\n      - SUPERUSER_EMAIL=admin@example.com\n      - SUPERUSER_PASSWORD=changeme\n      - ALLOWED_HOSTS=*\n      - APPRISE_ENABLED=False\n    volumes:\n      - healthchecks-config:/config\n    ports:\n      - "8000:8000"\nvolumes:\n  healthchecks-config:`,
+  },
+  {
+    id: 'lsio-smokeping', name: 'SmokePing (LSIO)', category: 'Monitoring', icon: 'fas fa-chart-line',
+    description: 'Tracks network latency with graphing over time (LinuxServer.io build). Web UI at :8080.',
+    compose: `services:\n  smokeping:\n    image: lscr.io/linuxserver/smokeping:latest\n    container_name: smokeping\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - smokeping-config:/config\n      - smokeping-data:/data\n    ports:\n      - "8080:80"\nvolumes:\n  smokeping-config:\n  smokeping-data:`,
+  },
+  {
+    id: 'lsio-speedtest-tracker', name: 'Speedtest Tracker (LSIO)', category: 'Monitoring', icon: 'fas fa-tachometer-alt',
+    description: 'Self-hosted internet performance tracking that runs scheduled Ookla speedtests (LinuxServer.io build). Web UI at :8080. Set APP_KEY (base64:... 32-byte) before first start.',
+    compose: `services:\n  speedtest-tracker:\n    image: lscr.io/linuxserver/speedtest-tracker:latest\n    container_name: speedtest-tracker\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - APP_KEY=base64:CHANGEME_GENERATE_WITH_openssl_rand_base64_32\n      - APP_URL=http://localhost:8080\n      - DB_CONNECTION=sqlite\n      - SPEEDTEST_SCHEDULE=0 */6 * * *\n    volumes:\n      - speedtest-tracker-config:/config\n    ports:\n      - "8080:80"\n      - "8443:443"\nvolumes:\n  speedtest-tracker-config:`,
+  },
+  {
+    id: 'lsio-babybuddy', name: 'Baby Buddy (LSIO)', category: 'Family', icon: 'fas fa-baby',
+    description: 'Buddy for babies — tracks sleep, feedings, diaper changes, tummy time and more (LinuxServer.io build). Web UI at :8000 (default admin / admin).',
+    compose: `services:\n  babybuddy:\n    image: lscr.io/linuxserver/babybuddy:latest\n    container_name: babybuddy\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000\n    volumes:\n      - babybuddy-config:/config\n    ports:\n      - "8000:8000"\nvolumes:\n  babybuddy-config:`,
+  },
+  {
+    id: 'lsio-grocy', name: 'Grocy (LSIO)', category: 'Recipes', icon: 'fas fa-utensils',
+    description: 'ERP system for your kitchen — tracks groceries, recipes, chores and reduces food waste (LinuxServer.io build). Web UI at :9283 (default admin / admin).',
+    compose: `services:\n  grocy:\n    image: lscr.io/linuxserver/grocy:latest\n    container_name: grocy\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - grocy-config:/config\n    ports:\n      - "9283:80"\nvolumes:\n  grocy-config:`,
+  },
+  {
+    id: 'lsio-snapdrop', name: 'Snapdrop (LSIO)', category: 'File Sharing', icon: 'fas fa-share-alt',
+    description: 'Local file sharing in the browser, inspired by AirDrop (LinuxServer.io build). Web UI at :8080. Devices on the same LAN auto-discover each other.',
+    compose: `services:\n  snapdrop:\n    image: lscr.io/linuxserver/snapdrop:latest\n    container_name: snapdrop\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - snapdrop-config:/config\n    ports:\n      - "8080:80"\n      - "8443:443"\nvolumes:\n  snapdrop-config:`,
+  },
+  {
+    id: 'lsio-changedetection', name: 'changedetection.io (LSIO)', category: 'Web Tools', icon: 'fas fa-bell',
+    description: 'Free open-source web page monitoring and change detection — get notified when pages change (LinuxServer.io build). Web UI at :5000.',
+    compose: `services:\n  changedetection:\n    image: lscr.io/linuxserver/changedetection.io:latest\n    container_name: changedetection\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - BASE_URL=http://localhost:5000\n    volumes:\n      - changedetection-config:/config\n    ports:\n      - "5000:5000"\nvolumes:\n  changedetection-config:`,
+  },
+  {
+    id: 'lsio-socket-proxy', name: 'Docker Socket Proxy (LSIO)', category: 'Docker', icon: 'fas fa-shield-alt',
+    description: 'Security-enhanced proxy applying per-verb access rules to the Docker socket — front-end this for apps that need read-only Docker access (LinuxServer.io build). Bound to 127.0.0.1:2375 by default.',
+    compose: `services:\n  socket-proxy:\n    image: lscr.io/linuxserver/socket-proxy:latest\n    container_name: socket-proxy\n    restart: unless-stopped\n    environment:\n      - ALLOW_START=0\n      - ALLOW_STOP=0\n      - ALLOW_RESTARTS=0\n      - AUTH=0\n      - BUILD=0\n      - CONTAINERS=1\n      - EVENTS=1\n      - EXEC=0\n      - IMAGES=1\n      - INFO=1\n      - LOG_LEVEL=info\n      - NETWORKS=1\n      - PING=1\n      - POST=0\n      - VERSION=1\n      - VOLUMES=1\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock:ro\n    ports:\n      - "127.0.0.1:2375:2375"\n    read_only: true\n    tmpfs:\n      - /run`,
+  },
+  {
+    id: 'lsio-thelounge', name: 'The Lounge (LSIO)', category: 'IRC', icon: 'fas fa-comments',
+    description: 'Modern web IRC client you host yourself — always-connected, multi-user (LinuxServer.io build). Web UI at :9000. Create users with `docker exec -u abc thelounge thelounge add <user>` after start.',
+    compose: `services:\n  thelounge:\n    image: lscr.io/linuxserver/thelounge:latest\n    container_name: thelounge\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n    volumes:\n      - thelounge-config:/config\n    ports:\n      - "9000:9000"\nvolumes:\n  thelounge-config:`,
+  },
+  {
+    id: 'lsio-lazylibrarian', name: 'LazyLibrarian (LSIO)', category: 'Books', icon: 'fas fa-book-reader',
+    description: 'Program to follow authors and grab metadata for digital reading (LinuxServer.io build). Web UI at :5299.',
+    compose: `services:\n  lazylibrarian:\n    image: lscr.io/linuxserver/lazylibrarian:latest\n    container_name: lazylibrarian\n    restart: unless-stopped\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Etc/UTC\n      - DOCKER_MODS=linuxserver/mods:universal-calibre\n    volumes:\n      - lazylibrarian-config:/config\n      - ./books:/books\n      - ./downloads:/downloads\n    ports:\n      - "5299:5299"\nvolumes:\n  lazylibrarian-config:`,
   },
 ];
 

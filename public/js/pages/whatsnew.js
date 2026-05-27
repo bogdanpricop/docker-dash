@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.0',
+      date: '2026-05-27',
+      title: 'LinuxServer.io template batch (35 images)',
+      changes: [
+        { type: 'feature', text: '35 new built-in templates drawn from docs.linuxserver.io/images-by-category — ready to deploy from Containers → Templates. Covers the self-hoster favorites: media servers (jellyfin / emby / plex), the *arr stack (sonarr / radarr / lidarr / bazarr + prowlarr / jackett / nzbhydra2), downloaders (qbittorrent / transmission / deluge / sabnzbd / nzbget), books (calibre-web / kavita / lazylibrarian), dashboard (heimdall), photos (piwigo), and more.' },
+        { type: 'feature', text: 'Also: programming (code-server), remote desktop (webtop), reverse proxy (swag with certbot + fail2ban), DNS (duckdns / ddclient), backup (duplicati / syncthing), monitoring (healthchecks / smokeping / speedtest-tracker), family (babybuddy), recipes (grocy), file sharing (snapdrop), web tools (changedetection.io), docker (socket-proxy) and IRC (thelounge). All registered with verification date 2026-05-27.' },
+        { type: 'improvement', text: 'Each template uses the canonical LSIO skeleton (PUID/PGID/TZ + /config volume + lscr.io/linuxserver/<slug>:latest) and the well-known port for that service. Every compose YAML was round-trip parsed through the yaml lib (0 failures). IDs prefixed lsio- to coexist with non-LSIO equivalents. Curated batch deliberately excludes desktop-via-browser (GPU/DRINODE quirks) and DB-dependent images — both can be added on request.' },
+      ],
+    },
+    {
       version: '8.6.2',
       date: '2026-05-27',
       title: 'UniFi Network Application template',

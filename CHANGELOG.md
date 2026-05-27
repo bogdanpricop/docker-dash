@@ -2,6 +2,41 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.0] - 2026-05-27 — LinuxServer.io curated template batch (35 images)
+
+Adds **35 new built-in templates** drawn from `docs.linuxserver.io/images-by-category/` — the canonical community-maintained Docker image catalog. Each uses the standard LSIO skeleton (`PUID`/`PGID`/`TZ` + `/config` volume + `lscr.io/linuxserver/<slug>:latest`) with the well-known port(s) for that service, ready to deploy from **Containers → Templates**.
+
+### What landed (by category)
+- **Media Servers** — jellyfin, emby, plex
+- **Media Management** (the *arr stack) — sonarr, radarr, lidarr, bazarr
+- **Indexers** — prowlarr, jackett, nzbhydra2
+- **Downloaders** — qbittorrent, transmission, deluge, sabnzbd, nzbget
+- **Books** — calibre-web, kavita, lazylibrarian
+- **Dashboard** — heimdall
+- **Photos** — piwigo
+- **Programming** — code-server
+- **Remote Desktop** — webtop
+- **Reverse Proxy** — swag (Nginx + certbot ACME + fail2ban)
+- **DNS** — duckdns, ddclient
+- **Backup** — duplicati, syncthing
+- **Monitoring** — healthchecks, smokeping, speedtest-tracker
+- **Family / Recipes** — babybuddy, grocy
+- **File Sharing** — snapdrop
+- **Web Tools** — changedetection.io
+- **Docker** — socket-proxy
+- **IRC** — thelounge
+
+### Scope note (deliberately limited)
+The LSIO catalog has ~140 unique images; this batch is the **high-utility server-style subset** (self-hoster favorites: *arr stack, media, downloaders, ops). Excluded on purpose: desktop-via-browser images (gimp/krita/blender/kdenlive — they need GPU/DRINODE wiring) and DB-dependent ones (bookstack/wikijs — need a MariaDB/Postgres sidecar). Those can be added later with their per-image quirks.
+
+### Convention
+- IDs prefixed `lsio-<slug>` to avoid collision with non-LSIO templates of the same name (e.g. `wireguard`, `nextcloud` already exist).
+- Names suffixed `(LSIO)` so they sort together and are unambiguous next to other ecosystem variants.
+- All registered in `BUILTIN_VERIFICATION` dated 2026-05-27.
+
+### Verified
+36 new templates (35 LSIO + the prior unifi-network-application now in this category) loaded via `getMergedTemplates()`; **every compose YAML round-trip parsed cleanly** through the project's `yaml` lib (0 parse failures); template-tests + full suite green (1444).
+
 ## [8.6.2] - 2026-05-27 — UniFi Network Application template
 
 New built-in template **UniFi Network Application** (category Networking) — a self-hosted Ubiquiti UniFi controller built on the LinuxServer.io image (the community-maintained successor since Ubiquiti discontinued their official Docker controller).
