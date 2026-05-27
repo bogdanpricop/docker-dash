@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.1',
+      date: '2026-05-27',
+      title: 'Templates dialog: search field',
+      changes: [
+        { type: 'improvement', text: 'Containers → Templates now has a live search field at the top that filters the 84-card grid by name, description, category or id. Intersects with the existing category buttons (both filters apply), shows a "<N> of <M>" counter, and an empty state when nothing matches. The search field auto-focuses so you can just type. The modal is also wider (min(1100px, 96vw)) to breathe with the larger catalog.' },
+      ],
+    },
+    {
       version: '8.7.0',
       date: '2026-05-27',
       title: 'LinuxServer.io template batch (35 images)',

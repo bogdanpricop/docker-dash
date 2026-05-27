@@ -1714,8 +1714,11 @@ const ContainersPage = {
         `<button class="btn btn-xs ${k === 'all' ? 'btn-primary' : 'btn-secondary'}" data-cat="${k}">${v}</button>`
       ).join('');
 
-      const templateCards = templates.map(t => `
-        <div class="template-card" data-category="${t.category}" data-id="${t.id}">
+      const templateCards = templates.map(t => {
+        // Precomputed haystack — keeps the search filter cheap (no DOM text reads).
+        const haystack = `${t.name} ${t.description} ${t.category} ${t.id}`.toLowerCase();
+        return `
+        <div class="template-card" data-category="${t.category}" data-id="${t.id}" data-search="${Utils.escapeHtml(haystack)}">
           <div class="template-card-icon"><i class="fas ${t.icon}"></i></div>
           <div class="template-card-body">
             <h4>${Utils.escapeHtml(t.name)}</h4>
@@ -1732,8 +1735,8 @@ const ContainersPage = {
               <i class="fas fa-rocket"></i> ${i18n.t('pages.containers.templatesDeploy')}
             </button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
 
       Modal.open(`
         <div class="modal-header">
@@ -1742,27 +1745,64 @@ const ContainersPage = {
         </div>
         <div class="modal-body">
           <p class="text-muted text-sm" style="margin-bottom:12px">${i18n.t('pages.containers.templatesDesc')}</p>
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+            <div class="search-box" style="flex:1;min-width:220px">
+              <i class="fas fa-search"></i>
+              <input type="text" id="template-search" placeholder="Filter ${templates.length} templates by name, description, category...">
+            </div>
+            <span id="template-count" class="text-muted text-sm" style="white-space:nowrap"></span>
+          </div>
           <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="template-cats">${catBtns}</div>
           <div class="template-grid" id="template-list">${templateCards}</div>
+          <div id="template-empty" class="empty-msg" style="display:none"><i class="fas fa-search"></i><p>No templates match your filters.</p></div>
         </div>
         <div class="modal-footer"><button class="btn btn-primary" id="modal-ok">${i18n.t('common.close')}</button></div>
-      `, { width: '700px' });
+      `, { width: 'min(1100px, 96vw)' });
 
       Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
 
-      // Category filter (case-insensitive partial match)
+      // Unified filter (category ∩ search). Both inputs feed into applyFilters.
+      let activeCat = 'all';
+      let search = '';
+      const cards = Modal._content.querySelectorAll('.template-card');
+      const total = cards.length;
+      const countEl = Modal._content.querySelector('#template-count');
+      const emptyEl = Modal._content.querySelector('#template-empty');
+      const applyFilters = () => {
+        let shown = 0;
+        cards.forEach(card => {
+          const cardCat = (card.dataset.category || '').toLowerCase();
+          const hay = card.dataset.search || '';
+          const catOk = activeCat === 'all' || cardCat.includes(activeCat);
+          const searchOk = !search || hay.includes(search);
+          const visible = catOk && searchOk;
+          card.style.display = visible ? '' : 'none';
+          if (visible) shown++;
+        });
+        if (countEl) countEl.textContent = shown === total ? `${total} templates` : `${shown} of ${total}`;
+        if (emptyEl) emptyEl.style.display = shown === 0 ? '' : 'none';
+      };
+      applyFilters();
+
+      // Category buttons
       Modal._content.querySelectorAll('[data-cat]').forEach(btn => {
         btn.addEventListener('click', () => {
           Modal._content.querySelectorAll('[data-cat]').forEach(b => b.className = 'btn btn-xs btn-secondary');
           btn.className = 'btn btn-xs btn-primary';
-          const cat = btn.dataset.cat.toLowerCase();
-          Modal._content.querySelectorAll('.template-card').forEach(card => {
-            const cardCat = (card.dataset.category || '').toLowerCase();
-            card.style.display = (cat === 'all' || cardCat.includes(cat)) ? '' : 'none';
-          });
+          activeCat = btn.dataset.cat.toLowerCase();
+          applyFilters();
         });
       });
+
+      // Search input (debounced)
+      const searchInput = Modal._content.querySelector('#template-search');
+      searchInput.addEventListener('input', Utils.debounce(e => {
+        search = (e.target.value || '').trim().toLowerCase();
+        applyFilters();
+      }, 120));
+      // Focus the search so users can start typing immediately
+      setTimeout(() => searchInput.focus(), 50);
 
       // View buttons — read-only YAML preview (sub-modal over templates)
       Modal._content.querySelectorAll('.template-view-btn').forEach(btn => {

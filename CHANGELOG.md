@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.1] - 2026-05-27 — Templates dialog: search field + intersect filter
+
+With 84 built-in templates now in **Containers → Templates**, scanning the grid for a specific image was painful. Adds a live search field above the category buttons.
+
+- Substring match on **name + description + category + id** (precomputed `data-search` haystack per card — no DOM-text reads on each keystroke).
+- Search **intersects** with the existing category filter (both must match), so you can narrow Database → "redis" for a single result.
+- `<N> of <M>` counter on the right of the search box, "No templates match your filters" empty state when nothing hits.
+- 120ms debounced input; search field auto-focuses when the dialog opens so you can start typing immediately.
+- Modal width bumped to `min(1100px, 96vw)` to breathe with the larger catalog.
+
+Browser-verified: 84 cards total, "sonarr" → 4 hits (correctly includes bazarr/jackett/prowlarr which reference Sonarr), "calibre" → 1, gibberish → 0 with empty state, Database ∩ "redis" → 1. Zero console errors. Suite green (1444).
+
 ## [8.7.0] - 2026-05-27 — LinuxServer.io curated template batch (35 images)
 
 Adds **35 new built-in templates** drawn from `docs.linuxserver.io/images-by-category/` — the canonical community-maintained Docker image catalog. Each uses the standard LSIO skeleton (`PUID`/`PGID`/`TZ` + `/config` volume + `lscr.io/linuxserver/<slug>:latest`) with the well-known port(s) for that service, ready to deploy from **Containers → Templates**.
