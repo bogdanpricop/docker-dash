@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.4',
+      date: '2026-05-27',
+      title: 'Template Configurator: better password detection + Synology DSM export',
+      changes: [
+        { type: 'improvement', text: 'The Configure dialog password generator now finds the fields it was missing. The previous detector matched only the literal substrings SECRET/PASSWORD/_KEY/TOKEN — so MONGO_PASS, RABBITMQ_DEFAULT_PASS, PASSPHRASE etc. all slipped through. Rewritten as a word-bounded regex covering PASSWORD/PASSWD/PASS/PWD/PW/PASSPHRASE/SECRET/TOKEN/API_KEY/MASTER_KEY/PRIVATE_KEY/JWT/SALT/CREDENTIALS, with safeguards against false positives like BYPASS, KEYSTORE_PATH and KEY_ALG.' },
+        { type: 'improvement', text: 'Second safety net: if the default value LOOKS like a placeholder (changeme, changeme123, base64:CHANGE..., generate-strong-secret), the field is treated as a password even when the key does not say so. Both branches also place the field in the Security category.' },
+        { type: 'feature', text: 'New "Synology export" button next to Deploy in the Configure modal. Opens a sub-modal with the compose YAML rewritten for Synology DSM Container Manager: strips top-level volumes/configs/secrets and per-service configs/secrets/healthcheck/deploy blocks (DSM does not apply them), and rewrites named-volume and ./relative mounts to bind mounts under /volume1/docker/<stack>/<service>/ so they show up in File Station and back up cleanly. Output panel has Copy + Download .yml.' },
+      ],
+    },
+    {
       version: '8.7.3',
       date: '2026-05-27',
       title: 'Template deploy: per-stack network (service-name DNS)',

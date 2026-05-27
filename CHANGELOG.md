@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.4] - 2026-05-27 — Template Configurator: better password detection + Synology DSM export
+
+### Password generator now finds the fields it was missing
+The Configure dialog already had a password generator + strength meter, but the field-type detector only matched the literal substrings `SECRET` / `PASSWORD` / `_KEY` / `TOKEN`. That **missed `PASS` on its own** (used by `MONGO_PASS`, `RABBITMQ_DEFAULT_PASS`, etc.) and a bunch of common variants.
+
+- Detector rewritten as `_isSecretKey` with a regex matching word-bounded `PASSWORD` / `PASSWD` / `PASS` / `PWD` / `PW` / `PASSPHRASE` / `SECRET` / `TOKEN` / `API_KEY` / `MASTER_KEY` / `PRIVATE_KEY` / `JWT` / `SALT` / `CREDENTIALS`. Avoids false positives like `BYPASS`, `KEYSTORE_PATH`, `KEY_ALG`.
+- Second safety net `_looksLikePasswordValue`: if the **default value** looks like a placeholder (`changeme`, `changeme123`, `base64:CHANGE…`, `generate-strong-secret`, etc.), the field is treated as a password even when the key name doesn't say so.
+- Both branches feed `_detectFieldType` AND `_detectCategory` so the field also lands in the **Security** category for grouping.
+
+### New: Synology DSM Container Manager export
+Next to **Deploy** in the Configure modal: **Synology export** — opens a sub-modal with a compose YAML rewritten for DSM Container Manager (Synology Docker package):
+
+- **Strips** top-level `volumes:` / `configs:` / `secrets:` blocks and per-service `configs:` / `secrets:` / `healthcheck:` / `deploy:` blocks (DSM doesn't apply them).
+- **Rewrites** named-volume + `./relative` mounts to bind mounts under `/volume1/docker/<stack>/<service>/…` — matches the standard Synology layout, shows up in File Station, backs up cleanly.
+- Adds a header comment with the exact import path (Container Manager → Project → Create → "Create docker-compose.yml" → paste) and a reminder to create the bind-mount folders in File Station first.
+- Output panel has **Copy** + **Download .yml** (`compose.<stack>.synology.yml`).
+
+### Verified
+- Detection: `MONGO_PASS`, `RABBITMQ_DEFAULT_PASS`, `PASSPHRASE`, `MY_PWD` → true (previously false); `PUID`, `TZ`, `KEYSTORE_PATH`, `BYPASS_AUTH` → false (no false positives); value-based: `changeme`/`base64:CHANGE…` → true, `Etc/UTC` → false.
+- Synology export on a 2-service UniFi-style stack: top-level `volumes:` stripped, per-service `healthcheck:` stripped, named volumes rewritten to `/volume1/docker/unifi/unifi-db/unifi-db:/data/db`, `./media` rewritten to `/volume1/docker/unifi/unifi/media:/data/media`. Zero console errors.
+
 ## [8.7.3] - 2026-05-27 — Template deploy: per-stack network (service-name DNS now works)
 
 ### Fixed

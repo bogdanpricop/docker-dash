@@ -51,6 +51,7 @@ const TemplateConfigurator = {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="tplc-cancel">${mode === 'deploy' ? 'Cancel' : 'Close'}</button>
+        <button class="btn btn-secondary" id="tplc-synology" title="Export a Synology DSM Container Manager-friendly compose.yml (strips configs/secrets/healthcheck, rewrites volumes to /volume1/docker/<stack>/<service>/ bind mounts)"><i class="fas fa-server"></i> Synology export</button>
         ${mode === 'deploy' ? '<button class="btn btn-primary" id="tplc-deploy"><i class="fas fa-rocket"></i> Deploy</button>' : ''}
       </div>
     `;
@@ -71,6 +72,15 @@ const TemplateConfigurator = {
     el.querySelector('#tplc-copy').addEventListener('click', () => {
       const yaml = this._buildYaml(fields, originalYaml);
       Utils.copyToClipboard(yaml).then(() => Toast.success('Copied!'));
+    });
+
+    // Synology export — convert the live YAML to a DSM Container Manager-friendly form
+    el.querySelector('#tplc-synology').addEventListener('click', () => {
+      const nameInput = el.querySelector('#tplc-stack-name');
+      const stackName = (nameInput && nameInput.value.trim()) || template.id;
+      const yaml = this._buildYaml(fields, originalYaml);
+      const synYaml = this._toSynologyCompose(yaml, stackName);
+      this._showSynologyExport(stackName, synYaml);
     });
 
     // Live preview updates
@@ -360,9 +370,35 @@ const TemplateConfigurator = {
     return fields;
   },
 
-  _detectFieldType(key, value) {
+  // Comprehensive password / credential detection. Misses here = no Generate
+  // button on a real password field; false positive = an extra Generate button
+  // on a non-password (harmless — user just won't click). Bias toward catching.
+  _isSecretKey(key) {
     const k = key.toUpperCase();
-    if (k.includes('SECRET') || k.includes('PASSWORD') || k.includes('_KEY') || k.includes('TOKEN')) return 'password';
+    // word boundary-ish matches so BYPASS / PASSPORT / KEYSTORE don't match
+    if (/(^|[_-])(PASSWORD|PASSWD|PASS|PWD|PW|PASSPHRASE|SECRET|SECRETS|TOKEN|API_?KEY|APIKEY|MASTER_?KEY|PRIVATE_?KEY|JWT|SALT|CREDENTIALS?)([_-]|$)/.test(k)) return true;
+    // also any *_KEY when the suffix isn't STORE/FILE/PATH/ALG (catches FLASK_SECRET_KEY, APP_KEY, JWT_KEY, …)
+    if (/_KEY([_-]|$)/.test(k) && !/_KEY_?(STORE|FILE|PATH|ALG|ALGORITHM|TYPE)([_-]|$)/.test(k)) return true;
+    return false;
+  },
+
+  // Treat as password by value too: if the default LOOKS like a placeholder
+  // password ("changeme", "your-secret", "changeme123", base64:CHANGE…), it
+  // is one — even if the KEY doesn't say PASSWORD anywhere.
+  _looksLikePasswordValue(value) {
+    if (typeof value !== 'string' || !value) return false;
+    const v = value.toLowerCase();
+    if (/^(changeme|change_?me|change-?me|your-?secret|password|secret123?|admin123?|rootchangeme)/i.test(v)) return true;
+    if (/changeme|change_me|change-me/.test(v)) return true;
+    if (/^base64:.*change/i.test(value)) return true;
+    if (/generate[_-]?(strong|random|secure)|generate[_-]?with[_-]?openssl|generate.{0,4}(secret|key|chars?|bytes?)/i.test(value)) return true;
+    return false;
+  },
+
+  _detectFieldType(key, value) {
+    if (this._isSecretKey(key)) return 'password';
+    if (this._looksLikePasswordValue(value)) return 'password';
+    const k = key.toUpperCase();
     if (k.includes('PORT')) return 'port';
     if (k.includes('URL') || k.includes('HOST') || k.includes('DOMAIN')) return 'url';
     if (k.includes('EMAIL') || k.includes('MAIL_TO') || k.includes('SMTP_FROM')) return 'email';
@@ -374,8 +410,9 @@ const TemplateConfigurator = {
   },
 
   _detectCategory(key) {
+    if (this._isSecretKey(key)) return 'security';
     const k = key.toUpperCase();
-    if (k.includes('SECRET') || k.includes('PASSWORD') || k.includes('_KEY') || k.includes('TOKEN') || k.includes('AUTH')) return 'security';
+    if (k.includes('AUTH')) return 'security';
     if (k.includes('PORT')) return 'ports';
     if (k.includes('URL') || k.includes('HOST') || k.includes('DOMAIN') || k.includes('TRUSTED') || k.includes('ADDRESS')) return 'network';
     if (k.includes('DB') || k.includes('DATABASE') || k.includes('MYSQL') || k.includes('POSTGRES') || k.includes('MONGO') || k.includes('REDIS')) return 'database';
@@ -714,6 +751,124 @@ const TemplateConfigurator = {
     const arr = new Uint32Array(length);
     crypto.getRandomValues(arr);
     return Array.from(arr, v => chars[v % chars.length]).join('');
+  },
+
+  /**
+   * Convert a docker-compose YAML to a Synology DSM Container Manager-friendly
+   * form. DSM accepts compose v3 but does not apply: top-level configs/secrets,
+   * per-service configs/secrets/healthcheck/deploy.resources, and prefers bind
+   * mounts under /volume1/docker/<stack>/<service>/ over named volumes (so they
+   * show up in File Station and back up cleanly). Hand-rolled line transformer
+   * — fine because the source is OUR controlled templates' regular indent.
+   */
+  _toSynologyCompose(composeYaml, stackName) {
+    const lines = composeYaml.split('\n');
+    const out = [];
+    let topBlock = null;
+    let skipUntilIndent = -1;
+    let currentService = null;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const indent = line.length - line.trimStart().length;
+
+      if (skipUntilIndent >= 0) {
+        if (trimmed === '' || indent > skipUntilIndent) continue;
+        skipUntilIndent = -1;
+        // fall through to re-process this line
+      }
+
+      // Top-level keys (indent 0, key:)
+      if (indent === 0 && /^[\w-]+:\s*$/.test(trimmed)) {
+        const key = trimmed.slice(0, -1);
+        topBlock = key;
+        currentService = null;
+        if (['volumes', 'configs', 'secrets'].includes(key)) {
+          skipUntilIndent = 0;
+          continue;
+        }
+        out.push(line);
+        continue;
+      }
+
+      // Service name (indent 2 under services:)
+      if (topBlock === 'services' && indent === 2 && /^[\w-]+:\s*$/.test(trimmed)) {
+        currentService = trimmed.slice(0, -1);
+        out.push(line);
+        continue;
+      }
+
+      // Per-service blocks DSM can't apply
+      if (topBlock === 'services' && currentService && indent === 4
+          && /^(configs|secrets|healthcheck|deploy):\s*$/.test(trimmed)) {
+        skipUntilIndent = 4;
+        continue;
+      }
+
+      // Volume rewrite inside a service's volumes: list.
+      // Match "- src:/dest[:mode]" where src is NOT an absolute path
+      // (i.e. named volume or ./relative). Skip socket mounts (/var/run/...).
+      if (currentService && indent >= 6 && /^- /.test(trimmed)) {
+        const m = trimmed.match(/^- (.+?):(\/[^:]+)(:[a-zA-Z,]+)?$/);
+        if (m) {
+          const src = m[1].trim().replace(/^['"]|['"]$/g, '');
+          const dest = m[2];
+          const mode = m[3] || '';
+          if (src && !src.startsWith('/')) {
+            const cleanSrc = src.startsWith('./') ? src.substring(2) : src;
+            const newSrc = `/volume1/docker/${stackName}/${currentService}/${cleanSrc}`;
+            out.push(' '.repeat(indent) + `- ${newSrc}:${dest}${mode}`);
+            continue;
+          }
+        }
+      }
+
+      out.push(line);
+    }
+
+    // Trim trailing blank lines
+    while (out.length && !out[out.length - 1].trim()) out.pop();
+
+    const header = [
+      `# Generated for Synology DSM Container Manager (Docker package).`,
+      `# Import: Container Manager → Project → Create → "Create docker-compose.yml" → paste this content.`,
+      `# Before deploying, create these folders in File Station (one per service):`,
+      `#   /volume1/docker/${stackName}/<service>/`,
+      `# Stripped (DSM does not apply): top-level volumes/configs/secrets, per-service`,
+      `# configs/secrets/healthcheck/deploy. If your stack needed a healthcheck-gated`,
+      `# depends_on (condition: service_healthy), it will start on plain restart-loop`,
+      `# behavior — usually fine with restart: unless-stopped.`,
+      ``,
+    ].join('\n');
+    return header + out.join('\n') + '\n';
+  },
+
+  _showSynologyExport(stackName, syn) {
+    const filename = `compose.${stackName}.synology.yml`;
+    const html = `
+      <div class="modal-header">
+        <h3><i class="fas fa-server" style="color:var(--accent);margin-right:8px"></i>Synology DSM compose — ${Utils.escapeHtml(stackName)}</h3>
+        <button class="modal-close-btn" id="syn-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-sm" style="margin-bottom:8px">Paste this into Container Manager → Project → Create → "Create docker-compose.yml". Volume folders must exist in File Station first (see header).</p>
+        <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre;font-size:12px;border:1px solid var(--border);border-radius:4px;padding:10px">${Utils.escapeHtml(syn)}</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="syn-download"><i class="fas fa-download"></i> Download .yml</button>
+        <button class="btn btn-secondary" id="syn-copy"><i class="fas fa-copy"></i> Copy</button>
+        <button class="btn btn-primary" id="syn-ok">Close</button>
+      </div>
+    `;
+    const sub = Modal.openSub(html, { width: 'min(900px, 95vw)' });
+    sub.querySelector('#syn-x').addEventListener('click', () => Modal.closeSub());
+    sub.querySelector('#syn-ok').addEventListener('click', () => Modal.closeSub());
+    sub.querySelector('#syn-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(syn).then(() => Toast.success('Copied!'));
+    });
+    sub.querySelector('#syn-download').addEventListener('click', () => {
+      Utils.downloadBlob(filename, new Blob([syn], { type: 'text/yaml;charset=utf-8' }));
+    });
   },
 };
 
