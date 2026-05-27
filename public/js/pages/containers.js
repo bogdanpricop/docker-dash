@@ -1848,7 +1848,7 @@ const ContainersPage = {
                   Toast.success(i18n.t('pages.containers.templatesDeplyed', { name: tmpl.name }));
                   await this._loadList();
                 } catch (err) {
-                  Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
+                  this._showDeployError(tmpl, err, compose);
                 }
               },
               onCancel: () => {
@@ -1905,9 +1905,58 @@ const ContainersPage = {
         Toast.success(i18n.t('pages.containers.templatesDeplyed', { name: tmpl.name }));
         await this._loadList();
       } catch (err) {
-        Toast.error(i18n.t('pages.containers.templatesDeployFailed', { message: err.message }));
+        this._showDeployError(tmpl, err, tmpl.compose);
       }
     }
+  },
+
+  /**
+   * Persistent error dialog for template deploy failures. The Docker error
+   * (and any structured fields the backend returned — service name, container
+   * name, partial successes) is shown in a modal the user has to close, with
+   * a Copy button so the message can be pasted into an issue. Replaces the
+   * 4-second Toast.error which made debugging impossible.
+   */
+  _showDeployError(tmpl, err, composeText) {
+    const body = (err && err.body) || {};
+    const message = (err && err.message) || 'Unknown error';
+    const status = (err && err.status) ? ` (HTTP ${err.status})` : '';
+    const detailLines = [];
+    if (body.service) detailLines.push(`service:        ${body.service}`);
+    if (body.containerName) detailLines.push(`container:      ${body.containerName}`);
+    if (Array.isArray(body.partial) && body.partial.length) {
+      detailLines.push(`partial deploy: ${body.partial.length} container(s) created before the failure:`);
+      body.partial.forEach(p => detailLines.push(`  - ${p.name}${p.started === false ? ' (created, NOT started)' : ''}`));
+    }
+    const details = detailLines.length ? detailLines.join('\n') + '\n\n' : '';
+    const errorBlock = `Template:       ${tmpl.id} (${tmpl.name})\nError${status}: ${message}\n\n${details}--- Compose YAML sent ---\n${composeText || tmpl.compose || ''}`;
+
+    const html = `
+      <div class="modal-header">
+        <h3 style="color:var(--red)"><i class="fas fa-circle-exclamation" style="margin-right:8px"></i>Deploy failed — ${Utils.escapeHtml(tmpl.name)}</h3>
+        <button class="modal-close-btn" id="deploy-err-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-sm" style="margin-bottom:8px">The Docker API returned an error. The full message is below — copy it before closing if you want to debug or report it.</p>
+        ${body.partial && body.partial.length ? `<div class="empty-msg is-warning" style="margin-bottom:10px"><i class="fas fa-triangle-exclamation"></i><p><strong>Partial deploy:</strong> ${body.partial.length} container(s) were created before the failure. Stop/remove them from the Containers page if you need to start clean.</p></div>` : ''}
+        <pre class="inspect-json" style="max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:12px;border:1px solid var(--red);border-radius:4px;padding:10px">${Utils.escapeHtml(errorBlock)}</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="deploy-err-copy"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+        <button class="btn btn-primary" id="deploy-err-ok">${i18n.t('common.close')}</button>
+      </div>
+    `;
+
+    // If a modal is already open (e.g. the template configurator), layer this on top via openSub.
+    const useSub = !!(Modal._content && Modal._content.parentElement && getComputedStyle(Modal._content.parentElement).display !== 'none');
+    const opts = { width: 'min(900px, 95vw)' };
+    const root = useSub ? Modal.openSub(html, opts) : (Modal.open(html, opts), Modal._content);
+    const close = () => { if (useSub) Modal.closeSub(); else Modal.close(); };
+    root.querySelector('#deploy-err-x').addEventListener('click', close);
+    root.querySelector('#deploy-err-ok').addEventListener('click', close);
+    root.querySelector('#deploy-err-copy').addEventListener('click', () => {
+      Utils.copyToClipboard(errorBlock).then(() => Toast.success(i18n.t('common.copied')));
+    });
   },
 
   // ─── Health Check Logs Viewer ──────────────────

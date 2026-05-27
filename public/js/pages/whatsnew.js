@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.2',
+      date: '2026-05-27',
+      title: 'Template deploy: parser rewrite + persistent error dialog',
+      changes: [
+        { type: 'fix', text: 'Fixed a long-standing latent bug: the Docker-API template deploy returned "no command specified" for every template with a top-level volumes: block (postgres, redis, mariadb, every LSIO template…). The hand-rolled line parser treated any 2-space-indented name: as a service, so volumes: → redis-data: created a phantom service with no image. Rewritten to use the yaml package — extracts only doc.services.*, correctly ignores top-level volumes/configs/networks blocks.' },
+        { type: 'fix', text: 'Deploy errors no longer flash in a toast that disappears in 4 seconds. Failures now open a persistent sub-modal with the full Docker error, the failing service + container name, any partial deploys, the compose YAML that was sent, and a Copy button. Closes only on user action so you can actually read and debug what went wrong.' },
+        { type: 'improvement', text: 'Template deploy now honors command: (string form via /bin/sh -c, array form passed through), container_name: overrides, and IP-prefixed ports like "127.0.0.1:2375:2375" (lsio-socket-proxy). Imageless services produce a clear 400 with the offending service name instead of the cryptic generic Docker error. UniFi template simplified to root Mongo credentials so it deploys cleanly via the API (the prior inline configs script was a Compose-CLI-only feature).' },
+      ],
+    },
+    {
       version: '8.7.1',
       date: '2026-05-27',
       title: 'Templates dialog: search field',

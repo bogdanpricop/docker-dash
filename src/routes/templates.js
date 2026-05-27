@@ -3,6 +3,7 @@
 const { Router } = require('express');
 const https = require('https');
 const http = require('http');
+const yaml = require('yaml');
 const { requireAuth, requireRole, writeable, requireFeature } = require('../middleware/auth');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
@@ -481,42 +482,40 @@ const TEMPLATES = [
     //   - In-place migration from the legacy `unifi-controller` image is NOT
     //     supported by upstream — backup in the old, restore in the new.
     id: 'unifi-network-application', name: 'UniFi Network Application', category: 'Networking', icon: 'fas fa-wifi',
-    description: 'Self-hosted Ubiquiti UniFi controller (LinuxServer.io image) with a dedicated MongoDB 7.0 sidecar. Inline init script auto-creates the unifi DB user on first start, healthcheck gates the controller until Mongo is ready. Web UI at https://<host>:8443.',
+    description: 'Self-hosted Ubiquiti UniFi controller (LinuxServer.io image) with a dedicated MongoDB 7.0 sidecar. Uses root Mongo credentials with authSource=admin so the stack deploys via the Docker API without an init script. Web UI at https://<host>:8443.',
     compose: [
       '# UniFi Network Application (LinuxServer.io) + dedicated MongoDB 7.0.',
-      '# CHANGE every "changeme" before first deploy. MONGO_PASS and the init-mongo',
-      '# pwd fields MUST match — the init script runs ONCE on first Mongo start.',
-      '',
-      'configs:',
-      '  init-mongo.js:',
-      '    content: |',
-      '      db.getSiblingDB("unifi").createUser({user: "unifi", pwd: "changeme", roles: [{role: "dbOwner", db: "unifi"}]});',
-      '      db.getSiblingDB("unifi_stat").createUser({user: "unifi", pwd: "changeme", roles: [{role: "dbOwner", db: "unifi_stat"}]});',
+      '# CHANGE every "changeme" before first deploy. MONGO_PASS and the mongo',
+      '# MONGO_INITDB_ROOT_PASSWORD MUST match — they are the same credential.',
+      '#',
+      '# Notes:',
+      '#   - Mongo image pinned (never `latest`) per LSIO guidance (UniFi <9.0',
+      '#     supports up to MongoDB 7.0).',
+      '#   - Mongo >4.4 on x86-64 needs a CPU with AVX (most modern hardware).',
+      '#   - Self-signed cert by default; if fronted by a reverse proxy, allow',
+      '#     unverified upstream.',
+      '#   - On first start, the unifi container may crash once before Mongo is',
+      '#     ready; the unless-stopped restart policy handles that automatically.',
+      '#   - In-place migration from the legacy `unifi-controller` image is NOT',
+      '#     supported by upstream — backup in the old, restore in the new.',
       '',
       'services:',
       '  unifi-db:',
       '    image: mongo:7.0',
       '    container_name: unifi-db',
       '    restart: unless-stopped',
+      '    environment:',
+      '      - MONGO_INITDB_ROOT_USERNAME=unifi',
+      '      - MONGO_INITDB_ROOT_PASSWORD=changeme',
       '    volumes:',
       '      - unifi-db:/data/db',
-      '    configs:',
-      '      - source: init-mongo.js',
-      '        target: /docker-entrypoint-initdb.d/init-mongo.js',
-      '    healthcheck:',
-      '      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]',
-      '      interval: 10s',
-      '      timeout: 5s',
-      '      retries: 6',
-      '      start_period: 40s',
       '',
       '  unifi-network-application:',
       '    image: lscr.io/linuxserver/unifi-network-application:latest',
       '    container_name: unifi-network-application',
       '    restart: unless-stopped',
       '    depends_on:',
-      '      unifi-db:',
-      '        condition: service_healthy',
+      '      - unifi-db',
       '    environment:',
       '      - PUID=1000',
       '      - PGID=1000',
@@ -526,20 +525,21 @@ const TEMPLATES = [
       '      - MONGO_USER=unifi',
       '      - MONGO_PASS=changeme',
       '      - MONGO_DBNAME=unifi',
+      '      - MONGO_AUTHSOURCE=admin',
       '      - MEM_LIMIT=1024',
       '      - MEM_STARTUP=1024',
       '    volumes:',
       '      - unifi-config:/config',
       '    ports:',
-      '      - "8443:8443"          # Web admin UI — required',
-      '      - "8080:8080"          # Device communication — required',
-      '      - "3478:3478/udp"      # STUN — required for AP discovery',
-      '      - "10001:10001/udp"    # AP discovery — required',
-      '      - "1900:1900/udp"      # L2 discovery — optional',
-      '      - "8843:8843"          # Guest portal HTTPS — optional',
-      '      - "8880:8880"          # Guest portal HTTP — optional',
-      '      - "6789:6789"          # Mobile throughput test — optional',
-      '      - "5514:5514/udp"      # Remote syslog — optional',
+      '      - "8443:8443"',
+      '      - "8080:8080"',
+      '      - "3478:3478/udp"',
+      '      - "10001:10001/udp"',
+      '      - "1900:1900/udp"',
+      '      - "8843:8843"',
+      '      - "8880:8880"',
+      '      - "6789:6789"',
+      '      - "5514:5514/udp"',
       '',
       'volumes:',
       '  unifi-db:',
@@ -848,55 +848,71 @@ router.delete('/:id', requireAuth, requireRole('admin'), asyncHandler((req, res)
 }));
 
 /** Parse simple compose YAML into service objects (no external YAML library needed) */
-function _parseComposeServices(yaml) {
-  const services = [];
-  const lines = yaml.split('\n');
-  let currentService = null;
-  let inEnvironment = false;
-  let inPorts = false;
-  let inVolumes = false;
+/**
+ * Parse a docker-compose YAML and extract the services we can deploy via the
+ * Docker API. Uses the `yaml` lib so top-level `volumes:` / `configs:` /
+ * `networks:` blocks are correctly NOT treated as services (the previous hand-
+ * rolled line parser would create phantom services from those names with empty
+ * Image, causing Docker to return "no command specified").
+ *
+ * Supported per service: image, container_name, restart, command (string or
+ * array), environment (array or map), ports (string short form, optionally
+ * with "HOSTIP:HOSTPORT:CONTAINERPORT[/proto]"), volumes (string short form).
+ *
+ * Unsupported by the API-level deploy (silently dropped — note in the
+ * template description if you rely on them): healthcheck, depends_on
+ * conditions, configs, networks, deploy.resources, secrets, cap_add, sysctls,
+ * shm_size, read_only, tmpfs. For full compose semantics use the standalone
+ * `docker compose up` CLI.
+ */
+function _parseComposeServices(composeYaml) {
+  let doc;
+  try { doc = yaml.parse(composeYaml); } catch { return []; }
+  if (!doc || typeof doc !== 'object') return [];
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const indent = line.length - line.trimStart().length;
+  const services = (doc.services && typeof doc.services === 'object') ? doc.services : {};
+  const out = [];
+  for (const [name, def] of Object.entries(services)) {
+    if (!def || typeof def !== 'object') continue;
 
-    // Detect service names (children of 'services:')
-    if (trimmed === 'services:') continue;
-    if (indent === 2 && trimmed.endsWith(':') && !trimmed.includes(' ')) {
-      if (currentService) services.push(currentService);
-      currentService = { name: trimmed.slice(0, -1), image: '', env: [], ports: [], volumes: [], restart: 'unless-stopped' };
-      inEnvironment = false; inPorts = false; inVolumes = false;
-      continue;
+    const env = [];
+    if (Array.isArray(def.environment)) {
+      for (const e of def.environment) if (typeof e === 'string') env.push(e);
+    } else if (def.environment && typeof def.environment === 'object') {
+      for (const [k, v] of Object.entries(def.environment)) env.push(`${k}=${v}`);
     }
 
-    if (!currentService) continue;
-
-    // Service properties
-    if (indent === 4) {
-      inEnvironment = false; inPorts = false; inVolumes = false;
-      if (trimmed.startsWith('image:')) currentService.image = trimmed.split(':').slice(1).join(':').trim().replace(/['"]/g, '');
-      else if (trimmed.startsWith('restart:')) currentService.restart = trimmed.split(':')[1].trim().replace(/['"]/g, '');
-      else if (trimmed === 'environment:') inEnvironment = true;
-      else if (trimmed === 'ports:') inPorts = true;
-      else if (trimmed === 'volumes:') inVolumes = true;
+    const ports = [];
+    for (const p of (def.ports || [])) {
+      if (typeof p === 'string') ports.push(p);
+      else if (p && typeof p === 'object' && p.published != null && p.target != null) {
+        // long form { target, published, protocol? }
+        ports.push(`${p.published}:${p.target}${p.protocol ? '/' + p.protocol : ''}`);
+      }
     }
 
-    // List items under environment/ports/volumes
-    if (indent >= 6 && trimmed.startsWith('-')) {
-      const val = trimmed.slice(1).trim().replace(/^["']|["']$/g, '');
-      if (inPorts) currentService.ports.push(val);
-      else if (inVolumes) currentService.volumes.push(val);
-      else if (inEnvironment) currentService.env.push(val);
+    const volumes = [];
+    for (const v of (def.volumes || [])) {
+      if (typeof v === 'string') volumes.push(v);
+      else if (v && typeof v === 'object' && v.source && v.target) {
+        volumes.push(`${v.source}:${v.target}${v.read_only ? ':ro' : ''}`);
+      }
     }
-    // Map-style environment (KEY: value)
-    if (indent >= 6 && inEnvironment && !trimmed.startsWith('-') && trimmed.includes(':')) {
-      const [k, ...v] = trimmed.split(':');
-      currentService.env.push(`${k.trim()}=${v.join(':').trim().replace(/^["']|["']$/g, '')}`);
-    }
+
+    let cmd = null;
+    if (typeof def.command === 'string') cmd = ['/bin/sh', '-c', def.command];
+    else if (Array.isArray(def.command)) cmd = def.command.map(String);
+
+    out.push({
+      name,
+      image: typeof def.image === 'string' ? def.image : '',
+      env, ports, volumes,
+      restart: typeof def.restart === 'string' ? def.restart : 'unless-stopped',
+      cmd,
+      containerName: typeof def.container_name === 'string' ? def.container_name : null,
+    });
   }
-  if (currentService) services.push(currentService);
-  return services;
+  return out;
 }
 
 // Deploy a template via Docker API (dockerode — works on any host)
@@ -920,7 +936,15 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
     const results = [];
 
     for (const svc of services) {
-      const containerName = services.length === 1 ? stackName : `${stackName}-${svc.name}`;
+      if (!svc.image) {
+        return res.status(400).json({
+          error: `Service "${svc.name}" has no image. Every service in the compose YAML must declare an image:.`,
+          service: svc.name,
+        });
+      }
+
+      const containerName = svc.containerName
+        || (services.length === 1 ? stackName : `${stackName}-${svc.name}`);
 
       // Remove existing container with same name (if any)
       try {
@@ -944,7 +968,7 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
         // Image might already exist locally
       }
 
-      // Build container config — do NOT set Cmd (let image default apply)
+      // Build container config
       const createOpts = {
         name: containerName,
         Image: svc.image,
@@ -955,30 +979,53 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
           Binds: [],
         },
       };
-      // Only set Env if non-empty
+      if (svc.cmd && svc.cmd.length) createOpts.Cmd = svc.cmd;
       if (svc.env && svc.env.length > 0) createOpts.Env = svc.env;
-      // Only set ExposedPorts if we have ports
       if (svc.ports && svc.ports.length > 0) createOpts.ExposedPorts = {};
 
-      // Ports
+      // Ports — support "HOSTIP:HOSTPORT:CONTAINERPORT[/proto]" and the
+      // shorter "HOSTPORT:CONTAINERPORT[/proto]" forms.
       for (const p of (svc.ports || [])) {
-        const [hostPort, containerPort] = p.split(':');
-        const proto = containerPort.includes('/') ? '' : '/tcp';
-        const cPort = containerPort.replace(/\/(tcp|udp)/, '') + proto;
+        const parts = p.split(':');
+        let hostIp = '', hostPort, containerPort;
+        if (parts.length >= 3) { [hostIp, hostPort, containerPort] = parts; }
+        else if (parts.length === 2) { [hostPort, containerPort] = parts; }
+        else continue;
+        const protoSuffix = containerPort.includes('/') ? '' : '/tcp';
+        const cPort = containerPort.replace(/\/(tcp|udp)/, '') + (protoSuffix || '/' + containerPort.split('/')[1]);
         createOpts.ExposedPorts[cPort] = {};
-        createOpts.HostConfig.PortBindings[cPort] = [{ HostPort: hostPort }];
+        const binding = { HostPort: hostPort };
+        if (hostIp) binding.HostIp = hostIp;
+        createOpts.HostConfig.PortBindings[cPort] = [binding];
       }
 
-      // Volumes
+      // Volumes (short-form "name:/path" or "./host:/path[:ro]")
       for (const v of (svc.volumes || [])) {
-        if (v.includes(':')) {
+        if (typeof v === 'string' && v.includes(':')) {
           createOpts.HostConfig.Binds.push(v);
         }
       }
 
-      // Create and start
-      const container = await docker.createContainer(createOpts);
-      await container.start();
+      // Create and start — surface Docker's real error message intact
+      let container;
+      try {
+        container = await docker.createContainer(createOpts);
+      } catch (err) {
+        return res.status(500).json({
+          error: `Failed to create container "${containerName}": ${err.message || err}`,
+          service: svc.name, containerName,
+          partial: results,
+        });
+      }
+      try {
+        await container.start();
+      } catch (err) {
+        return res.status(500).json({
+          error: `Container "${containerName}" was created but failed to start: ${err.message || err}`,
+          service: svc.name, containerName,
+          partial: [...results, { name: containerName, id: container.id, started: false }],
+        });
+      }
       results.push({ name: containerName, id: container.id });
     }
 

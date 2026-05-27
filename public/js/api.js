@@ -74,7 +74,10 @@ const Api = {
         ? await res.json()
         : await res.text();
       if (!res.ok) {
-        throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+        const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
+        err.status = res.status;
+        err.body = data;
+        throw err;
       }
       return data;
     } catch (err) {

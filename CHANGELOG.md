@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.2] - 2026-05-27 — Template deploy: parser rewrite + persistent error dialog + UniFi simplified
+
+### Fixed (long-standing latent bug)
+The Docker-API template deploy was returning **"(HTTP code 400) bad parameter - no command specified"** for any template with a top-level `volumes:` (or `configs:` / `networks:`) block — that includes **every template with a named volume** (postgres, redis, mariadb, mongo, every LSIO template, …). The hand-rolled line parser at `_parseComposeServices` treated any 2-space-indented `name:` as a service, so `volumes:\n  redis-data:` produced a phantom "redis-data" service with empty `Image`, which Docker rejected with the cryptic "no command specified".
+
+- **Parser rewritten** to use the project's `yaml` package — now correctly extracts only `doc.services.*`, ignoring `volumes` / `configs` / `networks` top-level blocks. Supports both array and map forms of `environment`, both short-form strings and long-form `{ target, published, protocol }` for ports, both string and array forms of `command`, and `container_name` overrides.
+- **`command:` is honored** in `createOpts.Cmd` (string `command:` runs via `/bin/sh -c`, array form passes through). Templates that relied on a `command:` override (litellm) now actually use it.
+- **IP-prefixed ports** (e.g. `"127.0.0.1:2375:2375"` in `lsio-socket-proxy`) now parsed and bound to the right interface via `HostConfig.PortBindings[…].HostIp`.
+- Imageless services produce a **clear 400** with the offending service name, instead of letting Docker return the cryptic generic error.
+
+### Persistent deploy-error dialog
+Replaces the 4-second `Toast.error` (which made deploy failures essentially undebuggable) with a **persistent sub-modal** showing the full Docker error, the failing service + container, any partial deploys, and the compose YAML that was sent — with a **Copy** button. Closes only when the user clicks Close or the X.
+
+The backend now returns structured `{ error, service, containerName, partial: [...] }` on failure, and `api.js` attaches `.body` and `.status` to the thrown `Error` so the dialog can show all of it.
+
+### UniFi template simplified
+The v8.6.2 UniFi template used Compose `configs:` with `content:` for the inline Mongo init script — a Compose-CLI feature the API-based deploy can't apply. Switched to **root Mongo credentials** (`MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD` on mongo + `MONGO_AUTHSOURCE=admin` on the app) so the stack now deploys cleanly via the Docker API without any external file or healthcheck. The first-start race is handled by `restart: unless-stopped` (unifi may crash once before Mongo is ready, then restarts).
+
+### Verified
+End-to-end browser test deploys `lsio-prowlarr` cleanly through the new code path (response: `{ ok: true, containers: [{ name: "prowlarr", ... }] }`, zero console errors); the persistent error modal renders correctly with the full error block + Copy/Close. Suite green (1444), template-tests pass, every template's YAML round-trips through the new parser.
+
 ## [8.7.1] - 2026-05-27 — Templates dialog: search field + intersect filter
 
 With 84 built-in templates now in **Containers → Templates**, scanning the grid for a specific image was painful. Adds a live search field above the category buttons.
