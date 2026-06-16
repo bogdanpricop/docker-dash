@@ -2,6 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.5] - 2026-06-16 — Fix: System → Prune buttons returned 404
+
+### Fixed
+The five Prune buttons on **System → Tools** (Containers / Images / Volumes / Networks / All) all returned **HTTP 404** because the frontend was calling `POST /api/system/prune/<type>` but the backend only had the legacy `POST /api/system/prune` with boolean-flag body. Spotted in browser console:
+```
+POST /api/system/prune/images  →  404 (Not Found)
+POST /api/system/prune/all     →  404 (Not Found)
+```
+
+- Added `POST /api/system/prune/:type` accepting `containers` / `images` / `volumes` / `networks` / `all`, translating the URL segment into the boolean flags `dockerService.prune()` expects.
+- Same audit + permission stack (`requireAuth` + `requireRole('admin')` + `writeable` + `requireFeature('prune')`).
+- Audit entries include the type for cleaner history (`action: system_prune, details: { type, ...flags }`).
+- Legacy `POST /api/system/prune` route kept unchanged — anyone scripting against the old body-based contract still works.
+
+### Verified
+Browser-tested every prune type via the page's `Api.prune` helper on local: all 5 (`containers`, `images`, `volumes`, `networks`, `all`) return `200` with `SpaceReclaimed` (0 on a clean dev box, as expected). Suite green (1444).
+
 ## [8.7.4] - 2026-05-27 — Template Configurator: better password detection + Synology DSM export
 
 ### Password generator now finds the fields it was missing

@@ -49,6 +49,31 @@ router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeatu
   } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// Per-type prune — the frontend (System → Tools → Prune buttons) sends
+// /prune/containers | images | volumes | networks | all. Translates the
+// URL segment into the boolean-flag body that dockerService.prune expects,
+// reusing the same audit + permission stack as /prune. The legacy /prune
+// route above remains for any external caller using the old contract.
+router.post('/prune/:type', requireAuth, requireRole('admin'), writeable, requireFeature('prune'), async (req, res) => {
+  const type = String(req.params.type || '').toLowerCase();
+  const validTypes = ['containers', 'images', 'volumes', 'networks', 'all'];
+  if (!validTypes.includes(type)) {
+    return res.status(400).json({ error: `Invalid prune type "${type}". Expected one of: ${validTypes.join(', ')}.` });
+  }
+  const flags = type === 'all'
+    ? { containers: true, images: true, volumes: true, networks: true }
+    : { [type]: true };
+  try {
+    const results = await dockerService.prune(flags, req.hostId);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'system_prune', details: { type, ...flags }, ip: getClientIp(req) });
+    res.json(results);
+  } catch (err) {
+    log.error('Prune failed', { type, message: err.message || String(err) });
+    res.status(500).json({ error: `Prune ${type} failed: ${err.message || 'internal error'}` });
+  }
+});
+
 // ─── Update Checks ───────────────────────────────────────────
 const { execFileSync } = require('child_process');
 const https = require('https');

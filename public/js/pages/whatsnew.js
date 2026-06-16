@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.5',
+      date: '2026-06-16',
+      title: 'Fix: System → Prune buttons returned 404',
+      changes: [
+        { type: 'fix', text: 'The five Prune buttons on System → Tools (Containers / Images / Volumes / Networks / All) all returned 404 because the frontend was calling POST /api/system/prune/<type> but the backend only had the legacy POST /api/system/prune with boolean-flag body. Added the per-type route on the backend (same audit + permissions stack), keeping the legacy route working. Browser-verified all 5 types return 200 with SpaceReclaimed.' },
+      ],
+    },
+    {
       version: '8.7.4',
       date: '2026-05-27',
       title: 'Template Configurator: better password detection + Synology DSM export',
