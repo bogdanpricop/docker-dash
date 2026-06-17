@@ -1,0 +1,18 @@
+# Docker Dash for Synology DSM Container Manager.
+# Before deploy: in File Station, create these folders:
+#   /volume1/docker/docker-dash/data
+# Import: Container Manager → Project → Create → "Create docker-compose.yml" → paste this.
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: docker-dash
+    restart: unless-stopped
+    ports:
+      - "8101:8101"
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /volume1/docker/docker-dash/data:/data

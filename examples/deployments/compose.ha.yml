@@ -1,0 +1,51 @@
+# Docker Dash in HA mode (2 replicas + Redis leader election).
+# Cron jobs, drift scans, image pulls etc. run only on the leader — safe to scale.
+# Put your reverse proxy (Caddy / Traefik / NPM / nginx) IN FRONT of dd-1 and dd-2.
+# Both replicas serve all read + write requests on host port 8101/8102.
+
+services:
+  dd-redis:
+    image: redis:7-alpine
+    container_name: dd-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "changeme-redis-strong-secret"]
+    volumes:
+      - dd-redis-data:/data
+
+  dd-1:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: dd-1
+    restart: unless-stopped
+    depends_on:
+      - dd-redis
+    ports:
+      - "8101:8101"
+    environment:
+      - DD_MODE=ha
+      - REDIS_URL=redis://:changeme-redis-strong-secret@dd-redis:6379
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+
+  dd-2:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: dd-2
+    restart: unless-stopped
+    depends_on:
+      - dd-redis
+    ports:
+      - "8102:8101"
+    environment:
+      - DD_MODE=ha
+      - REDIS_URL=redis://:changeme-redis-strong-secret@dd-redis:6379
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+
+volumes:
+  dd-redis-data:
+  docker-dash-data:

@@ -1,0 +1,31 @@
+# Docker Dash behind a pre-existing Traefik v3 instance.
+# Prereq: Traefik is running, attached to the external network "proxy",
+# and has a certResolver named "letsencrypt" configured for ACME.
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: docker-dash
+    restart: unless-stopped
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+      - PUBLIC_URL=https://dockerdash.example.com
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dockerdash.rule=Host(`dockerdash.example.com`)"
+      - "traefik.http.routers.dockerdash.entrypoints=websecure"
+      - "traefik.http.routers.dockerdash.tls.certresolver=letsencrypt"
+      - "traefik.http.services.dockerdash.loadbalancer.server.port=8101"
+
+volumes:
+  docker-dash-data:
+
+networks:
+  proxy:
+    external: true

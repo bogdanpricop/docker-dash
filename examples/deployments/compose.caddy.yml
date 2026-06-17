@@ -1,0 +1,44 @@
+# Docker Dash + Caddy auto-HTTPS sidecar.
+# DNS for dockerdash.example.com must point at this host, and ports 80 + 443 must be open.
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: docker-dash
+    restart: unless-stopped
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+      - PUBLIC_URL=https://dockerdash.example.com
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: docker-dash-caddy
+    restart: unless-stopped
+    depends_on:
+      - docker-dash
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+
+configs:
+  caddyfile:
+    content: |
+      dockerdash.example.com {
+        tls admin@example.com
+        reverse_proxy docker-dash:8101
+      }
+
+volumes:
+  docker-dash-data:
+  caddy-data:
+  caddy-config:

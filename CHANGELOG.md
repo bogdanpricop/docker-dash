@@ -2,6 +2,31 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.7] - 2026-06-17 — Deployment Configurator + recipe library
+
+A new wizard at **System → Tools → Deployment Configurator** generates a tailored `docker-compose.yml` for your environment — and the same recipes ship as static files under [`examples/deployments/`](examples/deployments/README.md) for browsing on GitHub. Inspired by an abandoned community fork (`conexaoazul/docker-dash`) that had to hand-write its own Swarm + Traefik compose because the repo only documented the standalone case.
+
+### 7 recipes
+- **standalone** — no reverse proxy; HTTP only, port-mapped.
+- **caddy** — Caddy sidecar with auto-HTTPS (Let's Encrypt, zero config).
+- **traefik** — labels for an existing Traefik v3 (plain Compose).
+- **npm** — port-exposed for Nginx Proxy Manager to pick up.
+- **swarm-traefik** — Swarm-managed, pinned to a manager node, behind Traefik.
+- **ha** — 2 replicas + Redis-backed leader election (`DD_MODE=ha`).
+- **synology** — DSM Container Manager-friendly bind mounts under `/volume1/docker/docker-dash/`.
+
+### The UI
+Split-pane modal (340px form on the left, live YAML preview on the right): pick a recipe → only that recipe's fields appear (domain, email, host port, network name, certResolver, redis password, Synology stack path) → preview rebuilds on every keystroke → **Copy** or **Download .yml**.
+
+### Single source of truth
+All seven recipe templates live in `public/js/components/deployment-configurator.js` and are exported pure for testing (`DeploymentConfigurator._render`). A small `scripts/generate-deployment-examples.js` snapshots them to the static files under `examples/deployments/` — run after editing a template to keep the GitHub-browsable files in sync.
+
+### Tests
+`deployment-recipes.test.js` — **36 new cases**: every recipe parses through the `yaml` lib with both defaults AND custom user options; every recipe mounts the Docker socket read-only and uses `unless-stopped` (or Swarm `restart_policy`); recipe-specific assertions for Caddy domain/email substitution, Traefik labels, Swarm `node.role == manager`, HA Redis + two replicas on distinct host ports, Synology stack-path substitution, standalone single-service shape. Suite 1456 → 1492.
+
+### Why this exists
+Reverse-proxy + TLS + mode setup is where ~80% of self-hosted-app friction lives. Before today, the project's README only covered the standalone case; new users hit Caddy / Traefik / NPM / Swarm / NAS situations and had to build their own compose from scratch. The wizard makes "I have setup X" → "here's your compose" a 30-second job.
+
 ## [8.7.6] - 2026-06-17 — OIDC: group→role mapping + Entra ID how-to (issue #11)
 
 Closes the gap [#11 raised by @patrickklaeren](https://github.com/bogdanpricop/docker-dash/issues/11) on Microsoft Entra ID SSO. The OIDC backbone has been in place since v8.0 (discovery + RS256 JWKS verification + state CSRF + callback + SSO login button), but two things were missing for an org-scale Entra deployment: a way to drive roles from Entra groups, and any documentation that OIDC existed.

@@ -1,0 +1,43 @@
+# Docker Dash on Docker Swarm behind Traefik v3.
+# Deploy: docker stack deploy -c compose.yml docker-dash
+# Prereqs: Swarm initialized, Traefik already running on the cluster attached
+# to the external overlay network "proxy", certResolver "letsencrypt" configured.
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+      - PUBLIC_URL=https://dockerdash.example.com
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+    networks:
+      - proxy
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 10s
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dockerdash.rule=Host(`dockerdash.example.com`)"
+        - "traefik.http.routers.dockerdash.entrypoints=websecure"
+        - "traefik.http.routers.dockerdash.tls.certresolver=letsencrypt"
+        - "traefik.http.services.dockerdash.loadbalancer.server.port=8101"
+        - "traefik.docker.network=proxy"
+
+volumes:
+  docker-dash-data:
+
+networks:
+  proxy:
+    external: true

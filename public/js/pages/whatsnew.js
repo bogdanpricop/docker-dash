@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.7',
+      date: '2026-06-17',
+      title: 'Deployment Configurator + recipe library',
+      changes: [
+        { type: 'feature', text: 'New wizard at System → Tools → Deployment Configurator. Pick one of 7 recipes (standalone, Caddy auto-HTTPS, Traefik v3, Nginx Proxy Manager, Docker Swarm + Traefik, HA mode with 2 replicas + Redis, Synology DSM), fill the fields specific to it (domain, email, host port, network name, certResolver, redis password, Synology stack path), watch the docker-compose.yml rebuild live on the right, then Copy or Download .yml. Reverse-proxy + TLS + mode setup is where most self-hosted-app friction lives — this turns the 30-minute "I have setup X, build me a compose" job into 30 seconds.' },
+        { type: 'docs', text: 'Same 7 recipes ship as static files under examples/deployments/ for browsing on GitHub, with a "Which one is for me?" decision-tree README. Single source of truth in public/js/components/deployment-configurator.js; scripts/generate-deployment-examples.js snapshots the static files. 36 new unit tests guarantee every recipe parses through the yaml lib with both defaults and custom options.' },
+      ],
+    },
+    {
       version: '8.7.6',
       date: '2026-06-17',
       title: 'OIDC: group→role mapping + Entra ID how-to (issue #11)',

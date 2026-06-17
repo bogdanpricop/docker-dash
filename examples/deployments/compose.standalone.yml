@@ -1,0 +1,19 @@
+# Docker Dash — STANDALONE (no reverse proxy)
+# Open http://<host>:8101 after deploy. First login: admin / changeme (forced change on first use).
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: docker-dash
+    restart: unless-stopped
+    ports:
+      - "8101:8101"
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+
+volumes:
+  docker-dash-data:

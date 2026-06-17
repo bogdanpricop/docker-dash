@@ -1012,6 +1012,7 @@ DB_PASS=secret"></textarea>
     return [
       // Docker tools (existing)
       { id: 'docker-run', name: 'docker run → Compose', icon: 'fa-terminal', color: '#388bfd', cat: 'docker', desc: 'Convert docker run commands to docker-compose YAML' },
+      { id: 'deployment-cfg', name: 'Deployment Configurator', icon: 'fa-rocket', color: '#0ea5e9', cat: 'docker', desc: 'Generate a tailored docker-compose.yml for your setup: Caddy / Traefik / NPM / Swarm / HA / Synology' },
       { id: 'proxy-labels', name: 'Reverse Proxy Labels', icon: 'fa-tags', color: '#3fb950', cat: 'docker', desc: 'Generate Traefik or Caddy reverse proxy labels' },
       { id: 'ai-logs', name: 'AI Log Analysis', icon: 'fa-robot', color: '#a371f7', cat: 'docker', desc: 'Generate diagnostic prompts from container logs' },
       // Security
@@ -1101,6 +1102,18 @@ DB_PASS=secret"></textarea>
   },
 
   _openToolModal(toolId) {
+    // Deployment Configurator owns its own wider split-pane modal (left form,
+    // right live YAML preview). Bypass the generic 650px tool modal so it can
+    // breathe.
+    if (toolId === 'deployment-cfg') {
+      if (typeof DeploymentConfigurator === 'undefined') {
+        Toast.error('DeploymentConfigurator not loaded — hard-refresh the page.');
+        return;
+      }
+      DeploymentConfigurator.open();
+      return;
+    }
+
     const tool = this._toolsDef().find(t => t.id === toolId);
     if (!tool) return;
 

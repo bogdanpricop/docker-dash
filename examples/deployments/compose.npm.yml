@@ -1,0 +1,31 @@
+# Docker Dash behind Nginx Proxy Manager.
+# After deploy:
+#   NPM → Hosts → Proxy Hosts → Add Proxy Host:
+#     - Domain Names: your.domain.example
+#     - Forward Hostname / IP: docker-dash      (if NPM is on the same network)
+#                              OR <host-ip>     (if on host network)
+#     - Forward Port: 8101
+#     - SSL: request Let's Encrypt certificate, Force SSL ON
+
+services:
+  docker-dash:
+    image: ghcr.io/bogdanpricop/docker-dash:latest
+    container_name: docker-dash
+    restart: unless-stopped
+    ports:
+      - "8101:8101"
+    environment:
+      - ADMIN_PASSWORD=changeme
+      - ENCRYPTION_KEY=changeme-32-chars-minimum-edit-this
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - docker-dash-data:/data
+    networks:
+      - npm_network
+
+volumes:
+  docker-dash-data:
+
+networks:
+  npm_network:
+    external: true

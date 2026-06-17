@@ -347,6 +347,8 @@ For an unattended-secure install with a random admin password (instead of `admin
 
 > **Install didn't work?** Jump to [Troubleshooting Install](#troubleshooting-install) — covers restart loops, build failures, port conflicts, permission issues, and the diagnostic one-liner that surfaces 95% of failure modes.
 
+> **Specific setup?** See [`examples/deployments/`](examples/deployments/README.md) — ready-to-customize compose files for Caddy auto-HTTPS, Traefik v3, Nginx Proxy Manager, Docker Swarm, HA mode (2 replicas + Redis), and Synology DSM. Or open **System → Tools → Deployment Configurator** in the running app for a live wizard that emits the YAML for your environment.
+
 ### Manual Install
 
 ```bash
