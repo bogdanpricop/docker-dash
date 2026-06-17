@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.6] - 2026-06-17 — OIDC: group→role mapping + Entra ID how-to (issue #11)
+
+Closes the gap [#11 raised by @patrickklaeren](https://github.com/bogdanpricop/docker-dash/issues/11) on Microsoft Entra ID SSO. The OIDC backbone has been in place since v8.0 (discovery + RS256 JWKS verification + state CSRF + callback + SSO login button), but two things were missing for an org-scale Entra deployment: a way to drive roles from Entra groups, and any documentation that OIDC existed.
+
+### New (additive — no breaking changes)
+- **Group → role mapping**. Four new env vars:
+  - `OIDC_GROUP_CLAIM` (default `groups`)
+  - `OIDC_ROLE_ADMIN_GROUPS` / `OIDC_ROLE_OPERATOR_GROUPS` / `OIDC_ROLE_VIEWER_GROUPS` (comma-separated; Entra GUIDs or display names)
+- **Precedence**: admin > operator > viewer when a user is in groups for multiple roles.
+- **Case-insensitive exact match** on the claim values (works for both Entra group object IDs and display names).
+- **Role re-evaluated on every login** when any of the three lists is configured — so removing someone from the admin group in Entra demotes them on next sign-in (`SSO user role updated from IdP` in the log). When NO lists are configured, behaviour is exactly as before: every SSO user gets `OIDC_DEFAULT_ROLE` and existing roles are never overwritten.
+- **`groups` scope** is added to the auth request only when group mapping is configured (Entra emits the claim per the app registration's *Token configuration*).
+- **`findOrCreateSsoUser(username, role, email, { updateRole })`** — the new opt-in flag lets the OIDC callback own the role of existing users; everywhere else still uses the old behaviour.
+
+### Docs
+- New how-to **`security` → "OIDC SSO with Microsoft Entra ID (Azure AD)"** (`src/db/howto-content/oidc-entra-id.md`) with the full path: app registration, secret, groups-claim emission, env-var template, role-assignment semantics, troubleshooting (issuer/redirect-URI/missing-claim cases). Notes that the same contract works for Okta / Keycloak / Google / Authentik / Authelia.
+
+### Tests
+- 12 new unit cases in `oidc-group-mapping.test.js` for the pure `_resolveRoleFromGroups` resolver: precedence (admin > operator > viewer), case-insensitive GUID + display-name matching, custom claim name, single-string claim wrapping, defensive nulls, partial config (admin-only). Suite 1444 → 1456 (one pre-existing unrelated egress-filter flake under load).
+
 ## [8.7.5] - 2026-06-16 — Fix: System → Prune buttons returned 404
 
 ### Fixed

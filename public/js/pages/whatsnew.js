@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.6',
+      date: '2026-06-17',
+      title: 'OIDC: group→role mapping + Entra ID how-to (issue #11)',
+      changes: [
+        { type: 'feature', text: 'OIDC group → role mapping for Microsoft Entra ID (and any OIDC IdP — Okta, Keycloak, Google, Authentik, Authelia). Four new env vars: OIDC_GROUP_CLAIM (default groups), OIDC_ROLE_ADMIN_GROUPS / OIDC_ROLE_OPERATOR_GROUPS / OIDC_ROLE_VIEWER_GROUPS — comma-separated, accept Entra group GUIDs or display names, case-insensitive. Admin > operator > viewer precedence when a user is in groups for multiple roles. When mapping is configured, the role is re-evaluated on EVERY login so demoting someone in Entra demotes them in Docker Dash on next sign-in.' },
+        { type: 'docs', text: 'New how-to "OIDC SSO with Microsoft Entra ID (Azure AD)" under Security — full setup from app registration through groups-claim emission, env-var template, role-assignment semantics, and troubleshooting. The OIDC backbone itself has been in place since v8.0 (discovery, RS256 JWKS verification, state CSRF, SSO login button) but was undocumented — this guide closes the discoverability gap.' },
+        { type: 'improvement', text: '12 new unit tests for the pure group→role resolver (precedence, GUID + display-name matching, custom claim name, defensive nulls). Non-breaking: when no group lists are configured, behaviour is exactly as before — every SSO user gets OIDC_DEFAULT_ROLE and existing user roles are never overwritten by OIDC.' },
+      ],
+    },
+    {
       version: '8.7.5',
       date: '2026-06-16',
       title: 'Fix: System → Prune buttons returned 404',

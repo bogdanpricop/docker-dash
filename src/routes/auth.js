@@ -671,6 +671,33 @@ async function _verifyIdToken(idToken, issuer, clientId) {
   return payload;
 }
 
+/**
+ * v8.7.6 — Resolve a docker-dash role from OIDC ID-token claims using the
+ * group-mapping config. Returns 'admin' / 'operator' / 'viewer' (highest
+ * privilege wins when a user is in groups for multiple roles), or `null` if
+ * no group lists are configured OR the user is in none of them. Pure
+ * function — fully unit-testable.
+ */
+function _resolveRoleFromGroups(claims, oidcCfg) {
+  if (!oidcCfg) return null;
+  const hasAnyList = (oidcCfg.adminGroups?.length || 0)
+    + (oidcCfg.operatorGroups?.length || 0)
+    + (oidcCfg.viewerGroups?.length || 0) > 0;
+  if (!hasAnyList) return null; // group mapping disabled — caller falls back
+
+  const claimName = oidcCfg.groupClaim || 'groups';
+  let raw = claims && claims[claimName];
+  if (raw == null) raw = [];
+  if (!Array.isArray(raw)) raw = [String(raw)];
+  const userGroups = new Set(raw.map(g => String(g).toLowerCase()));
+
+  const has = (list) => (list || []).some(g => userGroups.has(String(g).toLowerCase()));
+  if (has(oidcCfg.adminGroups)) return 'admin';
+  if (has(oidcCfg.operatorGroups)) return 'operator';
+  if (has(oidcCfg.viewerGroups)) return 'viewer';
+  return null; // configured but no match → caller can fall back to defaultRole
+}
+
 // OIDC: Check if enabled
 router.get('/oidc/enabled', (req, res) => {
   res.json({ enabled: config.oidc?.enabled || false });
@@ -703,11 +730,18 @@ router.get('/oidc/login', async (req, res) => {
     db.prepare('INSERT OR REPLACE INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
 
     const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
+    // If group-mapping is configured, ask the IdP to emit the groups claim
+    // (Entra ID honors this when "groupMembershipClaims" is set on the app
+    // registration; other IdPs respect the openid-scope contract).
+    const groupMappingOn = (config.oidc.adminGroups?.length || 0)
+      + (config.oidc.operatorGroups?.length || 0)
+      + (config.oidc.viewerGroups?.length || 0) > 0;
+    const scope = groupMappingOn ? 'openid profile email groups' : 'openid profile email';
     const params = new URLSearchParams({
       client_id: config.oidc.clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'openid profile email',
+      scope,
       state,
     });
 
@@ -788,8 +822,18 @@ router.get('/oidc/callback', async (req, res) => {
     const username = userInfo.preferred_username || email.split('@')[0] || userInfo.sub;
     const displayName = userInfo.name || userInfo.given_name || username;
 
-    // Find or create user
-    const user = authService.findOrCreateSsoUser(username, config.oidc.defaultRole || 'viewer', email);
+    // v8.7.6 — resolve role from the IdP's groups claim if mapping is
+    // configured; fall back to OIDC_DEFAULT_ROLE otherwise.
+    const mappedRole = _resolveRoleFromGroups(userInfo, config.oidc);
+    const groupMappingOn = (config.oidc.adminGroups?.length || 0)
+      + (config.oidc.operatorGroups?.length || 0)
+      + (config.oidc.viewerGroups?.length || 0) > 0;
+    const assignedRole = mappedRole || (config.oidc.defaultRole || 'viewer');
+
+    // Find or create user. When group mapping is on we trust the IdP — RE-EVALUATE
+    // existing users' roles on every login so removing someone from an admin
+    // group in the IdP actually demotes them on next sign-in.
+    const user = authService.findOrCreateSsoUser(username, assignedRole, email, { updateRole: groupMappingOn });
     if (!user) return res.status(403).send('Account is disabled');
 
     // Update display name if available
@@ -958,3 +1002,5 @@ router.get('/ldap/users', requireAuth, requireRole('admin'), async (req, res) =>
 });
 
 module.exports = router;
+// v8.7.6 — exposed for unit tests of the pure group→role resolver.
+module.exports._resolveRoleFromGroups = _resolveRoleFromGroups;

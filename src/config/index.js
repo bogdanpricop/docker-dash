@@ -107,6 +107,20 @@ module.exports = {
     clientSecret: env('OIDC_CLIENT_SECRET', ''),
     redirectUri: env('OIDC_REDIRECT_URI', ''),
     defaultRole: env('OIDC_DEFAULT_ROLE', 'viewer'),
+    // v8.7.6 — Group → role mapping (Entra ID & any OIDC IdP).
+    // groupClaim names the ID-token claim that lists groups (Entra defaults
+    // to "groups"; some IdPs use "roles" if app-roles are configured). The
+    // three *_GROUPS lists are comma-separated. Match is case-insensitive
+    // exact on the claim value (works for both Entra group IDs/GUIDs and
+    // display-names). When ANY of the three lists is configured, the
+    // existing user's role is RE-EVALUATED on every login (so removing
+    // someone from the admin group in Entra demotes them on next sign-in).
+    // When all three lists are empty, behavior is unchanged: every SSO
+    // user gets defaultRole and existing roles are never overwritten.
+    groupClaim: env('OIDC_GROUP_CLAIM', 'groups'),
+    adminGroups: env('OIDC_ROLE_ADMIN_GROUPS', '').split(',').map(s => s.trim()).filter(Boolean),
+    operatorGroups: env('OIDC_ROLE_OPERATOR_GROUPS', '').split(',').map(s => s.trim()).filter(Boolean),
+    viewerGroups: env('OIDC_ROLE_VIEWER_GROUPS', '').split(',').map(s => s.trim()).filter(Boolean),
   },
 };
 

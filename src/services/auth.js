@@ -450,20 +450,32 @@ class AuthService {
     if (result.changes > 0) log.debug('Cleaned sessions', { count: result.changes });
   }
 
-  /** Find or create SSO user (for header-based auth) */
-  findOrCreateSsoUser(username, role, email) {
+  /**
+   * Find or create an SSO user. New users get the given role. Existing users
+   * keep their current role UNLESS `opts.updateRole` is true — that opt-in
+   * (used by the OIDC callback when group→role mapping is configured) lets
+   * the IdP own the role, so a demote in Entra/Okta takes effect on the
+   * user's next login.
+   */
+  findOrCreateSsoUser(username, role, email, opts = {}) {
     const db = getDb();
+    const resolvedRole = role || 'viewer';
     let user = db.prepare('SELECT id, username, role, is_active FROM users WHERE username = ?').get(username);
     if (user) {
       if (!user.is_active) return null;
+      if (opts.updateRole && resolvedRole && resolvedRole !== user.role) {
+        db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(resolvedRole, now(), user.id);
+        log.info('SSO user role updated from IdP', { username, from: user.role, to: resolvedRole });
+        user = { ...user, role: resolvedRole };
+      }
       return { id: user.id, username: user.username, role: user.role, sso: true };
     }
     // Auto-create SSO user (no password — SSO-only)
     const r = db.prepare(
       'INSERT INTO users (username, email, password_hash, role, is_active) VALUES (?, ?, ?, ?, 1)'
-    ).run(username, email || null, 'SSO_NO_PASSWORD', role || 'viewer');
-    log.info('SSO user created', { username, role });
-    return { id: Number(r.lastInsertRowid), username, role: role || 'viewer', sso: true };
+    ).run(username, email || null, 'SSO_NO_PASSWORD', resolvedRole);
+    log.info('SSO user created', { username, role: resolvedRole });
+    return { id: Number(r.lastInsertRowid), username, role: resolvedRole, sso: true };
   }
 
   /** Change password */
