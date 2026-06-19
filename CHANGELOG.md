@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.12] - 2026-06-20 — **RELIABILITY**: Docker connection timeout consistency + sandbox multi-host TTL sweep
+
+Two reliability fixes from the audit sweep — both silent failure modes in multi-host setups.
+
+### 1. Docker connection request timeout applied to ALL connection types
+`_createConnection` in `src/services/docker.js` had `timeout: 30000` only on the TCP path. Unix socket and SSH-tunneled connections used no timeout, so a hung remote Docker daemon (paused / restart-looping / deadlocked) would freeze `listContainers`, `inspect`, `pull`, etc. forever — even though the SSH tunnel's own keepalive (10s × 3 retries) kept the underlying transport happily alive.
+
+**Fix**: applied the same `timeout: 30_000` to socket, tcp, and ssh-tunneled cases. Streaming endpoints (`logs --follow`, `attach`, `exec`) are unaffected — the modem doesn't auto-close on the `timeout` event per node `http.req.setTimeout()` semantics, same behavior TCP-connected hosts have had since their inception.
+
+### 2. Sandbox TTL sweep was leaking remote sandboxes forever
+`POST /containers/sandbox` accepts `req.hostId` (via the `extractHostId` middleware), so sandboxes can be created on any active host. But `src/jobs/index.js` `sandbox-ttl-sweep` was hardcoded to `getDocker(0)` — only swept local sandboxes. **Sandboxes created on remote hosts never expired**, accumulating resources forever with no audit trail.
+
+**Fix**: sweep iterates `dockerService.getActiveHosts()`. One unreachable host is logged at warn level and skipped (doesn't stall the rest). Per-container cleanup errors (stop/remove failures) now log at warn level instead of being silently swallowed, so a sandbox stuck in "stop refused" state is finally visible in ops. The audit-log entry and WS broadcast now include `hostId` for correct attribution.
+
+### Tests
+2 new assertions on the existing docker-service test (plus a sibling test covering tcp + default-fallback timeouts). Suite 1517 → 1518.
+
+### Operator action
+None. Backward-compatible. After upgrade, remote-host sandboxes will start expiring on their TTL (any orphaned sandboxes from before the fix may need a one-time manual cleanup via `docker ps -f label=docker-dash.sandbox=true` on each remote host).
+
 ## [8.7.11] - 2026-06-20 — **SECURITY FIX**: MFA recovery-code lookup timing leak
 
 **Severity**: medium. `verifyMfaRecovery` used `codes.indexOf(normalizedInput)` to look up a submitted recovery code in the user's stored list. `Array.prototype.indexOf` performs string-equality with **short-circuit comparison** — the wall-clock time depends on where in the array the match is found (and within each element, on how far the first differing character is). An attacker with a valid `mfaToken` (obtainable when valid username+password is stolen but second factor is enforced) could time their requests to determine prefix matches and meaningfully accelerate brute force against the small recovery-code search space.

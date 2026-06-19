@@ -68,15 +68,31 @@ class DockerService {
 
   /** Create Dockerode instance from host config */
   _createConnection(hostConfig) {
+    // v8.7.12 — applied consistently across all connection types. Previously
+    // only the TCP path passed `timeout` to dockerode; SSH-tunneled and Unix-
+    // socket connections relied on default (no timeout) so a hung remote
+    // Docker daemon would freeze listContainers/inspect/pull through the
+    // tunnel forever, even though the SSH tunnel's own keepalive (10s/3x)
+    // kept the underlying transport alive. 30s is the dockerode `timeout`
+    // option — applies to per-request socket idle. Streaming endpoints
+    // (logs --follow, attach, exec) emit data faster than this in practice
+    // and the modem doesn't auto-close on the 'timeout' event (per node
+    // http req.setTimeout semantics), so live consumers are unaffected —
+    // same behavior TCP-connected hosts have had since their inception.
+    const DOCKER_REQUEST_TIMEOUT_MS = 30_000;
+
     switch (hostConfig.connectionType) {
       case 'socket':
-        return new Docker({ socketPath: hostConfig.socketPath || config.docker.socketPath });
+        return new Docker({
+          socketPath: hostConfig.socketPath || config.docker.socketPath,
+          timeout: DOCKER_REQUEST_TIMEOUT_MS,
+        });
 
       case 'tcp': {
         const opts = {
           host: hostConfig.host,
           port: hostConfig.port || 2376,
-          timeout: 30000,
+          timeout: DOCKER_REQUEST_TIMEOUT_MS,
         };
         if (hostConfig.tlsConfig) {
           opts.ca = hostConfig.tlsConfig.ca;
@@ -96,7 +112,12 @@ class DockerService {
         // SSH tunnel: check if tunnel exists, if not it will be created async
         const tunnel = this._getExistingTunnel(hostConfig.id);
         if (tunnel && tunnel.localPort) {
-          return new Docker({ host: '127.0.0.1', port: tunnel.localPort, protocol: 'http' });
+          return new Docker({
+            host: '127.0.0.1',
+            port: tunnel.localPort,
+            protocol: 'http',
+            timeout: DOCKER_REQUEST_TIMEOUT_MS,
+          });
         }
         // Tunnel doesn't exist yet — trigger async creation and throw
         this._ensureTunnel(hostConfig);
@@ -104,7 +125,10 @@ class DockerService {
       }
 
       default:
-        return new Docker({ socketPath: config.docker.socketPath });
+        return new Docker({
+          socketPath: config.docker.socketPath,
+          timeout: DOCKER_REQUEST_TIMEOUT_MS,
+        });
     }
   }
 

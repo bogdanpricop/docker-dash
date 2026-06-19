@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.12',
+      date: '2026-06-20',
+      title: 'RELIABILITY: Docker timeout consistency + sandbox multi-host TTL sweep',
+      changes: [
+        { type: 'fix', text: 'Docker connection request timeout (30s) is now applied consistently to all three connection types (Unix socket / TCP / SSH-tunneled). Previously only TCP had it — a hung remote Docker daemon could freeze listContainers/inspect/pull forever on socket and SSH-tunneled hosts, even though the SSH tunnel keepalive (10s × 3) kept the transport alive. Streaming endpoints (logs follow, attach, exec) unaffected.' },
+        { type: 'fix', text: 'Sandbox TTL sweep was leaking remote sandboxes forever — POST /containers/sandbox is multi-host aware, but the cron sweep was hardcoded to local Docker only. Now iterates all active hosts with per-host error isolation (one unreachable host does not stall the rest). Per-container cleanup errors are logged at warn level instead of being silently swallowed.' },
+      ],
+    },
+    {
       version: '8.7.11',
       date: '2026-06-20',
       title: 'SECURITY: MFA recovery-code lookup timing leak',

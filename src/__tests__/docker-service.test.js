@@ -358,13 +358,26 @@ describe('DockerService (src/services/docker.js)', () => {
 
   // ─── _createConnection routing ─────────────────────────────────────────
 
-  it('_createConnection routes "socket" to socketPath', () => {
+  it('_createConnection routes "socket" to socketPath with the request timeout (v8.7.12)', () => {
     dockerService._createConnection({
       connectionType: 'socket',
       socketPath: '/custom/docker.sock',
     });
     const last = dockerCtorCalls[dockerCtorCalls.length - 1];
-    expect(last).toEqual({ socketPath: '/custom/docker.sock' });
+    expect(last.socketPath).toBe('/custom/docker.sock');
+    // v8.7.12 — all three connection types now pass the same dockerode
+    // request-timeout (was previously TCP-only); a hung remote daemon used
+    // to freeze SSH-tunneled and socket connections forever.
+    expect(last.timeout).toBe(30_000);
+  });
+
+  it('_createConnection applies the timeout consistently across connection types (v8.7.12)', () => {
+    // tcp
+    dockerService._createConnection({ connectionType: 'tcp', host: '10.0.0.1', port: 2376, tlsConfig: { ca: 'X', cert: 'X', key: 'X' } });
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(30_000);
+    // socket (default fallback path)
+    dockerService._createConnection({ connectionType: 'unknown-or-missing' });
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(30_000);
   });
 
   it('_createConnection routes "tcp" with TLS config to https', () => {

@@ -524,11 +524,31 @@ function startAll() {
   // Run initial purge on startup (in case the app was down for a while)
   setTimeout(purgeAllOldData, 30000);
 
-  // Sandbox TTL cleanup — check every 30 seconds for expired sandbox containers
+  // v8.7.12 — Sandbox TTL cleanup. Iterates EVERY active host, not just
+  // host 0. Previously hardcoded to hostId=0, which silently leaked sandbox
+  // containers created on remote (SSH/TCP) hosts — they never expired, used
+  // resources forever, and admins had no audit trail of the failed cleanup.
+  // Also: errors are now logged at warn level instead of swallowed, so a
+  // sandbox stuck in "stop refused" state is visible in ops.
   _sandboxInterval = setInterval(_m('sandbox-ttl-sweep', async () => {
-      const docker = require('../services/docker').getDocker(0);
-      const containers = await docker.listContainers({ all: true, filters: { label: ['docker-dash.sandbox=true'] } });
-      const now = Date.now();
+    const dockerService = require('../services/docker');
+    const hosts = dockerService.getActiveHosts();
+    const now = Date.now();
+
+    for (const host of hosts) {
+      let docker, containers;
+      try {
+        docker = dockerService.getDocker(host.id);
+        containers = await docker.listContainers({
+          all: true,
+          filters: { label: ['docker-dash.sandbox=true'] },
+        });
+      } catch (err) {
+        // One unreachable host must not stall the sweep for the rest.
+        log.warn(`sandbox-ttl-sweep: host ${host.id} (${host.name}) unreachable, skipping`, { error: err.message });
+        continue;
+      }
+
       for (const c of containers) {
         let expires = c.Labels?.['docker-dash.sandbox.expires'] || '';
         // Also check DB for extended TTL
@@ -540,25 +560,27 @@ function startAll() {
               const cf = JSON.parse(row.custom_fields);
               if (cf.sandbox?.expiresAt) expires = cf.sandbox.expiresAt;
             }
-          } catch { }
+          } catch { /* DB row missing or malformed — fall back to label */ }
         }
         if (expires && new Date(expires).getTime() < now && c.State === 'running') {
           const container = docker.getContainer(c.Id);
           const name = (c.Names?.[0] || '').replace(/^\//, '');
-          try { await container.stop({ t: 3 }); } catch { }
-          try { await container.remove({ force: true }); } catch { }
-          try { require('../db').getDb().prepare('DELETE FROM container_meta WHERE container_name = ?').run(name); } catch { }
-          log.info(`Sandbox expired: ${name}`);
+          try { await container.stop({ t: 3 }); }
+          catch (err) { log.warn(`sandbox-ttl-sweep: stop failed for ${name} on host ${host.id}`, { error: err.message }); }
+          try { await container.remove({ force: true }); }
+          catch (err) { log.warn(`sandbox-ttl-sweep: remove failed for ${name} on host ${host.id}`, { error: err.message }); continue; }
+          try { require('../db').getDb().prepare('DELETE FROM container_meta WHERE container_name = ?').run(name); } catch { /* row may not exist */ }
+          log.info(`Sandbox expired: ${name} (host ${host.id})`);
           try {
             require('../services/audit').log({
               action: 'sandbox_expired', targetType: 'container', targetId: c.Id.substring(0, 12),
-              details: { name, image: c.Image },
+              details: { name, image: c.Image, hostId: host.id },
             });
-          } catch { }
-          // Notify via WebSocket
-          try { require('../ws').broadcast('sandbox:expired', { name, image: c.Image }); } catch { }
+          } catch { /* audit best-effort */ }
+          try { require('../ws').broadcast('sandbox:expired', { name, image: c.Image, hostId: host.id }); } catch { }
         }
       }
+    }
   }), 30000);
 
   log.info('Background jobs started');
