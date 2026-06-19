@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.16] - 2026-06-20 — **A11Y**: Modal — `inert` instead of `aria-hidden` + sub-overlay `role`/`aria-modal`
+
+### The reported browser warning
+Users with a11y-strict browsers (or any modern Chromium) saw this in the console:
+```
+Blocked aria-hidden on an element because its descendant retained focus.
+Element with focus: <button.btn btn-danger#modal-ok>
+Ancestor with aria-hidden: <div.modal-overlay#modal-overlay>
+Consider using the inert attribute instead.
+```
+Cause: `Modal.close()` called `setAttribute('aria-hidden', 'true')` synchronously **before** the 300ms close animation finished, while a button inside the modal was still focused.
+
+### Fix
+- Switched to the `inert` attribute (per the WAI-ARIA spec recommendation). Setting `inert` on the overlay **auto-blurs** any focused descendant *before* the AT tree is hidden, eliminating the warning entirely.
+- Kept `aria-hidden` as a legacy fallback for pre-2022 browsers (Chrome <102, Firefox <112, Safari <15.5).
+- Initial `_init()` now sets `inert` if the overlay starts hidden (consistent with the runtime contract).
+
+### Bonus: sub-overlay was missing role + aria-modal
+`Modal.openSub` creates a second `.modal-overlay` div on the fly but only the primary overlay had `role="dialog"` + `aria-modal="true"` set in `_init`. Screen readers didn't know a nested dialog had opened — assistive tech treated the sub-overlay as a generic div. Now applied to both overlays consistently, plus the `inert`/`aria-hidden` lifecycle.
+
+### Operator action
+None. Backward-compatible. The warning stops firing in browser consoles immediately after upgrade.
+
 ## [8.7.15] - 2026-06-20 — **RELIABILITY**: remediate local-exec timeout + scanner version-probe timeouts
 
 ### 1. `remediate.js` local `execFileSync` was missing timeout

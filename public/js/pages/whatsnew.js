@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.16',
+      date: '2026-06-20',
+      title: 'A11Y: Modal uses inert (no more aria-hidden console warning)',
+      changes: [
+        { type: 'fix', text: 'Modal.close() set aria-hidden=true BEFORE the 300ms close animation finished, while a button inside the modal was still focused — triggering the browser warning "Blocked aria-hidden on an element because its descendant retained focus". Switched to the `inert` attribute per the WAI-ARIA spec recommendation: inert auto-blurs focused descendants when set, eliminating the warning entirely. aria-hidden is kept as legacy fallback for pre-2022 browsers.' },
+        { type: 'fix', text: 'Bonus: sub-overlay (Modal.openSub) was created on the fly but missing role="dialog" and aria-modal="true" — screen readers were treating it as a generic div. Now both overlays consistently set role/aria-modal/inert/aria-hidden through the same lifecycle.' },
+      ],
+    },
+    {
       version: '8.7.15',
       date: '2026-06-20',
       title: 'RELIABILITY: remediate exec timeout + scanner version probes',

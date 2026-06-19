@@ -21,6 +21,18 @@ const Modal = {
     this._content.setAttribute('tabindex', '-1');
     this._content.setAttribute('role', 'document');
 
+    // v8.7.16 a11y fix — start with `inert` so the closed overlay is fully
+    // out of the focus/AT tree. inert auto-blurs any focused descendants
+    // when set, which solved the "Blocked aria-hidden on an element because
+    // its descendant retained focus" console warning that used to fire on
+    // close() (we used to setAttribute('aria-hidden', 'true') BEFORE the
+    // 300ms close animation finished, while a button inside was still
+    // focused). aria-hidden is kept as the legacy fallback for browsers
+    // older than Chrome 102 / Firefox 112 / Safari 15.5 (2022 cohort).
+    if (this._overlay.classList.contains('hidden')) {
+      this._overlay.setAttribute('inert', '');
+    }
+
     this._overlay.addEventListener('click', (e) => {
       if (e.target === this._overlay) this.close();
     });
@@ -72,7 +84,8 @@ const Modal = {
     }
 
     this._overlay.classList.remove('hidden');
-    this._overlay.removeAttribute('aria-hidden');
+    this._overlay.removeAttribute('inert');         // v8.7.16 — re-enable interaction + AT tree
+    this._overlay.removeAttribute('aria-hidden');   // legacy fallback
     requestAnimationFrame(() => this._overlay.classList.add('modal-visible'));
     // Focus first interactive element
     const firstInput = this._content.querySelector('input, textarea, select, button');
@@ -82,6 +95,10 @@ const Modal = {
   close() {
     if (!this._overlay) return;
     this._overlay.classList.remove('modal-visible');
+    // v8.7.16 — `inert` auto-blurs any focused descendant BEFORE we hide,
+    // which prevents the "aria-hidden on an element whose descendant
+    // retained focus" console warning. aria-hidden kept as legacy fallback.
+    this._overlay.setAttribute('inert', '');
     this._overlay.setAttribute('aria-hidden', 'true');
     setTimeout(() => {
       this._overlay.classList.add('hidden');
@@ -186,6 +203,15 @@ const Modal = {
       this._subOverlay.id = 'modal-sub-overlay';
       this._subOverlay.className = 'modal-overlay hidden';
       this._subOverlay.style.zIndex = '10001';
+      // v8.7.16 a11y fix — sub-overlay was previously missing role/aria-modal
+      // (only the primary overlay had them set in _init). Screen readers
+      // didn't know a nested dialog had opened. Also start `inert` so the
+      // closed sub-overlay is out of the focus/AT tree, matching the
+      // primary overlay's lifecycle.
+      this._subOverlay.setAttribute('role', 'dialog');
+      this._subOverlay.setAttribute('aria-modal', 'true');
+      this._subOverlay.setAttribute('inert', '');
+      this._subOverlay.setAttribute('aria-hidden', 'true');
       const content = document.createElement('div');
       content.id = 'modal-sub-content';
       content.className = 'modal-content';
@@ -200,6 +226,8 @@ const Modal = {
     if (width) this._subContent.style.maxWidth = width;
     else this._subContent.style.maxWidth = '';
     this._subOverlay.classList.remove('hidden');
+    this._subOverlay.removeAttribute('inert');           // v8.7.16
+    this._subOverlay.removeAttribute('aria-hidden');
     requestAnimationFrame(() => this._subOverlay.classList.add('modal-visible'));
     const firstInput = this._subContent.querySelector('input, textarea, select, button');
     if (firstInput) setTimeout(() => firstInput.focus(), 100);
@@ -209,6 +237,10 @@ const Modal = {
   closeSub() {
     if (!this._subOverlay) return;
     this._subOverlay.classList.remove('modal-visible');
+    // v8.7.16 — `inert` auto-blurs focused descendants BEFORE the close
+    // animation finishes (mirrors the primary close()).
+    this._subOverlay.setAttribute('inert', '');
+    this._subOverlay.setAttribute('aria-hidden', 'true');
     setTimeout(() => {
       this._subOverlay.classList.add('hidden');
       if (this._subContent) this._subContent.innerHTML = '';
