@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.13] - 2026-06-20 — **RELIABILITY**: nodemailer explicit timeouts (10s / 5s / 30s)
+
+nodemailer's defaults are `connectionTimeout=2min`, `greetingTimeout=30s`, `socketTimeout=10min`. The **10-minute socket timeout** is far too long for the docker-dash use case: password-reset and alert-channel sends `await transporter.sendMail(...)` inside the request handler, so a misbehaving SMTP server (silent network drop, post-greeting hang, DNS routing issue) would block the user's request for up to **10 minutes** with a spinner and tie up an express worker that whole time.
+
+### Fix
+Explicit `connectionTimeout: 10_000`, `greetingTimeout: 5_000`, `socketTimeout: 30_000` on the nodemailer transporter. Password-reset emails now fail fast and visibly when SMTP is down instead of silently keeping users waiting.
+
+### Network-timeout audit coverage from this session (all clean now)
+| Service | Status |
+|---|---|
+| `registry.js` | ✓ 10s `req.setTimeout` |
+| `webhooks.js` | ✓ 10s `AbortController` |
+| `log-forwarder.js` (Loki / ES / HTTP / syslog) | ✓ 15s HTTP / 5s syslog |
+| `dns-providers.js` | ✓ 5s per request |
+| `caddy-config.js` | ✓ 10s admin API |
+| `s3-backup.js` | ✓ 60s PUT (only op) |
+| `pcloud-client.js` | ✓ built-in `DEFAULT_TIMEOUT_MS` + 120s upload |
+| `acme.js` | ✓ delegates ACME protocol to Caddy (no direct HTTP) |
+| **`email.js`** | **FIXED in this release** |
+| `docker.js` (v8.7.12) | ✓ 30s on all 3 connection types |
+| `git.js` (v8.7.10) | ✓ 30s probe / 2min fetch / 5min clone |
+| OIDC `_oidcFetch` (v8.7.9) | ✓ implicit via `http.request` timeout option |
+
 ## [8.7.12] - 2026-06-20 — **RELIABILITY**: Docker connection timeout consistency + sandbox multi-host TTL sweep
 
 Two reliability fixes from the audit sweep — both silent failure modes in multi-host setups.

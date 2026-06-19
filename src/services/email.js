@@ -12,11 +12,20 @@ class EmailService {
   _getTransporter() {
     if (this._transporter) return this._transporter;
 
+    // v8.7.13 — explicit timeouts. nodemailer defaults are:
+    //   connectionTimeout=2min, greetingTimeout=30s, socketTimeout=10min.
+    // The 10-minute socket timeout would block password-reset and alert
+    // sends (which await transporter.sendMail in the request handler) for
+    // up to 10 minutes when SMTP misbehaves — user sits on a spinner, an
+    // express worker is tied up. Tightened to 10s / 5s / 30s respectively.
     const opts = {
       host: config.smtp.host,
       port: config.smtp.port,
       secure: config.smtp.secure,
       tls: { rejectUnauthorized: false },
+      connectionTimeout: 10_000,
+      greetingTimeout: 5_000,
+      socketTimeout: 30_000,
     };
 
     // Only add auth if user is set

@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.13',
+      date: '2026-06-20',
+      title: 'RELIABILITY: nodemailer explicit timeouts (10s/5s/30s)',
+      changes: [
+        { type: 'fix', text: 'nodemailer defaults to a 10-minute socket timeout. Password-reset and alert sends await transporter.sendMail in the request handler, so a misbehaving SMTP server (silent drop / post-greeting hang / DNS routing issue) would block the user request for up to 10 minutes — spinner forever, express worker tied up. Tightened to explicit 10s connection / 5s greeting / 30s socket. Closes the network-timeout audit sweep: every network-bound service in the codebase now has a sane explicit timeout.' },
+      ],
+    },
+    {
       version: '8.7.12',
       date: '2026-06-20',
       title: 'RELIABILITY: Docker timeout consistency + sandbox multi-host TTL sweep',
