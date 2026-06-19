@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.14',
+      date: '2026-06-20',
+      title: 'RELIABILITY: cron overlap guard + bootstrap purge leader-gating',
+      changes: [
+        { type: 'fix', text: 'Cron/setInterval jobs now dedupe overlapping ticks. Without this, fast-cadence jobs (alert-evaluate every 10s, sandbox-ttl-sweep every 30s, security-alert-windowed every 60s) could pile up when a tick exceeded its interval — causing duplicate alert notifications, concurrent docker calls on the same host, and double audit-log entries. A new 5-minute stall watchdog logs "tick still running after 300s — possible stall" so runaway jobs are visible in ops.' },
+        { type: 'fix', text: 'Bootstrap purge-old-data setTimeout was not leader-gated — both HA replicas ran the initial purge 30s after boot. Idempotent so never corrupted data, but doubled cleanup load and audit noise on cold-start. Now wrapped with _m so only the leader runs it.' },
+      ],
+    },
+    {
       version: '8.7.13',
       date: '2026-06-20',
       title: 'RELIABILITY: nodemailer explicit timeouts (10s/5s/30s)',

@@ -2,6 +2,31 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.14] - 2026-06-20 — **RELIABILITY**: cron overlap guard + bootstrap purge leader-gating
+
+### 1. `_m()` overlap dedupe + stall watchdog
+The cron/setInterval wrapper had no overlap guard. Three `setInterval`-based jobs were vulnerable to tick pile-up when a single tick took longer than the interval:
+- **`alert-evaluate`** every 10s — runs through every alert rule
+- **`sandbox-ttl-sweep`** every 30s — now iterates every active host (v8.7.12), each with a 30s docker call timeout
+- **`security-alert-windowed`** every 60s
+
+When a tick exceeded its cadence, the next setInterval-driven invocation started concurrently with the running one. Concrete consequences:
+- duplicate alert fires (false-positive notifications to Slack/etc.)
+- concurrent `docker.listContainers` calls on the same host (load amplification on whichever daemon is slow)
+- double audit-log entries for the same scheduled action
+
+node-cron also doesn't dedupe overlap, so cron-based jobs had the same theoretical risk at minute/hour cadences (lower frequency = lower probability but same failure mode).
+
+**Fix**: `_m()` now tracks per-job-name in-flight state. A tick scheduled while the previous one is still running is silently skipped (no log spam at info, no metric bump). A **5-minute stall watchdog** logs `<jobname>: tick still running after 300s — possible stall` so admins can spot a runaway job without piping individual skip events.
+
+### 2. Bootstrap `purge-old-data` was not leader-gated
+`setTimeout(purgeAllOldData, 30000)` at startup ran the initial purge directly without the `_m` wrapper, so in HA mode both replicas would purge concurrently 30s after boot. The purge queries are idempotent (DELETE ... WHERE) so this never corrupted data, but it doubled the cleanup load and audit noise on every cold-start.
+
+**Fix**: wrapped with `_m('purge-old-data', ...)` so it leader-gates and also dedupes against the hourly cron tick if startup happens to coincide with `5 * * * *`.
+
+### Operator action
+None. Backward-compatible.
+
 ## [8.7.13] - 2026-06-20 — **RELIABILITY**: nodemailer explicit timeouts (10s / 5s / 30s)
 
 nodemailer's defaults are `connectionTimeout=2min`, `greetingTimeout=30s`, `socketTimeout=10min`. The **10-minute socket timeout** is far too long for the docker-dash use case: password-reset and alert-channel sends `await transporter.sendMail(...)` inside the request handler, so a misbehaving SMTP server (silent network drop, post-greeting hang, DNS routing issue) would block the user's request for up to **10 minutes** with a spinner and tie up an express worker that whole time.

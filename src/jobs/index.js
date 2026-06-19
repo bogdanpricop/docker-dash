@@ -33,19 +33,47 @@ const cluster = require('../services/cluster');
  *          current 13 jobs qualify — all either write to SQLite or hit
  *          external services. Kept as escape hatch for future jobs.
  */
+// v8.7.14 — Overlap guard: if a previous tick for the same job name is
+// still running, skip this tick. Without this, fast-cadence setInterval
+// jobs (alert-evaluate every 10s, sandbox-ttl-sweep every 30s, security-
+// alert-windowed every 60s) could pile up overlapping invocations when a
+// single tick ran longer than the interval — causing duplicate alert
+// fires, concurrent docker calls, and audit-log doubling. node-cron
+// itself also doesn't dedupe overlap, so this protects cron schedules
+// too. Watchdog log fires when a tick runs longer than the threshold.
+const _inFlight = new Map();
+const SLOW_TICK_WATCHDOG_MS = 5 * 60 * 1000; // 5 min — flag runaway jobs
+
 function _m(name, fn, opts = {}) {
   return async () => {
+    if (_inFlight.get(name)) {
+      // Previous tick still running — skip this one silently. We don't log
+      // at info because for tight-cadence jobs this would flood; the
+      // SLOW_TICK_WATCHDOG_MS below surfaces real stalls. We also do NOT
+      // bump the runs metric — skips aren't runs; if the prior run finishes
+      // ok, it records itself in its own finally.
+      return;
+    }
     // Leader gate (skipped in standalone via cluster.isLeader() === true)
     if (!opts.everywhere) {
       const leader = await cluster.isLeader();
       if (!leader) return;  // silent skip on readers
     }
+    _inFlight.set(name, true);
+    const startedAt = Date.now();
+    const watchdog = setTimeout(() => {
+      log.warn(`${name}: tick still running after ${SLOW_TICK_WATCHDOG_MS / 1000}s — possible stall`,
+        { startedAt: new Date(startedAt).toISOString() });
+    }, SLOW_TICK_WATCHDOG_MS);
     try {
       await fn();
       metricsService.recordJobRun(name);
     } catch (e) {
       metricsService.recordJobRun(name, true);
       log.error(`${name} failed`, { message: e.message || String(e) });
+    } finally {
+      clearTimeout(watchdog);
+      _inFlight.set(name, false);
     }
   };
 }
@@ -521,8 +549,10 @@ function startAll() {
     } catch { /* logged inside the service */ }
   }, 60000);
 
-  // Run initial purge on startup (in case the app was down for a while)
-  setTimeout(purgeAllOldData, 30000);
+  // Run initial purge on startup (in case the app was down for a while).
+  // v8.7.14: wrapped with _m so it's leader-gated in HA mode + dedupes
+  // against the hourly cron tick if startup happens to overlap '5 * * * *'.
+  setTimeout(_m('purge-old-data', purgeAllOldData), 30000);
 
   // v8.7.12 — Sandbox TTL cleanup. Iterates EVERY active host, not just
   // host 0. Previously hardcoded to hostId=0, which silently leaked sandbox
