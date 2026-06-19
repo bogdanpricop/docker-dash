@@ -471,10 +471,15 @@ router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
 // Check which scanners are installed and ready
 router.get('/scanners', requireAuth, (req, res) => {
   const available = [];
-  try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('trivy'); } catch { /* trivy not installed */ }
-  try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe' }); available.push('grype'); } catch { /* grype not installed */ }
+  // v8.7.15 — explicit 5s timeout on version probes. The actual scan paths
+  // (lines 128, 169, 219) all have 120s timeouts; these were inconsistent.
+  // `trivy --version` should return instantly; if it hangs (broken install,
+  // cache-lock issue) we want a fast failure, not an indefinite block on
+  // the route that lists available scanners.
+  try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }); available.push('trivy'); } catch { /* trivy not installed */ }
+  try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }); available.push('grype'); } catch { /* grype not installed */ }
   try {
-    execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe' });
+    execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 });
     if (_isScoutAuthenticated()) {
       available.push('docker-scout');
     } else {

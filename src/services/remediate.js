@@ -409,7 +409,11 @@ async function _applyLocal(jobId, plan) {
       } else {
         const { execFileSync } = require('child_process');
         const [cmd, ...args] = step.liveUpdate.split(' ');
-        execFileSync(cmd, args, { encoding: 'utf8' });
+        // v8.7.15 — explicit 30s timeout matching the SSH sibling path
+        // above. Without this, a hung child process during a remediation
+        // plan blocks the entire plan execution thread and the user's HTTP
+        // request hangs indefinitely.
+        execFileSync(cmd, args, { encoding: 'utf8', timeout: 30_000 });
       }
       appendLog(`✓ ${step.containerName} updated`);
     } catch (e) {

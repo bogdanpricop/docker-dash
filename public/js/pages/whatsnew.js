@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.15',
+      date: '2026-06-20',
+      title: 'RELIABILITY: remediate exec timeout + scanner version probes',
+      changes: [
+        { type: 'fix', text: 'remediate.js local-exec path was missing the 30s timeout its SSH sibling had — a hung child process during plan execution blocked the user POST /api/remediate/.../execute indefinitely. Now matches SSH path with explicit 30s timeout.' },
+        { type: 'fix', text: 'Scanner version probes (trivy/grype/docker-scout --version) had no timeout — a broken install with a hung subprocess could hang GET /api/images/scanners. Now 5s timeout on each. Closes the execFileSync audit sweep: all 24 sync-exec call sites in src/ now have explicit timeouts.' },
+      ],
+    },
+    {
       version: '8.7.14',
       date: '2026-06-20',
       title: 'RELIABILITY: cron overlap guard + bootstrap purge leader-gating',

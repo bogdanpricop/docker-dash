@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.15] - 2026-06-20 — **RELIABILITY**: remediate local-exec timeout + scanner version-probe timeouts
+
+### 1. `remediate.js` local `execFileSync` was missing timeout
+Live-update step in a remediation plan ran `execFileSync(cmd, args, { encoding: 'utf8' })` without a timeout. The SSH-tunneled sibling above it correctly passes `timeoutMs: 30000`; the local path didn't. A hung child process during plan execution would block the whole plan thread and the user's `POST /api/remediate/.../execute` request indefinitely.
+
+**Fix**: explicit `timeout: 30_000` matching the SSH sibling.
+
+### 2. Scanner version probes (`trivy --version`, `grype version`, `docker scout version`) were unprotected
+`GET /api/images/scanners` runs 3 `execFileSync` calls to enumerate available scanners. The actual scan paths (lines 128, 169, 219) all have 120s timeouts; these probe calls had none. A broken trivy install (cache lock, hung subprocess) would hang the route indefinitely.
+
+**Fix**: explicit `timeout: 5000` (version-string output should be instant).
+
+### `execFileSync` audit coverage
+Comprehensive sweep across `src/services/`, `src/routes/`, `src/jobs/` found **24 `execFileSync`/`execSync` call sites**. After this release, **all 24 have explicit timeouts**:
+
+| Range | File area |
+|---|---|
+| 5s–30s | version probes, openssl operations, ufw firewall |
+| 60s–120s | docker pull/up, image scans, compose operations, git operations |
+
+### Operator action
+None. Backward-compatible.
+
 ## [8.7.14] - 2026-06-20 — **RELIABILITY**: cron overlap guard + bootstrap purge leader-gating
 
 ### 1. `_m()` overlap dedupe + stall watchdog
