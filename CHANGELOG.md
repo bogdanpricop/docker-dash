@@ -2,6 +2,42 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.9] - 2026-06-20 — **RELIABILITY FIX**: OIDC outage on IdP key rotation + discovery caching
+
+**Severity**: availability outage. When an OIDC IdP (Entra, Okta, Keycloak, Google) rotated its signing keys mid-cache-window, **every user was locked out of SSO for up to 60 minutes** until the cached JWKS expired and was re-fetched. Entra rotates roughly monthly; the failure window typically caught every SSO user across the org for ~1 hour.
+
+### The bug
+The JWKS cache used **time-based invalidation only** (1-hour TTL). The OIDC spec contract requires **time-based PLUS event-based** invalidation: on `kid` not found in cached JWKS, the standard client behavior is to force-refresh once (per RFC 7517 §4.5 and every well-known OIDC library). Docker Dash's verifier just threw `no matching JWK for kid=...` and rejected the login.
+
+Secondary: OIDC **discovery (`/.well-known/openid-configuration`) was never cached**. Every login fetched it twice (in `/oidc/login` and again in `/oidc/callback`) plus a third time on JWKS cache miss. Added 200-1000 ms latency per login and made the IdP a hard dependency for paths that don't logically need it.
+
+### Real-world trigger
+```
+T+0    JWKS cached (TTL → T+60min). Admin logs in successfully.
+T+30m  Entra rotates signing keys. Old kid='X', new kid='Y'.
+T+31m  Admin logs in. Token signed with new kid='Y'.
+       _verifyIdToken: jwks.find(k => k.kid === 'Y') → undefined.
+       → throw "no matching JWK for kid=Y" → HTTP 401.
+T+31m..T+90m   EVERY OIDC user locked out, same way.
+T+90m  TTL expires. Service restored.
+```
+
+### The fix
+- **Discovery cache** added (was missing entirely) — 1-hour TTL, same shape as JWKS. Eliminates 2 of the 3 IdP round-trips per login on the warm path.
+- **JWKS force-refresh on `kid` miss** — `_verifyIdToken` now retries once with `_getJwks(issuer, { force: true })` when the cached JWKS doesn't contain the token's `kid`. This is the canonical OIDC client cache strategy.
+- **Force-refresh cooldown** (1 minute per issuer) — DoS protection: an attacker sending tokens with random `kid`s cannot hammer the IdP discovery endpoint. During cooldown, stale cache is returned; the caller's kid-find still fails and the verify still throws, just without a network call.
+- **Tightened single-key fallback** — the `jwks.length === 1` fallback now applies ONLY when the token has no `kid` (rare but valid). Previously it silently picked the stale single cached key, **masking the key-rotation case** with a signature mismatch later in the verify path.
+- **Injectable fetcher** (`_oidcCacheInternals.setFetcher`) — clean test surface that exercises the cache layer without touching the network.
+
+### Tests
+7 new unit cases in `oidc-jwks-cache.test.js` pin the cache contract: discovery cache miss-then-hit, discovery force=true bypasses cache, JWKS cache miss-fetches-discovery-and-jwks-once, JWKS force-refresh returns fresh keys, **JWKS force-refresh during cooldown returns stale cache (DoS proof)**, end-to-end key-rotation recovery via force-refresh on kid miss, malformed-JWT short-circuit. Suite 1499 → 1506.
+
+### Operator action
+No config change required. The fix is backward-compatible. After upgrade:
+- The first login after an IdP key rotation may take ~100ms longer (two JWKS fetches: stale, then fresh). All subsequent logins until the next rotation are unaffected.
+- A new `log.info` line on the first force-refresh per rotation: `OIDC JWKS force-refresh succeeded (likely IdP key rotation)` — useful for confirming the rotation event in logs.
+- For DoS visibility: stale-cache responses during cooldown are not logged (would create attacker-controlled log spam).
+
 ## [8.7.8] - 2026-06-19 — **SECURITY FIX**: OIDC silent admin demotion when groups claim is absent
 
 **Severity**: silent privilege change — existing admin/operator users could be **automatically demoted to viewer** on next OIDC sign-in if their IdP momentarily failed to emit the groups claim, with no error surfaced to the user or admin.

@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.9',
+      date: '2026-06-20',
+      title: 'RELIABILITY: OIDC outage on IdP key rotation + discovery caching',
+      changes: [
+        { type: 'fix', text: 'When an OIDC IdP (Entra, Okta, Keycloak, Google) rotated its signing keys mid-cache-window, every user was locked out of SSO for up to 60 minutes until the cached JWKS expired. Now the verifier force-refreshes the JWKS exactly once when the cached set does not contain the token kid — the canonical OIDC client cache strategy (RFC 7517 §4.5). A per-issuer 1-minute cooldown prevents attacker-driven DoS via random-kid tokens. New "OIDC JWKS force-refresh succeeded (likely IdP key rotation)" log line makes rotation events visible in ops.' },
+        { type: 'improvement', text: 'Discovery (/.well-known/openid-configuration) is now cached (1-hour TTL). Was being live-fetched twice per login (in /oidc/login and /oidc/callback) plus a third time on JWKS miss — eliminates 2 of 3 IdP round-trips on the warm path, ~200-1000ms latency win per login.' },
+        { type: 'fix', text: 'Tightened the single-key JWKS fallback: only applies when the token itself has NO kid (rare but valid OIDC). Previously the fallback silently grabbed the stale single cached key when the token kid did not match — masking the key-rotation case with a confusing downstream signature error.' },
+        { type: 'improvement', text: '7 new unit cases pin the cache contract end-to-end. Injectable fetcher (_oidcCacheInternals.setFetcher) keeps the test surface clean without touching the network. Suite 1499 → 1506.' },
+      ],
+    },
+    {
       version: '8.7.8',
       date: '2026-06-19',
       title: 'SECURITY FIX: OIDC silent admin demotion when groups claim is absent',

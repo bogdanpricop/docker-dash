@@ -591,19 +591,55 @@ const _jwksCache = new Map();
 const JWKS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 /** Fetch JWKS from issuer and cache for 1 hour */
-async function _getJwks(issuer) {
-  const cached = _jwksCache.get(issuer);
-  if (cached && (Date.now() - cached.fetchedAt) < JWKS_CACHE_TTL_MS) {
-    return cached.jwks;
+// v8.7.9 — Discovery cache (was missing; live-fetched on every login).
+const _discoCache = new Map();
+const DISCO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// v8.7.9 — Force-refresh throttle for JWKS rotation handling. Prevents an
+// attacker from DoS-ing the IdP by sending tokens with random kids.
+const _jwksLastForcedRefresh = new Map();
+const JWKS_FORCE_REFRESH_COOLDOWN_MS = 60 * 1000; // 1 minute per issuer
+
+// v8.7.9 — Injectable fetcher so the cache layer is unit-testable without
+// touching the network. Production uses _oidcFetch; tests assign a stub.
+let _oidcFetchOverride = null;
+function __fetch(url, opts) {
+  return (_oidcFetchOverride || _oidcFetch)(url, opts);
+}
+
+async function _getDiscovery(issuer, { force = false } = {}) {
+  if (!force) {
+    const cached = _discoCache.get(issuer);
+    if (cached && (Date.now() - cached.fetchedAt) < DISCO_CACHE_TTL_MS) return cached.body;
   }
-  const discoUrl = `${issuer}/.well-known/openid-configuration`;
-  const disco = await _oidcFetch(discoUrl);
-  if (!disco.body?.jwks_uri) throw new Error('OIDC discovery missing jwks_uri');
-  const jwksRes = await _oidcFetch(disco.body.jwks_uri);
+  const res = await __fetch(`${issuer}/.well-known/openid-configuration`);
+  if (!res.body) throw new Error('OIDC discovery returned no body');
+  _discoCache.set(issuer, { body: res.body, fetchedAt: Date.now() });
+  return res.body;
+}
+
+async function _getJwks(issuer, { force = false } = {}) {
+  if (!force) {
+    const cached = _jwksCache.get(issuer);
+    if (cached && (Date.now() - cached.fetchedAt) < JWKS_CACHE_TTL_MS) return cached.jwks;
+  } else {
+    // Throttle force-refreshes (DoS protection: attacker-controlled tokens
+    // with random kids must NOT be able to hammer the IdP). During cooldown
+    // we return the stale cache; the caller's kid-find then fails and the
+    // verify throws, without touching the network.
+    const lastForced = _jwksLastForcedRefresh.get(issuer) || 0;
+    if (Date.now() - lastForced < JWKS_FORCE_REFRESH_COOLDOWN_MS) {
+      const cached = _jwksCache.get(issuer);
+      if (cached) return cached.jwks;
+    }
+    _jwksLastForcedRefresh.set(issuer, Date.now());
+  }
+  const disco = await _getDiscovery(issuer);
+  if (!disco.jwks_uri) throw new Error('OIDC discovery missing jwks_uri');
+  const jwksRes = await __fetch(disco.jwks_uri);
   if (!jwksRes.body?.keys) throw new Error('Invalid JWKS response');
-  const jwks = jwksRes.body.keys;
-  _jwksCache.set(issuer, { jwks, fetchedAt: Date.now() });
-  return jwks;
+  _jwksCache.set(issuer, { jwks: jwksRes.body.keys, fetchedAt: Date.now() });
+  return jwksRes.body.keys;
 }
 
 /**
@@ -627,11 +663,24 @@ async function _verifyIdToken(idToken, issuer, clientId) {
     throw new Error(`Unsupported JWT algorithm: ${header.alg} (only RS256 is supported)`);
   }
 
-  // Find the matching JWK by kid
-  const jwks = await _getJwks(issuer);
+  // Find the matching JWK by kid. v8.7.9: on miss, force-refresh ONCE
+  // (event-based cache invalidation for IdP key rotation). The cooldown in
+  // _getJwks prevents attacker-driven DoS via tokens with random kids.
+  //
+  // The single-key fallback applies ONLY when the token itself has no kid
+  // (rare, but valid OIDC) — NOT as a generic "if there's only one cached
+  // key, use it regardless of kid mismatch", which would mask key-rotation
+  // by silently picking the stale single cached key.
+  let jwks = await _getJwks(issuer);
   let jwk = jwks.find(k => k.kid === header.kid);
-  if (!jwk && jwks.length === 1) jwk = jwks[0]; // single-key JWKS without kid
-  if (!jwk) throw new Error(`JWT verification failed: no matching JWK for kid=${header.kid}`);
+  if (!jwk && !header.kid && jwks.length === 1) jwk = jwks[0];
+  if (!jwk) {
+    jwks = await _getJwks(issuer, { force: true });
+    jwk = jwks.find(k => k.kid === header.kid);
+    if (!jwk && !header.kid && jwks.length === 1) jwk = jwks[0];
+    if (!jwk) throw new Error(`JWT verification failed: no matching JWK for kid=${header.kid} (refresh attempted)`);
+    log.info('OIDC JWKS force-refresh succeeded (likely IdP key rotation)', { issuer, kid: header.kid });
+  }
   if (jwk.kty !== 'RSA') throw new Error(`Unsupported JWK key type: ${jwk.kty}`);
 
   // Build public key from JWK
@@ -738,8 +787,8 @@ router.get('/oidc/login', async (req, res) => {
     if (!config.oidc?.enabled) return res.status(400).json({ error: 'OIDC is not enabled' });
 
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
-    const disco = await _oidcFetch(`${issuer}/.well-known/openid-configuration`);
-    if (!disco.body?.authorization_endpoint) {
+    const disco = await _getDiscovery(issuer); // v8.7.9 — cached
+    if (!disco.authorization_endpoint) {
       return res.status(500).json({ error: 'Failed to discover OIDC endpoints' });
     }
 
@@ -774,7 +823,7 @@ router.get('/oidc/login', async (req, res) => {
       state,
     });
 
-    const authUrl = `${disco.body.authorization_endpoint}?${params.toString()}`;
+    const authUrl = `${disco.authorization_endpoint}?${params.toString()}`;
     res.json({ url: authUrl });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -798,8 +847,8 @@ router.get('/oidc/callback', async (req, res) => {
 
     // Discover endpoints
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
-    const disco = await _oidcFetch(`${issuer}/.well-known/openid-configuration`);
-    if (!disco.body?.token_endpoint) return res.status(500).send('OIDC discovery failed');
+    const disco = await _getDiscovery(issuer); // v8.7.9 — cached
+    if (!disco.token_endpoint) return res.status(500).send('OIDC discovery failed');
 
     const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
 
@@ -812,7 +861,7 @@ router.get('/oidc/callback', async (req, res) => {
       redirect_uri: redirectUri,
     }).toString();
 
-    const tokenRes = await _oidcFetch(disco.body.token_endpoint, {
+    const tokenRes = await _oidcFetch(disco.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody,
@@ -833,8 +882,8 @@ router.get('/oidc/callback', async (req, res) => {
       }
     }
 
-    if ((!userInfo || !userInfo.email) && disco.body.userinfo_endpoint) {
-      const uiRes = await _oidcFetch(disco.body.userinfo_endpoint, {
+    if ((!userInfo || !userInfo.email) && disco.userinfo_endpoint) {
+      const uiRes = await _oidcFetch(disco.userinfo_endpoint, {
         headers: { 'Authorization': `Bearer ${tokenRes.body.access_token}` },
       });
       if (uiRes.status === 200 && uiRes.body) {
@@ -1054,3 +1103,13 @@ module.exports._resolveRoleFromGroups = _resolveRoleFromGroups;
 // v8.7.8 (security fix) — pure helper that distinguishes "IdP returned no
 // groups" from "user is in no relevant group" — the demotion guard.
 module.exports._hasUsableGroupsClaim = _hasUsableGroupsClaim;
+// v8.7.9 — cache layer + injectable fetcher for OIDC discovery/JWKS tests.
+module.exports._oidcCacheInternals = {
+  getDiscovery: _getDiscovery,
+  getJwks: _getJwks,
+  verifyIdToken: _verifyIdToken,
+  setFetcher(fn) { _oidcFetchOverride = fn; },
+  resetFetcher() { _oidcFetchOverride = null; },
+  clear() { _discoCache.clear(); _jwksCache.clear(); _jwksLastForcedRefresh.clear(); },
+  cooldownMs: JWKS_FORCE_REFRESH_COOLDOWN_MS,
+};
