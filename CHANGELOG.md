@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.11] - 2026-06-20 — **SECURITY FIX**: MFA recovery-code lookup timing leak
+
+**Severity**: medium. `verifyMfaRecovery` used `codes.indexOf(normalizedInput)` to look up a submitted recovery code in the user's stored list. `Array.prototype.indexOf` performs string-equality with **short-circuit comparison** — the wall-clock time depends on where in the array the match is found (and within each element, on how far the first differing character is). An attacker with a valid `mfaToken` (obtainable when valid username+password is stolen but second factor is enforced) could time their requests to determine prefix matches and meaningfully accelerate brute force against the small recovery-code search space.
+
+### The fix
+Replace the `indexOf` short-circuit with a constant-time iteration that always loops through ALL stored codes (no early break) and uses `crypto.timingSafeEqual` per comparison. Total wall-clock time is now independent of match position and per-character prefix match. The defensive length-guard before `timingSafeEqual` is structurally a no-op for fixed-length recovery codes but documents intent.
+
+### Tests
+5 new cases in `auth-service.test.js`:
+- accepts a valid recovery code and creates a session
+- accepts the **last** code as readily as the **first** (no short-circuit)
+- rejects an invalid recovery code
+- rejects a wrong-length code (defensive length-guard)
+- consumes a used code so it cannot be reused
+
+Suite 1512 → 1517.
+
+### Defense in depth
+Login path is already timing-hardened (`DUMMY_HASH` bcrypt compare on unknown username), TOTP verify already uses `crypto.timingSafeEqual` internally. This fix closes the last `indexOf`-on-secret remaining in the auth path. A complementary hardening item (hashing recovery codes at rest, like passwords) is deferred — current storage is AES-256-GCM-encrypted under `ENCRYPTION_KEY`, so a DB-only attacker can't read them; the timing fix is the one with a practical attack vector.
+
+### Operator action
+None required. Backward-compatible.
+
 ## [8.7.10] - 2026-06-20 — **RELIABILITY FIX**: git operations could hang forever (no timeouts on simple-git)
 
 **Severity**: silent service degradation. A slow or hung git remote (dead TLS handshake, rate-limited host, broken DNS, network blip mid-fetch) would block the underlying `git` child process **forever**, with three real consequences:

@@ -302,8 +302,27 @@ class AuthService {
       return { error: 'Recovery code configuration error' };
     }
 
+    // v8.7.11 (security fix) — constant-time lookup. The previous
+    // `codes.indexOf(normalizedInput)` did short-circuit string equality, so
+    // an attacker with a valid mfaToken (e.g. obtained via stolen username
+    // +password) could use response timing to determine prefix matches of
+    // recovery codes — meaningfully accelerating brute force against the
+    // small recovery-code search space. Now we always iterate ALL codes
+    // (no early-break) and use crypto.timingSafeEqual per comparison.
     const normalizedInput = recoveryCode.toLowerCase().trim();
-    const codeIndex = codes.indexOf(normalizedInput);
+    const inputBuf = Buffer.from(normalizedInput, 'utf8');
+    let codeIndex = -1;
+    for (let i = 0; i < codes.length; i++) {
+      const candidateBuf = Buffer.from(String(codes[i]), 'utf8');
+      // timingSafeEqual throws on mismatched length; recovery codes are
+      // fixed-length so a length-mismatch is structurally impossible for
+      // well-formed input — the guard is defensive only.
+      if (candidateBuf.length === inputBuf.length
+          && crypto.timingSafeEqual(candidateBuf, inputBuf)) {
+        codeIndex = i;
+        // do NOT break — total time must be independent of match position
+      }
+    }
     if (codeIndex === -1) return { error: 'Invalid recovery code' };
 
     // Remove used code, re-encrypt and store

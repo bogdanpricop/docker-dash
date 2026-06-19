@@ -310,6 +310,63 @@ describe('AuthService — MFA / TOTP setup flow', () => {
     expect(row.mfa_enrolled_at).toBeTruthy();
   });
 
+  // v8.7.11 — recovery-code lookup is now constant-time (was vulnerable to
+  // a timing attack via Array.indexOf short-circuit equality). Functional
+  // tests pin the behavior; the constant-time loop is documented inline in
+  // verifyMfaRecovery and reviewed at PR time.
+  describe('verifyMfaRecovery (v8.7.11 — constant-time)', () => {
+    let mfaToken, recoveryCodes;
+
+    beforeEach(async () => {
+      // Re-arm MFA so each test has a fresh set of unused recovery codes
+      try { await authService.mfaDisable(mfaUserId, 'Tr0ub4dor!&Zx'); } catch {}
+      const setup = authService.mfaSetup(mfaUserId);
+      const validCode = totp.generateTOTP(setup.secret);
+      const enable = authService.mfaEnable(mfaUserId, validCode);
+      recoveryCodes = enable.recoveryCodes;
+      // Create an MFA token (simulates the login flow handing one out)
+      const cryptoLib = require('crypto');
+      mfaToken = cryptoLib.randomBytes(32).toString('hex');
+      const sha256 = (s) => cryptoLib.createHash('sha256').update(s).digest('hex');
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
+        .run(sha256(mfaToken), mfaUserId, '127.0.0.1', 'test', expiresAt);
+    });
+
+    it('accepts a valid recovery code and creates a session', () => {
+      const r = authService.verifyMfaRecovery(mfaToken, recoveryCodes[0], '127.0.0.1', 'test');
+      expect(r.user).toBeTruthy();
+      expect(r.token).toBeTruthy();
+      expect(r.error).toBeUndefined();
+    });
+
+    it('accepts the LAST recovery code as readily as the FIRST (constant-time loop, no short-circuit)', () => {
+      const r = authService.verifyMfaRecovery(mfaToken, recoveryCodes[recoveryCodes.length - 1], '127.0.0.1', 'test');
+      expect(r.user).toBeTruthy();
+    });
+
+    it('rejects an invalid recovery code', () => {
+      const r = authService.verifyMfaRecovery(mfaToken, 'definitely-not-a-real-code', '127.0.0.1', 'test');
+      expect(r.error).toMatch(/Invalid recovery code/);
+    });
+
+    it('rejects a code whose length matches no stored code (defensive length-guard)', () => {
+      const r = authService.verifyMfaRecovery(mfaToken, 'x'.repeat(99), '127.0.0.1', 'test');
+      expect(r.error).toMatch(/Invalid recovery code/);
+    });
+
+    it('consumes a used code so it cannot be reused', () => {
+      const code = recoveryCodes[0];
+      const first = authService.verifyMfaRecovery(mfaToken, code, '127.0.0.1', 'test');
+      expect(first.user).toBeTruthy();
+      const row = db.prepare('SELECT recovery_codes FROM users WHERE id = ?').get(mfaUserId);
+      const { decrypt } = require('../utils/crypto');
+      const remaining = JSON.parse(decrypt(row.recovery_codes));
+      expect(remaining).not.toContain(code);
+      expect(remaining.length).toBe(recoveryCodes.length - 1);
+    });
+  });
+
   it('mfaDisable refuses without the correct password and clears MFA when password matches', async () => {
     const bad = await authService.mfaDisable(mfaUserId, 'WrongPass!XYZ');
     expect(bad.error).toMatch(/Invalid password/i);

@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.11',
+      date: '2026-06-20',
+      title: 'SECURITY: MFA recovery-code lookup timing leak',
+      changes: [
+        { type: 'security', text: 'Fixed a timing-attack vector in MFA recovery-code verification. verifyMfaRecovery used Array.indexOf short-circuit string equality, so an attacker with a valid mfaToken (obtainable when valid username+password is stolen) could time their requests to determine prefix matches of recovery codes — meaningfully accelerating brute force against the small recovery-code search space. Replaced with a constant-time iteration that always loops through ALL stored codes (no early break) using crypto.timingSafeEqual per comparison. Total wall-clock time is now independent of match position. 5 new tests (suite 1512 → 1517). Backward-compatible, no config change required.' },
+      ],
+    },
+    {
       version: '8.7.10',
       date: '2026-06-20',
       title: 'RELIABILITY: git operations could hang forever (no timeouts on simple-git)',
