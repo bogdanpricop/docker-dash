@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.10',
+      date: '2026-06-20',
+      title: 'RELIABILITY: git operations could hang forever (no timeouts on simple-git)',
+      changes: [
+        { type: 'fix', text: 'A slow or hung git remote (dead TLS handshake, rate-limited host, network blip) was blocking the underlying git child process FOREVER. Three real consequences: (1) gitPolling cron stopped polling the affected stack silently, because the _checking guard was never released; (2) interactive endpoints (/git/stacks/:id/check, deploy, rollback, credential test, clone) tied up an express worker until the OS gave up; (3) the initial clone path left the stack stuck in "deploying" status indefinitely. Root cause: no simpleGit() call site passed a timeout option.' },
+        { type: 'fix', text: 'Three operation-class budgets applied to every simpleGit() instance: remote probe (ls-remote) 30s, fetch/pull/log 2min, initial clone 5min. On timeout, simple-git throws cleanly, existing catch blocks log it, the _checking guard self-releases on the next interval, the express worker frees, and the stack error path resets the status. 6 new unit tests including a source-level guard that scans git.js and fails if a future edit adds a new simpleGit() call without the _gitOpts() timeout helper. Suite 1506 → 1512. Backward-compatible, no config change.' },
+      ],
+    },
+    {
       version: '8.7.9',
       date: '2026-06-20',
       title: 'RELIABILITY: OIDC outage on IdP key rotation + discovery caching',

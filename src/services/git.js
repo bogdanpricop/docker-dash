@@ -11,6 +11,20 @@ const log = require('../utils/logger')('git');
 
 const REPOS_BASE = path.join(process.env.DATA_DIR || '/data', 'repos');
 
+// v8.7.10 — Per-operation timeouts for simple-git. Without these, a slow or
+// hung git remote (dead TLS handshake, rate-limited, broken DNS) blocks the
+// underlying child process FOREVER, with these consequences:
+//   - gitPolling cron's `_checking` Set guard stays held → that stack stops
+//     being polled, silently, until process restart.
+//   - Interactive endpoints (/git/stacks/:id/{check,deploy,rollback}) tie up
+//     an express worker for the same forever.
+//   - Initial clone hangs leave the stack in `deploying` status indefinitely.
+// simple-git 3.x honors `timeout: { block: <ms> }` on the constructor.
+const GIT_FETCH_TIMEOUT_MS = 120_000;       // 2 min — fetch / pull / log / checkForUpdates
+const GIT_CLONE_TIMEOUT_MS = 300_000;       // 5 min — initial clone (large repos)
+const GIT_REMOTE_PROBE_TIMEOUT_MS = 30_000; // 30 sec — listRemote (credential test)
+const _gitOpts = (ms = GIT_FETCH_TIMEOUT_MS) => ({ timeout: { block: ms } });
+
 class GitService {
   constructor() {
     fs.mkdirSync(REPOS_BASE, { recursive: true });
@@ -368,7 +382,7 @@ class GitService {
         url = this._buildAuthUrl(repo_url, { credential_id, auth_type, username, password });
       }
 
-      const result = await simpleGit().env(env).listRemote(['--heads', url]);
+      const result = await simpleGit(undefined, _gitOpts(GIT_REMOTE_PROBE_TIMEOUT_MS)).env(env).listRemote(['--heads', url]);
       const branches = result.split('\n')
         .filter(line => line.trim())
         .map(line => {
@@ -691,7 +705,7 @@ class GitService {
         env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
       }
     }
-    return simpleGit(repoDir).env(env);
+    return simpleGit(repoDir, _gitOpts()).env(env);
   }
 
   _buildAuthUrl(repoUrl, { credential_id, auth_type, username, password }) {
@@ -766,7 +780,7 @@ class GitService {
         }
       }
 
-      await simpleGit().env(env).clone(authUrl, repoDir, [
+      await simpleGit(undefined, _gitOpts(GIT_CLONE_TIMEOUT_MS)).env(env).clone(authUrl, repoDir, [
         '--branch', stack.branch,
         '--single-branch',
         '--depth', '50',
@@ -782,7 +796,7 @@ class GitService {
       this._writeEnvOverrides(stackId, stack);
       await this._composeUp(stackId, stack);
 
-      const git = simpleGit(repoDir);
+      const git = simpleGit(repoDir, _gitOpts());
       const logResult = await git.log({ n: 1 });
       const latest = logResult.latest;
 
@@ -1068,3 +1082,10 @@ class GitService {
 }
 
 module.exports = new GitService();
+// v8.7.10 — exposed for tests pinning the timeout contract.
+module.exports._gitTimeouts = {
+  fetch: GIT_FETCH_TIMEOUT_MS,
+  clone: GIT_CLONE_TIMEOUT_MS,
+  remoteProbe: GIT_REMOTE_PROBE_TIMEOUT_MS,
+  build: _gitOpts,
+};

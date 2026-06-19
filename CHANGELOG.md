@@ -2,6 +2,51 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.10] - 2026-06-20 — **RELIABILITY FIX**: git operations could hang forever (no timeouts on simple-git)
+
+**Severity**: silent service degradation. A slow or hung git remote (dead TLS handshake, rate-limited host, broken DNS, network blip mid-fetch) would block the underlying `git` child process **forever**, with three real consequences:
+
+1. **Polling cron stops for the affected stack.** `gitPolling._check` holds a `_checking` Set guard so the same stack doesn't double-fire. If the in-flight check hangs, that guard is **never released** → the stack silently stops being polled until the process restarts. No error logged.
+2. **Interactive endpoints freeze a worker.** `/git/stacks/:id/check`, `:id/deploy`, `:id/rollback`, the credential `test`, and the initial clone all run git operations synchronously inside the request handler. A hung remote ties up an express worker until the OS gives up (could be hours), and the user's browser sits on a spinner.
+3. **Stack stuck in `deploying`.** The initial clone path sets status `deploying` BEFORE the clone runs. A hung clone leaves the stack in that status indefinitely; the UI shows it as in-flight forever, and no other deploy can run.
+
+### Root cause
+**No `simpleGit()` call site passed a timeout.** simple-git's docs are explicit: without `{ timeout: { block: <ms> } }` on the constructor, the library waits forever on the underlying child process.
+
+Four call sites in `src/services/git.js`:
+
+| Line | Operation | Path |
+|---|---|---|
+| 371 | `listRemote` (credential probe) | `POST /git/credentials/:id/test` |
+| 694 | central `_getGit(stack)` returning `simpleGit(repoDir).env(env)` | every fetch/pull/log on existing stacks (polling, check, deploy, rollback) |
+| 769 | initial `clone` | `POST /git/stacks` (creation) + deploy |
+| 785 | `simpleGit(repoDir)` for first `git.log` after clone | same path as 769 |
+
+### Fix
+Three operation-class budgets:
+- **`GIT_REMOTE_PROBE_TIMEOUT_MS = 30s`** — single lightweight `ls-remote` for credential test.
+- **`GIT_FETCH_TIMEOUT_MS = 2min`** — fetch/pull/log on already-cloned repos.
+- **`GIT_CLONE_TIMEOUT_MS = 5min`** — initial deep clone of potentially-large repos.
+
+Helper `_gitOpts(ms)` → `{ timeout: { block: ms } }` applied to every `simpleGit()` constructor. On timeout, simple-git throws a `GitConstructError` / `GitResponseError`, the existing `catch` blocks log it, `_checking.delete(stackId)` runs in the polling `finally`, the express worker frees, and the stack status is reset by the existing error paths instead of being stuck.
+
+### Tests
+6 new cases in `git-timeouts.test.js`:
+- exports the three documented timeout constants as positive integers
+- timeouts are in a sane order: `remoteProbe < fetch < clone`
+- all timeouts are within sensible bounds (1s..1h)
+- `build()` helper produces the exact shape simple-git expects
+- `build()` defaults to the fetch timeout when called with no args
+- **source-level guard**: scans `src/services/git.js` and asserts every `simpleGit(...)` call passes `_gitOpts(...)`. If a future contributor adds a new call site without the timeout, this test fails fast.
+
+Suite 1506 → 1512.
+
+### Operator action
+None required. Backward-compatible. After upgrade:
+- A hung git remote now fails the affected operation cleanly after 30s / 2min / 5min depending on operation class, instead of stalling forever.
+- The existing `_checking` Set guard self-releases on timeout, so cron polling resumes on the next interval.
+- A new `log.error` line surfaces the timeout in the existing per-route error logger — visible without needing to add new monitoring.
+
 ## [8.7.9] - 2026-06-20 — **RELIABILITY FIX**: OIDC outage on IdP key rotation + discovery caching
 
 **Severity**: availability outage. When an OIDC IdP (Entra, Okta, Keycloak, Google) rotated its signing keys mid-cache-window, **every user was locked out of SSO for up to 60 minutes** until the cached JWKS expired and was re-fetched. Entra rotates roughly monthly; the failure window typically caught every SSO user across the org for ~1 hour.
