@@ -73,3 +73,41 @@ describe('_resolveRoleFromGroups', () => {
     expect(_resolveRoleFromGroups({ groups: ['Other'] }, adminOnly)).toBeNull();
   });
 });
+
+// v8.7.8 (security fix) — the helper that prevents silent admin demotion
+// when the IdP returns no groups claim. Distinguishes "IdP didn't tell us"
+// from "user has groups, just not the ones we care about".
+const { _hasUsableGroupsClaim } = require('../routes/auth');
+
+describe('_hasUsableGroupsClaim — the demotion guard', () => {
+  const cfg = { groupClaim: 'groups', adminGroups: ['A'], operatorGroups: [], viewerGroups: [] };
+
+  it('true when the array claim is present and non-empty', () => {
+    expect(_hasUsableGroupsClaim({ groups: ['anything'] }, cfg)).toBe(true);
+  });
+  it('false when the claim is entirely absent (the bug case — Entra Token config regression / scope strip)', () => {
+    expect(_hasUsableGroupsClaim({ sub: 'x' }, cfg)).toBe(false);
+  });
+  it('false when the claim is an empty array', () => {
+    expect(_hasUsableGroupsClaim({ groups: [] }, cfg)).toBe(false);
+  });
+  it('false on Entra "groups overage" indicator (>200 groups → Graph lookup required)', () => {
+    expect(_hasUsableGroupsClaim({
+      _claim_names: { groups: 'src1' },
+      _claim_sources: { src1: { endpoint: 'https://graph.microsoft.com/...' } },
+    }, cfg)).toBe(false);
+  });
+  it('respects a custom claim name (Entra app-roles via OIDC_GROUP_CLAIM=roles)', () => {
+    const c = { ...cfg, groupClaim: 'roles' };
+    expect(_hasUsableGroupsClaim({ roles: ['admin'] }, c)).toBe(true);
+    expect(_hasUsableGroupsClaim({ groups: ['admin'] }, c)).toBe(false);
+  });
+  it('handles a single-string claim value (some IdPs emit one-of-many as a bare string)', () => {
+    expect(_hasUsableGroupsClaim({ groups: 'A' }, cfg)).toBe(true);
+    expect(_hasUsableGroupsClaim({ groups: '' }, cfg)).toBe(false);
+  });
+  it('defensive against null inputs', () => {
+    expect(_hasUsableGroupsClaim(null, cfg)).toBe(false);
+    expect(_hasUsableGroupsClaim({}, null)).toBe(false);
+  });
+});

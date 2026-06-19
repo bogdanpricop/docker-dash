@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.8',
+      date: '2026-06-19',
+      title: 'SECURITY FIX: OIDC silent admin demotion when groups claim is absent',
+      changes: [
+        { type: 'security', text: 'Fixed a silent privilege change in the v8.7.6 OIDC group-mapping path. When the IdP momentarily failed to emit the groups claim (Entra "groups overage" for users in >200 groups, app-registration regression, userinfo-endpoint fallback, broker scope strip), the callback was falling back to OIDC_DEFAULT_ROLE and OVERWRITING the existing user role — silently demoting admins to viewer with no error. Worst case: a sole admin could demote themselves on their own sign-in and lock the org out.' },
+        { type: 'fix', text: 'New pure helper _hasUsableGroupsClaim distinguishes "user is in no relevant group" (legitimate fallback) from "IdP did not tell us about groups" (preserve existing role). The callback now gates updateRole on evidence, not on configuration. Entra "groups overage" indicator (_claim_names.groups + Graph URL) is detected and treated as no-usable-claim. A warn-level log surfaces the underlying IdP issue so ops can spot the >200-group case immediately. 7 new unit tests, suite 1492 → 1499. Backward-compatible — no config changes required.' },
+      ],
+    },
+    {
       version: '8.7.7',
       date: '2026-06-17',
       title: 'Deployment Configurator + recipe library',

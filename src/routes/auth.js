@@ -698,6 +698,35 @@ function _resolveRoleFromGroups(claims, oidcCfg) {
   return null; // configured but no match → caller can fall back to defaultRole
 }
 
+/**
+ * v8.7.8 (security fix) — Did the IdP actually emit a groups claim we can act
+ * on? Returns true ONLY when the claim is present AND non-empty AND not the
+ * Entra-style "groups overage" indicator (which means the user has >200
+ * groups and we'd need a Microsoft Graph API call we don't make).
+ *
+ * Used by the OIDC callback to gate `updateRole`. WITHOUT this guard, a
+ * transient claim absence (Entra overage, app-registration regression,
+ * id_token verification fallthrough to userinfo, scope strip by a broker)
+ * was silently demoting an existing admin to viewer on their next login
+ * because the resolver returned null and the caller fell back to
+ * OIDC_DEFAULT_ROLE. The absence of evidence must NOT be treated as
+ * evidence of demotion.
+ */
+function _hasUsableGroupsClaim(claims, oidcCfg) {
+  if (!claims || !oidcCfg) return false;
+  const claimName = oidcCfg.groupClaim || 'groups';
+
+  // Entra "groups overage": claim itself is missing; instead the token has
+  // `_claim_names: { groups: "src1" }` + `_claim_sources: { src1: { endpoint: <graph URL> } }`.
+  // Treat as no-usable-claim so we don't demote on every login.
+  if (claims._claim_names && claims._claim_names[claimName]) return false;
+
+  const raw = claims[claimName];
+  if (Array.isArray(raw)) return raw.length > 0;
+  if (typeof raw === 'string') return raw.length > 0;
+  return false;
+}
+
 // OIDC: Check if enabled
 router.get('/oidc/enabled', (req, res) => {
   res.json({ enabled: config.oidc?.enabled || false });
@@ -822,18 +851,36 @@ router.get('/oidc/callback', async (req, res) => {
     const username = userInfo.preferred_username || email.split('@')[0] || userInfo.sub;
     const displayName = userInfo.name || userInfo.given_name || username;
 
-    // v8.7.6 — resolve role from the IdP's groups claim if mapping is
-    // configured; fall back to OIDC_DEFAULT_ROLE otherwise.
+    // v8.7.6 / FIXED v8.7.8 — resolve role from the IdP groups claim when
+    // mapping is configured. CRITICAL: only OVERWRITE an existing user's
+    // role when the IdP actually emitted a usable groups claim. Without
+    // that guard, a transient claim absence (Entra "groups overage",
+    // app-registration regression, userinfo-endpoint fallback that drops
+    // groups, scope strip by an upstream broker) silently demotes an
+    // existing admin to viewer on their next login. Absence of evidence
+    // is NOT evidence of demotion.
     const mappedRole = _resolveRoleFromGroups(userInfo, config.oidc);
     const groupMappingOn = (config.oidc.adminGroups?.length || 0)
       + (config.oidc.operatorGroups?.length || 0)
       + (config.oidc.viewerGroups?.length || 0) > 0;
+    const groupsClaimUsable = _hasUsableGroupsClaim(userInfo, config.oidc);
     const assignedRole = mappedRole || (config.oidc.defaultRole || 'viewer');
 
-    // Find or create user. When group mapping is on we trust the IdP — RE-EVALUATE
-    // existing users' roles on every login so removing someone from an admin
-    // group in the IdP actually demotes them on next sign-in.
-    const user = authService.findOrCreateSsoUser(username, assignedRole, email, { updateRole: groupMappingOn });
+    // Update existing role ONLY when we have evidence: mapping configured
+    // AND the IdP actually sent groups. Otherwise preserve whatever role
+    // the user already has (new users get defaultRole on creation; existing
+    // users are untouched). warn-level so this is visible in ops/audit.
+    const updateRole = groupMappingOn && groupsClaimUsable;
+    if (groupMappingOn && !groupsClaimUsable) {
+      const claimName = config.oidc.groupClaim || 'groups';
+      log.warn('OIDC: groups claim absent or unusable — existing user role preserved (no demotion).', {
+        username,
+        claimName,
+        hasOverageIndicator: !!(userInfo._claim_names && userInfo._claim_names[claimName]),
+      });
+    }
+
+    const user = authService.findOrCreateSsoUser(username, assignedRole, email, { updateRole });
     if (!user) return res.status(403).send('Account is disabled');
 
     // Update display name if available
@@ -1004,3 +1051,6 @@ router.get('/ldap/users', requireAuth, requireRole('admin'), async (req, res) =>
 module.exports = router;
 // v8.7.6 — exposed for unit tests of the pure group→role resolver.
 module.exports._resolveRoleFromGroups = _resolveRoleFromGroups;
+// v8.7.8 (security fix) — pure helper that distinguishes "IdP returned no
+// groups" from "user is in no relevant group" — the demotion guard.
+module.exports._hasUsableGroupsClaim = _hasUsableGroupsClaim;

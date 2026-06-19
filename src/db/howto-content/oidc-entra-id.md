@@ -71,9 +71,20 @@ OIDC_ROLE_VIEWER_GROUPS=33333333-3333-3333-3333-333333333333
 <h3>How role assignment works</h3>
 <ul>
   <li><strong>First login of a new user</strong>: a local user record is created with the role resolved from their groups, or <code>OIDC_DEFAULT_ROLE</code> if no group lists are configured or none match.</li>
-  <li><strong>Subsequent logins</strong> (when ANY of the three <code>OIDC_ROLE_*_GROUPS</code> lists is configured): the role is <strong>re-evaluated every time</strong> — so removing someone from the Entra admin group demotes them on their next sign-in. Behavior is logged to the audit trail (<code>SSO user role updated from IdP</code>).</li>
+  <li><strong>Subsequent logins</strong> (when ANY of the three <code>OIDC_ROLE_*_GROUPS</code> lists is configured AND the IdP actually sent the groups claim): the role is <strong>re-evaluated every time</strong> — so removing someone from the Entra admin group demotes them on their next sign-in. Logged as <code>SSO user role updated from IdP</code>.</li>
   <li><strong>When no group lists are configured</strong>: existing users' roles are NEVER touched by OIDC — an admin you promoted manually inside Docker Dash stays admin.</li>
 </ul>
+
+<h3>Behavior when the groups claim is absent (v8.7.8+)</h3>
+<p>If group mapping is configured but the IdP <strong>doesn't return a usable groups claim</strong> on a particular sign-in, Docker Dash <strong>preserves the existing user's role</strong> instead of falling back to <code>OIDC_DEFAULT_ROLE</code>. This protects against silent admin-to-viewer demotions when:</p>
+<ul>
+  <li>A user is in <strong>more than 200 Entra groups</strong> and Entra emits the "groups overage" indicator (<code>_claim_names.groups</code> with a Microsoft Graph URL) instead of the actual list.</li>
+  <li>A tenant admin re-saves the app registration and <strong>accidentally untoggles the groups claim</strong> in Token configuration.</li>
+  <li>An intermediary OIDC broker <strong>strips the <code>groups</code> scope</strong>.</li>
+  <li>The id_token verification falls through to the userinfo endpoint and userinfo doesn't carry the groups claim.</li>
+</ul>
+<p>The event is logged at <code>warn</code> level: <code>OIDC: groups claim absent or unusable — existing user role preserved (no demotion).</code> If the overage indicator was present, the log line includes <code>hasOverageIndicator: true</code> so you can spot the >200-group case immediately.</p>
+<p class="warn-text"><i class="fas fa-exclamation-triangle"></i> For users in the overage state, role updates from Entra group changes will NOT take effect automatically — they keep whatever role they had at the last successful resolved-groups login. Either restrict those users to fewer groups, or manage their role manually in the Users page.</p>
 
 <h3>Troubleshooting</h3>
 <ul>

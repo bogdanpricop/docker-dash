@@ -2,6 +2,39 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.8] - 2026-06-19 — **SECURITY FIX**: OIDC silent admin demotion when groups claim is absent
+
+**Severity**: silent privilege change — existing admin/operator users could be **automatically demoted to viewer** on next OIDC sign-in if their IdP momentarily failed to emit the groups claim, with no error surfaced to the user or admin.
+
+### The bug
+The v8.7.6 OIDC group→role mapping conflated **two distinct IdP states**:
+- "user is in groups, just not the ones we care about" → legitimate fallback to `OIDC_DEFAULT_ROLE`
+- "the IdP didn't tell us about groups at all" → should preserve the existing role
+
+Both produced `_resolveRoleFromGroups → null`, then `assignedRole = OIDC_DEFAULT_ROLE` (viewer), then `findOrCreateSsoUser(..., { updateRole: true })`, then a silent `UPDATE users SET role='viewer'` for any pre-existing admin.
+
+### Real-world triggers
+1. **Entra "groups overage"** — when a user is in >200 Azure AD groups, Entra omits the actual `groups` claim and replaces it with `_claim_names.groups` + a Microsoft Graph URL we don't follow. Every login of that user demoted them.
+2. **Entra Token configuration regression** — a tenant admin re-saving the app registration without re-ticking the groups checkbox stops emitting the claim.
+3. **id_token verification fallthrough** — when JWKS rotation or signature issues cause id_token verify to fail, the callback falls back to the userinfo endpoint. Some IdPs don't include the groups claim there.
+4. **Upstream OIDC broker scope strip** — orgs that route OIDC through an intermediary may have the `groups` scope stripped.
+5. **Worst-case escalation**: the only admin in the system could demote themselves on their own sign-in, locking the org out of its own dashboard.
+
+### The fix
+New pure helper **`_hasUsableGroupsClaim(claims, oidcCfg)`** at `src/routes/auth.js`. The OIDC callback now gates `updateRole` on **evidence** (IdP sent groups) rather than on **configuration** (group lists are defined). When evidence is absent:
+- existing user's role is preserved (no demotion)
+- a `warn`-level log entry is emitted: `OIDC: groups claim absent or unusable — existing user role preserved (no demotion).` with `hasOverageIndicator` flag so ops can spot the >200-group case immediately
+
+The new helper also detects Entra's `_claim_names.groups` overage indicator and treats it as "no usable claim" (preserve role + warn) rather than silently demoting.
+
+### Tests
+7 new unit cases in `oidc-group-mapping.test.js` pin the demotion guard: array claim present + non-empty (true), claim entirely absent (false), empty array (false), Entra overage indicator (false), custom claim name (`roles`), single-string claim, defensive nulls. Suite 1492 → 1499. The 12 prior v8.7.6 resolver tests still all pass.
+
+### Operator action
+No config change required — the fix is backward-compatible. If you had been seeing unexplained demotions in production, this was almost certainly the cause; the next sign-in after upgrading will preserve the user's existing role and emit a warning that surfaces the underlying IdP issue (overage, missing scope, config regression).
+
+The Entra ID how-to (`oidc-entra-id.md`) is updated with a new "Behavior when the groups claim is absent" section documenting the protection and the four triggers.
+
 ## [8.7.7] - 2026-06-17 — Deployment Configurator + recipe library
 
 A new wizard at **System → Tools → Deployment Configurator** generates a tailored `docker-compose.yml` for your environment — and the same recipes ship as static files under [`examples/deployments/`](examples/deployments/README.md) for browsing on GitHub. Inspired by an abandoned community fork (`conexaoazul/docker-dash`) that had to hand-write its own Swarm + Traefik compose because the repo only documented the standalone case.
