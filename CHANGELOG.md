@@ -2,6 +2,46 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.18] - 2026-06-20 — **SECURITY**: WebSocket `exec:start` per-stack permission check + audit (CWE-862)
+
+### Vulnerability
+The WebSocket `exec:start` message handler at [`src/ws/index.js`](src/ws/index.js) only checked:
+```js
+if (!client || client.user.role === 'viewer') return; // reject viewer
+```
+That is, an operator could exec into a container on **any** stack via WebSocket, regardless of the per-stack permissions admins set in **Settings → Users → Stack Permissions**.
+
+The HTTP container-action route (`POST /api/containers/:id/:action` for start/stop/restart/etc.) **did** enforce the per-stack check at [`src/routes/containers.js:329-334`](src/routes/containers.js#L329):
+```js
+const inspect = await dockerService.inspectContainer(id, req.hostId);
+const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+if (!permService.hasPermission(effectiveRole, 'operate')) {
+  return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
+}
+```
+The WS exec gate was the gap. An operator demoted to `view` on a sensitive stack via per-stack permissions could still get a shell inside any container on that stack by speaking WebSocket directly.
+
+### Secondary issue: no audit trail on WS exec
+Per CLAUDE.md project conventions:
+> Audit trail mandatory for any state-changing action: `auditService.log({ userId, username, action, targetType, targetId, details, ip })`.
+
+Container start/stop/restart/remove all audit (HTTP routes). WS exec — which lets operators run arbitrary commands inside containers — did not. Operator activity was invisible in the audit log.
+
+### Severity
+**MEDIUM** — CWE-862 (Missing Authorization). Auth required (the connection still passes through session-cookie validation and viewer rejection), so no unauthenticated exploit. But the per-stack permission system was advertised + enforced only in HTTP; WS bypassed it entirely.
+
+### Fix
+1. `startExec` now applies the same per-stack `permService.getEffectiveRole` / `permService.hasPermission(..., 'operate')` check the HTTP container-action route uses. Container inspect failure (missing/unreachable host) is treated as a deny.
+2. `connection` handler now captures `req.socket.remoteAddress` into the client object so audit events can attribute correctly.
+3. `startExec` now calls `auditService.log({ action: 'container_exec', targetType: 'container', targetId, details: { hostId, shell }, ip })` after the session starts. Audit failure does not break the session (best-effort).
+
+### `logs:subscribe` — intentionally unchanged
+The `logs:subscribe` WS handler also only checks `requireAuth`. Its HTTP equivalent `GET /api/containers/:id/logs` matches that — also no per-stack check. Whether logs SHOULD require per-stack permission is a separate design question (logs often contain sensitive data), but the WS behavior is consistent with HTTP today; tightening both at once is a larger product-level decision.
+
+### Operator action
+None for backward compatibility. After upgrade, operators see `container_exec` entries in the audit log for the first time, and any operator who was previously exec'ing into containers outside their per-stack scope will now hit `Insufficient stack permissions for exec`.
+
 ## [8.7.17] - 2026-06-20 — **SECURITY**: alerts.updateRule mass assignment / column-name injection (CWE-915)
 
 ### Vulnerability

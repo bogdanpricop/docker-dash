@@ -118,7 +118,9 @@ class WsServer {
         return;
       }
 
-      const client = { user, subscriptions: new Set(), isAlive: true, msgCount: 0, msgResetTime: Date.now() };
+      // v8.7.18 — capture connection IP so exec/audit events can attribute correctly.
+      const ip = req.socket?.remoteAddress || 'unknown';
+      const client = { user, ip, subscriptions: new Set(), isAlive: true, msgCount: 0, msgResetTime: Date.now() };
       this.clients.set(ws, client);
       log.debug('Client connected', { username: user.username });
       // v6.15.0: Prometheus gauge
@@ -457,6 +459,29 @@ class WsServer {
       return;
     }
 
+    // v8.7.18 SECURITY — per-stack permission check, matching the HTTP
+    // pattern for container actions in src/routes/containers.js:329-334.
+    // Without this, an operator restricted to specific stacks via the
+    // per-stack permission system (admins set this via Settings → Users →
+    // Stack Permissions) could exec into a container on ANY stack via
+    // WebSocket. The HTTP container-action route (start/stop/restart) has
+    // always checked this; the WS exec gate was the gap.
+    try {
+      const permService = require('../services/permissions');
+      const inspect = await dockerService.inspectContainer(containerId, hostId);
+      const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+      const effectiveRole = permService.getEffectiveRole(client.user.id, stack, client.user.role);
+      if (!permService.hasPermission(effectiveRole, 'operate')) {
+        ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient stack permissions for exec' }));
+        return;
+      }
+    } catch (err) {
+      // inspect failed — container missing, host unreachable, etc.
+      // Treat as deny rather than allow; surface the original error.
+      ws.send(JSON.stringify({ type: 'exec:error', message: err.message || 'Container inspect failed' }));
+      return;
+    }
+
     try {
       const exec = await dockerService.createExec(containerId, shell, hostId);
       const stream = await exec.start({ hijack: true, stdin: true, Tty: true });
@@ -478,6 +503,23 @@ class WsServer {
         client.exec = null;
         client.execStream = null;
       });
+
+      // v8.7.18 — audit exec session start. The HTTP container actions
+      // (start/stop/restart/remove) all audit; WS exec was the only state-
+      // changing action that didn't, leaving operators able to run arbitrary
+      // commands inside containers with no audit trail.
+      try {
+        const auditService = require('../services/audit');
+        auditService.log({
+          userId: client.user.id,
+          username: client.user.username,
+          action: 'container_exec',
+          targetType: 'container',
+          targetId: containerId,
+          details: { hostId, shell },
+          ip: client.ip,
+        });
+      } catch { /* audit best-effort; don't break the session if logging fails */ }
 
       ws.send(JSON.stringify({ type: 'exec:started', containerId }));
     } catch (err) {

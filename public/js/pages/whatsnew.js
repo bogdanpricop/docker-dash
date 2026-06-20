@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.18',
+      date: '2026-06-20',
+      title: 'SECURITY: WebSocket exec per-stack permission check + audit (CWE-862)',
+      changes: [
+        { type: 'security', text: 'WebSocket exec:start only checked role !== viewer; it bypassed the per-stack permission system that admins configure in Settings > Users > Stack Permissions. An operator demoted to view on a sensitive stack could still get a shell into any container on that stack by speaking WebSocket directly. The HTTP container-action route always enforced this; the WS exec gate was the gap. Now applies the same permService.getEffectiveRole / hasPermission(..., operate) check.' },
+        { type: 'fix', text: 'WS exec sessions were not audited, despite CLAUDE.md mandating audit trails for any state-changing action. Container start/stop/restart/remove all audited via HTTP; exec — the most privileged operation — did not. Now logs container_exec audit entry with userId, hostId, shell, IP.' },
+        { type: 'improvement', text: 'Connection handler captures req.socket.remoteAddress at connect time so any future audit events have correct IP attribution.' },
+      ],
+    },
+    {
       version: '8.7.17',
       date: '2026-06-20',
       title: 'SECURITY: alerts.updateRule mass assignment + column-name injection (CWE-915)',
