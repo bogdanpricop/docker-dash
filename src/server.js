@@ -470,6 +470,14 @@ async function shutdown(signal) {
 
   try { require('./services/ssh-tunnel').closeAll(); } catch {}
   try { require('./services/log-forwarder').stopAll(); } catch {}
+  // v8.7.38 — stop the remediation scheduler. start() is called above at
+  // line 384; the symmetric stop was missing, so the setInterval kept
+  // firing through the rest of shutdown. With the .unref() added in
+  // remediation-scheduler.js, the process exits even without this call,
+  // but explicit stop avoids a final tick mid-shutdown that could try
+  // to write to a closing DB or fire runJob against a tearing-down
+  // dockerService.
+  try { require('./services/remediation-scheduler').stop(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

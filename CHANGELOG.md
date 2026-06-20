@@ -2,6 +2,32 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.38] - 2026-06-21 — **SECURITY+RELIABILITY**: groups scope check + remediation scheduler shutdown
+
+### Bug 1 — groups `addContainers` / `removeContainer` lacked scope check (CWE-639)
+`POST /api/groups/:id/containers` and `DELETE /api/groups/:id/containers/:containerId` passed `req.params.id` straight to the service layer without verifying the caller could see the target group. The service methods themselves had no scope filter on the join-table operations.
+
+An operator-role user could:
+- Add containers to ANOTHER user's user-scoped group by guessing/iterating `:id`
+- Remove containers from another user's user-scoped group the same way
+
+**Severity**: LOW (operator can already create global groups; the data exposure is "which containers does another user have in their personal group"). CWE-639: Authorization Bypass Through User-Controlled Key.
+
+**Fix**: route now calls `groups.get(id, req.user.id)` first — this returns null if the group is user-scoped to a different user. 404 returned in that case, same response as a missing group (no enumeration leak).
+
+### Bug 2 — `containerIds[]` unbounded in groups add
+Same pattern as v8.7.36 — `addContainers` ran `INSERT OR IGNORE` in a transaction over an unbounded array. 100k entries would pin the SQLite writer.
+
+**Fix**: cap at 1000 with 413 + split-guidance.
+
+### Bug 3 — remediation scheduler not stopped on graceful shutdown
+`server.js` boot called `remediationScheduler.start()` (line 384) but the matching `stop()` was missing from the SIGTERM/SIGINT handler. The `setInterval` kept firing through the rest of shutdown — could mid-execute a remediation `runJob()` against a tearing-down dockerService or write to a closing DB.
+
+**Fix**: added `try { require('./services/remediation-scheduler').stop(); } catch {}` to the shutdown sequence, between log-forwarder.stopAll and jobs.stopAll. Also added `.unref()` to the scheduler's timer so the process can exit even if shutdown is bypassed (e.g., uncaught exception path).
+
+### Operator action
+None for any of the three. Backward-compatible.
+
 ## [8.7.37] - 2026-06-21 — **SECURITY**: git webhook fail-closed (no-secret + unknown-provider) (CWE-345)
 
 Two fail-open patterns in `POST /api/git/webhook/:token` — both let webhook deliveries succeed without signature verification under misconfigurations the admin might not notice.

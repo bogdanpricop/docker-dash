@@ -63,13 +63,34 @@ router.post('/:id/containers', requireAuth, requireRole('admin', 'operator'), as
   if (!containerIds || !Array.isArray(containerIds)) {
     return res.status(400).json({ error: 'containerIds array required' });
   }
-  groups.addContainers(parseInt(req.params.id), containerIds);
+  // v8.7.38 — scope check + length cap.
+  // 1. Previously the service mutated container_group_members for any
+  //    groupId without verifying the caller could see that group. An
+  //    operator could add containers to ANOTHER user's user-scoped
+  //    group by passing the id. groups.get() returns null when the
+  //    group exists but the caller has no scope on it — same response
+  //    as a missing group, by design.
+  // 2. containerIds had no upper bound — 100k entries × INSERT OR
+  //    IGNORE in one transaction could pin the SQLite writer. 1000 is
+  //    generous for any realistic group; UI tops out far below.
+  const id = parseInt(req.params.id);
+  const group = groups.get(id, req.user.id);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  if (containerIds.length > 1000) {
+    return res.status(413).json({ error: 'containerIds array exceeds max of 1000; split into multiple calls' });
+  }
+  groups.addContainers(id, containerIds);
   res.json({ ok: true });
 }));
 
 // Remove container from group
 router.delete('/:id/containers/:containerId', requireAuth, requireRole('admin', 'operator'), asyncHandler((req, res) => {
-  groups.removeContainer(parseInt(req.params.id), req.params.containerId);
+  // v8.7.38 — same scope check as add. Previously any operator could
+  // remove containers from any user-scoped group by guessing the id.
+  const id = parseInt(req.params.id);
+  const group = groups.get(id, req.user.id);
+  if (!group) return res.status(404).json({ error: 'Group not found' });
+  groups.removeContainer(id, req.params.containerId);
   res.json({ ok: true });
 }));
 

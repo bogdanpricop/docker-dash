@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.38',
+      date: '2026-06-21',
+      title: 'SECURITY+RELIABILITY: groups scope check + remediation shutdown',
+      changes: [
+        { type: 'security', text: 'POST/DELETE /api/groups/:id/containers passed :id straight to the service without verifying the caller could see the target group. An operator-role user could add/remove containers from another user user-scoped group by guessing the id. CWE-639 Authorization Bypass Through User-Controlled Key. Severity LOW (operator already has wide permissions; the exposure is which containers another user pins in their personal group). Fix: route now checks groups.get(id, req.user.id) first; 404 if not visible.' },
+        { type: 'fix', text: 'containerIds[] in groups add was unbounded — 100k entries × INSERT OR IGNORE in one transaction could pin SQLite writer. Capped at 1000 with 413.' },
+        { type: 'fix', text: 'Remediation scheduler was not stopped on graceful shutdown. server.js called start() at boot but the matching stop() was missing from the SIGTERM/SIGINT handler — the setInterval kept firing through the rest of shutdown and could mid-execute a runJob against a tearing-down dockerService or closing DB. Added stop() to the shutdown sequence and .unref() to the timer.' },
+      ],
+    },
+    {
       version: '8.7.37',
       date: '2026-06-21',
       title: 'SECURITY: git webhook fail-closed (CWE-345)',

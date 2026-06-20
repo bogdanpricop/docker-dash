@@ -69,6 +69,13 @@ function start() {
   _timer = setInterval(() => {
     _tick().catch((err) => log.error('scheduler tick failed', { error: err.message }));
   }, POLL_INTERVAL_MS);
+  // v8.7.38 — .unref() so the timer does not keep the Node event loop
+  // alive on its own. Without this, even if all other timers are cleared
+  // during graceful shutdown, this interval would block process exit
+  // until the next tick fires (up to POLL_INTERVAL_MS = 60s) and then
+  // the cleared timer drops out. Defensive — pairs with the new
+  // shutdown() call in server.js that explicitly invokes stop().
+  if (typeof _timer.unref === 'function') _timer.unref();
   log.info('Remediation scheduler started', { pollMs: POLL_INTERVAL_MS });
 }
 
