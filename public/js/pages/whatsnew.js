@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.34',
+      date: '2026-06-21',
+      title: 'RELIABILITY: execCommand 8MB output cap + 60s timeout',
+      changes: [
+        { type: 'fix', text: 'dockerService.execCommand buffered the full Docker stream output into a chunks array unbounded. A caller that exec\\u2019d a verbose command (cat /var/log/..., journalctl, ls -R /) could allocate gigabytes of heap. Also had no timeout: a hung subprocess left the promise pending forever and tied up the HTTP handler. Current callers expect short status output but the path inherited the risk. Added 8MB output cap with sentinel suffix on truncation, 60s wall-clock timeout, and a close-event handler in case the daemon fires close instead of end after destroy().' },
+      ],
+    },
+    {
       version: '8.7.33',
       date: '2026-06-21',
       title: 'RELIABILITY/DOS: cap user-supplied LIMIT across 6 routes',

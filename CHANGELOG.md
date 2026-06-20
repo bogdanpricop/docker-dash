@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.34] - 2026-06-21 — **RELIABILITY**: `execCommand` 8 MB output cap + 60 s timeout
+
+### Bug
+`dockerService.execCommand(containerId, cmd, hostId)` ran an arbitrary command inside a container and buffered the full multiplexed Docker stream output into a `chunks` array, then concatenated at end-of-stream. Two gaps:
+
+1. **Unbounded output buffer**: a caller that exec'd a verbose command (e.g. `cat /var/log/...`, `journalctl`, `ls -R /`) could allocate gigabytes of heap as the chunks accumulated. The Docker stream had no end-of-stream guarantee on size.
+2. **No timeout**: a hung exec (process waiting on stdin, deadlocked subprocess, infinite loop) would leave the promise pending forever and tie up the calling HTTP request handler.
+
+The current callers in the codebase all expect short, sub-second status output (`docker version` style), so under normal operation this never bites. But every caller that opens this path inherits the unbounded behavior — and as new features get added, the assumption can quietly break.
+
+### Fix
+- **8 MB output cap**. When the cap is hit: stream is destroyed and the truncated output returned with a sentinel suffix `[execCommand output truncated at 8 MB]` so callers can detect truncation if they care.
+- **60-second wall-clock timeout**. Pathological for any current caller (existing usage is sub-second); 60 s is the failsafe before upstream proxies time out.
+- `close` event handler added alongside `end` because some Docker daemons fire `close` instead of `end` after `destroy()`. Guarded with a `settled` flag so the promise resolves exactly once.
+
+### Operator action
+None. All known callers stay well under the 8 MB / 60 s budgets; only pathological hostile or buggy callers are now bounded.
+
 ## [8.7.33] - 2026-06-21 — **RELIABILITY/DOS**: cap user-supplied LIMIT across 6 paginated routes
 
 ### Bug — unbounded `?limit=` query parameter

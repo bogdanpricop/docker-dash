@@ -594,9 +594,47 @@ class DockerService {
       Tty: false,
     });
     const stream = await exec.start({ Detach: false, Tty: false });
+    // v8.7.34 — two guards added:
+    //   1. 8 MB output cap. Pre-fix the chunks array grew unbounded, so a
+    //      caller that exec'd a verbose command (e.g. `cat /var/log/...`)
+    //      could OOM the server. 8 MB is enough headroom for any status/
+    //      inspect command the codebase actually issues (the largest
+    //      caller asks for `docker version` style output, < 1 KB).
+    //      When the cap is hit, the stream is destroyed and the
+    //      truncated output is returned with a sentinel suffix so
+    //      callers can detect truncation.
+    //   2. 60 s wall-clock timeout. The existing exec callers all expect
+    //      sub-second responses (status checks, label reads); 60 s is
+    //      already pathological and lets us bail before the request
+    //      handler hits an upstream proxy timeout.
+    const MAX_BYTES = 8 * 1024 * 1024;
+    const TIMEOUT_MS = 60_000;
     return new Promise((resolve, reject) => {
       const chunks = [];
-      stream.on('data', (chunk) => chunks.push(chunk));
+      let bytes = 0;
+      let truncated = false;
+      let settled = false;
+      const finish = (result, err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (err) reject(err); else resolve(result);
+      };
+      const timer = setTimeout(() => {
+        try { stream.destroy(); } catch { /* ignore */ }
+        finish(null, new Error(`execCommand timeout after ${TIMEOUT_MS / 1000}s`));
+      }, TIMEOUT_MS);
+
+      stream.on('data', (chunk) => {
+        if (truncated) return;
+        bytes += chunk.length;
+        if (bytes > MAX_BYTES) {
+          truncated = true;
+          try { stream.destroy(); } catch { /* ignore */ }
+          return;
+        }
+        chunks.push(chunk);
+      });
       stream.on('end', () => {
         const raw = Buffer.concat(chunks);
         // Demux docker stream (8-byte header per frame)
@@ -609,10 +647,18 @@ class DockerService {
           lines.push(raw.slice(pos, pos + size).toString('utf8'));
           pos += size;
         }
-        const output = lines.length > 0 ? lines.join('') : raw.toString('utf8');
-        resolve(output);
+        let output = lines.length > 0 ? lines.join('') : raw.toString('utf8');
+        if (truncated) output += `\n\n[execCommand output truncated at ${MAX_BYTES / 1024 / 1024} MB]`;
+        finish(output);
       });
-      stream.on('error', reject);
+      stream.on('close', () => {
+        // Some daemons fire 'close' instead of 'end' after destroy(); make sure we resolve.
+        if (truncated && !settled) {
+          const raw = Buffer.concat(chunks);
+          finish(raw.toString('utf8') + `\n\n[execCommand output truncated at ${MAX_BYTES / 1024 / 1024} MB]`);
+        }
+      });
+      stream.on('error', (err) => finish(null, err));
     });
   }
 
