@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.25',
+      date: '2026-06-20',
+      title: 'HA: kickstart leader election at boot (no 10s cold-start gap)',
+      changes: [
+        { type: 'fix', text: 'cluster.isLeader() used a lazy-init pattern — the Redis election loop only started on the first isLeader() call. But no code called isLeader() at boot. The first invocation was the first fast setInterval tick (alert-evaluate 10s after boot). So HA mode spent its first ~10s in unknown leader state, during which gitPolling stayed unstarted, the WebSocket Docker event stream stayed unstarted, and leader-gated cron ticks no-oped. Added a single kickstart call at the end of jobs.startAll() so the election fires immediately at boot. Standalone is unaffected (isLeader() returns true synchronously there).' },
+      ],
+    },
+    {
       version: '8.7.24',
       date: '2026-06-20',
       title: 'RELIABILITY: stats rollup UNIQUE index now includes host_id (multi-host correctness)',

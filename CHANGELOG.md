@@ -2,6 +2,34 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.25] - 2026-06-20 — **HA**: kickstart leader election at boot (no 10s gap)
+
+### Bug — HA-only cold start delay
+`cluster.isLeader()` uses a lazy-init pattern: the Redis election loop only starts the first time `isLeader()` is called. The intent was "don't incur Redis traffic if nothing in this process needs leader status." But in practice, no code calls `isLeader()` at boot — every caller is reactive:
+- `_m()` cron wrapper calls it inside each scheduled tick (so the first fast tick is `alert-evaluate` 10s after boot)
+- The 60s bootstrap update-check calls it
+- WebSocket handlers don't poll until message-driven
+
+So in HA mode, the node spent the first ~10s of runtime in `_leaderState = 'unknown'`. During that window:
+- `gitPolling.startAll()` had not run (waiting for `onBecomeLeader` to fire)
+- The WebSocket Docker event stream had not started (same)
+- Cron jobs that ticked in that window would no-op until the first election completed (`isLeader()` returns false during 'unknown')
+
+The cold-start gap was bounded at 10s by the shortest setInterval (alert-evaluate), but it was wasted time — git polling on a real workload would miss its first 10s of upstream commits.
+
+### Fix
+One line at the end of `jobs.startAll()`:
+```js
+cluster.isLeader().catch((e) => log.warn('initial election kickstart failed', { message: e.message }));
+```
+This triggers the lazy init synchronously at boot — election fires, transition to `'leader'` or `'reader'` happens within milliseconds, registered `onBecomeLeader` / `onBecomeReader` callbacks (gitPolling, WS stream, etc.) fire immediately.
+
+### Standalone is unaffected
+In standalone mode, `cluster.isLeader()` returns `true` synchronously without I/O (line 185 of cluster.js: `if (!isHa()) return true`), and `onBecomeLeader` already fires synchronously on registration. The new kickstart call is a no-op.
+
+### Operator action
+None. Backward-compatible. HA leader replicas now reach steady state ~10s faster.
+
 ## [8.7.24] - 2026-06-20 — **RELIABILITY**: stats rollup UNIQUE index now includes `host_id` (multi-host correctness)
 
 ### Bug

@@ -539,6 +539,21 @@ function startAll() {
     return require('../services/update-check').refresh();
   })));
 
+  // v8.7.25 — kickstart leader election immediately at boot. Without
+  // this, the cluster module's lazy-init pattern (election loop starts
+  // on the first isLeader() call) means HA mode waits up to ~10s for
+  // the first fast setInterval tick (alert-evaluate every 10s) before
+  // even attempting to determine its role. During that window:
+  //   - gitPolling stays unstarted (waiting for onBecomeLeader)
+  //   - the WS Docker event stream stays unstarted (same)
+  //   - any cron job that ticks faster than 10s doesn't exist, but if
+  //     it did, it would no-op the wait
+  // Standalone: cluster.isLeader() returns true immediately (no Redis,
+  // no async), so this line is a synchronous no-op there.
+  // HA: triggers the election + role transition within milliseconds of
+  // boot, so the leader replica picks up its work without the 10s gap.
+  cluster.isLeader().catch((e) => log.warn('initial election kickstart failed', { message: e.message }));
+
   // Initial update-check 60s after boot so the sidebar badge can light up
   // on first load without waiting 12h. Throttled inside the service.
   // Leader-only in HA mode (per-process throttle wouldn't dedupe across replicas).
