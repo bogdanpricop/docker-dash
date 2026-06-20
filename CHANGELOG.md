@@ -2,6 +2,47 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.27] - 2026-06-21 — **RELIABILITY**: SSH tunnel exponential-backoff infinite retry (was: single-attempt-then-dead)
+
+### Bug
+`SshTunnelService._scheduleReconnect` scheduled **one** reconnect 15 seconds after a tunnel failure. If that one attempt failed, the tunnel was left permanently dead in the `_tunnels` Map (actually deleted from the Map, but no further scheduling). Any transient network outage longer than 15 seconds meant the host stayed offline in Docker Dash until an admin manually re-added it or restarted the process.
+
+```js
+// before
+_scheduleReconnect(hostConfig) {
+  const tunnel = this._tunnels.get(hostConfig.id);
+  if (tunnel) {
+    if (tunnel.reconnectTimer) return;
+    tunnel.reconnectTimer = setTimeout(async () => {
+      this._tunnels.delete(hostConfig.id);
+      try { await this.createTunnel(hostConfig); }
+      catch (err) { log.error(...); }  // ← no follow-up reconnect
+    }, 15000);
+  }
+}
+```
+
+Real-world triggers:
+- Remote daemon restart taking > 15s (kernel update, big image pull, host reboot)
+- Brief WAN outage on a remote host (ISP blip)
+- Remote host SSH service restart (`systemctl restart sshd`)
+
+After any of these, the host appeared "unreachable" in the dashboard with no automatic recovery.
+
+### Fix
+Exponential backoff with infinite retry:
+- Attempt 1: 15s delay
+- Attempt 2: 30s
+- Attempt 3: 60s
+- Attempt 4: 2min
+- Attempt 5: 4min
+- Attempt 6+: capped at 5min
+
+Each tunnel slot tracks `reconnectAttempts` across the gap. On every successful reconnect, the counter resets to 0 (the new tunnel entry from `createTunnel` starts fresh). On every failure, a placeholder is re-inserted into `_tunnels` so the next `_scheduleReconnect` can find it and chain another attempt.
+
+### Operator action
+None. Hosts that previously needed manual recovery after a > 15s outage now self-heal.
+
 ## [8.7.26] - 2026-06-21 — **RELIABILITY**: bounded cooldown Maps + workflow webhook timeout
 
 ### Bug 1 — unbounded cooldown Maps (slow memory leak)

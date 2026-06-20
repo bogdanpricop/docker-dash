@@ -73,6 +73,10 @@ class SshTunnelService {
             server: localServer,
             hostId: id,
             reconnectTimer: null,
+            // v8.7.27 — reconnect-attempt counter for exponential backoff.
+            // Reset to 0 on every successful createTunnel; bumped each
+            // time _scheduleReconnect fires. Capped delay at 5 min.
+            reconnectAttempts: 0,
           };
           this._tunnels.set(id, tunnelInfo);
           resolved = true;
@@ -204,20 +208,43 @@ class SshTunnelService {
 
   _scheduleReconnect(hostConfig) {
     const tunnel = this._tunnels.get(hostConfig.id);
-    // Clean up dead tunnel
-    if (tunnel) {
-      if (tunnel.reconnectTimer) return; // Already scheduled
-      try { tunnel.server?.close(); } catch {}
-      tunnel.reconnectTimer = setTimeout(async () => {
-        this._tunnels.delete(hostConfig.id);
-        log.info(`Reconnecting SSH tunnel for host ${hostConfig.id}`);
-        try {
-          await this.createTunnel(hostConfig);
-        } catch (err) {
-          log.error(`SSH reconnect failed for host ${hostConfig.id}: ${err.message}`);
-        }
-      }, 15000);
-    }
+    if (!tunnel) return;
+    if (tunnel.reconnectTimer) return; // Already scheduled
+
+    // v8.7.27 — exponential backoff with infinite retry. Pre-fix this
+    // method scheduled ONE retry then on failure left the tunnel
+    // permanently dead — any transient network outage longer than 15s
+    // meant the host stayed offline in Docker Dash until manual
+    // intervention. Now retries forever with backoff capped at 5 min.
+    const attempts = (tunnel.reconnectAttempts || 0) + 1;
+    tunnel.reconnectAttempts = attempts;
+    const delayMs = Math.min(15_000 * Math.pow(2, attempts - 1), 5 * 60_000);
+
+    try { tunnel.server?.close(); } catch {}
+
+    tunnel.reconnectTimer = setTimeout(async () => {
+      // The old tunnel slot is freed BEFORE we attempt createTunnel so
+      // that createTunnel can install a fresh entry. We hold onto the
+      // attempt counter across the gap so a successful reconnect can
+      // reset it (createTunnel sets reconnectAttempts back to 0).
+      this._tunnels.delete(hostConfig.id);
+      log.info(`Reconnecting SSH tunnel for host ${hostConfig.id} (attempt ${attempts})`);
+      try {
+        await this.createTunnel(hostConfig);
+        // Success — counter was reset inside createTunnel.
+      } catch (err) {
+        log.error(`SSH reconnect failed for host ${hostConfig.id} (attempt ${attempts}): ${err.message}`);
+        // Re-insert a placeholder so _scheduleReconnect can find a
+        // tunnel object and schedule another attempt. Same shape as a
+        // live tunnel entry but with no client/server.
+        this._tunnels.set(hostConfig.id, {
+          client: null, localPort: null, server: null,
+          hostId: hostConfig.id, reconnectTimer: null,
+          reconnectAttempts: attempts,
+        });
+        this._scheduleReconnect(hostConfig);
+      }
+    }, delayMs);
   }
 
   /** Test SSH connection without creating persistent tunnel */

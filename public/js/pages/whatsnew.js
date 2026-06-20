@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.27',
+      date: '2026-06-21',
+      title: 'RELIABILITY: SSH tunnel exponential-backoff infinite retry',
+      changes: [
+        { type: 'fix', text: 'SshTunnelService._scheduleReconnect scheduled ONE reconnect 15s after a tunnel failure. If that retry failed, the tunnel was left permanently dead — any network outage longer than 15s meant the host stayed offline until manual re-add or process restart. Real-world triggers: remote daemon restart > 15s (kernel update, big image pull, host reboot), brief WAN outage, sshd restart. Now retries forever with exponential backoff (15s, 30s, 60s, 2min, 4min, capped at 5min) so hosts self-heal after any transient outage.' },
+      ],
+    },
+    {
       version: '8.7.26',
       date: '2026-06-21',
       title: 'RELIABILITY: bounded cooldown Maps + workflow webhook timeout',
