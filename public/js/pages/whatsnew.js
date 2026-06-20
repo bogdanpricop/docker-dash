@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.29',
+      date: '2026-06-21',
+      title: 'HA: rate-limit Lua-atomic + correct retryAfterSec',
+      changes: [
+        { type: 'fix', text: 'Redis rate-limit retryAfterSec returned the FULL window length instead of time-until-bucket-rolls-over. For a 15-min login window, a client hitting the limit at second 870 was told to wait 900s instead of ~30s. Now computes the correct remaining time per bucket boundary, capped at 1s minimum.' },
+        { type: 'fix', text: 'INCR + PEXPIRE was two separate round-trips. If the Redis connection dropped between them (a few ms is enough on a busy/lossy Redis), the bucket key existed with no TTL → grew forever → that (route, IP) was permanently blocked until manual DEL or Redis restart. Fixed via atomic Lua script (one round-trip). HA-only; standalone in-memory limiter was already correct.' },
+      ],
+    },
+    {
       version: '8.7.28',
       date: '2026-06-21',
       title: 'RELIABILITY: docker.pull wall-clock timeout (10min) across 7 sites',

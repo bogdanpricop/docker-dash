@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.29] - 2026-06-21 — **HA**: rate-limit Lua-atomic + correct `retryAfterSec`
+
+Two distinct bugs in the Redis fixed-window rate limiter, both shipped together because the fix touches the same six lines.
+
+### Bug 1 — `retryAfterSec` returned the entire window length
+```js
+// before
+if (count > maxRequests) {
+  return { allowed: false, remaining: 0, retryAfterSec: Math.ceil(windowMs / 1000) };
+}
+```
+For a 15-minute login rate-limit window (typical for the auth route in this codebase), a client that hit the limit at second 870 of the window was told `Retry-After: 900` instead of the correct ~30s until the bucket rolled. Clients waited up to N× longer than necessary — and `Retry-After: 900` against a login endpoint feels broken enough that users assume the system is down.
+
+**Fix**: compute time-until-bucket-rolls-over from the current bucket index:
+```js
+const retryAfterSec = Math.max(1, Math.ceil(((bucketIdx + 1) * windowMs - now) / 1000));
+```
+1-second minimum so clients don't busy-retry at sub-second intervals.
+
+### Bug 2 — `INCR` + `PEXPIRE` was two round-trips → permanent block on race
+```js
+// before
+const count = await r.incr(bucket);
+if (count === 1) await r.pexpire(bucket, windowMs + 1000);
+```
+If the Redis connection dropped between `INCR` returning `1` and `PEXPIRE` landing (a few ms is enough on a busy / lossy Redis), the bucket key existed with no TTL. Every subsequent request kept incrementing the key forever — that specific `(route, IP)` combination was **permanently rate-limited** at the configured `maxRequests` until an admin manually `DEL`'d the key or restarted Redis. No symptoms in standalone mode; HA-only.
+
+**Fix**: atomic Lua script — single round-trip, no race:
+```lua
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+return c
+```
+
+### Standalone path unaffected
+The in-memory sliding-window limiter (`src/services/rate-limiter-memory.js`) was already correct on both counts:
+- Uses `times[0] + windowMs - now` for true sliding-window retry-after
+- Single-threaded event loop means no INCR/EXPIRE race possible
+
+### Operator action
+None. Backward-compatible. HA replicas that suffered permanently-blocked rate-limit keys now self-heal at the next bucket roll-over (typically within `windowMs`).
+
 ## [8.7.28] - 2026-06-21 — **RELIABILITY**: `docker.pull` wall-clock timeout (10 min) across 7 sites
 
 ### Bug

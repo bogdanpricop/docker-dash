@@ -65,18 +65,40 @@ async function redis() {
 /** Rate-limit decision for a given key + bucket.
  *  Returns { allowed, remaining, retryAfterSec }.
  *  Standalone: falls through to src/services/rate-limiter-memory.js (sliding window).
- *  HA: Redis INCR + PEXPIRE (fixed window — 2× looser at bucket boundary; documented trade-off). */
+ *  HA: Redis INCR + PEXPIRE (fixed window — 2× looser at bucket boundary; documented trade-off).
+ *
+ *  v8.7.29 — two bugs fixed here:
+ *  1. retryAfterSec used to return Math.ceil(windowMs / 1000) — the FULL
+ *     window length. The correct value is time-until-bucket-rolls-over,
+ *     which can be a fraction of a second if the client hit the limit at
+ *     the end of a bucket. Clients were waiting up to N times longer than
+ *     necessary (where N = windowMs / actual-remaining-time).
+ *  2. INCR + PEXPIRE was two separate round-trips. If the connection
+ *     dropped between INCR and PEXPIRE (a few ms is enough on a busy
+ *     Redis), the bucket key would exist with no TTL → grew forever →
+ *     that key was permanently blocked at maxRequests. Fixed via Lua
+ *     script that does both atomically in one round-trip. */
+const RATE_LIMIT_LUA = `
+  local c = redis.call('INCR', KEYS[1])
+  if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
+  return c
+`;
+
 async function rateLimitTick(key, maxRequests, windowMs) {
   if (!isHa()) {
     const mem = require('./rate-limiter-memory');
     return mem.tick(key, maxRequests, windowMs);
   }
   const r = await redis();
-  const bucket = `rl:${key}:${Math.floor(Date.now() / windowMs)}`;
-  const count = await r.incr(bucket);
-  if (count === 1) await r.pexpire(bucket, windowMs + 1000);
+  const now = Date.now();
+  const bucketIdx = Math.floor(now / windowMs);
+  const bucket = `rl:${key}:${bucketIdx}`;
+  const count = Number(await r.eval(RATE_LIMIT_LUA, 1, bucket, windowMs + 1000));
+  // Time until this bucket rolls over to the next (capped at 1s minimum so
+  // clients don't hammer the limiter with sub-second retries).
+  const retryAfterSec = Math.max(1, Math.ceil(((bucketIdx + 1) * windowMs - now) / 1000));
   if (count > maxRequests) {
-    return { allowed: false, remaining: 0, retryAfterSec: Math.ceil(windowMs / 1000) };
+    return { allowed: false, remaining: 0, retryAfterSec };
   }
   return { allowed: true, remaining: maxRequests - count, retryAfterSec: null };
 }
