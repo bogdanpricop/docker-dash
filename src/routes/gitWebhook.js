@@ -27,6 +27,20 @@ router.post('/:token', rawBodyParser, async (req, res) => {
     const provider = stack.webhook_provider || 'github';
     const secret = stack.webhook_secret;
 
+    // v8.7.37 SECURITY — fail closed when no secret is configured AND the
+    // stack will deploy on push. Pre-fix: `if (secret)` skipped signature
+    // validation entirely when admin left the webhook secret empty. URL
+    // tokens leak (PR descriptions, screen recordings, browser history,
+    // log files) and any caller knowing a leaked token could force a
+    // production deploy. Now: if deploy_on_push is true, secret is
+    // mandatory; otherwise (notification-only mode) we keep the old
+    // behavior since the worst case is an unwanted "update available"
+    // broadcast — informational, not destructive.
+    if (!secret && stack.deploy_on_push) {
+      log.warn('Webhook rejected: deploy_on_push is enabled but no webhook_secret is configured', { stackId: stack.id });
+      return res.status(401).json({ error: 'Webhook secret required when deploy_on_push is enabled' });
+    }
+
     if (secret) {
       const valid = validateSignature(provider, rawBody, secret, req.headers);
       if (!valid) {
@@ -98,7 +112,14 @@ function validateSignature(provider, rawBody, secret, headers) {
         return timingSafeCompare(sig, expected);
       }
       default:
-        return true; // Unknown provider, skip validation
+        // v8.7.37 SECURITY — fail closed. Pre-fix this returned true,
+        // accepting any payload for an unrecognized provider. An admin
+        // who set webhook_provider to an unsupported value (typo,
+        // forward-compat assumption) silently disabled all signature
+        // checks. Better to reject unknown providers explicitly; the
+        // admin can fix the provider field rather than have insecure
+        // webhook delivery succeed unnoticed.
+        return false;
     }
   } catch {
     return false;

@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.37',
+      date: '2026-06-21',
+      title: 'SECURITY: git webhook fail-closed (CWE-345)',
+      changes: [
+        { type: 'security', text: 'Webhook route had two fail-open patterns. (1) Empty webhook_secret silently disabled signature validation — if admin enabled webhooks without configuring a secret AND deploy_on_push was on, anyone who knew the URL token could force a production deploy. URL tokens leak (PR descriptions, screen recordings, browser history, CDN access logs). (2) Unknown webhook_provider value (typo, custom string) silently returned true from signature validation, accepting any payload. Both fixed to fail closed.' },
+        { type: 'fix', text: 'Operator action required: if you enabled webhooks WITHOUT setting a secret AND deploy_on_push is on, configure a secret in Stack > Auto-Deploy > Webhook Secret and update provider-side configuration. Webhooks now return 401 until both are set. If webhook_provider was a typo, fix to github/gitlab/gitea/bitbucket/generic.' },
+      ],
+    },
+    {
       version: '8.7.36',
       date: '2026-06-21',
       title: 'RELIABILITY/DOS: bulk-input caps (secrets rotation + bundle import)',

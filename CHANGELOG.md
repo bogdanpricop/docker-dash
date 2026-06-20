@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.37] - 2026-06-21 — **SECURITY**: git webhook fail-closed (no-secret + unknown-provider) (CWE-345)
+
+Two fail-open patterns in `POST /api/git/webhook/:token` — both let webhook deliveries succeed without signature verification under misconfigurations the admin might not notice.
+
+### Bug 1 — empty webhook secret silently disabled signature checks
+```js
+// before
+if (secret) {
+  const valid = validateSignature(provider, rawBody, secret, req.headers);
+  if (!valid) return res.status(401).json(...);
+}
+```
+If `stack.webhook_secret` was empty (admin enabled webhooks but didn't configure a secret), the entire signature block was skipped. The route proceeded to deploy directly. The webhook URL token IS supposed to be the shared secret in this fallback, but URL tokens leak:
+- Pasted into PR descriptions
+- Captured in screen recordings, screenshots, browser history
+- Logged by intermediate proxies / CDN access logs
+- Written into CI logs
+
+Once leaked, anyone could force a production deploy of the latest commit on the watched branch. CWE-345: Insufficient Verification of Data Authenticity.
+
+**Fix**: when `deploy_on_push` is enabled and no secret is configured, the request is rejected with 401. The notification-only mode (deploy_on_push=false) still works without a secret — the worst case there is an unwanted "update available" WebSocket broadcast, which is informational not destructive.
+
+### Bug 2 — unknown `webhook_provider` returned `true`
+```js
+// before
+default:
+  return true; // Unknown provider, skip validation
+```
+If an admin set `webhook_provider` to a value the route didn't recognize (typo: "Github" instead of "github", forward-compat "gitea2", custom string), signature validation silently returned `true` and accepted any payload. The intent was probably "be permissive for custom integrations," but it inverted the security default.
+
+**Fix**: `return false`. The admin can fix the provider field; an unsupported provider must not silently disable signature checks.
+
+### What did NOT change
+- Branch-mismatch filter: still ignores webhooks for non-tracked branches (defense in depth)
+- Token lookup: still parameterized, still 404 on miss
+- `timingSafeCompare`: still uses `crypto.timingSafeEqual` correctly
+- All 5 supported providers (github, gitlab, gitea, bitbucket, generic): validation behavior identical
+
+### Operator action
+- **If you enabled webhooks WITHOUT setting a secret AND deploy_on_push is on**: configure a secret in **Stack → Auto-Deploy → Webhook Secret**, then update the provider-side webhook configuration with the same secret. Webhooks fail closed with 401 until both are set.
+- **If you set webhook_provider to a typo / custom value**: fix it to one of `github`, `gitlab`, `gitea`, `bitbucket`, `generic`. Webhooks reject with 401 until the value matches.
+
 ## [8.7.36] - 2026-06-21 — **RELIABILITY/DOS**: bulk-input caps (secrets rotation + bundle import)
 
 Two endpoints that iterate over user-supplied arrays without an upper bound. Both admin-gated (no unauthenticated DoS), both prepared-statement-safe (no SQL injection), but both could pin DB writer / image-pull workers for hours on pathological input.
