@@ -44,18 +44,33 @@ const providers = {
   },
 
   async ntfy(config, message) {
+    // v8.7.19 — ntfy uses raw fetch (not _post) because the body is plain
+    // text and the headers carry the structured fields. The previous
+    // implementation forgot the AbortController/timeout wrapper that
+    // _post uses — a hung ntfy.sh request would block notification
+    // dispatch for that channel indefinitely, AND because sendToAll
+    // awaits channels serially, it would also block delivery to every
+    // remaining channel for the same alert. Explicit 10s timeout to
+    // match _post.
     const url = `${config.server_url || 'https://ntfy.sh'}/${config.topic}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Title': message.title || 'Docker Dash Alert',
-        'Priority': message.severity === 'critical' ? '5' : message.severity === 'warning' ? '3' : '2',
-        'Tags': message.severity === 'critical' ? 'rotating_light' : 'whale',
-        ...(config.token ? { 'Authorization': `Bearer ${config.token}` } : {}),
-      },
-      body: message.text,
-    });
-    if (!res.ok) throw new Error(`ntfy: ${res.status}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Title': message.title || 'Docker Dash Alert',
+          'Priority': message.severity === 'critical' ? '5' : message.severity === 'warning' ? '3' : '2',
+          'Tags': message.severity === 'critical' ? 'rotating_light' : 'whale',
+          ...(config.token ? { 'Authorization': `Bearer ${config.token}` } : {}),
+        },
+        body: message.text,
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`ntfy: ${res.status}`);
+    } finally {
+      clearTimeout(timeout);
+    }
   },
 
   async gotify(config, message) {
@@ -179,7 +194,15 @@ class NotificationChannelService {
     const db = getDb();
     const channels = db.prepare('SELECT * FROM notification_channels WHERE is_active = 1').all();
 
-    for (const channel of channels) {
+    // v8.7.19 — dispatch concurrently with Promise.allSettled instead of
+    // serial await. Previously, a slow channel (e.g. ntfy hanging up to
+    // its 10s timeout, or any provider's internal timeout firing) would
+    // block every subsequent channel for the same alert from being
+    // notified. With N active channels, worst-case latency was N×T_slow
+    // instead of T_slow. Per-channel error isolation is preserved via the
+    // inner try/catch inside the dispatch lambda. allSettled never
+    // rejects, so this call cannot throw.
+    await Promise.allSettled(channels.map(async (channel) => {
       try {
         const config = JSON.parse(decrypt(channel.config_encrypted));
         const provider = providers[channel.provider];
@@ -187,7 +210,7 @@ class NotificationChannelService {
       } catch (err) {
         log.error('Notification failed', { channelId: channel.id, error: err.message });
       }
-    }
+    }));
   }
 
   async test(id) {

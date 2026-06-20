@@ -2,6 +2,33 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.19] - 2026-06-20 — **RELIABILITY**: ntfy timeout + concurrent notification dispatch
+
+Two related bugs in the notification-channel layer — one is a timeout gap, the other amplifies its blast radius.
+
+### 1. `ntfy` channel had no timeout
+Every other notification provider (Discord, Slack, Telegram, Gotify, Webhook) goes through the `_post()` helper which wraps `fetch` with an `AbortController` and a 10-second timeout. The `ntfy` provider was the lone exception — it called `fetch` directly because the body is plain text and the structured fields live in custom HTTP headers (`Title`, `Priority`, `Tags`). When that direct fetch was written, the timeout wrapper was missed. A hung ntfy.sh request (or self-hosted ntfy server) would block notification dispatch indefinitely for that channel.
+
+**Fix**: explicit `AbortController` + `setTimeout(..., 10000)` matching `_post`.
+
+### 2. `sendToAll` awaited channels serially
+```js
+// before
+for (const channel of channels) {
+  try { await provider(config, message); }
+  catch (err) { log.error('Notification failed', { ... }); }
+}
+```
+With N active channels, worst-case latency was `N × T_slow`. A single hung channel (especially ntfy without its timeout) would block every subsequent channel for the same alert from being notified. The error isolation worked (try/catch) but the serial-await turned a per-channel timeout into a fleet-wide stall.
+
+**Fix**: `await Promise.allSettled(channels.map(...))`. Per-channel try/catch preserved inside the dispatch lambda; `allSettled` never rejects so the call cannot throw upstream. Total latency is now `max(T_channel)` instead of `sum(T_channel)`.
+
+### Combined impact
+Pre-v8.7.19, an outage at ntfy.sh would silently delay every Discord/Slack/Telegram/email alert in the same `sendToAll` batch by however long ntfy took to fail (which, without a timeout, could be **indefinitely**). Post-v8.7.19: ntfy fails within 10s and every other channel dispatches in parallel anyway.
+
+### Operator action
+None. Backward-compatible.
+
 ## [8.7.18] - 2026-06-20 — **SECURITY**: WebSocket `exec:start` per-stack permission check + audit (CWE-862)
 
 ### Vulnerability

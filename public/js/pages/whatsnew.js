@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.19',
+      date: '2026-06-20',
+      title: 'RELIABILITY: ntfy timeout + concurrent notification dispatch',
+      changes: [
+        { type: 'fix', text: 'ntfy channel called fetch directly without the AbortController/timeout wrapper that every other provider uses via the _post helper. A hung ntfy.sh request would block dispatch for that channel indefinitely. Added explicit 10s timeout matching _post.' },
+        { type: 'fix', text: 'sendToAll awaited channels serially. With N active channels, worst-case latency was N×T_slow — a single hung channel (especially ntfy without its timeout) blocked every subsequent channel for the same alert. Switched to Promise.allSettled so all channels dispatch concurrently. Per-channel error isolation preserved. Total latency is now max(T_channel) instead of sum(T_channel).' },
+      ],
+    },
+    {
       version: '8.7.18',
       date: '2026-06-20',
       title: 'SECURITY: WebSocket exec per-stack permission check + audit (CWE-862)',
