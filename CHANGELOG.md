@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.20] - 2026-06-20 — **RELIABILITY**: transactional `/restore` + accurate response semantics
+
+### Bug 1 — `/restore` was not transactional
+`POST /api/system/backup/restore` looped through `data.settings` and `data.apiKeys` calling `INSERT OR REPLACE` one row at a time, with no transaction wrapper. If the process was killed mid-restore (OOM, SIGTERM, disk full, container restart, file-system error), the settings table could be left **half-applied** — some keys updated, some not. Subsequent reads would mix new and old config in non-obvious ways.
+
+**Fix**: wrapped the entire body in `db.transaction(() => { ... })()`. better-sqlite3's transaction helper opens `BEGIN`, calls the function synchronously, `COMMIT`s on return, `ROLLBACK`s on throw. The pre-existing per-row `try/catch { /* skip */ }` for apiKeys is preserved INSIDE the transaction — individual bad rows still get skipped silently (the previous behavior); only an irrecoverable error (prepare failure, disk-full) rolls back the entire restore.
+
+### Bug 2 — Misleading `users: 0` in restore response
+The response counter was `restored = { settings: N, apiKeys: M, users: 0 }`. The `users` field was always `0` because the restore route never had a loop for users — this is **intentional**: the backup format at `GET /config` exports user metadata for inspection/audit (id, username, role, mfa_enabled, last_login_at, etc.) but deliberately omits `password_hash`, `mfa_secret`, and `recovery_codes`. Restoring users from that export would create accounts with no credentials, unable to authenticate. The silent `users: 0` made the route look broken when it was actually correct-by-design.
+
+**Fix**: `users` removed from the counter object. If `data.users` is present and non-empty, the response now includes an explicit `note` explaining that user data was not applied and why, so operators don't expect a silent restore that never happens.
+
+### Known issues NOT fixed in this release (deferred — need design work, not a quick patch)
+- **`PUT /s3-config` mutates `cfg.s3.*` in-memory without persistence** — operators saving S3 credentials via the UI will lose them on container restart (env vars take over). The fix needs a settings-table fallback for S3 config + config layer changes to read from settings at startup with env-var precedence rules. Larger than this audit batch.
+
+### Operator action
+None. Restore is now atomic — partial-restore is impossible. Existing backup files are fully compatible.
+
 ## [8.7.19] - 2026-06-20 — **RELIABILITY**: ntfy timeout + concurrent notification dispatch
 
 Two related bugs in the notification-channel layer — one is a timeout gap, the other amplifies its blast radius.

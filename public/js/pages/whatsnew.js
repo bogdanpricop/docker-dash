@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.20',
+      date: '2026-06-20',
+      title: 'RELIABILITY: transactional /restore + accurate response semantics',
+      changes: [
+        { type: 'fix', text: 'POST /api/system/backup/restore was not transactional — a crash mid-restore (OOM/SIGTERM/disk-full/restart) left the settings table half-applied with some keys updated and others not. Wrapped in db.transaction(...) so a non-row error rolls back the entire restore; per-row "skip bad row" semantics for apiKeys preserved.' },
+        { type: 'fix', text: 'Restore response no longer reports misleading "users: 0". The backup format intentionally exports user metadata (id/username/role) for inspection but omits password_hash + mfa_secret — restoring users would create accounts that cannot authenticate. The silent counter made the route look broken when it was correct-by-design. Now removes users from the counter and adds a clear explanatory note when the backup file contains user records.' },
+        { type: 'improvement', text: 'Known issue documented: PUT /s3-config mutates config in memory without persistence — S3 credentials saved via the UI are lost on container restart. Fix deferred; needs settings-table fallback design.' },
+      ],
+    },
+    {
       version: '8.7.19',
       date: '2026-06-20',
       title: 'RELIABILITY: ntfy timeout + concurrent notification dispatch',

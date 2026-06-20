@@ -50,21 +50,40 @@ router.post('/restore', requireAuth, requireRole('admin'), writeable, (req, res)
     if (!data || !data.version) return res.status(400).json({ error: 'Invalid backup file' });
 
     const db = getDb();
-    const restored = { settings: 0, apiKeys: 0, users: 0 };
+    // v8.7.20 — counters dropped `users` because the route never restored
+    // them (the backup exports id/username/role for inspection but omits
+    // password_hash/mfa_secret/recovery_codes, so a restored row would be
+    // an account that can never log in). Reporting `users: 0` made it
+    // look like a silent loss bug; an explicit `note` in the response
+    // tells operators the file contains user metadata that was not
+    // applied. Hash-bearing fields are deliberately not in the backup
+    // format, so restore for users would need a separate flow.
+    const restored = { settings: 0, apiKeys: 0 };
 
-    if (Array.isArray(data.settings)) {
-      const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
-      for (const s of data.settings) {
-        upsert.run(s.key, s.value);
-        restored.settings++;
+    // v8.7.20 RELIABILITY — wrap in a SQLite transaction so a crash mid-
+    // restore (process killed by OOM/SIGTERM, file-system error, schema
+    // mismatch on a single row) doesn't leave the settings table half-
+    // applied. better-sqlite3's db.transaction(fn)() opens BEGIN, calls
+    // fn synchronously, COMMITs on return, ROLLBACKs on throw. The
+    // apiKeys per-row try/catch is preserved INSIDE the transaction —
+    // an individual bad-row error is silently skipped (the previous
+    // behavior), but a non-row error (out of disk, prepare failure)
+    // rolls back the entire restore.
+    db.transaction(() => {
+      if (Array.isArray(data.settings)) {
+        const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        for (const s of data.settings) {
+          upsert.run(s.key, s.value);
+          restored.settings++;
+        }
       }
-    }
-    if (Array.isArray(data.apiKeys)) {
-      const upsert = db.prepare('INSERT OR REPLACE INTO api_keys (id, name, prefix, created_at, created_by, last_used_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?)');
-      for (const k of data.apiKeys) {
-        try { upsert.run(k.id, k.name, k.prefix, k.created_at, k.created_by, k.last_used_at, k.hash || ''); restored.apiKeys++; } catch { /* skip */ }
+      if (Array.isArray(data.apiKeys)) {
+        const upsert = db.prepare('INSERT OR REPLACE INTO api_keys (id, name, prefix, created_at, created_by, last_used_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        for (const k of data.apiKeys) {
+          try { upsert.run(k.id, k.name, k.prefix, k.created_at, k.created_by, k.last_used_at, k.hash || ''); restored.apiKeys++; } catch { /* skip individual bad row */ }
+        }
       }
-    }
+    })();
 
     auditService.log({
       userId: req.user.id, username: req.user.username,
@@ -72,7 +91,11 @@ router.post('/restore', requireAuth, requireRole('admin'), writeable, (req, res)
       details: JSON.stringify(restored), ip: getClientIp(req),
     });
 
-    res.json({ ok: true, restored });
+    const response = { ok: true, restored };
+    if (Array.isArray(data.users) && data.users.length > 0) {
+      response.note = `${data.users.length} users in the backup file were not restored. User data is exported for inspection/audit purposes only; the backup format omits password_hash and mfa_secret, so restoring would create accounts that cannot authenticate. Re-create users manually after restore.`;
+    }
+    res.json(response);
   } catch (err) {
     res.status(500).json({ error: 'Restore failed: ' + err.message });
   }
