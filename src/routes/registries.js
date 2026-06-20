@@ -221,14 +221,9 @@ router.post('/:id/pull', requireAuth, requireRole('admin', 'operator'), writeabl
   const dockerService = require('../services/docker');
   const docker = dockerService.getDocker(req.hostId);
 
+  // v8.7.28 — shared 10-min timeout via utils/docker-pull, authconfig forwarded.
   const auth = registryService.getAuthForImage(fullImage);
-  await new Promise((resolve, reject) => {
-    const opts = auth ? { authconfig: auth } : {};
-    docker.pull(fullImage, opts, (err, stream) => {
-      if (err) return reject(err);
-      docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
-    });
-  });
+  await require('../utils/docker-pull').pullImage(docker, fullImage, auth ? { authconfig: auth } : undefined);
 
   auditService.log({
     userId: req.user.id, username: req.user.username,

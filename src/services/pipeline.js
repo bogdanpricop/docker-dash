@@ -69,12 +69,8 @@ class PipelineService {
       // ── Stage 1: Pull ─────────────────────────
       updateStage('pull', 'running');
       try {
-        await new Promise((resolve, reject) => {
-          docker.pull(image, (err, stream) => {
-            if (err) return reject(err);
-            docker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
-          });
-        });
+        // v8.7.28 — uses shared docker-pull helper with 10-min timeout.
+        await require('../utils/docker-pull').pullImage(docker, image);
         const newImg = await docker.getImage(image).inspect();
         updateStage('pull', 'success', `Pulled ${image} (${formatBytes(newImg.Size || 0)})`);
       } catch (err) {

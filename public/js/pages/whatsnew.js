@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.28',
+      date: '2026-06-21',
+      title: 'RELIABILITY: docker.pull wall-clock timeout (10min) across 7 sites',
+      changes: [
+        { type: 'fix', text: 'dockerode docker.pull has no built-in timeout. A registry that stopped responding mid-pull (network drop after handshake, slow-loris registry, single layer hang) would block the calling HTTP request or background job indefinitely. 8 callsites total; 7 converted via new src/utils/docker-pull.js helper with 10-min wall-clock default. Affects: auto-deploy pipeline, dockerService.pullImage, stackBundle, sandbox creation, container recreate, image update, authenticated registry pull, template deploy. SSE-streamed images.js pull is bounded by client connection lifecycle; left as-is.' },
+        { type: 'improvement', text: 'Known issue surfaced (not fixed): pipeline + manual container recreate both destroy the original container BEFORE creating the new one. If create/start fails the operator is left with no running container. Auto-rollback needs blue-green pattern, too invasive for a bug-fix release.' },
+      ],
+    },
+    {
       version: '8.7.27',
       date: '2026-06-21',
       title: 'RELIABILITY: SSH tunnel exponential-backoff infinite retry',

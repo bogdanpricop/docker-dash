@@ -984,14 +984,9 @@ router.post('/:id/deploy', requireAuth, requireRole('admin', 'operator'), writea
         }
       } catch { /* container doesn't exist — good */ }
 
-      // Pull image
+      // Pull image — v8.7.28 shared 10-min timeout via utils/docker-pull
       try {
-        await new Promise((resolve, reject) => {
-          docker.pull(svc.image, (err, stream) => {
-            if (err) return reject(err);
-            docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
-          });
-        });
+        await require('../utils/docker-pull').pullImage(docker, svc.image);
       } catch (pullErr) {
         // Image might already exist locally
       }

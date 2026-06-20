@@ -2,6 +2,37 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.28] - 2026-06-21 — **RELIABILITY**: `docker.pull` wall-clock timeout (10 min) across 7 sites
+
+### Bug
+`dockerode`'s `docker.pull` returns a streaming response; `followProgress` resolves when the stream ends. There is **no timeout**. A registry that stopped responding mid-pull (network drop after handshake, slow-loris registry, single layer server hang) would block the caller indefinitely.
+
+Eight call sites in the codebase, none with a timeout:
+- `src/services/pipeline.js` — auto-deploy pipeline (Stage 1)
+- `src/services/docker.js` — `pullImage()` method
+- `src/services/stackBundle.js` — bundle export image pre-pull
+- `src/routes/containers.js` — sandbox container creation (line 594)
+- `src/routes/containers.js` — manual container recreate (line 911)
+- `src/routes/containers.js` — image update flow (line 1187)
+- `src/routes/registries.js` — authenticated private-registry pull
+- `src/routes/templates.js` — template deploy pre-pull
+
+All eight could hang the calling HTTP request or background job indefinitely.
+
+### Fix
+New shared helper `src/utils/docker-pull.js` exports `pullImage(docker, image, { timeoutMs, authconfig })`:
+- Default 10-minute wall-clock timeout (generous for multi-GB images; mainstream images pull in < 2 min)
+- On timeout: destroys the dockerode stream so the descriptor and event-loop slot get released
+- `finished` guard prevents double-resolve/reject when timeout races followProgress
+
+7 of 8 sites converted to use the helper. The 8th (`src/routes/images.js:46`, `POST /api/images/pull` with Server-Sent Events streaming progress to the client) keeps its raw `docker.pull` call because it streams to the HTTP response — the client disconnect bounds the lifecycle. Flagged as a known issue for follow-up if needed.
+
+### Known issue — pipeline "destructive swap"
+While auditing this code path, identified a deeper design concern (not fixed in this release): both `pipeline.js` Stage 3 and `containers.js:917` `remove()` the original container **before** creating/starting the new one. If create or start fails, the operator is left with no running container at all. Fix would require a blue-green pattern (create new with temp name → verify → swap → remove old) — too invasive for a bug-fix release.
+
+### Operator action
+None. Backward-compatible. Slow legitimate pulls still complete; only previously-infinite hangs are bounded.
+
 ## [8.7.27] - 2026-06-21 — **RELIABILITY**: SSH tunnel exponential-backoff infinite retry (was: single-attempt-then-dead)
 
 ### Bug

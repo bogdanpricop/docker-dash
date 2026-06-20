@@ -586,16 +586,11 @@ router.post('/sandbox', requireAuth, requireRole('admin', 'operator'), writeable
     const containerName = name || `sandbox-${resolvedImage.split(':')[0].split('/').pop()}-${Math.random().toString(36).substring(2, 6)}`;
     const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 1000).toISOString() : '';
 
-    // Pull image if not available
+    // Pull image if not available — v8.7.28 shared 10-min timeout
     try {
       await docker.getImage(resolvedImage).inspect();
     } catch {
-      await new Promise((resolve, reject) => {
-        docker.pull(resolvedImage, (err, stream) => {
-          if (err) return reject(err);
-          docker.modem.followProgress(stream, (err2) => err2 ? reject(err2) : resolve());
-        });
-      });
+      await require('../utils/docker-pull').pullImage(docker, resolvedImage);
     }
 
     const labels = {
@@ -912,13 +907,8 @@ router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writea
       return res.json({ ok: true, method: 'compose', output });
     }
 
-    // Manual pull + recreate for standalone containers
-    await new Promise((resolve, reject) => {
-      docker.pull(image, (err, stream) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
-      });
-    });
+    // Manual pull + recreate for standalone containers — v8.7.28 timeout
+    await require('../utils/docker-pull').pullImage(docker, image);
 
     const wasRunning = inspect.State.Running;
     if (wasRunning) await container.stop();
@@ -1192,13 +1182,8 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
       );
     } catch { /* table may not exist yet */ }
 
-    // Step 1: Pull new image
-    await new Promise((resolve, reject) => {
-      docker.pull(image, (err, stream) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
-      });
-    });
+    // Step 1: Pull new image — v8.7.28 shared 10-min timeout
+    await require('../utils/docker-pull').pullImage(docker, image);
 
     // Step 2: Get new image digest (retained for future use by Trivy step)
     await docker.getImage(image).inspect();

@@ -432,15 +432,8 @@ class DockerService {
 
   async pullImage(repoTag, hostId = 0) {
     const docker = this.getDocker(hostId);
-    return new Promise((resolve, reject) => {
-      docker.pull(repoTag, (err, stream) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(stream, (err, output) => {
-          if (err) return reject(err);
-          resolve(output);
-        });
-      });
-    });
+    // v8.7.28 — shared 10-min wall-clock timeout via utils/docker-pull.
+    return require('../utils/docker-pull').pullImage(docker, repoTag);
   }
 
   async removeImage(id, { force = false } = {}, hostId = 0) {

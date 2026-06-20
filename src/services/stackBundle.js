@@ -174,15 +174,12 @@ class StackBundleService {
     const results = [];
 
     // Step 1: Pull all images
+    // v8.7.28 — shared 10-min timeout via utils/docker-pull. Pre-fix a
+    // hung registry would block the whole bundle restore.
     for (const image of (bundle.images || [])) {
       progress(`Pulling ${image}...`);
       try {
-        await new Promise((resolve, reject) => {
-          docker.pull(image, (err, stream) => {
-            if (err) return reject(err);
-            docker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
-          });
-        });
+        await require('../utils/docker-pull').pullImage(docker, image);
       } catch (err) {
         progress(`Warning: Failed to pull ${image}: ${err.message}`);
       }
