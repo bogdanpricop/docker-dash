@@ -4,9 +4,24 @@ const { getDb } = require('../db');
 const { now } = require('../utils/helpers');
 const log = require('../utils/logger')('workflows');
 
+// v8.7.26 — bounded LRU-by-eviction for _cooldowns (see same pattern in
+// eventNotifier.js for full rationale). Prune fires whenever the Map
+// exceeds COOLDOWN_PRUNE_THRESHOLD, removing entries older than the
+// maximum per-rule cooldown_seconds we ever expect (24h is generous —
+// any cooldown longer than that suggests a misconfigured rule).
+const COOLDOWN_PRUNE_THRESHOLD = 5000;
+const COOLDOWN_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
+
 class WorkflowService {
   constructor() {
     this._cooldowns = new Map(); // ruleId:containerId → lastTriggered
+  }
+
+  _pruneCooldowns() {
+    const cutoff = Date.now() - COOLDOWN_MAX_AGE_MS;
+    for (const [k, ts] of this._cooldowns) {
+      if (ts < cutoff) this._cooldowns.delete(k);
+    }
   }
 
   // ─── CRUD ─────────────────────────────────────────
@@ -86,6 +101,7 @@ class WorkflowService {
         try {
           await this._executeAction(rule, target);
           this._cooldowns.set(cooldownKey, Date.now());
+          if (this._cooldowns.size > COOLDOWN_PRUNE_THRESHOLD) this._pruneCooldowns();
           db.prepare('UPDATE workflow_rules SET last_triggered_at = ?, trigger_count = trigger_count + 1 WHERE id = ?')
             .run(now(), rule.id);
           log.info('Workflow triggered', { rule: rule.name, container: target.container_name, trigger: rule.trigger_type, action: rule.action_type });
@@ -150,14 +166,29 @@ class WorkflowService {
       }
       case 'webhook': {
         if (actionConfig.url) {
-          await fetch(actionConfig.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              rule: rule.name, trigger: rule.trigger_type,
-              container: target.container_name, timestamp: new Date().toISOString(),
-            }),
-          });
+          // v8.7.26 — explicit 10s timeout. actionConfig.url is admin-
+          // supplied via the workflow rule editor; without a timeout a
+          // hung webhook target would block the entire evaluate() loop
+          // (serial for-of over rules × targets) for as long as the
+          // remote server stayed unresponsive — Node's default fetch
+          // has NO timeout. Same risk class as the notificationChannels
+          // ntfy fix in v8.7.19. Matches the 10s budget used by every
+          // other webhook/notification path in the codebase.
+          const controller = new AbortController();
+          const t = setTimeout(() => controller.abort(), 10_000);
+          try {
+            await fetch(actionConfig.url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                rule: rule.name, trigger: rule.trigger_type,
+                container: target.container_name, timestamp: new Date().toISOString(),
+              }),
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(t);
+          }
         }
         break;
       }

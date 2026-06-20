@@ -15,9 +15,25 @@ const NOTIFY_EVENTS = {
   'image:delete':         { severity: 'info',     title: 'Image Deleted', icon: '🗑️' },
 };
 
-// Cooldown: don't spam the same event for the same container
+// Cooldown: don't spam the same event for the same container.
+// v8.7.26 — bounded LRU-by-eviction. Without this, the Map grew unbounded
+// (one entry per unique (eventType, containerName) combo, never removed).
+// On busy hosts with ephemeral containers (CI runners, autoscalers,
+// k8s-style pods), the Map could reach millions of entries over weeks of
+// uptime — slow memory leak. Prune fires whenever the Map exceeds
+// PRUNE_THRESHOLD, removing entries older than COOLDOWN_MS (they're
+// already past their useful life). Worst-case overhead: O(N) every
+// PRUNE_THRESHOLD inserts, amortized O(1) per insert.
 const cooldowns = new Map(); // key → timestamp
 const COOLDOWN_MS = 60000; // 1 minute
+const PRUNE_THRESHOLD = 5000;
+
+function _pruneCooldowns() {
+  const cutoff = Date.now() - COOLDOWN_MS;
+  for (const [k, ts] of cooldowns) {
+    if (ts < cutoff) cooldowns.delete(k);
+  }
+}
 
 class EventNotifier {
   constructor() {
@@ -43,6 +59,7 @@ class EventNotifier {
       const lastNotified = cooldowns.get(cooldownKey);
       if (lastNotified && Date.now() - lastNotified < COOLDOWN_MS) return;
       cooldowns.set(cooldownKey, Date.now());
+      if (cooldowns.size > PRUNE_THRESHOLD) _pruneCooldowns();
 
       // Build notification message
       const containerName = event.actorName || event.actorId?.substring(0, 12) || 'unknown';

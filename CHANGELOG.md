@@ -2,6 +2,34 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.26] - 2026-06-21 — **RELIABILITY**: bounded cooldown Maps + workflow webhook timeout
+
+### Bug 1 — unbounded cooldown Maps (slow memory leak)
+Two services tracked event/rule cooldowns in JS Maps that **never had entries removed**:
+
+- `eventNotifier.cooldowns` — one entry per unique `(eventType, containerName)` combo
+- `workflows._cooldowns` — one entry per unique `(ruleId, containerName)` combo
+
+On busy hosts with ephemeral containers (CI runners, autoscalers, k8s-style pods), the Maps could reach millions of entries over weeks of uptime — a slow memory leak that operators wouldn't notice until OOM after months. Each Map grew without bound; old entries past their cooldown window stayed forever, just being overwritten on a re-fire of the same key (which only happens if the same container name reappears).
+
+**Fix**: bounded LRU-by-eviction. When the Map exceeds 5000 entries, prune entries older than the relevant max-age:
+- eventNotifier: prune past `COOLDOWN_MS` (1 min) — cooldown is fixed
+- workflows: prune past 24 h — per-rule `cooldown_seconds` varies, but anything >24h suggests a misconfigured rule
+
+Worst-case overhead: O(N) every 5000 inserts; amortized O(1) per insert.
+
+### Bug 2 — workflow `webhook` action had no timeout (SSRF/DoS)
+`WorkflowService._executeAction` case `'webhook'` called `fetch(actionConfig.url, { ... })` with no `AbortController`. `actionConfig.url` is admin-supplied via the workflow rule editor — could be any URL.
+
+Two problems combined:
+- **Hung webhook target blocks evaluate()**: `evaluate()` iterates `for (const rule of rules) for (const target of targets)` serially. A hung webhook URL would block the entire workflow evaluation for every subsequent rule × target for as long as the remote server stayed unresponsive — Node's default `fetch` has **no timeout**.
+- **Same risk class as notificationChannels.ntfy** fixed in v8.7.19, just in a different service.
+
+**Fix**: explicit `AbortController` + `setTimeout(..., 10_000)` matching the 10s budget every other webhook/notification path in the codebase uses.
+
+### Operator action
+None. Backward-compatible. Cooldown pruning is invisible; webhook actions that previously hung now fail fast.
+
 ## [8.7.25] - 2026-06-20 — **HA**: kickstart leader election at boot (no 10s gap)
 
 ### Bug — HA-only cold start delay

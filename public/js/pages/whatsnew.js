@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.26',
+      date: '2026-06-21',
+      title: 'RELIABILITY: bounded cooldown Maps + workflow webhook timeout',
+      changes: [
+        { type: 'fix', text: 'eventNotifier.cooldowns and workflows._cooldowns were unbounded JS Maps. One entry per unique (event, container) or (rule, container) combo, never removed. On busy hosts with ephemeral containers (CI runners, autoscalers), Maps could reach millions of entries over weeks — slow memory leak. Now LRU-by-eviction: when Map exceeds 5000 entries, prune by age (1min for eventNotifier, 24h for workflows). Amortized O(1) per insert.' },
+        { type: 'fix', text: 'Workflow "webhook" action called fetch(actionConfig.url) with no AbortController. A hung webhook target blocked the entire serial evaluate() loop for every subsequent rule × container for as long as the remote stayed unresponsive (Node fetch has no default timeout). Added explicit 10s timeout matching every other webhook/notification path. Same risk class as the v8.7.19 ntfy fix.' },
+      ],
+    },
+    {
       version: '8.7.25',
       date: '2026-06-20',
       title: 'HA: kickstart leader election at boot (no 10s cold-start gap)',
