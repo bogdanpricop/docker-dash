@@ -2,6 +2,39 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.21] - 2026-06-20 — **RELIABILITY/COST**: AI search input length cap (2000 chars)
+
+### Issue
+`POST /api/audit/ai-search` validated that `query` was a non-empty string but did **not** cap its length. The global express body-parser limit is 2 MB, so a hostile (or merely careless) admin could send a megabyte-scale "query" string straight to the configured LLM provider.
+
+### Cost math
+- OpenAI / Anthropic input pricing: ~$3–15 per 1M input tokens
+- ~4 chars per token
+- 2 MB query → ~500K tokens
+- **Single bad call: $1.50–$7.50**
+
+An automated mistake in client code (autocomplete dumping a whole file into the search box, retry loop on a failed call) could run up real money fast — especially with managed-provider keys where every request is direct dollar cost.
+
+### Fix
+Explicit `if (query.length > 2000) return 400`. Audit-search queries are natural-language questions ("who deleted prod-redis last Tuesday?") — well under 200 chars in normal use. 2000 is generous headroom.
+
+### Response side was already protected
+- `audit-search.js` sets `maxTokens: 256` (response is a tiny JSON filter object)
+- Schema validator drops anything the LLM hallucinates outside the closed action enum
+- Server-side `limit` cap of 200 regardless of what the LLM returned
+
+The input side was the only unbounded surface. Now closed.
+
+### Other AI surface (audited, no fixes needed)
+- All three provider adapters (openai/anthropic/ollama) have explicit per-request timeouts (15s/15s/30s) with `req.on('timeout')` handlers
+- Redactor runs always-on with `AiRedactionError` → abort-the-call semantics (privacy beats utility — D4 decision from the v8.0.0 spike)
+- Every AI call writes an audit log entry with payload hash for later verification, regardless of success
+- System prompt for audit-search is server-controlled; users only supply the `query` text (no system-prompt injection vector)
+- Route requires `admin` role via `requireRole('admin')` — no operator/viewer access
+
+### Operator action
+None. Backward-compatible — normal queries are far under 2000 chars.
+
 ## [8.7.20] - 2026-06-20 — **RELIABILITY**: transactional `/restore` + accurate response semantics
 
 ### Bug 1 — `/restore` was not transactional

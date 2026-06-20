@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.21',
+      date: '2026-06-20',
+      title: 'RELIABILITY/COST: AI search input length cap (2000 chars)',
+      changes: [
+        { type: 'fix', text: 'POST /api/audit/ai-search validated that query was a non-empty string but did NOT cap its length. With the 2MB body-parser limit, a hostile or careless admin could send megabyte-scale prompts straight to the configured LLM. At OpenAI/Anthropic input pricing (~$3-15 per 1M tokens, ~4 chars/token), a single 2MB query = ~500K tokens = $1.50-$7.50 per call. Now caps at 2000 chars (audit-search queries are natural-language questions, normally well under 200 chars).' },
+        { type: 'improvement', text: 'Closes the AI input-side bounds. Response side was already protected — maxTokens: 256, schema validation drops LLM hallucinations, server-side limit cap at 200.' },
+      ],
+    },
+    {
       version: '8.7.20',
       date: '2026-06-20',
       title: 'RELIABILITY: transactional /restore + accurate response semantics',

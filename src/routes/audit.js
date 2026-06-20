@@ -32,6 +32,19 @@ router.post('/ai-search', requireAuth, requireRole('admin'), asyncHandler(async 
   if (typeof query !== 'string' || !query.trim()) {
     return res.status(400).json({ error: 'query (string) required' });
   }
+  // v8.7.21 — explicit length cap. The express body-parser limit is 2MB
+  // globally; without this check, a hostile (or merely careless) admin
+  // could send a megabyte-scale "query" string straight to the configured
+  // LLM provider. Audit-search queries are natural-language questions
+  // ("who deleted prod-redis last Tuesday?") — they should be well under
+  // 200 chars. 2000 is generous headroom. Without this, a single bad call
+  // at OpenAI/Anthropic pricing (~$3-15 per 1M input tokens, ~4 chars per
+  // token) could be $1.50-$7.50; an automated mistake in client code
+  // could run up real money fast. The response side is already capped by
+  // audit-search.js maxTokens: 256 and the schema validator.
+  if (query.length > 2000) {
+    return res.status(400).json({ error: 'query too long (max 2000 chars)' });
+  }
 
   const aiService = require('../services/ai');
   if (!aiService.isEnabled()) {
