@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.17',
+      date: '2026-06-20',
+      title: 'SECURITY: alerts.updateRule mass assignment + column-name injection (CWE-915)',
+      changes: [
+        { type: 'security', text: 'alertService.updateRule iterated Object.entries(req.body) with an else-branch that pushed any user-supplied key into a dynamic UPDATE statement. Two attack shapes: (1) mass-assignment — any column of alert_rules became writeable, including audit-trail columns created_by and created_at; an operator could re-attribute or backdate their own rule. (2) column-name injection — a crafted key with embedded SET-clause syntax could bypass per-field intent and mutate multiple columns from one logical field.' },
+        { type: 'fix', text: 'Replaced with explicit ALLOWED allowlist matching the pattern already used by the other 5 sibling builders in the codebase (auth.updateUser, git.updateCredential, git.updateStack, notificationChannels.update, securityAlerts.updateRule). Unknown keys silently dropped. 3 new tests guard the regression. Auth-required (admin/operator), no unauthenticated exploit; severity MEDIUM. Backward-compatible.' },
+      ],
+    },
+    {
       version: '8.7.16',
       date: '2026-06-20',
       title: 'A11Y: Modal uses inert (no more aria-hidden console warning)',

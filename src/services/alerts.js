@@ -140,11 +140,31 @@ class AlertService {
     const db = getDb();
     const sets = [];
     const params = [];
-    for (const [key, val] of Object.entries(data)) {
-      if (key === 'channels') { sets.push('channels = ?'); params.push(JSON.stringify(val)); }
-      else if (key === 'is_active') { sets.push('is_active = ?'); params.push(val ? 1 : 0); }
-      else { sets.push(`${key} = ?`); params.push(val); }
+    // v8.7.17 SECURITY — explicit allowlist of mutable columns. The prior
+    // implementation had an `else { sets.push(\`${key} = ?\`) }` branch
+    // that interpolated any user-supplied key into the SQL. Because the
+    // route handler calls `alertService.updateRule(id, req.body)` without
+    // filtering, an admin/operator could submit a key like
+    //   "name='x', is_active=1, created_at"
+    // which would render to SQL as
+    //   SET name='x', is_active=1, created_at = ? WHERE id = ?
+    // — bypassing the per-field intent and letting one logical field
+    // mutate several columns at once. Crucially, `created_by` and
+    // `created_at` are NOT meant to be mutable post-creation; the prior
+    // code allowed audit-trail tampering. All 5 sibling builders in this
+    // codebase (auth.updateUser, git.updateCredential, git.updateStack,
+    // notificationChannels.update, securityAlerts.updateRule) already use
+    // the allowlist pattern — this brings alerts.updateRule in line.
+    const ALLOWED = ['name', 'description', 'target', 'metric', 'operator',
+      'threshold', 'duration_seconds', 'cooldown_seconds', 'severity',
+      'channels', 'is_active'];
+    for (const key of ALLOWED) {
+      if (data[key] === undefined) continue;
+      if (key === 'channels') { sets.push('channels = ?'); params.push(JSON.stringify(data[key])); }
+      else if (key === 'is_active') { sets.push('is_active = ?'); params.push(data[key] ? 1 : 0); }
+      else { sets.push(`${key} = ?`); params.push(data[key]); }
     }
+    if (sets.length === 0) return;
     sets.push('updated_at = ?'); params.push(now());
     params.push(id);
     db.prepare(`UPDATE alert_rules SET ${sets.join(', ')} WHERE id = ?`).run(...params);

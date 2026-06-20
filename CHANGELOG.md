@@ -2,6 +2,43 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.17] - 2026-06-20 — **SECURITY**: alerts.updateRule mass assignment / column-name injection (CWE-915)
+
+### Vulnerability
+`alertService.updateRule(id, data)` previously iterated `Object.entries(data)` and pushed any user-supplied key into the dynamic UPDATE statement:
+
+```js
+// vulnerable code (removed in v8.7.17)
+for (const [key, val] of Object.entries(data)) {
+  if (key === 'channels')      { sets.push('channels = ?'); ... }
+  else if (key === 'is_active'){ sets.push('is_active = ?'); ... }
+  else                         { sets.push(`${key} = ?`); ... }  // <-- no allowlist
+}
+db.prepare(`UPDATE alert_rules SET ${sets.join(', ')} WHERE id = ?`).run(...);
+```
+
+The route handler at [`src/routes/alerts.js:27`](src/routes/alerts.js#L27) passes `req.body` straight in. Two distinct attack shapes:
+
+1. **Mass-assignment** — any column of `alert_rules` becomes writeable. `created_by` and `created_at` were never meant to be mutable post-creation; this allowed **audit-trail tampering**: an operator could re-attribute their own rule to another user, or backdate creation timestamps.
+
+2. **Column-name injection** — a crafted key like `"name='pwn', is_active=0, target"` would render to SQL as:
+   ```sql
+   SET name='pwn', is_active=0, target = ? WHERE id = ?
+   ```
+   Bypassing per-field intent and letting one logical field mutate multiple columns.
+
+### Severity
+**MEDIUM** — CWE-915. Auth required (`requireRole('admin', 'operator')`), so no unauthenticated exploit. Does not allow privilege escalation across roles, but **does** allow audit-trail forgery in shared-team deployments.
+
+### Fix
+Replaced with an explicit `ALLOWED` allowlist matching the pattern already used by all 5 sibling builders (`auth.updateUser`, `git.updateCredential`, `git.updateStack`, `notificationChannels.update`, `securityAlerts.updateRule`). Unknown keys are silently dropped. 3 new tests cover the regression.
+
+### Codebase-wide SQL-builder audit
+Comprehensive sweep across all 6 dynamic SET-clause builders in `src/services/`. **5 were already safe**; the 6th (this one) is now patched. No other column-name interpolation found anywhere in the codebase. No `ORDER BY ${...}` / `LIMIT ${...}` interpolation either.
+
+### Operator action
+None. Backward-compatible — legitimate field updates work identically.
+
 ## [8.7.16] - 2026-06-20 — **A11Y**: Modal — `inert` instead of `aria-hidden` + sub-overlay `role`/`aria-modal`
 
 ### The reported browser warning
