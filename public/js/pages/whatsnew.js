@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.23',
+      date: '2026-06-20',
+      title: 'FUNCTIONALITY/HA: git auto-deploy config takes effect immediately (no restart)',
+      changes: [
+        { type: 'fix', text: 'PUT /api/git/stacks/:id/auto-deploy updated the DB row but never told gitPolling to (re)start/stop the interval. Toggling Auto-deploy ON via the UI → polling never started until restart. Toggling OFF to stop surprise deploys → polling kept firing. Changing the interval seconds → DB updated but old interval kept ticking at the old cadence. The {ok:true} response made it look like the change took effect, so operators trusted the UI and worked with stale polling state.' },
+        { type: 'fix', text: 'In HA mode, even worse: gitPolling.startAll only runs on the leader. If the API request landed on a reader, the actual polling lived on the leader, which never heard about the DB change. Fix: new gitPolling.reconcileStack(id) method (leader-gated), called locally by the route + fanned out via cluster.publish so the actual leader reconciles regardless of which replica got the API call. In standalone the pubsub is a no-op. End-to-end latency post-fix: <1ms standalone, one Redis round-trip in HA.' },
+      ],
+    },
+    {
       version: '8.7.22',
       date: '2026-06-20',
       title: 'RELIABILITY: registry rewrap lazy (no shutdown race, no test teardown noise)',

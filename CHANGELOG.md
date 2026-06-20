@@ -2,6 +2,33 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.23] - 2026-06-20 — **FUNCTIONALITY/HA**: git auto-deploy config takes effect immediately (no restart)
+
+### Bug — silent no-op after the UI toggle
+`PUT /api/git/stacks/:id/auto-deploy` updated the `git_stacks` row's `polling_enabled`, `polling_interval_seconds`, and `deploy_on_push` fields and returned `{ ok: true }`. The in-memory `GitPollingManager._intervals` Map was never touched.
+
+Concrete consequences:
+- Admin toggles **Auto-deploy ON** in the UI → DB says enabled → no `setInterval` is started → **polling never runs until next server restart**, no deploys happen
+- Admin toggles **Auto-deploy OFF** to stop surprise deploys → DB says disabled → interval keeps firing → next polling tick still deploys
+- Admin shortens the interval from 5 min to 1 min for a critical stack → DB row updated → interval still fires every 5 min
+
+The `{ ok: true }` response made it look like the change took effect. Operators trusted the UI and were silently working with stale polling state.
+
+### Bug — broken in HA mode
+Even worse in HA: `gitPolling.startAll()` only runs on the leader (gated by `cluster.onBecomeLeader` in `jobs/index.js`). If the API request landed on a **reader** replica, the local route handler couldn't have done anything useful even if it had called `gitPolling.start/stop` — the reader has an empty `_intervals` Map by design. The actual polling lived on the leader, which never heard about the DB change.
+
+### Fix
+1. **`gitPolling.reconcileStack(stackId)`** — new method. Reads the stack's current `polling_enabled` + `polling_interval_seconds` and starts/stops/restarts the in-memory interval to match. Idempotent (`start()` already calls `stop()` first). **Leader-gated** via `cluster.isLeader()` so calling on a reader is a safe no-op.
+2. **Cluster pubsub fanout** — `startAll()` now subscribes to `git-polling:reconcile`. When the API call lands on a reader, the route publishes a reconcile message; the actual leader receives it and reconciles its own `_intervals`. In standalone, `cluster.publish/subscribe` are no-ops (only the local `reconcileStack()` call runs).
+3. **Route handler** — `PUT /auto-deploy` now calls `gitPolling.reconcileStack(id)` (local, correct for standalone) + `cluster.publish('git-polling:reconcile', { stackId })` (HA fanout, no-op for standalone) after the DB write.
+
+### Net effect
+- **Standalone**: UI toggles take effect within milliseconds of the API call returning. No restart needed.
+- **HA**: API on any replica → reader publishes → leader reconciles in pubsub callback. End-to-end latency is one Redis round-trip (~ms). No restart needed.
+
+### Operator action
+None. After upgrade, the UI works as users always thought it did.
+
 ## [8.7.22] - 2026-06-20 — **RELIABILITY**: registry rewrap lazy (no shutdown race, no test teardown warning)
 
 ### Bug

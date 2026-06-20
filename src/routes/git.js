@@ -257,12 +257,31 @@ router.get('/stacks/:id/webhook-url', requireAuth, (req, res) => {
   });
 });
 
-router.put('/stacks/:id/auto-deploy', requireAuth, requireRole('admin'), writeable, (req, res) => {
+router.put('/stacks/:id/auto-deploy', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const stack = gitService.getStack(id);
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
     gitService.updateAutoDeployConfig(id, req.body);
+
+    // v8.7.23 — apply the change immediately. Before this, the DB row was
+    // updated but gitPolling._intervals was untouched, so toggling
+    // polling_enabled or changing the interval only took effect after a
+    // server restart. Worse in HA: if the API call landed on a reader,
+    // the leader (which owns the intervals) never heard about it.
+    // reconcileStack() leader-gates locally (no-op on readers), and
+    // cluster.publish() fans out to the actual leader.
+    try {
+      const gitPolling = require('../services/gitPolling');
+      await gitPolling.reconcileStack(id);
+    } catch (e) {
+      require('../utils/logger')('git-route').warn('reconcileStack failed (DB updated successfully)', { stackId: id, error: e.message });
+    }
+    try {
+      const cluster = require('../services/cluster');
+      await cluster.publish('git-polling:reconcile', { stackId: id });
+    } catch { /* best-effort HA fanout */ }
+
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
