@@ -62,7 +62,20 @@ function analyzeLog(logText) {
     return { patterns: [], severity: 'ok', diagnosis: 'No log content to analyze.' };
   }
 
-  const lines = logText.split('\n');
+  // v8.7.30 — per-line length cap to bound regex worst-case.
+  // Several patterns combine greedy quantifiers — e.g.
+  //   /killed process \d+.*oom/    /unhandled.*rejection/    /redis.*timeout/
+  // — which backtrack at O(N²) on a long line that contains the prefix
+  // but never matches the trailing literal. A container that emits
+  // unbuffered JSON or a giant single-line stack trace (10 MB with no
+  // newlines) would lock the event loop for seconds across 28+
+  // patterns. Truncating each line to MAX_LINE_LEN before matching
+  // caps worst-case work to 10_000 * 28 ~ 280k ops per diagnose call —
+  // negligible. Pattern hits use substrings, and matchedLine is
+  // separately truncated to 200 chars for the UI.
+  const MAX_LINE_LEN = 10_000;
+  const rawLines = logText.split('\n');
+  const lines = rawLines.map(l => l.length > MAX_LINE_LEN ? l.slice(0, MAX_LINE_LEN) : l);
   const matched = [];
   const seen = new Set();
 

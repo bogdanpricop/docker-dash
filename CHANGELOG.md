@@ -2,6 +2,40 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.30] - 2026-06-21 — **RELIABILITY**: log-pattern per-line length cap (ReDoS bound)
+
+### Bug
+`log-patterns.js` runs 28+ regexes against every line of container output for the **Diagnose** flow on each container. Several patterns combine greedy quantifiers with literal anchors:
+
+- `/killed process \d+.*oom/`
+- `/unhandled.*rejection/`
+- `/redis.*timeout/`
+- `/FATAL ERROR: .* JavaScript heap out of memory/`
+- a handful of others
+
+These backtrack at O(N²) on a long line that has the prefix but never matches the trailing literal. A container that emits unbuffered JSON or a giant single-line stack trace — common with apps that write logs without newline-delimiting structured payloads — would lock the Node.js event loop for **seconds** across the 28+ patterns.
+
+Trigger conditions:
+- Container produces a 10 MB+ single line (no `\n`)
+- Admin clicks "Diagnose" on that container
+- Or scheduled diagnosis runs against it (no such cron today, but possible)
+
+Result: entire server unresponsive while the regex engine backtracks.
+
+### Fix
+Per-line truncation to 10,000 chars before any regex matching:
+```js
+const MAX_LINE_LEN = 10_000;
+const lines = rawLines.map(l => l.length > MAX_LINE_LEN ? l.slice(0, MAX_LINE_LEN) : l);
+```
+Worst-case work is now `10_000 × 28 ≈ 280k ops per diagnose call` — negligible. Patterns match substrings so truncation doesn't break detection accuracy; the existing `matchedLine` field that ends up in the UI was already independently truncated to 200 chars.
+
+### Why per-line cap rather than rewriting the regexes
+The patterns are operator-meaningful (Java OOM, Node UnhandledRejection, etc.) and rewriting them to avoid greedy quantifiers would either complicate them with possessive quantifiers (PCRE-only, JS doesn't have them) or require restructuring with anchors that change matching semantics. A blanket input-length cap is simpler, easier to reason about, and has no false-negative downside for the realistic case of normal-length log lines.
+
+### Operator action
+None. Backward-compatible — normal log lines (< 10K chars) are processed identically.
+
 ## [8.7.29] - 2026-06-21 — **HA**: rate-limit Lua-atomic + correct `retryAfterSec`
 
 Two distinct bugs in the Redis fixed-window rate limiter, both shipped together because the fix touches the same six lines.

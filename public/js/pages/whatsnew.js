@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.30',
+      date: '2026-06-21',
+      title: 'RELIABILITY: log-pattern per-line length cap (ReDoS bound)',
+      changes: [
+        { type: 'fix', text: 'log-patterns.js runs 28+ regexes against every line of container output for the Diagnose flow. Several patterns combine greedy quantifiers (.*, \\d+) with literal anchors — e.g. /killed process \\d+.*oom/, /unhandled.*rejection/. These backtrack at O(N²) on long lines that match the prefix but not the trailing literal. A container emitting unbuffered JSON or a giant single-line stack trace (10MB no newlines) would lock the event loop for seconds when Diagnose ran against it. Added per-line truncation to 10K chars before regex matching — worst-case work now ~280k ops, negligible. Patterns match substrings so truncation does not affect detection accuracy.' },
+      ],
+    },
+    {
       version: '8.7.29',
       date: '2026-06-21',
       title: 'HA: rate-limit Lua-atomic + correct retryAfterSec',
