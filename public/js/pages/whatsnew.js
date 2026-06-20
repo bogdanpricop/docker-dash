@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.35',
+      date: '2026-06-21',
+      title: 'SECURITY: validate route requireRole gate (CWE-862)',
+      changes: [
+        { type: 'security', text: 'POST /api/system/stacks/:name/validate only required requireAuth. Every other stack-management route in the same file required admin or admin/operator. A viewer-role user (or any authenticated session) could write up to 2MB of YAML to /tmp and invoke docker compose config on it per request — implicit privilege escalation through the validator. Temp file was cleaned up correctly so no disk leak; concern is the role-level escalation and resource amplification. Added requireRole(admin, operator) to match sibling routes.' },
+      ],
+    },
+    {
       version: '8.7.34',
       date: '2026-06-21',
       title: 'RELIABILITY: execCommand 8MB output cap + 60s timeout',

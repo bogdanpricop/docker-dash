@@ -2,6 +2,30 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.35] - 2026-06-21 — **SECURITY**: `POST /api/system/stacks/:name/validate` requireRole gate (CWE-862)
+
+### Bug
+`POST /api/system/stacks/:name/validate` accepted YAML content, wrote it to `/tmp`, and invoked `docker compose -f tmpFile config --quiet` to validate it. The route only required `requireAuth` — every other stack-management route in the same file (compose action, stacks create, config update, env, deploy) required either `admin` or `admin/operator`. The validate route was the only outlier.
+
+### Impact
+A user holding the `viewer` role (or any authenticated session) could:
+- Invoke the `docker` CLI on the host indirectly
+- Write up to 2 MB of YAML to `/tmp` per request (body parser limit)
+- Repeat the call to amplify resource usage
+
+The temp file IS cleaned up correctly in a `finally` block — no disk leak — but viewers should not be able to trigger the docker daemon at all, and the validate path was a route-level privilege escalation: viewer → write-to-tmp + docker-compose-spawn.
+
+CWE-862: Missing Authorization.
+
+### Severity
+**LOW-MEDIUM**. Auth required, no role escalation (viewer stays viewer; docker compose config --quiet returns only error messages, no daemon mutation). But it lets viewer-role accounts cause CPU + I/O work the threat model intends to deny them.
+
+### Fix
+Added `requireRole('admin', 'operator')` matching the sibling validate-adjacent routes in the same file.
+
+### Operator action
+None. Backward-compatible for admin/operator. Viewer-role users now get 403 from this endpoint — UI clients calling it from a viewer session should hide the validate button when role !== 'admin' && role !== 'operator'.
+
 ## [8.7.34] - 2026-06-21 — **RELIABILITY**: `execCommand` 8 MB output cap + 60 s timeout
 
 ### Bug

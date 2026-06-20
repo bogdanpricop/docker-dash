@@ -165,7 +165,18 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-router.post('/stacks/:name/validate', requireAuth, async (req, res) => {
+// v8.7.35 SECURITY — requireRole('admin', 'operator') added. Pre-fix this
+// route only required requireAuth; every other stack management route
+// (compose action, create, config update, env, deploy) required admin
+// or admin/operator. A viewer-role user could submit YAML to be written
+// to /tmp and validated via `docker compose config` — invoking the
+// docker CLI on the host, which viewers should not be able to do
+// indirectly. The temp file was cleaned up correctly, so no disk leak;
+// the concern is the implicit privilege escalation (viewer → docker
+// daemon access via the validator) and the resource cost (writing
+// bodies up to 2 MB to disk + spawning docker compose) on a
+// repeatedly-callable endpoint that wasn't role-gated.
+router.post('/stacks/:name/validate', requireAuth, requireRole('admin', 'operator'), async (req, res) => {
   try {
     const { config: yamlContent } = req.body;
     if (!yamlContent) return res.status(400).json({ error: 'config required' });
