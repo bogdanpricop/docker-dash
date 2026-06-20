@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.31',
+      date: '2026-06-21',
+      title: 'RELIABILITY: migration.js pull timeout (missed v8.7.28 site)',
+      changes: [
+        { type: 'fix', text: 'Cross-host migration service had its own docker.pull at migration.js:57 that was missed in the v8.7.28 sweep. Without a destination-host pull timeout, a hung registry would block the migration thread indefinitely with the source still running in pre-cutover state. Now uses the same shared utils/docker-pull helper. Closes the audit: all 8 docker.pull callsites use the shared helper except the SSE-streamed images.js (bounded by client connection lifecycle).' },
+      ],
+    },
+    {
       version: '8.7.30',
       date: '2026-06-21',
       title: 'RELIABILITY: log-pattern per-line length cap (ReDoS bound)',

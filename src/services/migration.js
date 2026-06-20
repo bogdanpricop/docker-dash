@@ -53,12 +53,12 @@ class MigrationService {
       progress(2, `Pulling ${image} on destination host...`);
       const dstDocker = dockerService.getDocker(destHostId);
 
-      await new Promise((resolve, reject) => {
-        dstDocker.pull(image, (err, stream) => {
-          if (err) return reject(err);
-          dstDocker.modem.followProgress(stream, (err) => err ? reject(err) : resolve());
-        });
-      });
+      // v8.7.31 — shared 10-min timeout via utils/docker-pull. Missed in
+      // the v8.7.28 sweep (grep for `docker.pull(` matched dstDocker.pull
+      // too but I overlooked it). Without this, a hung registry on the
+      // destination host would block the migration thread indefinitely
+      // and leave the source container in a half-cutover state.
+      await require('../utils/docker-pull').pullImage(dstDocker, image);
       steps.push({ step: 2, action: 'pull', status: 'done', detail: image });
 
       // Step 3: Check if container name already exists on destination

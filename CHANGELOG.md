@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.31] - 2026-06-21 — **RELIABILITY**: migration.js `dstDocker.pull` timeout (missed v8.7.28 site)
+
+Follow-up to v8.7.28 — the cross-host migration service has its own `docker.pull` callsite at [`src/services/migration.js:57`](src/services/migration.js#L57) that was missed by the previous sweep's grep (the variable name `dstDocker.pull` happened to match the same pattern, but I overlooked it in the diff).
+
+### Impact pre-fix
+Without a timeout on the destination-host pull:
+- A hung registry on the destination host blocks the migration thread indefinitely
+- Source container is still running (`zeroDowntime` mode hasn't stopped it yet — we're in Step 2)
+- BUT the user's HTTP request and the migration-progress stream hang
+- The admin sees the spinner forever and may force-stop in confusing state
+
+### Fix
+Same shared `src/utils/docker-pull.js` helper that v8.7.28 introduced — 10-min wall-clock + stream-destroy on timeout.
+
+### Audit closure
+All 8 `docker.pull` callsites across `src/services/` and `src/routes/` now use the shared helper, EXCEPT `src/routes/images.js:46` which streams progress to the client via SSE (bounded by client connection lifecycle — different semantics, intentionally left as-is).
+
+### Operator action
+None. Backward-compatible.
+
 ## [8.7.30] - 2026-06-21 — **RELIABILITY**: log-pattern per-line length cap (ReDoS bound)
 
 ### Bug
