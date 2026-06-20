@@ -2,6 +2,36 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.24] - 2026-06-20 — **RELIABILITY**: stats rollup UNIQUE index now includes `host_id` (multi-host correctness)
+
+### Bug
+The UNIQUE indexes on the three stats rollup tables were:
+```sql
+CREATE UNIQUE INDEX idx_stats1m_container_bucket ON container_stats_1m(container_id, bucket);
+CREATE UNIQUE INDEX idx_stats1h_container_bucket ON container_stats_1h(container_id, bucket);
+CREATE UNIQUE INDEX idx_stats1d_container_bucket ON container_stats_1d(container_id, bucket);
+```
+But the aggregation queries in `src/services/stats.js` `GROUP BY (host_id, container_id, strftime(bucket))` and `INSERT INTO` includes `host_id`. So the SELECT can legitimately produce multiple rows for the same `(container_id, bucket)` when two hosts happen to have a container with the same ID. The `INSERT OR IGNORE` then **silently drops all but one host's bucket** because the UNIQUE constraint didn't include `host_id`.
+
+### Severity
+**LOW** in practice — Docker generates random 64-char container IDs so collision under normal operation is cryptographically negligible. The real failure modes are administrative:
+- Container snapshot restored across hosts
+- Backup-imported state with the same container_id present on the new host
+- (Theoretically) deliberate ID forgery
+
+But the fix is mechanical and the data loss when triggered would be silent — operators wouldn't see "host B's stats just stopped appearing in the 30-day chart" without diving into the raw tables.
+
+### Fix
+Migration 068 reshapes the constraint:
+- Drops the three old indexes
+- Defensive dedupe (keep highest id per `(host_id, container_id, bucket)`) — no-op on systems where the bug never triggered
+- Recreates as `(host_id, container_id, bucket)` UNIQUE on all three rollup tables
+
+No query-side change needed — the SELECT/INSERT statements already include `host_id` in both projection and GROUP BY.
+
+### Operator action
+None. Migration auto-applies at startup. Existing `INSERT OR IGNORE` semantics keep aggregation idempotent (same bucket can still be re-aggregated safely).
+
 ## [8.7.23] - 2026-06-20 — **FUNCTIONALITY/HA**: git auto-deploy config takes effect immediately (no restart)
 
 ### Bug — silent no-op after the UI toggle

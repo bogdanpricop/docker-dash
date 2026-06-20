@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.24',
+      date: '2026-06-20',
+      title: 'RELIABILITY: stats rollup UNIQUE index now includes host_id (multi-host correctness)',
+      changes: [
+        { type: 'fix', text: 'UNIQUE indexes on container_stats_1m, container_stats_1h, container_stats_1d were on (container_id, bucket) only — missing host_id. The aggregation queries GROUP BY (host_id, container_id, bucket) and INSERT includes host_id, so two hosts with the same container_id (snapshot restored across hosts, backup-imported state) would have all but one host bucket silently dropped by INSERT OR IGNORE. Migration 068 reshapes the constraint to (host_id, container_id, bucket).' },
+        { type: 'improvement', text: 'Practical impact is low — Docker generates random 64-char container IDs so collision under normal operation is cryptographically negligible. The fix matters for installs that move container snapshots between hosts or import backup state.' },
+      ],
+    },
+    {
       version: '8.7.23',
       date: '2026-06-20',
       title: 'FUNCTIONALITY/HA: git auto-deploy config takes effect immediately (no restart)',
