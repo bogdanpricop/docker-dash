@@ -125,18 +125,33 @@ class AuditService {
 
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
 
-    const rows = db.prepare(`
-      SELECT * FROM audit_log ${whereClause}
+    // v8.7.32 — stream rows via stmt.iterate() instead of .all(). On long-
+    // running installs the audit_log table grows into millions of rows
+    // (every container action, login, config change, AI call gets a row);
+    // .all() with no fromId/toId loaded the entire table into memory and
+    // could OOM the process. iterate() holds one row at a time. The
+    // sibling exportJsonl already uses this pattern (line 268 comment:
+    // "no buffering, safe for large months").
+    const stmt = db.prepare(`
+      SELECT id, user_id, username, action, target_type, target_id,
+             details, ip, created_at, entry_hash, prev_hash
+      FROM audit_log ${whereClause}
       ORDER BY id ASC
-    `).all(...params);
-
-    if (rows.length === 0) {
-      return { valid: true, entriesChecked: 0, brokenAt: null };
-    }
+    `);
 
     let expectedPrevHash = null;
+    let entriesChecked = 0;
+    let firstId = null;
+    let lastId = null;
+    let chainStart = null;
+    let chainEnd = null;
 
-    for (const row of rows) {
+    for (const row of stmt.iterate(...params)) {
+      entriesChecked++;
+      if (firstId === null) { firstId = row.id; chainStart = row.created_at; }
+      lastId = row.id;
+      chainEnd = row.created_at;
+
       // Skip entries without hashes (pre-migration)
       if (!row.entry_hash) continue;
 
@@ -174,13 +189,17 @@ class AuditService {
       expectedPrevHash = row.entry_hash;
     }
 
+    if (entriesChecked === 0) {
+      return { valid: true, entriesChecked: 0, brokenAt: null };
+    }
+
     return {
       valid: true,
-      entriesChecked: rows.length,
-      firstId: rows[0].id,
-      lastId: rows[rows.length - 1].id,
-      chainStart: rows[0].created_at,
-      chainEnd: rows[rows.length - 1].created_at,
+      entriesChecked,
+      firstId,
+      lastId,
+      chainStart,
+      chainEnd,
       brokenAt: null,
     };
   }
@@ -201,6 +220,27 @@ class AuditService {
     if (filters.until) { where.push('created_at <= ?'); params.push(filters.until); }
 
     const whereClause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+
+    // v8.7.32 — server-side row cap. The export path materializes the
+    // entire result into memory twice (once as the rows array, again as
+    // the serialized string from JSON.stringify / _toCsv / _toSyslog).
+    // On long-running installs the audit_log table can be millions of
+    // rows; an unfiltered export would OOM. 500k is a generous ceiling
+    // — JSON serialization of 500k typical-shape rows is ~150-300 MB
+    // which large nodes can handle but is at the edge of comfort. The
+    // sibling exportJsonl streams to a Writable without buffering and
+    // should be used for full-table archives (monthly off-site dump
+    // path at v8.2.0).
+    const EXPORT_ROW_CAP = 500_000;
+    const countRow = db.prepare(`SELECT COUNT(*) AS c FROM audit_log ${whereClause}`).get(...params);
+    if (countRow.c > EXPORT_ROW_CAP) {
+      const err = new Error(
+        `Export would return ${countRow.c.toLocaleString()} rows, exceeding the in-memory cap of ${EXPORT_ROW_CAP.toLocaleString()}. ` +
+        'Narrow the date range (since/until) or use the streaming JSONL export (exportJsonl) for full-table archives.',
+      );
+      err.status = 413; // Payload Too Large
+      throw err;
+    }
 
     const rows = db.prepare(`
       SELECT * FROM audit_log ${whereClause}

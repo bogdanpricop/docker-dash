@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.32',
+      date: '2026-06-21',
+      title: 'RELIABILITY: audit verify streaming + export row cap (OOM bound)',
+      changes: [
+        { type: 'fix', text: 'auditService.verify ran stmt.all() on the audit_log table. With no fromId/toId filters (the default when admin opens /api/audit/verify), this loaded every row into memory. On a 2-year install with 5M+ rows of ~500-byte average payload, that is ~2.5 GB heap allocated just to walk the hash chain. Replaced with stmt.iterate() — holds one row at a time. Sibling exportJsonl already uses this pattern.' },
+        { type: 'fix', text: 'auditService.export materialized both the rows array AND the serialized string in memory (~2× the result size). For million-row exports, ~1 GB peak heap. Added server-side COUNT(*) precheck: if the result would exceed 500k rows, throw 413 Payload Too Large with a clear message pointing operators to narrow the date range or use the streaming exportJsonl path (already used by v8.2.0 monthly archive). Admin-required so no unauthenticated DoS, but careless click could previously OOM the process.' },
+      ],
+    },
+    {
       version: '8.7.31',
       date: '2026-06-21',
       title: 'RELIABILITY: migration.js pull timeout (missed v8.7.28 site)',

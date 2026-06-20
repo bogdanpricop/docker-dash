@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.32] - 2026-06-21 — **RELIABILITY**: audit `verify()` streaming + `export()` row cap (OOM bound)
+
+### Bug 1 — `verify()` loaded the entire audit_log into memory
+`auditService.verify({fromId, toId})` ran `stmt.all()` on the audit_log table. With no filters specified (the default when an admin opens `/api/audit/verify`), this loaded **every row** into memory. On long-running installs the audit_log grows into millions of rows — every container action, every login, every config change, every AI call gets a row. Loading the full table allocated O(N × row-size) heap; on a 2-year install with 5M+ rows of ~500-byte average payload, that is ~2.5 GB of heap allocated just to walk the chain.
+
+**Fix**: replaced `stmt.all()` with `stmt.iterate()`. Holds **one row** at a time. The sibling `exportJsonl` method already used this pattern (comment: "no buffering, safe for large months"); now `verify()` does too.
+
+### Bug 2 — `export()` materialized both the rows array AND the serialized string
+`auditService.export(format, filters)` did:
+1. `stmt.all()` — full result in memory as rows array
+2. `JSON.stringify(rows)` / `_toCsv(rows)` / `_toSyslog(rows)` — full serialized output as another string in memory
+
+So peak memory was ~2× the result size. For a million-row export at ~500 bytes JSON-stringified, that's ~1 GB peak heap. The endpoint requires admin role, so no unauthenticated DoS, but a careless export click could OOM the process.
+
+**Fix**: server-side `COUNT(*)` precheck. If the would-be result exceeds 500,000 rows, throw a `413 Payload Too Large` error with a message pointing the operator to either narrow the date range or use the streaming `exportJsonl` path (used by the v8.2.0 monthly off-site dump). 500k was picked as the boundary where peak heap stays under ~300 MB even for typical-shape rows — comfortable for normal cloud nodes, well under any operator's memory budget.
+
+### Why not full streaming for `export()`?
+The current API returns a string; the route does `res.send(data)`. Converting to streaming would change the function signature and update every caller. Out of scope for a bug-fix release. The row cap blocks the OOM, and operators with legitimate big-export needs already have `exportJsonl` (used by the monthly archive job) — which already streams correctly.
+
+### Operator action
+None for normal use. After upgrade, an admin who hits the export endpoint on a > 500k-row range gets a clear error explaining why and what to do instead. The `verify()` route is safe regardless of row count.
+
 ## [8.7.31] - 2026-06-21 — **RELIABILITY**: migration.js `dstDocker.pull` timeout (missed v8.7.28 site)
 
 Follow-up to v8.7.28 — the cross-host migration service has its own `docker.pull` callsite at [`src/services/migration.js:57`](src/services/migration.js#L57) that was missed by the previous sweep's grep (the variable name `dstDocker.pull` happened to match the same pattern, but I overlooked it in the diff).
