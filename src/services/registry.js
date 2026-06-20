@@ -9,9 +9,29 @@ const { encrypt, decrypt } = require('../utils/crypto');
 
 class RegistryService {
   constructor() {
-    // Migrate legacy XOR-encrypted passwords to AES-GCM on first use.
-    // Deferred to next tick so DB is initialized before we query it.
-    setImmediate(() => this._rewrapLegacy());
+    // v8.7.22 — was: setImmediate(() => this._rewrapLegacy()).
+    // The fire-and-forget setImmediate had two problems:
+    //   1. In Jest, the immediate fires AFTER test teardown, hitting a
+    //      closed DB and producing a "Cannot log after tests are done"
+    //      warning that confused every test report.
+    //   2. In production, if the process received SIGTERM right after
+    //      construction, the immediate would fire during shutdown,
+    //      reopen the DB connection (via getDb singleton re-init), and
+    //      run the migration runner during shutdown — leaking a
+    //      connection and writing through a half-torn-down system.
+    // Lazy-on-first-use via the `_rewrapped` flag eliminates both. The
+    // rewrap fires on the first call to _decryptLegacyOrNew, which is
+    // the only path that actually consumes an encrypted password
+    // (_apiCall does Basic auth against a private registry).
+    this._rewrapped = false;
+  }
+
+  _ensureRewrapped() {
+    if (this._rewrapped) return;
+    this._rewrapped = true;  // set BEFORE the call so failures don't loop
+    try {
+      this._rewrapLegacy();
+    } catch { /* already swallowed inside _rewrapLegacy; double-safety */ }
   }
 
   list() {
@@ -233,6 +253,13 @@ class RegistryService {
    * Legacy format: starts with 'x:' (XOR encrypted) or is plain base64 (no key was set).
    */
   _decryptLegacyOrNew(stored) {
+    // v8.7.22 — opportunistic rewrap trigger. Runs once per process the
+    // first time any registry password is decrypted, replacing the
+    // constructor's setImmediate side-effect. Safe to call from inside
+    // the decrypt path because _rewrapLegacy itself uses prepared
+    // statements + try/catch and is idempotent (already-AES-GCM rows
+    // are detected and skipped).
+    if (!this._rewrapped) this._ensureRewrapped();
     if (!stored) return '';
     // Try new AES-GCM first (format: iv:tag:data — three hex segments separated by colons)
     // AES-GCM ciphertext has exactly 3 colon-delimited hex parts

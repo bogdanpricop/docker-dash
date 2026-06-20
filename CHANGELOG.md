@@ -2,6 +2,42 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.22] - 2026-06-20 — **RELIABILITY**: registry rewrap lazy (no shutdown race, no test teardown warning)
+
+### Bug
+`RegistryService` constructor scheduled the legacy XOR → AES-GCM password rewrap via:
+```js
+constructor() {
+  setImmediate(() => this._rewrapLegacy());
+}
+```
+Fire-and-forget. Two real problems:
+
+1. **Production shutdown race.** If the process received SIGTERM right after constructor (e.g., a fast `docker stop` during a rolling restart, or a failing health check triggering immediate restart), the immediate would fire DURING shutdown — call `getDb()` which would **reopen** the DB singleton, run the entire migration runner from scratch, decrypt passwords, write back to disk — all while the rest of the app was tearing down. The connection would then leak (no close path).
+
+2. **Test teardown noise.** In Jest, the immediate fires after the test body finishes but before Jest exits. By then the DB singleton has been closed by `afterEach`, so the rewrap path hits a fresh `getDb()` call that triggers `runMigrations` against a module-cache-confused environment, throws `migration.up is not a function`, and the `log.warn` for that fires AFTER Jest considers tests done. Every test run printed:
+   ```
+   Cannot log after tests are done. Did you forget to wait for something async in your test?
+     Attempted to log "Registry legacy rewrap skipped: migration.up is not a function"
+   ```
+   on the regsitry-related suites. Three identical warnings per run, masking real teardown leaks.
+
+### Fix
+Constructor no longer schedules anything async. Replaced with:
+- `this._rewrapped = false` flag set in constructor (synchronous)
+- `_ensureRewrapped()` private method that runs `_rewrapLegacy()` once per process
+- Called from `_decryptLegacyOrNew` (the only place that actually consumes an encrypted password) on first invocation
+
+For installs with no registries configured, the rewrap simply never runs — no work is wasted. For installs with registries, the rewrap fires on the first private-registry pull/push (or first list of repos for that registry), which happens after full app boot — no shutdown race window, no test teardown problem.
+
+The rewrap itself is idempotent (already-AES-GCM rows are detected and skipped), so multiple-fire-by-accident is safe.
+
+### Verification
+After this release, the registry-related "Cannot log after tests are done" warnings are gone from the test report. Remaining teardown noise is from `cluster.js` (Redis client connect events firing post-teardown) — a separate known issue, also harmless in production.
+
+### Operator action
+None. Backward-compatible. Legacy passwords still get rewrapped on first use after upgrade.
+
 ## [8.7.21] - 2026-06-20 — **RELIABILITY/COST**: AI search input length cap (2000 chars)
 
 ### Issue

@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.22',
+      date: '2026-06-20',
+      title: 'RELIABILITY: registry rewrap lazy (no shutdown race, no test teardown noise)',
+      changes: [
+        { type: 'fix', text: 'RegistryService constructor was scheduling the legacy XOR to AES-GCM password rewrap via setImmediate fire-and-forget. Two real problems: (1) in production, if SIGTERM hit right after construction (fast docker stop, failing health check restart), the immediate would fire during shutdown — reopen the DB singleton, re-run the migration runner, decrypt passwords, write back to disk — while the rest of the app tore down, leaking the connection. (2) In Jest, the immediate fires after test body finishes but before Jest exits, hitting a closed DB and producing three "Cannot log after tests are done" warnings per run, masking real teardown leaks. Fix: constructor no longer schedules anything async. Rewrap is now lazy-on-first-use via a _rewrapped flag, triggered the first time any encrypted password is decrypted.' },
+        { type: 'improvement', text: 'For installs with no private registries configured, the rewrap simply never runs — no work is wasted. For installs with registries, the rewrap fires on the first private-registry pull/push (or first list of repos), which happens well after boot — no shutdown race window. Idempotent (already-AES-GCM rows are detected and skipped) so multiple fires are safe.' },
+      ],
+    },
+    {
       version: '8.7.21',
       date: '2026-06-20',
       title: 'RELIABILITY/COST: AI search input length cap (2000 chars)',
