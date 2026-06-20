@@ -35,7 +35,14 @@ router.get('/disk-usage', requireAuth, async (req, res) => {
 router.get('/events', requireAuth, (req, res) => {
   try {
     const { type, action, since, limit } = req.query;
-    res.json(dockerEvents.query({ type, action, since, limit: parseInt(limit) || 100 }));
+    // v8.7.33 — cap user-supplied limit at 1000. Pre-fix a caller could
+    // pass ?limit=1000000 and receive a multi-hundred-MB response from
+    // the docker_events table. Server-side ceiling matches the pattern
+    // already used by AI search (v8.7.21), audit query (page-based),
+    // and other paginated endpoints.
+    const MAX_LIMIT = 1000;
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 100, 1), MAX_LIMIT);
+    res.json(dockerEvents.query({ type, action, since, limit: safeLimit }));
   } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

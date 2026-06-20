@@ -12,11 +12,14 @@ const log = require('../utils/logger')('misc');
 const router = Router();
 
 router.get('/', requireAuth, (req, res) => {
+  // v8.7.33 — cap user-supplied limit at 200. Notifications are user-scoped
+  // but still SQL-bounded; UI typically shows 20-50. 200 is generous.
   const { unreadOnly, page, limit, type } = req.query;
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 200);
   res.json(notifications.list(req.user.id, {
     unreadOnly: unreadOnly === 'true',
     page: parseInt(page) || 1,
-    limit: parseInt(limit) || 50,
+    limit: safeLimit,
     type: type || undefined,
   }));
 });

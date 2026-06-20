@@ -324,7 +324,8 @@ router.get('/policies/:id/block-log/grouped', requireAuth, requireRole('admin'),
     const policy = egressFilter.getPolicy(id);
     if (!policy) return res.status(404).json({ error: 'Policy not found' });
     const sinceHours = parseInt(req.query.sinceHours, 10) || 168;
-    const limit = parseInt(req.query.limit, 10) || 50;
+    // v8.7.33 — cap at 1000, matching the sibling endpoint at line 372 of this file.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const groups = egressFilter.getBlockLogGrouped(id, { sinceHours, limit });
     res.json({ policyId: id, sinceHours, groups });
   } catch (err) {

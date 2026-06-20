@@ -211,9 +211,12 @@ router.post('/stacks/:id/drift-scan', requireAuth, requireRole('admin', 'operato
 
 router.get('/stacks/:id/deployments', requireAuth, (req, res) => {
   try {
+    // v8.7.33 — cap user-supplied limit at 200 (deployments are richer rows
+    // than typical paginated lists; lower cap matches the practical UI use).
     const { page, limit, status, trigger_type } = req.query;
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 200);
     const result = gitService.listDeployments(parseInt(req.params.id), {
-      page: parseInt(page) || 1, limit: parseInt(limit) || 20, status, trigger_type,
+      page: parseInt(page) || 1, limit: safeLimit, status, trigger_type,
     });
     res.json(result);
   } catch (err) {

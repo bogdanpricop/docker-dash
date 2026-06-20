@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.33] - 2026-06-21 — **RELIABILITY/DOS**: cap user-supplied LIMIT across 6 paginated routes
+
+### Bug — unbounded `?limit=` query parameter
+Six paginated endpoints accepted `?limit=` from the query string and passed `parseInt(limit) || N` straight into SQL `LIMIT ?` clauses without a cap. A caller could request `?limit=1000000` and receive multi-hundred-MB JSON responses, allocating peak heap and tying up the event loop while the response serialized.
+
+| Endpoint | Default | Pre-fix max | Post-fix cap |
+|---|---|---|---|
+| `GET /api/system/events` (docker events) | 100 | unbounded | 1000 |
+| `GET /api/alerts/history` | 50 | unbounded | 500 |
+| `GET /api/git/stacks/:id/deployments` | 20 | unbounded | 200 |
+| `GET /api/audit/` (misc-audit) | 50 | unbounded | 500 |
+| `GET /api/notifications/` (misc-notifications) | 50 | unbounded | 200 |
+| `GET /api/egress-filter/.../block-log-grouped` | 50 | unbounded | 1000 |
+
+All require `requireAuth`; `audit` and `system/events` additionally require `admin`. So no unauthenticated DoS, but any authenticated user (or compromised session token) could trigger a multi-hundred-MB allocation per request. Repeated requests would saturate memory.
+
+### Reference pattern already in the codebase
+The pattern `Math.min(Math.max(parseInt(limit) || DEFAULT, 1), MAX)` was already used by `routes/audit.js:18` (capped at 500), `routes/remediate.js:199` (100), `routes/egress-filter.js:372` (1000), and v8.7.21's `routes/audit.js:30` ai-search (2000). This release brings the rest of the codebase in line.
+
+### Operator action
+None. Normal UI use is well under all caps; only requests with explicit oversized `?limit=` query params are now bounded.
+
 ## [8.7.32] - 2026-06-21 — **RELIABILITY**: audit `verify()` streaming + `export()` row cap (OOM bound)
 
 ### Bug 1 — `verify()` loaded the entire audit_log into memory

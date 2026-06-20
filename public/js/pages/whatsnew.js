@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.33',
+      date: '2026-06-21',
+      title: 'RELIABILITY/DOS: cap user-supplied LIMIT across 6 routes',
+      changes: [
+        { type: 'fix', text: 'Six paginated endpoints accepted ?limit= and passed parseInt straight into SQL LIMIT ? with no cap. A caller could request ?limit=1000000 and receive multi-hundred-MB JSON responses, allocating peak heap and tying up the event loop while serializing. All authenticated, no unauthenticated DoS, but repeated requests could saturate memory.' },
+        { type: 'fix', text: 'Capped: /api/system/events (1000), /api/alerts/history (500), /api/git/stacks/:id/deployments (200), /api/audit (500), /api/notifications (200), /api/egress-filter/.../block-log-grouped (1000). Matches the Math.min/Math.max pattern already used by routes/audit.js, routes/remediate.js, and v8.7.21 ai-search. Normal UI use unaffected; only oversized explicit requests are bounded.' },
+      ],
+    },
+    {
       version: '8.7.32',
       date: '2026-06-21',
       title: 'RELIABILITY: audit verify streaming + export row cap (OOM bound)',

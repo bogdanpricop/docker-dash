@@ -13,10 +13,12 @@ const log = require('../utils/logger')('misc');
 const router = Router();
 
 router.get('/', requireAuth, requireRole('admin'), (req, res) => {
+  // v8.7.33 — cap user-supplied limit at 500 (matches sibling audit.js route).
   const { action, targetType, userId, page, limit, since, until } = req.query;
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
   res.json(auditService.query({
     action, targetType, userId: userId ? parseInt(userId) : undefined,
-    page: parseInt(page) || 1, limit: parseInt(limit) || 50, since, until,
+    page: parseInt(page) || 1, limit: safeLimit, since, until,
   }));
 });
 

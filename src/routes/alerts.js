@@ -39,8 +39,10 @@ router.delete('/rules/:id', requireAuth, requireRole('admin'), asyncHandler((req
 
 router.get('/active', requireAuth, (req, res) => { res.json(alertService.getActiveAlerts()); });
 router.get('/history', requireAuth, (req, res) => {
+  // v8.7.33 — cap user-supplied limit at 500 (matches the audit.js pattern).
   const { page, limit } = req.query;
-  res.json(alertService.getAlertHistory({ page: parseInt(page) || 1, limit: parseInt(limit) || 50 }));
+  const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
+  res.json(alertService.getAlertHistory({ page: parseInt(page) || 1, limit: safeLimit }));
 });
 
 router.post('/events/:id/acknowledge', requireAuth, asyncHandler((req, res) => {
