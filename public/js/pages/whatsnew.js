@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.36',
+      date: '2026-06-21',
+      title: 'RELIABILITY/DOS: bulk-input caps (secrets rotation + bundle import)',
+      changes: [
+        { type: 'fix', text: 'POST /api/secrets/rotations/bulk accepted secrets[] with no upper bound. Each entry ran 2 prepared queries (existence check + insert/update) inside a single transaction. A caller could submit 100k entries and pin the SQLite writer for seconds, blocking every other write. Capped at 1000 entries per call; over the cap returns 413 with guidance to split.' },
+        { type: 'fix', text: 'stackBundle.importBundle iterated images/volumes/containers arrays unbounded. A malicious or malformed bundle could specify thousands of images; each pull has a 10-min timeout (v8.7.28), so 100 images × 10 min = 16 hours of pinned import work worst-case. Per-array cap of 100 each; over the cap throws clear error.' },
+        { type: 'improvement', text: 'Observability services audited (detect + import) — both have explicit HTTP timeouts (2s probe / 10s import), URL validation, protocol allowlist. No fixes needed.' },
+      ],
+    },
+    {
       version: '8.7.35',
       date: '2026-06-21',
       title: 'SECURITY: validate route requireRole gate (CWE-862)',

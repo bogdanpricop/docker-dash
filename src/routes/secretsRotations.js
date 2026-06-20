@@ -68,6 +68,15 @@ router.post('/bulk', requireAuth, requireRole('admin'), (req, res) => {
     if (!Array.isArray(secrets) || secrets.length === 0) {
       return res.status(400).json({ error: 'secrets array required' });
     }
+    // v8.7.36 — cap batch size. Each entry runs 2 prepared queries inside
+    // the transaction (existence check + insert/update); pre-fix a caller
+    // could submit 100k+ entries and pin the DB writer for several
+    // seconds. 1000 is generous for any realistic single-app secret
+    // inventory (typical apps have 5-30 env vars).
+    const MAX_BULK = 1000;
+    if (secrets.length > MAX_BULK) {
+      return res.status(413).json({ error: `secrets array exceeds max of ${MAX_BULK}; split into multiple bulk calls` });
+    }
     const db = getDb();
 
     // Two prepared statements depending on whether the caller wants to clobber intervals.

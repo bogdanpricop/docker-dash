@@ -165,6 +165,20 @@ class StackBundleService {
       throw new Error('Invalid bundle format. Expected docker-dash-stack-bundle or docker-dash-container-bundle.');
     }
 
+    // v8.7.36 — per-array length caps. Pre-fix a malicious or malformed
+    // bundle file could specify thousands of images / volumes / containers
+    // and pin the import thread for hours (each image pull has a 10-min
+    // timeout from v8.7.28; 100 images × 10 min worst-case = 16 hours).
+    // Caps are generous for realistic bundles: a typical stack has 1-10
+    // images and < 20 containers. 100 each is well beyond legitimate use.
+    const BUNDLE_LIMITS = { images: 100, volumes: 100, containers: 100 };
+    for (const key of ['images', 'volumes', 'containers']) {
+      const arr = bundle[key];
+      if (Array.isArray(arr) && arr.length > BUNDLE_LIMITS[key]) {
+        throw new Error(`Bundle ${key} array has ${arr.length} entries, exceeds the safety cap of ${BUNDLE_LIMITS[key]}. Split into smaller bundles.`);
+      }
+    }
+
     const docker = dockerService.getDocker(destHostId);
     const progress = (msg) => {
       log.info(`Import: ${msg}`);

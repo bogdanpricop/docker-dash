@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.36] - 2026-06-21 — **RELIABILITY/DOS**: bulk-input caps (secrets rotation + bundle import)
+
+Two endpoints that iterate over user-supplied arrays without an upper bound. Both admin-gated (no unauthenticated DoS), both prepared-statement-safe (no SQL injection), but both could pin DB writer / image-pull workers for hours on pathological input.
+
+### Bug 1 — `POST /api/secrets/rotations/bulk` unbounded `secrets[]`
+The route accepted `req.body.secrets` and looped through each entry, running **2 prepared queries per entry** inside a single transaction (existence check + insert/update). A caller could submit 100,000 secrets and pin the SQLite writer for several seconds, blocking every other write across the app.
+
+**Fix**: cap at 1000 entries per call. Typical app inventories have 5-30 env vars; 1000 is generous. Over the cap returns `413 Payload Too Large` with guidance to split into multiple calls.
+
+### Bug 2 — `stackBundle.importBundle` unbounded `images[]`, `volumes[]`, `containers[]`
+A malicious or malformed bundle file could specify thousands of images. Each pull has a 10-min timeout (v8.7.28); 100 images × 10 min worst-case = 16 hours of pinned import-thread work. Similar for volumes and container creation.
+
+**Fix**: per-array caps of 100 each (`{ images: 100, volumes: 100, containers: 100 }`). Throws a clear error pointing to "split into smaller bundles" if exceeded. A typical stack has 1-10 images and < 20 containers; 100 is well beyond legitimate use.
+
+### Batch 29 (observability) — audited, no fixes needed
+- `observability-detect._probe`: 2 s timeout + `req.on('timeout')` destroy + URL validation + http/https protocol allowlist ✓
+- `observability-import.importDashboard`: 10 s timeout (route is already admin-only via `router.use(requireAuth, requireRole('admin'))`) ✓
+
+### Operator action
+None. Backward-compatible for normal use; only pathological input is now bounded.
+
 ## [8.7.35] - 2026-06-21 — **SECURITY**: `POST /api/system/stacks/:name/validate` requireRole gate (CWE-862)
 
 ### Bug
