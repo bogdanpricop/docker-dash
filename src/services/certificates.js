@@ -41,9 +41,28 @@ function parsePem(pemContent) {
 function generateCsr({ commonName, organization = '', organizationalUnit = '', country = 'US', state = '', locality = '', emailAddress = '', sans = [], keyType = 'rsa' } = {}) {
   if (!commonName) throw new Error('commonName required');
 
-  const confPath = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.cnf');
-  const keyPath = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.key');
-  const csrPath = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.csr');
+  // v8.7.39 SECURITY — use mkdtempSync to create a 0700 directory in
+  // /tmp instead of predictable Date.now()-suffixed paths. Three
+  // distinct issues with the prior approach:
+  //   1. `os.tmpdir() + 'dd-csr-' + Date.now() + ...` is predictable —
+  //      an attacker with local /tmp access could pre-create symlinks
+  //      to redirect the writes.
+  //   2. `fs.writeFileSync(confPath, ...)` without a 'wx' flag would
+  //      follow existing symlinks, potentially overwriting arbitrary
+  //      files (e.g. a symlink pointing at /etc/something).
+  //   3. The PRIVATE KEY was written to /tmp with the default umask
+  //      mode (0644 → world-readable). For the duration of the call,
+  //      any local user could read the private key before line 90's
+  //      unlink. On multi-tenant hosts this is a key disclosure.
+  // mkdtempSync creates a directory with mode 0700 (owner-only). The
+  // resulting suffix is cryptographically random (Node calls mkdtemp
+  // → mkstemp under the hood, atomic + unpredictable). Writing files
+  // inside that dir inherits the perm boundary; the private key never
+  // leaves owner-only space. rmSync({recursive: true}) cleans up.
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-csr-'));
+  const confPath = path.join(tmpDir, 'csr.cnf');
+  const keyPath = path.join(tmpDir, 'private.key');
+  const csrPath = path.join(tmpDir, 'request.csr');
 
   const sanLines = (Array.isArray(sans) ? sans : String(sans).split(','))
     .map(s => String(s).trim()).filter(Boolean);
@@ -71,7 +90,10 @@ function generateCsr({ commonName, organization = '', organizationalUnit = '', c
     sanBlock,
   ].filter(Boolean).join('\n');
 
-  fs.writeFileSync(confPath, conf, 'utf8');
+  // wx flag = exclusive create; fails if the file already exists.
+  // Defensive even inside the mkdtemp dir — protects against any
+  // race within the new directory.
+  fs.writeFileSync(confPath, conf, { encoding: 'utf8', flag: 'wx' });
 
   try {
     if (keyType === 'ec') {
@@ -87,9 +109,9 @@ function generateCsr({ commonName, organization = '', organizationalUnit = '', c
     const csr = fs.readFileSync(csrPath, 'utf8');
     return { privateKey, csr };
   } finally {
-    try { fs.unlinkSync(confPath); } catch {}
-    try { fs.unlinkSync(keyPath); } catch {}
-    try { fs.unlinkSync(csrPath); } catch {}
+    // Recursive cleanup. rmSync handles the case where one of the
+    // openssl steps failed and left only some files behind.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
 

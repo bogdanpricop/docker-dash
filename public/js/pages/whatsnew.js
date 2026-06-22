@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.39',
+      date: '2026-06-21',
+      title: 'SECURITY+RELIABILITY: CSR temp-dir hardening + more bulk caps',
+      changes: [
+        { type: 'security', text: 'certificates.generateCsr wrote private key and CSR to predictable /tmp paths (Date.now() suffix). Three issues: (1) predictable paths invited symlink races (CWE-377), (2) fs.writeFileSync without wx flag followed existing symlinks, (3) the PRIVATE KEY got default umask perms (typically 0644 = world-readable) for the duration of the call (CWE-732). On multi-tenant hosts, any local user with /tmp read access could exfiltrate the key. Fixed by switching to fs.mkdtempSync — creates a 0700 directory with a cryptographically-random suffix; all three files live inside that owner-only boundary. wx flag added as defense in depth.' },
+        { type: 'fix', text: 'POST /api/notifications/bulk capped at 1000 ids (same pattern as v8.7.36/v8.7.38). Pre-fix 100k+ ids would pin SQLite writer.' },
+        { type: 'fix', text: 'POST /api/images/scan-history/delete capped at 1000 ids. Pointer to retention purge cron for full-table sweeps.' },
+      ],
+    },
+    {
       version: '8.7.38',
       date: '2026-06-21',
       title: 'SECURITY+RELIABILITY: groups scope check + remediation shutdown',

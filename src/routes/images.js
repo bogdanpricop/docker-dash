@@ -601,6 +601,14 @@ router.get('/scan-history/:id', requireAuth, asyncHandler((req, res) => {
 router.post('/scan-history/delete', requireAuth, requireRole('admin'), writeable, asyncHandler((req, res) => {
   const { ids } = req.body;
   if (!ids?.length) return res.status(400).json({ error: 'ids array required' });
+  // v8.7.39 — cap bulk delete. SQLite IN (...) builds a placeholder list
+  // of length N; pre-fix a caller could submit 100k+ ids and pin the
+  // writer. 1000 per call is generous (typical "clear all old scans" UI
+  // is ≤ 100 entries); for full-table sweeps the operator should use
+  // the retention purge cron instead.
+  if (ids.length > 1000) {
+    return res.status(413).json({ error: 'ids array exceeds max of 1000; split into multiple calls or use the retention purge' });
+  }
   const db = getDb();
   const placeholders = ids.map(() => '?').join(',');
   const result = db.prepare(`DELETE FROM scan_results WHERE id IN (${placeholders})`).run(...ids.map(Number));

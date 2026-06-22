@@ -2,6 +2,36 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.39] - 2026-06-21 — **SECURITY+RELIABILITY**: CSR temp-dir hardening + 2 more bulk-cap routes
+
+### Bug 1 — `certificates.generateCsr` predictable /tmp paths + world-readable private key (CWE-377, CWE-732)
+`generateCsr` wrote three files to `/tmp`:
+```js
+const confPath = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.cnf');
+const keyPath  = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.key');
+const csrPath  = path.join(os.tmpdir(), 'dd-csr-' + Date.now() + '.csr');
+```
+Three distinct issues:
+
+1. **Predictable paths**: `Date.now()` is millisecond-resolution; an attacker with local /tmp access could pre-create symlinks pointing the writes elsewhere (CWE-377: Insecure Temporary File).
+2. **No `flag: 'wx'`**: `fs.writeFileSync` followed existing symlinks. If a symlink at the predicted path pointed to `/etc/anything`, the openssl config (or key, or csr) would overwrite that file.
+3. **Private key in /tmp with default umask**: openssl-created `keyPath` got default file mode (typically `0644` — world-readable on default umask 022). For the entire function call, any local user with /tmp read access could read the private key (CWE-732: Incorrect Permission Assignment). Sticky-bit /tmp prevents deletion by others but not read.
+
+On multi-tenant hosts (shared dev boxes, certain container hosts where /tmp is a shared mount), this is a real key disclosure vector.
+
+**Fix**: replaced with `fs.mkdtempSync(path.join(os.tmpdir(), 'dd-csr-'))` — creates a directory with mode `0700` (owner-only) and a cryptographically-random suffix. All three files live inside that dir; they inherit the owner-only boundary. Cleanup is a single `fs.rmSync({recursive: true})`. Added `flag: 'wx'` to `writeFileSync` as defense-in-depth even inside the mkdtemp dir.
+
+### Bug 2 — `POST /api/notifications/bulk` `ids[]` unbounded
+Same pattern as v8.7.36 and v8.7.38. `bulkAction` runs `IN (...)` with placeholder count equal to `ids.length`. 100k+ ids would pin SQLite writer.
+
+**Fix**: cap at 1000 with 413 + split-guidance.
+
+### Bug 3 — `POST /api/images/scan-history/delete` `ids[]` unbounded
+Same pattern. Capped at 1000 with guidance to use the retention purge cron for full-table sweeps.
+
+### Operator action
+None. Backward-compatible for all three. The CSR generation flow produces the same outputs; only the temp-file plumbing is hardened.
+
 ## [8.7.38] - 2026-06-21 — **SECURITY+RELIABILITY**: groups scope check + remediation scheduler shutdown
 
 ### Bug 1 — groups `addContainers` / `removeContainer` lacked scope check (CWE-639)

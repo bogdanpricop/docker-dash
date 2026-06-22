@@ -49,6 +49,12 @@ router.post('/bulk', requireAuth, (req, res) => {
     if (!ids || !Array.isArray(ids) || !['read', 'delete'].includes(action)) {
       return res.status(400).json({ error: 'ids (array) and action (read|delete) required' });
     }
+    // v8.7.39 — cap bulk array. SQLite IN (...) builds a placeholder list
+    // of length N; pre-fix a caller could submit 100k ids and pin the
+    // writer. 1000 is generous for any realistic notification batch UI.
+    if (ids.length > 1000) {
+      return res.status(413).json({ error: 'ids array exceeds max of 1000; split into multiple calls' });
+    }
     notifications.bulkAction(ids.map(id => parseInt(id)), req.user.id, action);
     res.json({ ok: true });
   } catch (err) { log.error('notifications bulkAction', err); res.status(500).json({ error: 'Internal server error' }); }
