@@ -10,6 +10,14 @@
 process.env.APP_SECRET = 'test-git-timeouts';
 process.env.ENCRYPTION_KEY = 'test-encryption-key-for-jest-32chars';
 process.env.DB_PATH = ':memory:';
+// v8.7.40 — set DATA_DIR BEFORE requiring git.js. The GitService constructor
+// runs fs.mkdirSync(REPOS_BASE) at module-load time, where REPOS_BASE =
+// path.join(DATA_DIR || '/data', 'repos'). On CI runners without /data
+// write permission this threw EACCES and aborted the entire suite, breaking
+// CI on every push since this test file was added (v8.7.10). Sibling tests
+// (git-validation.test.js, pcloud-backup.test.js) already set DATA_DIR;
+// this one missed it.
+process.env.DATA_DIR = process.env.DATA_DIR || require('os').tmpdir() + '/dd-test-git-timeouts';
 
 const path = require('path');
 const fs = require('fs');
