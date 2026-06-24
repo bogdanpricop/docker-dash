@@ -10,6 +10,22 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.41',
+      date: '2026-06-25',
+      title: 'UX: Prune cards show CLI command + Copy button',
+      changes: [
+        { type: 'improvement', text: 'Each of the 5 Prune cards (System > Prune tab) now shows the equivalent docker CLI command with a one-click copy button. Operators can fall back to the host shell when the UI fails, times out (esp. huge docker system prune sweeps), or when the Docker socket needs root. A short hint above the grid explains the sudo case. Commands: docker container/image/volume/network prune, docker system prune -a --volumes -f.' },
+      ],
+    },
+    {
+      version: '8.7.40',
+      date: '2026-06-22',
+      title: 'CI: set DATA_DIR in git-timeouts test (CI was red since v8.7.10)',
+      changes: [
+        { type: 'fix', text: 'src/__tests__/git-timeouts.test.js (added in v8.7.10) forgot to set process.env.DATA_DIR before requiring git.js. The GitService constructor runs fs.mkdirSync(REPOS_BASE) at module-load time; on GitHub runners that lack /data write permission this threw EACCES and aborted the suite. CI test job was red on every push since v8.7.10, but the other workflows (Docker Build, Caddy image, Egress sidecar) stayed green so it went unnoticed. One-line fix mirroring sibling tests. All 5 workflows now green.' },
+      ],
+    },
+    {
       version: '8.7.39',
       date: '2026-06-21',
       title: 'SECURITY+RELIABILITY: CSR temp-dir hardening + more bulk caps',

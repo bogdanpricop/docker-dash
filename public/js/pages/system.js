@@ -2051,6 +2051,30 @@ DB_PASS=secret"></textarea>
   // trust badges) live in public/js/pages/system-templates.js — merged via Object.assign.
 
   _renderPrune(el) {
+    // v8.7.41 — each card now shows the equivalent docker CLI command with
+    // a one-click copy button. Operators can fall back to the host shell
+    // when the UI route fails, times out (esp. on huge `docker system prune`
+    // sweeps that exceed the 60s timeout), or when the daemon socket is
+    // root-owned and Docker Dash runs as an unprivileged user. The
+    // commands are static literals — no user input — so no escaping needed.
+    // The global [data-copy] handler in app.js handles clipboard + Toast.
+    const cmds = {
+      containers: 'docker container prune -f',
+      images:     'docker image prune -a -f',
+      volumes:    'docker volume prune -f',
+      networks:   'docker network prune -f',
+      all:        'docker system prune -a --volumes -f',
+    };
+    const renderCmd = (key) => `
+      <div class="prune-cmd" role="group" aria-label="Manual CLI command">
+        <code>${cmds[key]}</code>
+        <button class="prune-cmd-btn" data-copy="${cmds[key]}"
+          title="${i18n.t('pages.system.pruneCopyTooltip')}"
+          aria-label="${i18n.t('pages.system.pruneCopyTooltip')}: ${cmds[key]}">
+          <i class="fas fa-copy" aria-hidden="true"></i>
+        </button>
+      </div>
+    `;
     el.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -2059,31 +2083,41 @@ DB_PASS=secret"></textarea>
         </div>
         <div class="card-body">
           <p class="text-muted mb-md">${i18n.t('pages.system.pruneDesc')}</p>
+          <div class="prune-manual-hint">
+            <i class="fas fa-terminal" aria-hidden="true"></i>
+            ${i18n.t('pages.system.pruneManualHint')}
+            <span class="prune-sudo-note">${i18n.t('pages.system.pruneSudoNote')}</span>
+          </div>
           <div class="prune-grid">
             <div class="prune-item">
               <h4><i class="fas fa-cube"></i> ${i18n.t('pages.system.pruneContainers')}</h4>
               <p>${i18n.t('pages.system.pruneContainersDesc')}</p>
               <button class="btn btn-sm btn-warning" data-prune="containers">${i18n.t('pages.system.pruneContainersBtn')}</button>
+              ${renderCmd('containers')}
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-layer-group"></i> ${i18n.t('pages.system.pruneImages')}</h4>
               <p>${i18n.t('pages.system.pruneImagesDesc')}</p>
               <button class="btn btn-sm btn-warning" data-prune="images">${i18n.t('pages.system.pruneImagesBtn')}</button>
+              ${renderCmd('images')}
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-database"></i> ${i18n.t('pages.system.pruneVolumes')}</h4>
               <p>${i18n.t('pages.system.pruneVolumesDesc')}</p>
               <button class="btn btn-sm btn-danger" data-prune="volumes">${i18n.t('pages.system.pruneVolumesBtn')}</button>
+              ${renderCmd('volumes')}
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-network-wired"></i> ${i18n.t('pages.system.pruneNetworks')}</h4>
               <p>${i18n.t('pages.system.pruneNetworksDesc')}</p>
               <button class="btn btn-sm btn-warning" data-prune="networks">${i18n.t('pages.system.pruneNetworksBtn')}</button>
+              ${renderCmd('networks')}
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-broom"></i> ${i18n.t('pages.system.pruneEverything')}</h4>
               <p>${i18n.t('pages.system.pruneEverythingDesc')}</p>
               <button class="btn btn-sm btn-danger" data-prune="all">${i18n.t('pages.system.pruneAllBtn')}</button>
+              ${renderCmd('all')}
             </div>
           </div>
         </div>

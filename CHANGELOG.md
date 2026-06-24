@@ -2,6 +2,54 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.41] - 2026-06-25 — **UX**: Prune cards show equivalent CLI command + Copy button
+
+### Why
+Operators kept context-switching to docs when:
+- The UI request timed out on huge prune sweeps (`docker system prune -a --volumes` on hosts with TB-scale image caches)
+- The Docker socket required root and Docker Dash ran as an unprivileged user
+- The HTTP route hung mid-prune
+
+### What
+Each of the 5 Prune cards (**System → Prune** tab) now renders, below its action button, a monospace line with the equivalent `docker` CLI command and a small Copy button (icon-only). Above the grid, a one-line hint explains when to fall back to the shell with a sub-note that `sudo` is needed if the operator is not in the `docker` group.
+
+| Card | Command shown |
+|---|---|
+| Containers | `docker container prune -f` |
+| Images | `docker image prune -a -f` |
+| Volumes | `docker volume prune -f` |
+| Networks | `docker network prune -f` |
+| Everything | `docker system prune -a --volumes -f` |
+
+### Implementation notes
+- Vanilla template literal inside the existing `_renderPrune` — no new framework, no `onclick=`
+- Copy wired via the existing global `[data-copy]` delegated handler in [`app.js:483`](public/js/app.js#L483); fires `Toast.success`
+- 3 new i18n keys in `en.js` + `ro.js` (`pruneManualHint`, `pruneSudoNote`, `pruneCopyTooltip`); 9 other locales fall back to English via `_fallback: 'en'`
+- 5 new CSS classes (`.prune-manual-hint`, `.prune-sudo-note`, `.prune-cmd`, `.prune-cmd code`, `.prune-cmd-btn` + `:hover` / `:focus-visible`)
+- Local test suite still 1521/1521 green
+
+### Operator action
+None. Backward-compatible — UI flows unchanged; CLI commands are additive.
+
+## [8.7.40] - 2026-06-22 — **CI**: set `DATA_DIR` in `git-timeouts.test.js` (CI red on every push since v8.7.10)
+
+### Bug
+The git-timeouts test added in v8.7.10 forgot to set `process.env.DATA_DIR` before `require('../services/git.js')`. The `GitService` constructor calls `fs.mkdirSync(REPOS_BASE)` at module-load time, where `REPOS_BASE = path.join(DATA_DIR || '/data', 'repos')`. On GitHub-hosted runners (no write access to `/data`) this threw `EACCES: permission denied, mkdir '/data/repos'` and aborted the entire suite. CI was red on every push since v8.7.10 was shipped — but every other workflow (Docker Build & Push, Caddy image, Egress sidecar) stayed green, so the regression went unnoticed.
+
+### Fix
+One line added before the require, mirroring sibling tests (`git-validation.test.js`, `pcloud-backup.test.js`):
+```js
+process.env.DATA_DIR = process.env.DATA_DIR || require('os').tmpdir() + '/dd-test-git-timeouts';
+```
+
+### Verification
+- Local: full suite 1521/1521 passing
+- GitHub CI on commit `78ef019`: ✅ success
+- All 5 deploy workflows on the commit: ✅ success
+
+### Operator action
+None. Test-only fix.
+
 ## [8.7.39] - 2026-06-21 — **SECURITY+RELIABILITY**: CSR temp-dir hardening + 2 more bulk-cap routes
 
 ### Bug 1 — `certificates.generateCsr` predictable /tmp paths + world-readable private key (CWE-377, CWE-732)
