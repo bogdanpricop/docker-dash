@@ -188,6 +188,101 @@ class IncusClient {
     const resp = await this._request('GET', '/1.0/projects?recursion=1');
     return (resp && resp.metadata) || [];
   }
+
+  // ─── Operation polling ───────────────────────────────────────
+  //
+  // Incus write endpoints return `{type: "async", operation: "/1.0/operations/<id>", ...}`
+  // for anything that isn't instantaneous (start, stop, delete, snapshot).
+  // The caller polls /1.0/operations/{id}/wait until it completes.
+  //
+  // For docker-dash we want a synchronous-looking API from the route
+  // layer: fire the request, wait for the operation, surface success or
+  // structured error. `_awaitOperation` implements that. Timeout applied
+  // to the total wait (not just the initial HTTP call), capped to 5 min
+  // — Incus VM operations can legitimately take that long.
+
+  async _awaitOperation(opPath, opts = {}) {
+    if (!opPath) return null;
+    // opPath is e.g. "/1.0/operations/abc-123"
+    const waitTimeoutSec = Math.min(300, opts.timeoutSec || 60);
+    const resp = await this._request('GET', `${opPath}/wait?timeout=${waitTimeoutSec}`, null, {
+      timeoutMs: (waitTimeoutSec + 5) * 1000,
+    });
+    // metadata.status: 'Success' | 'Failure' | 'Cancelled' | ...
+    const meta = resp && resp.metadata;
+    if (meta && meta.status_code === 200 && meta.status === 'Success') return meta;
+    const err = new Error(`Incus operation failed: ${(meta && meta.err) || (meta && meta.status) || 'unknown'}`);
+    err.incusOperation = meta;
+    throw err;
+  }
+
+  /** Common helper for state-change actions. */
+  async _changeInstanceState(name, action, opts = {}) {
+    if (!name) throw new Error('instance name required');
+    if (!['start', 'stop', 'restart', 'freeze', 'unfreeze'].includes(action)) {
+      throw new Error(`invalid state action: ${action}`);
+    }
+    const project = opts.project ? `?project=${encodeURIComponent(opts.project)}` : '';
+    const body = {
+      action,
+      timeout: typeof opts.timeout === 'number' ? opts.timeout : 30,
+      force: !!opts.force,
+      stateful: !!opts.stateful,
+    };
+    const resp = await this._request('PUT', `/1.0/instances/${encodeURIComponent(name)}/state${project}`, body);
+    // Async operation — wait for it to complete unless opts.async is true.
+    if (opts.async) return resp;
+    return await this._awaitOperation(resp && resp.operation, { timeoutSec: opts.waitSec || 60 });
+  }
+
+  async startInstance(name, opts)   { return this._changeInstanceState(name, 'start', opts); }
+  async stopInstance(name, opts)    { return this._changeInstanceState(name, 'stop', opts); }
+  async restartInstance(name, opts) { return this._changeInstanceState(name, 'restart', opts); }
+  async freezeInstance(name, opts)  { return this._changeInstanceState(name, 'freeze', opts); }
+  async unfreezeInstance(name, opts) { return this._changeInstanceState(name, 'unfreeze', opts); }
+
+  /** Delete an instance. Must be stopped first unless opts.force. */
+  async deleteInstance(name, opts = {}) {
+    if (!name) throw new Error('instance name required');
+    const project = opts.project ? `?project=${encodeURIComponent(opts.project)}` : '';
+    const resp = await this._request('DELETE', `/1.0/instances/${encodeURIComponent(name)}${project}`);
+    if (opts.async) return resp;
+    return await this._awaitOperation(resp && resp.operation, { timeoutSec: opts.waitSec || 60 });
+  }
+
+  /** Create a snapshot on an instance. */
+  async createSnapshot(instance, snapshotName, opts = {}) {
+    if (!instance) throw new Error('instance name required');
+    if (!snapshotName) throw new Error('snapshot name required');
+    const project = opts.project ? `?project=${encodeURIComponent(opts.project)}` : '';
+    const body = { name: snapshotName, stateful: !!opts.stateful };
+    const resp = await this._request('POST',
+      `/1.0/instances/${encodeURIComponent(instance)}/snapshots${project}`, body);
+    if (opts.async) return resp;
+    return await this._awaitOperation(resp && resp.operation, { timeoutSec: opts.waitSec || 300 });
+  }
+
+  /** Restore an instance to a named snapshot. */
+  async restoreSnapshot(instance, snapshotName, opts = {}) {
+    if (!instance || !snapshotName) throw new Error('instance + snapshot names required');
+    const project = opts.project ? `?project=${encodeURIComponent(opts.project)}` : '';
+    // Incus restore is a PUT on the instance with { restore: <snapshot name> }.
+    const resp = await this._request('PUT',
+      `/1.0/instances/${encodeURIComponent(instance)}${project}`,
+      { restore: snapshotName });
+    if (opts.async) return resp;
+    return await this._awaitOperation(resp && resp.operation, { timeoutSec: opts.waitSec || 300 });
+  }
+
+  /** Delete a snapshot. */
+  async deleteSnapshot(instance, snapshotName, opts = {}) {
+    if (!instance || !snapshotName) throw new Error('instance + snapshot names required');
+    const project = opts.project ? `?project=${encodeURIComponent(opts.project)}` : '';
+    const resp = await this._request('DELETE',
+      `/1.0/instances/${encodeURIComponent(instance)}/snapshots/${encodeURIComponent(snapshotName)}${project}`);
+    if (opts.async) return resp;
+    return await this._awaitOperation(resp && resp.operation, { timeoutSec: opts.waitSec || 60 });
+  }
 }
 
 // Helper: build an IncusClient from a docker_hosts row (JSON string in

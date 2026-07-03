@@ -176,4 +176,159 @@ describe('IncusClient (v8.9.0-alpha)', () => {
       expect(receivedPath).toMatch(/\?project=production&recursion=1$/);
     });
   });
+
+  // v8.9.0-alpha.2 — write methods (state changes + snapshots).
+  describe('state-changing operations', () => {
+    // Helper: mocks the two-step async operation (PUT/POST returns operation
+    // path; the client then polls /wait). Response bodies use the Incus
+    // envelope shape.
+    const _queueAsyncOperation = (opPath = '/1.0/operations/test-op') => {
+      // Step 1: the state change request → returns async operation ref.
+      mockHttp._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({
+          status: 202,
+          body: { type: 'async', status_code: 100, operation: opPath, metadata: { id: 'test-op' } },
+        });
+        cb(res);
+        res._fire();
+      });
+      // Step 2: the /wait poll → returns success.
+      mockHttp._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({
+          status: 200,
+          body: { type: 'sync', status_code: 200,
+            metadata: { status: 'Success', status_code: 200, id: 'test-op' } },
+        });
+        cb(res);
+        res._fire();
+      });
+    };
+
+    it('startInstance PUTs the correct path + body and waits for the operation', async () => {
+      let stateReq;
+      // Custom first handler to capture body.
+      mockHttp._mockNext((opts, cb, req) => {
+        stateReq = { opts, body: req._writtenBody };
+        const res = fakeResponse({
+          status: 202,
+          body: { type: 'async', operation: '/1.0/operations/abc' },
+        });
+        cb(res);
+        res._fire();
+      });
+      mockHttp._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({
+          status: 200,
+          body: { type: 'sync', metadata: { status: 'Success', status_code: 200 } },
+        });
+        cb(res);
+        res._fire();
+      });
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      const result = await client.startInstance('web');
+      expect(stateReq.opts.method).toBe('PUT');
+      expect(stateReq.opts.path).toBe('/1.0/instances/web/state');
+      // The client sends action + timeout + force + stateful.
+      const bodyStr = stateReq.body.toString('utf8');
+      expect(JSON.parse(bodyStr)).toMatchObject({ action: 'start', force: false });
+      // Wait step succeeded → result is the Success metadata.
+      expect(result.status).toBe('Success');
+    });
+
+    it('stopInstance and restartInstance use the right action name', async () => {
+      const capturedActions = [];
+      for (let i = 0; i < 2; i++) {
+        mockHttp._mockNext((_opts, cb, req) => {
+          capturedActions.push(JSON.parse(req._writtenBody.toString()).action);
+          const res = fakeResponse({
+            status: 202, body: { type: 'async', operation: '/1.0/operations/x' },
+          });
+          cb(res); res._fire();
+        });
+        mockHttp._mockNext((_opts, cb, _req) => {
+          const res = fakeResponse({
+            status: 200, body: { type: 'sync', metadata: { status: 'Success', status_code: 200 } },
+          });
+          cb(res); res._fire();
+        });
+      }
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      await client.stopInstance('web', { force: true });
+      await client.restartInstance('web');
+      expect(capturedActions).toEqual(['stop', 'restart']);
+    });
+
+    it('surfaces failed operations as a rejected promise with metadata attached', async () => {
+      mockHttp._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({
+          status: 202, body: { type: 'async', operation: '/1.0/operations/x' },
+        });
+        cb(res); res._fire();
+      });
+      mockHttp._mockNext((_opts, cb, _req) => {
+        // Operation failed.
+        const res = fakeResponse({
+          status: 200,
+          body: {
+            type: 'sync', metadata: { status: 'Failure', status_code: 400, err: 'container is not stopped' },
+          },
+        });
+        cb(res); res._fire();
+      });
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      let caught;
+      try { await client.deleteInstance('web'); } catch (e) { caught = e; }
+      expect(caught).toBeDefined();
+      expect(caught.message).toMatch(/container is not stopped/);
+      expect(caught.incusOperation.status).toBe('Failure');
+    });
+
+    it('createSnapshot validates the snapshot name and body', async () => {
+      let stateReq;
+      _queueAsyncOperation();
+      mockHttp._handlers[0] = ((original) => (opts, cb, req) => {
+        stateReq = { opts, body: req._writtenBody };
+        original(opts, cb, req);
+      })(mockHttp._handlers[0]);
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      await client.createSnapshot('web', 'pre-upgrade-2026-07', { stateful: false });
+      expect(stateReq.opts.method).toBe('POST');
+      expect(stateReq.opts.path).toBe('/1.0/instances/web/snapshots');
+      expect(JSON.parse(stateReq.body.toString())).toEqual({
+        name: 'pre-upgrade-2026-07', stateful: false,
+      });
+    });
+
+    it('restoreSnapshot uses PUT on the instance with {restore}', async () => {
+      let stateReq;
+      _queueAsyncOperation();
+      mockHttp._handlers[0] = ((original) => (opts, cb, req) => {
+        stateReq = { opts, body: req._writtenBody };
+        original(opts, cb, req);
+      })(mockHttp._handlers[0]);
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      await client.restoreSnapshot('web', 'pre-upgrade-2026-07');
+      expect(stateReq.opts.method).toBe('PUT');
+      expect(stateReq.opts.path).toBe('/1.0/instances/web');
+      expect(JSON.parse(stateReq.body.toString())).toEqual({ restore: 'pre-upgrade-2026-07' });
+    });
+
+    it('deleteInstance sends DELETE on the instance path', async () => {
+      let stateReq;
+      _queueAsyncOperation();
+      mockHttp._handlers[0] = ((original) => (opts, cb, req) => {
+        stateReq = { opts };
+        original(opts, cb, req);
+      })(mockHttp._handlers[0]);
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      await client.deleteInstance('web');
+      expect(stateReq.opts.method).toBe('DELETE');
+      expect(stateReq.opts.path).toBe('/1.0/instances/web');
+    });
+
+    it('rejects invalid action names in _changeInstanceState', async () => {
+      const client = new IncusClient({ transport: 'unix', socket: '/tmp/incus.sock' });
+      await expect(client._changeInstanceState('web', 'invalid-action')).rejects.toThrow(/invalid state action/);
+    });
+  });
 });

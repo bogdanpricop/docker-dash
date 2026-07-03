@@ -373,6 +373,23 @@ const Api = {
   // v8.8.3 — deploy a stack from a compose YAML string.
   deploySwarmStack(name, compose)     { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, { compose }); },
 
+  // ─── Incus (v8.9.0-alpha.2) ─────────────────────
+  getIncusInfo()                      { return this.get('/incus/info'); },
+  getIncusInstances(project)          { return this.get(`/incus/instances${project ? `?project=${encodeURIComponent(project)}` : ''}`); },
+  getIncusInstance(name, project)     { return this.get(`/incus/instances/${encodeURIComponent(name)}${project ? `?project=${encodeURIComponent(project)}` : ''}`); },
+  startIncusInstance(name)            { return this.post(`/incus/instances/${encodeURIComponent(name)}/start`, {}); },
+  stopIncusInstance(name, force)      { return this.post(`/incus/instances/${encodeURIComponent(name)}/stop`, { force: !!force }); },
+  restartIncusInstance(name)          { return this.post(`/incus/instances/${encodeURIComponent(name)}/restart`, {}); },
+  freezeIncusInstance(name)           { return this.post(`/incus/instances/${encodeURIComponent(name)}/freeze`, {}); },
+  unfreezeIncusInstance(name)         { return this.post(`/incus/instances/${encodeURIComponent(name)}/unfreeze`, {}); },
+  deleteIncusInstance(name)           { return this.delete(`/incus/instances/${encodeURIComponent(name)}`); },
+  getIncusSnapshots(name)             { return this.get(`/incus/instances/${encodeURIComponent(name)}/snapshots`); },
+  createIncusSnapshot(name, sn, st)   { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots`, { snapshotName: sn, stateful: !!st }); },
+  restoreIncusSnapshot(name, sn)      { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}/restore`, {}); },
+  deleteIncusSnapshot(name, sn)       { return this.delete(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}`); },
+  getIncusImages()                    { return this.get('/incus/images'); },
+  getIncusProjects()                  { return this.get('/incus/projects'); },
+
   // ─── Secrets Audit ────────────────────────────────────
   getSecretsAudit() { return this.get('/system/secrets-audit'); },
   validateDeploy(data) { return this.post('/system/deploy-validate', data); },

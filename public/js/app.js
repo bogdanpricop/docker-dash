@@ -33,6 +33,7 @@ const App = {
     notifications: () => NotificationsPage,
     stacks:     () => StacksPage,
     swarm:      () => SwarmPage,
+    'incus-instances': () => IncusInstancesPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,

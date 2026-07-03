@@ -187,6 +187,9 @@ app.use('/api/log-forwarders', apiLimiter, require('./routes/log-forwarders'));
 app.use('/api/observability', apiLimiter, require('./routes/observability'));
 app.use('/api/ai', apiLimiter, require('./routes/ai'));
 app.use('/api/swarm', apiLimiter, require('./routes/swarm'));
+// v8.9.0-alpha.2 — Sprint 3 (Incus / LXD-successor). Feature-gated at
+// route level by daemon_type='incus' on the target hosts row.
+app.use('/api/incus', apiLimiter, require('./routes/incus'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

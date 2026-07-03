@@ -2,6 +2,73 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.0-alpha.2] - 2026-07-03 — **PLATFORM alpha**: Sprint 3 (Incus) — write methods + routes + UI
+
+Second alpha of Sprint 3. Ships the write path, backend routes, first-cut frontend UI, and howto docs. **Still alpha** — verified only against unit-test mocks, not a real Incus daemon. Deployment to a Docker-only install is safe; deployment against a real Incus is experimental.
+
+### What ships on top of alpha.1
+
+**IncusClient write methods** (`src/services/incus.js`):
+- `startInstance(name, opts)`, `stopInstance`, `restartInstance`, `freezeInstance`, `unfreezeInstance`
+- `deleteInstance(name, opts)`
+- `createSnapshot(instance, name, opts)`, `restoreSnapshot(instance, name)`, `deleteSnapshot(instance, name)`
+- Underlying `_changeInstanceState(name, action, opts)` — validates the action name, sends `PUT /1.0/instances/{name}/state` with `{action, timeout, force, stateful}`, then polls the returned operation until success or timeout (5 min cap for VMs)
+- `_awaitOperation(opPath, opts)` — polls `/1.0/operations/{id}/wait?timeout=N`, throws with `err.incusOperation` on Failure
+
+**Backend routes** (`src/routes/incus.js`, mounted at `/api/incus/*`):
+- `GET /info` — daemon info + version
+- `GET /instances` (with `?project=`), `GET /instances/:name`
+- `POST /instances/:name/{start,stop,restart,freeze,unfreeze}` — admin-only, audit logged
+- `DELETE /instances/:name` — admin-only, audit logged
+- `GET /instances/:name/snapshots`, `POST /instances/:name/snapshots`
+- `POST /instances/:name/snapshots/:snapshot/restore`
+- `DELETE /instances/:name/snapshots/:snapshot`
+- `GET /images`, `GET /projects`
+
+Every route guards on `daemon_type='incus'` for the requested `hostId` — if the operator points a Docker host at `/api/incus/*` the response is a clear 400 error, not a cryptic Docker socket failure.
+
+**Frontend** (`public/js/pages/incus-instances.js`):
+- Instances page with Name / Status / Type / IPv4 / Memory / CPU columns
+- Row actions: Start, Stop, Restart, Delete (with danger-confirm on Delete)
+- Project selector — dropdown of Incus projects if any exist
+- Info panel showing server version + kernel + API extensions
+- Sidebar entry: **Incus (alpha)** — currently visible on all hosts (see limitation below); clicking it while on a Docker host produces a 400 with actionable message
+- Loaded via `<script>` and registered in `App._pages`
+
+**Howto** (`src/db/howto-content/incus-integration.md` + `.ro.md`):
+- ~200 lines each covering local rootful setup, remote HTTPS setup with client cert, feature matrix (works/doesn't-work), troubleshooting
+
+**Tests** (`src/__tests__/incus-client.test.js`):
+- +7 unit tests on top of the 12 from alpha.1 → **19 total, all passing**
+- Coverage: state action shapes, invalid action rejection, async operation polling, failure surface, snapshot create/restore/delete request shapes
+
+### Known-alpha limitations
+
+- **No WebSocket console yet** — LXC `exec` streaming and VM noVNC/SPICE are planned for beta
+- **No instance-create form** — use `incus launch images:debian/12 my-instance` from CLI
+- **No snapshot management UI** — backend routes work; UI in v8.9.0 proper
+- **Nav item is always visible** — `data-capability="incus"` fails-open when the capability key is missing (correct behavior for the general system, but noisy on Docker-only installs). A future release adds a "any-host-has-daemon-type=incus" gate
+- **No cred encryption at rest** — Incus HTTPS PEM cert + key stored plaintext in `daemon_config`. Adequate for on-host Unix socket; concern for HTTPS setups. Deferred to alpha.3
+- **No cluster-aware routing** — treats each Incus node as an independent daemon. Real Incus clusters need per-node placement. Deferred
+- **Multi-daemon host switching is bumpy** — selecting an Incus host and then clicking Containers or Images produces errors because those routes hit `dockerService.getInfo()`. Users have to stay in the Incus subsystem while on an Incus host. Cross-daemon routing is a separate refactor
+
+### Deployment notes
+
+Docker-only installs: **safe**. Nothing changes for Docker workflows.
+
+Docker + Incus installs: read the howto (`Docker Dash → How-To → Incus Integration (alpha)`) end-to-end. Highlights:
+
+1. Bind-mount `/var/lib/incus/unix.socket` in `docker-compose.yml`
+2. Run the SQL from the howto to register your Incus host
+3. Switch to the Incus host via the host selector
+4. Click **Incus (alpha)** in the sidebar
+
+Backend audit log gains 6 new actions: `incus_instance_start`, `_stop`, `_restart`, `_freeze`, `_unfreeze`, `_delete`, `incus_snapshot_create`, `_restore`, `_delete`.
+
+### Operator action
+
+None for Docker-only installs. Incus operators: read the howto before proceeding.
+
 ## [8.9.0-alpha.1] - 2026-07-03 — **PLATFORM foundation**: Sprint 3 (Incus) architecture — daemon_type migration + Incus HTTP client + tests
 
 **Alpha release**. Ships the FOUNDATION for Incus support but NOT the UI. Explicit alpha tag because the code path has no verified integration test against a real Incus daemon — mocked tests only. Deploying to a Docker-only environment is safe (migration is additive, no existing behavior changes). Deploying to a real Incus environment is EXPERIMENTAL.

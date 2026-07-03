@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.0-alpha.2',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 3 (Incus) — write path + routes + UI',
+      changes: [
+        { type: 'feature', text: 'IncusClient gains write methods (start/stop/restart/freeze/unfreeze/deleteInstance + createSnapshot/restoreSnapshot/deleteSnapshot) with async operation polling (up to 5min for VM ops). 7 new unit tests on top of alpha.1 = 19 total, all passing.' },
+        { type: 'feature', text: 'Backend routes at /api/incus/*: info, instances read + state actions + delete, snapshots read+create+restore+delete, images, projects. Every route guards on daemon_type=incus for the target host; wrong host = clear 400 not cryptic socket error. Audit log every mutating action.' },
+        { type: 'feature', text: 'Frontend page pages/incus-instances.js: instances table with Name/Status/Type/IPv4/Memory/CPU columns; row actions Start/Stop/Restart/Delete (with danger-confirm). Project selector; server info panel. Sidebar entry "Incus (alpha)".' },
+        { type: 'feature', text: 'Howto: incus-integration.md + .ro.md (~200 lines each) covering local rootful setup, remote HTTPS setup with client cert, feature matrix, troubleshooting.' },
+        { type: 'improvement', text: 'STILL ALPHA. Verified only against unit-test mocks, not a real Incus daemon. No WebSocket console yet (LXC exec, VM noVNC/SPICE). No instance-create form (use CLI). No snapshot UI. No cred encryption at rest for HTTPS setups. No cluster-aware routing. Multi-daemon host switching is bumpy when moving between Incus and Docker hosts. Nav item always visible (fail-open capability). Read the CHANGELOG or howto for deployment.' },
+      ],
+    },
+    {
       version: '8.9.0-alpha.1',
       date: '2026-07-03',
       title: 'PLATFORM foundation: Sprint 3 (Incus) architecture',
