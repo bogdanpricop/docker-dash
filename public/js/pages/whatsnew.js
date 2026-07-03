@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.4-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 5 — Kubernetes read-only foundation',
+      changes: [
+        { type: 'feature', text: 'Kubernetes cluster integration. Read-only alpha: KubernetesClient (stdlib https, zero new deps) with bearer-token auth, CA cert verification, 30s timeout, 16MB response cap. Methods: version, listNamespaces, listPods/Deployments/Services (namespace-scoped or cluster-wide), listNodes. Routes /api/kubernetes/* guard on daemon_type=kubernetes.' },
+        { type: 'feature', text: 'Frontend page kubernetes-resources.js with tabs Deployments (default) / Pods / Services / Namespaces / Nodes. Namespace filter dropdown. Info card shows cluster version + Go build + platform. Sidebar "Kubernetes (alpha)" gated via data-fleet-daemon=kubernetes — hidden unless the operator has a k8s host registered.' },
+        { type: 'security', text: 'daemon_config (endpoint + bearer token + CA cert + skipTlsVerify + namespace) encrypted at rest via AES-256-GCM (enc: prefix). Howto documents least-privilege ServiceAccount + view ClusterRoleBinding; post-1.24 manual Secret token pattern; per-distro endpoint table (k3s / k0s / MicroK8s / kubeadm).' },
+        { type: 'improvement', text: 'THIS IS ALPHA — end-to-end not verified against a live k3s. Read-only in this alpha; scale, rollout restart, delete pod, tail logs land in alpha.2. 17 unit tests. Full suite 1608 passing across 95 suites.' },
+        { type: 'improvement', text: 'Positioning (from deep-spec): NOT a Lens/Rancher/Portainer replacement. Anti-features that stay OUT permanently: YAML editor, Helm, Ingress/RBAC/NetworkPolicy editor, kubectl-in-browser, Secret viewer, CRD editor. Docker Dash is for Docker-first operators who happen to run a small k3s at home.' },
+      ],
+    },
+    {
       version: '8.9.3-alpha.1',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 8 — LXD support',

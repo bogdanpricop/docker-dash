@@ -2,6 +2,99 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.4-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 5 — Kubernetes read-only foundation
+
+Alpha release. First cut of the Kubernetes module described in `plans/deep-spec-sprint-5-kubernetes.md`. Read-only in this alpha — Deployments, Pods, Services, Namespaces, Nodes. Write operations (scale, rollout-restart, delete pod, tail logs) land in alpha.2 once the plumbing is verified against a live k3s.
+
+### Positioning (from the deep-spec)
+
+> Kubernetes support in Docker Dash exists so a homelab operator can see what's running on their k3s cluster alongside their Docker hosts — **not to replace Lens, Rancher, or `kubectl`.**
+
+Every scope decision follows from that. Anti-features that stay OUT permanently:
+
+- No YAML editor
+- No Helm install / upgrade
+- No Ingress / RBAC / NetworkPolicy editor
+- No `kubectl`-in-browser terminal (security nightmare in a web app)
+- No Secret / ConfigMap viewer (accidental disclosure risk)
+- No CRD viewer
+
+If a user needs any of these → they should use Lens or `kubectl`. That is the design.
+
+### What ships
+
+**1. `src/services/kubernetes.js` — `KubernetesClient`**
+
+- Thin HTTPS client on stdlib `https` — **zero new npm deps** (no `@kubernetes/client-node`)
+- Bearer-token auth (`Authorization: Bearer <token>`)
+- CA cert verification (or `skipTlsVerify` for testing)
+- 30 s per-request timeout, 16 MB response cap
+- Methods: `version`, `listNamespaces`, `listPods(ns?)`, `listDeployments(ns?)`, `listServices(ns?)`, `listNodes`
+- `daemonType` getter (constant `'kubernetes'`)
+
+**2. `daemon_config` shape (encrypted at rest via `enc:` prefix)**
+
+```
+{
+  endpoint: "https://k3s.example.com:6443",
+  token: "eyJhbG...",
+  caCert: "-----BEGIN CERTIFICATE-----...",
+  skipTlsVerify: false
+}
+```
+
+Same AES-256-GCM helper used for Incus / Proxmox / git credentials.
+
+**3. `src/routes/kubernetes.js` — read-only routes**
+
+- `GET /api/kubernetes/version`
+- `GET /api/kubernetes/namespaces`
+- `GET /api/kubernetes/pods?namespace=<ns>`
+- `GET /api/kubernetes/deployments?namespace=<ns>`
+- `GET /api/kubernetes/services?namespace=<ns>`
+- `GET /api/kubernetes/nodes`
+
+All guarded on `daemon_type='kubernetes'` on the target host row.
+
+**4. `public/js/pages/kubernetes-resources.js`**
+
+- Namespace filter dropdown at the top
+- Tabs: Deployments (default) / Pods / Services / Namespaces / Nodes
+- Info card with cluster version + Go build + platform
+- Sidebar entry **"Kubernetes (alpha)"** gated via `data-fleet-daemon="kubernetes"` — appears only when the operator has registered a k8s host
+
+**5. `docker.js` dispatch upgraded**
+
+`_getNonDockerInfo` now reaches the apiserver's `/version` endpoint for the k8s branch (previously it returned a stub). Populates `dockerVersion` with `gitVersion`, `apiVersion` with `major.minor`, `os` with `platform`.
+
+**6. Howto `kubernetes-integration.md`**
+
+- Least-privilege ServiceAccount + `view` ClusterRoleBinding YAML
+- Manual token Secret (post-1.24 pattern)
+- Per-distro endpoints table (k3s / k0s / MicroK8s / kubeadm / Docker Desktop k8s)
+- Security notes and troubleshooting
+
+**7. Tests: `src/__tests__/kubernetes-client.test.js` — 17 tests**
+
+Constructor validation, daemon_config encryption round-trip, `fromHostRow`, response envelope unwrapping (list responses have `{ items: [...] }`), path composition for namespaced vs cluster-wide list calls, bearer-token header, 4xx surfaced with `status` + parsed body. Full suite: **1608 passing** across 95 suites.
+
+### Alpha caveats
+
+- Read-only. Write ops (scale, rollout restart, delete pod, tail logs) deferred to alpha.2
+- No pod log streaming
+- No exec-into-pod (never coming — see positioning)
+- No YAML view for a resource (deep-spec calls this in-scope for alpha.2)
+- Pagination not implemented — clusters with >500 pods per namespace may exceed the 16 MB response cap
+- End-to-end not verified against a live k3s in this session. The API surface is stable and well-documented; correctness is overwhelmingly likely but the alpha label stays until an operator confirms
+
+### Backward compatibility
+
+- No migration required (`daemon_type='kubernetes'` was already in the CHECK from migration 069)
+- Existing docker/podman/incus/lxd/proxmox rows unchanged
+- No sidebar clutter unless a k8s host is registered
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.3-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 8 — LXD support
 
 Alpha release. Adds Canonical LXD as a first-class daemon type, riding on top of the Incus client shipped in Sprint 3.

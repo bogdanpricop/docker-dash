@@ -715,7 +715,25 @@ class DockerService {
         compose: false, swarm: false, buildkit: false, plugins: false,
         kubernetes: true, deployments: true, pods: true, services_k8s: true,
       };
-      return { ...base, daemonType, daemonName: 'Kubernetes', capabilities };
+      // v8.9.4-alpha.1 — probe the apiserver for live version info.
+      // Best-effort: connection errors return the stub instead of failing.
+      try {
+        const { fromHostRow } = require('./kubernetes');
+        const client = fromHostRow(row);
+        const version = await client.version();
+        return {
+          ...base,
+          hostname: row.name,
+          os: version && (version.platform || null),
+          dockerVersion: (version && (version.gitVersion || version.version)) || null,
+          apiVersion: (version && version.major && version.minor)
+            ? `${version.major}.${version.minor}` : null,
+          daemonType, daemonName: 'Kubernetes', capabilities,
+        };
+      } catch (err) {
+        return { ...base, daemonType, daemonName: 'Kubernetes', capabilities,
+          _connectError: err.message };
+      }
     }
     // Unknown daemon_type — return the base stub so /api/system/info at least
     // doesn't 500.

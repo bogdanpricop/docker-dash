@@ -400,6 +400,14 @@ const Api = {
   getProxmoxStorages()                { return this.get('/proxmox/storages'); },
   getProxmoxBackups()                 { return this.get('/proxmox/backups'); },
 
+  // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
+  getKubernetesVersion()              { return this.get('/kubernetes/version'); },
+  getKubernetesNamespaces()           { return this.get('/kubernetes/namespaces'); },
+  getKubernetesPods(namespace)        { return this.get(`/kubernetes/pods${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getKubernetesDeployments(namespace) { return this.get(`/kubernetes/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getKubernetesServices(namespace)    { return this.get(`/kubernetes/services${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getKubernetesNodes()                { return this.get('/kubernetes/nodes'); },
+
   // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
   listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },
   getMigrationJob(id)                 { return this.get(`/migration-vm/${id}`); },

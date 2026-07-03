@@ -36,6 +36,7 @@ const App = {
     'incus-instances': () => IncusInstancesPage,
     'proxmox-resources': () => ProxmoxResourcesPage,
     'migration-vm': () => MigrationVMPage,
+    'kubernetes-resources': () => KubernetesResourcesPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,

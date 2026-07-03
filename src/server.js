@@ -194,6 +194,11 @@ app.use('/api/incus', apiLimiter, require('./routes/incus'));
 app.use('/api/proxmox', apiLimiter, require('./routes/proxmox'));
 // v8.9.2-alpha.1 — Sprint 7: cross-hypervisor VM migration to Proxmox.
 app.use('/api/migration-vm', apiLimiter, require('./routes/migration-vm'));
+// v8.9.4-alpha.1 — Sprint 5 (Kubernetes). Read-only alpha: namespaces,
+// pods, deployments, services, nodes. Write ops (scale, rollout-
+// restart, delete pod) land in alpha.2. Feature-gated per-host by
+// daemon_type='kubernetes' on the target row.
+app.use('/api/kubernetes', apiLimiter, require('./routes/kubernetes'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
