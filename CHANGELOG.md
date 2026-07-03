@@ -2,6 +2,45 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.8.2] - 2026-07-03 — **PLATFORM**: capability-gated nav + stack deploy from YAML
+
+Two related follow-ups that build on the capability matrix shipped in v8.7.44 and the Stacks tab shipped in v8.8.0.
+
+### 1. Capability-based sidebar nav gating
+
+Nav items can now declare `data-capability="X"`. On boot and on every `hostChanged` event, `App._refreshCapabilities()` fetches the current host's `/api/system/info` capability matrix and hides any nav item whose declared capability is `false`.
+
+Ships with one gated item: the **Swarm** nav entry now hides automatically on Podman hosts (Podman doesn't implement Swarm mode; the entry was harmless but confusing there).
+
+Fail-open: missing keys in the matrix default to visible. Better UX than hiding something the user might genuinely need if the server hasn't been upgraded yet.
+
+Ready for Sprint 3 (Incus) and beyond — future daemon types can gate any nav item without extra JS.
+
+### 2. Docker Swarm — deploy a compose YAML as a stack
+
+Fills the Sprint 2 gap noted in v8.8.0. `POST /api/swarm/stacks/:name` accepts a compose YAML string, parses it via the existing `yaml` package, and translates each service into a Swarm service spec, then calls `docker.createService()` for each. Every service gets labeled with `com.docker.stack.namespace=<stack>` so the existing GET/DELETE stack endpoints work symmetrically.
+
+**Supported compose fields per service**:
+- `image` (required)
+- `command` (string or array)
+- `environment` (object or `KEY=VAL` array)
+- `ports` (list of `published:target[/proto]` strings or object form)
+- `labels`
+- `deploy.replicas`, `deploy.mode` (`replicated` or `global`)
+- `deploy.restart_policy.{condition,delay,max_attempts}`
+- `deploy.placement.constraints`
+
+**Silently skipped** (with warning surfaced in the response and Toast): `secrets`, `configs`, `healthcheck`, `depends_on`, per-service `networks`, `volumes`, `extends`, `deploy.resources`, `deploy.update_config`. Deferred to a v8.8.x follow-up. This is a first-cut MVP — enough to redeploy a small app but not a full replacement for the CLI's `docker stack deploy`.
+
+**Idempotent-ish**: if a service with the composed name already exists it's removed and recreated (matches CLI first-run behavior). A future release will use in-place `service.update()` instead to preserve running state.
+
+**Frontend**: new **Deploy Stack from YAML** button on the Stacks tab opens a modal with a name field + textarea for the YAML. Result panel shows per-service outcome (`OK` / `FAIL` + error) and the list of skipped features.
+
+**Bounds**: 512 KB max YAML payload; 100 services max per stack; stack name validated (`/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/`).
+
+### Operator action
+None. Backward-compatible. Existing stacks deployed via CLI keep working.
+
 ## [8.8.1] - 2026-07-03 — **UX**: OCI runtime alternatives surfaced on the Engine card (Kata / gVisor / crun)
 
 ### What

@@ -239,6 +239,188 @@ router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
   res.json(Array.from(byStack.values()).sort((a, b) => a.name.localeCompare(b.name)));
 }));
 
+// POST /api/swarm/stacks/:name — deploy a compose YAML as a Swarm stack.
+// Analog of the CLI `docker stack deploy -c file.yml <name>`.
+//
+// This is intentionally a MINIMAL first implementation covering the most
+// common compose fields; anything not listed here is ignored on purpose
+// with a message in the response so the operator knows what was skipped:
+//
+//   Supported (per service):
+//     - image (required)
+//     - command (string or array)
+//     - environment (object or "KEY=VAL" array)
+//     - ports (list of published:target[/proto] strings)
+//     - labels (object)
+//     - deploy.replicas (default 1)
+//     - deploy.mode: replicated | global
+//     - deploy.restart_policy.{condition,delay,max_attempts}
+//     - deploy.placement.constraints (list)
+//
+//   Skipped (with warning): secrets, configs, extends, healthcheck,
+//   deploy.resources, deploy.update_config, volumes with anonymous mounts,
+//   depends_on, networks (services join default), networks: top-level
+//   creation, secrets/configs top-level creation.
+//
+// Existing services in the stack are updated in-place (dockerode create
+// vs update — future improvement). If a service with the composed name
+// already exists it's removed and recreated, which is destructive but
+// matches CLI behavior on first `docker stack deploy` runs when a swarm
+// name collision exists.
+router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const stackName = req.params.name;
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(stackName)) {
+    return res.status(400).json({ error: 'Invalid stack name (alphanumeric, dot, underscore, dash; up to 63 chars)' });
+  }
+  const { compose } = req.body || {};
+  if (!compose || typeof compose !== 'string') {
+    return res.status(400).json({ error: 'compose (YAML string) is required' });
+  }
+  if (compose.length > 512 * 1024) {
+    return res.status(413).json({ error: 'compose YAML exceeds 512 KB — split or simplify' });
+  }
+  const YAML = require('yaml');
+  let doc;
+  try { doc = YAML.parse(compose); }
+  catch (e) { return res.status(400).json({ error: `YAML parse error: ${e.message}` }); }
+  if (!doc || typeof doc.services !== 'object' || doc.services === null) {
+    return res.status(400).json({ error: 'compose must have a top-level "services:" map' });
+  }
+  const services = doc.services;
+  const svcNames = Object.keys(services);
+  if (svcNames.length === 0) return res.status(400).json({ error: 'no services declared' });
+  if (svcNames.length > 100) {
+    return res.status(413).json({ error: 'more than 100 services in a single stack — split the compose file' });
+  }
+
+  const skipped = new Set();
+  const results = [];
+  const docker = dockerService.getDocker(req.hostId);
+
+  // Helpers
+  const envToArray = (env) => {
+    if (!env) return [];
+    if (Array.isArray(env)) return env.map(String);
+    if (typeof env === 'object') {
+      return Object.entries(env).map(([k, v]) => `${k}=${v == null ? '' : v}`);
+    }
+    return [];
+  };
+  const parsePorts = (ports) => {
+    if (!Array.isArray(ports)) return [];
+    const out = [];
+    for (const p of ports) {
+      let m;
+      if (typeof p === 'string') {
+        // "8080:80" or "8080:80/tcp" or "8080:80/udp"
+        m = /^(\d+):(\d+)(?:\/(tcp|udp))?$/.exec(p);
+      } else if (p && typeof p === 'object' && p.target && p.published) {
+        m = [null, String(p.published), String(p.target), p.protocol || 'tcp'];
+      }
+      if (m) {
+        out.push({
+          Protocol: (m[3] || 'tcp'),
+          PublishedPort: parseInt(m[1], 10),
+          TargetPort: parseInt(m[2], 10),
+          PublishMode: 'ingress',
+        });
+      } else {
+        skipped.add('port-form-unsupported');
+      }
+    }
+    return out;
+  };
+
+  for (const svcName of svcNames) {
+    const svc = services[svcName];
+    if (!svc || typeof svc !== 'object') {
+      results.push({ service: svcName, ok: false, error: 'service entry must be a map' });
+      continue;
+    }
+    if (!svc.image) {
+      results.push({ service: svcName, ok: false, error: 'image is required' });
+      continue;
+    }
+    if (svc.secrets) skipped.add('secrets');
+    if (svc.configs) skipped.add('configs');
+    if (svc.healthcheck) skipped.add('healthcheck');
+    if (svc.depends_on) skipped.add('depends_on');
+    if (svc.networks) skipped.add('networks-per-service');
+    if (svc.volumes) skipped.add('volumes');
+    if (svc.extends) skipped.add('extends');
+    const deploy = (svc.deploy && typeof svc.deploy === 'object') ? svc.deploy : {};
+    if (deploy.resources) skipped.add('deploy.resources');
+    if (deploy.update_config) skipped.add('deploy.update_config');
+
+    const mode = deploy.mode === 'global'
+      ? { Global: {} }
+      : { Replicated: { Replicas: parseInt(deploy.replicas, 10) || 1 } };
+    const restartPolicy = (deploy.restart_policy && typeof deploy.restart_policy === 'object') ? {
+      Condition: deploy.restart_policy.condition || 'any',
+      Delay: (parseInt(deploy.restart_policy.delay, 10) || 5) * 1e9,
+      MaxAttempts: parseInt(deploy.restart_policy.max_attempts, 10) || 0,
+    } : { Condition: 'any', Delay: 5e9, MaxAttempts: 0 };
+    const constraints = (deploy.placement && Array.isArray(deploy.placement.constraints))
+      ? deploy.placement.constraints.map(String) : [];
+
+    const fullName = `${stackName}_${svcName}`;
+    const spec = {
+      Name: fullName,
+      Labels: {
+        ...(svc.labels && typeof svc.labels === 'object' ? svc.labels : {}),
+        'com.docker.stack.namespace': stackName,
+      },
+      TaskTemplate: {
+        ContainerSpec: {
+          Image: String(svc.image),
+          Command: Array.isArray(svc.command) ? svc.command.map(String)
+                 : (typeof svc.command === 'string' ? svc.command.split(' ') : undefined),
+          Env: envToArray(svc.environment),
+          Labels: {
+            'com.docker.stack.namespace': stackName,
+          },
+        },
+        RestartPolicy: restartPolicy,
+        Placement: constraints.length ? { Constraints: constraints } : undefined,
+      },
+      Mode: mode,
+      EndpointSpec: (() => {
+        const ports = parsePorts(svc.ports);
+        return ports.length ? { Ports: ports } : undefined;
+      })(),
+    };
+
+    try {
+      // If a service with the composed name already exists, remove it
+      // first. Matches CLI first-run behavior; a follow-up release could
+      // instead do an in-place update via getService().update().
+      try {
+        const existing = docker.getService(fullName);
+        await existing.inspect();
+        await existing.remove();
+      } catch { /* not found — normal on first deploy */ }
+      const created = await docker.createService(spec);
+      results.push({ service: svcName, ok: true, id: created.id, name: fullName });
+    } catch (err) {
+      results.push({ service: svcName, ok: false, error: err.message });
+    }
+  }
+
+  const okCount = results.filter(r => r.ok).length;
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'swarm_stack_deploy', targetType: 'swarm_stack', targetId: stackName,
+    details: { hostId: req.hostId, services: results.length, succeeded: okCount, skipped: [...skipped] },
+    ip: getClientIp(req),
+  });
+  res.status(okCount === results.length ? 200 : 207).json({
+    ok: okCount === results.length,
+    stack: stackName,
+    services: results,
+    skippedFeatures: [...skipped],
+  });
+}));
+
 // DELETE a whole stack — removes every service labeled with the
 // stack namespace. Volumes and networks persist (matches CLI
 // `docker stack rm` semantics; operator does volume cleanup separately).

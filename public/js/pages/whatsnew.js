@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.8.2',
+      date: '2026-07-03',
+      title: 'PLATFORM: capability-gated nav + stack deploy from compose YAML',
+      changes: [
+        { type: 'feature', text: 'Nav items can now declare data-capability="X". On boot and every hostChanged event, App._refreshCapabilities fetches the current host /api/system/info matrix and hides items whose capability is false. Ships with the Swarm nav item gated — hides automatically on Podman hosts. Fail-open on missing keys.' },
+        { type: 'feature', text: 'Swarm > Stacks tab gets a Deploy Stack from YAML button. Modal takes a stack name + compose YAML textarea. Backend POST /api/swarm/stacks/:name parses the YAML and translates each service into a swarm service spec (image, command, environment, ports, labels, deploy.replicas/mode/restart_policy/placement.constraints). Result panel shows per-service OK/FAIL and skipped features. First-cut MVP; secrets/configs/healthcheck/volumes/depends_on/extends still skipped with warning. Idempotent-ish (existing service with the composed name is removed and recreated).' },
+        { type: 'improvement', text: 'Bounds: 512 KB YAML max, 100 services max per stack, stack name regex-validated.' },
+      ],
+    },
+    {
       version: '8.8.1',
       date: '2026-07-03',
       title: 'UX: OCI runtime alternatives surfaced (Kata / gVisor / crun)',

@@ -520,6 +520,14 @@ const App = {
     // Apply sidebar layout for saved UI mode (router sets _currentPageName first)
     this._renderSidebarForMode(this._uiMode);
 
+    // v8.8.2 — capability-based nav gating. Fetch the current host's
+    // capabilities (from v8.7.44's /api/system/info matrix) and hide
+    // any nav-item[data-capability="X"] where capabilities.X === false.
+    // Runs at boot and on hostChanged. Also called from Api.setHost
+    // indirectly through the hostChanged event.
+    this._refreshCapabilities();
+    window.addEventListener('hostChanged', () => this._refreshCapabilities());
+
     // v8.7.43 — periodic check for a server-side version upgrade.
     // Docker Dash is a long-lived SPA: users often keep a browser tab
     // open across a deploy. Hash-based routing (#/system, #/dashboard)
@@ -1387,6 +1395,31 @@ const App = {
     }
     this._currentPage = null;
     this._showLogin();
+  },
+
+  // ─── Capability Watcher (v8.8.2) ─────────────────
+  // Fetch the current host's capability matrix (Sprint 1's
+  // daemon-type feature-gating) and toggle sidebar visibility of
+  // any nav-item marked with data-capability="X". Podman hosts get
+  // the Swarm nav hidden (capabilities.swarm=false); future daemon
+  // types (Incus, Proxmox, k8s) will use the same mechanism.
+
+  async _refreshCapabilities() {
+    let info;
+    try {
+      info = await Api.getSystemInfo();
+    } catch { return; }
+    const caps = info && info.capabilities;
+    if (!caps || typeof caps !== 'object') return;
+    this._capabilities = caps;
+    document.querySelectorAll('[data-capability]').forEach(el => {
+      const key = el.getAttribute('data-capability');
+      if (!key) return;
+      // Missing key in matrix = show (fail-open — better UX than
+      // hiding something the user might genuinely need).
+      const supported = caps[key] !== false;
+      el.style.display = supported ? '' : 'none';
+    });
   },
 
   // ─── Version Watcher (v8.7.43) ─────────────────

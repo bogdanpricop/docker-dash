@@ -370,6 +370,8 @@ const Api = {
   // services grouped by the com.docker.stack.namespace label.
   getSwarmStacks()                    { return this.get('/swarm/stacks'); },
   removeSwarmStack(name)              { return this.delete(`/swarm/stacks/${encodeURIComponent(name)}`); },
+  // v8.8.3 — deploy a stack from a compose YAML string.
+  deploySwarmStack(name, compose)     { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, { compose }); },
 
   // ─── Secrets Audit ────────────────────────────────────
   getSecretsAudit() { return this.get('/system/secrets-audit'); },

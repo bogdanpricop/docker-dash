@@ -61,8 +61,15 @@ const SwarmPage = {
 
   async _renderStacks(el) {
     const stacks = await Api.getSwarmStacks();
+    const deployBtn = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn btn-sm btn-primary" id="stack-deploy-btn">
+          <i class="fas fa-rocket"></i> Deploy Stack from YAML
+        </button>
+      </div>`;
     if (!stacks.length) {
-      el.innerHTML = `<div class="empty-msg"><i class="fas fa-layer-group" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px"></i>No stacks deployed. Use <code>docker stack deploy</code> from the host shell to deploy a compose YAML.</div>`;
+      el.innerHTML = deployBtn + `<div class="empty-msg"><i class="fas fa-layer-group" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px"></i>No stacks deployed. Click <em>Deploy Stack from YAML</em> above or use <code>docker stack deploy</code> from the host shell.</div>`;
+      el.querySelector('#stack-deploy-btn').addEventListener('click', () => this._showDeployStackModal());
       return;
     }
     const rows = stacks.map(s => {
@@ -91,7 +98,7 @@ const SwarmPage = {
         </tr>
       `;
     }).join('');
-    el.innerHTML = `
+    el.innerHTML = deployBtn + `
       <div class="card">
         <div class="card-body" style="padding:0">
           <table class="data-table">
@@ -109,6 +116,7 @@ const SwarmPage = {
         </div>
       </div>
     `;
+    el.querySelector('#stack-deploy-btn').addEventListener('click', () => this._showDeployStackModal());
     el.querySelectorAll('[data-stack]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = btn.dataset.stack;
@@ -123,6 +131,82 @@ const SwarmPage = {
           await this._renderTab();
         } catch (err) { Toast.error(err.message); }
       });
+    });
+  },
+
+  // v8.8.3 — Deploy a compose YAML as a Swarm stack.
+  // Minimal MVP: supports the most common compose fields (image, command,
+  // environment, ports, deploy.replicas / mode / restart_policy /
+  // placement.constraints, labels). Anything else is silently skipped
+  // server-side and reported back in skippedFeatures so the operator
+  // knows what didn't apply.
+  _showDeployStackModal() {
+    const placeholderYaml = `services:\n  web:\n    image: nginx:latest\n    ports:\n      - "8080:80"\n    deploy:\n      replicas: 2\n\n  redis:\n    image: redis:7\n    deploy:\n      replicas: 1`;
+    const html = `
+      <div class="modal-header">
+        <h3><i class="fas fa-rocket" style="margin-right:8px;color:var(--accent)"></i>Deploy Stack from Compose YAML</h3>
+        <button class="modal-close-btn" id="stack-deploy-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Stack name</label>
+          <input id="stack-name" class="form-control" placeholder="e.g. my-app" maxlength="63">
+          <p class="text-muted text-sm" style="margin-top:4px">Alphanumeric, dot, underscore, dash. Up to 63 chars. Every service gets deployed as <code>&lt;stack&gt;_&lt;service&gt;</code>.</p>
+        </div>
+        <div class="form-group">
+          <label>Compose YAML</label>
+          <textarea id="stack-yaml" class="form-control" rows="16" spellcheck="false" style="font-family:var(--mono);font-size:12px;line-height:1.5" placeholder="${Utils.escapeHtml(placeholderYaml)}"></textarea>
+          <p class="text-muted text-sm" style="margin-top:4px">Supported: image, command, environment, ports, labels, deploy.replicas, deploy.mode, deploy.restart_policy, deploy.placement.constraints. <strong>Skipped</strong> (with warning after deploy): secrets, configs, healthcheck, depends_on, per-service networks, volumes, extends, deploy.resources, deploy.update_config.</p>
+        </div>
+        <div id="stack-deploy-result" style="display:none;background:var(--surface2);border-radius:var(--radius-sm);padding:12px;font-family:var(--mono);font-size:12px;max-height:200px;overflow:auto;white-space:pre-wrap"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="stack-deploy-cancel">Cancel</button>
+        <button class="btn btn-primary" id="stack-deploy-go"><i class="fas fa-rocket"></i> Deploy</button>
+      </div>
+    `;
+    Modal.open(html, { width: '720px' });
+    const close = () => Modal.close();
+    Modal._content.querySelector('#stack-deploy-x').addEventListener('click', close);
+    Modal._content.querySelector('#stack-deploy-cancel').addEventListener('click', close);
+    Modal._content.querySelector('#stack-deploy-go').addEventListener('click', async () => {
+      const nameEl = Modal._content.querySelector('#stack-name');
+      const yamlEl = Modal._content.querySelector('#stack-yaml');
+      const resultEl = Modal._content.querySelector('#stack-deploy-result');
+      const goBtn = Modal._content.querySelector('#stack-deploy-go');
+      const name = (nameEl.value || '').trim();
+      const yaml = (yamlEl.value || '').trim();
+      if (!name) { Toast.warning('Stack name required'); nameEl.focus(); return; }
+      if (!yaml) { Toast.warning('Compose YAML required'); yamlEl.focus(); return; }
+      goBtn.disabled = true;
+      resultEl.style.display = 'block';
+      resultEl.textContent = 'Deploying...';
+      try {
+        const r = await Api.deploySwarmStack(name, yaml);
+        const lines = [];
+        lines.push(r.ok ? `Deploy OK — stack "${r.stack}"` : `Deploy partial — stack "${r.stack}"`);
+        lines.push('');
+        for (const s of (r.services || [])) {
+          lines.push(s.ok ? `  [OK]   ${s.service} → ${s.name}` : `  [FAIL] ${s.service}: ${s.error}`);
+        }
+        if (r.skippedFeatures && r.skippedFeatures.length) {
+          lines.push('');
+          lines.push('Skipped features (server ignored them):');
+          for (const f of r.skippedFeatures) lines.push(`  - ${f}`);
+        }
+        resultEl.textContent = lines.join('\n');
+        if (r.ok) {
+          Toast.success(`Stack "${name}" deployed`);
+          setTimeout(() => { close(); this._renderTab(); }, 1500);
+        } else {
+          Toast.warning(`Deploy partial — see result panel`);
+        }
+      } catch (err) {
+        resultEl.textContent = `ERROR: ${err.message}`;
+        Toast.error(err.message);
+      } finally {
+        goBtn.disabled = false;
+      }
     });
   },
 
