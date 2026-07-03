@@ -285,16 +285,43 @@ class IncusClient {
   }
 }
 
-// Helper: build an IncusClient from a docker_hosts row (JSON string in
-// daemon_config). Kept in this module so route/service code doesn't
-// need to know the config shape.
+// v8.9.0-alpha.3 — daemon_config may be either plain JSON (legacy /
+// alpha.1 / alpha.2) OR an encrypted blob prefixed with `enc:`. The
+// encrypted form uses the existing AES-256-GCM helper in
+// src/utils/crypto.js, keyed by ENCRYPTION_KEY, matching the pattern
+// used for git credentials and API keys. Backward-compatible:
+// existing rows with plaintext JSON keep working; new registrations
+// via encryptDaemonConfig() land encrypted.
+
+function decryptDaemonConfig(raw) {
+  if (!raw) return {};
+  if (typeof raw !== 'string') return {};
+  if (raw.startsWith('enc:')) {
+    const { decrypt } = require('../utils/crypto');
+    let plain;
+    try { plain = decrypt(raw.slice(4)); }
+    catch (e) { throw new Error(`daemon_config decrypt failed (ENCRYPTION_KEY changed?): ${e.message}`); }
+    return JSON.parse(plain);
+  }
+  return JSON.parse(raw);
+}
+
+/** Encrypt a config object for storage in daemon_config. */
+function encryptDaemonConfig(cfg) {
+  const { encrypt } = require('../utils/crypto');
+  const plain = JSON.stringify(cfg || {});
+  return 'enc:' + encrypt(plain);
+}
+
+// Helper: build an IncusClient from a docker_hosts row. Handles both
+// plain-JSON legacy config and the new encrypted form transparently.
 function fromHostRow(row) {
   if (!row) throw new Error('fromHostRow: row required');
   if (row.daemon_type !== 'incus') {
     throw new Error(`fromHostRow: row is not an Incus host (daemon_type=${row.daemon_type})`);
   }
   let cfg;
-  try { cfg = row.daemon_config ? JSON.parse(row.daemon_config) : {}; }
+  try { cfg = decryptDaemonConfig(row.daemon_config); }
   catch (e) { throw new Error(`fromHostRow: invalid daemon_config JSON: ${e.message}`); }
   if (!cfg.transport) cfg.transport = 'unix';
   if (cfg.transport === 'unix' && !cfg.socket) cfg.socket = '/var/lib/incus/unix.socket';
@@ -304,6 +331,8 @@ function fromHostRow(row) {
 module.exports = {
   IncusClient,
   fromHostRow,
+  decryptDaemonConfig,
+  encryptDaemonConfig,
   // Constants exposed for tests
   _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
 };

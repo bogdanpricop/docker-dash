@@ -76,6 +76,48 @@ describe('IncusClient (v8.9.0-alpha)', () => {
     });
   });
 
+  describe('daemon_config encryption (v8.9.0-alpha.3)', () => {
+    const { encryptDaemonConfig, decryptDaemonConfig, fromHostRow: _ } = require('../services/incus');
+
+    it('round-trips a plain config through encryptDaemonConfig / decryptDaemonConfig', () => {
+      const cfg = {
+        transport: 'https',
+        endpoint: 'https://incus.example.com:8443',
+        cert: '-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----',
+        key:  '-----BEGIN PRIVATE KEY-----\nMII...\n-----END PRIVATE KEY-----',
+      };
+      const enc = encryptDaemonConfig(cfg);
+      expect(enc).toMatch(/^enc:/);
+      expect(enc).not.toContain('BEGIN CERTIFICATE');   // ciphertext must not contain the secret
+      expect(enc).not.toContain('incus.example.com');
+      const back = decryptDaemonConfig(enc);
+      expect(back).toEqual(cfg);
+    });
+
+    it('decryptDaemonConfig passes through plain JSON (backward compat with alpha.1/2)', () => {
+      const cfg = { transport: 'unix', socket: '/var/lib/incus/unix.socket' };
+      const plain = JSON.stringify(cfg);
+      expect(decryptDaemonConfig(plain)).toEqual(cfg);
+    });
+
+    it('fromHostRow accepts encrypted daemon_config', () => {
+      const cfg = { transport: 'unix', socket: '/tmp/incus.sock' };
+      const enc = encryptDaemonConfig(cfg);
+      const { fromHostRow } = require('../services/incus');
+      const client = fromHostRow({ daemon_type: 'incus', daemon_config: enc });
+      expect(client._config.socket).toBe('/tmp/incus.sock');
+    });
+
+    it('surfaces a clear error when ENCRYPTION_KEY has rotated (decrypt fails)', () => {
+      const { fromHostRow } = require('../services/incus');
+      // Manually craft a bogus enc: blob that decrypt() won't recognize.
+      // Format: enc:<iv-hex>:<tag-hex>:<ciphertext-hex>
+      const badEnc = 'enc:00000000000000000000000000000000:00000000000000000000000000000000:deadbeef';
+      expect(() => fromHostRow({ daemon_type: 'incus', daemon_config: badEnc }))
+        .toThrow(/decrypt failed|invalid daemon_config/);
+    });
+  });
+
   describe('fromHostRow', () => {
     it('rejects a non-Incus row', () => {
       expect(() => fromHostRow({ daemon_type: 'docker' })).toThrow(/not an Incus host/);

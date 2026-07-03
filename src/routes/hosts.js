@@ -37,6 +37,10 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
       healthy: status.healthy,
       lastCheck: status.lastCheck,
       // Don't expose secrets
+      // v8.9.0-alpha.3 — expose daemon_type so the frontend can render
+      // per-daemon badges on host cards and gate nav items based on
+      // "any-host-has-daemon-type=X".
+      daemonType: h.daemon_type || 'docker',
       hasTls: !!(h.tls_config && h.tls_config !== '{}' && h.tls_config !== 'null'),
       hasSsh: !!(h.ssh_config && h.ssh_config !== '{}' && h.ssh_config !== 'null'),
       // Include SSH host for display in cards (no credentials)

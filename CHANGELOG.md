@@ -2,6 +2,78 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.0-alpha.3] - 2026-07-03 — **PLATFORM alpha**: Sprint 3 (Incus) consolidation — multi-daemon dispatch, encryption, fleet-daemon nav
+
+Third alpha of Sprint 3. Not new features — this release closes three known-alpha gaps flagged in alpha.2.
+
+### 1. Multi-daemon `getInfo` dispatch — fixes "switch to Incus host and everything errors"
+
+Before: selecting an Incus host and clicking Containers / Images / any Docker page triggered a chain of 500s because `dockerService.getInfo(hostId)` tried to open a Docker socket that isn't there.
+
+After: `dockerService.getInfo()` now looks up the target host's `daemon_type` and dispatches:
+- `docker` / `podman` → existing Docker path
+- `incus` → `_getNonDockerInfo(hostId, 'incus')` — reads live info via `IncusClient`, fills `hostname`, `os`, `kernelVersion`, `dockerVersion` (= Incus server version), `apiVersion` (Incus API version); Docker-specific fields nulled. Capability matrix has `incus: true`, `swarm: false`, etc.
+- `proxmox` / `kubernetes` → stub info (Sprint 4 / 5 will fill this in)
+- Unknown daemon_type → safe stub so `/api/system/info` never 500s
+
+Frontend Info card still renders — with the daemon-specific values.
+
+### 2. `daemon_config` encryption at rest
+
+`fromHostRow(row)` and companion helpers now support both:
+- **Plaintext JSON** (legacy — alpha.1/2 rows keep working)
+- **Encrypted `enc:iv:tag:ciphertext`** — AES-256-GCM via the existing `src/utils/crypto.js` helper (same pattern as git credentials and API keys)
+
+New helpers exported from `src/services/incus.js`:
+- `encryptDaemonConfig(cfgObj)` → `enc:iv:tag:hex` string
+- `decryptDaemonConfig(raw)` → JS object; handles both formats transparently
+
+**Migration path**: existing plaintext rows keep working forever. New rows registered via a future admin UI (Sprint 3 beta) will be encrypted. To migrate an existing row now:
+```bash
+docker exec docker-dash node -e '
+const { getDb } = require("/app/src/db");
+const { encryptDaemonConfig } = require("/app/src/services/incus");
+const db = getDb();
+const row = db.prepare("SELECT id, daemon_config FROM docker_hosts WHERE id = ?").get(<HOST_ID>);
+if (row.daemon_config.startsWith("enc:")) { console.log("already encrypted"); process.exit(0); }
+const encrypted = encryptDaemonConfig(JSON.parse(row.daemon_config));
+db.prepare("UPDATE docker_hosts SET daemon_config = ? WHERE id = ?").run(encrypted, row.id);
+console.log("row " + row.id + " encrypted");
+'
+```
+
+**Error surface**: if `ENCRYPTION_KEY` rotates without re-encrypting, `fromHostRow` throws a clear `daemon_config decrypt failed (ENCRYPTION_KEY changed?)` instead of a cryptic hex error.
+
+### 3. Fleet-level nav gating — `data-fleet-daemon="X"`
+
+New attribute alongside `data-capability`. Where `data-capability` gates on the CURRENT host's daemon type, `data-fleet-daemon="X"` gates on "at least one host in the fleet has this daemon_type".
+
+Applied to the **Incus (alpha)** nav item: hidden entirely for Docker-only installs (no more noise for the vast majority of users), visible the moment the operator registers an Incus host. Regardless of which host is currently selected.
+
+Backend: `/api/hosts` now includes `daemonType` in each host row so the frontend can compute the presence set. `App._refreshCapabilities()` builds a `Set` of daemon types found in `/api/hosts` and toggles `[data-fleet-daemon]` elements.
+
+### Tests
+
+4 new unit tests in `incus-client.test.js`:
+- Round-trip encrypt/decrypt preserves the config
+- Plaintext JSON is passed through (backward-compat)
+- `fromHostRow` accepts encrypted `daemon_config`
+- Rotated `ENCRYPTION_KEY` surfaces a clear error
+
+Total: 23 Incus tests, all passing. Suite: 1553 passing.
+
+### Still known-alpha (unchanged)
+
+- No WebSocket console yet
+- No instance-create form (use `incus launch` CLI)
+- No snapshot UI (backend works)
+- Cluster-aware routing deferred
+- No admin UI to register an Incus host (still SQL — see howto)
+
+### Operator action
+
+None for Docker-only installs. Incus operators: nothing forced. Optional — re-encrypt existing plaintext `daemon_config` via the snippet above to get encryption-at-rest.
+
 ## [8.9.0-alpha.2] - 2026-07-03 — **PLATFORM alpha**: Sprint 3 (Incus) — write methods + routes + UI
 
 Second alpha of Sprint 3. Ships the write path, backend routes, first-cut frontend UI, and howto docs. **Still alpha** — verified only against unit-test mocks, not a real Incus daemon. Deployment to a Docker-only install is safe; deployment against a real Incus is experimental.

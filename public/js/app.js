@@ -1411,16 +1411,35 @@ const App = {
       info = await Api.getSystemInfo();
     } catch { return; }
     const caps = info && info.capabilities;
-    if (!caps || typeof caps !== 'object') return;
-    this._capabilities = caps;
-    document.querySelectorAll('[data-capability]').forEach(el => {
-      const key = el.getAttribute('data-capability');
-      if (!key) return;
-      // Missing key in matrix = show (fail-open — better UX than
-      // hiding something the user might genuinely need).
-      const supported = caps[key] !== false;
-      el.style.display = supported ? '' : 'none';
-    });
+    if (caps && typeof caps === 'object') {
+      this._capabilities = caps;
+      document.querySelectorAll('[data-capability]').forEach(el => {
+        const key = el.getAttribute('data-capability');
+        if (!key) return;
+        // Missing key in matrix = show (fail-open — better UX than
+        // hiding something the user might genuinely need).
+        const supported = caps[key] !== false;
+        el.style.display = supported ? '' : 'none';
+      });
+    }
+
+    // v8.9.0-alpha.3 — fleet-level daemon gating. Some nav items (e.g.
+    // "Incus (alpha)") should be visible only when the operator has at
+    // least one host of that daemon_type registered — regardless of
+    // which host is CURRENTLY selected. Uses data-fleet-daemon="X" and
+    // reads /api/hosts once per refresh.
+    try {
+      const hosts = await Api.getHosts();
+      const daemonTypesPresent = new Set(
+        (hosts || []).map(h => (h.daemonType || 'docker'))
+      );
+      this._fleetDaemonTypes = daemonTypesPresent;
+      document.querySelectorAll('[data-fleet-daemon]').forEach(el => {
+        const key = el.getAttribute('data-fleet-daemon');
+        if (!key) return;
+        el.style.display = daemonTypesPresent.has(key) ? '' : 'none';
+      });
+    } catch { /* /api/hosts is best-effort — leave fleet-daemon items visible */ }
   },
 
   // ─── Version Watcher (v8.7.43) ─────────────────

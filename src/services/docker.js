@@ -525,6 +525,22 @@ class DockerService {
   // ─── System ───────────────────────────────────────────────
 
   async getInfo(hostId = 0) {
+    // v8.9.0-alpha.3 — multi-daemon dispatch. Look up the host row to
+    // determine daemon_type; if non-Docker, delegate to the appropriate
+    // service instead of trying to open a Docker socket that isn't
+    // there. This fixes the "switch to Incus host and everything
+    // errors" bug from alpha.2. Returns a shape compatible with the
+    // Docker getInfo response so the frontend Info page can handle
+    // any daemon type through the same code path.
+    if (hostId) {
+      try {
+        const { getDb } = require('../db');
+        const row = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
+        if (row && row.daemon_type && row.daemon_type !== 'docker' && row.daemon_type !== 'podman') {
+          return await this._getNonDockerInfo(hostId, row.daemon_type);
+        }
+      } catch { /* DB not ready during tests or migration in-flight — fall through */ }
+    }
     const docker = this.getDocker(hostId);
     const [info, version] = await Promise.all([docker.info(), docker.version()]);
     // v8.7.44 — Podman certification. Podman exposes a Docker-compatible
@@ -612,6 +628,75 @@ class DockerService {
     }
 
     return result;
+  }
+
+  // v8.9.0-alpha.3 — dispatch stub for non-Docker daemon types. Returns
+  // a shape roughly compatible with Docker's getInfo, filled with
+  // daemon-appropriate values where possible. Docker-specific fields
+  // that don't apply are null. The `capabilities` matrix tells the
+  // frontend which Docker features to hide for this daemon type.
+  async _getNonDockerInfo(hostId, daemonType) {
+    const os = require('os');
+    const { getDb } = require('../db');
+    const row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+    const base = {
+      hostname: (row && row.name) || 'unknown',
+      os: null, kernelVersion: null, dockerVersion: null, apiVersion: null,
+      dockerRootDir: null,
+      containers: 0, containersRunning: 0, containersPaused: 0, containersStopped: 0,
+      images: 0, memTotal: 0, cpus: 0, storageDriver: null,
+      serverTime: new Date().toISOString(), uptime: os.uptime(), hostId,
+      defaultRuntime: null, runtimes: [], alternativeRuntimes: [],
+    };
+    // Per-daemon: try to reach the actual service, fall back gracefully.
+    if (daemonType === 'incus') {
+      const capabilities = {
+        containers: true, images: true, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        // v8.9.0 incus-specific caps that future frontend gates can use
+        incus: true, instances: true, snapshots: true, projects: true,
+      };
+      try {
+        const { fromHostRow } = require('./incus');
+        const client = fromHostRow(row);
+        const info = await client.info();
+        const env = (info && info.metadata && info.metadata.environment) || {};
+        return {
+          ...base,
+          hostname: env.server_name || row.name,
+          os: env.os_name ? `${env.os_name} (${env.architectures ? env.architectures[0] : 'x86_64'})` : null,
+          kernelVersion: env.kernel_version,
+          dockerVersion: env.server_version,
+          apiVersion: (info && info.metadata && info.metadata.api_version) || null,
+          daemonType, daemonName: 'Incus', capabilities,
+        };
+      } catch (err) {
+        return { ...base, daemonType, daemonName: 'Incus', capabilities,
+          _connectError: err.message };
+      }
+    }
+    if (daemonType === 'proxmox') {
+      const capabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        proxmox: true, vms: true, lxc: true, snapshots: true, backups: true,
+      };
+      // Proxmox service not shipped yet (Sprint 4). Return stub.
+      return { ...base, daemonType, daemonName: 'Proxmox VE', capabilities };
+    }
+    if (daemonType === 'kubernetes') {
+      const capabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        kubernetes: true, deployments: true, pods: true, services_k8s: true,
+      };
+      return { ...base, daemonType, daemonName: 'Kubernetes', capabilities };
+    }
+    // Unknown daemon_type — return the base stub so /api/system/info at least
+    // doesn't 500.
+    return { ...base, daemonType, daemonName: daemonType,
+      capabilities: { containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false } };
   }
 
   async getDiskUsage(hostId = 0) {

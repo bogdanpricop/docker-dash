@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.0-alpha.3',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 3 (Incus) consolidation',
+      changes: [
+        { type: 'fix', text: 'Multi-daemon getInfo dispatch fixes "switch to Incus host and all Docker pages 500". dockerService.getInfo now looks up daemon_type and returns per-daemon shapes: Docker/Podman path unchanged; Incus reads live via IncusClient; Proxmox/Kubernetes stub for future sprints. Unknown daemon type = safe stub so /api/system/info never 500s.' },
+        { type: 'security', text: 'daemon_config encryption at rest. IncusClient fromHostRow now handles both plaintext JSON (legacy, alpha.1/2 rows) and encrypted enc: format via existing AES-256-GCM crypto util. New helpers encryptDaemonConfig / decryptDaemonConfig exported. Rotated ENCRYPTION_KEY surfaces a clear error instead of cryptic hex parse fail. Migration snippet in CHANGELOG.' },
+        { type: 'improvement', text: 'Fleet-level nav gating via new data-fleet-daemon attribute. Where data-capability gates on the CURRENT host, data-fleet-daemon gates on "at least one host in fleet has this daemon_type". Applied to Incus (alpha) nav — hidden for Docker-only installs, visible the moment an Incus host is registered. Backend /api/hosts now returns daemonType on each row.' },
+        { type: 'improvement', text: '4 new unit tests for the encryption + backward-compat round trips. Total: 23 Incus tests, all passing. Full suite: 1553 passing.' },
+      ],
+    },
+    {
       version: '8.9.0-alpha.2',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 3 (Incus) — write path + routes + UI',
