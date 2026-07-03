@@ -486,6 +486,49 @@ describe('DockerService (src/services/docker.js)', () => {
       });
     });
 
+    it('surfaces alternative OCI runtimes (Kata/gVisor/crun) — v8.8.1', async () => {
+      mockDockerInstance.info.mockResolvedValue({
+        Name: 'host-secured', OperatingSystem: 'Ubuntu 24.04', Architecture: 'x86_64',
+        KernelVersion: '6.8', Containers: 0, ContainersRunning: 0,
+        ContainersPaused: 0, ContainersStopped: 0, Images: 0,
+        MemTotal: 0, NCPU: 4, Driver: 'overlay2', DockerRootDir: '/var/lib/docker',
+        DefaultRuntime: 'runc',
+        Runtimes: {
+          runc: { path: 'runc' },
+          'io.containerd.kata.v2': { path: 'kata-runtime' },
+          runsc: { path: 'runsc' },
+          crun: { path: 'crun' },
+        },
+      });
+      mockDockerInstance.version.mockResolvedValue({
+        Version: '24.0.7', ApiVersion: '1.43',
+        Components: [{ Name: 'Engine', Version: '24.0.7' }],
+      });
+      const info = await dockerService.getInfo(0);
+      expect(info.defaultRuntime).toBe('runc');
+      // The full list keeps runc; sorted alphabetically.
+      expect(info.runtimes).toEqual(['crun', 'io.containerd.kata.v2', 'runc', 'runsc']);
+      // Alternatives filter out the default runc so the UI only shows what
+      // the operator explicitly configured beyond the built-in.
+      expect(info.alternativeRuntimes).toEqual(['crun', 'io.containerd.kata.v2', 'runsc']);
+    });
+
+    it('reports empty alt runtimes when only runc is present', async () => {
+      mockDockerInstance.info.mockResolvedValue({
+        Name: 'plain', OperatingSystem: 'Ubuntu', Architecture: 'x86_64',
+        KernelVersion: '6.8', Containers: 0, ContainersRunning: 0,
+        ContainersPaused: 0, ContainersStopped: 0, Images: 0,
+        MemTotal: 0, NCPU: 1, Driver: 'overlay2', DockerRootDir: '/var/lib/docker',
+        DefaultRuntime: 'runc', Runtimes: { runc: { path: 'runc' } },
+      });
+      mockDockerInstance.version.mockResolvedValue({
+        Version: '24.0.7', Components: [{ Name: 'Engine' }],
+      });
+      const info = await dockerService.getInfo(0);
+      expect(info.alternativeRuntimes).toEqual([]);
+      expect(info.runtimes).toEqual(['runc']);
+    });
+
     it('reports daemonType=podman and gates swarm/buildkit/plugins off on Podman', async () => {
       mockDockerInstance.info.mockResolvedValue({
         Name: 'pod-host', OperatingSystem: 'Fedora Linux',

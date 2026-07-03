@@ -553,6 +553,21 @@ class DockerService {
       serverTime: new Date().toISOString(),
       uptime: os.uptime(),
       hostId,
+      // v8.8.1 — sandboxed / alternative OCI runtimes. Docker's `info`
+      // returns a `Runtimes` map of every OCI runtime configured in
+      // /etc/docker/daemon.json (Kata Containers, gVisor/runsc, crun,
+      // etc.). Surface them so operators can see at a glance which
+      // isolation options are available on the host; the container
+      // create form (future) can offer them as a dropdown. `runc` is
+      // the default and always present — filtering it out gives the
+      // frontend a cleaner "alternatives" list.
+      defaultRuntime: info.DefaultRuntime,
+      runtimes: info.Runtimes && typeof info.Runtimes === 'object'
+        ? Object.keys(info.Runtimes).sort()
+        : [],
+      alternativeRuntimes: info.Runtimes && typeof info.Runtimes === 'object'
+        ? Object.keys(info.Runtimes).filter(n => n !== 'runc').sort()
+        : [],
       // v8.7.44 daemon identity + capability matrix. Capabilities let the
       // frontend hide/disable features that the underlying daemon can't
       // service (Swarm on Podman, etc.) via a single generic mechanism

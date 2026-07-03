@@ -2,6 +2,36 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.8.1] - 2026-07-03 — **UX**: OCI runtime alternatives surfaced on the Engine card (Kata / gVisor / crun)
+
+### What
+Docker's `info` endpoint reports every configured OCI runtime under `Runtimes` (Kata Containers, gVisor/runsc, crun, sysbox, ...). This release surfaces them in **System → Info → Docker Engine** card:
+
+- **OCI runtimes** row lists every configured runtime (default first, alternatives alphabetically after)
+- If any non-default runtime is present, a **SANDBOXED** badge appears next to the row — signal that this host has isolation options beyond stock runc
+- Row is hidden when only `runc` is present (no visual noise for the common case)
+
+### Why
+This is item #6 in the virtualization roadmap ([`plans/deep-spec-sprint-6-emerging-and-deferred.md`](plans/deep-spec-sprint-6-emerging-and-deferred.md)). Small audience but signals professional-grade dashboard maturity. The plumbing here (backend returns `defaultRuntime`, `runtimes`, `alternativeRuntimes`) also unlocks a future "runtime picker" on the container create form.
+
+### Backend
+`dockerService.getInfo()` now returns:
+```json
+{
+  "defaultRuntime": "runc",
+  "runtimes": ["crun", "io.containerd.kata.v2", "runc", "runsc"],
+  "alternativeRuntimes": ["crun", "io.containerd.kata.v2", "runsc"]
+}
+```
+
+### Tests
+2 new unit tests in `docker-service.test.js`:
+- Multiple alt runtimes present → surfaced correctly, sorted, default excluded from alternatives
+- Only `runc` present → alternativeRuntimes is empty (row hides in UI)
+
+### Operator action
+None. Backward-compatible.
+
 ## [8.8.0] - 2026-07-03 — **PLATFORM**: Docker Swarm — Stacks tab (Sprint 2 gap-fill)
 
 ### Discovery

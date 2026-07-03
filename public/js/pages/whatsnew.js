@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.8.1',
+      date: '2026-07-03',
+      title: 'UX: OCI runtime alternatives surfaced (Kata / gVisor / crun)',
+      changes: [
+        { type: 'improvement', text: 'System > Info > Docker Engine card now includes an OCI runtimes row when the host has runtimes beyond the default runc. Signals "this host supports sandboxed workloads" for the small audience that runs Kata Containers, gVisor/runsc, crun, or sysbox. A SANDBOXED badge appears next to the row when alternatives are configured. Row is hidden entirely for the common runc-only case. Backend exposes defaultRuntime / runtimes / alternativeRuntimes fields — plumbing for a future container-create runtime picker.' },
+      ],
+    },
+    {
       version: '8.8.0',
       date: '2026-07-03',
       title: 'PLATFORM: Docker Swarm Stacks tab (Sprint 2 gap-fill)',

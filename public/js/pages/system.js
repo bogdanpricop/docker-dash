@@ -126,6 +126,22 @@ const SystemPage = {
               <tr><td>${i18n.t('pages.system.os')}</td><td>${info.os || info.OperatingSystem || '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.kernel')}</td><td>${info.kernelVersion || info.KernelVersion || '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.storageDriver')}</td><td>${info.storageDriver || info.Driver || '—'}</td></tr>
+              ${(() => {
+                // v8.8.1 — surface OCI runtime alternatives (Kata, gVisor/runsc, crun, ...).
+                // Default runc is always present; hide the row unless there's something
+                // interesting beyond it. Signals "this is a professional-grade dashboard
+                // that knows about sandboxed runtimes" for the small audience that cares.
+                const alt = info.alternativeRuntimes || [];
+                const def = info.defaultRuntime || 'runc';
+                if (!alt.length && def === 'runc') return '';
+                const rtDisplay = [def, ...alt.filter(n => n !== def)].join(', ');
+                return `<tr>
+                  <td>${i18n.t('pages.system.runtimes')}</td>
+                  <td><code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(rtDisplay)}</code>
+                  ${alt.length ? `<span class="daemon-badge" style="margin-left:8px" title="Alternative OCI runtimes detected (Kata, gVisor, crun, ...)">SANDBOXED</span>` : ''}
+                  </td>
+                </tr>`;
+              })()}
             </table>
           </div>
         </div>
