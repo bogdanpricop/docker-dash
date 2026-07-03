@@ -82,6 +82,30 @@ const SystemPage = {
     // Backend maps to lowercase: hostname, os, kernelVersion, dockerVersion, apiVersion, etc.
     const containersTotal = info.containers || info.Containers || 0;
     const containersRunning = info.containersRunning || info.ContainersRunning || 0;
+
+    // v8.7.42 — disk total/available on the Docker root filesystem.
+    // Backend supplies diskTotal/diskFree/diskUsed for hostId=0 only;
+    // for remote hosts these are undefined and the row is hidden.
+    let diskRow = '';
+    if (info.diskTotal && info.diskTotal > 0) {
+      const pct = Math.max(0, Math.min(100, Math.round((info.diskUsed / info.diskTotal) * 100)));
+      const cls = pct >= 90 ? 'red' : pct >= 70 ? 'yellow' : 'green';
+      const rootDir = info.dockerRootDir || '/var/lib/docker';
+      diskRow = `
+        <tr>
+          <td>${i18n.t('pages.system.diskLabel')}</td>
+          <td>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px">
+              <span title="${Utils.escapeHtml(rootDir)}"><strong>${Utils.formatBytes(info.diskUsed)}</strong> / ${Utils.formatBytes(info.diskTotal)} (${pct}%)</span>
+              <span class="text-dim">${Utils.formatBytes(info.diskFree)} ${i18n.t('pages.system.diskAvailable')}</span>
+            </div>
+            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${i18n.t('pages.system.diskLabel')}">
+              <div class="progress-fill ${cls}" style="width:${pct}%"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
     el.innerHTML = `
       <div class="info-grid">
         <div class="card">
@@ -103,6 +127,7 @@ const SystemPage = {
               <tr><td>${i18n.t('pages.system.hostname')}</td><td>${info.hostname || info.Name || '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.cpus')}</td><td>${info.cpus || info.NCPU || '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.memoryLabel')}</td><td>${Utils.formatBytes(info.memTotal || info.MemTotal)}</td></tr>
+              ${diskRow}
               <tr><td>${i18n.t('pages.system.containersLabel')}</td><td>${containersTotal} (${i18n.t('pages.system.runningCount', { count: containersRunning })})</td></tr>
               <tr><td>${i18n.t('pages.system.imagesLabel')}</td><td>${info.images || info.Images || 0}</td></tr>
               <tr><td>${i18n.t('pages.system.uptime')}</td><td>${info.uptime ? Utils.formatDuration(info.uptime) : '—'}</td></tr>

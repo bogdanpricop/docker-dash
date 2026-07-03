@@ -729,6 +729,7 @@ i18n.register('ro', 'RO', 'Română', {
       pruneImages: 'Imagini', pruneImagesDesc: 'Sterge imaginile neutilizate', pruneImagesBtn: 'Curata Imagini',
       pruneVolumes: 'Volume', pruneVolumesDesc: 'Sterge volumele neutilizate', pruneVolumesBtn: 'Curata Volume',
       pruneNetworks: 'Retele', pruneNetworksDesc: 'Sterge retelele neutilizate', pruneNetworksBtn: 'Curata Retele',
+      diskLabel: 'Disc (Docker root)', diskAvailable: 'disponibil',
       pruneEverything: 'Totul', pruneEverythingDesc: 'Curata toate resursele neutilizate', pruneAllBtn: 'Curata Tot',
       pruneManualHint: 'Daca interfata da eroare, timeout, sau socket-ul Docker necesita root, ruleaza comenzile direct pe host.',
       pruneSudoNote: 'Prefixeaza cu sudo daca utilizatorul nu este in grupul docker.',

@@ -527,12 +527,13 @@ class DockerService {
   async getInfo(hostId = 0) {
     const docker = this.getDocker(hostId);
     const [info, version] = await Promise.all([docker.info(), docker.version()]);
-    return {
+    const result = {
       hostname: info.Name,
       os: `${info.OperatingSystem} (${info.Architecture})`,
       kernelVersion: info.KernelVersion,
       dockerVersion: version.Version,
       apiVersion: version.ApiVersion,
+      dockerRootDir: info.DockerRootDir,
       containers: info.Containers,
       containersRunning: info.ContainersRunning,
       containersPaused: info.ContainersPaused,
@@ -545,6 +546,28 @@ class DockerService {
       uptime: os.uptime(),
       hostId,
     };
+
+    // v8.7.42 — disk total/available on the underlying host filesystem.
+    // For the local Docker socket (hostId=0), docker-dash's /data volume
+    // lives on the same disk where Docker stores images/volumes/containers
+    // (typically /var/lib/docker on the same partition). fs.statfs on
+    // /data therefore reports the total and available bytes on the disk
+    // that actually matters to the operator — "how much room is left
+    // before Docker fills the disk". For remote hosts (hostId > 0) the
+    // docker-dash filesystem is on a different machine, so we omit the
+    // fields; the UI shows a placeholder. Best-effort — statfs failure
+    // (non-Linux, /data missing, permission) leaves the fields undefined.
+    if (!hostId) {
+      try {
+        const fsp = require('fs').promises;
+        const st = await fsp.statfs('/data');
+        result.diskTotal = st.blocks * st.bsize;
+        result.diskFree = st.bavail * st.bsize;
+        result.diskUsed = result.diskTotal - result.diskFree;
+      } catch { /* best-effort */ }
+    }
+
+    return result;
   }
 
   async getDiskUsage(hostId = 0) {

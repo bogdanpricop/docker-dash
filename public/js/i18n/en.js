@@ -847,6 +847,7 @@ i18n.register('en', 'EN', 'English', {
       pruneImages: 'Images', pruneImagesDesc: 'Remove unused images', pruneImagesBtn: 'Prune Images',
       pruneVolumes: 'Volumes', pruneVolumesDesc: 'Remove unused volumes', pruneVolumesBtn: 'Prune Volumes',
       pruneNetworks: 'Networks', pruneNetworksDesc: 'Remove unused networks', pruneNetworksBtn: 'Prune Networks',
+      diskLabel: 'Disk (Docker root)', diskAvailable: 'available',
       pruneEverything: 'Everything', pruneEverythingDesc: 'Prune all unused resources', pruneAllBtn: 'Prune All',
       pruneManualHint: 'If the UI fails, times out, or the daemon socket needs root, run these on the host instead.',
       pruneSudoNote: 'Prefix with sudo if your user is not in the docker group.',

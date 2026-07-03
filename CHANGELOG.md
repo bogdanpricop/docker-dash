@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.42] - 2026-06-25 — **UX**: Host card shows disk total + available on the Docker filesystem
+
+### Bug
+The **System → Host** card showed hostname, CPUs, memory, containers, images, uptime — but nothing about disk. Operators asking "how much room is left before Docker fills the disk?" had to shell into the host and run `df -h /var/lib/docker`. When the disk actually filled up (image cache growth, log rotation misconfiguration, runaway container producing volume writes), the first symptom was `docker pull` failing with `no space left on device` — no upstream warning from the dashboard.
+
+### Fix
+New row on the Host card: **Disk (Docker root)** — shows used / total in formatted bytes with a percentage, available bytes on the right, and a progress bar underneath (green < 70%, yellow < 90%, red ≥ 90%).
+
+Data source: `fs.statfs('/data')` on the docker-dash container. `/data` is a bind-mount to a docker named volume, so `statfs` on that path reports the underlying **host filesystem** stats — the same partition where Docker stores `/var/lib/docker`. This is the operationally correct number: "how much room is left on the disk where Docker keeps its data".
+
+Tooltip on the usage summary shows the `DockerRootDir` value from `docker.info()` so operators can confirm which partition is being measured.
+
+### Multi-host scoping
+For remote hosts (`hostId > 0` — SSH-tunneled or TCP-tunneled), the docker-dash filesystem is on a **different machine** than the remote Docker daemon. Reporting our own filesystem stats would be misleading. So the backend only emits `diskTotal` / `diskFree` / `diskUsed` for `hostId=0`; for remote hosts the fields are omitted and the frontend hides the row.
+
+### Implementation
+- Backend: [`src/services/docker.js:527`](src/services/docker.js#L527) `getInfo()` — added `dockerRootDir` (from `docker.info().DockerRootDir`) plus `diskTotal` / `diskFree` / `diskUsed` (from `fs.promises.statfs('/data')` on `hostId=0` only). Best-effort — statfs failure (non-Linux dev host, `/data` missing, permission) leaves the fields undefined and the frontend hides the row.
+- Frontend: [`public/js/pages/system.js:80`](public/js/pages/system.js#L80) `_renderInfo()` — new `diskRow` template inserted below the Memory row. Uses the existing `.progress-bar` / `.progress-fill.{green,yellow,red}` classes (no new CSS). `role="progressbar"` + `aria-valuenow` for screen reader support.
+- 2 new i18n keys (`diskLabel`, `diskAvailable`) in `en.js` + `ro.js`; 9 other locales fall back to English.
+
+### Operator action
+None. Backward-compatible — row only appears on the local host tab and only when the OS supports `fs.statfs` (Linux, all Docker Dash deploy targets).
+
 ## [8.7.41] - 2026-06-25 — **UX**: Prune cards show equivalent CLI command + Copy button
 
 ### Why

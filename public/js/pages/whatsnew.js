@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.42',
+      date: '2026-06-25',
+      title: 'UX: Host card shows disk total + available',
+      changes: [
+        { type: 'improvement', text: 'System > Host card now includes a Disk (Docker root) row: used / total with percentage, available on the right, colored progress bar (green <70%, yellow <90%, red >=90%). Answers "how much room is left before Docker fills the disk". Data source: fs.statfs on the container /data bind-mount, which reports the underlying host filesystem stats where Docker actually stores /var/lib/docker. Row hidden for remote hosts (multi-host) since docker-dash filesystem lives on a different machine. Tooltip shows DockerRootDir so operator can confirm which partition is being measured.' },
+      ],
+    },
+    {
       version: '8.7.41',
       date: '2026-06-25',
       title: 'UX: Prune cards show CLI command + Copy button',
