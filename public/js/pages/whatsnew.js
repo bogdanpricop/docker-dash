@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.6-alpha.1',
+      date: '2026-07-03',
+      title: 'Homelab install tutorials + ESXi→Proxmox walkthrough',
+      changes: [
+        { type: 'feature', text: '7 new howtos in the new "Homelab setup" category: install-proxmox-on-esxi (nested VM), install-lxd-ubuntu (snap), install-incus-debian (Zabbly repo), install-k3s-single-node (curl-pipe-sh), install-nomad-dev (single binary + systemd), install-podman-rhel (dnf + socket). Each includes docker-dash registration steps.' },
+        { type: 'feature', text: 'esxi-to-proxmox-migration.md — end-to-end walkthrough for the Sprint 7 VM Migration tool: export ESXi VM as OVA, publish over HTTP, run the migration from docker-dash, boot the migrated VM on Proxmox. Windows VirtIO driver injection guide included.' },
+        { type: 'feature', text: 'homelab-setup-checklist.md — master reference LAN topology (192.168.13.20-27), recommended setup order, per-daemon test workload, promotion-blocker table showing which sprints each successful integration unblocks for beta.' },
+        { type: 'improvement', text: 'New "Homelab setup" filter chip in the How-To page category bar. Content-only release — no code changes, no test additions. Full suite still 1622 passing across 96 suites.' },
+        { type: 'improvement', text: 'Purpose: turn every alpha caveat "end-to-end not verified against a live daemon" into "verified" by giving operators a concrete recipe. Running the master checklist end-to-end is what promotes Sprints 3/4/5/7/8/10 from alpha to beta.' },
+      ],
+    },
+    {
       version: '8.9.5-alpha.1',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 9 (Wasm) + Sprint 10 (Nomad) + Hosts UI',

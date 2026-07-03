@@ -84,6 +84,9 @@ const HowToPage = {
       { id: 'docker-dash', label: 'Docker Dash', icon: 'fa-tachometer-alt' },
       { id: 'backup', label: 'Backup', icon: 'fa-database' },
       { id: 'performance', label: 'Performance', icon: 'fa-rocket' },
+      // v8.9.6-alpha.1 — install-and-integrate tutorials for all
+      // supported daemon types + master homelab setup checklist.
+      { id: 'homelab-setup', label: 'Homelab setup', icon: 'fa-network-wired' },
     ];
 
     const el = container.querySelector('#howto-categories');

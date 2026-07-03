@@ -2,6 +2,48 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.6-alpha.1] - 2026-07-03 — Homelab install tutorials + ESXi→Proxmox walkthrough
+
+Content-only release. **No code changes**, just 7 new howtos that walk through installing each supported daemon type as a nested VM under ESXi, then registering it in docker-dash. Purpose: turn every alpha's "end-to-end not verified against a live daemon" caveat into "verified" by giving operators a concrete recipe.
+
+### New howtos (category `homelab-setup`)
+
+- `install-proxmox-on-esxi.md` — Proxmox VE 8 as a nested VM on ESXi (nested virt, promiscuous mode, API token, SSH key for migration tool)
+- `install-lxd-ubuntu.md` — LXD via snap on Ubuntu Server (Unix socket vs HTTPS + client cert)
+- `install-incus-debian.md` — Incus on Debian 12 via Zabbly repo, or Debian 13 from base
+- `install-k3s-single-node.md` — Rancher k3s single-node install, ServiceAccount + `view` ClusterRoleBinding, test workload
+- `install-nomad-dev.md` — Nomad 1.9 dev agent, systemd unit, test job (Redis), ACL bootstrap
+- `install-podman-rhel.md` — Podman on Rocky/Fedora/RHEL, socket setup, SSH tunnel registration (auto-detects Podman badge)
+- `esxi-to-proxmox-migration.md` — end-to-end walkthrough: export ESXi VM as OVA, publish over HTTP, run docker-dash's VM Migration tool, boot the migrated VM on Proxmox. Includes Windows VirtIO driver injection guide.
+
+### New master guide
+
+- `homelab-setup-checklist.md` — reference LAN topology (192.168.13.20–27), recommended setup order, per-daemon test workload, promotion-blocker table showing which sprints each successful integration unblocks for beta
+
+### Category filter update
+
+- New "Homelab setup" filter chip in the How-To page category bar (`fas fa-network-wired` icon)
+
+### Beta promotion narrative
+
+Each install howto ends with a "Verification checklist" plus a footer explaining which sprint's alpha it validates. Running through the master checklist end-to-end is what turns:
+
+> "PLATFORM alpha — end-to-end not verified against a live daemon"
+
+into:
+
+> "verified against a live daemon; ready for beta promotion"
+
+for Sprints 3, 4, 5, 7, 8, 10.
+
+### No functional changes
+
+- No new routes, no new backend code, no migrations
+- No test additions (nothing to test — content only)
+- Full suite still: **1622 passing** across 96 suites
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.5-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 9 + Sprint 10 + Hosts UI
 
 Alpha release combining three concerns: Wasm runtime detection (Sprint 9), Nomad integration (Sprint 10), and a refresh of the Hosts page with documentation + a wizard to register non-Docker daemons.
