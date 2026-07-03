@@ -520,6 +520,22 @@ const App = {
     // Apply sidebar layout for saved UI mode (router sets _currentPageName first)
     this._renderSidebarForMode(this._uiMode);
 
+    // v8.7.43 — periodic check for a server-side version upgrade.
+    // Docker Dash is a long-lived SPA: users often keep a browser tab
+    // open across a deploy. Hash-based routing (#/system, #/dashboard)
+    // does NOT reload index.html, so the JS in memory stays at whatever
+    // version was loaded when the tab first opened — even though every
+    // asset URL contains ?v=<VERSION> for HTTP-cache busting, the
+    // in-memory bundle isn't reset until the tab actually reloads.
+    // Result: a user viewing System after a deploy sees the OLD JS and
+    // never sees new features until they F5.
+    // Fix: read the loaded version from the sidebar-version span
+    // (server-side-injected at boot), poll /api/health periodically,
+    // show a persistent Toast with a "Reload" action when the server
+    // has moved on. Fires at boot (30s delay), on tab focus regain,
+    // and every 5 min while the tab is visible.
+    this._initVersionWatcher();
+
     // Show welcome modal for first-time users (once per user)
     this._showWelcomeIfNeeded();
 
@@ -1371,6 +1387,59 @@ const App = {
     }
     this._currentPage = null;
     this._showLogin();
+  },
+
+  // ─── Version Watcher (v8.7.43) ─────────────────
+  // Polls /api/health and nudges the user to reload when the server has
+  // upgraded to a newer version than what the current JS bundle was
+  // shipped from. Guards against the SPA-tab-stale-after-deploy pitfall
+  // where hash routing reuses in-memory JS across a deploy.
+
+  _initVersionWatcher() {
+    // Read the version the JS was loaded with from the sidebar-version
+    // span, which the server injects into index.html at request time
+    // via the __VERSION__ placeholder. Format: "v8.7.42" -> strip the
+    // "v" prefix so we can string-compare against /api/health's
+    // { version: "8.7.42" } response.
+    const el = document.getElementById('sidebar-version');
+    const raw = el ? (el.textContent || '').trim() : '';
+    this._loadedVersion = raw.replace(/^v/, '');
+    if (!this._loadedVersion) return; // unknown → no baseline to compare
+    this._newVersionNotified = false;
+
+    // First check 30s after boot (avoid racing initial API calls / login).
+    setTimeout(() => this._checkVersion(), 30_000);
+    // Repeat every 5 min while the tab is open.
+    setInterval(() => this._checkVersion(), 5 * 60_000);
+    // Also check when the user returns to the tab — most likely moment
+    // to notice a stale UI, and cheap to re-verify.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') this._checkVersion();
+    });
+  },
+
+  async _checkVersion() {
+    if (this._newVersionNotified) return;                  // already told them
+    if (document.visibilityState !== 'visible') return;    // don't nag hidden tabs
+    try {
+      // Bust HTTP caches on /api/health with a timestamp — response is tiny.
+      const resp = await fetch('/api/health?t=' + Date.now(), { credentials: 'same-origin' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const serverVersion = String(data.version || '').trim();
+      if (!serverVersion) return;
+      if (serverVersion === this._loadedVersion) return;
+      // Server has moved on. Persistent toast (duration=0) with an
+      // inline Reload button that force-reloads the page.
+      this._newVersionNotified = true;
+      const msg = i18n.t('common.newVersionAvailable', { version: serverVersion });
+      Toast.info(msg, 0, {
+        action: {
+          label: i18n.t('common.reload'),
+          onClick: () => location.reload(),
+        },
+      });
+    } catch { /* network hiccup — retry on next tick */ }
   },
 
   // ─── Router ────────────────────────────────────

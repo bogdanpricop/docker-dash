@@ -27,6 +27,7 @@ i18n.register('ro', 'RO', 'Română', {
     helpText: 'Încercați să reîncărcați pagina. Dacă problema persistă, copiați raportul de eroare folosind butonul de mai jos și trimiteți-l echipei de suport.',
     dataNotAffected: 'Datele dvs. nu au fost afectate.',
     reload: 'Reîncărcare pagină',
+    newVersionAvailable: 'Versiune nouă {{version}} disponibilă',
     home: 'Pagina principală',
     copyReport: 'Copiază raport eroare',
     dismiss: 'Închide',

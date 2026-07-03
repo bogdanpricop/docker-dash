@@ -27,6 +27,7 @@ i18n.register('en', 'EN', 'English', {
     helpText: 'Try reloading the page. If the problem persists, copy the error report using the button below and send it to the support team.',
     dataNotAffected: 'Your data has not been affected.',
     reload: 'Reload page',
+    newVersionAvailable: 'New version {{version}} available',
     home: 'Home page',
     copyReport: 'Copy error report',
     dismiss: 'Dismiss',

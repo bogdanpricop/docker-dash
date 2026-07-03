@@ -2,6 +2,33 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.43] - 2026-07-03 — **UX**: "New version available" nudge (SPA tab stale after deploy)
+
+### Bug
+Every asset URL in `index.html` already carries `?v=<VERSION>` and the server rewrites `__VERSION__` at request time, so **HTTP caching** is correct — a fresh browser navigation always fetches the new JS.
+
+But Docker Dash is a **long-lived SPA**: users keep the tab open across days, and hash-based routing (`#/system`, `#/dashboard`) does NOT reload `index.html`. So the JS in memory stays at whatever version was loaded when the tab first opened. After v8.7.42 shipped, a user with the tab open since v8.7.39 clicked `#/system`, saw no disk row, and thought the deploy was broken — even though the server was serving the correct new JS. Only a manual `F5` fixed it, but nothing in the UI told them to press it.
+
+Same pitfall affected every previous UX-adding release; the disk row just made it visible.
+
+### Fix
+New **version watcher** in `App._initVersionWatcher`:
+- Reads the version the JS was loaded with from the existing `#sidebar-version` span (already server-injected via `__VERSION__`)
+- Polls `/api/health` (tiny, no-auth) at boot+30s, every 5 min, and on tab focus regain
+- When `data.version !== _loadedVersion`, shows a **persistent Toast** with an inline **Reload** button that calls `location.reload()`
+- Only fires once per session; skips hidden tabs so unfocused sessions don't nag
+
+**Toast component enhancement**: added an optional `opts.action = { label, onClick }` param. Backward-compatible — no existing caller passes a 4th arg. Styled `.toast-action` as an outlined accent button; on hover it fills with `--accent`.
+
+### Why this is the right fix
+- The `?v=` cache-busting was already correct — no need to touch HTTP caching
+- The problem is purely "browser tab is older than the server"; the fix has to happen in-app, not at the transport layer
+- Poll interval + focus event + one-time flag = minimal traffic (2–3 extra `GET /api/health` per hour per visible tab)
+- Users choose when to reload (persistent Toast, not forced) — no lost work
+
+### Operator action
+None. First deploy after this release still requires an F5, but every subsequent deploy will pop the Reload nudge automatically.
+
 ## [8.7.42] - 2026-06-25 — **UX**: Host card shows disk total + available on the Docker filesystem
 
 ### Bug

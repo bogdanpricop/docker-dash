@@ -25,7 +25,7 @@ const Toast = {
     if (until > this._muteErrorsUntil) this._muteErrorsUntil = until;
   },
 
-  show(message, type = 'info', duration = 4000) {
+  show(message, type = 'info', duration = 4000, opts = {}) {
     if ((type === 'error' || type === 'warning') && Date.now() < this._muteErrorsUntil) {
       return null;
     }
@@ -47,14 +47,28 @@ const Toast = {
     toast.setAttribute('role', isUrgent ? 'alert' : 'status');
     toast.setAttribute('aria-live', isUrgent ? 'assertive' : 'polite');
     toast.setAttribute('aria-atomic', 'true');
+    // v8.7.43 — optional inline action button (used by the "new version
+    // available" nudge). action = { label: string, onClick: () => void }.
+    // Label is escaped; onClick is trusted (caller controls it).
+    const actionHtml = (opts.action && opts.action.label)
+      ? `<button class="toast-action" type="button">${Utils.escapeHtml(opts.action.label)}</button>`
+      : '';
     toast.innerHTML = `
       <i class="fas ${icons[type] || icons.info}"></i>
       <span class="toast-msg">${Utils.escapeHtml(message)}</span>
+      ${actionHtml}
       <button class="toast-close" aria-label="Close">
         <i class="fas fa-times"></i>
       </button>
     `;
 
+    if (opts.action && typeof opts.action.onClick === 'function') {
+      const actionBtn = toast.querySelector('.toast-action');
+      actionBtn.addEventListener('click', () => {
+        try { opts.action.onClick(); }
+        finally { this._remove(toast); }
+      });
+    }
     const closeBtn = toast.querySelector('.toast-close');
     closeBtn.addEventListener('click', () => this._remove(toast));
 
@@ -70,10 +84,10 @@ const Toast = {
     return toast;
   },
 
-  success(msg, dur) { return this.show(msg, 'success', dur); },
-  error(msg, dur)   { return this.show(msg, 'error', dur || 6000); },
-  warning(msg, dur) { return this.show(msg, 'warning', dur || 5000); },
-  info(msg, dur)    { return this.show(msg, 'info', dur); },
+  success(msg, dur, opts) { return this.show(msg, 'success', dur, opts); },
+  error(msg, dur, opts)   { return this.show(msg, 'error', dur || 6000, opts); },
+  warning(msg, dur, opts) { return this.show(msg, 'warning', dur || 5000, opts); },
+  info(msg, dur, opts)    { return this.show(msg, 'info', dur, opts); },
 
   _remove(toast) {
     if (!toast || !toast.parentNode) return;

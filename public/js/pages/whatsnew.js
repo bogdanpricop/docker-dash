@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.43',
+      date: '2026-07-03',
+      title: 'UX: New version available nudge (fixes SPA tab stale after deploy)',
+      changes: [
+        { type: 'improvement', text: 'Docker Dash is a long-lived SPA. Users keep the tab open across days; hash-based routing does NOT reload index.html, so the JS in memory stays at whatever version was loaded when the tab first opened. HTTP asset URLs already carry ?v=VERSION for cache-busting, but that only helps FRESH page loads. Result: a user with the tab open since v8.7.39 clicked to see the v8.7.42 disk row and saw nothing — no in-app signal to F5. Now: App._initVersionWatcher polls /api/health at boot+30s, every 5 min, and on tab focus regain; when the server version differs from what the JS was loaded with, shows a persistent Toast with an inline Reload button (calls location.reload()). Fires once per session; skips hidden tabs.' },
+        { type: 'improvement', text: 'Toast component enhancement: optional opts.action = { label, onClick } param renders an inline outlined-accent button between the message and the close X. Backward-compatible — no existing caller passes a 4th arg.' },
+      ],
+    },
+    {
       version: '8.7.42',
       date: '2026-06-25',
       title: 'UX: Host card shows disk total + available',
