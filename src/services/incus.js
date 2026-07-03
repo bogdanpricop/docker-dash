@@ -52,6 +52,12 @@ class IncusClient {
       throw new Error('IncusClient: config object required');
     }
     this._config = config;
+    // v8.9.3-alpha.1 — daemonType lets the same client serve LXD too.
+    // Defaults to 'incus' for backward compatibility. LXD's REST API is
+    // effectively identical (same endpoints, same operation semantics)
+    // — only the socket path defaults differ (/var/snap/lxd/common/lxd/
+    // unix.socket for snap installs, /var/lib/lxd/unix.socket otherwise).
+    this._daemonType = config.daemonType || 'incus';
     if (config.transport === 'unix') {
       if (!config.socket) throw new Error('IncusClient: config.socket required for unix transport');
       this._agent = new http.Agent({ keepAlive: true });
@@ -67,6 +73,10 @@ class IncusClient {
       throw new Error(`IncusClient: unsupported transport "${config.transport}"`);
     }
   }
+
+  /** Which product this client is talking to. Useful for error messages
+   * + UI badges. Returns 'incus' or 'lxd'. */
+  get daemonType() { return this._daemonType; }
 
   /** Low-level request. Returns parsed JSON or throws. */
   async _request(method, path, body, opts = {}) {
@@ -315,16 +325,28 @@ function encryptDaemonConfig(cfg) {
 
 // Helper: build an IncusClient from a docker_hosts row. Handles both
 // plain-JSON legacy config and the new encrypted form transparently.
+// v8.9.3-alpha.1: accepts LXD rows too (same REST API, different socket
+// default). daemonType is stamped on the client for downstream use.
 function fromHostRow(row) {
   if (!row) throw new Error('fromHostRow: row required');
-  if (row.daemon_type !== 'incus') {
-    throw new Error(`fromHostRow: row is not an Incus host (daemon_type=${row.daemon_type})`);
+  if (row.daemon_type !== 'incus' && row.daemon_type !== 'lxd') {
+    throw new Error(`fromHostRow: row is not an Incus/LXD host (daemon_type=${row.daemon_type})`);
   }
   let cfg;
   try { cfg = decryptDaemonConfig(row.daemon_config); }
   catch (e) { throw new Error(`fromHostRow: invalid daemon_config JSON: ${e.message}`); }
+  cfg.daemonType = row.daemon_type;
   if (!cfg.transport) cfg.transport = 'unix';
-  if (cfg.transport === 'unix' && !cfg.socket) cfg.socket = '/var/lib/incus/unix.socket';
+  if (cfg.transport === 'unix' && !cfg.socket) {
+    // LXD's socket differs based on install method. Snap installs (the
+    // Canonical default) live under /var/snap/lxd/common/lxd/. Legacy
+    // package installs use /var/lib/lxd/. Snap is the modern default so
+    // we try that first; operators with a package install override via
+    // daemon_config.socket.
+    cfg.socket = row.daemon_type === 'lxd'
+      ? '/var/snap/lxd/common/lxd/unix.socket'
+      : '/var/lib/incus/unix.socket';
+  }
   return new IncusClient(cfg);
 }
 

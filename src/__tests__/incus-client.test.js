@@ -120,7 +120,9 @@ describe('IncusClient (v8.9.0-alpha)', () => {
 
   describe('fromHostRow', () => {
     it('rejects a non-Incus row', () => {
-      expect(() => fromHostRow({ daemon_type: 'docker' })).toThrow(/not an Incus host/);
+      // v8.9.3-alpha.1 — fromHostRow now accepts both 'incus' and 'lxd'
+      // so the error message widened accordingly.
+      expect(() => fromHostRow({ daemon_type: 'docker' })).toThrow(/Incus\/LXD host/);
     });
 
     it('rejects invalid JSON in daemon_config', () => {

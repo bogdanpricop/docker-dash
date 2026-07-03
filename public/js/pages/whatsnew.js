@@ -10,6 +10,29 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.3-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 8 — LXD support',
+      changes: [
+        { type: 'feature', text: 'Canonical LXD daemon type. Reuses the Incus client (same REST API since the 2024 fork) with a daemonType parameter. New default socket for LXD /var/snap/lxd/common/lxd/unix.socket (snap install); legacy /var/lib/lxd/ supported via explicit daemon_config.socket. HTTPS + client cert flow identical to Incus.' },
+        { type: 'feature', text: 'Sidebar entry renamed to "Incus / LXD (alpha)" with data-fleet-daemon="incus,lxd" (new comma-separated OR-matching). Page shows "Incus / LXD instances". Nav item appears when at least one Incus OR LXD host is registered.' },
+        { type: 'feature', text: 'Migration 071 widens docker_hosts.daemon_type CHECK to include \'lxd\'. Uses SQLite writable_schema + unsafeMode for in-place edit (RENAME + rebuild would have corrupted the migration_jobs FK from v8.9.2-alpha.1). integrity_check verifies the edit; migration is idempotent.' },
+        { type: 'feature', text: 'New howto lxd-integration.md with snap + legacy install recipes, HTTPS + client cert setup, differences from Incus (currently: none that matter), troubleshooting.' },
+        { type: 'improvement', text: 'THIS IS ALPHA — end-to-end not verified against a live LXD daemon. API-level identity with Incus makes correctness overwhelmingly likely. 7 new tests in lxd-client.test.js covering daemonType propagation, socket defaults, encrypted config, Incus regression guard. Full suite 1591 passing across 94 suites.' },
+      ],
+    },
+    {
+      version: '8.9.2-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 7 — VM migration to Proxmox',
+      changes: [
+        { type: 'feature', text: 'One-click VM migration to Proxmox: fill a form with source URL (VMDK/OVA/QCOW2/RAW) + destination Proxmox node/storage/VMID/name. Backend SSHes to the Proxmox node and runs wget + qemu-img convert + qm importdisk + qm set to attach the disk as scsi0 on a new stopped VM. Live progress bar + phase log tail. Sidebar VM Migration (alpha) gated on any Proxmox host registered.' },
+        { type: 'feature', text: 'New migration_jobs table (migration 070). Full audit: source spec, destination target, status, progress 0-100, current phase, phase log (bounded 256KB), error, timestamps. Every mutation writes vm_migration_start to audit_log.' },
+        { type: 'security', text: 'Source URL fetched by wget ON the Proxmox node — network egress policy applies there, not on docker-dash. SSH creds encrypted at rest via AES-256-GCM. Every shell command uses POSIX close-escape-reopen quoting; VMIDs and names strictly regex-validated. 15min per-command timeout by default, 1h wget, 4h qemu-img convert.' },
+        { type: 'improvement', text: 'THIS IS ALPHA — unverified end-to-end. Command sequence is correct per Proxmox wiki, but not tested against a real cluster. No cancel button, no upload source, no VMware source, no Windows driver injection. 18 unit tests. Full suite 1583 passing.' },
+      ],
+    },
+    {
       version: '8.9.1-alpha.1',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 4 (Proxmox VE) foundation',

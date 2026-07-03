@@ -537,6 +537,8 @@ class DockerService {
         const { getDb } = require('../db');
         const row = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
         if (row && row.daemon_type && row.daemon_type !== 'docker' && row.daemon_type !== 'podman') {
+          // v8.9.3-alpha.1 — LXD and Incus share the REST API. Route them
+          // through the same branch and let the client stamp daemonType.
           return await this._getNonDockerInfo(hostId, row.daemon_type);
         }
       } catch { /* DB not ready during tests or migration in-flight — fall through */ }
@@ -649,13 +651,20 @@ class DockerService {
       defaultRuntime: null, runtimes: [], alternativeRuntimes: [],
     };
     // Per-daemon: try to reach the actual service, fall back gracefully.
-    if (daemonType === 'incus') {
+    if (daemonType === 'incus' || daemonType === 'lxd') {
+      // v8.9.3-alpha.1 — LXD (Canonical) and Incus (community fork) share
+      // the same REST API. Same IncusClient serves both. Only the display
+      // name differs.
+      const displayName = daemonType === 'lxd' ? 'LXD' : 'Incus';
       const capabilities = {
         containers: true, images: true, networks: false, volumes: false,
         compose: false, swarm: false, buildkit: false, plugins: false,
         // v8.9.0 incus-specific caps that future frontend gates can use
         incus: true, instances: true, snapshots: true, projects: true,
       };
+      // LXD gets its own cap flag so future LXD-only features can gate
+      // without ambiguity (nothing uses it today).
+      if (daemonType === 'lxd') capabilities.lxd = true;
       try {
         const { fromHostRow } = require('./incus');
         const client = fromHostRow(row);
@@ -668,10 +677,10 @@ class DockerService {
           kernelVersion: env.kernel_version,
           dockerVersion: env.server_version,
           apiVersion: (info && info.metadata && info.metadata.api_version) || null,
-          daemonType, daemonName: 'Incus', capabilities,
+          daemonType, daemonName: displayName, capabilities,
         };
       } catch (err) {
-        return { ...base, daemonType, daemonName: 'Incus', capabilities,
+        return { ...base, daemonType, daemonName: displayName, capabilities,
           _connectError: err.message };
       }
     }

@@ -20,7 +20,7 @@ const IncusInstancesPage = {
   async render(container) {
     container.innerHTML = `
       <div class="page-header">
-        <h1><i class="fas fa-cubes"></i> Incus instances</h1>
+        <h1><i class="fas fa-cubes"></i> Incus / LXD instances</h1>
         <div>
           <select id="incus-project" class="form-control" style="width:auto;display:inline-block"></select>
           <button class="btn btn-sm btn-secondary" id="incus-refresh"><i class="fas fa-sync"></i> Refresh</button>

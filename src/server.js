@@ -192,6 +192,8 @@ app.use('/api/swarm', apiLimiter, require('./routes/swarm'));
 app.use('/api/incus', apiLimiter, require('./routes/incus'));
 // v8.9.1-alpha.1 — Sprint 4 (Proxmox VE). Read-only alpha.
 app.use('/api/proxmox', apiLimiter, require('./routes/proxmox'));
+// v8.9.2-alpha.1 — Sprint 7: cross-hypervisor VM migration to Proxmox.
+app.use('/api/migration-vm', apiLimiter, require('./routes/migration-vm'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

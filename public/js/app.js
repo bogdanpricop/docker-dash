@@ -35,6 +35,7 @@ const App = {
     swarm:      () => SwarmPage,
     'incus-instances': () => IncusInstancesPage,
     'proxmox-resources': () => ProxmoxResourcesPage,
+    'migration-vm': () => MigrationVMPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
@@ -1435,10 +1436,15 @@ const App = {
         (hosts || []).map(h => (h.daemonType || 'docker'))
       );
       this._fleetDaemonTypes = daemonTypesPresent;
+      // v8.9.3-alpha.1 — the attribute value may be comma-separated (e.g.
+      // "incus,lxd") for nav items that serve multiple daemon types. Show
+      // the item if ANY of the listed types is present in the fleet.
       document.querySelectorAll('[data-fleet-daemon]').forEach(el => {
         const key = el.getAttribute('data-fleet-daemon');
         if (!key) return;
-        el.style.display = daemonTypesPresent.has(key) ? '' : 'none';
+        const wanted = key.split(',').map(s => s.trim()).filter(Boolean);
+        const visible = wanted.some(k => daemonTypesPresent.has(k));
+        el.style.display = visible ? '' : 'none';
       });
     } catch { /* /api/hosts is best-effort — leave fleet-daemon items visible */ }
   },

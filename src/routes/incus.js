@@ -26,16 +26,17 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = Router();
 router.use(extractHostId);
 
-// Reusable guard: verify the target host is registered AND is an Incus
-// daemon type. Returns the row on success; sends 400/404 and returns
-// null on failure so the handler can early-exit.
+// Reusable guard: verify the target host is registered AND runs an
+// Incus- or LXD-compatible daemon. Both share the same REST API so the
+// same routes serve both. Returns the row on success; sends 400/404 and
+// returns null on failure so the handler can early-exit.
 function _getIncusHost(req, res) {
   const db = getDb();
   const row = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.hostId);
   if (!row) { res.status(404).json({ error: `Host ${req.hostId} not found` }); return null; }
-  if (row.daemon_type !== 'incus') {
+  if (row.daemon_type !== 'incus' && row.daemon_type !== 'lxd') {
     res.status(400).json({
-      error: `Host ${req.hostId} (${row.name}) is not an Incus daemon (daemon_type=${row.daemon_type})`,
+      error: `Host ${req.hostId} (${row.name}) is not an Incus/LXD daemon (daemon_type=${row.daemon_type})`,
     });
     return null;
   }
@@ -89,7 +90,7 @@ for (const action of _stateActionRoutes) {
         auditService.log({
           userId: req.user.id, username: req.user.username,
           action: `incus_instance_${action}`, targetType: 'incus_instance', targetId: req.params.name,
-          details: { hostId: req.hostId, force: opts.force }, ip: getClientIp(req),
+          details: { hostId: req.hostId, daemonType: row.daemon_type, force: opts.force }, ip: getClientIp(req),
         });
         res.json({ ok: true, result });
       } catch (err) {
@@ -110,7 +111,7 @@ router.delete('/instances/:name', requireAuth, requireRole('admin'), writeable,
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'incus_instance_delete', targetType: 'incus_instance', targetId: req.params.name,
-        details: { hostId: req.hostId }, ip: getClientIp(req),
+        details: { hostId: req.hostId, daemonType: row.daemon_type }, ip: getClientIp(req),
       });
       res.json({ ok: true, result });
     } catch (err) {
@@ -143,7 +144,7 @@ router.post('/instances/:name/snapshots', requireAuth, requireRole('admin'), wri
         userId: req.user.id, username: req.user.username,
         action: 'incus_snapshot_create', targetType: 'incus_snapshot',
         targetId: `${req.params.name}/${snapshotName}`,
-        details: { hostId: req.hostId }, ip: getClientIp(req),
+        details: { hostId: req.hostId, daemonType: row.daemon_type }, ip: getClientIp(req),
       });
       res.json({ ok: true, result });
     } catch (err) {
@@ -164,7 +165,7 @@ router.post('/instances/:name/snapshots/:snapshot/restore', requireAuth, require
         userId: req.user.id, username: req.user.username,
         action: 'incus_snapshot_restore', targetType: 'incus_snapshot',
         targetId: `${req.params.name}/${req.params.snapshot}`,
-        details: { hostId: req.hostId }, ip: getClientIp(req),
+        details: { hostId: req.hostId, daemonType: row.daemon_type }, ip: getClientIp(req),
       });
       res.json({ ok: true, result });
     } catch (err) {
@@ -185,7 +186,7 @@ router.delete('/instances/:name/snapshots/:snapshot', requireAuth, requireRole('
         userId: req.user.id, username: req.user.username,
         action: 'incus_snapshot_delete', targetType: 'incus_snapshot',
         targetId: `${req.params.name}/${req.params.snapshot}`,
-        details: { hostId: req.hostId }, ip: getClientIp(req),
+        details: { hostId: req.hostId, daemonType: row.daemon_type }, ip: getClientIp(req),
       });
       res.json({ ok: true, result });
     } catch (err) {

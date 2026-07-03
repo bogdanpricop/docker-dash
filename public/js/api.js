@@ -400,6 +400,11 @@ const Api = {
   getProxmoxStorages()                { return this.get('/proxmox/storages'); },
   getProxmoxBackups()                 { return this.get('/proxmox/backups'); },
 
+  // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
+  listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },
+  getMigrationJob(id)                 { return this.get(`/migration-vm/${id}`); },
+  createMigrationJob(spec)            { return this.post('/migration-vm', spec); },
+
   // ─── Secrets Audit ────────────────────────────────────
   getSecretsAudit() { return this.get('/system/secrets-audit'); },
   validateDeploy(data) { return this.post('/system/deploy-validate', data); },

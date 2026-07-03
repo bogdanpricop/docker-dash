@@ -2,6 +2,161 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.3-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 8 — LXD support
+
+Alpha release. Adds Canonical LXD as a first-class daemon type, riding on top of the Incus client shipped in Sprint 3.
+
+### Why LXD alongside Incus
+
+LXD and Incus forked in 2024. For every operation docker-dash cares about — instance lifecycle, snapshots, projects, operation polling — the REST APIs are byte-identical. Divergence only appears on features added *after* the fork.
+
+Ubuntu servers install LXD by default via snap; many production LXD deployments never migrated to Incus. Supporting LXD directly saves those operators the migration step and gives docker-dash access to a wider install base.
+
+### What ships
+
+**1. Database migration 071 — widen `docker_hosts.daemon_type` CHECK**
+
+Adds `'lxd'` to the allowed set (`docker`, `podman`, `incus`, `proxmox`, `kubernetes`, `lxd`). Uses SQLite `writable_schema` in-place edit rather than the RENAME + rebuild pattern — the latter would corrupt the FK from `migration_jobs.destination_host_id → docker_hosts.id` shipped in v8.9.2-alpha.1 (Sprint 7).
+
+**2. IncusClient parametrized with `daemonType`**
+
+Same class, same methods. The daemon type is stamped on the client and surfaced via a `daemonType` getter. `fromHostRow()` now accepts rows with `daemon_type IN ('incus', 'lxd')` and picks the right default Unix socket:
+
+- Incus: `/var/lib/incus/unix.socket`
+- LXD:   `/var/snap/lxd/common/lxd/unix.socket` (snap install default; legacy `/var/lib/lxd/` supported via explicit `daemon_config.socket`)
+
+**3. Routes at `/api/incus/*` accept both types**
+
+The route guard widens to `daemon_type IN ('incus', 'lxd')`. All audit-log entries include `daemonType` in `details` for provenance.
+
+**4. Frontend gating**
+
+- Sidebar entry renamed to **"Incus / LXD (alpha)"**
+- `data-fleet-daemon="incus,lxd"` supports comma-separated OR-match (new attribute-parsing rule in `_refreshCapabilities`)
+- Page title shows "Incus / LXD instances"
+
+**5. Howto: `lxd-integration.md`**
+
+Registration recipe for both snap and legacy installs, HTTPS + client cert flow, differences from Incus (currently: none that matter for docker-dash features), troubleshooting, security notes.
+
+**6. Tests**
+
+- New `src/__tests__/lxd-client.test.js` — 7 tests covering daemonType propagation, LXD socket default, override behavior, encrypted config round-trip for LXD rows, Incus regression guard
+- Updated `incus-client.test.js` — one test message widened for the `Incus/LXD host` error
+- Full suite: **1591 passing** across 94 suites
+
+### Migration semantics
+
+- `migration_jobs.destination_host_id` FK to `docker_hosts` is preserved (writable_schema edit is a no-op at the FK graph level)
+- `PRAGMA integrity_check` is run after the schema edit and throws if it doesn't return `ok`
+- Idempotent — the migration is a no-op if the CHECK already contains `'lxd'`
+
+### Backward compatibility
+
+- Every existing daemon_type value continues to be valid
+- Every existing IncusClient invocation continues to work unchanged (default `daemonType='incus'`)
+- No config file changes required for existing installs
+- Podman detection unaffected (still runs dynamically via Docker API `version.Components` inspection)
+
+### Alpha caveats
+
+- The full LXD-specific end-to-end flow has NOT been verified against a live LXD daemon in this session. The API-level identity with Incus makes correctness overwhelmingly likely, but the alpha label stays until an operator confirms.
+- LXD-only features (Canonical cluster-wide roles, snap-managed cert rotation) are not exposed
+- Incus-only features added after the fork (e.g. OCI image import) are not exposed
+- No dedicated LXD icon — the same cube icon used for Incus is reused for now
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
+## [8.9.2-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 7 — cross-hypervisor VM migration to Proxmox
+
+Alpha release. Ships the FIRST cut of the "killer feature" from the migration research (`plans/research-vmware-and-cross-migration-2026-07-03.md`): a one-click workflow to import a disk image URL into a Proxmox VM.
+
+### Positioning
+
+This is what makes the Proxmox integration in docker-dash actually valuable. Proxmox already has a great management UI. Where docker-dash adds unique value is **getting workloads INTO Proxmox** — from VMware VMDKs, OVA appliances, or public disk images.
+
+### Flow
+
+1. Operator opens **VM Migration (alpha)** in the sidebar (visible when any Proxmox host is registered)
+2. Clicks **New Migration** and fills a small form: source URL, source format (auto), destination Proxmox host + node + storage + new VMID + VM name
+3. Backend orchestrates the work on the Proxmox node via SSH:
+   - `wget` the source URL to `/tmp/dd-migration-<jobId>/`
+   - Extract VMDK from OVA if applicable
+   - `qemu-img convert -O qcow2`
+   - `qm create <vmid> --name <name> --memory 2048 --cores 2 --net0 virtio,bridge=vmbr0`
+   - `qm importdisk <vmid> <qcow2> <storage>`
+   - `qm set <vmid> --scsihw virtio-scsi-pci --scsi0 <storage>:vm-<vmid>-disk-0`
+   - `qm set <vmid> --boot c --bootdisk scsi0`
+   - Cleanup
+4. Live progress and phase log stream back to the UI (polling every 3 s)
+
+### What ships
+
+**1. Database migration 070 — `migration_jobs` table**
+Full audit of each job: source spec, destination Proxmox target, status (`pending`/`running`/`completed`/`failed`/`cancelled`), progress 0-100, current phase, phase log (bounded 256 KB), error, timestamps.
+
+**2. Service** — `src/services/migration-vm.js` (~250 lines)
+- `createJob(spec, userId)` — validates and persists, kicks off worker via `setImmediate`
+- `listJobs(limit)`, `getJob(id)`
+- `runJob(id)` — the SSH-driven worker with 9 phases and per-command timeouts (15 min per shell command, 1 h for download, 4 h for `qemu-img convert`)
+- Uses `ssh2` (existing dep from `ssh-tunnel.js`) with the SSH creds stored in the destination host's `daemon_config.sshConfig`
+- Every command wraps user input in strict shell escaping (`_shellEscape`) or validates against strict regex (`_validateSpec`)
+- Bounded phase log at 256 KB to prevent SQLite bloat on chatty commands
+
+**3. Routes** — `src/routes/migration-vm.js`
+- `GET /api/migration-vm` — list recent jobs (all authenticated users)
+- `GET /api/migration-vm/:id` — one job
+- `POST /api/migration-vm` — create + start (admin only, audited as `vm_migration_start`)
+
+**4. Frontend** — `public/js/pages/migration-vm.js`
+- Job list table with status badges, progress bars, current phase
+- New Migration modal with all fields
+- Job detail modal showing spec, progress, phase log tail
+- Live polling every 3 s while page is open
+- Sidebar entry gated via `data-fleet-daemon="proxmox"`
+
+**5. Howto** — `src/db/howto-content/vm-migration-to-proxmox.md`
+- Prerequisites (Proxmox host + SSH config)
+- SQL snippet to add `sshConfig` to an existing Proxmox `daemon_config`
+- Trigger flow
+- Progress milestones with % thresholds
+- Post-migration steps (Windows guest driver injection)
+- Security notes (source URL fetched by Proxmox not docker-dash; SSH creds encrypted; audit trail)
+- Troubleshooting
+
+**6. Tests** — `src/__tests__/migration-vm.test.js`
+- 18 unit tests covering:
+  - `_validateSpec` — 6 tests (missing URL, non-http, bogus VMID, shell metacharacters in name, valid spec)
+  - `_sourceExt` — 6 tests (VMDK/OVA/QCOW2/RAW detection, explicit format overrides URL)
+  - `_shellEscape` — 4 tests (POSIX close-escape-reopen pattern, embedded quotes, null/undefined, dangerous payload stays literal)
+  - `createJob` / `listJobs` — 2 tests (persistence + listing)
+- The SSH-exec / `qemu-img` / `qm importdisk` path is NOT covered by tests — it needs a real Proxmox cluster to verify
+
+Full suite: 1583 passing.
+
+### Alpha caveats — DO NOT USE IN PRODUCTION
+
+- **Unverified end-to-end**. The command sequence is correct per the Proxmox wiki and community writeups, but has NOT been tested against a real Proxmox cluster in this session
+- **No cancel button** (v2)
+- **OVAs with multiple disks**: only the first VMDK found is imported
+- **Storage compatibility**: some Proxmox storages don't support QCOW2 (LVM-thin needs raw); currently we always produce QCOW2
+- **Concurrent migrations to the same VMID**: not guarded
+- **Windows guests**: no VirtIO driver injection — operator must handle manually per the howto
+- **No file upload source** (URL only in this alpha)
+- **No VMware source** — deferred pending a decision on shipping a SOAP client for vSphere Web Services API (see the migration research doc)
+
+### Security model
+
+- Source URL is fetched by `wget` **on the Proxmox node**, not by docker-dash. Network egress policy applies to Proxmox
+- SSH credentials are stored **encrypted at rest** via the AES-256-GCM helper (same pattern as Incus / Proxmox `daemon_config`)
+- Every `POST /api/migration-vm` writes an `vm_migration_start` audit_log entry
+- Command construction validates VMIDs (regex + range) and names (strict regex `[a-zA-Z0-9._-]{1,63}`); free-form values are shell-escaped via POSIX close-escape-reopen pattern
+- 15-minute timeout on every shell command by default, 1 h on `wget`, 4 h on `qemu-img convert`
+
+### Operator action
+
+None for Docker-only installs. Operators wanting to try the migration flow: register a Proxmox host (see the Proxmox howto), add SSH config to `daemon_config` (see the migration howto), then use the UI. Report bugs — this is unverified alpha.
+
 ## [8.9.1-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 4 (Proxmox VE) foundation — read-only overview
 
 Alpha release. Ships the foundation for Proxmox VE integration but **read-only** — no state-change actions yet. Deployment to a Docker-only install is safe. Deployment against a real Proxmox cluster is EXPERIMENTAL.
