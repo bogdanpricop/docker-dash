@@ -202,4 +202,64 @@ router.get('/tasks', requireAuth, asyncHandler(async (req, res) => {
   res.json(tasks);
 }));
 
+// ── Stacks (v8.8.0, Sprint 2) ──────────────────────────────────
+//
+// Docker Compose / `docker stack deploy` both label services with
+// com.docker.stack.namespace=<stack>. We derive the stack list by
+// grouping services by that label. Services without the label belong
+// to the synthetic "_standalone" bucket (freestanding `docker service
+// create`), which the UI can either hide or show as "Standalone services".
+
+router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.hostId);
+  const services = await docker.listServices({ status: true });
+  const tasks = await docker.listTasks();
+  const byStack = new Map();
+  for (const svc of services) {
+    const label = (svc.Spec && svc.Spec.Labels) || {};
+    const stackName = label['com.docker.stack.namespace'] || '_standalone';
+    if (!byStack.has(stackName)) {
+      byStack.set(stackName, {
+        name: stackName,
+        services: 0,
+        replicas: { desired: 0, running: 0 },
+        createdAt: svc.CreatedAt,
+      });
+    }
+    const entry = byStack.get(stackName);
+    entry.services++;
+    const rep = svc.Spec && svc.Spec.Mode && svc.Spec.Mode.Replicated;
+    const desired = rep ? (rep.Replicas || 0) : 0;
+    const running = tasks.filter(t => t.ServiceID === svc.ID
+      && t.Status && t.Status.State === 'running').length;
+    entry.replicas.desired += desired;
+    entry.replicas.running += running;
+    if (svc.CreatedAt && svc.CreatedAt < entry.createdAt) entry.createdAt = svc.CreatedAt;
+  }
+  res.json(Array.from(byStack.values()).sort((a, b) => a.name.localeCompare(b.name)));
+}));
+
+// DELETE a whole stack — removes every service labeled with the
+// stack namespace. Volumes and networks persist (matches CLI
+// `docker stack rm` semantics; operator does volume cleanup separately).
+router.delete('/stacks/:name', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const docker = dockerService.getDocker(req.hostId);
+  const services = await docker.listServices({
+    filters: JSON.stringify({ label: [`com.docker.stack.namespace=${req.params.name}`] }),
+  });
+  if (services.length === 0) return res.status(404).json({ error: 'Stack not found' });
+  let removed = 0;
+  for (const svc of services) {
+    try { await docker.getService(svc.ID).remove(); removed++; }
+    catch { /* best-effort; report count in response */ }
+  }
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'swarm_stack_remove', targetType: 'swarm_stack', targetId: req.params.name,
+    details: { servicesRemoved: removed, servicesFound: services.length },
+    ip: getClientIp(req),
+  });
+  res.json({ ok: true, servicesRemoved: removed, servicesFound: services.length });
+}));
+
 module.exports = router;

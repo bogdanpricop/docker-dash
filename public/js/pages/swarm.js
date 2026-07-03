@@ -18,6 +18,7 @@ const SwarmPage = {
         <button class="tab active" data-tab="overview">Overview</button>
         <button class="tab" data-tab="nodes"><i class="fas fa-server" style="margin-right:4px"></i>Nodes</button>
         <button class="tab" data-tab="services"><i class="fas fa-cubes" style="margin-right:4px"></i>Services</button>
+        <button class="tab" data-tab="stacks"><i class="fas fa-layer-group" style="margin-right:4px"></i>Stacks</button>
         <button class="tab" data-tab="tasks"><i class="fas fa-tasks" style="margin-right:4px"></i>Tasks</button>
       </div>
       <div id="swarm-content">Loading...</div>
@@ -43,10 +44,86 @@ const SwarmPage = {
       if (this._tab === 'overview') await this._renderOverview(el);
       else if (this._tab === 'nodes')    await this._renderNodes(el);
       else if (this._tab === 'services') await this._renderServices(el);
+      else if (this._tab === 'stacks')   await this._renderStacks(el);
       else if (this._tab === 'tasks')    await this._renderTasks(el);
     } catch (err) {
       el.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  // ── Stacks (v8.8.0, Sprint 2) ───────────────────────────────
+  // Stacks are logical groupings of services that were deployed via
+  // `docker stack deploy` or Compose (they share a
+  // com.docker.stack.namespace label). This tab lists them, shows
+  // aggregate replica counts, and lets an admin remove a whole stack
+  // (drops all its services; volumes and networks persist, matching
+  // CLI semantics).
+
+  async _renderStacks(el) {
+    const stacks = await Api.getSwarmStacks();
+    if (!stacks.length) {
+      el.innerHTML = `<div class="empty-msg"><i class="fas fa-layer-group" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px"></i>No stacks deployed. Use <code>docker stack deploy</code> from the host shell to deploy a compose YAML.</div>`;
+      return;
+    }
+    const rows = stacks.map(s => {
+      const isStandalone = s.name === '_standalone';
+      const displayName = isStandalone ? 'Standalone services' : Utils.escapeHtml(s.name);
+      const pct = s.replicas.desired
+        ? Math.round((s.replicas.running / s.replicas.desired) * 100) : 0;
+      const cls = pct >= 100 ? 'green' : pct >= 50 ? 'yellow' : 'red';
+      const actions = isStandalone
+        ? '<span class="text-dim">—</span>'
+        : `<button class="btn btn-sm btn-danger" data-stack="${Utils.escapeHtml(s.name)}"><i class="fas fa-trash"></i> Remove</button>`;
+      return `
+        <tr>
+          <td><strong>${displayName}</strong></td>
+          <td>${s.services}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span>${s.replicas.running} / ${s.replicas.desired}</span>
+              <div class="progress-bar" style="flex:1;min-width:80px;max-width:120px">
+                <div class="progress-fill ${cls}" style="width:${pct}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="text-muted text-sm">${s.createdAt ? Utils.formatDate(s.createdAt) : '—'}</td>
+          <td>${actions}</td>
+        </tr>
+      `;
+    }).join('');
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Stack</th>
+                <th>Services</th>
+                <th>Replicas (running / desired)</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    el.querySelectorAll('[data-stack]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = btn.dataset.stack;
+        const ok = await Modal.confirm(
+          `Remove stack "${name}" and all its services? Volumes and networks will persist and must be cleaned up manually.`,
+          { danger: true, confirmText: 'Remove Stack' }
+        );
+        if (!ok) return;
+        try {
+          const r = await Api.removeSwarmStack(name);
+          Toast.success(`Removed ${r.servicesRemoved} service(s) from stack "${name}"`);
+          await this._renderTab();
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
   },
 
   // ── Overview ────────────────────────────────────────────────

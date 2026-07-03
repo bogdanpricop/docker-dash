@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.8.0',
+      date: '2026-07-03',
+      title: 'PLATFORM: Docker Swarm Stacks tab (Sprint 2 gap-fill)',
+      changes: [
+        { type: 'feature', text: 'New Stacks tab on the Swarm page. Groups services by com.docker.stack.namespace label, shows aggregated replica counts (running/desired) with a colored progress bar (green >=100%, yellow >=50%, red <50%), and lets an admin remove a whole stack with one click (all services drop; volumes and networks persist, matching CLI docker stack rm semantics).' },
+        { type: 'improvement', text: 'Backend: GET /api/swarm/stacks derives the list from services + tasks (single trip per host, no extra shape). DELETE /api/swarm/stacks/:name uses a label filter to find all belonging services and removes them best-effort with an audit_log entry summarizing count. Discovery: Sprint 2 of the virtualization roadmap turned out to be 90% already implemented historically — Overview/Nodes/Services/Tasks tabs and all mutating routes were in place. Only the Stacks aggregation was missing.' },
+      ],
+    },
+    {
       version: '8.7.44',
       date: '2026-07-03',
       title: 'PLATFORM: Podman certified — daemon detection + capability matrix',

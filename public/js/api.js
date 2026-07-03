@@ -366,6 +366,10 @@ const Api = {
   scaleSwarmService(id, replicas)     { return this.post(`/swarm/services/${id}/scale`, { replicas }); },
   removeSwarmService(id)              { return this.delete(`/swarm/services/${id}`); },
   getSwarmTasks(serviceId)            { return this.get(`/swarm/tasks${serviceId ? `?service=${serviceId}` : ''}`); },
+  // v8.8.0 — Stacks tab (Sprint 2). Stacks are derived server-side from
+  // services grouped by the com.docker.stack.namespace label.
+  getSwarmStacks()                    { return this.get('/swarm/stacks'); },
+  removeSwarmStack(name)              { return this.delete(`/swarm/stacks/${encodeURIComponent(name)}`); },
 
   // ─── Secrets Audit ────────────────────────────────────
   getSecretsAudit() { return this.get('/system/secrets-audit'); },

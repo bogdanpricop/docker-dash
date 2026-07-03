@@ -2,6 +2,44 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.8.0] - 2026-07-03 — **PLATFORM**: Docker Swarm — Stacks tab (Sprint 2 gap-fill)
+
+### Discovery
+
+While starting Sprint 2 of the virtualization roadmap (Docker Swarm active management), we discovered the Swarm surface was already 90% implemented historically:
+
+- Backend routes at `src/routes/swarm.js` (200+ lines): init/leave, join-tokens, nodes CRUD, services CRUD (including create with full spec), scale, delete, tasks
+- Frontend page at `public/js/pages/swarm.js` (590+ lines): Overview / Nodes / Services / Tasks tabs
+- Sidebar entry, page registration, `<script>` include — all wired
+
+Only one thing was missing: the **Stacks** tab (services grouped by `com.docker.stack.namespace` label) and the ability to remove a whole stack. This release fills that gap.
+
+### What ships
+
+**Backend** (`src/routes/swarm.js`):
+- `GET /api/swarm/stacks` — derives stacks from services by their `com.docker.stack.namespace` label; returns aggregated replica counts (running / desired) per stack. Services without the label appear under a synthetic `_standalone` bucket.
+- `DELETE /api/swarm/stacks/:name` — removes all services in the stack. Volumes and networks persist (matches CLI `docker stack rm` semantics; volume cleanup is a separate operator concern).
+
+**Frontend** (`public/js/pages/swarm.js`):
+- New **Stacks** tab between Services and Tasks
+- Per-row aggregated progress bar (green ≥ 100% running, yellow ≥ 50%, red < 50%)
+- Remove button per non-standalone stack with a danger confirmation dialog
+- `_standalone` bucket renders as "Standalone services" with actions disabled
+
+**API layer** (`public/js/api.js`):
+- `Api.getSwarmStacks()`
+- `Api.removeSwarmStack(name)`
+
+**Docs**: No new howto — existing swarm-basics / swarm-services / swarm-networking howtos remain the reference.
+
+### First Sprint 2 delta — future sprints
+
+Sprint 2 in the virtualization roadmap called for **stack deploy from compose YAML** (i.e. `docker stack deploy` semantics — translating a compose YAML into service specs and creating them). That's still deferred to a v8.8.x follow-up because dockerode has no native equivalent and needs a compose-to-service-spec translator. Non-trivial but not urgent — users can still `docker stack deploy` from the CLI and the UI immediately reflects it.
+
+### Operator action
+
+None. Backward-compatible. The new Stacks tab appears for any host that reports Swarm active.
+
 ## [8.7.44] - 2026-07-03 — **PLATFORM**: Podman certified — daemon detection + capability matrix + howto
 
 ### What
