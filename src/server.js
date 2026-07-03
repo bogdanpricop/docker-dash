@@ -190,6 +190,8 @@ app.use('/api/swarm', apiLimiter, require('./routes/swarm'));
 // v8.9.0-alpha.2 — Sprint 3 (Incus / LXD-successor). Feature-gated at
 // route level by daemon_type='incus' on the target hosts row.
 app.use('/api/incus', apiLimiter, require('./routes/incus'));
+// v8.9.1-alpha.1 — Sprint 4 (Proxmox VE). Read-only alpha.
+app.use('/api/proxmox', apiLimiter, require('./routes/proxmox'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

@@ -390,6 +390,16 @@ const Api = {
   getIncusImages()                    { return this.get('/incus/images'); },
   getIncusProjects()                  { return this.get('/incus/projects'); },
 
+  // ─── Proxmox VE (v8.9.1-alpha.1) ────────────────
+  getProxmoxInfo()                    { return this.get('/proxmox/info'); },
+  getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
+  getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
+  getProxmoxVM(node, vmid)            { return this.get(`/proxmox/vms/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
+  getProxmoxLXC()                     { return this.get('/proxmox/lxc'); },
+  getProxmoxLXCInstance(node, vmid)   { return this.get(`/proxmox/lxc/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
+  getProxmoxStorages()                { return this.get('/proxmox/storages'); },
+  getProxmoxBackups()                 { return this.get('/proxmox/backups'); },
+
   // ─── Secrets Audit ────────────────────────────────────
   getSecretsAudit() { return this.get('/system/secrets-audit'); },
   validateDeploy(data) { return this.post('/system/deploy-validate', data); },

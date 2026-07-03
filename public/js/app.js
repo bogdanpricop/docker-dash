@@ -34,6 +34,7 @@ const App = {
     stacks:     () => StacksPage,
     swarm:      () => SwarmPage,
     'incus-instances': () => IncusInstancesPage,
+    'proxmox-resources': () => ProxmoxResourcesPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,

@@ -2,6 +2,105 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.1-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 4 (Proxmox VE) foundation — read-only overview
+
+Alpha release. Ships the foundation for Proxmox VE integration but **read-only** — no state-change actions yet. Deployment to a Docker-only install is safe. Deployment against a real Proxmox cluster is EXPERIMENTAL.
+
+### Positioning (unchanged from deep-spec)
+
+docker-dash is **NOT a Proxmox UI replacement**. Proxmox ships an excellent web UI. This integration's value is showing VMs + LXCs + storages + backups alongside your Docker hosts in one dashboard for operators running **mixed infrastructure** (Docker + Proxmox).
+
+### What ships
+
+**1. ProxmoxClient** (`src/services/proxmox.js`)
+Thin HTTPS wrapper (stdlib `https`, no new npm dep). API token auth via `PVEAPIToken=USER@REALM!TOKENID=UUID` header. 30 s timeout + 16 MB response cap (matches v8.7.x hardening pattern). `self-signed` cert support via `skipTlsVerify=true`.
+
+Read methods:
+- `version()` — daemon info
+- `listNodes()` — cluster nodes
+- `listVMs()` — VMs across cluster (via `/cluster/resources?type=vm`)
+- `listLXC()` — LXC containers
+- `listStorages()` — storages
+- `getVM(node, vmid)`, `getLXC(node, vmid)` — single-instance detail
+- `listBackups()` — union across all storages, sorted newest first
+
+Not yet implemented (deferred to alpha.2 / beta):
+- State actions: start / stop / reboot / suspend VM/LXC
+- Migrate VM between nodes
+- Trigger vzdump backup
+- Snapshot management
+- noVNC console iframe
+- Cluster HA policy view
+
+**2. Routes** (`src/routes/proxmox.js`, mounted at `/api/proxmox/*`)
+- `GET /info`, `GET /nodes`
+- `GET /vms`, `GET /vms/:node/:vmid`
+- `GET /lxc`, `GET /lxc/:node/:vmid`
+- `GET /storages`, `GET /backups`
+
+Every route guards on `daemon_type='proxmox'`. Wrong host = 400 with actionable error message.
+
+**3. Frontend** (`public/js/pages/proxmox-resources.js`)
+Page with tabs: **VMs**, **LXC**, **Nodes**, **Storages**, **Backups**. Each tab renders a table with the shape appropriate to the resource. Info panel at the top shows Proxmox version + release + repo id.
+
+Sidebar: **Proxmox (alpha)** — gated via `data-fleet-daemon="proxmox"` from v8.9.0-alpha.3, so it only shows when the operator has registered a Proxmox host.
+
+**4. daemon_config encryption** (mirrors Incus alpha.3 pattern)
+- `encryptDaemonConfig(cfg)` / `decryptDaemonConfig(raw)` helpers
+- Backward-compatible: plaintext JSON accepted
+- Encrypted `enc:iv:tag:ciphertext` via AES-256-GCM
+
+**5. `dockerService.getInfo` extended** to actually probe Proxmox for a live version (from alpha.3's stub). Best-effort; connection error leaves `_connectError` on the response instead of failing `/api/system/info`.
+
+**6. Tests** — 12 unit tests in `src/__tests__/proxmox-client.test.js`:
+- Constructor validation (endpoint, token, tokenId format)
+- Auth header shape (`PVEAPIToken=...`)
+- Response envelope unwrapping (`{data: ...}`)
+- Error surface with structured `errors` field
+- `listLXC` filters `cluster/resources` by `type=lxc`
+- Encryption round-trip + plaintext backward-compat + `fromHostRow` non-Proxmox rejection
+
+Full suite: 1565 passing.
+
+### Deployment (Docker + Proxmox mixed install)
+
+1. In Proxmox, create an API token: **Datacenter → Permissions → API Tokens → Add**. Uncheck "Privilege Separation" for simplicity, or grant `PVEAuditor` role on `/` for read-only.
+
+2. Register the host in Docker Dash's DB (no admin UI yet):
+```bash
+docker exec docker-dash node -e '
+const { getDb } = require("/app/src/db");
+const { encryptDaemonConfig } = require("/app/src/services/proxmox");
+const cfg = {
+  endpoint: "https://pve.example.com:8006",
+  tokenId: "root@pam!docker-dash",
+  tokenSecret: "YOUR-UUID-HERE",
+  skipTlsVerify: true    // homelab; false in production with real cert
+};
+const encrypted = encryptDaemonConfig(cfg);
+getDb().prepare(`INSERT INTO docker_hosts
+  (name, connection_type, daemon_type, daemon_config, is_default, is_active)
+  VALUES (?, ?, ?, ?, ?, ?)`)
+  .run("Proxmox Cluster", "tcp", "proxmox", encrypted, 0, 1);
+console.log("proxmox host registered");
+'
+```
+
+3. Refresh Docker Dash. **Proxmox (alpha)** appears in the sidebar. Switch to that host via the host selector, click the nav item — VMs, LXCs, nodes, storages, backups appear.
+
+### Known-alpha limitations
+
+- Read-only. No state-change actions.
+- No admin UI to register a Proxmox host (SQL only).
+- No noVNC console.
+- Cluster addressing: uses cluster-wide `/cluster/resources` endpoint — no per-node routing yet.
+- No health-check for Proxmox — the Info panel silently shows nothing on connection failure.
+- Nav visible per fleet-daemon gate (v8.9.0-alpha.3) — but if the operator only has Proxmox and no Docker, some other pages error.
+
+### Operator action
+
+None for Docker-only installs. Proxmox operators: read deployment steps above.
+
 ## [8.9.0-alpha.3] - 2026-07-03 — **PLATFORM alpha**: Sprint 3 (Incus) consolidation — multi-daemon dispatch, encryption, fleet-daemon nav
 
 Third alpha of Sprint 3. Not new features — this release closes three known-alpha gaps flagged in alpha.2.

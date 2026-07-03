@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.1-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 4 (Proxmox VE) foundation',
+      changes: [
+        { type: 'feature', text: 'Read-only Proxmox VE integration. New ProxmoxClient (stdlib https, no new dep) with API token auth, 30s timeout, 16MB response cap, self-signed cert support. Read methods: version, listNodes, listVMs, listLXC, listStorages, listBackups, getVM, getLXC. Routes /api/proxmox/* guard on daemon_type=proxmox.' },
+        { type: 'feature', text: 'Frontend page pages/proxmox-resources.js with tabs VMs / LXC / Nodes / Storages / Backups. Info panel shows Proxmox version. Sidebar "Proxmox (alpha)" gated via data-fleet-daemon=proxmox — appears only when operator has registered a Proxmox host.' },
+        { type: 'security', text: 'daemon_config encryption at rest for Proxmox mirroring Incus alpha.3 pattern. encryptDaemonConfig / decryptDaemonConfig via AES-256-GCM. Plaintext JSON accepted for backward-compat.' },
+        { type: 'improvement', text: 'Positioning explicit: docker-dash is NOT a Proxmox UI replacement. Proxmox ships an excellent UI. Value-add: unified panel across mixed Docker + Proxmox infrastructure. Alpha limitations: no state-change actions yet, no admin UI (SQL registration), no noVNC console. 12 new unit tests. Full suite: 1565 passing.' },
+      ],
+    },
+    {
       version: '8.9.0-alpha.3',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 3 (Incus) consolidation',

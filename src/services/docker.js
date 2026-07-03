@@ -681,8 +681,24 @@ class DockerService {
         compose: false, swarm: false, buildkit: false, plugins: false,
         proxmox: true, vms: true, lxc: true, snapshots: true, backups: true,
       };
-      // Proxmox service not shipped yet (Sprint 4). Return stub.
-      return { ...base, daemonType, daemonName: 'Proxmox VE', capabilities };
+      // v8.9.1-alpha.1 — probe the Proxmox daemon for live version info.
+      // Best-effort: connection errors return a stub instead of failing
+      // the whole /api/system/info call.
+      try {
+        const { fromHostRow } = require('./proxmox');
+        const client = fromHostRow(row);
+        const version = await client.version();
+        return {
+          ...base,
+          hostname: row.name,
+          dockerVersion: (version && version.version) || null,
+          apiVersion: (version && version.repoid) || null,
+          daemonType, daemonName: 'Proxmox VE', capabilities,
+        };
+      } catch (err) {
+        return { ...base, daemonType, daemonName: 'Proxmox VE', capabilities,
+          _connectError: err.message };
+      }
     }
     if (daemonType === 'kubernetes') {
       const capabilities = {
