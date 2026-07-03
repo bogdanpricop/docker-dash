@@ -12,16 +12,34 @@ const HostsPage = {
         <h2><i class="fas fa-server"></i> ${i18n.t('pages.hosts.title')}</h2>
         <div class="page-actions">
           <button class="btn btn-sm btn-primary" id="host-add"><i class="fas fa-plus"></i> ${i18n.t('pages.hosts.addHost')}</button>
+          <button class="btn btn-sm btn-secondary" id="host-add-non-docker"><i class="fas fa-cubes"></i> Non-Docker host <span class="badge badge-warning" style="font-size:9px">alpha</span></button>
           <button class="btn btn-sm btn-secondary" id="host-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
       <div id="hosts-grid" class="hosts-grid"></div>
+      ${this._renderDaemonTypesDocs()}
       ${this._renderGuide()}
       ${this._renderSshKeyGuide()}
     `;
 
     container.querySelector('#host-add').addEventListener('click', () => this._addHostDialog());
+    container.querySelector('#host-add-non-docker').addEventListener('click', () => this._addNonDockerHostDialog());
     container.querySelector('#host-refresh').addEventListener('click', () => this._load());
+
+    // Collapse/expand daemon-types docs (v8.9.5-alpha.1)
+    const dtToggle = container.querySelector('#daemon-types-toggle');
+    const dtBody = container.querySelector('#daemon-types-body');
+    if (dtToggle && dtBody) {
+      const saved = localStorage.getItem('dd-hosts-daemontypes-collapsed');
+      if (saved === 'true') dtBody.style.display = 'none';
+      dtToggle.addEventListener('click', () => {
+        const hidden = dtBody.style.display === 'none';
+        dtBody.style.display = hidden ? '' : 'none';
+        localStorage.setItem('dd-hosts-daemontypes-collapsed', !hidden);
+        dtToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
+          hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+      });
+    }
 
     // Collapse/expand guide
     const guideToggle = container.querySelector('#guide-toggle');
@@ -238,6 +256,297 @@ const HostsPage = {
         await this._load();
       } catch (err) { Toast.error(err.message); }
     }
+  },
+
+  // ─── v8.9.5-alpha.1 — Register a non-Docker daemon ────────────────
+  // Wizard for adding Incus / LXD / Proxmox / Kubernetes / Nomad hosts.
+  // Each type has its own daemon_config shape; the form renders the
+  // right fields based on the selected type. Backend endpoint is the
+  // same POST /hosts — it dispatches on the `daemonType` field.
+  async _addNonDockerHostDialog() {
+    const html = `
+      <div class="form-group">
+        <label>Daemon type</label>
+        <select id="ndh-type" class="form-control">
+          <option value="incus">Incus (containers + KVM VMs)</option>
+          <option value="lxd">LXD (Canonical — containers + KVM VMs)</option>
+          <option value="proxmox">Proxmox VE (VMs + LXC)</option>
+          <option value="kubernetes">Kubernetes (k3s / k0s / MicroK8s / kubeadm)</option>
+          <option value="nomad">Nomad (HashiCorp workload orchestrator)</option>
+        </select>
+        <small class="text-muted">Each type has its own configuration shape below.</small>
+      </div>
+      <div class="form-group">
+        <label>Host name (display label)</label>
+        <input type="text" id="ndh-name" class="form-control" placeholder="prod-k3s" required>
+      </div>
+      <div id="ndh-type-fields"></div>
+    `;
+
+    const result = await Modal.form(html, {
+      title: 'Register non-Docker host (alpha)',
+      width: '600px',
+      onSubmit: (content) => this._collectNonDockerFormData(content),
+      onMount: (content) => this._setupNonDockerFormToggle(content),
+    });
+
+    if (result) {
+      try {
+        await Api.createHost(result);
+        Toast.success(`${result.daemonType} host registered`);
+        await this._load();
+      } catch (err) { Toast.error(err.message); }
+    }
+  },
+
+  _setupNonDockerFormToggle(content) {
+    const typeSel = content.querySelector('#ndh-type');
+    const fieldsEl = content.querySelector('#ndh-type-fields');
+    if (!typeSel || !fieldsEl) return;
+    const wireTransportToggle = () => {
+      const trSel = fieldsEl.querySelector('#ndh-transport');
+      if (!trSel) return;
+      const apply = () => {
+        const chosen = trSel.value;
+        fieldsEl.querySelectorAll('[data-transport]').forEach(el => {
+          el.style.display = (el.getAttribute('data-transport') === chosen) ? '' : 'none';
+        });
+      };
+      trSel.addEventListener('change', apply);
+      apply();
+    };
+    const renderFields = () => {
+      const type = typeSel.value;
+      fieldsEl.innerHTML = this._renderNonDockerFields(type);
+      wireTransportToggle();
+    };
+    typeSel.addEventListener('change', renderFields);
+    renderFields();
+  },
+
+  _renderNonDockerFields(type) {
+    switch (type) {
+      case 'incus':
+      case 'lxd': {
+        const defaultSocket = type === 'lxd'
+          ? '/var/snap/lxd/common/lxd/unix.socket'
+          : '/var/lib/incus/unix.socket';
+        return `
+          <div class="form-group">
+            <label>Transport</label>
+            <select id="ndh-transport" class="form-control">
+              <option value="unix">Unix socket (local)</option>
+              <option value="https">HTTPS (remote, client cert)</option>
+            </select>
+          </div>
+          <div class="form-group" data-transport="unix">
+            <label>Socket path</label>
+            <input type="text" id="ndh-socket" class="form-control" value="${Utils.escapeHtml(defaultSocket)}">
+            <small class="text-muted">Must be mounted into the docker-dash container.</small>
+          </div>
+          <div class="form-group" data-transport="https" style="display:none">
+            <label>Endpoint</label>
+            <input type="text" id="ndh-endpoint" class="form-control" placeholder="https://host.example.com:8443">
+          </div>
+          <div class="form-group" data-transport="https" style="display:none">
+            <label>Client certificate (PEM)</label>
+            <textarea id="ndh-cert" class="form-control" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;..."></textarea>
+          </div>
+          <div class="form-group" data-transport="https" style="display:none">
+            <label>Client key (PEM)</label>
+            <textarea id="ndh-key" class="form-control" rows="3" placeholder="-----BEGIN PRIVATE KEY-----&#10;..."></textarea>
+          </div>
+          <div class="form-group" data-transport="https" style="display:none">
+            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
+          </div>
+        `;
+      }
+      case 'proxmox':
+        return `
+          <div class="form-group">
+            <label>Endpoint</label>
+            <input type="text" id="ndh-endpoint" class="form-control" placeholder="https://pve.example.com:8006" required>
+          </div>
+          <div class="form-group">
+            <label>API token ID</label>
+            <input type="text" id="ndh-token-id" class="form-control" placeholder="root@pam!docker-dash" required>
+            <small class="text-muted">Format: <code>USER@REALM!TOKENID</code></small>
+          </div>
+          <div class="form-group">
+            <label>API token secret (UUID)</label>
+            <input type="password" id="ndh-token-secret" class="form-control" placeholder="a1b2c3d4-e5f6-..." required>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="ndh-skip-tls" checked> Skip TLS verification (self-signed cert)</label>
+          </div>
+        `;
+      case 'kubernetes':
+        return `
+          <div class="form-group">
+            <label>API server endpoint</label>
+            <input type="text" id="ndh-endpoint" class="form-control" placeholder="https://k3s.example.com:6443" required>
+          </div>
+          <div class="form-group">
+            <label>Bearer token (ServiceAccount)</label>
+            <textarea id="ndh-token" class="form-control" rows="2" placeholder="eyJhbG..." required></textarea>
+            <small class="text-muted">See <a href="#/howto/kubernetes-integration">Kubernetes integration howto</a> for the ServiceAccount + ClusterRoleBinding YAML.</small>
+          </div>
+          <div class="form-group">
+            <label>CA certificate (PEM, optional)</label>
+            <textarea id="ndh-ca" class="form-control" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;..."></textarea>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
+          </div>
+        `;
+      case 'nomad':
+        return `
+          <div class="form-group">
+            <label>Endpoint</label>
+            <input type="text" id="ndh-endpoint" class="form-control" placeholder="https://nomad.example.com:4646" required>
+          </div>
+          <div class="form-group">
+            <label>ACL token (optional)</label>
+            <input type="password" id="ndh-token" class="form-control" placeholder="SECRET-ID-UUID">
+            <small class="text-muted">Leave empty if ACL is disabled on the cluster.</small>
+          </div>
+          <div class="form-group">
+            <label>CA certificate (PEM, optional)</label>
+            <textarea id="ndh-ca" class="form-control" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;..."></textarea>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
+          </div>
+        `;
+      default:
+        return '';
+    }
+  },
+
+  _collectNonDockerFormData(content) {
+    const daemonType = content.querySelector('#ndh-type').value;
+    const name = content.querySelector('#ndh-name').value.trim();
+    if (!name) return null;
+    const daemonConfig = {};
+    switch (daemonType) {
+      case 'incus':
+      case 'lxd': {
+        const transport = content.querySelector('#ndh-transport').value;
+        daemonConfig.transport = transport;
+        if (transport === 'unix') {
+          daemonConfig.socket = content.querySelector('#ndh-socket').value.trim();
+        } else {
+          daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
+          daemonConfig.cert = content.querySelector('#ndh-cert').value.trim();
+          daemonConfig.key = content.querySelector('#ndh-key').value.trim();
+          daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        }
+        break;
+      }
+      case 'proxmox':
+        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
+        daemonConfig.tokenId = content.querySelector('#ndh-token-id').value.trim();
+        daemonConfig.tokenSecret = content.querySelector('#ndh-token-secret').value.trim();
+        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        break;
+      case 'kubernetes':
+        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
+        daemonConfig.token = content.querySelector('#ndh-token').value.trim();
+        daemonConfig.caCert = content.querySelector('#ndh-ca').value.trim() || undefined;
+        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        break;
+      case 'nomad':
+        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
+        daemonConfig.token = content.querySelector('#ndh-token').value.trim() || undefined;
+        daemonConfig.caCert = content.querySelector('#ndh-ca').value.trim() || undefined;
+        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        break;
+    }
+    return { name, daemonType, daemonConfig };
+  },
+
+  // ─── v8.9.5-alpha.1 — Docs section explaining each daemon type ────
+  _renderDaemonTypesDocs() {
+    return `
+      <div class="card" style="margin-top:24px">
+        <div class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" id="daemon-types-toggle">
+          <div><i class="fas fa-info-circle"></i> <strong>Supported daemon types</strong> <small class="text-muted">— overview of what Docker Dash can manage</small></div>
+          <i class="fas fa-chevron-down"></i>
+        </div>
+        <div class="card-body" id="daemon-types-body">
+          <table class="table" style="font-size:13px">
+            <thead>
+              <tr>
+                <th style="width:14%">Type</th>
+                <th style="width:14%">Auth</th>
+                <th>What ships</th>
+                <th style="width:11%">Read-only?</th>
+                <th style="width:16%">Howto</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><i class="fab fa-docker"></i> <strong>Docker</strong></td>
+                <td>Socket / TCP+TLS / SSH tunnel</td>
+                <td>Full: containers, images, networks, volumes, compose, Swarm, buildkit, registries</td>
+                <td>—</td>
+                <td>(default)</td>
+              </tr>
+              <tr>
+                <td><i class="fab fa-docker"></i> <strong>Podman</strong></td>
+                <td>Socket / TCP+TLS / SSH tunnel</td>
+                <td>Same as Docker minus Swarm + buildkit. Detected automatically via <code>version.Components</code>.</td>
+                <td>—</td>
+                <td><a href="#/howto/podman-integration">Podman</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-cubes"></i> <strong>Incus</strong></td>
+                <td>Unix socket / HTTPS + client cert</td>
+                <td>Instances (containers + KVM VMs), snapshots, images, projects. State changes (start/stop/restart/delete).</td>
+                <td>—</td>
+                <td><a href="#/howto/incus-integration">Incus</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-cubes"></i> <strong>LXD</strong></td>
+                <td>Unix socket / HTTPS + client cert</td>
+                <td>Same as Incus (shared REST API since the 2024 fork). Snap install default: <code>/var/snap/lxd/common/lxd/unix.socket</code>.</td>
+                <td>—</td>
+                <td><a href="#/howto/lxd-integration">LXD</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-server"></i> <strong>Proxmox VE</strong></td>
+                <td>API token (<code>USER@REALM!TOKENID</code>)</td>
+                <td>Nodes, VMs, LXC, storages, backups. + VM Migration (VMDK/OVA/QCOW2/RAW → new VM).</td>
+                <td>Read + Migrate</td>
+                <td><a href="#/howto/proxmox-integration">Proxmox</a> · <a href="#/howto/vm-migration-to-proxmox">Migration</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-dharmachakra"></i> <strong>Kubernetes</strong></td>
+                <td>Bearer token (ServiceAccount)</td>
+                <td>Deployments, Pods, Services, Namespaces, Nodes. Read-only in alpha.1.</td>
+                <td>Yes (alpha.1)</td>
+                <td><a href="#/howto/kubernetes-integration">Kubernetes</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-tasks"></i> <strong>Nomad</strong></td>
+                <td>ACL token in <code>X-Nomad-Token</code> (optional if ACL disabled)</td>
+                <td>Jobs, allocations, deployments, nodes, namespaces. Read-only in alpha.1.</td>
+                <td>Yes (alpha.1)</td>
+                <td><a href="#/howto/nomad-integration">Nomad</a></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top:12px;font-size:13px" class="text-muted">
+            <strong>Wasm runtimes</strong> — When a Docker host has WasmEdge / wasmtime / Spin / etc. registered in <code>daemon.json</code>, docker-dash detects and categorizes them.
+            No new daemon type — Wasm containers run through the existing Docker daemon.
+            See <a href="#/howto/wasm-workloads">Wasm workloads</a>.
+          </div>
+          <div style="margin-top:12px;font-size:13px" class="text-muted">
+            <strong>Security:</strong> every non-Docker <code>daemon_config</code> (client certs, bearer tokens, API tokens, SSH keys) is encrypted at rest via AES-256-GCM (<code>enc:</code> prefix), keyed by <code>ENCRYPTION_KEY</code> — same helper used for git credentials, Docker registry auth, and AI API keys.
+          </div>
+        </div>
+      </div>
+    `;
   },
 
   /** Shared form HTML builder for add/edit */

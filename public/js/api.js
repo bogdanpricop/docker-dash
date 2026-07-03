@@ -400,6 +400,16 @@ const Api = {
   getProxmoxStorages()                { return this.get('/proxmox/storages'); },
   getProxmoxBackups()                 { return this.get('/proxmox/backups'); },
 
+  // ─── Nomad (v8.9.5-alpha.1, Sprint 10) — read-only alpha ───
+  getNomadInfo()                      { return this.get('/nomad/info'); },
+  getNomadNamespaces()                { return this.get('/nomad/namespaces'); },
+  getNomadJobs(namespace)             { return this.get(`/nomad/jobs${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getNomadJob(id, namespace)          { return this.get(`/nomad/jobs/${encodeURIComponent(id)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getNomadJobAllocations(id, ns)      { return this.get(`/nomad/jobs/${encodeURIComponent(id)}/allocations${ns ? `?namespace=${encodeURIComponent(ns)}` : ''}`); },
+  getNomadAllocations(namespace)      { return this.get(`/nomad/allocations${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+  getNomadNodes()                     { return this.get('/nomad/nodes'); },
+  getNomadDeployments(namespace)      { return this.get(`/nomad/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
+
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
   getKubernetesNamespaces()           { return this.get('/kubernetes/namespaces'); },

@@ -586,6 +586,12 @@ class DockerService {
       alternativeRuntimes: info.Runtimes && typeof info.Runtimes === 'object'
         ? Object.keys(info.Runtimes).filter(n => n !== 'runc').sort()
         : [],
+      // v8.9.5-alpha.1 — Sprint 9: categorize runtimes by isolation
+      // model. Frontend can render badges + gate features (e.g. a
+      // future "Deploy WASM app" wizard only shows if a wasm-capable
+      // runtime is present). Pattern-based detection — the runtime
+      // names below are the canonical binaries in daemon.json.
+      runtimeCategories: _categorizeRuntimes(info.Runtimes),
       // v8.7.44 daemon identity + capability matrix. Capabilities let the
       // frontend hide/disable features that the underlying daemon can't
       // service (Swarm on Podman, etc.) via a single generic mechanism
@@ -706,6 +712,30 @@ class DockerService {
         };
       } catch (err) {
         return { ...base, daemonType, daemonName: 'Proxmox VE', capabilities,
+          _connectError: err.message };
+      }
+    }
+    if (daemonType === 'nomad') {
+      const capabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        nomad: true, nomadJobs: true, nomadAllocations: true, nomadDeployments: true,
+      };
+      try {
+        const { fromHostRow } = require('./nomad');
+        const client = fromHostRow(row);
+        const self = await client.agentSelf();
+        const cfg = (self && self.config) || {};
+        const stats = (self && self.stats && self.stats.nomad) || {};
+        return {
+          ...base,
+          hostname: (cfg.Name) || row.name,
+          dockerVersion: (self && self.member && self.member.Tags && self.member.Tags.build) || null,
+          apiVersion: stats.build_date || null,
+          daemonType, daemonName: 'Nomad', capabilities,
+        };
+      } catch (err) {
+        return { ...base, daemonType, daemonName: 'Nomad', capabilities,
           _connectError: err.message };
       }
     }
@@ -948,6 +978,63 @@ function _detectDaemonType(version) {
 }
 
 const _daemon = { _detectDaemonType };
+
+// v8.9.5-alpha.1 — Sprint 9: categorize OCI runtimes by isolation model.
+// The list is derived from the standard runtime binaries in daemon.json.
+//
+// - standard: process isolation via kernel namespaces + cgroups (runc,
+//   crun). Default. Not visible in the UI as a "capability" — it's
+//   just the baseline.
+// - sandboxed: extra isolation layer (Kata Containers = VM per pod,
+//   gVisor/runsc = user-space kernel, Firecracker microVM). Enables
+//   the "Sandboxed runtime" badge from v8.7.x.
+// - wasm: WebAssembly runtimes. WasmEdge, wasmtime, wamr, spin, and
+//   the containerd shim conventions "io.containerd.<name>.v1". Enables
+//   a future Deploy-Wasm-app wizard + a badge on the host card.
+//
+// Detection is pattern-based on the runtime name because Docker doesn't
+// expose an isolation-class taxonomy — the operator has installed and
+// registered these runtimes themselves. Names below are the canonical
+// binaries; the loose regex tolerates minor variations (e.g. "crun-wasm"
+// or "containerd-shim-wasmedge-v1").
+
+const WASM_RUNTIME_PATTERNS = [
+  /wasmedge/i,      // WasmEdge (CNCF, most common in containerd/docker)
+  /wasmtime/i,      // Bytecode Alliance
+  /wamr/i,          // WebAssembly Micro Runtime
+  /spin/i,          // Fermyon Spin (containerd shim)
+  /crun-wasm/i,     // crun's wasm variant
+  /wasmer/i,        // Wasmer runtime
+  /wws/i,           // Wasm Workers Server (Fermyon)
+];
+const SANDBOXED_RUNTIME_PATTERNS = [
+  /kata/i,          // Kata Containers (VM per pod)
+  /runsc/i,         // gVisor (user-space kernel)
+  /firecracker/i,   // AWS Firecracker microVM
+  /nabla/i,         // Nabla (unikernel-inspired sandbox)
+  /youki/i,         // Rust-based OCI runtime (isolation via cgroups2 by default)
+];
+
+function _categorizeRuntimes(runtimes) {
+  const result = { standard: [], sandboxed: [], wasm: [] };
+  if (!runtimes || typeof runtimes !== 'object') return result;
+  for (const name of Object.keys(runtimes)) {
+    if (WASM_RUNTIME_PATTERNS.some(p => p.test(name))) {
+      result.wasm.push(name);
+    } else if (SANDBOXED_RUNTIME_PATTERNS.some(p => p.test(name))) {
+      result.sandboxed.push(name);
+    } else {
+      result.standard.push(name);
+    }
+  }
+  result.standard.sort();
+  result.sandboxed.sort();
+  result.wasm.sort();
+  return result;
+}
+
+// Exposed for tests.
+_daemon._categorizeRuntimes = _categorizeRuntimes;
 
 module.exports = new DockerService();
 module.exports._daemon = _daemon;  // exposed for tests

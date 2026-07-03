@@ -118,12 +118,64 @@ router.get('/:id/info', requireAuth, asyncHandler(async (req, res) => {
   res.json(info);
 }));
 
+// v8.9.5-alpha.1 — set of daemon types that DON'T use a Docker socket.
+// For these, POST /hosts takes { name, daemonType, daemonConfig } and
+// skips all of the Docker-specific fields below.
+const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nomad']);
+
+// v8.9.5-alpha.1 — per-daemon config encryption helpers. Each service's
+// encryptDaemonConfig produces an `enc:` prefixed blob using AES-256-GCM.
+// Incus module handles both incus + lxd; the rest each own their own.
+function _encryptDaemonConfig(daemonType, cfg) {
+  switch (daemonType) {
+    case 'incus':
+    case 'lxd':
+      return require('../services/incus').encryptDaemonConfig(cfg);
+    case 'proxmox':
+      return require('../services/proxmox').encryptDaemonConfig(cfg);
+    case 'kubernetes':
+      return require('../services/kubernetes').encryptDaemonConfig(cfg);
+    case 'nomad':
+      return require('../services/nomad').encryptDaemonConfig(cfg);
+    default:
+      throw new Error(`Unknown daemon type: ${daemonType}`);
+  }
+}
+
 // Add new host
 router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
-            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket } = req.body;
+            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
+            daemonType, daemonConfig } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    // ─── v8.9.5-alpha.1 — non-Docker daemon registration path ─────
+    // When daemonType is one of the non-Docker types, we skip all the
+    // Docker-specific validation and store the encrypted daemon_config.
+    if (daemonType && _NON_DOCKER_TYPES.has(daemonType)) {
+      if (!daemonConfig || typeof daemonConfig !== 'object') {
+        return res.status(400).json({ error: 'daemonConfig object is required for non-Docker hosts' });
+      }
+      const db = getDb();
+      const enc = _encryptDaemonConfig(daemonType, daemonConfig);
+      // connection_type is required by the schema — use 'tcp' as a
+      // best-fit generic marker for these hosts (they all speak HTTP/
+      // HTTPS, not a Unix socket from docker-dash's perspective).
+      const result = db.prepare(`
+        INSERT INTO docker_hosts (name, connection_type, daemon_type, daemon_config, is_active, is_default)
+        VALUES (?, ?, ?, ?, 1, 0)
+      `).run(name, connectionType || 'tcp', daemonType, enc);
+      const newId = result.lastInsertRowid;
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'host_create', targetType: 'host', targetId: String(newId),
+        details: { name, daemonType, endpoint: daemonConfig && daemonConfig.endpoint }, ip: getClientIp(req),
+      });
+      return res.status(201).json({ ok: true, id: newId, daemonType });
+    }
+
+    // ─── Docker/Podman path (existing) ────────────────────────────
     if (!connectionType) return res.status(400).json({ error: 'Connection type is required' });
 
     // Validate required fields per connection type

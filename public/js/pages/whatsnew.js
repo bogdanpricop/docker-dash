@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.5-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM alpha: Sprint 9 (Wasm) + Sprint 10 (Nomad) + Hosts UI',
+      changes: [
+        { type: 'feature', text: 'Sprint 10 — HashiCorp Nomad integration. Read-only alpha: NomadClient (stdlib http/https, zero new deps), auth via X-Nomad-Token, TLS via CA cert. Methods: agentSelf, listNamespaces (graceful 501 for OSS), listJobs/Deployments/Allocations (namespace-scoped), listNodes. Routes /api/nomad/* guard on daemon_type=nomad. Migration 072 adds nomad to the CHECK constraint.' },
+        { type: 'feature', text: 'Nomad frontend page nomad-jobs.js with tabs Jobs (default) / Allocations / Deployments / Nodes. Namespace filter. Info card shows agent name + version + region + DC. Sidebar "Nomad (alpha)" gated data-fleet-daemon=nomad.' },
+        { type: 'feature', text: 'Sprint 9 — Wasm runtime detection on Docker hosts. _categorizeRuntimes() in docker.js groups OCI runtimes into standard (runc, crun), sandboxed (Kata, gVisor, Firecracker, Nabla, Youki), and wasm (WasmEdge, wasmtime, wamr, Spin, wasmer, crun-wasm). Result exposed at /api/system/info as runtimeCategories.' },
+        { type: 'feature', text: 'Hosts page: new "Non-Docker host" button opens a wizard for Incus / LXD / Proxmox / Kubernetes / Nomad. Type-specific fields (transport toggle for Incus/LXD, API token for Proxmox, bearer token for Kubernetes, ACL token for Nomad). Backend dispatches to the right encryptDaemonConfig() helper.' },
+        { type: 'feature', text: 'Hosts page: new "Supported daemon types" collapsible docs section — table with columns Type / Auth / What ships / Read-only / Howto for all 7 daemon types + Wasm runtime note + security callout for daemon_config encryption at rest.' },
+        { type: 'improvement', text: 'THIS IS ALPHA — Nomad and Wasm end-to-end not verified against live daemons. Nomad read-only in alpha.1 (job submit/stop/restart land in alpha.2). Wasm is detection only (no Deploy-Wasm-app wizard). 13 new Nomad tests. Full suite 1622 passing across 96 suites.' },
+      ],
+    },
+    {
       version: '8.9.4-alpha.1',
       date: '2026-07-03',
       title: 'PLATFORM alpha: Sprint 5 — Kubernetes read-only foundation',

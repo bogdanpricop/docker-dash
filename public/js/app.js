@@ -37,6 +37,7 @@ const App = {
     'proxmox-resources': () => ProxmoxResourcesPage,
     'migration-vm': () => MigrationVMPage,
     'kubernetes-resources': () => KubernetesResourcesPage,
+    'nomad-jobs': () => NomadJobsPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,

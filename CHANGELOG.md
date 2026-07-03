@@ -2,6 +2,83 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.5-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 9 + Sprint 10 + Hosts UI
+
+Alpha release combining three concerns: Wasm runtime detection (Sprint 9), Nomad integration (Sprint 10), and a refresh of the Hosts page with documentation + a wizard to register non-Docker daemons.
+
+### Sprint 10 — Nomad (HashiCorp workload orchestrator)
+
+Read-only alpha. Nomad is a simpler alternative to Kubernetes — jobs (containers, exec, java, qemu, raw_exec) scheduled onto client nodes. Common in homelabs and smaller shops.
+
+**Backend**
+- `src/services/nomad.js` — thin HTTP(S) client on stdlib, zero new deps
+- Auth via `X-Nomad-Token` header (optional if ACL disabled)
+- TLS via `caCert` + `skipTlsVerify`
+- Methods: `agentSelf`, `listNamespaces`, `listJobs(ns?)`, `getJob`, `listJobAllocations`, `listAllocations(ns?)`, `listNodes`, `listDeployments(ns?)`
+- `listNamespaces` gracefully handles 501 (OSS returns empty)
+- 30 s timeout, 16 MB response cap
+- Migration 072 widens `docker_hosts.daemon_type` CHECK to include `'nomad'` (writable_schema in-place edit, same pattern as 071)
+
+**Routes**
+- `GET /api/nomad/{info, namespaces, jobs, jobs/:id, jobs/:id/allocations, allocations, nodes, deployments}` — all guarded on `daemon_type='nomad'`
+
+**Frontend**
+- `public/js/pages/nomad-jobs.js` — 4-tab page (Jobs / Allocations / Deployments / Nodes) with namespace filter and info card (agent name + version + region + DC)
+- Sidebar entry **"Nomad (alpha)"** gated `data-fleet-daemon="nomad"`
+
+**Howto** — `nomad-integration.md` with ACL policy YAML, per-scope explanation, troubleshooting
+
+### Sprint 9 — Wasm runtime detection
+
+Docker (via containerd) can run WebAssembly modules as containers using alternative OCI runtimes (WasmEdge, wasmtime, Spin, wasmer). This alpha adds **detection + categorization**, not a Deploy-Wasm-app wizard.
+
+**Backend**
+- `src/services/docker.js` — `_categorizeRuntimes(info.Runtimes)` groups runtimes into `standard` / `sandboxed` / `wasm` via pattern match on binary names
+- Result surfaced in `/api/system/info` as `runtimeCategories: {standard, sandboxed, wasm}`
+- Standard: `runc`, `crun`
+- Sandboxed: `kata`, `runsc`, `firecracker`, `nabla`, `youki`
+- Wasm: `wasmedge`, `wasmtime`, `wamr`, `spin`, `crun-wasm`, `wasmer`, `wws`
+
+**Frontend** — the field is available for the System page to render (a follow-up alpha will add the visual "Wasm runtime" badge)
+
+**Howto** — `wasm-workloads.md` with WasmEdge install recipe, `containerd-shim` registration in `daemon.json`, security notes on the Wasm sandbox model, and the categorization rules
+
+### Hosts page — docs + non-Docker registration wizard
+
+**"Non-Docker host" button** (top-right, next to "Add host"):
+
+Opens a wizard that:
+1. Asks the daemon type (Incus / LXD / Proxmox / Kubernetes / Nomad)
+2. Renders type-specific fields (transport dropdown for Incus/LXD, endpoint + API token for Proxmox, endpoint + bearer token for Kubernetes, endpoint + ACL token for Nomad)
+3. Handles transport toggle for Incus/LXD (unix socket vs HTTPS + client cert)
+4. Submits to `POST /hosts` with `{name, daemonType, daemonConfig}`
+
+Backend dispatches to the right `encryptDaemonConfig()` helper per daemon type. Every write is audit-logged.
+
+**"Supported daemon types" documentation section** (collapsible, persists to localStorage):
+
+Table with columns Type / Auth / What ships / Read-only? / Howto — one row per daemon type (Docker, Podman, Incus, LXD, Proxmox, Kubernetes, Nomad) linking to the corresponding howto. Includes a note on Wasm runtime detection and a security callout for `daemon_config` encryption at rest.
+
+### Tests
+
+- `src/__tests__/nomad-client.test.js` — 13 tests (constructor validation, encryption round-trip, `fromHostRow`, X-Nomad-Token header, namespace scoping, OSS 501 graceful handling, 4xx status surfacing)
+- Full suite: **1622 passing** across 96 suites
+
+### Alpha caveats
+
+- End-to-end not verified against a live Nomad cluster or a live Wasm-capable Docker host
+- Nomad: read-only. Job submit / stop / restart / eval land in alpha.2
+- Wasm: detection only. No Deploy-Wasm-app wizard, no Wasm-specific System-page badge yet
+- Non-Docker host wizard: no "Test connection" button — save + refresh to see if it connects
+
+### Backward compatibility
+
+- `POST /hosts` still accepts the existing Docker-only body shape — new `daemonType` / `daemonConfig` fields are opt-in
+- Existing rows unchanged
+- No sidebar clutter unless a Nomad host is registered
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.4-alpha.1] - 2026-07-03 — **PLATFORM alpha**: Sprint 5 — Kubernetes read-only foundation
 
 Alpha release. First cut of the Kubernetes module described in `plans/deep-spec-sprint-5-kubernetes.md`. Read-only in this alpha — Deployments, Pods, Services, Namespaces, Nodes. Write operations (scale, rollout-restart, delete pod, tail logs) land in alpha.2 once the plumbing is verified against a live k3s.

@@ -199,6 +199,10 @@ app.use('/api/migration-vm', apiLimiter, require('./routes/migration-vm'));
 // restart, delete pod) land in alpha.2. Feature-gated per-host by
 // daemon_type='kubernetes' on the target row.
 app.use('/api/kubernetes', apiLimiter, require('./routes/kubernetes'));
+// v8.9.5-alpha.1 — Sprint 10 (Nomad). Read-only alpha: jobs,
+// allocations, nodes, deployments, namespaces. Feature-gated per-host
+// by daemon_type='nomad' on the target row.
+app.use('/api/nomad', apiLimiter, require('./routes/nomad'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
