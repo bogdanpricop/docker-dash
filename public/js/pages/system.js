@@ -106,10 +106,19 @@ const SystemPage = {
         </tr>
       `;
     }
+    // v8.7.44 — surface daemon identity (Docker Engine vs Podman) in the
+    // Engine card title. daemonName / daemonType come from the backend
+    // capability probe added in this release. Fall back to "Docker Engine"
+    // for older backends that don't return the field.
+    const daemonName = info.daemonName || 'Docker Engine';
+    const daemonType = info.daemonType || 'docker';
+    const daemonBadge = daemonType === 'podman'
+      ? `<span class="daemon-badge daemon-badge-podman" title="Podman-compatible host">Podman</span>`
+      : '';
     el.innerHTML = `
       <div class="info-grid">
         <div class="card">
-          <div class="card-header"><h3>${i18n.t('pages.system.dockerEngine')}</h3></div>
+          <div class="card-header"><h3>${Utils.escapeHtml(daemonName)} ${daemonBadge}</h3></div>
           <div class="card-body">
             <table class="info-table">
               <tr><td>${i18n.t('pages.system.version')}</td><td>${info.dockerVersion || info.ServerVersion || '—'}</td></tr>

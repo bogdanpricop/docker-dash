@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.7.44',
+      date: '2026-07-03',
+      title: 'PLATFORM: Podman certified — daemon detection + capability matrix',
+      changes: [
+        { type: 'feature', text: 'Docker Dash now officially supports Podman as a daemon backend. Automatic detection at runtime via version.Components inspection; System > Info shows a purple PODMAN badge and renames "Docker Engine" to Podman. Feature-gates Docker-only capabilities (Swarm, plugins, BuildKit) through a new capabilities matrix returned from /api/system/info so future features (Swarm mgmt sprint) automatically hide on Podman hosts.' },
+        { type: 'improvement', text: 'New howto: Podman Integration (en + ro). Covers rootful/rootless setup, SELinux notes for Fedora/RHEL/CentOS, multi-host mixed Docker+Podman, and troubleshooting. 7 new unit tests pin the detection contract. First sprint of a broader Q3-Q4 virtualization roadmap.' },
+      ],
+    },
+    {
       version: '8.7.43',
       date: '2026-07-03',
       title: 'UX: New version available nudge (fixes SPA tab stale after deploy)',

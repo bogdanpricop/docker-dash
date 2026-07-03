@@ -2,6 +2,47 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.7.44] - 2026-07-03 — **PLATFORM**: Podman certified — daemon detection + capability matrix + howto
+
+### What
+Docker Dash officially certifies Podman as a supported daemon. Podman exposes a Docker-compatible REST API on `/run/podman/podman.sock` (or `$XDG_RUNTIME_DIR/podman/podman.sock` for rootless), so `dockerode` was already working transparently. This release adds:
+
+- **Automatic detection** at runtime: `dockerService.getInfo()` inspects `version.Components[].Name` for "Podman" and returns `daemonType: 'podman'` / `'docker'`
+- **Purple PODMAN badge** on the Engine card in System → Info; "Docker Engine" title becomes "Podman"
+- **Capability matrix** returned from `/api/system/info`:
+  ```json
+  {
+    "containers": true, "images": true, "networks": true, "volumes": true,
+    "compose": true,
+    "swarm": false,     // Podman doesn't implement Swarm
+    "buildkit": false,  // Podman uses Buildah, different UX
+    "plugins": false    // Podman has no plugin system
+  }
+  ```
+  Frontend can now hide Docker-only menu items uniformly instead of per-page `if daemon === 'podman'` sprinkles. (Note: the docker-dash UI doesn't yet HAVE Swarm/plugin menu items — those come in Sprint 2. But the capability plumbing is in place from day one.)
+- **Two howto documents**: `podman-integration.md` + `.ro.md` covering rootful + rootless + SELinux setup, multi-host mixed Docker/Podman, and troubleshooting
+- **7 new unit tests** in `docker-service.test.js` covering the detection contract (case sensitivity, empty Components, malformed input, fallback to `Platform.Name`, end-to-end capabilities on Docker vs Podman)
+
+### Why now
+Podman adoption in Fedora / RHEL / Enterprise Linux is growing. `docker-compose.yml` already documented the Podman socket path via `DOCKER_SOCKET`, but with no formal detection, users would see a UI labeled "Docker" when they were actually running Podman — confusing, and once we ship Swarm management (Sprint 2), those users would see a Swarm menu that produces 404s. This release closes both gaps.
+
+### First Sprint of a larger virtualization roadmap
+This ships as the first sprint of a Q3-Q4 2026 roadmap covering:
+
+- Sprint 1 — Podman (this release)
+- Sprint 2 — Docker Swarm active management (planned)
+- Sprint 3 — Incus / LXC (planned)
+- Sprint 4 — Proxmox VE (feedback-gated)
+- Sprint 5 — Kubernetes minimal opt-in (feedback-gated)
+
+Full research + deep-specs live under `plans/` (gitignored per project convention). See `plans/deep-spec-virtualization-roadmap.md` for the master plan.
+
+### Operator action
+None. Existing Docker deployments are unchanged. To point at a Podman socket:
+```env
+DOCKER_SOCKET=/run/podman/podman.sock
+```
+
 ## [8.7.43] - 2026-07-03 — **UX**: "New version available" nudge (SPA tab stale after deploy)
 
 ### Bug

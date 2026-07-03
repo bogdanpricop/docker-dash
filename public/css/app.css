@@ -768,6 +768,23 @@ tr.clickable:hover td { color: var(--text-bright); }
 .prune-cmd-btn:hover { color: var(--text-bright); background: var(--surface2); }
 .prune-cmd-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* v8.7.44 — daemon type badge (Podman on the Engine card title). */
+.daemon-badge {
+  display: inline-block; vertical-align: middle;
+  margin-left: 10px;
+  padding: 2px 10px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-dim);
+}
+.daemon-badge-podman {
+  border-color: rgba(138, 43, 226, 0.5);
+  background: rgba(138, 43, 226, 0.12);
+  color: #b57edc;
+}
+
 /* ── WS Status ───────────────────────────────────── */
 .ws-status {
   display: flex; align-items: center; gap: 7px; font-size: 12px;

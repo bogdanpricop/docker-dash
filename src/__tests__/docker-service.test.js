@@ -415,4 +415,105 @@ describe('DockerService (src/services/docker.js)', () => {
       sshConfig: { host: 'h', user: 'u' },
     })).toThrow(/SSH tunnel.*starting/);
   });
+
+  // v8.7.44 — Podman detection contract.
+  describe('_detectDaemonType (Podman certification)', () => {
+    // dockerService is set in the outer beforeAll(); read the helper lazily
+    // inside each it() so the module-load order doesn't matter.
+    const detect = (v) => dockerService._daemon._detectDaemonType(v);
+
+    it('returns "podman" when Components has a Name containing "Podman"', () => {
+      const version = {
+        Platform: { Name: '' },
+        Components: [
+          { Name: 'Podman Engine', Version: '4.9.3', Details: {} },
+        ],
+      };
+      expect(detect(version)).toBe('podman');
+    });
+
+    it('returns "podman" when case differs (matches case-insensitively)', () => {
+      const version = { Components: [{ Name: 'PODMAN engine', Version: '5.0.0' }] };
+      expect(detect(version)).toBe('podman');
+    });
+
+    it('returns "docker" for Docker CE Components shape', () => {
+      const version = {
+        Platform: { Name: 'Docker Engine - Community' },
+        Components: [
+          { Name: 'Engine', Version: '24.0.7' },
+          { Name: 'containerd', Version: '1.7.11' },
+          { Name: 'runc', Version: '1.1.11' },
+        ],
+      };
+      expect(detect(version)).toBe('docker');
+    });
+
+    it('falls back to Platform.Name when Components is empty or missing', () => {
+      expect(detect({ Platform: { Name: 'Podman' } })).toBe('podman');
+      expect(detect({ Platform: { Name: 'Docker Engine' }, Components: [] })).toBe('docker');
+    });
+
+    it('returns "docker" for undefined / null / malformed input (never throws)', () => {
+      expect(detect(undefined)).toBe('docker');
+      expect(detect(null)).toBe('docker');
+      expect(detect({})).toBe('docker');
+      expect(detect({ Components: [null, {}, { Name: null }] })).toBe('docker');
+    });
+  });
+
+  // v8.7.44 — capability matrix and daemon fields end-to-end in getInfo().
+  describe('getInfo — daemon + capabilities (Podman certification)', () => {
+    it('reports daemonType/daemonName + full capabilities on Docker', async () => {
+      mockDockerInstance.info.mockResolvedValue({
+        Name: 'host-1', OperatingSystem: 'Ubuntu 22.04',
+        Architecture: 'x86_64', KernelVersion: '5.15',
+        Containers: 3, ContainersRunning: 2, ContainersPaused: 0, ContainersStopped: 1,
+        Images: 5, MemTotal: 8589934592, NCPU: 4,
+        Driver: 'overlay2', DockerRootDir: '/var/lib/docker',
+      });
+      mockDockerInstance.version.mockResolvedValue({
+        Version: '24.0.7', ApiVersion: '1.43',
+        Platform: { Name: 'Docker Engine - Community' },
+        Components: [{ Name: 'Engine', Version: '24.0.7' }],
+      });
+      const info = await dockerService.getInfo(0);
+      expect(info.daemonType).toBe('docker');
+      expect(info.daemonName).toBe('Docker Engine');
+      expect(info.capabilities).toEqual({
+        containers: true, images: true, networks: true, volumes: true,
+        compose: true, swarm: true, buildkit: true, plugins: true,
+      });
+    });
+
+    it('reports daemonType=podman and gates swarm/buildkit/plugins off on Podman', async () => {
+      mockDockerInstance.info.mockResolvedValue({
+        Name: 'pod-host', OperatingSystem: 'Fedora Linux',
+        Architecture: 'x86_64', KernelVersion: '6.6',
+        Containers: 1, ContainersRunning: 1, ContainersPaused: 0, ContainersStopped: 0,
+        Images: 2, MemTotal: 4294967296, NCPU: 2,
+        Driver: 'overlay', DockerRootDir: '/var/lib/containers/storage',
+      });
+      mockDockerInstance.version.mockResolvedValue({
+        Version: '4.9.3', ApiVersion: '1.40',
+        Platform: { Name: '' },
+        Components: [{ Name: 'Podman Engine', Version: '4.9.3' }],
+      });
+      const info = await dockerService.getInfo(0);
+      expect(info.daemonType).toBe('podman');
+      expect(info.daemonName).toBe('Podman');
+      // These MUST be gated off — Podman doesn't have Swarm, plugins, or
+      // Docker BuildKit endpoints. If the frontend surfaces these menu
+      // items on a Podman host the user gets confusing 404s.
+      expect(info.capabilities.swarm).toBe(false);
+      expect(info.capabilities.buildkit).toBe(false);
+      expect(info.capabilities.plugins).toBe(false);
+      // These remain available — Podman implements them.
+      expect(info.capabilities.containers).toBe(true);
+      expect(info.capabilities.images).toBe(true);
+      expect(info.capabilities.networks).toBe(true);
+      expect(info.capabilities.volumes).toBe(true);
+      expect(info.capabilities.compose).toBe(true);
+    });
+  });
 });

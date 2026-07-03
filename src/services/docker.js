@@ -527,6 +527,14 @@ class DockerService {
   async getInfo(hostId = 0) {
     const docker = this.getDocker(hostId);
     const [info, version] = await Promise.all([docker.info(), docker.version()]);
+    // v8.7.44 — Podman certification. Podman exposes a Docker-compatible
+    // REST API on its own socket, so dockerode works transparently. But
+    // some features are Docker-only (Swarm, plugins, BuildKit) and the
+    // UI needs to hide them for Podman hosts. Detection: version.Components
+    // contains an entry with Name matching /podman/i on Podman; on Docker
+    // it's usually "Engine" or "Docker Engine — Community".
+    const daemonType = _detectDaemonType(version);
+    const daemonName = daemonType === 'podman' ? 'Podman' : 'Docker Engine';
     const result = {
       hostname: info.Name,
       os: `${info.OperatingSystem} (${info.Architecture})`,
@@ -545,6 +553,27 @@ class DockerService {
       serverTime: new Date().toISOString(),
       uptime: os.uptime(),
       hostId,
+      // v8.7.44 daemon identity + capability matrix. Capabilities let the
+      // frontend hide/disable features that the underlying daemon can't
+      // service (Swarm on Podman, etc.) via a single generic mechanism
+      // instead of per-page `if daemon === 'podman'` sprinkles.
+      daemonType,
+      daemonName,
+      capabilities: {
+        containers: true,
+        images: true,
+        networks: true,
+        volumes: true,
+        compose: true,
+        // Podman has no built-in Swarm equivalent (upstream design choice).
+        swarm: daemonType === 'docker',
+        // Podman has its own build (buildah) — different UX, not the same
+        // BuildKit dockerode calls. Hide the Docker BuildKit UI for now.
+        buildkit: daemonType === 'docker',
+        // Podman has no plugin system (v4.x); the Docker plugin socket
+        // endpoints return 404. Hide the Plugins UI on Podman.
+        plugins: daemonType === 'docker',
+      },
     };
 
     // v8.7.42 — disk total/available on the underlying host filesystem.
@@ -753,4 +782,29 @@ class DockerService {
   }
 }
 
+// v8.7.44 — Podman detection helper. Podman exposes a Docker-compatible
+// REST API v1.40+, so dockerode's docker.version() returns the same shape.
+// The tell-tale field: `Components[].Name` contains "podman" on Podman
+// (typically the entry is `{ Name: "Podman Engine", Version: "4.9.3", ... }`),
+// whereas Docker Engine reports `{ Name: "Engine" }` or "Docker Engine —
+// Community". Case-insensitive substring match on Name is robust across
+// Podman 3.x / 4.x / 5.x and across Docker CE / Docker Desktop.
+//
+// Fallback: some older Podman versions have empty Components array; try
+// version.Platform.Name for "podman" too.
+function _detectDaemonType(version) {
+  if (!version || typeof version !== 'object') return 'docker';
+  const components = Array.isArray(version.Components) ? version.Components : [];
+  for (const c of components) {
+    if (c && typeof c.Name === 'string' && /podman/i.test(c.Name)) return 'podman';
+  }
+  const platformName = version.Platform && typeof version.Platform.Name === 'string'
+    ? version.Platform.Name : '';
+  if (/podman/i.test(platformName)) return 'podman';
+  return 'docker';
+}
+
+const _daemon = { _detectDaemonType };
+
 module.exports = new DockerService();
+module.exports._daemon = _daemon;  // exposed for tests
