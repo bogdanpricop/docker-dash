@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.0-alpha.1',
+      date: '2026-07-03',
+      title: 'PLATFORM foundation: Sprint 3 (Incus) architecture',
+      changes: [
+        { type: 'feature', text: 'Alpha release. Ships the FOUNDATION for Incus (LXC + KVM VMs) support but NOT the UI. Database migration 069 adds daemon_type + daemon_config columns to docker_hosts (default docker). New src/services/incus.js — thin HTTP client over Incus REST (unix socket or HTTPS with client cert). READ methods: info, listInstances, getInstance, listSnapshots, listImages, listProjects. 12 unit tests, all passing.' },
+        { type: 'improvement', text: 'Deploy this to a Docker-only install: SAFE. Migration is behaviorally a no-op. Deploy to Docker + Incus: EXPERIMENTAL. Write path (start/stop/delete) intentionally NOT shipped in alpha. UI comes in a follow-up release. See CHANGELOG for the SQL to manually register an Incus host during alpha testing.' },
+      ],
+    },
+    {
       version: '8.8.2',
       date: '2026-07-03',
       title: 'PLATFORM: capability-gated nav + stack deploy from compose YAML',

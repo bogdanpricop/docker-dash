@@ -2,6 +2,90 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.0-alpha.1] - 2026-07-03 — **PLATFORM foundation**: Sprint 3 (Incus) architecture — daemon_type migration + Incus HTTP client + tests
+
+**Alpha release**. Ships the FOUNDATION for Incus support but NOT the UI. Explicit alpha tag because the code path has no verified integration test against a real Incus daemon — mocked tests only. Deploying to a Docker-only environment is safe (migration is additive, no existing behavior changes). Deploying to a real Incus environment is EXPERIMENTAL.
+
+### What ships
+
+**1. Database migration 069 — `daemon_type` + `daemon_config` columns**
+
+`ALTER TABLE docker_hosts` adds:
+- `daemon_type TEXT NOT NULL DEFAULT 'docker' CHECK(daemon_type IN ('docker','podman','incus','proxmox','kubernetes'))`
+- `daemon_config TEXT` (opaque JSON blob per daemon type)
+
+Backfill: every existing row keeps its implicit meaning (`docker`). Podman rows stay `docker` because Podman detection is dynamic per request (v8.7.44) — the two systems are orthogonal by design.
+
+Idempotent: guards with `PRAGMA table_info` so re-running the migration during dev doesn't fail.
+
+**2. Incus HTTP client — `src/services/incus.js`**
+
+Thin `http`/`https` wrapper (no dependencies) with:
+- Unix socket transport (`transport: 'unix', socket: '/var/lib/incus/unix.socket'` default)
+- HTTPS transport with TLS client cert (partial — cert loading via string is deferred to alpha.2)
+- 30s AbortController timeout on every request (v8.7.x hardening pattern)
+- 16 MB response body cap (defence against runaway responses)
+- Standard `{ metadata, status_code }` envelope unwrapping — every list method returns just the array
+- Error surfacing: HTTP errors carry the parsed body under `err.incusResponse` and `err.status`
+
+**Implemented methods** (READ ONLY in this alpha):
+- `info()` — daemon version + supported API versions
+- `listInstances(project?)` — containers + VMs with `recursion=1` (status, IPs, memory, CPU)
+- `getInstance(name, project?)` — single instance detail
+- `listSnapshots(name, project?)`
+- `listImages()`
+- `listProjects()`
+
+**NOT yet implemented** (deferred to alpha.2 / beta / 8.9.0 proper):
+- `startInstance`, `stopInstance`, `restartInstance`, `deleteInstance`
+- `createSnapshot`, `restoreSnapshot`, `deleteSnapshot`
+- WebSocket console (`exec` for LXC, noVNC/SPICE for KVM VMs)
+- Backend routes at `/api/incus/*`
+- Frontend page at `pages/incus-instances.js`
+- Sidebar entry (will use existing `data-capability="incus"` gating from v8.8.2)
+- Docker compose bind-mount for the Incus socket (operator has to add it manually for now)
+- Howto documentation
+
+**3. Helper — `fromHostRow(row)`**
+
+Takes a `docker_hosts` row and returns a configured `IncusClient`. Route/service code doesn't need to know the config shape. Rejects non-Incus rows with a clear error.
+
+**4. Tests — `src/__tests__/incus-client.test.js`**
+
+12 unit tests covering:
+- Constructor validation (missing transport / socket / endpoint)
+- `fromHostRow` config parsing (defaults, JSON errors, non-Incus rejection)
+- Response envelope unwrapping (list returns metadata array)
+- Missing-metadata fallback to empty array
+- HTTP error surfacing (404 with body under `err.incusResponse`)
+- Query string composition (project + recursion)
+
+The tests mock the `http` module — no real Incus daemon needed in CI.
+
+### Why alpha
+
+The client + migration have unit test coverage but no integration test against a real Incus. Alpha lets curious operators try it and give feedback without a stability commitment. The write path (start/stop/delete) is intentionally NOT shipped in alpha to prevent damage from an untested code path.
+
+### Deployment notes
+
+- Docker-only installs: safe to deploy. Migration is a no-op behaviorally.
+- Docker + Incus installs: after deploy, add an entry manually with:
+  ```sql
+  INSERT INTO docker_hosts (name, connection_type, daemon_type, daemon_config, is_default)
+  VALUES ('Local Incus', 'socket', 'incus',
+    '{"transport":"unix","socket":"/var/lib/incus/unix.socket"}', 0);
+  ```
+  Also add the socket to `docker-compose.yml`:
+  ```yaml
+  volumes:
+    - /var/lib/incus/unix.socket:/var/lib/incus/unix.socket
+  ```
+  Then in your app the row will exist but no UI reaches it yet — you can experiment via the API `require('/app/src/services/incus').fromHostRow(row).listInstances()`.
+
+### Operator action
+
+None for Docker installs. Incus operators: read the deployment notes above and expect the UI in a follow-up release.
+
 ## [8.8.2] - 2026-07-03 — **PLATFORM**: capability-gated nav + stack deploy from YAML
 
 Two related follow-ups that build on the capability matrix shipped in v8.7.44 and the Stacks tab shipped in v8.8.0.
