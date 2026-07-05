@@ -2,6 +2,44 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.7-alpha.1] - 2026-07-05 — Gap closure ship 1: Host groups + K8s Ingress/NP + KubeConfig + docker-run converter + git multi-host targets
+
+Ship 1 of the multi-competitor gap-closure programme. Closes 5 gaps outright, opens 1 as partial:
+
+### Portainer gaps closed
+- **G03 Host groups (P1, S) — CLOSED**: new `host_groups` + `host_group_members` tables (migration 073), full CRUD service + routes at `/api/host-groups`, service `groupsForHost(hostId)` for enrichment. Admin-only writes, audit-logged.
+- **G08 KubeConfig download (P2, XS) — CLOSED**: `buildKubeconfig(row)` in `src/services/kubernetes.js` emits a valid kubeconfig YAML from a stored k8s host. Endpoint: `GET /api/kubernetes/kubeconfig` (with `X-Host-ID`). Falls back to `insecure-skip-tls-verify: true` when no CA cert stored.
+- **G13 K8s Ingress/NetworkPolicy read (P3, S) — CLOSED**: `listIngresses(ns?)` + `listNetworkPolicies(ns?)` on `KubernetesClient`; new routes `/api/kubernetes/{ingresses, networkpolicies}`. Read-only per Sprint 5 anti-features.
+
+### Komodo gaps closed / partial
+- **G02 Host groups (P1, S) — CLOSED**: same schema + code as Portainer G03. Groups have color + icon + sort_order for the sidebar/list UI in ship 2.
+- **G01 Multi-host git stack targets (P0, M) — PARTIAL**: migration 074 adds `git_stack_targets` join table (stack_id, host_id, last_deployed_commit, last_deploy_status, previous_deployed_commit) with backfill from existing single-host stacks. Service `src/services/git-multi-host.js` and routes `/api/git/stacks/:id/{targets, deploy-all}` land the fan-out scaffolding; full deep integration with `deployStack()` + UI polish deferred to ship 3.
+
+### Dockge gaps closed
+- **G06 docker-run → compose converter (P3, S) — CLOSED (backend)**: `parseDockerRun(cmd)` in `src/services/docker-run-parser.js` handles image, --name, -p, -v, -e/--env, --restart, --network, --user, -w, --entrypoint, --cap-add/drop, --privileged, --tty, --tmpfs, --device, --label, --dns, --add-host + more. Routes: `POST /api/compose/convert`. UI paste-command dialog ships in ship 3.
+
+### Komodo G08 note
+Full stack rollback is **already shipped**: `git.js:rollbackStack(stackId, deploymentId)` restores any previous deployment by commit. Deeper than Komodo's "previous commit only." Marking G08 as already-closed in ship 2's doc update.
+
+### Tests
+- `docker-run-parser.test.js` — 24 tests (tokenize, all common flags, complex real-world postgres command, YAML output)
+- `host-groups.test.js` — 6 tests (create, list, get, update, delete cascade, groupsForHost)
+- `kubeconfig-builder.test.js` — 4 tests (rejects non-k8s row, emits valid YAML with CA, skip-tls fallback, name sanitization)
+- Full suite: **1658 passing** across 99 suites (was 1622/96)
+
+### API additions
+- `POST /api/host-groups`, `GET /api/host-groups`, `GET /api/host-groups/:id`, `PUT /api/host-groups/:id`, `DELETE /api/host-groups/:id`
+- `GET /api/git/stacks/:id/targets`, `PUT /api/git/stacks/:id/targets`, `POST /api/git/stacks/:id/deploy-all`
+- `GET /api/kubernetes/{ingresses, networkpolicies, kubeconfig}`
+- `POST /api/compose/convert`
+- Frontend API helpers wired: `listHostGroups`, `createHostGroup`, `updateHostGroup`, `deleteHostGroup`, `getGitStackTargets`, `setGitStackTargets`, `deployGitStackAll`, `getKubernetesIngresses`, `getKubernetesNetworkPolicies`, `convertDockerRun`
+
+### Backward compatibility
+
+Fully backward-compatible. Existing `git_stacks.host_id` remains authoritative for the primary/legacy target. New join table backfilled at migration time. No route breaking changes.
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.6-alpha.1] - 2026-07-03 — Homelab install tutorials + ESXi→Proxmox walkthrough
 
 Content-only release. **No code changes**, just 7 new howtos that walk through installing each supported daemon type as a nested VM under ESXi, then registering it in docker-dash. Purpose: turn every alpha's "end-to-end not verified against a live daemon" caveat into "verified" by giving operators a concrete recipe.

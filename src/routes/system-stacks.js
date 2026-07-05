@@ -13,9 +13,25 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
+const asyncHandler = require('../utils/asyncHandler');
+const { parseDockerRun } = require('../services/docker-run-parser');
 
 const router = Router();
 router.use(extractHostId);
+
+// v8.9.7-alpha.1 — Dockge G06 closure: docker-run → compose converter.
+// Public POST endpoint (auth required). Body: { command: '<docker run ...>' }.
+// Returns { yaml, serviceName, service } or 400 with a parse error.
+router.post('/compose/convert', requireAuth, asyncHandler(async (req, res) => {
+  const { command } = req.body || {};
+  if (!command) return res.status(400).json({ error: 'command is required' });
+  try {
+    const parsed = parseDockerRun(command);
+    res.json({ ok: true, yaml: parsed.yaml, serviceName: parsed.service_name, service: parsed.service });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}));
 
 router.post('/compose/:stack/:action', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
   const { stack, action } = req.params;

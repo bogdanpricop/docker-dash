@@ -16,7 +16,9 @@
 
 const { Router } = require('express');
 const { getDb } = require('../db');
-const { fromHostRow } = require('../services/kubernetes');
+const { fromHostRow, buildKubeconfig } = require('../services/kubernetes');
+const auditService = require('../services/audit');
+const { getClientIp } = require('../utils/helpers');
 const { requireAuth } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
 const asyncHandler = require('../utils/asyncHandler');
@@ -87,6 +89,35 @@ router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
   const row = _getK8sHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   res.json(await client.listNodes());
+}));
+
+// ─── v8.9.7-alpha.1 — Portainer G13 closure: Ingress + NetworkPolicy read ───
+
+router.get('/ingresses', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  const ns = req.query.namespace || undefined;
+  res.json(await fromHostRow(row).listIngresses(ns));
+}));
+
+router.get('/networkpolicies', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  const ns = req.query.namespace || undefined;
+  res.json(await fromHostRow(row).listNetworkPolicies(ns));
+}));
+
+// ─── v8.9.7-alpha.1 — Portainer G08 closure: kubeconfig download ───
+
+router.get('/kubeconfig', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  const yaml = buildKubeconfig(row);
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'kubeconfig_download', targetType: 'host', targetId: String(req.hostId),
+    ip: getClientIp(req),
+  });
+  res.set('Content-Type', 'application/yaml');
+  res.set('Content-Disposition', `attachment; filename="kubeconfig-${row.name || 'k8s'}.yaml"`);
+  res.send(yaml);
 }));
 
 module.exports = router;

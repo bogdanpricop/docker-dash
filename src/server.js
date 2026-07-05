@@ -203,6 +203,9 @@ app.use('/api/kubernetes', apiLimiter, require('./routes/kubernetes'));
 // allocations, nodes, deployments, namespaces. Feature-gated per-host
 // by daemon_type='nomad' on the target row.
 app.use('/api/nomad', apiLimiter, require('./routes/nomad'));
+// v8.9.7-alpha.1 — Gap Closure ship 1
+app.use('/api/host-groups', apiLimiter, require('./routes/host-groups'));
+app.use('/api/git', apiLimiter, require('./routes/git-multi-host'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

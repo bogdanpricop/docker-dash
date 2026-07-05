@@ -400,6 +400,23 @@ const Api = {
   getProxmoxStorages()                { return this.get('/proxmox/storages'); },
   getProxmoxBackups()                 { return this.get('/proxmox/backups'); },
 
+  // ─── Host groups (v8.9.7-alpha.1, Gap Closure) ───
+  listHostGroups()                    { return this.get('/host-groups'); },
+  getHostGroup(id)                    { return this.get(`/host-groups/${id}`); },
+  createHostGroup(data)               { return this.post('/host-groups', data); },
+  updateHostGroup(id, data)           { return this.put(`/host-groups/${id}`, data); },
+  deleteHostGroup(id)                 { return this.delete(`/host-groups/${id}`); },
+  // ─── Git multi-host targets (v8.9.7, Komodo G01) ───
+  getGitStackTargets(id)              { return this.get(`/git/stacks/${id}/targets`); },
+  setGitStackTargets(id, hostIds)     { return this.put(`/git/stacks/${id}/targets`, { hostIds }); },
+  deployGitStackAll(id)               { return this.post(`/git/stacks/${id}/deploy-all`); },
+  // ─── K8s Ingress + NetworkPolicy + kubeconfig (Portainer G08, G13) ───
+  getKubernetesIngresses(ns)          { return this.get(`/kubernetes/ingresses${ns ? `?namespace=${encodeURIComponent(ns)}` : ''}`); },
+  getKubernetesNetworkPolicies(ns)    { return this.get(`/kubernetes/networkpolicies${ns ? `?namespace=${encodeURIComponent(ns)}` : ''}`); },
+  // kubeconfig is a file download; use a link with X-Host-ID header manually
+  // ─── Docker-run to compose converter (Dockge G06) ───
+  convertDockerRun(command)           { return this.post('/compose/convert', { command }); },
+
   // ─── Nomad (v8.9.5-alpha.1, Sprint 10) — read-only alpha ───
   getNomadInfo()                      { return this.get('/nomad/info'); },
   getNomadNamespaces()                { return this.get('/nomad/namespaces'); },

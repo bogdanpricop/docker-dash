@@ -202,6 +202,62 @@ class KubernetesClient {
     const resp = await this._request('GET', '/api/v1/nodes');
     return (resp && resp.items) || [];
   }
+
+  // ─── v8.9.7-alpha.1 — Portainer G13 closure: Ingress + NetworkPolicy read
+  // Read-only. No editing (anti-feature per Sprint 5 deep-spec).
+
+  async listIngresses(namespace) {
+    const path = namespace
+      ? `/apis/networking.k8s.io/v1/namespaces/${encodeURIComponent(namespace)}/ingresses`
+      : '/apis/networking.k8s.io/v1/ingresses';
+    const resp = await this._request('GET', path);
+    return (resp && resp.items) || [];
+  }
+
+  async listNetworkPolicies(namespace) {
+    const path = namespace
+      ? `/apis/networking.k8s.io/v1/namespaces/${encodeURIComponent(namespace)}/networkpolicies`
+      : '/apis/networking.k8s.io/v1/networkpolicies';
+    const resp = await this._request('GET', path);
+    return (resp && resp.items) || [];
+  }
+}
+
+// v8.9.7-alpha.1 — Portainer G08 closure: kubeconfig generator.
+// Builds a valid kubeconfig YAML from the stored daemon_config so the user
+// can drop it in ~/.kube/config to use kubectl locally. Uses the same
+// bearer token stored in daemon_config — no token exchange for now.
+function buildKubeconfig(row) {
+  if (!row) throw new Error('row required');
+  if (row.daemon_type !== 'kubernetes') throw new Error('row is not a Kubernetes host');
+  const cfg = decryptDaemonConfig(row.daemon_config);
+  const clusterName = (row.name || 'docker-dash-cluster').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const contextName = `${clusterName}@docker-dash`;
+  const userName = `docker-dash-${clusterName}`;
+  const caB64 = cfg.caCert ? Buffer.from(cfg.caCert).toString('base64') : null;
+  const clusterBlock = [
+    `- cluster:`,
+    caB64 ? `    certificate-authority-data: ${caB64}` : `    insecure-skip-tls-verify: true`,
+    `    server: ${cfg.endpoint}`,
+    `  name: ${clusterName}`,
+  ].join('\n');
+  return [
+    'apiVersion: v1',
+    'kind: Config',
+    `current-context: ${contextName}`,
+    'clusters:',
+    clusterBlock,
+    'contexts:',
+    `- context:`,
+    `    cluster: ${clusterName}`,
+    `    user: ${userName}`,
+    `  name: ${contextName}`,
+    'users:',
+    `- name: ${userName}`,
+    `  user:`,
+    `    token: ${cfg.token}`,
+    '',
+  ].join('\n');
 }
 
 // daemon_config encryption at rest — same enc: prefix pattern as Incus /
@@ -243,6 +299,7 @@ module.exports = {
   fromHostRow,
   decryptDaemonConfig,
   encryptDaemonConfig,
+  buildKubeconfig,
   _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
 };
 

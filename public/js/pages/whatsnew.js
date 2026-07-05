@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.7-alpha.1',
+      date: '2026-07-05',
+      title: 'Gap closure ship 1: Host groups + K8s Ingress/NP + KubeConfig + docker-run converter + git multi-host',
+      changes: [
+        { type: 'feature', text: 'Host groups (migration 073) — Portainer G03 + Komodo G02. New tables host_groups + host_group_members. CRUD service, /api/host-groups routes, groupsForHost() helper. Color + icon + sort_order for UI. Admin-only writes, audit-logged.' },
+        { type: 'feature', text: 'Multi-host git stack targets (migration 074) — Komodo G01 (partial). New git_stack_targets join table backfilled from existing single-host stacks. Service + routes for target CRUD + deploy-all fan-out. Full UI polish + deep deployStack() integration in ship 3.' },
+        { type: 'feature', text: 'Kubernetes Ingress + NetworkPolicy read (Portainer G13) — listIngresses(ns?) + listNetworkPolicies(ns?) on KubernetesClient. Routes /api/kubernetes/{ingresses, networkpolicies}. Read-only per Sprint 5 anti-features.' },
+        { type: 'feature', text: 'KubeConfig download (Portainer G08) — buildKubeconfig(row) emits valid YAML from stored k8s daemon_config. Endpoint GET /api/kubernetes/kubeconfig. Falls back to insecure-skip-tls-verify when no CA cert. Audit-logged.' },
+        { type: 'feature', text: 'docker-run → compose converter (Dockge G06 backend) — parseDockerRun(cmd) handles image, --name, -p, -v, -e, --restart, --network, --user, -w, --entrypoint, --cap-add/drop, --privileged, --tty, --tmpfs, --device, --label, --dns, --add-host. Endpoint POST /api/compose/convert. UI paste-command dialog in ship 3.' },
+        { type: 'improvement', text: 'Already-shipped audit: Komodo G08 (git stack rollback) — src/services/git.js:rollbackStack() already restores any prior deployment by commit. Marked closed in tracker.' },
+        { type: 'improvement', text: '24 new docker-run parser tests + 6 host-groups tests + 4 kubeconfig-builder tests. Full suite 1658 passing across 99 suites (was 1622/96).' },
+      ],
+    },
+    {
       version: '8.9.6-alpha.1',
       date: '2026-07-03',
       title: 'Homelab install tutorials + ESXi→Proxmox walkthrough',
