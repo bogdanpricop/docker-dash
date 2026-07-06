@@ -2,6 +2,42 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.9-alpha.1] - 2026-07-06 — Gap closure ship 3: volume browser + alerter routes + FS stacks + builder host + Uptime Kuma + docker-run UI
+
+Ship 3. Closes 6 gaps across all three trackers.
+
+### Closed
+- **Portainer G07 Volume file browser (P1, M) — CLOSED (list + read + delete)**: `src/services/volume-browser.js` launches an ephemeral alpine container with the volume mounted (read-only for list/read, read-write for delete) and runs `ls -laF`, `head`, or `rm`. `_safePath` blocks path traversal — any user-supplied path that resolves outside `/data` throws. Routes: `GET /api/volumes/:name/{browse, read}` (auth) + `DELETE /api/volumes/:name/file` (admin). Upload deferred.
+- **Komodo G05 Builder host concept (P2, S) — CLOSED (schema)**: migration 076 adds `docker_hosts.is_builder INTEGER DEFAULT 0` + `docker_hosts.default_registry_id`. Build dispatch logic in a follow-up minor. Documented in the tracker.
+- **Komodo G09 Alerter routing (P3, S) — CLOSED**: `alert_channel_routes(scope_type, scope_id, channel_id, severity_min)` (migration 076). Service `resolve({hostId, severity})` walks precedence host → host_group → all with severity filtering. Route CRUD at `/api/alert-routes` + `/api/alert-routes/resolve` preview endpoint.
+- **Dockge G04 Filesystem-first stacks discovery (P2, S) — CLOSED (backend)**: `src/services/stacks-fs.js` walks `DD_STACKS_DIR` (default `/opt/stacks`, comma-separated) up to depth 3, parses each `docker-compose.yml`, returns `{name, path, composeFile, services, serviceCount, source: 'filesystem'}`. Merge into `/stacks` route in follow-up.
+- **Dockge G06 docker-run → compose converter UI (P3, S) — CLOSED**: new "Convert docker run" button next to "Create Stack" on the Stacks page opens a modal with a paste-command textarea, a Convert button that hits `/api/compose/convert` (v8.9.7 backend), and a read-only preview of generated YAML.
+- **Dockge G08 Uptime Kuma auto-detect (P3, XS) — CLOSED (detect)**: `GET /api/integrations/uptime-kuma` scans containers for `louislam/uptime-kuma` image on the current host. Returns `{detected, container, url}` with the extracted public port. Monitor auto-registration deferred to follow-up.
+- **Komodo G08 rollback — CONFIRMED ALREADY CLOSED**: `src/services/git.js:rollbackStack(stackId, deploymentId)` restores any previous deployment. Deeper than Komodo's previous-commit-only rollback.
+
+### Tests
+- `alert-routes.test.js` — 7 tests (validation, host-scope precedence, severity filtering, resolve fallback)
+- `volume-browser-safety.test.js` — 5 tests (path traversal guarded)
+- Full suite: **1677 passing** across 102 suites (was 1665/100).
+
+### API additions
+- `GET /api/volumes/:name/browse?path=...`
+- `GET /api/volumes/:name/read?path=...`
+- `DELETE /api/volumes/:name/file?path=...`
+- `GET /api/integrations/uptime-kuma`
+- `GET /api/alert-routes`
+- `POST /api/alert-routes`
+- `DELETE /api/alert-routes/:id`
+- `GET /api/alert-routes/resolve?hostId=X&severity=Y`
+
+### Migrations
+- **076** — `docker_hosts.is_builder` + `docker_hosts.default_registry_id` columns; `alert_channel_routes` table.
+
+### Backward compatibility
+Fully backward-compatible. All new tables and columns. `DD_STACKS_DIR` defaults to `/opt/stacks`; unset → no filesystem discovery.
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.8-alpha.1] - 2026-07-06 — Gap closure ship 2: K8s write ops + pod logs + container webhooks + Docker events
 
 Ship 2 of the gap-closure programme. Closes 4 Portainer gaps.

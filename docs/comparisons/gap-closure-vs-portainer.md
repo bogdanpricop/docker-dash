@@ -30,7 +30,7 @@ The honest gap against Portainer is narrower than the marketing "Portainer is en
 | G04 | Kubernetes write ops (scale / restart / delete pod / cordon) | P1 | M | `[x]` v8.9.8-alpha.1 |
 | G05 | Kubernetes pod log streaming | P1 | S | `[x]` v8.9.8-alpha.1 |
 | G06 | Per-container webhook trigger URL (redeploy on POST) | P1 | S | `[x]` v8.9.8-alpha.1 |
-| G07 | Volume file browser (list / upload / download / delete inside a volume) | P1 | M | `[ ]` |
+| G07 | Volume file browser (list / upload / download / delete inside a volume) | P1 | M | `[x]` v8.9.9-alpha.1 (list + read + delete backend; upload deferred) |
 | G08 | KubeConfig download for the logged-in user | P2 | XS | `[x]` v8.9.7-alpha.1 |
 | G09 | Real-time Docker events stream on the UI | P2 | S | `[x]` v8.9.8-alpha.1 (backend SSE done; UI in v8.9.9) |
 | G10 | Proxmox noVNC / SPICE console iframe | P2 | M | `[ ]` |

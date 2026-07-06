@@ -39,6 +39,7 @@ const StacksPage = {
             <button class="tab ${this._tab === 'git' ? 'active' : ''}" data-tab="git">${i18n.t('pages.stacks.tabGit')}</button>
           </div>
           <button class="btn btn-sm btn-primary" id="stacks-create"><i class="fas fa-plus"></i> Create Stack</button>
+          <button class="btn btn-sm btn-secondary" id="stacks-convert" title="Convert docker run to compose"><i class="fas fa-exchange-alt"></i> Convert docker run</button>
           <button class="btn btn-sm btn-secondary" id="stacks-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
@@ -54,6 +55,8 @@ const StacksPage = {
     });
     container.querySelector('#stacks-refresh').addEventListener('click', () => this._loadList());
     container.querySelector('#stacks-create')?.addEventListener('click', () => this._createStackDialog());
+    // v8.9.9-alpha.1 — Dockge G06 closure: docker-run → compose converter UI
+    container.querySelector('#stacks-convert')?.addEventListener('click', () => this._convertDockerRunDialog());
 
     await this._loadList();
   },
@@ -363,6 +366,42 @@ const StacksPage = {
     } catch (err) {
       document.getElementById('gs-detail-content').innerHTML = `<div class="empty-msg" style="color:var(--red)">${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  // v8.9.9-alpha.1 — Dockge G06 closure: docker-run → compose converter dialog.
+  async _convertDockerRunDialog() {
+    const html = `
+      <div class="form-group">
+        <label>Paste a <code>docker run</code> command</label>
+        <textarea id="drc-cmd" class="form-control" rows="4" placeholder="docker run -d --name mydb -p 5432:5432 -v pgdata:/var/lib/postgresql/data -e POSTGRES_PASSWORD=secret postgres:16" style="font-family:monospace;font-size:12px"></textarea>
+        <small class="text-muted">Handles <code>--name</code>, <code>-p</code>, <code>-v</code>, <code>-e</code>, <code>--restart</code>, <code>--network</code>, <code>--user</code>, <code>-w</code>, <code>--cap-add</code>, <code>--tmpfs</code>, <code>--device</code>, <code>--label</code>, and more.</small>
+      </div>
+      <div class="form-group">
+        <button class="btn btn-sm btn-primary" id="drc-convert" type="button"><i class="fas fa-arrow-right"></i> Convert</button>
+      </div>
+      <div class="form-group" id="drc-output-group" style="display:none">
+        <label>Generated compose YAML</label>
+        <textarea id="drc-yaml" class="form-control" rows="14" style="font-family:monospace;font-size:12px" readonly></textarea>
+        <small class="text-muted">Copy this into a new stack, or click "Create Stack" below.</small>
+      </div>
+    `;
+    await Modal.form(html, {
+      title: 'Convert docker run to compose',
+      width: '720px',
+      submitLabel: 'Close',
+      onMount: (content) => {
+        content.querySelector('#drc-convert').addEventListener('click', async () => {
+          const cmd = content.querySelector('#drc-cmd').value.trim();
+          if (!cmd) { Toast.error('Paste a command first'); return; }
+          try {
+            const r = await Api.convertDockerRun(cmd);
+            content.querySelector('#drc-yaml').value = r.yaml;
+            content.querySelector('#drc-output-group').style.display = '';
+          } catch (err) { Toast.error(err.message); }
+        });
+      },
+      onSubmit: () => ({}),
+    });
   },
 
   async _createStackDialog() {

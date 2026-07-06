@@ -215,6 +215,10 @@ app.use('/api/git', apiLimiter, require('./routes/git-multi-host'));
   app.use('/webhook/container', cw.trigger);
 }
 app.use('/api/docker', apiLimiter, require('./routes/docker-events'));
+// v8.9.9-alpha.1 — Gap closure ship 3
+app.use('/api/volumes', apiLimiter, require('./routes/volume-browser'));
+app.use('/api/integrations', apiLimiter, require('./routes/integrations'));
+app.use('/api/alert-routes', apiLimiter, require('./routes/alert-routes'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

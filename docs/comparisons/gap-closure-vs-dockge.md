@@ -28,11 +28,11 @@ Dockge and Docker Dash are different-shape tools: Dockge is a minimal, opinionat
 | G01 | Compose `up`/`down`/`pull`/`restart` is blocking `execFileSync` with no live output | P0 | M | `[ ]` |
 | G02 | Compose YAML editor is plain `<textarea>`, no syntax highlighting or lint | P1 | M | `[ ]` |
 | G03 | No stack-level combined log stream (all services, one view, live) | P1 | S | `[ ]` |
-| G04 | No filesystem-first stacks discovery (point at `/opt/stacks`, auto-import) | P2 | S | `[ ]` |
+| G04 | No filesystem-first stacks discovery (point at `/opt/stacks`, auto-import) | P2 | S | `[x]` v8.9.9-alpha.1 (backend discover; merge into /stacks route in follow-up) |
 | G05 | No "simple mode" / Compose-first landing to lower learning curve | P2 | XS | `[ ]` |
-| G06 | `docker run` command → compose converter not exposed as paste-command UI | P3 | S | `[x]` v8.9.7-alpha.1 (backend done, UI in ship 3) |
+| G06 | `docker run` command → compose converter not exposed as paste-command UI | P3 | S | `[x]` v8.9.9-alpha.1 (backend + UI done) |
 | G07 | No interactive form-based service editor (edit ports/env/mounts via forms, not YAML) | P3 | L | `[ ]` |
-| G08 | No sibling-app deep link (Uptime Kuma monitor auto-registration) | P3 | XS | `[ ]` |
+| G08 | No sibling-app deep link (Uptime Kuma monitor auto-registration) | P3 | XS | `[x]` v8.9.9-alpha.1 (auto-detect endpoint; monitor register in follow-up) |
 | W01 | Match Dockge image size (~30-50 MB) | — | — | `[-]` |
 | W02 | Rewrite frontend in Svelte / add build step | — | — | `[-]` |
 | W03 | Reduce scope to Compose-only | — | — | `[-]` |

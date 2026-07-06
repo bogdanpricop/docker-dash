@@ -29,11 +29,11 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 | G02 | No host groups (only container groups) | P1 | S | `[x]` v8.9.7-alpha.1 |
 | G03 | No user-invoked ordered procedures (workflows are event-triggered only) | P1 | M | `[ ]` |
 | G04 | Fleet-first UX polish — adding host N feels heavier than host 2 | P1 | S | `[ ]` |
-| G05 | No dedicated "builder host" concept | P2 | S | `[ ]` |
+| G05 | No dedicated "builder host" concept | P2 | S | `[x]` v8.9.9-alpha.1 (is_builder + default_registry_id columns; build dispatch in follow-up) |
 | G06 | No cross-host build-and-deploy pipeline (build on A → deploy to B/C) | P2 | L | `[ ]` |
 | G07 | No GitOps-native resource files (declare stack + host + alerter in YAML) | P2 | M | `[ ]` |
-| G08 | Git stack rollback is manual (revert commit + redeploy) | P3 | S | `[ ]` |
-| G09 | Alerter routing is per-rule, not per-scope (host/group/tag) | P3 | S | `[ ]` |
+| G08 | Git stack rollback is manual (revert commit + redeploy) | P3 | S | `[x]` already shipped (git.js:rollbackStack) |
+| G09 | Alerter routing is per-rule, not per-scope (host/group/tag) | P3 | S | `[x]` v8.9.9-alpha.1 |
 | G10 | Rust backend / single static binary | — | XL | `[-]` |
 | G11 | MongoDB as datastore | — | XL | `[-]` |
 

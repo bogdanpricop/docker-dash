@@ -451,6 +451,20 @@ const Api = {
     return `/api/docker/events${qs}`;
   },
 
+  // ─── Volume file browser (v8.9.9, Portainer G07) ───
+  browseVolume(name, path)            { return this.get(`/volumes/${encodeURIComponent(name)}/browse?path=${encodeURIComponent(path || '/')}`); },
+  readVolumeFile(name, path)          { return this.get(`/volumes/${encodeURIComponent(name)}/read?path=${encodeURIComponent(path)}`); },
+  deleteVolumeFile(name, path)        { return this.delete(`/volumes/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`); },
+
+  // ─── Uptime Kuma auto-detect (v8.9.9, Dockge G08) ───
+  detectUptimeKuma()                  { return this.get('/integrations/uptime-kuma'); },
+
+  // ─── Alert channel routing (v8.9.9, Komodo G09) ───
+  listAlertRoutes()                   { return this.get('/alert-routes'); },
+  createAlertRoute(data)              { return this.post('/alert-routes', data); },
+  deleteAlertRoute(id)                { return this.delete(`/alert-routes/${id}`); },
+  resolveAlertRoute(hostId, severity) { return this.get(`/alert-routes/resolve?${hostId ? `hostId=${hostId}&` : ''}severity=${encodeURIComponent(severity || 'info')}`); },
+
   // ─── Nomad (v8.9.5-alpha.1, Sprint 10) — read-only alpha ───
   getNomadInfo()                      { return this.get('/nomad/info'); },
   getNomadNamespaces()                { return this.get('/nomad/namespaces'); },

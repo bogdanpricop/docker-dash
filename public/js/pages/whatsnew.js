@@ -10,6 +10,20 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.9-alpha.1',
+      date: '2026-07-06',
+      title: 'Gap closure ship 3: volume browser + alerter routes + builder host + FS stacks + Uptime Kuma + docker-run UI',
+      changes: [
+        { type: 'feature', text: 'Volume file browser (Portainer G07). Launches ephemeral alpine container with volume mounted (ro/rw), runs ls/head/rm. Routes /api/volumes/:name/{browse, read, file}. Path traversal blocked via _safePath — every user path resolves to stay under /data. List + read + delete backend done; upload deferred.' },
+        { type: 'feature', text: 'Scoped alert channel routing (Komodo G09). alert_channel_routes(scope_type, scope_id, channel_id, severity_min). Precedence host > host_group > all. Routes /api/alert-routes + preview endpoint /api/alert-routes/resolve.' },
+        { type: 'feature', text: 'Builder host concept (Komodo G05). docker_hosts.is_builder + docker_hosts.default_registry_id columns (migration 076). Build dispatch logic in a follow-up.' },
+        { type: 'feature', text: 'Filesystem-first stacks discovery (Dockge G04). src/services/stacks-fs.js walks DD_STACKS_DIR (default /opt/stacks, comma-separated) up to depth 3, parses compose files, returns stack summaries. Merge into /stacks route in follow-up.' },
+        { type: 'feature', text: 'Uptime Kuma auto-detect (Dockge G08). GET /api/integrations/uptime-kuma scans containers for louislam/uptime-kuma. Returns detected + container info + public URL.' },
+        { type: 'feature', text: 'docker-run → compose UI (Dockge G06 finalization). "Convert docker run" button on Stacks page opens paste-command modal with preview of generated YAML.' },
+        { type: 'improvement', text: '7 alert-routes tests + 5 volume-browser-safety tests. Full suite 1677 passing across 102 suites (was 1665/100).' },
+      ],
+    },
+    {
       version: '8.9.8-alpha.1',
       date: '2026-07-06',
       title: 'Gap closure ship 2: K8s write ops + pod logs + container webhooks + Docker events',
