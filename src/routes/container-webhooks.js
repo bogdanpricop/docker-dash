@@ -5,7 +5,7 @@
 // with rate limiting. Management endpoints require admin.
 
 const { Router } = require('express');
-const rateLimit = require('express-rate-limit');
+const { rateLimit } = require('../middleware/rateLimit');
 const svc = require('../services/container-webhooks');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -66,13 +66,9 @@ mgmt.delete('/:containerId', requireAuth, requireRole('admin'), writeable,
 // ─── PUBLIC trigger endpoint (no auth, rate-limited) ───────────
 const trigger = Router();
 
-const triggerLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many trigger attempts, rate-limited' },
-});
+// 10 triggers per minute per IP+path — uses the existing rateLimit
+// middleware (memory in standalone, Redis INCR in HA).
+const triggerLimiter = rateLimit(10, 60_000);
 
 trigger.post('/:token', triggerLimiter, asyncHandler(async (req, res) => {
   const row = svc.getByToken(req.params.token);
