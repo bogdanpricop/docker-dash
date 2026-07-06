@@ -18,22 +18,18 @@ const HostsPage = {
       </div>
       <div id="hosts-grid" class="hosts-grid"></div>
 
-      <!-- v8.9.11-alpha.1 — the 3 previous cards (Supported daemon types /
-           General guide / SSH key guide) are now 3 tabs so only one is
-           visible at a time. Simpler to scan, less scrolling. -->
-      <div class="card" style="margin-top:24px">
-        <div class="card-header" style="padding:0">
-          <div class="tabs" style="margin:0;padding:8px 12px 0 12px">
-            <button class="tab-btn active" data-hosts-doc-tab="daemon-types"><i class="fas fa-info-circle"></i> Supported daemon types</button>
-            <button class="tab-btn" data-hosts-doc-tab="guide"><i class="fas fa-book"></i> How Hosts work</button>
-            <button class="tab-btn" data-hosts-doc-tab="ssh-key"><i class="fas fa-key"></i> SSH key setup</button>
-          </div>
+      <!-- v8.9.11-alpha.2 — refactored to match the multihost.js tab style
+           (class="tabs" + class="tab"). Cleaner, uses the app's shared
+           tab CSS. -->
+      <div style="margin-top:24px">
+        <div class="tabs" style="margin-bottom:16px">
+          <button class="tab active" data-hosts-doc-tab="daemon-types"><i class="fas fa-info-circle" style="margin-right:4px"></i>Supported daemon types</button>
+          <button class="tab" data-hosts-doc-tab="guide"><i class="fas fa-book" style="margin-right:4px"></i>How Hosts work</button>
+          <button class="tab" data-hosts-doc-tab="ssh-key"><i class="fas fa-key" style="margin-right:4px"></i>SSH key setup</button>
         </div>
-        <div class="card-body">
-          <div data-hosts-doc-panel="daemon-types">${this._renderDaemonTypesTabBody()}</div>
-          <div data-hosts-doc-panel="guide" style="display:none">${this._renderGuideTabBody()}</div>
-          <div data-hosts-doc-panel="ssh-key" style="display:none">${this._renderSshKeyGuideTabBody()}</div>
-        </div>
+        <div data-hosts-doc-panel="daemon-types">${this._renderDaemonTypesTabBody()}</div>
+        <div data-hosts-doc-panel="guide" style="display:none">${this._renderGuideTabBody()}</div>
+        <div data-hosts-doc-panel="ssh-key" style="display:none">${this._renderSshKeyGuideTabBody()}</div>
       </div>
     `;
 
@@ -481,26 +477,14 @@ const HostsPage = {
   },
 
   // ─── v8.9.5-alpha.1 — Docs section explaining each daemon type ────
-  // v8.9.11-alpha.1 — tab-body shims. Each returns just the inner
-  // content (no card wrapper / no collapse toggle) for use inside the
-  // tabbed docs panel. The legacy _render*() methods below still emit
-  // full cards for anywhere else that used them, but they're now only
-  // referenced from here.
-  _renderDaemonTypesTabBody() {
-    return this._renderDaemonTypesDocs()
-      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
-      .replace(/<\/div>\s*<\/div>\s*$/, '');
-  },
-  _renderGuideTabBody() {
-    return this._renderGuide()
-      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
-      .replace(/<\/div>\s*<\/div>\s*$/, '');
-  },
-  _renderSshKeyGuideTabBody() {
-    return this._renderSshKeyGuide()
-      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
-      .replace(/<\/div>\s*<\/div>\s*$/, '');
-  },
+  // v8.9.11-alpha.2 — tab bodies delegate directly to the existing
+  // card renderers (the tabs sit above, cards render inside each tab).
+  // Legacy collapse toggles inside those cards no longer make sense —
+  // we strip the click handler by removing the toggle id — but the
+  // markup layout stays intact.
+  _renderDaemonTypesTabBody() { return this._renderDaemonTypesDocs(); },
+  _renderGuideTabBody()       { return this._renderGuide(); },
+  _renderSshKeyGuideTabBody() { return this._renderSshKeyGuide(); },
 
   _renderDaemonTypesDocs() {
     return `
