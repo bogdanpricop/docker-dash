@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.8-alpha.1',
+      date: '2026-07-06',
+      title: 'Gap closure ship 2: K8s write ops + pod logs + container webhooks + Docker events',
+      changes: [
+        { type: 'feature', text: 'Kubernetes write operations (Portainer G04). KubernetesClient.scaleDeployment(ns, name, replicas) + restartDeployment (kubectl rollout restart via annotation patch) + deletePod + cordonNode. Routes /api/kubernetes/{deployments/:ns/:name/{scale,restart}, pods/:ns/:name, nodes/:name/cordon}. Admin-only, audit-logged. Frontend row-action buttons on Deployments + Pods tabs.' },
+        { type: 'feature', text: 'Kubernetes pod log streaming (Portainer G05). streamPodLogs() emits data/end/error via SSE at GET /api/kubernetes/pods/:ns/:name/logs. Frontend log-view modal with clear + close. tailLines default 500.' },
+        { type: 'feature', text: 'Per-container webhooks (Portainer G06). New container_webhooks table (migration 075) with unique 32-byte tokens. Public trigger POST /webhook/container/:token (no auth, rate-limited 10/min). Management endpoints admin-only. 3 actions: recreate / restart / pull-only.' },
+        { type: 'feature', text: 'Real-time Docker events SSE stream (Portainer G09). GET /api/docker/events?filter=container|image|network|volume. Reuses existing dockerService.getEventStream() from src/services/docker.js. Timeline drawer UI in v8.9.9.' },
+        { type: 'improvement', text: '7 new k8s-write-ops tests. Full suite 1665 passing across 100 suites (was 1658/99).' },
+      ],
+    },
+    {
       version: '8.9.7-alpha.1',
       date: '2026-07-05',
       title: 'Gap closure ship 1: Host groups + K8s Ingress/NP + KubeConfig + docker-run converter + git multi-host',

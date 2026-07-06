@@ -27,12 +27,12 @@ The honest gap against Portainer is narrower than the marketing "Portainer is en
 | G01 | Teams (user groups sharing permissions) | P0 | L | `[ ]` |
 | G02 | Per-host / environment-level access control | P0 | M | `[ ]` |
 | G03 | Host groups (bulk-apply access + tags) | P1 | S | `[x]` v8.9.7-alpha.1 |
-| G04 | Kubernetes write ops (scale / restart / delete pod / cordon) | P1 | M | `[~]` |
-| G05 | Kubernetes pod log streaming | P1 | S | `[ ]` |
-| G06 | Per-container webhook trigger URL (redeploy on POST) | P1 | S | `[ ]` |
+| G04 | Kubernetes write ops (scale / restart / delete pod / cordon) | P1 | M | `[x]` v8.9.8-alpha.1 |
+| G05 | Kubernetes pod log streaming | P1 | S | `[x]` v8.9.8-alpha.1 |
+| G06 | Per-container webhook trigger URL (redeploy on POST) | P1 | S | `[x]` v8.9.8-alpha.1 |
 | G07 | Volume file browser (list / upload / download / delete inside a volume) | P1 | M | `[ ]` |
 | G08 | KubeConfig download for the logged-in user | P2 | XS | `[x]` v8.9.7-alpha.1 |
-| G09 | Real-time Docker events stream on the UI | P2 | S | `[ ]` |
+| G09 | Real-time Docker events stream on the UI | P2 | S | `[x]` v8.9.8-alpha.1 (backend SSE done; UI in v8.9.9) |
 | G10 | Proxmox noVNC / SPICE console iframe | P2 | M | `[ ]` |
 | G11 | Custom RBAC roles (beyond fixed admin/operator/viewer) | P2 | M | `[ ]` |
 | G12 | Edge Agent (async polling from behind NAT, scale to thousands) | P3 | XL | `[-]` |

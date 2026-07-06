@@ -2,6 +2,35 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.8-alpha.1] - 2026-07-06 — Gap closure ship 2: K8s write ops + pod logs + container webhooks + Docker events
+
+Ship 2 of the gap-closure programme. Closes 4 Portainer gaps.
+
+### Closed
+- **Portainer G04 K8s write ops (P1, M) — CLOSED**: `scaleDeployment`, `restartDeployment` (kubectl-style rollout restart via patch on annotations), `deletePod`, `cordonNode(name, unschedulable)` on `KubernetesClient`. Routes at `/api/kubernetes/{deployments/:ns/:name/{scale,restart}, pods/:ns/:name, nodes/:name/cordon}`. All admin-only, audit-logged. PATCH uses `application/strategic-merge-patch+json` content type. Frontend row-action buttons on Deployments and Pods tabs.
+- **Portainer G05 K8s pod log streaming (P1, S) — CLOSED**: `streamPodLogs(ns, name, {container, follow, tailLines})` on `KubernetesClient` — returns an EventEmitter-like object with `on(evt, cb)` and `destroy()`. SSE route at `GET /api/kubernetes/pods/:ns/:name/logs`. Frontend: click the `<i class="fas fa-file-alt">` icon on any pod row → modal with live-tailing log view.
+- **Portainer G06 Per-container webhook (P1, S) — CLOSED**: `container_webhooks` table (migration 075) with unique 32-byte random URL-safe tokens, 3 actions (`recreate` / `restart` / `pull-only`). Public trigger endpoint `POST /webhook/container/:token` — no auth (token IS the auth), rate-limited to 10 req/min. Management endpoints under `/api/container-webhooks` (admin). Audit trail on every trigger (`container_webhook_trigger` / `_trigger_failed` / `_create` / `_delete`). Trigger pulls image + recreates or restarts container.
+- **Portainer G09 Real-time Docker events stream (P2, S) — CLOSED (backend)**: SSE route `GET /api/docker/events?filter=<container|image|network|volume>` reuses existing `dockerService.getEventStream()`. Frontend Timeline drawer UI in v8.9.9.
+
+### Tests
+- `k8s-write-ops.test.js` — 7 tests (scale validation + PATCH shape + content type, restart annotation, delete URL, cordon/uncordon body)
+- Full suite: **1665 passing** across 100 suites (was 1658/99).
+
+### API additions
+- `POST /api/kubernetes/deployments/:ns/:name/{scale, restart}`
+- `DELETE /api/kubernetes/pods/:ns/:name`
+- `POST /api/kubernetes/nodes/:name/cordon`
+- `GET /api/kubernetes/pods/:ns/:name/logs` (SSE)
+- `GET /api/container-webhooks`, `POST /api/container-webhooks/:containerId`, `DELETE /api/container-webhooks/:containerId`
+- `POST /webhook/container/:token` (public, rate-limited)
+- `GET /api/docker/events` (SSE)
+- Frontend API helpers wired for all above
+
+### Backward compatibility
+Fully backward-compatible. New tables, no schema changes to existing rows.
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.7-alpha.1] - 2026-07-05 — Gap closure ship 1: Host groups + K8s Ingress/NP + KubeConfig + docker-run converter + git multi-host targets
 
 Ship 1 of the multi-competitor gap-closure programme. Closes 5 gaps outright, opens 1 as partial:

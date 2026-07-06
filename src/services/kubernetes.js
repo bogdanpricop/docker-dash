@@ -89,7 +89,10 @@ class KubernetesClient {
     };
     const bodyBuf = body ? Buffer.from(JSON.stringify(body)) : null;
     if (bodyBuf) {
-      reqOpts.headers['Content-Type'] = 'application/json';
+      // v8.9.8-alpha.1 — Kubernetes PATCH requests need a strategic-merge
+      // patch content type; callers can override via opts.contentType.
+      reqOpts.headers['Content-Type'] = opts.contentType
+        || (method === 'PATCH' ? 'application/strategic-merge-patch+json' : 'application/json');
       reqOpts.headers['Content-Length'] = bodyBuf.length;
     }
     return new Promise((resolve, reject) => {
@@ -201,6 +204,105 @@ class KubernetesClient {
   async listNodes() {
     const resp = await this._request('GET', '/api/v1/nodes');
     return (resp && resp.items) || [];
+  }
+
+  // ─── v8.9.8-alpha.1 — Portainer G04 closure: Kubernetes write ops.
+  // Scale, rollout restart, delete pod, cordon/uncordon nodes. Deep-spec
+  // anti-features stay OUT: no YAML editor, no Helm, no exec-into-pod.
+
+  /** PATCH /apis/apps/v1/namespaces/{ns}/deployments/{name}/scale */
+  async scaleDeployment(namespace, name, replicas) {
+    if (!Number.isInteger(replicas) || replicas < 0) {
+      throw new Error('replicas must be a non-negative integer');
+    }
+    return this._request('PATCH', `/apis/apps/v1/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(name)}/scale`,
+      { spec: { replicas } });
+  }
+
+  /** Rollout restart via patch on template.metadata.annotations.
+   *  Matches `kubectl rollout restart deployment/x`. */
+  async restartDeployment(namespace, name) {
+    const stamp = new Date().toISOString();
+    const patch = {
+      spec: {
+        template: {
+          metadata: {
+            annotations: {
+              'kubectl.kubernetes.io/restartedAt': stamp,
+            },
+          },
+        },
+      },
+    };
+    return this._request('PATCH', `/apis/apps/v1/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(name)}`,
+      patch);
+  }
+
+  /** DELETE /api/v1/namespaces/{ns}/pods/{name} — deletes the pod
+   *  (Deployment reschedules a replacement if the pod belongs to one). */
+  async deletePod(namespace, name) {
+    return this._request('DELETE', `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`);
+  }
+
+  /** PATCH node spec to cordon (unschedulable=true) or uncordon (false). */
+  async cordonNode(name, unschedulable = true) {
+    return this._request('PATCH', `/api/v1/nodes/${encodeURIComponent(name)}`,
+      { spec: { unschedulable } });
+  }
+
+  /**
+   * Stream pod logs — returns { on: (event, cb), destroy: fn }.
+   * Uses the raw http.request path so we can pipe out the response
+   * without buffering. Emits 'data' per chunk, 'end', 'error'.
+   */
+  streamPodLogs(namespace, name, { container, follow = true, tailLines = 200 } = {}) {
+    const url = new URL(`/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}/log`,
+      this._config.endpoint);
+    url.searchParams.set('follow', follow ? 'true' : 'false');
+    if (container) url.searchParams.set('container', container);
+    if (tailLines) url.searchParams.set('tailLines', String(tailLines));
+    const reqOpts = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      method: 'GET',
+      path: url.pathname + url.search,
+      headers: {
+        'Accept': 'text/plain',
+        'Authorization': `Bearer ${this._config.token}`,
+      },
+      agent: this._agent,
+    };
+    const listeners = { data: [], end: [], error: [] };
+    const emit = (evt, arg) => listeners[evt].forEach(fn => fn(arg));
+    let req;
+    let ended = false;
+    const start = () => {
+      req = https.request(reqOpts, (res) => {
+        if (res.statusCode >= 400) {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => {
+            const err = new Error(`Kubernetes log stream failed: HTTP ${res.statusCode}: ${Buffer.concat(chunks).toString('utf8').slice(0, 200)}`);
+            err.status = res.statusCode;
+            emit('error', err);
+            ended = true;
+            emit('end');
+          });
+          return;
+        }
+        res.on('data', chunk => { if (!ended) emit('data', chunk); });
+        res.on('end', () => { if (!ended) { ended = true; emit('end'); } });
+        res.on('error', err => { if (!ended) { ended = true; emit('error', err); } });
+      });
+      req.on('error', err => { if (!ended) { ended = true; emit('error', err); } });
+      req.end();
+    };
+    // Kick off asynchronously so listeners have time to register.
+    setImmediate(start);
+    return {
+      on(evt, cb) { if (listeners[evt]) listeners[evt].push(cb); return this; },
+      destroy() { if (req) try { req.destroy(); } catch { /* ignore */ } ended = true; },
+    };
   }
 
   // ─── v8.9.7-alpha.1 — Portainer G13 closure: Ingress + NetworkPolicy read

@@ -206,6 +206,15 @@ app.use('/api/nomad', apiLimiter, require('./routes/nomad'));
 // v8.9.7-alpha.1 — Gap Closure ship 1
 app.use('/api/host-groups', apiLimiter, require('./routes/host-groups'));
 app.use('/api/git', apiLimiter, require('./routes/git-multi-host'));
+// v8.9.8-alpha.1 — Gap closure ship 2
+{
+  const cw = require('./routes/container-webhooks');
+  app.use('/api/container-webhooks', apiLimiter, cw.mgmt);
+  // Public trigger endpoint — separate mount so it doesn't inherit apiLimiter
+  // (has its own tighter limiter). No auth here — token IS the auth.
+  app.use('/webhook/container', cw.trigger);
+}
+app.use('/api/docker', apiLimiter, require('./routes/docker-events'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

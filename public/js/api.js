@@ -417,6 +417,40 @@ const Api = {
   // ─── Docker-run to compose converter (Dockge G06) ───
   convertDockerRun(command)           { return this.post('/compose/convert', { command }); },
 
+  // ─── K8s write ops (v8.9.8, Portainer G04) ───
+  scaleKubernetesDeployment(ns, name, replicas) {
+    return this.post(`/kubernetes/deployments/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/scale`, { replicas });
+  },
+  restartKubernetesDeployment(ns, name) {
+    return this.post(`/kubernetes/deployments/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/restart`, {});
+  },
+  deleteKubernetesPod(ns, name) {
+    return this.delete(`/kubernetes/pods/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`);
+  },
+  cordonKubernetesNode(name, unschedulable = true) {
+    return this.post(`/kubernetes/nodes/${encodeURIComponent(name)}/cordon`, { unschedulable });
+  },
+  // Pod logs — SSE, use fetch + ReadableStream
+  streamKubernetesPodLogs(ns, name, opts = {}) {
+    const qs = new URLSearchParams();
+    if (opts.container) qs.set('container', opts.container);
+    if (opts.follow === false) qs.set('follow', '0');
+    if (opts.tailLines) qs.set('tailLines', String(opts.tailLines));
+    return `/api/kubernetes/pods/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/logs?${qs}`;
+  },
+
+  // ─── Container webhooks (v8.9.8, Portainer G06) ───
+  listContainerWebhooks()             { return this.get('/container-webhooks'); },
+  getContainerWebhook(containerId)    { return this.get(`/container-webhooks/${containerId}`); },
+  createContainerWebhook(containerId, data) { return this.post(`/container-webhooks/${containerId}`, data); },
+  deleteContainerWebhook(containerId) { return this.delete(`/container-webhooks/${containerId}`); },
+
+  // ─── Docker events SSE (v8.9.8, Portainer G09) ───
+  dockerEventsStreamUrl(filter) {
+    const qs = filter ? `?filter=${encodeURIComponent(filter)}` : '';
+    return `/api/docker/events${qs}`;
+  },
+
   // ─── Nomad (v8.9.5-alpha.1, Sprint 10) — read-only alpha ───
   getNomadInfo()                      { return this.get('/nomad/info'); },
   getNomadNamespaces()                { return this.get('/nomad/namespaces'); },

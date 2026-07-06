@@ -142,17 +142,49 @@ const KubernetesResourcesPage = {
       const ready = `${status.readyReplicas || 0}/${spec.replicas || 0}`;
       const ok = (status.readyReplicas || 0) === (spec.replicas || 0);
       const statusColor = ok ? 'green' : 'yellow';
+      const ns = Utils.escapeHtml(meta.namespace || '');
+      const name = Utils.escapeHtml(meta.name || '');
       return `<tr>
-        <td>${Utils.escapeHtml(meta.namespace || '—')}</td>
-        <td><strong>${Utils.escapeHtml(meta.name || '—')}</strong></td>
+        <td>${ns || '—'}</td>
+        <td><strong>${name || '—'}</strong></td>
         <td><code style="font-size:11px">${Utils.escapeHtml(image)}</code></td>
         <td style="color:${statusColor}">${Utils.escapeHtml(ready)}</td>
         <td>${Utils.escapeHtml(meta.creationTimestamp ? new Date(meta.creationTimestamp).toLocaleString() : '—')}</td>
+        <td>
+          <button class="btn btn-xs btn-secondary" data-k8s-action="scale" data-ns="${ns}" data-name="${name}" title="Scale">
+            <i class="fas fa-arrows-alt-v"></i></button>
+          <button class="btn btn-xs btn-secondary" data-k8s-action="restart" data-ns="${ns}" data-name="${name}" title="Rollout restart">
+            <i class="fas fa-sync"></i></button>
+        </td>
       </tr>`;
     }).join('');
     el.innerHTML = `<table class="table"><thead><tr>
-      <th>Namespace</th><th>Name</th><th>Image</th><th>Ready</th><th>Created</th>
+      <th>Namespace</th><th>Name</th><th>Image</th><th>Ready</th><th>Created</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
+    // v8.9.8-alpha.1 — wire scale/restart buttons (Portainer G04)
+    el.querySelectorAll('[data-k8s-action]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const action = btn.getAttribute('data-k8s-action');
+        const ns = btn.getAttribute('data-ns');
+        const name = btn.getAttribute('data-name');
+        try {
+          if (action === 'scale') {
+            const replicas = window.prompt(`Scale ${name} to how many replicas?`, '1');
+            if (replicas === null) return;
+            const n = parseInt(replicas, 10);
+            if (!Number.isInteger(n) || n < 0) { Toast.error('Invalid replicas'); return; }
+            await Api.scaleKubernetesDeployment(ns, name, n);
+            Toast.success(`${name} scaled to ${n}`);
+          } else if (action === 'restart') {
+            if (!confirm(`Rollout restart ${ns}/${name}?`)) return;
+            await Api.restartKubernetesDeployment(ns, name);
+            Toast.success(`${name} rollout restart triggered`);
+          }
+          this._load();
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
   },
 
   _renderPods(el, list) {
@@ -169,18 +201,85 @@ const KubernetesResourcesPage = {
       const restarts = (status.containerStatuses || []).reduce((s, c) => s + (c.restartCount || 0), 0);
       const node = spec.nodeName || '—';
       const containers = (spec.containers || []).map(c => c.name).join(', ');
+      const ns = Utils.escapeHtml(meta.namespace || '');
+      const name = Utils.escapeHtml(meta.name || '');
+      const firstCt = (spec.containers && spec.containers[0] && spec.containers[0].name) || '';
       return `<tr>
-        <td>${Utils.escapeHtml(meta.namespace || '—')}</td>
-        <td><strong>${Utils.escapeHtml(meta.name || '—')}</strong></td>
+        <td>${ns || '—'}</td>
+        <td><strong>${name || '—'}</strong></td>
         <td style="color:${phaseColor}">${Utils.escapeHtml(phase)}</td>
         <td>${restarts}</td>
         <td>${Utils.escapeHtml(node)}</td>
         <td><code style="font-size:11px">${Utils.escapeHtml(containers)}</code></td>
+        <td>
+          <button class="btn btn-xs btn-secondary" data-k8s-pod-action="logs" data-ns="${ns}" data-name="${name}" data-container="${Utils.escapeHtml(firstCt)}" title="Logs">
+            <i class="fas fa-file-alt"></i></button>
+          <button class="btn btn-xs btn-danger" data-k8s-pod-action="delete" data-ns="${ns}" data-name="${name}" title="Delete pod">
+            <i class="fas fa-trash"></i></button>
+        </td>
       </tr>`;
     }).join('');
     el.innerHTML = `<table class="table"><thead><tr>
-      <th>Namespace</th><th>Name</th><th>Phase</th><th>Restarts</th><th>Node</th><th>Containers</th>
+      <th>Namespace</th><th>Name</th><th>Phase</th><th>Restarts</th><th>Node</th><th>Containers</th><th></th>
     </tr></thead><tbody>${rows}</tbody></table>`;
+    // v8.9.8-alpha.1 — wire pod delete + logs (Portainer G04+G05)
+    el.querySelectorAll('[data-k8s-pod-action]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const action = btn.getAttribute('data-k8s-pod-action');
+        const ns = btn.getAttribute('data-ns');
+        const name = btn.getAttribute('data-name');
+        const container = btn.getAttribute('data-container');
+        if (action === 'delete') {
+          if (!confirm(`Delete pod ${ns}/${name}?\n\n(If it belongs to a Deployment / ReplicaSet, a replacement will be scheduled.)`)) return;
+          try {
+            await Api.deleteKubernetesPod(ns, name);
+            Toast.success(`Pod ${name} deleted`);
+            this._load();
+          } catch (err) { Toast.error(err.message); }
+        } else if (action === 'logs') {
+          this._openPodLogsModal(ns, name, container);
+        }
+      });
+    });
+  },
+
+  // v8.9.8-alpha.1 — Portainer G05: pod log streaming modal.
+  _openPodLogsModal(ns, name, container) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal" style="width:800px;height:600px;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-file-alt"></i> Pod logs — ${Utils.escapeHtml(ns)}/${Utils.escapeHtml(name)}${container ? ` [${Utils.escapeHtml(container)}]` : ''}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" style="flex:1;overflow:auto;padding:0">
+          <pre id="k8s-log-view" style="margin:0;padding:12px;font-size:12px;background:var(--bg2,#111);color:var(--text,#eee);white-space:pre-wrap;word-wrap:break-word"></pre>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-sm btn-secondary" id="k8s-log-clear"><i class="fas fa-eraser"></i> Clear</button>
+          <button class="btn btn-sm btn-secondary" id="k8s-log-close">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const logEl = modal.querySelector('#k8s-log-view');
+    // EventSource can't send headers — use hostId query param supported by extractHostId middleware.
+    const currentHost = (window.App && App._currentHostId) || 0;
+    const esUrl = Api.streamKubernetesPodLogs(ns, name, { container, follow: true, tailLines: 500 })
+      + `&hostId=${encodeURIComponent(currentHost)}`;
+    const es = new EventSource(esUrl);
+    es.onmessage = (evt) => {
+      logEl.textContent += evt.data + '\n';
+      logEl.parentElement.scrollTop = logEl.parentElement.scrollHeight;
+    };
+    es.addEventListener('error', () => { /* SSE will retry — ignore */ });
+    const close = () => { es.close(); modal.remove(); };
+    modal.querySelector('.modal-close').addEventListener('click', close);
+    modal.querySelector('#k8s-log-close').addEventListener('click', close);
+    modal.querySelector('#k8s-log-clear').addEventListener('click', () => { logEl.textContent = ''; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   },
 
   _renderServices(el, list) {
