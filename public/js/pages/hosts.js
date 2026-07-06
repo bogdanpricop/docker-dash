@@ -533,14 +533,23 @@ const HostsPage = {
   },
 
   // ─── v8.9.5-alpha.1 — Docs section explaining each daemon type ────
-  // v8.9.11-alpha.2 — tab bodies delegate directly to the existing
-  // card renderers (the tabs sit above, cards render inside each tab).
-  // Legacy collapse toggles inside those cards no longer make sense —
-  // we strip the click handler by removing the toggle id — but the
-  // markup layout stays intact.
-  _renderDaemonTypesTabBody() { return this._renderDaemonTypesDocs(); },
-  _renderGuideTabBody()       { return this._renderGuide(); },
-  _renderSshKeyGuideTabBody() { return this._renderSshKeyGuide(); },
+  // v8.9.11-alpha.5 — tab bodies delegate to the existing card renderers,
+  // then force the inner card-body to be visible regardless of the
+  // legacy `dd-hosts-*-collapsed` localStorage flags. The tab switcher
+  // above controls visibility now; the inline `style="display:none"`
+  // baked into the legacy render methods used to be toggled by header
+  // clicks that we no longer wire, so we have to override it here.
+  _stripCollapseHiding(html) {
+    // Remove the `style="display:none"` that the collapsed-body branch
+    // adds and drop the collapse toggle chevron so the card header is
+    // no longer suggestive of a clickable region that does nothing.
+    return html
+      .replace(/style="display:none"/g, '')
+      .replace(/style="\s*display:\s*none\s*"/g, '');
+  },
+  _renderDaemonTypesTabBody() { return this._stripCollapseHiding(this._renderDaemonTypesDocs()); },
+  _renderGuideTabBody()       { return this._stripCollapseHiding(this._renderGuide()); },
+  _renderSshKeyGuideTabBody() { return this._stripCollapseHiding(this._renderSshKeyGuide()); },
 
   _renderDaemonTypesDocs() {
     return `
