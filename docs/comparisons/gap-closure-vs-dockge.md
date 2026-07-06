@@ -2,9 +2,10 @@
 
 **Source doc:** [vs-dockge.md](vs-dockge.md)
 **Baseline version:** v8.9.6-alpha.1 (2026-07-05)
-**Owner:** (TBD)
-**Status:** Draft
-**Last reviewed:** 2026-07-05
+**Current version:** v8.9.10-alpha.1 (2026-07-06)
+**Owner:** Bogdan
+**Status:** Executing — 3 of 8 open gaps closed
+**Last reviewed:** 2026-07-06
 
 ## Executive summary
 
@@ -16,10 +17,16 @@ Dockge and Docker Dash are different-shape tools: Dockge is a minimal, opinionat
 |---|---:|---:|---:|---:|---:|
 | P0 | 1 | 1 | 0 | 0 | 0 |
 | P1 | 2 | 2 | 0 | 0 | 0 |
-| P2 | 2 | 2 | 0 | 0 | 0 |
-| P3 | 3 | 3 | 0 | 0 | 0 |
+| P2 | 2 | 1 | 0 | 1 | 0 |
+| P3 | 3 | 1 | 0 | 2 | 0 |
 | Won't-do | 4 | 0 | 0 | 0 | 4 |
-| **Total** | **12** | **8** | **0** | **0** | **4** |
+| **Total** | **12** | **5** | **0** | **3** | **4** |
+
+**Closure summary (as of v8.9.10-alpha.1):**
+- **v8.9.7-alpha.1:** G06 (docker-run → compose converter — backend)
+- **v8.9.9-alpha.1:** G04 (Filesystem stacks discovery — backend), G06 UI polish, G08 (Uptime Kuma auto-detect)
+- **Deferred:** G01 (compose SSE — needs execFileSync refactor), G02 (CodeMirror), G03 (stack logs), G05 (compose-first landing), G07 (form-based service editor)
+- **Won't-do:** W01-W04 (image size, Svelte, scope cut, drop scanners)
 
 ## Gap inventory
 

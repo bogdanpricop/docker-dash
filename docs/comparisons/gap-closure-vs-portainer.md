@@ -2,9 +2,10 @@
 
 **Source doc:** [vs-portainer.md](vs-portainer.md)
 **Baseline version:** v8.9.6-alpha.1 (2026-07-05)
-**Owner:** (TBD)
-**Status:** Draft
-**Last reviewed:** 2026-07-05
+**Current version:** v8.9.10-alpha.1 (2026-07-06)
+**Owner:** Bogdan
+**Status:** Executing — 8 of 12 open gaps closed
+**Last reviewed:** 2026-07-06
 
 ## Executive summary
 
@@ -14,11 +15,19 @@ The honest gap against Portainer is narrower than the marketing "Portainer is en
 
 | Priority | Total | Open | In progress | Closed | Won't-do |
 |---|---:|---:|---:|---:|---:|
-| P0 | 2 | 2 | 0 | 0 | 0 |
-| P1 | 5 | 4 | 1 | 0 | 0 |
-| P2 | 4 | 4 | 0 | 0 | 0 |
-| P3 | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **13** | **11** | **1** | **0** | **1** |
+| P0 | 2 | 0 | 0 | 2 | 0 |
+| P1 | 5 | 0 | 0 | 5 | 0 |
+| P2 | 4 | 3 | 0 | 1 | 0 |
+| P3 | 2 | 0 | 0 | 1 | 1 |
+| **Total** | **13** | **3** | **0** | **9** | **1** |
+
+**Closure summary (as of v8.9.10-alpha.1):**
+- **v8.9.7-alpha.1:** G03 (Host groups), G08 (KubeConfig), G13 (K8s Ingress/NP read)
+- **v8.9.8-alpha.1:** G04 (K8s write ops), G05 (K8s pod logs), G06 (Container webhooks), G09 (Docker events)
+- **v8.9.9-alpha.1:** G07 (Volume file browser — list/read/delete)
+- **v8.9.10-alpha.1:** G01 (Teams), G02 (Per-host access control)
+- **Deferred:** G10 (Proxmox noVNC — needs own deep-spec), G11 (custom RBAC roles — needs G01/G02 field-tested first)
+- **Won't-do:** G12 (Edge Agent at scale — architecture conflict)
 
 ## Gap inventory
 

@@ -2,9 +2,10 @@
 
 **Source doc:** [vs-komodo.md](vs-komodo.md)
 **Baseline version:** v8.9.6-alpha.1 (2026-07-05)
-**Owner:** (TBD)
-**Status:** Draft
-**Last reviewed:** 2026-07-05
+**Current version:** v8.9.10-alpha.1 (2026-07-06)
+**Owner:** Bogdan
+**Status:** Executing — 4 of 9 open gaps closed
+**Last reviewed:** 2026-07-06
 
 ## Executive summary
 
@@ -14,12 +15,19 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 
 | Priority | Total | Open | In progress | Closed | Won't-do |
 |---|---:|---:|---:|---:|---:|
-| P0 | 1 | 1 | 0 | 0 | 0 |
-| P1 | 3 | 3 | 0 | 0 | 0 |
-| P2 | 3 | 3 | 0 | 0 | 0 |
-| P3 | 2 | 2 | 0 | 0 | 0 |
+| P0 | 1 | 0 | 1 | 0 | 0 |
+| P1 | 3 | 2 | 0 | 1 | 0 |
+| P2 | 3 | 2 | 0 | 1 | 0 |
+| P3 | 2 | 0 | 0 | 2 | 0 |
 | Won't-do | 2 | 0 | 0 | 0 | 2 |
-| **Total** | **11** | **9** | **0** | **0** | **2** |
+| **Total** | **11** | **4** | **1** | **4** | **2** |
+
+**Closure summary (as of v8.9.10-alpha.1):**
+- **v8.9.7-alpha.1:** G02 (Host groups); G01 partial (Multi-host git schema + basic API)
+- **v8.9.9-alpha.1:** G05 (Builder host schema), G09 (Alerter routing)
+- **Already shipped:** G08 (git.js:rollbackStack)
+- **Deferred:** G03 (procedures), G04 (fleet UX polish), G06 (cross-host pipeline), G07 (GitOps export)
+- **Won't-do:** G10 (Rust rewrite), G11 (MongoDB)
 
 ## Gap inventory
 
