@@ -24,8 +24,8 @@ The honest gap against Portainer is narrower than the marketing "Portainer is en
 
 | ID | Gap | Priority | Effort | Status |
 |---|---|---|---|---|
-| G01 | Teams (user groups sharing permissions) | P0 | L | `[ ]` |
-| G02 | Per-host / environment-level access control | P0 | M | `[ ]` |
+| G01 | Teams (user groups sharing permissions) | P0 | L | `[x]` v8.9.10-alpha.1 (teams primitive + CRUD + resolver; UI in follow-up) |
+| G02 | Per-host / environment-level access control | P0 | M | `[x]` v8.9.10-alpha.1 (resolver + grant/revoke API; legacy_default flag preserves upgrade compat) |
 | G03 | Host groups (bulk-apply access + tags) | P1 | S | `[x]` v8.9.7-alpha.1 |
 | G04 | Kubernetes write ops (scale / restart / delete pod / cordon) | P1 | M | `[x]` v8.9.8-alpha.1 |
 | G05 | Kubernetes pod log streaming | P1 | S | `[x]` v8.9.8-alpha.1 |

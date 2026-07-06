@@ -219,6 +219,9 @@ app.use('/api/docker', apiLimiter, require('./routes/docker-events'));
 app.use('/api/volumes', apiLimiter, require('./routes/volume-browser'));
 app.use('/api/integrations', apiLimiter, require('./routes/integrations'));
 app.use('/api/alert-routes', apiLimiter, require('./routes/alert-routes'));
+// v8.9.10-alpha.1 — Gap closure ship 4: Teams + Per-host access control
+app.use('/api/teams', apiLimiter, require('./routes/teams'));
+app.use('/api/host-permissions', apiLimiter, require('./routes/host-permissions'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

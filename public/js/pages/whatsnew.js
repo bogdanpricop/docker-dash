@@ -10,6 +10,18 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.10-alpha.1',
+      date: '2026-07-06',
+      title: 'Gap closure ship 4: Teams + Per-host access control',
+      changes: [
+        { type: 'feature', text: 'Teams primitive (Portainer G01). Migration 077 adds teams + team_members tables. CRUD service + admin-only routes at /api/teams. teamsForUser(uid) helper. Every mutation audit-logged. UI in follow-up.' },
+        { type: 'feature', text: 'Per-host access control (Portainer G02). Migration 077 adds host_permissions with CHECK: exactly-one of {host_id, host_group_id} and {user_id, team_id}. Levels: view / operate / admin. Resolver walks admin-global > direct grant > team grant > group grant, returns highest. filterVisibleHosts() for list-filter use case. Routes /api/host-permissions + /effective + /legacy-default.' },
+        { type: 'security', text: 'Backward compatibility: settings.legacy_host_access_default=true seeded post-migration. Non-admin users with no explicit grants see operate on every host to preserve pre-upgrade behavior. Admin toggles off via POST /host-permissions/legacy-default after configuring real permissions. Toggle audit-logged.' },
+        { type: 'improvement', text: '13 new tests for teams + host permissions (direct grant, team grant, group grant, precedence, filter visible, legacy default). Full suite 1690 passing across 103 suites (was 1677/102).' },
+        { type: 'improvement', text: 'What is still open: Teams UI in Settings, requireHostAccess() middleware wiring on container/image/volume routes, custom RBAC roles (Portainer G11 deferred).' },
+      ],
+    },
+    {
       version: '8.9.9-alpha.1',
       date: '2026-07-06',
       title: 'Gap closure ship 3: volume browser + alerter routes + builder host + FS stacks + Uptime Kuma + docker-run UI',

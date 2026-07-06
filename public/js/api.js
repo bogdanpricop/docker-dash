@@ -459,6 +459,23 @@ const Api = {
   // ─── Uptime Kuma auto-detect (v8.9.9, Dockge G08) ───
   detectUptimeKuma()                  { return this.get('/integrations/uptime-kuma'); },
 
+  // ─── Teams (v8.9.10, Portainer G01) ───
+  listTeams()                         { return this.get('/teams'); },
+  getTeam(id)                         { return this.get(`/teams/${id}`); },
+  createTeam(data)                    { return this.post('/teams', data); },
+  updateTeam(id, data)                { return this.put(`/teams/${id}`, data); },
+  deleteTeam(id)                      { return this.delete(`/teams/${id}`); },
+  addTeamMember(teamId, userId)       { return this.post(`/teams/${teamId}/members`, { userId }); },
+  removeTeamMember(teamId, userId)    { return this.delete(`/teams/${teamId}/members/${userId}`); },
+
+  // ─── Per-host access control (v8.9.10, Portainer G02) ───
+  listHostPermissions(hostId)         { return this.get(`/host-permissions?hostId=${hostId}`); },
+  grantHostPermission(data)           { return this.post('/host-permissions', data); },
+  revokeHostPermission(id)            { return this.delete(`/host-permissions/${id}`); },
+  getEffectiveHostPermission(hostId)  { return this.get(`/host-permissions/effective?hostId=${hostId}`); },
+  getLegacyHostAccessDefault()        { return this.get('/host-permissions/legacy-default'); },
+  setLegacyHostAccessDefault(enabled) { return this.post('/host-permissions/legacy-default', { enabled }); },
+
   // ─── Alert channel routing (v8.9.9, Komodo G09) ───
   listAlertRoutes()                   { return this.get('/alert-routes'); },
   createAlertRoute(data)              { return this.post('/alert-routes', data); },

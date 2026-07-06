@@ -2,6 +2,50 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.10-alpha.1] - 2026-07-06 — Gap closure ship 4: Teams + Per-host access control
+
+Ship 4. Closes the two Portainer P0 gaps that dominated the multi-tenant RBAC story.
+
+### Closed
+- **Portainer G01 Teams (P0, L) — CLOSED (foundation)**: migration 077 adds `teams` + `team_members` tables. Service `src/services/teams.js` with CRUD + `addMember`/`removeMember` + `teamsForUser(userId)` helper. Admin-only routes at `/api/teams`. Every mutation audit-logged (`team_create`, `_update`, `_delete`, `_member_add`, `_member_remove`). UI in follow-up.
+- **Portainer G02 Per-host access control (P0, M) — CLOSED**: migration 077 adds `host_permissions` table with CHECK constraint: exactly one of `{host_id, host_group_id}` and exactly one of `{user_id, team_id}`. `permission IN ('view', 'operate', 'admin')`. Service `src/services/host-permissions.js` exposes `resolveEffectivePermission(userId, hostId, isAdmin)` — walks admin-global → direct user grant → team grant → host-group grant (via `host_group_members`), returning the highest-precedence permission. `filterVisibleHosts()` for the hosts-list-filter use case. Routes at `/api/host-permissions` + `/effective` + `/legacy-default`.
+
+### Backward compatibility — `legacy_host_access_default` setting
+Migration 077 seeds `settings.legacy_host_access_default='true'`. When enabled, the resolver returns `'operate'` for any non-admin user on any host with no explicit grants — preserving pre-upgrade behavior. Admin can toggle it off via `POST /api/host-permissions/legacy-default { enabled: false }` after configuring real permissions. Documented in the settings audit trail.
+
+### Tests
+- `teams-and-host-perms.test.js` — **13 tests**: teams validation + members CRUD + delete cascade; host permissions with direct grant, team grant, group grant, precedence, filter visible, legacy default. Full suite: **1690 passing** across 103 suites (was 1677/102).
+
+### API additions
+- `GET/POST/PUT/DELETE /api/teams`
+- `POST/DELETE /api/teams/:id/members[/:userId]`
+- `GET/POST/DELETE /api/host-permissions`
+- `GET /api/host-permissions/effective?hostId=X`
+- `GET/POST /api/host-permissions/legacy-default`
+- Frontend API helpers wired: `listTeams`, `createTeam`, `updateTeam`, `deleteTeam`, `addTeamMember`, `removeTeamMember`, `listHostPermissions`, `grantHostPermission`, `revokeHostPermission`, `getEffectiveHostPermission`, `getLegacyHostAccessDefault`, `setLegacyHostAccessDefault`
+
+### Migrations
+- **077** — `teams`, `team_members`, `host_permissions`; seeds `settings.legacy_host_access_default='true'`.
+
+### What's still open
+- Frontend Teams management UI (Settings → Teams tab) — follow-up
+- Wire `requireHostAccess(minLevel)` middleware into container/image/volume routes — follow-up (foundation is ready)
+- Custom RBAC roles beyond fixed admin/operator/viewer (Portainer G11) — deferred; needs teams + per-host to shake out first
+
+### Not shipped in this session (deferred with clear rationale)
+- **Dockge G01** Compose event loop unblock (P0, M): requires SSE refactor of 6 `execFileSync` call sites in `system-stacks.js`. Design ready in gap-closure-vs-dockge.md; deferred to future sprint.
+- **Dockge G02** CodeMirror YAML editor (P1, M): requires vendoring 200KB bundle under `public/vendor/`. Design ready; deferred.
+- **Dockge G03** Stack-level log stream (P1, S): reuses existing WS `logs:subscribe` fan-out; deferred to follow-up.
+- **Komodo G01** Multi-host git deploy UI polish + deep integration with `deployStack()`: partial in v8.9.7; deferred.
+- **Komodo G03** User-invoked procedures (P1, M): needs schema for `procedures` + `procedure_runs`; deferred.
+- **Komodo G04** Fleet-first UX polish (P1, S): sidebar tree + bulk actions; deferred.
+- **Komodo G06** Cross-host build pipeline (P2, L): needs G05 build dispatch first; deferred to v9.0.
+- **Komodo G07** GitOps export/import (P2, M): deferred.
+- **Portainer G10** Proxmox noVNC console (P2, M): needs own deep-spec (browser connects directly to Proxmox); deferred.
+- **Portainer G11** Custom RBAC roles (P2, M): deferred, needs G01/G02 field-tested first.
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.9-alpha.1] - 2026-07-06 — Gap closure ship 3: volume browser + alerter routes + FS stacks + builder host + Uptime Kuma + docker-run UI
 
 Ship 3. Closes 6 gaps across all three trackers.
