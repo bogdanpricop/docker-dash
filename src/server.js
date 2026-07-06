@@ -222,6 +222,8 @@ app.use('/api/alert-routes', apiLimiter, require('./routes/alert-routes'));
 // v8.9.10-alpha.1 — Gap closure ship 4: Teams + Per-host access control
 app.use('/api/teams', apiLimiter, require('./routes/teams'));
 app.use('/api/host-permissions', apiLimiter, require('./routes/host-permissions'));
+// v8.9.11-alpha.1 — VMware vSphere / ESXi read-only alpha
+app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

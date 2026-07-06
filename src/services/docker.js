@@ -715,6 +715,30 @@ class DockerService {
           _connectError: err.message };
       }
     }
+    if (daemonType === 'vsphere') {
+      const capabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        vsphere: true, vms: true, esxiHosts: true, datastores: true,
+      };
+      try {
+        const { fromHostRow } = require('./vsphere');
+        const client = fromHostRow(row);
+        await client.login();
+        const info = await client.retrieveServiceContent();
+        return {
+          ...base,
+          hostname: info.productFullName || row.name,
+          dockerVersion: info.version || null,
+          apiVersion: info.apiVersion || null,
+          os: info.osType || null,
+          daemonType, daemonName: 'VMware vSphere / ESXi', capabilities,
+        };
+      } catch (err) {
+        return { ...base, daemonType, daemonName: 'VMware vSphere / ESXi', capabilities,
+          _connectError: err.message };
+      }
+    }
     if (daemonType === 'nomad') {
       const capabilities = {
         containers: false, images: false, networks: false, volumes: false,

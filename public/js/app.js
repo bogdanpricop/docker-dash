@@ -38,6 +38,7 @@ const App = {
     'migration-vm': () => MigrationVMPage,
     'kubernetes-resources': () => KubernetesResourcesPage,
     'nomad-jobs': () => NomadJobsPage,
+    'vsphere-resources': () => VSphereResourcesPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,

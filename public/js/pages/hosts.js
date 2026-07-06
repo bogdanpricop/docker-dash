@@ -17,58 +17,47 @@ const HostsPage = {
         </div>
       </div>
       <div id="hosts-grid" class="hosts-grid"></div>
-      ${this._renderDaemonTypesDocs()}
-      ${this._renderGuide()}
-      ${this._renderSshKeyGuide()}
+
+      <!-- v8.9.11-alpha.1 — the 3 previous cards (Supported daemon types /
+           General guide / SSH key guide) are now 3 tabs so only one is
+           visible at a time. Simpler to scan, less scrolling. -->
+      <div class="card" style="margin-top:24px">
+        <div class="card-header" style="padding:0">
+          <div class="tabs" style="margin:0;padding:8px 12px 0 12px">
+            <button class="tab-btn active" data-hosts-doc-tab="daemon-types"><i class="fas fa-info-circle"></i> Supported daemon types</button>
+            <button class="tab-btn" data-hosts-doc-tab="guide"><i class="fas fa-book"></i> How Hosts work</button>
+            <button class="tab-btn" data-hosts-doc-tab="ssh-key"><i class="fas fa-key"></i> SSH key setup</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div data-hosts-doc-panel="daemon-types">${this._renderDaemonTypesTabBody()}</div>
+          <div data-hosts-doc-panel="guide" style="display:none">${this._renderGuideTabBody()}</div>
+          <div data-hosts-doc-panel="ssh-key" style="display:none">${this._renderSshKeyGuideTabBody()}</div>
+        </div>
+      </div>
     `;
 
     container.querySelector('#host-add').addEventListener('click', () => this._addHostDialog());
     container.querySelector('#host-add-non-docker').addEventListener('click', () => this._addNonDockerHostDialog());
     container.querySelector('#host-refresh').addEventListener('click', () => this._load());
 
-    // Collapse/expand daemon-types docs (v8.9.5-alpha.1)
-    const dtToggle = container.querySelector('#daemon-types-toggle');
-    const dtBody = container.querySelector('#daemon-types-body');
-    if (dtToggle && dtBody) {
-      const saved = localStorage.getItem('dd-hosts-daemontypes-collapsed');
-      if (saved === 'true') dtBody.style.display = 'none';
-      dtToggle.addEventListener('click', () => {
-        const hidden = dtBody.style.display === 'none';
-        dtBody.style.display = hidden ? '' : 'none';
-        localStorage.setItem('dd-hosts-daemontypes-collapsed', !hidden);
-        dtToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
-          hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+    // v8.9.11-alpha.1 — Wire the 3-tab switcher for the docs section.
+    // Selected tab persists to localStorage so the user's last view survives
+    // a page reload.
+    const savedTab = localStorage.getItem('dd-hosts-docs-tab') || 'daemon-types';
+    const applyDocTab = (which) => {
+      container.querySelectorAll('[data-hosts-doc-tab]').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-hosts-doc-tab') === which);
       });
-    }
-
-    // Collapse/expand guide
-    const guideToggle = container.querySelector('#guide-toggle');
-    const guideBody = container.querySelector('#guide-body');
-    if (guideToggle && guideBody) {
-      const saved = localStorage.getItem('dd-hosts-guide-collapsed');
-      if (saved === 'true') guideBody.style.display = 'none';
-      guideToggle.addEventListener('click', () => {
-        const hidden = guideBody.style.display === 'none';
-        guideBody.style.display = hidden ? '' : 'none';
-        localStorage.setItem('dd-hosts-guide-collapsed', !hidden);
-        guideToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
-          hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+      container.querySelectorAll('[data-hosts-doc-panel]').forEach(el => {
+        el.style.display = el.getAttribute('data-hosts-doc-panel') === which ? '' : 'none';
       });
-    }
-
-    const sshKeyToggle = container.querySelector('#ssh-key-guide-toggle');
-    const sshKeyBody = container.querySelector('#ssh-key-guide-body');
-    if (sshKeyToggle && sshKeyBody) {
-      const saved = localStorage.getItem('dd-hosts-ssh-key-guide-collapsed');
-      if (saved === 'true') sshKeyBody.style.display = 'none';
-      sshKeyToggle.addEventListener('click', () => {
-        const hidden = sshKeyBody.style.display === 'none';
-        sshKeyBody.style.display = hidden ? '' : 'none';
-        localStorage.setItem('dd-hosts-ssh-key-guide-collapsed', !hidden);
-        sshKeyToggle.querySelector('i.fa-chevron-down, i.fa-chevron-right').className =
-          hidden ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-      });
-    }
+      localStorage.setItem('dd-hosts-docs-tab', which);
+    };
+    applyDocTab(savedTab);
+    container.querySelectorAll('[data-hosts-doc-tab]').forEach(btn => {
+      btn.addEventListener('click', () => applyDocTab(btn.getAttribute('data-hosts-doc-tab')));
+    });
 
     await this._load();
   },
@@ -273,6 +262,7 @@ const HostsPage = {
           <option value="proxmox">Proxmox VE (VMs + LXC)</option>
           <option value="kubernetes">Kubernetes (k3s / k0s / MicroK8s / kubeadm)</option>
           <option value="nomad">Nomad (HashiCorp workload orchestrator)</option>
+          <option value="vsphere">VMware vSphere / ESXi (VMs, hosts, datastores — read-only)</option>
         </select>
         <small class="text-muted">Each type has its own configuration shape below.</small>
       </div>
@@ -418,6 +408,25 @@ const HostsPage = {
             <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
           </div>
         `;
+      case 'vsphere':
+        return `
+          <div class="form-group">
+            <label>Endpoint</label>
+            <input type="text" id="ndh-endpoint" class="form-control" placeholder="https://esxi.example.com" required>
+            <small class="text-muted">Works with standalone ESXi (free / paid) or vCenter Server. Port 443 assumed.</small>
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="ndh-username" class="form-control" placeholder="root (ESXi) or administrator@vsphere.local (vCenter)" required>
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="ndh-password" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label><input type="checkbox" id="ndh-skip-tls" checked> Skip TLS verification (default; ESXi ships with a self-signed cert)</label>
+          </div>
+        `;
       default:
         return '';
     }
@@ -461,11 +470,38 @@ const HostsPage = {
         daemonConfig.caCert = content.querySelector('#ndh-ca').value.trim() || undefined;
         daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
         break;
+      case 'vsphere':
+        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
+        daemonConfig.username = content.querySelector('#ndh-username').value.trim();
+        daemonConfig.password = content.querySelector('#ndh-password').value;
+        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        break;
     }
     return { name, daemonType, daemonConfig };
   },
 
   // ─── v8.9.5-alpha.1 — Docs section explaining each daemon type ────
+  // v8.9.11-alpha.1 — tab-body shims. Each returns just the inner
+  // content (no card wrapper / no collapse toggle) for use inside the
+  // tabbed docs panel. The legacy _render*() methods below still emit
+  // full cards for anywhere else that used them, but they're now only
+  // referenced from here.
+  _renderDaemonTypesTabBody() {
+    return this._renderDaemonTypesDocs()
+      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
+      .replace(/<\/div>\s*<\/div>\s*$/, '');
+  },
+  _renderGuideTabBody() {
+    return this._renderGuide()
+      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
+      .replace(/<\/div>\s*<\/div>\s*$/, '');
+  },
+  _renderSshKeyGuideTabBody() {
+    return this._renderSshKeyGuide()
+      .replace(/<div class="card"[^>]*>[\s\S]*?<div class="card-body"[^>]*>/, '')
+      .replace(/<\/div>\s*<\/div>\s*$/, '');
+  },
+
   _renderDaemonTypesDocs() {
     return `
       <div class="card" style="margin-top:24px">
@@ -533,6 +569,13 @@ const HostsPage = {
                 <td>Jobs, allocations, deployments, nodes, namespaces. Read-only in alpha.1.</td>
                 <td>Yes (alpha.1)</td>
                 <td><a href="#/howto/nomad-integration">Nomad</a></td>
+              </tr>
+              <tr>
+                <td><i class="fas fa-server"></i> <strong>VMware vSphere / ESXi</strong></td>
+                <td>Username + password over SOAP (session cookie)</td>
+                <td>VMs, ESXi hosts, datastores. Standalone ESXi + vCenter both supported. Read-only in alpha.1.</td>
+                <td>Yes (alpha.1)</td>
+                <td><a href="#/howto/vsphere-integration">vSphere</a></td>
               </tr>
             </tbody>
           </table>

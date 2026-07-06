@@ -2,6 +2,49 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.11-alpha.1] - 2026-07-06 — VMware vSphere / ESXi integration + Hosts docs tabs
+
+### VMware vSphere / ESXi (new daemon type)
+
+Read-only alpha covering both **standalone ESXi** (free / paid) and **vCenter Server**. Same SOAP API surface on `/sdk`. Zero new npm deps — hand-rolled SOAP client on stdlib `https` with tolerant XML regex parsing.
+
+**What ships:**
+- Migration 078 widens `docker_hosts.daemon_type` CHECK to include `'vsphere'`
+- `src/services/vsphere.js` — `VSphereClient` with `login()`, `logout()`, `retrieveServiceContent()`, `listVMs()`, `listHosts()`, `listDatastores()`. Session cookie captured on login and reused. 20-min in-memory client cache in the routes layer to avoid re-login on every request.
+- `src/routes/vsphere.js` — `GET /api/vsphere/{info, vms, hosts, datastores}`, all requiring auth
+- `docker.js` `_getNonDockerInfo` dispatch: probes `/sdk` for product/version/API and populates the base info card
+- `public/js/pages/vsphere-resources.js` — 3 tabs (VMs / ESXi Hosts / Datastores) with info card
+- Sidebar entry **"vSphere / ESXi (alpha)"** gated `data-fleet-daemon="vsphere"`
+- Wizard field on **Hosts → Non-Docker host (alpha)** — daemon type dropdown now offers "VMware vSphere / ESXi"; type-specific fields are endpoint + username + password + skipTlsVerify (default checked because ESXi ships with a self-signed cert)
+- Howto `vsphere-integration.md` with dedicated read-only user recipe (both ESXi and vCenter), security notes, troubleshooting
+
+**Positioning:** read-only by design. Power ops, snapshots, VM console, config editing → use the native vSphere client. The unique value is bridging: browse ESXi to decide what to migrate, then use Sprint 7 VM Migration to import into Proxmox.
+
+### Hosts page docs — 3 cards → 3 tabs
+
+The three previous sections under the hosts grid (**Supported daemon types**, **How Hosts work**, **SSH key setup**) collapsed into a single card with a 3-tab switcher. Only one visible at a time; selected tab persists to localStorage as `dd-hosts-docs-tab`. Simpler to scan, less scrolling on smaller screens.
+
+The vSphere row is included in the daemon-types table with the wizard reference.
+
+### Tests
+- `vsphere-client.test.js` — **14 tests** (constructor validation, encryption round-trip, `fromHostRow`, XML `_extractTag` / `_extractFault` / `_extractObjects` helpers with fixture data, SOAP login envelope shape + cookie capture, missing-cookie failure).
+- Full suite: **1704 passing** across 104 suites (was 1690/103).
+
+### API additions
+- `GET /api/vsphere/info` — ServiceContent (version, product name, API version, build)
+- `GET /api/vsphere/vms` — VirtualMachine list (name, powerState, guestOS, memoryMB, numCPU, uuid, moref)
+- `GET /api/vsphere/hosts` — HostSystem list (name, connectionState, model, CPU, memory, version)
+- `GET /api/vsphere/datastores` — Datastore list (name, type, capacity, freeSpace, accessible)
+- Frontend API helpers wired: `getVSphereInfo`, `getVSphereVMs`, `getVSphereHosts`, `getVSphereDatastores`
+
+### Backward compatibility
+
+- New daemon type; no existing rows touched
+- No new npm deps
+- Wizard is additive: existing 5 non-Docker types (Incus, LXD, Proxmox, Kubernetes, Nomad) unchanged
+
+Deployed to VPS (`89.37.212.66:8101`) and LAN (`192.168.13.20:8101`).
+
 ## [8.9.10-alpha.1] - 2026-07-06 — Gap closure ship 4: Teams + Per-host access control
 
 Ship 4. Closes the two Portainer P0 gaps that dominated the multi-tenant RBAC story.

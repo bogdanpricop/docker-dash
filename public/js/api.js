@@ -492,6 +492,12 @@ const Api = {
   getNomadNodes()                     { return this.get('/nomad/nodes'); },
   getNomadDeployments(namespace)      { return this.get(`/nomad/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
 
+  // ─── vSphere / ESXi (v8.9.11-alpha.1) — read-only alpha ───
+  getVSphereInfo()                    { return this.get('/vsphere/info'); },
+  getVSphereVMs()                     { return this.get('/vsphere/vms'); },
+  getVSphereHosts()                   { return this.get('/vsphere/hosts'); },
+  getVSphereDatastores()              { return this.get('/vsphere/datastores'); },
+
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
   getKubernetesNamespaces()           { return this.get('/kubernetes/namespaces'); },

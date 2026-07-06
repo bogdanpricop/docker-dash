@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.11-alpha.1',
+      date: '2026-07-06',
+      title: 'VMware vSphere / ESXi integration + Hosts docs tabs',
+      changes: [
+        { type: 'feature', text: 'VMware vSphere / ESXi as a new daemon type. Migration 078 adds vsphere to the CHECK. VSphereClient (stdlib https, ZERO new deps) with hand-rolled SOAP + tolerant XML regex parsing. Login + session cookie caching (20-min in-memory). Read-only: listVMs, listHosts, listDatastores, retrieveServiceContent. Works with standalone ESXi (free/paid) AND vCenter Server — same SOAP surface.' },
+        { type: 'feature', text: 'Sidebar entry "vSphere / ESXi (alpha)" gated data-fleet-daemon=vsphere. 3-tab page: VMs (name, power, guest OS, vCPU, memory, UUID) / ESXi Hosts (hostname, connection state, model, CPU, memory, version) / Datastores (name, type, capacity, free, used %, accessible).' },
+        { type: 'feature', text: 'Hosts > "Non-Docker host" wizard now includes VMware vSphere / ESXi. Fields: endpoint (https://host, no port), username (root for ESXi / administrator@vsphere.local for vCenter), password, skipTlsVerify (default checked — ESXi ships with self-signed cert). Password encrypted at rest AES-256-GCM.' },
+        { type: 'feature', text: 'Hosts page docs section: 3 previous cards (Supported daemon types / How Hosts work / SSH key setup) merged into a single card with 3 tabs. Only one visible at a time. Simpler to scan. Selected tab persists to localStorage.' },
+        { type: 'feature', text: 'New howto vsphere-integration.md with dedicated read-only user recipe (both ESXi and vCenter), security notes, troubleshooting.' },
+        { type: 'improvement', text: '14 new vsphere-client tests. Full suite 1704 passing across 104 suites (was 1690/103). Positioning: read-only. Power ops / snapshots / VM console → use native vSphere client. The unique value is bridging: browse ESXi, then use Sprint 7 VM Migration to import into Proxmox.' },
+      ],
+    },
+    {
       version: '8.9.10-alpha.1',
       date: '2026-07-06',
       title: 'Gap closure ship 4: Teams + Per-host access control',

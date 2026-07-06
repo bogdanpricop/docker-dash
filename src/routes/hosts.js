@@ -121,7 +121,7 @@ router.get('/:id/info', requireAuth, asyncHandler(async (req, res) => {
 // v8.9.5-alpha.1 — set of daemon types that DON'T use a Docker socket.
 // For these, POST /hosts takes { name, daemonType, daemonConfig } and
 // skips all of the Docker-specific fields below.
-const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nomad']);
+const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nomad', 'vsphere']);
 
 // v8.9.5-alpha.1 — per-daemon config encryption helpers. Each service's
 // encryptDaemonConfig produces an `enc:` prefixed blob using AES-256-GCM.
@@ -137,6 +137,8 @@ function _encryptDaemonConfig(daemonType, cfg) {
       return require('../services/kubernetes').encryptDaemonConfig(cfg);
     case 'nomad':
       return require('../services/nomad').encryptDaemonConfig(cfg);
+    case 'vsphere':
+      return require('../services/vsphere').encryptDaemonConfig(cfg);
     default:
       throw new Error(`Unknown daemon type: ${daemonType}`);
   }
