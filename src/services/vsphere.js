@@ -42,6 +42,11 @@ class VSphereClient {
     if (!config || typeof config !== 'object') throw new Error('VSphereClient: config required');
     if (!config.endpoint) throw new Error('VSphereClient: endpoint required');
     if (!config.username || !config.password) throw new Error('VSphereClient: username + password required');
+    // v8.9.11-alpha.6 — normalize endpoint: prepend https:// if missing.
+    // vSphere SOAP always speaks TLS; users often paste just the hostname.
+    if (!/^https?:\/\//i.test(config.endpoint)) {
+      config = { ...config, endpoint: 'https://' + config.endpoint };
+    }
     this._config = config;
     this._agent = new https.Agent({
       keepAlive: true,

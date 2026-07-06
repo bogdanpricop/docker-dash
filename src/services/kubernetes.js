@@ -58,6 +58,10 @@ class KubernetesClient {
     }
     if (!config.endpoint) throw new Error('KubernetesClient: config.endpoint required');
     if (!config.token) throw new Error('KubernetesClient: config.token required');
+    // v8.9.11-alpha.6 — normalize: prepend https:// if bare hostname.
+    if (!/^https?:\/\//i.test(config.endpoint)) {
+      config = { ...config, endpoint: 'https://' + config.endpoint };
+    }
     this._config = config;
     // Custom Agent with the CA cert loaded if provided; otherwise fall
     // back to system CAs (won't verify a self-signed cluster cert).

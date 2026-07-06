@@ -36,6 +36,11 @@ class NomadClient {
       throw new Error('NomadClient: config object required');
     }
     if (!config.endpoint) throw new Error('NomadClient: config.endpoint required');
+    // v8.9.11-alpha.6 — normalize: prepend http:// if bare hostname (Nomad
+    // defaults to http on port 4646 unless the operator set up TLS).
+    if (!/^https?:\/\//i.test(config.endpoint)) {
+      config = { ...config, endpoint: 'http://' + config.endpoint };
+    }
     this._config = config;
     const isHttps = /^https:/i.test(config.endpoint);
     this._lib = isHttps ? https : http;

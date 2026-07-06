@@ -87,10 +87,21 @@ const HostsPage = {
       const statusClass = isOnline ? 'online' : isOffline ? 'offline' : 'pending';
       const statusText = isOnline ? i18n.t('pages.hosts.online') : isOffline ? i18n.t('pages.hosts.offline') : i18n.t('pages.hosts.checking');
       const statusIcon = isOnline ? 'fa-check-circle' : isOffline ? 'fa-times-circle' : 'fa-spinner fa-spin';
-      const connIcon = h.connectionType === 'tcp' ? 'fa-globe' : h.connectionType === 'ssh' ? 'fa-terminal' : 'fa-plug';
-      const connLabel = h.connectionType === 'tcp' ? `TCP ${h.host}:${h.port || 2376}` :
-                         h.connectionType === 'ssh' ? `SSH ${h.sshHost || h.host || '—'}` :
-                         h.socketPath || '/var/run/docker.sock';
+      // v8.9.11-alpha.6 — non-Docker hosts show their daemon endpoint
+      // instead of the (missing) Docker host/port.
+      const isNonDocker = h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman';
+      const daemonIconMap = { incus: 'fa-cubes', lxd: 'fa-cubes', proxmox: 'fa-server',
+        kubernetes: 'fa-dharmachakra', nomad: 'fa-tasks', vsphere: 'fa-server' };
+      const daemonPrefixMap = { incus: 'Incus', lxd: 'LXD', proxmox: 'Proxmox',
+        kubernetes: 'K8s', nomad: 'Nomad', vsphere: 'vSphere' };
+      const connIcon = isNonDocker ? (daemonIconMap[h.daemonType] || 'fa-plug')
+                     : h.connectionType === 'tcp' ? 'fa-globe'
+                     : h.connectionType === 'ssh' ? 'fa-terminal' : 'fa-plug';
+      const connLabel = isNonDocker
+                     ? `${daemonPrefixMap[h.daemonType] || h.daemonType} · ${h.daemonEndpoint || '—'}`
+                     : h.connectionType === 'tcp' ? `TCP ${h.host}:${h.port || 2376}`
+                     : h.connectionType === 'ssh' ? `SSH ${h.sshHost || h.host || '—'}`
+                     : h.socketPath || '/var/run/docker.sock';
       const isSelected = Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault);
 
       const envColors = { production: 'var(--red)', staging: 'var(--yellow)', development: 'var(--green)', custom: 'var(--accent)' };
@@ -163,26 +174,41 @@ const HostsPage = {
         const hostId = parseInt(e.currentTarget.dataset.id);
         try {
           const info = await Api.getHostInfo(hostId);
+          // v8.9.11-alpha.6 — non-Docker daemon-appropriate modal.
+          const dt = info.daemonType;
+          const isNonDocker = dt && dt !== 'docker' && dt !== 'podman';
+          const na = (v) => v && String(v) !== 'null' ? Utils.escapeHtml(String(v)) : '<span class="text-muted">—</span>';
+          const bodyHtml = isNonDocker
+            ? `<table class="info-table">
+                 <tr><td>Daemon type</td><td><strong>${Utils.escapeHtml(info.daemonName || dt)}</strong></td></tr>
+                 <tr><td>Product</td><td>${na(info.os || info.hostname)}</td></tr>
+                 <tr><td>Version</td><td>${na(info.dockerVersion)}</td></tr>
+                 <tr><td>API version</td><td>${na(info.apiVersion)}</td></tr>
+                 ${info._connectError ? `<tr><td>Connection</td><td style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml(info._connectError)}</td></tr>` : `<tr><td>Connection</td><td style="color:var(--green)"><i class="fas fa-check-circle"></i> Connected</td></tr>`}
+                 ${info.capabilities ? `<tr><td>Capabilities</td><td><code style="font-size:11px">${Utils.escapeHtml(Object.keys(info.capabilities).filter(k => info.capabilities[k]).join(', '))}</code></td></tr>` : ''}
+               </table>
+               <div style="margin-top:14px;padding:10px;background:var(--surface2,rgba(0,0,0,.05));border-radius:6px;font-size:12px;color:var(--text-dim)">
+                 <i class="fas fa-info-circle"></i> This is a <strong>${Utils.escapeHtml(info.daemonName || dt)}</strong> host — Docker fields (CPUs, memory, containers, images) do not apply. Use the daemon's dedicated page for VMs / instances / jobs / pods.
+               </div>`
+            : `<table class="info-table">
+                <tr><td>OS</td><td>${na(info.os)}</td></tr>
+                <tr><td>Docker</td><td>${na(info.dockerVersion)}</td></tr>
+                <tr><td>API</td><td>${na(info.apiVersion)}</td></tr>
+                <tr><td>Kernel</td><td>${na(info.kernelVersion)}</td></tr>
+                <tr><td>CPUs</td><td>${info.cpus || 0}</td></tr>
+                <tr><td>${i18n.t('pages.dashboard.memory')}</td><td>${Utils.formatBytes(info.memTotal || 0)}</td></tr>
+                <tr><td>${i18n.t('pages.dashboard.containers')}</td><td>${info.containersRunning || 0}/${info.containers || 0}</td></tr>
+                <tr><td>${i18n.t('nav.images')}</td><td>${info.images || 0}</td></tr>
+                <tr><td>Storage</td><td>${na(info.storageDriver)}</td></tr>
+              </table>`;
           Modal.open(`
             <div class="modal-header">
-              <h3><i class="fas fa-server" style="color:var(--accent);margin-right:8px"></i>${Utils.escapeHtml(info.hostname)}</h3>
+              <h3><i class="fas fa-server" style="color:var(--accent);margin-right:8px"></i>${Utils.escapeHtml(info.hostname || 'Host')}</h3>
               <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
             </div>
-            <div class="modal-body">
-              <table class="info-table">
-                <tr><td>OS</td><td>${Utils.escapeHtml(info.os)}</td></tr>
-                <tr><td>Docker</td><td>${info.dockerVersion}</td></tr>
-                <tr><td>API</td><td>${info.apiVersion}</td></tr>
-                <tr><td>Kernel</td><td>${info.kernelVersion}</td></tr>
-                <tr><td>CPUs</td><td>${info.cpus}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.memory')}</td><td>${Utils.formatBytes(info.memTotal)}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.containers')}</td><td>${info.containersRunning}/${info.containers}</td></tr>
-                <tr><td>${i18n.t('nav.images')}</td><td>${info.images}</td></tr>
-                <tr><td>Storage</td><td>${info.storageDriver}</td></tr>
-              </table>
-            </div>
+            <div class="modal-body">${bodyHtml}</div>
             <div class="modal-footer"><button class="btn btn-primary" id="modal-ok">${i18n.t('common.close')}</button></div>
-          `, { width: '500px' });
+          `, { width: '520px' });
           Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
           Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
         } catch (err) {
@@ -730,7 +756,143 @@ const HostsPage = {
     `;
   },
 
+  // v8.9.11-alpha.6 — Edit dialog for non-Docker hosts. Reuses the
+  // _renderNonDockerFields() template from the register wizard but
+  // pre-fills with the current daemon_config (secrets marked "(already
+  // set — leave blank to keep)").
+  async _editNonDockerHostDialog(host) {
+    const dc = host.daemonConfig || {};
+    const daemonType = host.daemonType;
+    const html = `
+      <div class="form-group">
+        <label>Daemon type</label>
+        <input type="text" class="form-control" value="${Utils.escapeHtml(daemonType)}" disabled>
+        <small class="text-muted">Daemon type is fixed at create time. To change, delete and re-add.</small>
+      </div>
+      <div class="form-group">
+        <label>Host name (display label)</label>
+        <input type="text" id="ndh-name" class="form-control" value="${Utils.escapeHtml(host.name || '')}" required>
+      </div>
+      <div id="ndh-type-fields"></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm btn-secondary" id="ndh-test-btn">
+          <i class="fas fa-plug"></i> Test connection
+        </button>
+        <span id="ndh-test-result" style="font-size:12px;color:var(--text-dim)"></span>
+      </div>
+    `;
+    const result = await Modal.form(html, {
+      title: `Edit ${daemonType} host: ${host.name}`,
+      width: '600px',
+      onMount: (content) => {
+        // Populate the fields for the fixed daemon type
+        const fieldsEl = content.querySelector('#ndh-type-fields');
+        fieldsEl.innerHTML = this._renderNonDockerFields(daemonType);
+        // Wire transport toggle if applicable
+        const trSel = fieldsEl.querySelector('#ndh-transport');
+        if (trSel) {
+          const apply = () => {
+            const chosen = trSel.value;
+            fieldsEl.querySelectorAll('[data-transport]').forEach(el => {
+              el.style.display = (el.getAttribute('data-transport') === chosen) ? '' : 'none';
+            });
+          };
+          trSel.addEventListener('change', apply);
+          apply();
+        }
+        // Pre-fill values from current daemon_config.
+        // Non-secret scalars use their real values; secrets get placeholder
+        // "(already set — leave blank to keep)" and stay empty so a blank
+        // submit preserves the stored secret.
+        const set = (id, val) => { const el = content.querySelector(id); if (el && val !== undefined) el.value = val; };
+        const setChecked = (id, val) => { const el = content.querySelector(id); if (el) el.checked = !!val; };
+        const setPlaceholder = (id, present) => {
+          const el = content.querySelector(id);
+          if (el && present) el.placeholder = '(already set — leave blank to keep)';
+        };
+        switch (daemonType) {
+          case 'incus':
+          case 'lxd':
+            if (trSel && dc.transport) trSel.value = dc.transport;
+            if (trSel) trSel.dispatchEvent(new Event('change'));
+            set('#ndh-socket', dc.socket);
+            set('#ndh-endpoint', dc.endpoint);
+            setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            setPlaceholder('#ndh-cert', dc.certPresent);
+            setPlaceholder('#ndh-key', dc.keyPresent);
+            break;
+          case 'proxmox':
+            set('#ndh-endpoint', dc.endpoint);
+            set('#ndh-token-id', dc.tokenId);
+            setPlaceholder('#ndh-token-secret', dc.tokenSecretPresent);
+            setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            break;
+          case 'kubernetes':
+            set('#ndh-endpoint', dc.endpoint);
+            setPlaceholder('#ndh-token', dc.tokenPresent);
+            setPlaceholder('#ndh-ca', dc.caCertPresent);
+            setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            break;
+          case 'nomad':
+            set('#ndh-endpoint', dc.endpoint);
+            setPlaceholder('#ndh-token', dc.tokenPresent);
+            setPlaceholder('#ndh-ca', dc.caCertPresent);
+            setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            break;
+          case 'vsphere':
+            set('#ndh-endpoint', dc.endpoint);
+            set('#ndh-username', dc.username);
+            setPlaceholder('#ndh-password', dc.passwordPresent);
+            setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            break;
+        }
+        // Wire test connection button — same behavior as create wizard.
+        const testBtn = content.querySelector('#ndh-test-btn');
+        const resultEl = content.querySelector('#ndh-test-result');
+        if (testBtn && resultEl) {
+          testBtn.addEventListener('click', async () => {
+            const data = this._collectNonDockerFormData(content);
+            if (!data) { resultEl.textContent = 'Fill in the fields first.'; resultEl.style.color = 'var(--yellow, #eab308)'; return; }
+            testBtn.disabled = true;
+            resultEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing…';
+            resultEl.style.color = 'var(--text-dim)';
+            try {
+              const r = await Api.testNonDockerHost(data.daemonType, data.daemonConfig);
+              if (r && r.ok) {
+                const s = r.summary || {};
+                const bits = [];
+                if (s.product) bits.push(Utils.escapeHtml(s.product));
+                if (s.version) bits.push(`v${Utils.escapeHtml(s.version)}`);
+                resultEl.innerHTML = `<i class="fas fa-check-circle"></i> Connected — ${bits.join(' · ') || 'ok'}`;
+                resultEl.style.color = 'var(--green, #22c55e)';
+              } else {
+                resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'Connection failed')}`;
+                resultEl.style.color = 'var(--red, #ef4444)';
+              }
+            } catch (err) {
+              resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}`;
+              resultEl.style.color = 'var(--red, #ef4444)';
+            } finally { testBtn.disabled = false; }
+          });
+        }
+      },
+      onSubmit: (content) => this._collectNonDockerFormData(content),
+    });
+
+    if (result) {
+      try {
+        await Api.updateHost(host.id, result);
+        Toast.success('Host updated');
+        await this._load();
+      } catch (err) { Toast.error(err.message); }
+    }
+  },
+
   async _editHostDialog(host) {
+    // v8.9.11-alpha.6 — route non-Docker hosts to the type-appropriate
+    // dialog. Docker/Podman hosts continue through the legacy path.
+    const isNonDocker = host.daemonType && host.daemonType !== 'docker' && host.daemonType !== 'podman';
+    if (isNonDocker) return this._editNonDockerHostDialog(host);
     const html = this._buildFormHtml({
       name: host.name,
       type: host.connectionType,

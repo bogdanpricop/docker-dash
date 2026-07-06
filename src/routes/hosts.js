@@ -41,6 +41,29 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
       // per-daemon badges on host cards and gate nav items based on
       // "any-host-has-daemon-type=X".
       daemonType: h.daemon_type || 'docker',
+      // v8.9.11-alpha.6 — extract the endpoint/socket for display on the
+      // host card (no credentials). Falls back to null for Docker/Podman.
+      daemonEndpoint: (() => {
+        if (!h.daemon_config || h.daemon_type === 'docker' || h.daemon_type === 'podman') return null;
+        try {
+          let cfg;
+          switch (h.daemon_type) {
+            case 'incus':
+            case 'lxd':
+              cfg = require('../services/incus').decryptDaemonConfig(h.daemon_config);
+              return cfg.transport === 'unix' ? cfg.socket : cfg.endpoint;
+            case 'proxmox':
+              cfg = require('../services/proxmox').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
+            case 'kubernetes':
+              cfg = require('../services/kubernetes').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
+            case 'nomad':
+              cfg = require('../services/nomad').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
+            case 'vsphere':
+              cfg = require('../services/vsphere').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
+            default: return null;
+          }
+        } catch { return null; }
+      })(),
       hasTls: !!(h.tls_config && h.tls_config !== '{}' && h.tls_config !== 'null'),
       hasSsh: !!(h.ssh_config && h.ssh_config !== '{}' && h.ssh_config !== 'null'),
       // Include SSH host for display in cards (no credentials)
@@ -90,6 +113,62 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
         result.sshDockerSocket = ssh.dockerSocket;
       }
     } catch { /* SSH config may not exist for this host */ }
+  }
+
+  // v8.9.11-alpha.6 — expose daemon_type + non-secret daemon_config fields
+  // for the Edit non-Docker host dialog. Secrets (password/token/key)
+  // are NOT returned — the frontend shows an "already set" placeholder
+  // and only writes back on non-empty input.
+  result.daemonType = host.daemon_type || 'docker';
+  if (host.daemon_config && _NON_DOCKER_TYPES.has(host.daemon_type)) {
+    try {
+      let cfg;
+      switch (host.daemon_type) {
+        case 'incus':
+        case 'lxd':
+          cfg = require('../services/incus').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            transport: cfg.transport, socket: cfg.socket, endpoint: cfg.endpoint,
+            skipTlsVerify: !!cfg.skipTlsVerify,
+            certPresent: !!cfg.cert, keyPresent: !!cfg.key,
+          };
+          break;
+        case 'proxmox':
+          cfg = require('../services/proxmox').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            endpoint: cfg.endpoint, tokenId: cfg.tokenId,
+            tokenSecretPresent: !!cfg.tokenSecret,
+            skipTlsVerify: !!cfg.skipTlsVerify,
+          };
+          break;
+        case 'kubernetes':
+          cfg = require('../services/kubernetes').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            endpoint: cfg.endpoint,
+            tokenPresent: !!cfg.token,
+            caCertPresent: !!cfg.caCert,
+            skipTlsVerify: !!cfg.skipTlsVerify,
+          };
+          break;
+        case 'nomad':
+          cfg = require('../services/nomad').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            endpoint: cfg.endpoint,
+            tokenPresent: !!cfg.token,
+            caCertPresent: !!cfg.caCert,
+            skipTlsVerify: !!cfg.skipTlsVerify,
+          };
+          break;
+        case 'vsphere':
+          cfg = require('../services/vsphere').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            endpoint: cfg.endpoint, username: cfg.username,
+            passwordPresent: !!cfg.password,
+            skipTlsVerify: !!cfg.skipTlsVerify,
+          };
+          break;
+      }
+    } catch { /* config unreadable — leave out */ }
   }
 
   res.json(result);
@@ -246,7 +325,51 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
 
     const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
             sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
-            isActive, environment } = req.body;
+            isActive, environment, daemonType, daemonConfig } = req.body;
+
+    // v8.9.11-alpha.6 — non-Docker update path.
+    // Accepts { name, daemonConfig } — daemon_type is fixed post-create.
+    // Any secret field left empty in daemonConfig preserves the existing
+    // value (encrypted at rest); non-empty values overwrite.
+    if (existing.daemon_type && _NON_DOCKER_TYPES.has(existing.daemon_type)) {
+      if (!daemonConfig || typeof daemonConfig !== 'object') {
+        return res.status(400).json({ error: 'daemonConfig required for non-Docker host updates' });
+      }
+      // Merge with existing: decrypt current config, overlay non-empty
+      // fields from the request, re-encrypt.
+      let currentCfg;
+      try {
+        switch (existing.daemon_type) {
+          case 'incus':
+          case 'lxd': currentCfg = require('../services/incus').decryptDaemonConfig(existing.daemon_config); break;
+          case 'proxmox': currentCfg = require('../services/proxmox').decryptDaemonConfig(existing.daemon_config); break;
+          case 'kubernetes': currentCfg = require('../services/kubernetes').decryptDaemonConfig(existing.daemon_config); break;
+          case 'nomad': currentCfg = require('../services/nomad').decryptDaemonConfig(existing.daemon_config); break;
+          case 'vsphere': currentCfg = require('../services/vsphere').decryptDaemonConfig(existing.daemon_config); break;
+        }
+      } catch { currentCfg = {}; }
+
+      const merged = { ...currentCfg };
+      // Copy non-empty scalars from the request into merged.
+      for (const [k, v] of Object.entries(daemonConfig)) {
+        if (v === undefined) continue;
+        if (typeof v === 'string' && v === '') continue; // keep existing secret
+        merged[k] = v;
+      }
+      const enc = _encryptDaemonConfig(existing.daemon_type, merged);
+      const nextName = (name !== undefined) ? name : existing.name;
+      const nextIsActive = (isActive === undefined) ? existing.is_active : (isActive ? 1 : 0);
+      const nextEnv = (environment !== undefined) ? environment : existing.environment;
+      db.prepare(`UPDATE docker_hosts SET name = ?, daemon_config = ?, is_active = ?, environment = ?, updated_at = ? WHERE id = ?`)
+        .run(nextName, enc, nextIsActive, nextEnv, new Date().toISOString(), hostId);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'host_update', targetType: 'host', targetId: String(hostId),
+        details: { name: nextName, daemonType: existing.daemon_type, endpoint: merged.endpoint },
+        ip: getClientIp(req),
+      });
+      return res.json({ ok: true, id: hostId });
+    }
 
     let tlsConfig = existing.tls_config;
     if (connectionType === 'tcp' && tlsCa !== undefined) {

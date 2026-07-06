@@ -48,6 +48,10 @@ class ProxmoxClient {
     if (!config.endpoint) {
       throw new Error('ProxmoxClient: config.endpoint required (e.g. https://pve.example.com:8006)');
     }
+    // v8.9.11-alpha.6 — normalize: prepend https:// if bare hostname given.
+    if (!/^https?:\/\//i.test(config.endpoint)) {
+      config = { ...config, endpoint: 'https://' + config.endpoint };
+    }
     if (!config.tokenId || !config.tokenSecret) {
       throw new Error('ProxmoxClient: config.tokenId + config.tokenSecret required (PVEAPIToken auth)');
     }
