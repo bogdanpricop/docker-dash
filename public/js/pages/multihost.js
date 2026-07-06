@@ -476,9 +476,23 @@ const MultiHostPage = {
     const tabsHtml = hosts.map(h => {
       const isActive = h.id === this._activeHostTab;
       const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${h.healthy ? 'var(--green)' : 'var(--red)'};margin-right:5px"></span>`;
+      // v8.9.11-alpha.4 — show a daemon-appropriate count on the tab
+      // instead of the Docker (running/total) when the host is not Docker.
+      let countLabel;
+      if (h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman' && h.nonDocker && h.nonDocker.resources) {
+        const res = h.nonDocker.resources;
+        if (h.daemonType === 'vsphere') countLabel = `${res.vmsRunning || 0}/${res.vms || 0} VMs`;
+        else if (h.daemonType === 'incus' || h.daemonType === 'lxd') countLabel = `${res.instancesRunning || 0}/${res.instances || 0} inst`;
+        else if (h.daemonType === 'proxmox') countLabel = `${res.vms || 0} VM · ${res.lxc || 0} LXC`;
+        else if (h.daemonType === 'kubernetes') countLabel = `${res.podsRunning || 0}/${res.pods || 0} pods`;
+        else if (h.daemonType === 'nomad') countLabel = `${res.running || 0}/${res.jobs || 0} jobs`;
+        else countLabel = h.daemonType;
+      } else {
+        countLabel = `${h.counts.running}/${h.counts.total}`;
+      }
       return `<button class="tab ${isActive ? 'active' : ''}" data-host-tab="${h.id}" style="font-size:12px;padding:6px 14px">
         ${dot}${Utils.escapeHtml(h.name)}
-        <span style="font-size:10px;color:var(--text-dim);margin-left:4px">(${h.counts.running}/${h.counts.total})</span>
+        <span style="font-size:10px;color:var(--text-dim);margin-left:4px">(${Utils.escapeHtml(countLabel)})</span>
       </button>`;
     }).join('');
 
@@ -500,6 +514,169 @@ const MultiHostPage = {
     this._renderSingleHost(el.querySelector('#mh-host-tab-content'));
   },
 
+  // v8.9.11-alpha.4 — render the tab body for a non-Docker daemon
+  // host (vsphere, incus, lxd, proxmox, kubernetes, nomad). Shows an
+  // info card + count stat cards + a small preview list + a
+  // "Manage in dedicated page" link.
+  _renderNonDockerHost(el, host) {
+    const nd = host.nonDocker || {};
+    const daemonType = host.daemonType;
+    const daemonName = nd.daemonName || daemonType;
+    const productLine = [nd.productFullName, nd.version && `v${nd.version}`, nd.apiVersion && `API ${nd.apiVersion}`]
+      .filter(Boolean).map(Utils.escapeHtml).join(' · ') || Utils.escapeHtml(daemonName);
+
+    const pageMap = {
+      vsphere: { route: '#/vsphere-resources', icon: 'fa-server', label: 'Open vSphere page' },
+      incus: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open Incus page' },
+      lxd: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open LXD page' },
+      proxmox: { route: '#/proxmox-resources', icon: 'fa-server', label: 'Open Proxmox page' },
+      kubernetes: { route: '#/kubernetes-resources', icon: 'fa-dharmachakra', label: 'Open Kubernetes page' },
+      nomad: { route: '#/nomad-jobs', icon: 'fa-tasks', label: 'Open Nomad page' },
+    };
+    const target = pageMap[daemonType] || { route: '#/hosts', icon: 'fa-server', label: 'Open Hosts' };
+
+    const r = nd.resources || {};
+    const stat = (icon, label, value, sub) => `
+      <div class="card" style="padding:14px;flex:1;min-width:150px">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--text-dim);font-size:12px;text-transform:uppercase;letter-spacing:.5px">
+          <i class="fas ${icon}"></i> ${Utils.escapeHtml(label)}
+        </div>
+        <div style="font-size:28px;font-weight:700;margin-top:6px">${value}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">${sub}</div>` : ''}
+      </div>
+    `;
+
+    let stats = '';
+    let preview = '';
+
+    switch (daemonType) {
+      case 'vsphere':
+        stats = [
+          stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running · ${r.vmsStopped || 0} off`),
+          stat('fa-server', 'ESXi hosts', r.esxiHosts || 0, null),
+          stat('fa-hdd', 'Datastores', r.datastores || 0,
+            r.capacityGiB ? `${r.freeGiB} / ${r.capacityGiB} GiB free` : null),
+        ].join('');
+        if ((r.topVMs || []).length) {
+          preview = `<table class="table"><thead><tr>
+              <th>VM</th><th>Power</th><th>Guest OS</th><th>vCPU</th><th>Memory</th>
+            </tr></thead><tbody>${r.topVMs.map(v => {
+              const c = v.powerState === 'poweredOn' ? 'var(--green)' : 'var(--text-dim)';
+              return `<tr>
+                <td><strong>${Utils.escapeHtml(v.name || '')}</strong></td>
+                <td style="color:${c}">${Utils.escapeHtml(v.powerState || '—')}</td>
+                <td>${Utils.escapeHtml(v.guestOS || '—')}</td>
+                <td>${v.cpu || '—'}</td>
+                <td>${v.memoryGiB ? v.memoryGiB + ' GiB' : '—'}</td>
+              </tr>`;
+            }).join('')}</tbody></table>`;
+        }
+        break;
+      case 'incus':
+      case 'lxd':
+        stats = [
+          stat('fa-cube', 'Instances', r.instances || 0,
+            `${r.instancesRunning || 0} running · ${r.instancesStopped || 0} off`),
+        ].join('');
+        if ((r.topInstances || []).length) {
+          preview = `<table class="table"><thead><tr>
+              <th>Name</th><th>Status</th><th>Type</th>
+            </tr></thead><tbody>${r.topInstances.map(i => {
+              const c = i.status === 'Running' ? 'var(--green)' : 'var(--text-dim)';
+              return `<tr>
+                <td><strong>${Utils.escapeHtml(i.name || '')}</strong></td>
+                <td style="color:${c}">${Utils.escapeHtml(i.status || '—')}</td>
+                <td>${Utils.escapeHtml(i.type || '—')}</td>
+              </tr>`;
+            }).join('')}</tbody></table>`;
+        }
+        break;
+      case 'proxmox':
+        stats = [
+          stat('fa-server', 'Nodes', r.nodes || 0, null),
+          stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running`),
+          stat('fa-cube', 'LXC', r.lxc || 0, `${r.lxcRunning || 0} running`),
+        ].join('');
+        if ((r.topVMs || []).length) {
+          preview = `<table class="table"><thead><tr>
+              <th>VM</th><th>Status</th><th>Node</th><th>VMID</th>
+            </tr></thead><tbody>${r.topVMs.map(v => {
+              const c = v.status === 'running' ? 'var(--green)' : 'var(--text-dim)';
+              return `<tr>
+                <td><strong>${Utils.escapeHtml(v.name || '')}</strong></td>
+                <td style="color:${c}">${Utils.escapeHtml(v.status || '—')}</td>
+                <td>${Utils.escapeHtml(v.node || '—')}</td>
+                <td>${Utils.escapeHtml(String(v.vmid || '—'))}</td>
+              </tr>`;
+            }).join('')}</tbody></table>`;
+        }
+        break;
+      case 'kubernetes':
+        stats = [
+          stat('fa-cube', 'Namespaces', r.namespaces || 0, null),
+          stat('fa-microchip', 'Nodes', r.nodes || 0, null),
+          stat('fa-boxes', 'Deployments', r.deployments || 0, null),
+          stat('fa-box', 'Pods', r.pods || 0, `${r.podsRunning || 0} running`),
+        ].join('');
+        if ((r.topDeployments || []).length) {
+          preview = `<table class="table"><thead><tr>
+              <th>Namespace</th><th>Deployment</th><th>Ready</th>
+            </tr></thead><tbody>${r.topDeployments.map(d => `<tr>
+              <td>${Utils.escapeHtml(d.namespace || '—')}</td>
+              <td><strong>${Utils.escapeHtml(d.name || '—')}</strong></td>
+              <td>${Utils.escapeHtml(d.ready || '—')}</td>
+            </tr>`).join('')}</tbody></table>`;
+        }
+        break;
+      case 'nomad':
+        stats = [
+          stat('fa-tasks', 'Jobs', r.jobs || 0, `${r.running || 0} running`),
+          stat('fa-microchip', 'Nodes', r.nodes || 0, null),
+          stat('fa-cube', 'Allocations', r.allocations || 0, `${r.allocsRunning || 0} running`),
+        ].join('');
+        if ((r.topJobs || []).length) {
+          preview = `<table class="table"><thead><tr>
+              <th>Job</th><th>Status</th><th>Type</th>
+            </tr></thead><tbody>${r.topJobs.map(j => {
+              const c = j.status === 'running' ? 'var(--green)' : 'var(--text-dim)';
+              return `<tr>
+                <td><strong>${Utils.escapeHtml(j.name || '')}</strong></td>
+                <td style="color:${c}">${Utils.escapeHtml(j.status || '—')}</td>
+                <td>${Utils.escapeHtml(j.type || '—')}</td>
+              </tr>`;
+            }).join('')}</tbody></table>`;
+        }
+        break;
+      default:
+        stats = `<div class="text-muted" style="padding:12px">Non-Docker host — no summary available for daemon type "${Utils.escapeHtml(daemonType)}".</div>`;
+    }
+
+    el.innerHTML = `
+      <div class="card" style="padding:14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim)">
+            <i class="fas ${target.icon}" style="margin-right:6px"></i>${Utils.escapeHtml(daemonName)}
+          </div>
+          <div style="font-size:14px;margin-top:4px">${productLine}</div>
+        </div>
+        <a href="${target.route}" class="btn btn-sm btn-secondary">
+          <i class="fas fa-external-link-alt"></i> ${Utils.escapeHtml(target.label)}
+        </a>
+      </div>
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+        ${stats}
+      </div>
+
+      ${preview ? `<div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">
+          Preview <span style="color:var(--text)">(first 8)</span>
+        </div>
+        ${preview}
+      </div>` : ''}
+    `;
+  },
+
   _renderSingleHost(el) {
     if (!el) return;
     const host = this._data.hosts.find(h => h.id === this._activeHostTab);
@@ -510,7 +687,15 @@ const MultiHostPage = {
         <i class="fas fa-exclamation-triangle" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
         <h3 style="color:var(--red)">Host Offline</h3>
         <p class="text-muted">Cannot reach ${Utils.escapeHtml(host.name)}.</p>
+        ${host.nonDocker && host.nonDocker.error ? `<p style="color:var(--red);font-size:12px;margin-top:8px">${Utils.escapeHtml(host.nonDocker.error)}</p>` : ''}
       </div>`;
+      return;
+    }
+
+    // v8.9.11-alpha.4 — non-Docker daemon host: render a summary card
+    // with counts + a quick preview + link to the dedicated page.
+    if (host.daemonType && host.daemonType !== 'docker' && host.daemonType !== 'podman') {
+      this._renderNonDockerHost(el, host);
       return;
     }
 

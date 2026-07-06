@@ -1099,6 +1099,152 @@ router.get('/docker-versions', requireAuth, async (req, res) => {
 
 // ─── Multi-Host Overview ────────────────────────────────────
 
+// v8.9.11-alpha.4 — non-Docker enrichment helper. For hosts with
+// daemon_type ∈ {vsphere, incus, lxd, proxmox, kubernetes, nomad}, do
+// a best-effort read to populate a small summary the multi-host tab
+// can render. Returns { daemonType, daemonName, resources: {...},
+// version } or { daemonType, error }.
+async function _nonDockerOverview(row) {
+  try {
+    switch (row.daemon_type) {
+      case 'vsphere': {
+        const { fromHostRow } = require('../services/vsphere');
+        const client = fromHostRow(row);
+        await client.login();
+        try {
+          const [info, vms, esxiHosts, datastores] = await Promise.all([
+            client.retrieveServiceContent(),
+            client.listVMs().catch(() => []),
+            client.listHosts().catch(() => []),
+            client.listDatastores().catch(() => []),
+          ]);
+          const powerRunning = vms.filter(v => v.powerState === 'poweredOn').length;
+          const capBytes = datastores.reduce((s, d) => s + (d.capacityBytes || 0), 0);
+          const freeBytes = datastores.reduce((s, d) => s + (d.freeSpaceBytes || 0), 0);
+          return {
+            daemonType: 'vsphere', daemonName: 'VMware vSphere / ESXi',
+            version: info.version || null, apiVersion: info.apiVersion || null,
+            productFullName: info.productFullName || null,
+            resources: {
+              vms: vms.length, vmsRunning: powerRunning, vmsStopped: vms.length - powerRunning,
+              esxiHosts: esxiHosts.length,
+              datastores: datastores.length,
+              capacityGiB: capBytes ? Math.round(capBytes / (1024**3)) : 0,
+              freeGiB: freeBytes ? Math.round(freeBytes / (1024**3)) : 0,
+              topVMs: vms.slice(0, 8).map(v => ({
+                name: v.name, powerState: v.powerState, guestOS: v.guestOS,
+                cpu: v.numCPU, memoryGiB: v.memoryMB ? Math.round(v.memoryMB / 1024) : 0,
+              })),
+            },
+          };
+        } finally { await client.logout().catch(() => {}); }
+      }
+      case 'incus':
+      case 'lxd': {
+        const { fromHostRow } = require('../services/incus');
+        const client = fromHostRow(row);
+        const [info, instances] = await Promise.all([
+          client.info().catch(() => ({})),
+          client.listInstances().catch(() => []),
+        ]);
+        const env = (info && info.metadata && info.metadata.environment) || {};
+        const running = instances.filter(i => i.status === 'Running').length;
+        return {
+          daemonType: row.daemon_type,
+          daemonName: row.daemon_type === 'lxd' ? 'LXD' : 'Incus',
+          version: env.server_version, productFullName: env.server_name,
+          resources: {
+            instances: instances.length, instancesRunning: running,
+            instancesStopped: instances.length - running,
+            topInstances: instances.slice(0, 8).map(i => ({
+              name: i.name, status: i.status, type: i.type,
+            })),
+          },
+        };
+      }
+      case 'proxmox': {
+        const { fromHostRow } = require('../services/proxmox');
+        const client = fromHostRow(row);
+        const [version, nodes, vms, lxc] = await Promise.all([
+          client.version().catch(() => ({})),
+          client.listNodes().catch(() => []),
+          client.listVMs().catch(() => []),
+          client.listLXC().catch(() => []),
+        ]);
+        return {
+          daemonType: 'proxmox', daemonName: 'Proxmox VE',
+          version: version && version.version, apiVersion: version && version.repoid,
+          resources: {
+            nodes: nodes.length,
+            vms: vms.length, vmsRunning: vms.filter(v => v.status === 'running').length,
+            lxc: lxc.length, lxcRunning: lxc.filter(c => c.status === 'running').length,
+            topVMs: vms.slice(0, 8).map(v => ({
+              name: v.name, status: v.status, node: v.node, vmid: v.vmid,
+            })),
+          },
+        };
+      }
+      case 'kubernetes': {
+        const { fromHostRow } = require('../services/kubernetes');
+        const client = fromHostRow(row);
+        const [version, nss, pods, deps, nodes] = await Promise.all([
+          client.version().catch(() => ({})),
+          client.listNamespaces().catch(() => []),
+          client.listPods().catch(() => []),
+          client.listDeployments().catch(() => []),
+          client.listNodes().catch(() => []),
+        ]);
+        const podsRunning = pods.filter(p => (p.status && p.status.phase) === 'Running').length;
+        return {
+          daemonType: 'kubernetes', daemonName: 'Kubernetes',
+          version: version && (version.gitVersion || version.version),
+          apiVersion: version && `${version.major}.${version.minor}`,
+          resources: {
+            namespaces: nss.length,
+            pods: pods.length, podsRunning,
+            deployments: deps.length,
+            nodes: nodes.length,
+            topDeployments: deps.slice(0, 8).map(d => ({
+              name: d.metadata && d.metadata.name,
+              namespace: d.metadata && d.metadata.namespace,
+              ready: `${(d.status && d.status.readyReplicas) || 0}/${(d.spec && d.spec.replicas) || 0}`,
+            })),
+          },
+        };
+      }
+      case 'nomad': {
+        const { fromHostRow } = require('../services/nomad');
+        const client = fromHostRow(row);
+        const [self, jobs, allocs, nodes] = await Promise.all([
+          client.agentSelf().catch(() => ({})),
+          client.listJobs().catch(() => []),
+          client.listAllocations().catch(() => []),
+          client.listNodes().catch(() => []),
+        ]);
+        const tags = (self && self.member && self.member.Tags) || {};
+        return {
+          daemonType: 'nomad', daemonName: 'Nomad',
+          version: tags.build || tags.version,
+          resources: {
+            jobs: jobs.length,
+            running: jobs.filter(j => j.Status === 'running').length,
+            allocations: allocs.length,
+            allocsRunning: allocs.filter(a => a.ClientStatus === 'running').length,
+            nodes: nodes.length,
+            topJobs: jobs.slice(0, 8).map(j => ({
+              name: j.Name || j.ID, status: j.Status, type: j.Type,
+            })),
+          },
+        };
+      }
+      default:
+        return { daemonType: row.daemon_type, error: 'Unknown daemon type' };
+    }
+  } catch (err) {
+    return { daemonType: row.daemon_type, error: err.message };
+  }
+}
+
 router.get('/multi-host/overview', requireAuth, async (req, res) => {
   try {
     const db = getDb();
@@ -1107,11 +1253,33 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
     // If no hosts configured, use the default local connection (id=0)
     // Otherwise, use only what's in the DB to avoid duplicates
     const hostList = dbHosts.length > 0
-      ? dbHosts.map(h => ({ id: h.id, name: h.name, connectionType: h.connection_type, environment: h.environment || 'production' }))
-      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production' }];
+      ? dbHosts.map(h => ({
+          id: h.id, name: h.name, connectionType: h.connection_type,
+          environment: h.environment || 'production',
+          daemonType: h.daemon_type || 'docker',
+          _row: h,
+        }))
+      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production', daemonType: 'docker' }];
 
     // Fetch data from all hosts in parallel
     const results = await Promise.allSettled(hostList.map(async (host) => {
+      // v8.9.11-alpha.4 — non-Docker daemon types get their own enrichment
+      // path that returns { resources: {...} } instead of Docker containers.
+      if (host.daemonType && host.daemonType !== 'docker' && host.daemonType !== 'podman') {
+        const summary = await _nonDockerOverview(host._row);
+        return {
+          id: host.id, name: host.name, environment: host.environment,
+          connectionType: host.connectionType,
+          daemonType: host.daemonType,
+          healthy: !summary.error,
+          nonDocker: summary,
+          info: { hostname: host.name, os: summary.productFullName || '',
+            dockerVersion: summary.version || '', cpus: 0, memTotal: 0, kernelVersion: '', storageDriver: '' },
+          containers: [],
+          stats: { cpu: 0, memory: 0, memoryLimit: 0 },
+          counts: { total: 0, running: 0, stopped: 0, images: 0 },
+        };
+      }
       const docker = dockerService.getDocker(host.id);
 
       const [containers, info, statsOverview] = await Promise.all([
@@ -1125,6 +1293,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
         name: host.name,
         environment: host.environment,
         connectionType: host.connectionType,
+        daemonType: host.daemonType || 'docker',
         healthy: true,
         info: {
           hostname: info.Name || host.name,
