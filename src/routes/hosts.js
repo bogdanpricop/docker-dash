@@ -346,6 +346,85 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
   res.json({ ok: true });
 }));
 
+// v8.9.11-alpha.3 — test-connection for non-Docker hosts. Called by
+// the Register non-Docker host wizard before Save. Instantiates the
+// per-daemon client with the submitted daemon_config and does one
+// harmless read (info / version / login) to verify credentials.
+// Does NOT persist anything.
+router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const { daemonType, daemonConfig } = req.body || {};
+  if (!daemonType || !_NON_DOCKER_TYPES.has(daemonType)) {
+    return res.status(400).json({ ok: false, error: `Unknown daemonType: ${daemonType}` });
+  }
+  if (!daemonConfig || typeof daemonConfig !== 'object') {
+    return res.status(400).json({ ok: false, error: 'daemonConfig object is required' });
+  }
+  try {
+    let summary;
+    switch (daemonType) {
+      case 'incus':
+      case 'lxd': {
+        const { IncusClient } = require('../services/incus');
+        const cfg = { ...daemonConfig, daemonType };
+        if (!cfg.transport) cfg.transport = 'unix';
+        if (cfg.transport === 'unix' && !cfg.socket) {
+          cfg.socket = daemonType === 'lxd'
+            ? '/var/snap/lxd/common/lxd/unix.socket'
+            : '/var/lib/incus/unix.socket';
+        }
+        const info = await new IncusClient(cfg).info();
+        const env = (info && info.metadata && info.metadata.environment) || {};
+        summary = { product: daemonType === 'lxd' ? 'LXD' : 'Incus',
+          server: env.server_name, version: env.server_version, kernel: env.kernel_version };
+        break;
+      }
+      case 'proxmox': {
+        const { ProxmoxClient } = require('../services/proxmox');
+        const version = await new ProxmoxClient(daemonConfig).version();
+        summary = { product: 'Proxmox VE', version: version && version.version,
+          release: version && version.release };
+        break;
+      }
+      case 'kubernetes': {
+        const { KubernetesClient } = require('../services/kubernetes');
+        const version = await new KubernetesClient(daemonConfig).version();
+        summary = { product: 'Kubernetes',
+          version: version && (version.gitVersion || version.version),
+          apiVersion: version && `${version.major}.${version.minor}`,
+          platform: version && version.platform };
+        break;
+      }
+      case 'nomad': {
+        const { NomadClient } = require('../services/nomad');
+        const self = await new NomadClient(daemonConfig).agentSelf();
+        const tags = (self && self.member && self.member.Tags) || {};
+        summary = { product: 'Nomad',
+          server: self && self.member && self.member.Name,
+          version: tags.build || tags.version, region: tags.region, dc: tags.dc };
+        break;
+      }
+      case 'vsphere': {
+        const { VSphereClient } = require('../services/vsphere');
+        const client = new VSphereClient(daemonConfig);
+        await client.login();
+        try {
+          const info = await client.retrieveServiceContent();
+          summary = { product: info.productFullName || info.productName || 'vSphere',
+            version: info.version, apiVersion: info.apiVersion, build: info.build };
+        } finally {
+          await client.logout();
+        }
+        break;
+      }
+      default:
+        return res.status(400).json({ ok: false, error: `No test handler for ${daemonType}` });
+    }
+    res.json({ ok: true, summary });
+  } catch (err) {
+    res.status(200).json({ ok: false, error: err.message, status: err.status || null });
+  }
+}));
+
 // Test connection
 router.post('/test', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const { connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,

@@ -746,6 +746,10 @@ const Api = {
   getHosts() { return this.get('/hosts'); },
   getHost(id) { return this.get(`/hosts/${id}`); },
   createHost(data) { return this.post('/hosts', data); },
+  // v8.9.11-alpha.3 — test non-Docker host connection (wizard "Test" button)
+  testNonDockerHost(daemonType, daemonConfig) {
+    return this.post('/hosts/test-non-docker', { daemonType, daemonConfig });
+  },
   updateHost(id, data) { return this.put(`/hosts/${id}`, data); },
   deleteHost(id) { return this.delete(`/hosts/${id}`); },
   testHostConnection(data) { return this.post('/hosts/test', data); },

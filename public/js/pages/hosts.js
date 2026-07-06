@@ -267,6 +267,12 @@ const HostsPage = {
         <input type="text" id="ndh-name" class="form-control" placeholder="prod-k3s" required>
       </div>
       <div id="ndh-type-fields"></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm btn-secondary" id="ndh-test-btn">
+          <i class="fas fa-plug"></i> Test connection
+        </button>
+        <span id="ndh-test-result" style="font-size:12px;color:var(--text-dim)"></span>
+      </div>
     `;
 
     const result = await Modal.form(html, {
@@ -305,9 +311,59 @@ const HostsPage = {
       const type = typeSel.value;
       fieldsEl.innerHTML = this._renderNonDockerFields(type);
       wireTransportToggle();
+      // v8.9.11-alpha.3 — reset test result on any type change
+      const resultEl = content.querySelector('#ndh-test-result');
+      if (resultEl) { resultEl.textContent = ''; resultEl.style.color = 'var(--text-dim)'; }
     };
     typeSel.addEventListener('change', renderFields);
     renderFields();
+
+    // v8.9.11-alpha.3 — Test connection button.
+    // Uses the same _collectNonDockerFormData() the submit path uses, so
+    // the exact payload we'd save is the exact payload we test with.
+    const testBtn = content.querySelector('#ndh-test-btn');
+    const resultEl = content.querySelector('#ndh-test-result');
+    if (testBtn && resultEl) {
+      testBtn.addEventListener('click', async () => {
+        // Temporarily bypass the name-required check for the test path —
+        // _collectNonDockerFormData returns null on missing name.
+        const nameField = content.querySelector('#ndh-name');
+        const nameBackup = nameField.value;
+        if (!nameField.value.trim()) nameField.value = '__test__';
+        const data = this._collectNonDockerFormData(content);
+        nameField.value = nameBackup;
+        if (!data) {
+          resultEl.textContent = 'Fill in the fields first.';
+          resultEl.style.color = 'var(--yellow, #eab308)';
+          return;
+        }
+        testBtn.disabled = true;
+        resultEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing…';
+        resultEl.style.color = 'var(--text-dim)';
+        try {
+          const r = await Api.testNonDockerHost(data.daemonType, data.daemonConfig);
+          if (r && r.ok) {
+            const s = r.summary || {};
+            const bits = [];
+            if (s.product) bits.push(Utils.escapeHtml(s.product));
+            if (s.version) bits.push(`v${Utils.escapeHtml(s.version)}`);
+            if (s.apiVersion) bits.push(`API ${Utils.escapeHtml(s.apiVersion)}`);
+            if (s.server) bits.push(`server: ${Utils.escapeHtml(s.server)}`);
+            if (s.region) bits.push(`region: ${Utils.escapeHtml(s.region)}`);
+            resultEl.innerHTML = `<i class="fas fa-check-circle"></i> Connected — ${bits.join(' · ') || 'ok'}`;
+            resultEl.style.color = 'var(--green, #22c55e)';
+          } else {
+            resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'Connection failed')}`;
+            resultEl.style.color = 'var(--red, #ef4444)';
+          }
+        } catch (err) {
+          resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}`;
+          resultEl.style.color = 'var(--red, #ef4444)';
+        } finally {
+          testBtn.disabled = false;
+        }
+      });
+    }
   },
 
   _renderNonDockerFields(type) {
