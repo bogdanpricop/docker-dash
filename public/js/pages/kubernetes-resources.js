@@ -249,10 +249,10 @@ const KubernetesResourcesPage = {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal" style="width:800px;height:600px;display:flex;flex-direction:column">
+      <div class="modal-content" style="width:800px;max-width:95vw;height:600px;max-height:90vh;display:flex;flex-direction:column">
         <div class="modal-header">
           <h3><i class="fas fa-file-alt"></i> Pod logs — ${Utils.escapeHtml(ns)}/${Utils.escapeHtml(name)}${container ? ` [${Utils.escapeHtml(container)}]` : ''}</h3>
-          <button class="modal-close">&times;</button>
+          <button class="modal-close-btn"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body" style="flex:1;overflow:auto;padding:0">
           <pre id="k8s-log-view" style="margin:0;padding:12px;font-size:12px;background:var(--bg2,#111);color:var(--text,#eee);white-space:pre-wrap;word-wrap:break-word"></pre>
@@ -276,7 +276,7 @@ const KubernetesResourcesPage = {
     };
     es.addEventListener('error', () => { /* SSE will retry — ignore */ });
     const close = () => { es.close(); modal.remove(); };
-    modal.querySelector('.modal-close').addEventListener('click', close);
+    modal.querySelector('.modal-close-btn').addEventListener('click', close);
     modal.querySelector('#k8s-log-close').addEventListener('click', close);
     modal.querySelector('#k8s-log-clear').addEventListener('click', () => { logEl.textContent = ''; });
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });

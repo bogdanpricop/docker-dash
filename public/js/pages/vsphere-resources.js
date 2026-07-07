@@ -397,10 +397,10 @@ const VSphereResourcesPage = {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-      <div class="modal" style="width:760px;max-width:95vw;height:600px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-content" style="width:760px;max-width:95vw;height:600px;max-height:90vh;display:flex;flex-direction:column">
         <div class="modal-header">
           <h3><i class="fas fa-folder-open"></i> Datastore: ${Utils.escapeHtml(dsName)}</h3>
-          <button class="modal-close">&times;</button>
+          <button class="modal-close-btn"><i class="fas fa-times"></i></button>
         </div>
         <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div id="dsb-breadcrumbs" style="font-size:13px;display:flex;gap:4px;flex-wrap:wrap;align-items:center"></div>
@@ -411,7 +411,7 @@ const VSphereResourcesPage = {
       </div>`;
     document.body.appendChild(modal);
     const close = () => modal.remove();
-    modal.querySelector('.modal-close').addEventListener('click', close);
+    modal.querySelector('.modal-close-btn').addEventListener('click', close);
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     this._dsbState = { dsName, path: '' };
     // Upload wiring (admin only).
