@@ -25,10 +25,10 @@ const NomadJobsPage = {
       </div>
       <div id="nomad-info-panel"></div>
       <div class="tabs" style="margin-bottom:12px">
-        <button class="tab-btn active" data-tab="jobs">Jobs</button>
-        <button class="tab-btn" data-tab="allocations">Allocations</button>
-        <button class="tab-btn" data-tab="deployments">Deployments</button>
-        <button class="tab-btn" data-tab="nodes">Nodes</button>
+        <button class="tab active" data-tab="jobs">Jobs</button>
+        <button class="tab" data-tab="allocations">Allocations</button>
+        <button class="tab" data-tab="deployments">Deployments</button>
+        <button class="tab" data-tab="nodes">Nodes</button>
       </div>
       <div id="nomad-tab-container">Loading...</div>
     `;
@@ -37,10 +37,10 @@ const NomadJobsPage = {
       this._namespace = e.target.value || null;
       this._load();
     });
-    container.querySelectorAll('.tab-btn').forEach(btn => {
+    container.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._tab = e.target.getAttribute('data-tab');
-        container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === e.target));
+        container.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === e.target));
         this._load();
       });
     });

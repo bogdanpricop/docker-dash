@@ -52,9 +52,9 @@ const VSphereResourcesPage = {
       </div>
       <div id="vs-info-panel"></div>
       <div class="tabs" style="margin-bottom:12px">
-        <button class="tab-btn active" data-tab="vms">VMs</button>
-        <button class="tab-btn" data-tab="hosts">ESXi Hosts</button>
-        <button class="tab-btn" data-tab="datastores">Datastores</button>
+        <button class="tab active" data-tab="vms">VMs</button>
+        <button class="tab" data-tab="hosts">ESXi Hosts</button>
+        <button class="tab" data-tab="datastores">Datastores</button>
       </div>
       <div id="vs-tab-container">Loading...</div>
     `;
@@ -65,10 +65,10 @@ const VSphereResourcesPage = {
       this._load();
     });
     container.querySelector('#vs-refresh').addEventListener('click', () => { this._loadInfo(); this._load(); });
-    container.querySelectorAll('.tab-btn').forEach(btn => {
+    container.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._tab = e.target.getAttribute('data-tab');
-        container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === e.target));
+        container.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === e.target));
         this._load();
       });
     });

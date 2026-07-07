@@ -31,11 +31,11 @@ const KubernetesResourcesPage = {
       </div>
       <div id="k8s-info-panel"></div>
       <div class="tabs" style="margin-bottom:12px">
-        <button class="tab-btn active" data-tab="deployments">Deployments</button>
-        <button class="tab-btn" data-tab="pods">Pods</button>
-        <button class="tab-btn" data-tab="services">Services</button>
-        <button class="tab-btn" data-tab="namespaces">Namespaces</button>
-        <button class="tab-btn" data-tab="nodes">Nodes</button>
+        <button class="tab active" data-tab="deployments">Deployments</button>
+        <button class="tab" data-tab="pods">Pods</button>
+        <button class="tab" data-tab="services">Services</button>
+        <button class="tab" data-tab="namespaces">Namespaces</button>
+        <button class="tab" data-tab="nodes">Nodes</button>
       </div>
       <div id="k8s-tab-container">Loading...</div>
     `;
@@ -44,10 +44,10 @@ const KubernetesResourcesPage = {
       this._namespace = e.target.value || null;
       this._load();
     });
-    container.querySelectorAll('.tab-btn').forEach(btn => {
+    container.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._tab = e.target.getAttribute('data-tab');
-        container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === e.target));
+        container.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === e.target));
         this._load();
       });
     });
