@@ -165,6 +165,12 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
             endpoint: cfg.endpoint, username: cfg.username,
             passwordPresent: !!cfg.password,
             skipTlsVerify: !!cfg.skipTlsVerify,
+            // v8.9.15-alpha.2 — non-secret SSH access fields for the editor.
+            sshHost: (cfg.sshConfig && cfg.sshConfig.host) || '',
+            sshPort: (cfg.sshConfig && cfg.sshConfig.port) || 22,
+            sshUser: (cfg.sshConfig && cfg.sshConfig.user) || '',
+            sshPasswordPresent: !!(cfg.sshConfig && cfg.sshConfig.password),
+            sshKeyPresent: !!(cfg.sshConfig && cfg.sshConfig.privateKey),
           };
           break;
       }
@@ -474,6 +480,36 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 // per-daemon client with the submitted daemon_config and does one
 // harmless read (info / version / login) to verify credentials.
 // Does NOT persist anything.
+// v8.9.15-alpha.2 — Test SSH credentials for a vSphere host from the wizard/
+// edit dialog. Merges stored secrets (privateKey/password) when hostId is
+// given and the submitted field is blank, mirroring test-non-docker.
+router.post('/test-ssh', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const { hostId } = req.body || {};
+  let sshConfig = (req.body && req.body.sshConfig) || {};
+  if (typeof sshConfig !== 'object') return res.status(400).json({ ok: false, error: 'sshConfig is required' });
+  if (hostId) {
+    try {
+      const existing = getDb().prepare('SELECT daemon_type, daemon_config FROM docker_hosts WHERE id = ?').get(hostId);
+      if (existing && existing.daemon_type === 'vsphere' && existing.daemon_config) {
+        const stored = (require('../services/vsphere').decryptDaemonConfig(existing.daemon_config).sshConfig) || {};
+        const merged = { ...stored };
+        for (const [k, v] of Object.entries(sshConfig)) {
+          if (v === undefined) continue;
+          if (typeof v === 'string' && v === '') continue; // keep stored secret
+          merged[k] = v;
+        }
+        sshConfig = merged;
+      }
+    } catch { /* fall back to submitted */ }
+  }
+  try {
+    const result = await require('../services/vsphere-ssh').testSsh(sshConfig);
+    res.json(result);
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+}));
+
 router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const { daemonType, hostId } = req.body || {};
   let { daemonConfig } = req.body || {};

@@ -337,6 +337,8 @@ const HostsPage = {
       const type = typeSel.value;
       fieldsEl.innerHTML = this._renderNonDockerFields(type);
       wireTransportToggle();
+      // v8.9.15-alpha.2 — wire the "Test SSH" button when vSphere is chosen.
+      if (type === 'vsphere') this._wireSshTest(content);
       // v8.9.11-alpha.3 — reset test result on any type change
       const resultEl = content.querySelector('#ndh-test-result');
       if (resultEl) { resultEl.textContent = ''; resultEl.style.color = 'var(--text-dim)'; }
@@ -520,12 +522,71 @@ const HostsPage = {
                 <input type="password" id="ndh-ssh-password" class="form-control" placeholder="(or paste a private key below)"></div>
               <div class="form-group"><label>SSH private key (PEM, optional)</label>
                 <textarea id="ndh-ssh-key" class="form-control" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."></textarea></div>
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <button type="button" class="btn btn-sm btn-secondary" id="ndh-ssh-test"><i class="fas fa-plug"></i> Test SSH</button>
+                <span id="ndh-ssh-test-result" style="font-size:12px;color:var(--text-dim)"></span>
+              </div>
             </div>
           </details>
         `;
       default:
         return '';
     }
+  },
+
+  // v8.9.15-alpha.2 — collect the SSH access fields into an sshConfig, or
+  // null when incomplete. hostFallback lets the host default to the endpoint.
+  _collectSshConfigFromForm(content, endpoint) {
+    const val = (sel) => { const el = content.querySelector(sel); return el ? el.value : ''; };
+    const user = val('#ndh-ssh-user').trim();
+    const password = val('#ndh-ssh-password');
+    const key = val('#ndh-ssh-key').trim();
+    let host = val('#ndh-ssh-host').trim();
+    if (!host && endpoint) {
+      try { host = new URL(/^https?:\/\//.test(endpoint) ? endpoint : 'https://' + endpoint).hostname; }
+      catch { host = endpoint; }
+    }
+    if (!host || !user) return null;
+    return {
+      host, port: parseInt(val('#ndh-ssh-port'), 10) || 22, user,
+      ...(password ? { password } : {}),
+      ...(key ? { privateKey: key } : {}),
+    };
+  },
+
+  // Wire the "Test SSH" button (create + edit). hostId enables stored-secret
+  // merge on the backend so a blank password/key in Edit still tests.
+  _wireSshTest(content, hostId) {
+    const btn = content.querySelector('#ndh-ssh-test');
+    const resultEl = content.querySelector('#ndh-ssh-test-result');
+    if (!btn || !resultEl) return;
+    btn.addEventListener('click', async () => {
+      const endpoint = (content.querySelector('#ndh-endpoint') || {}).value || '';
+      // In Edit, host+user may be pre-filled but secrets blank — still allow
+      // testing (backend merges stored secret via hostId).
+      const cfg = this._collectSshConfigFromForm(content, endpoint) ||
+        // fall back to a minimal cfg using stored merge when editing
+        (hostId ? { host: (content.querySelector('#ndh-ssh-host')?.value || '').trim(),
+          port: parseInt(content.querySelector('#ndh-ssh-port')?.value, 10) || 22,
+          user: (content.querySelector('#ndh-ssh-user')?.value || '').trim() } : null);
+      if (!cfg || !cfg.user) { resultEl.textContent = 'Fill in SSH user (+ host/password or key).'; resultEl.style.color = 'var(--yellow,#eab308)'; return; }
+      btn.disabled = true;
+      resultEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing SSH…';
+      resultEl.style.color = 'var(--text-dim)';
+      try {
+        const r = await Api.testHostSsh(cfg, hostId);
+        if (r && r.ok) {
+          resultEl.innerHTML = `<i class="fas fa-check-circle"></i> Connected — ${Utils.escapeHtml(r.product || 'ESXi')} ${Utils.escapeHtml(r.version || '')}`.trim();
+          resultEl.style.color = 'var(--green,#22c55e)';
+        } else {
+          resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'SSH failed')}`;
+          resultEl.style.color = 'var(--red,#ef4444)';
+        }
+      } catch (err) {
+        resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml(err.message)}`;
+        resultEl.style.color = 'var(--red,#ef4444)';
+      } finally { btn.disabled = false; }
+    });
   },
 
   _collectNonDockerFormData(content) {
@@ -893,6 +954,13 @@ const HostsPage = {
             set('#ndh-username', dc.username);
             setPlaceholder('#ndh-password', dc.passwordPresent);
             setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            // v8.9.15-alpha.2 — pre-fill SSH access (non-secret) + wire test.
+            set('#ndh-ssh-host', dc.sshHost);
+            if (dc.sshPort) set('#ndh-ssh-port', dc.sshPort);
+            set('#ndh-ssh-user', dc.sshUser);
+            setPlaceholder('#ndh-ssh-password', dc.sshPasswordPresent);
+            setPlaceholder('#ndh-ssh-key', dc.sshKeyPresent);
+            this._wireSshTest(content, host.id);
             break;
         }
         // Wire test connection button — same behavior as create wizard.

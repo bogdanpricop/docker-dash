@@ -788,6 +788,9 @@ const Api = {
   testNonDockerHost(daemonType, daemonConfig, hostId) {
     return this.post('/hosts/test-non-docker', { daemonType, daemonConfig, hostId });
   },
+  testHostSsh(sshConfig, hostId) {
+    return this.post('/hosts/test-ssh', { sshConfig, hostId });
+  },
   updateHost(id, data) { return this.put(`/hosts/${id}`, data); },
   deleteHost(id) { return this.delete(`/hosts/${id}`); },
   testHostConnection(data) { return this.post('/hosts/test', data); },
