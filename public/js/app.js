@@ -1340,6 +1340,10 @@ const App = {
       }
 
       selector.style.display = '';
+      // v8.9.13-alpha.1 — cache the host list so the change handler can look
+      // up the selected host's daemon type (it's bound once, so it must read
+      // fresh state, not a stale closure).
+      this._hostSelectorHosts = hosts;
       select.innerHTML = hosts.map(h => {
         const status = h.healthy === true ? '🟢' : h.healthy === false ? '🔴' : '🟡';
         const envTag = h.environment && h.environment !== 'development' ? ` [${h.environment.substring(0, 4).toUpperCase()}]` : '';
@@ -1349,10 +1353,32 @@ const App = {
       if (!select._bound) {
         select._bound = true;
         select.addEventListener('change', () => {
-          Api.setHost(parseInt(select.value) || 0);
-          // Reload current page to reflect new host
+          const id = parseInt(select.value) || 0;
+          Api.setHost(id);
           if (this._currentPage?.destroy) this._currentPage.destroy();
-          this._route();
+          // v8.9.13-alpha.1 — selecting a host opens the page that host type
+          // belongs to. A Docker page can't render an ESXi/Incus/etc. host,
+          // so jump to that daemon's dedicated page; and a non-Docker page
+          // can't render a Docker host, so jump back to the dashboard.
+          const host = (this._hostSelectorHosts || []).find(h => h.id === id);
+          const dt = (host && host.daemonType) || 'docker';
+          const daemonPage = {
+            vsphere: '#/vsphere-resources',
+            incus: '#/incus-instances', lxd: '#/incus-instances',
+            proxmox: '#/proxmox-resources',
+            kubernetes: '#/kubernetes-resources',
+            nomad: '#/nomad-jobs',
+          }[dt];
+          const nonDockerPages = ['#/vsphere-resources', '#/incus-instances',
+            '#/proxmox-resources', '#/kubernetes-resources', '#/nomad-jobs', '#/migration-vm'];
+          if (daemonPage) {
+            if (location.hash === daemonPage) this._route();
+            else location.hash = daemonPage;   // hashchange -> _route()
+          } else if (nonDockerPages.includes(location.hash)) {
+            location.hash = '#/dashboard';      // Docker host but on a non-Docker page
+          } else {
+            this._route();                      // Docker host, Docker page -> refresh
+          }
         });
       }
 

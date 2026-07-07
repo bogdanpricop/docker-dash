@@ -82,6 +82,44 @@ router.get('/datastores', requireAuth, asyncHandler(async (req, res) => {
   }
 }));
 
+// v8.9.13-alpha.1 — Networks / Services / Host Info (ported from SOS).
+router.get('/networks', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  try { res.json(await (await _getClient(row)).listNetworks()); }
+  catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
+// Services + host info operate on a specific ESXi host. moref optional —
+// defaults to the first host in the inventory (standalone ESXi has one).
+router.get('/services', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  try {
+    const c = await _getClient(row);
+    let moref = req.query.moref;
+    if (!moref) { const hosts = await c.listHosts(); moref = hosts[0] && hosts[0].moref; }
+    if (!moref) return res.json([]);
+    res.json(await c.getServices(moref));
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
+router.get('/host-info', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  try {
+    const c = await _getClient(row);
+    let moref = req.query.moref;
+    if (!moref) { const hosts = await c.listHosts(); moref = hosts[0] && hosts[0].moref; }
+    if (!moref) return res.json(null);
+    res.json(await c.getHostInfo(moref));
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
+// v8.9.13-alpha.1 — metric history for the Trends tab.
+router.get('/history', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  const limit = parseInt(req.query.limit, 10) || 500;
+  res.json(require('../services/vsphere-history').getHistory(row.id, limit));
+}));
+
 // v8.9.12-alpha.1 — Version / EOL / CVE check (ported from SOS ESXi Monitor).
 // Resolves the host's version+build (from the ContainerView host list, which
 // now carries productVersion + build) and runs it through the offline

@@ -67,6 +67,9 @@ class VSphereClient {
       propertyCollector: { type: 'PropertyCollector', value: MO_PROPERTY_COLLECTOR },
       rootFolder: { type: 'Folder', value: MO_ROOT_FOLDER },
       viewManager: { type: 'ViewManager', value: MO_VIEW_MANAGER },
+      // v8.9.13-alpha.1 — LicenseManager MoRef (vCenter: LicenseManager,
+      // ESXi: ha-license-manager) resolved from ServiceContent.
+      licenseManager: { type: 'LicenseManager', value: 'LicenseManager' },
     };
   }
 
@@ -212,10 +215,12 @@ class VSphereClient {
     const pc = _extractMoRef(resp, 'propertyCollector');
     const rf = _extractMoRef(resp, 'rootFolder');
     const vm = _extractMoRef(resp, 'viewManager');
+    const lm = _extractMoRef(resp, 'licenseManager');
     if (sm) this._moRefs.sessionManager = sm;
     if (pc) this._moRefs.propertyCollector = pc;
     if (rf) this._moRefs.rootFolder = rf;
     if (vm) this._moRefs.viewManager = vm;
+    if (lm) this._moRefs.licenseManager = lm;
     return {
       apiVersion: _extractTag(resp, 'apiVersion'),
       version: _extractTag(resp, 'version'),
@@ -376,8 +381,136 @@ class VSphereClient {
     }));
   }
 
+  // ─── v8.9.13-alpha.1 — Networks / Services / Host Info ──────────
+
+  /** List networks (standard port groups). Read-only. */
+  async listNetworks() {
+    await this._ensureLoggedIn();
+    const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <CreateContainerView xmlns="urn:vim25">
+      <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+      <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
+      <type>Network</type>
+      <recursive>true</recursive>
+    </CreateContainerView>
+  </soap:Body>
+</soap:Envelope>`;
+    const viewResp = await this._soapPost(createViewBody);
+    const viewId = _extractTag(viewResp, 'returnval');
+    if (!viewId) return [];
+    const rawResp = await this._retrieveProperties(viewId, 'Network', ['name', 'summary.accessible']);
+    return _extractObjects(rawResp).map(o => ({
+      moref: o.obj,
+      name: o.props['name'],
+      accessible: o.props['summary.accessible'] === 'true',
+    }));
+  }
+
+  /**
+   * Host services (SSH, NTP, etc.) from config.service.service.
+   * @param {string} hostMoref the HostSystem MoRef (from listHosts).
+   */
+  async getServices(hostMoref) {
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('HostSystem', hostMoref, ['config.service.service']);
+    const objs = _extractObjects(raw);
+    const block = objs.length ? objs[0].props['config.service.service'] : '';
+    if (!block) return [];
+    const services = [];
+    const re = /<HostService[^>]*>([\s\S]*?)<\/HostService>/g;
+    let m;
+    while ((m = re.exec(block))) {
+      const s = m[1];
+      services.push({
+        key: _extractTag(s, 'key'),
+        label: _extractTag(s, 'label'),
+        running: _extractTag(s, 'running') === 'true',
+        policy: _extractTag(s, 'policy'),
+        required: _extractTag(s, 'required') === 'true',
+      });
+    }
+    return services;
+  }
+
+  /**
+   * Rich host info card data: DNS/NTP/BIOS/serial/vendor/boot time +
+   * license. @param {string} hostMoref
+   */
+  async getHostInfo(hostMoref) {
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('HostSystem', hostMoref, [
+      'name', 'config.network.dnsConfig', 'config.dateTimeInfo.ntpConfig',
+      'hardware.biosInfo', 'hardware.systemInfo', 'runtime.bootTime',
+    ]);
+    const objs = _extractObjects(raw);
+    const p = objs.length ? objs[0].props : {};
+    const dns = p['config.network.dnsConfig'] || '';
+    const ntp = p['config.dateTimeInfo.ntpConfig'] || '';
+    const bios = p['hardware.biosInfo'] || '';
+    const sys = p['hardware.systemInfo'] || '';
+    const dnsServers = [];
+    { const re = /<address>([^<]+)<\/address>/g; let m; while ((m = re.exec(dns))) dnsServers.push(m[1]); }
+    const ntpServers = [];
+    { const re = /<server>([^<]+)<\/server>/g; let m; while ((m = re.exec(ntp))) ntpServers.push(m[1]); }
+
+    // License (best-effort — may be denied on some ESXi).
+    let license = null;
+    try {
+      const lm = this._moRefs.licenseManager;
+      const licRaw = await this._retrievePropertiesDirect(lm.type, lm.value, ['licenses']);
+      const licBlock = (_extractObjects(licRaw)[0] || { props: {} }).props['licenses'] || '';
+      const m = /<LicenseManagerLicenseInfo[^>]*>([\s\S]*?)<\/LicenseManagerLicenseInfo>/.exec(licBlock);
+      if (m) {
+        const key = _extractTag(m[1], 'licenseKey') || '';
+        const masked = key ? key.slice(0, -5).replace(/[A-Z0-9]/gi, 'X') + key.slice(-5) : null;
+        license = { name: _extractTag(m[1], 'name'), key: masked };
+      }
+    } catch { /* license read denied — leave null */ }
+
+    return {
+      name: p['name'] || _extractTag(dns, 'hostName'),
+      hostName: _extractTag(dns, 'hostName'),
+      domainName: _extractTag(dns, 'domainName'),
+      dnsServers, ntpServers,
+      biosVersion: _extractTag(bios, 'biosVersion'),
+      biosReleaseDate: _extractTag(bios, 'releaseDate'),
+      vendor: _extractTag(sys, 'vendor'),
+      model: _extractTag(sys, 'model'),
+      serialNumber: _extractTag(sys, 'serialNumber'),
+      bootTime: p['runtime.bootTime'] || null,
+      license,
+    };
+  }
+
   async _ensureLoggedIn() {
     if (!this._sessionCookie) await this.login();
+  }
+
+  /** RetrievePropertiesEx against a SPECIFIC managed object (no ContainerView
+   *  traversal) — used for per-host detail + LicenseManager. */
+  async _retrievePropertiesDirect(objType, objMoref, propPaths) {
+    const pathSetTags = propPaths.map(p => `<pathSet>${p}</pathSet>`).join('');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <RetrievePropertiesEx xmlns="urn:vim25">
+      <_this type="${this._moRefs.propertyCollector.type}">${this._moRefs.propertyCollector.value}</_this>
+      <specSet>
+        <propSet>
+          <type>${objType}</type>
+          ${pathSetTags}
+        </propSet>
+        <objectSet>
+          <obj type="${objType}">${objMoref}</obj>
+        </objectSet>
+      </specSet>
+      <options/>
+    </RetrievePropertiesEx>
+  </soap:Body>
+</soap:Envelope>`;
+    return await this._soapPost(body);
   }
 
   async _retrieveProperties(viewId, type, propPaths) {

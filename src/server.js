@@ -420,6 +420,11 @@ async function start() {
   remediationScheduler.setRunner((jobId) => remediateService.runJob(jobId));
   remediationScheduler.start();
 
+  // v8.9.13-alpha.1 — vSphere metric history poller (feeds the Trends tab).
+  // Best-effort, unref'd timer; no-op when no vSphere hosts are registered.
+  try { require('./services/vsphere-history').start(); }
+  catch (e) { require('./utils/logger')('vsphere-history').debug('poller start skipped', { error: e.message }); }
+
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
   // Opt-in via DD_EGRESS_BLOCKLOG_INGESTER=1 (off by default for alpha users
