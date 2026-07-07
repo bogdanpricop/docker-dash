@@ -115,6 +115,21 @@ async function testKey({ connection, privateKey, passphrase }) {
   } finally { try { conn.end(); } catch { /* ignore */ } }
 }
 
-module.exports = { deployPublicKey, testKey, _authorizedKeysPath, _internals: { _q, _friendly } };
+/**
+ * Pre-flight the INITIAL connection (password or existing key) WITHOUT touching
+ * authorized_keys. Confirms we can log in and reports the remote user + the
+ * authorized_keys path the deploy would write to.
+ * @returns {Promise<{ok, whoami, path, targetType}>}
+ */
+async function testConnection({ targetType, connection }) {
+  const conn = await _connect(connection);
+  try {
+    const r = await _exec(conn, 'whoami 2>/dev/null || id -un 2>/dev/null || echo "?"');
+    const whoami = (r.out || '').trim() || (connection && connection.user) || '?';
+    return { ok: true, whoami, path: _authorizedKeysPath(targetType, connection && connection.user), targetType };
+  } finally { try { conn.end(); } catch { /* ignore */ } }
+}
+
+module.exports = { deployPublicKey, testKey, testConnection, _authorizedKeysPath, _internals: { _q, _friendly } };
 
 if (false) log.info();

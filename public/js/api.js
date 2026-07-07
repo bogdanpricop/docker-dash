@@ -794,6 +794,7 @@ const Api = {
   // ─── SSH Key Deployer (v8.9.16, System → Tools) ───
   generateSshKey(opts)                { return this.post('/ssh-keys/generate', opts || {}); },
   deploySshKey(payload)              { return this.post('/ssh-keys/deploy', payload); },
+  testSshConnection(payload)         { return this.post('/ssh-keys/test-connection', payload); },
   testDeployedSshKey(payload)        { return this.post('/ssh-keys/test', payload); },
   attachSshKeyVsphere(payload)       { return this.post('/ssh-keys/attach-vsphere', payload); },
   listVsphereHostsForSsh()           { return this.get('/ssh-keys/vsphere-hosts'); },

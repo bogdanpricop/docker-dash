@@ -60,6 +60,17 @@ router.post('/test', requireAuth, requireRole('admin'), asyncHandler(async (req,
   catch (err) { res.json({ ok: false, error: err.message }); }
 }));
 
+// Pre-flight the INITIAL connection before generating/deploying — verifies the
+// password/key logs in and reports the remote user + target path. Read-only.
+router.post('/test-connection', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const { targetType, connection } = req.body || {};
+  if (!connection || !connection.host || !connection.user) {
+    return res.status(400).json({ error: 'connection.host and connection.user are required' });
+  }
+  try { res.json(await deploy.testConnection({ targetType, connection })); }
+  catch (err) { res.json({ ok: false, error: err.message }); }
+}));
+
 // Attach a (just-deployed) private key to an existing vSphere host so the SSH
 // console / Hardware tab can use it. Stored encrypted in daemon_config.sshConfig.
 router.post('/attach-vsphere', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {

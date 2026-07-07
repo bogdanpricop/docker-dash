@@ -75,7 +75,8 @@ const SshKeyDeployer = {
         <div class="form-group" id="skd-pw-wrap"><label>Password</label><input type="password" id="skd-password" class="form-control"></div>
         <div class="form-group" id="skd-key-wrap" style="display:none"><label>Existing private key (PEM)</label><textarea id="skd-existing-key" class="form-control" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
       </div>
-      <button class="btn btn-primary" id="skd-go"><i class="fas fa-bolt"></i> Generate &amp; Deploy</button>
+      <button class="btn btn-secondary" id="skd-test"><i class="fas fa-plug"></i> Test connection</button>
+      <button class="btn btn-primary" id="skd-go" style="margin-left:8px"><i class="fas fa-bolt"></i> Generate &amp; Deploy</button>
       ` : `
       <button class="btn btn-primary" id="skd-go"><i class="fas fa-key"></i> Generate keypair</button>
       `}
@@ -92,6 +93,32 @@ const SshKeyDeployer = {
       body.querySelector('#skd-key-wrap').style.display = authSel.value === 'key' ? '' : 'none';
     });
     body.querySelector('#skd-go').addEventListener('click', () => this._run());
+    const testBtn = body.querySelector('#skd-test');
+    if (testBtn) testBtn.addEventListener('click', () => this._testConn());
+  },
+
+  async _testConn() {
+    const body = Modal._content.querySelector('#skd-body');
+    const statusEl = body.querySelector('#skd-status');
+    const btn = body.querySelector('#skd-test');
+    const conn = this._connFromForm();
+    if (!conn.host || !conn.user || (!conn.password && !conn.privateKey)) {
+      statusEl.innerHTML = '<span style="color:var(--yellow)">Fill host, user and a password/key first.</span>';
+      return;
+    }
+    if (btn) btn.disabled = true;
+    statusEl.style.color = 'var(--text-dim)';
+    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing connection…';
+    try {
+      const r = await Api.testSshConnection({ targetType: this._target, connection: conn });
+      if (r && r.ok) {
+        statusEl.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Connected as <b>${Utils.escapeHtml(r.whoami)}</b> — will write to ${Utils.escapeHtml(r.path)}</span>`;
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'Connection failed')}</span>`;
+      }
+    } catch (err) {
+      statusEl.innerHTML = `<span style="color:var(--red)">${Utils.escapeHtml(err.message)}</span>`;
+    } finally { if (btn) btn.disabled = false; }
   },
 
   _connFromForm() {
