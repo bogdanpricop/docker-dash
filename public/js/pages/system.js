@@ -1069,6 +1069,7 @@ DB_PASS=secret"></textarea>
       { id: 'password-gen', name: 'Password Generator', icon: 'fa-key', color: '#f85149', cat: 'security', desc: 'Generate secure random passwords with custom rules' },
       { id: 'password-strength', name: 'Password Strength', icon: 'fa-shield-alt', color: '#db6d28', cat: 'security', desc: 'Check password entropy, crack time and strength' },
       { id: 'hash-gen', name: 'Hash Generator', icon: 'fa-hashtag', color: '#a371f7', cat: 'security', desc: 'Generate SHA-1, SHA-256, SHA-512 hashes' },
+      { id: 'ssh-keygen', name: 'SSH Key Deployer', icon: 'fa-key', color: '#8b5cf6', cat: 'security', desc: 'Generate an SSH keypair and deploy the public key to Linux/Docker, ESXi, Proxmox — or get manual steps' },
       // Network
       { id: 'ip-calc', name: 'IP/Subnet Calculator', icon: 'fa-network-wired', color: '#0ea5e9', cat: 'network', desc: 'Calculate network, broadcast, host range from CIDR' },
       { id: 'url-codec', name: 'URL Encoder/Decoder', icon: 'fa-link', color: '#3fb950', cat: 'network', desc: 'Encode and decode URL components' },
@@ -1161,6 +1162,15 @@ DB_PASS=secret"></textarea>
         return;
       }
       DeploymentConfigurator.open();
+      return;
+    }
+    // v8.9.16-alpha.1 — SSH Key Deployer owns its own wizard modal.
+    if (toolId === 'ssh-keygen') {
+      if (typeof SshKeyDeployer === 'undefined') {
+        Toast.error('SshKeyDeployer not loaded — hard-refresh the page.');
+        return;
+      }
+      SshKeyDeployer.open();
       return;
     }
 

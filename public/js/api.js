@@ -791,6 +791,12 @@ const Api = {
   testHostSsh(sshConfig, hostId) {
     return this.post('/hosts/test-ssh', { sshConfig, hostId });
   },
+  // ─── SSH Key Deployer (v8.9.16, System → Tools) ───
+  generateSshKey(opts)                { return this.post('/ssh-keys/generate', opts || {}); },
+  deploySshKey(payload)              { return this.post('/ssh-keys/deploy', payload); },
+  testDeployedSshKey(payload)        { return this.post('/ssh-keys/test', payload); },
+  attachSshKeyVsphere(payload)       { return this.post('/ssh-keys/attach-vsphere', payload); },
+  listVsphereHostsForSsh()           { return this.get('/ssh-keys/vsphere-hosts'); },
   updateHost(id, data) { return this.put(`/hosts/${id}`, data); },
   deleteHost(id) { return this.delete(`/hosts/${id}`); },
   testHostConnection(data) { return this.post('/hosts/test', data); },
