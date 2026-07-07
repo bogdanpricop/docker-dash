@@ -126,6 +126,33 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(_internals._extractMoRef(xml, 'sessionManager')).toEqual({ type: 'SessionManager', value: 'SessionManager' });
     });
 
+    it('parseSearchResults splits folders and files, folders first', () => {
+      const xml = `<returnval>
+        <folderPath>[datastore1]</folderPath>
+        <file xsi:type="FolderFileInfo"><path>my-vm</path><modification>2026-01-01T00:00:00Z</modification></file>
+        <file xsi:type="IsoImageFileInfo"><path>ubuntu.iso</path><fileSize>1500000000</fileSize><modification>2026-02-02T00:00:00Z</modification></file>
+        <file xsi:type="VmConfigFileInfo"><path>my-vm.vmx</path><fileSize>2000</fileSize></file>
+      </returnval>`;
+      const r = _internals._parseSearchResults(xml, 'datastore1', '');
+      expect(r.datastore).toBe('datastore1');
+      expect(r.entries).toHaveLength(3);
+      // folder first
+      expect(r.entries[0]).toMatchObject({ name: 'my-vm', isFolder: true });
+      const iso = r.entries.find(e => e.name === 'ubuntu.iso');
+      expect(iso).toMatchObject({ isFolder: false, fileSize: 1500000000 });
+    });
+
+    it('parseDatastoreUsage attributes committed bytes per datastore', () => {
+      const xml = `
+        <VirtualMachineUsageOnDatastore><datastore type="Datastore">datastore-11</datastore><committed>5000</committed><uncommitted>100</uncommitted></VirtualMachineUsageOnDatastore>
+        <VirtualMachineUsageOnDatastore><datastore type="Datastore">datastore-22</datastore><committed>3000</committed></VirtualMachineUsageOnDatastore>`;
+      const r = _internals._parseDatastoreUsage(xml);
+      expect(r).toEqual([
+        { datastore: 'datastore-11', committed: 5000 },
+        { datastore: 'datastore-22', committed: 3000 },
+      ]);
+    });
+
     it('extractObjects parses RetrievePropertiesEx returnval blocks', () => {
       const xml = `
         <returnval>

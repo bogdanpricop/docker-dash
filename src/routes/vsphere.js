@@ -113,6 +113,40 @@ router.get('/host-info', requireAuth, asyncHandler(async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
+// v8.9.14-alpha.1 — Datastore browse (read-only) + download (proxy).
+router.get('/datastore-browse', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  const { datastore, path: folderPath } = req.query;
+  if (!datastore) return res.status(400).json({ error: 'datastore is required' });
+  try {
+    const c = await _getClient(row);
+    res.json(await c.browseDatastore(datastore, folderPath || ''));
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
+router.get('/datastore-download', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  const { datastore, path: filePath } = req.query;
+  if (!datastore || !filePath) return res.status(400).json({ error: 'datastore + path are required' });
+  try {
+    const c = await _getClient(row);
+    const dl = await c.datastoreDownload(datastore, filePath);
+    const auditService = require('../services/audit');
+    const { getClientIp } = require('../utils/helpers');
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'vsphere_datastore_download', targetType: 'vsphere_datastore', targetId: datastore,
+      details: { hostId: req.hostId, path: filePath }, ip: getClientIp(req),
+    });
+    const fileName = String(filePath).split('/').filter(Boolean).pop() || 'download';
+    res.setHeader('Content-Type', dl.contentType);
+    if (dl.contentLength) res.setHeader('Content-Length', dl.contentLength);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/[^\w.\-]/g, '_')}"`);
+    dl.stream.on('error', () => { try { res.destroy(); } catch { /* ignore */ } });
+    dl.stream.pipe(res);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
 // v8.9.13-alpha.1 — metric history for the Trends tab.
 router.get('/history', requireAuth, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;

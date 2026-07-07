@@ -508,6 +508,12 @@ const Api = {
   getVSphereServices(hostId)          { return this.get(`/vsphere/services?hostId=${hostId}`); },
   getVSphereHostInfo(hostId)          { return this.get(`/vsphere/host-info?hostId=${hostId}`); },
   getVSphereHistory(hostId, limit)    { return this.get(`/vsphere/history?hostId=${hostId}&limit=${limit || 500}`); },
+  browseVSphereDatastore(hostId, datastore, path) {
+    return this.get(`/vsphere/datastore-browse?hostId=${hostId}&datastore=${encodeURIComponent(datastore)}&path=${encodeURIComponent(path || '')}`);
+  },
+  vsphereDatastoreDownloadUrl(hostId, datastore, path) {
+    return `/api/vsphere/datastore-download?hostId=${hostId}&datastore=${encodeURIComponent(datastore)}&path=${encodeURIComponent(path)}`;
+  },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },

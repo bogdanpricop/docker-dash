@@ -490,6 +490,110 @@ class VSphereClient {
     };
   }
 
+  // ─── v8.9.14-alpha.1 — Datastore browse + download ─────────────
+
+  /** Resolve a datastore's HostDatastoreBrowser MoRef. */
+  async _getDatastoreBrowser(dsMoref) {
+    const raw = await this._retrievePropertiesDirect('Datastore', dsMoref, ['browser']);
+    const objs = _extractObjects(raw);
+    return objs.length ? (objs[0].props['browser'] || '').trim() : '';
+  }
+
+  /**
+   * List files + folders in a datastore folder via HostDatastoreBrowser.
+   * @param {string} dsName datastore name (e.g. "datastore1")
+   * @param {string} folderPath relative folder inside the datastore ("" = root)
+   */
+  async browseDatastore(dsName, folderPath = '') {
+    await this._ensureLoggedIn();
+    const datastores = await this.listDatastores();
+    const ds = datastores.find(d => d.name === dsName);
+    if (!ds) throw new Error(`Datastore not found: ${dsName}`);
+    const browser = await this._getDatastoreBrowser(ds.moref);
+    if (!browser) throw new Error('Datastore browser unavailable on this host');
+    const dsPath = `[${dsName}]${folderPath ? ' ' + folderPath : ''}`;
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <SearchDatastore_Task xmlns="urn:vim25">
+      <_this type="HostDatastoreBrowser">${browser}</_this>
+      <datastorePath>${this._xesc(dsPath)}</datastorePath>
+      <searchSpec>
+        <query xsi:type="FolderFileQuery"/>
+        <query xsi:type="FileQuery"/>
+        <details>
+          <fileType>true</fileType>
+          <fileSize>true</fileSize>
+          <fileOwner>false</fileOwner>
+          <modification>true</modification>
+        </details>
+        <sortFoldersFirst>true</sortFoldersFirst>
+      </searchSpec>
+    </SearchDatastore_Task>
+  </soap:Body>
+</soap:Envelope>`;
+    const resp = await this._soapPost(body);
+    const taskMoref = _extractTag(resp, 'returnval');
+    if (!taskMoref) throw new Error('SearchDatastore_Task returned no task');
+    const result = await this._waitForTask(taskMoref, 30_000);
+    return _parseSearchResults(result, dsName, folderPath);
+  }
+
+  /** Poll a Task MoRef until success/error. Returns info.result XML. */
+  async _waitForTask(taskMoref, timeoutMs = 30_000) {
+    const start = Date.now();
+    // Date.now() is fine at runtime (only banned inside Workflow scripts).
+    while (Date.now() - start < timeoutMs) {
+      const raw = await this._retrievePropertiesDirect('Task', taskMoref,
+        ['info.state', 'info.result', 'info.error']);
+      const p = (_extractObjects(raw)[0] || { props: {} }).props;
+      const state = p['info.state'];
+      if (state === 'success') return p['info.result'] || '';
+      if (state === 'error') {
+        throw new Error(`vSphere task failed: ${_extractFault(p['info.error'] || '') || 'unknown'}`);
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    throw new Error('vSphere task timed out');
+  }
+
+  /**
+   * Open an HTTPS GET stream to a datastore file (the /folder file API).
+   * Resolves { stream, contentLength, contentType, status }. The caller pipes
+   * `stream` to the client. dcPath defaults to ha-datacenter (standalone ESXi).
+   */
+  async datastoreDownload(dsName, filePath, dcPath = 'ha-datacenter') {
+    await this._ensureLoggedIn();
+    const encPath = String(filePath).split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    const url = new URL(`/folder/${encPath}`, this._config.endpoint);
+    url.searchParams.set('dsName', dsName);
+    url.searchParams.set('dcPath', dcPath);
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: url.hostname, port: url.port || 443, method: 'GET',
+        path: url.pathname + url.search,
+        headers: { Cookie: this._sessionCookie || '' },
+        agent: this._agent,
+      }, (res) => {
+        if (res.statusCode >= 400) {
+          const chunks = [];
+          res.on('data', c => chunks.push(c));
+          res.on('end', () => reject(Object.assign(
+            new Error(`Datastore download failed: HTTP ${res.statusCode}`),
+            { status: res.statusCode, body: Buffer.concat(chunks).toString('utf8').slice(0, 300) })));
+          return;
+        }
+        resolve({
+          stream: res, status: res.statusCode,
+          contentLength: res.headers['content-length'] || null,
+          contentType: res.headers['content-type'] || 'application/octet-stream',
+        });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+  }
+
   async _ensureLoggedIn() {
     if (!this._sessionCookie) await this.login();
   }
@@ -563,6 +667,30 @@ function _extractFault(xml) {
   const fault = /<faultstring>([\s\S]*?)<\/faultstring>/.exec(xml);
   if (fault) return _decodeEntities(fault[1]);
   return null;
+}
+
+// v8.9.14-alpha.1 — parse HostDatastoreBrowserSearchResults into a file list.
+// Each <file xsi:type="FolderFileInfo|...FileInfo"> has path/fileSize/modification.
+function _parseSearchResults(xml, dsName, folderPath) {
+  const entries = [];
+  const re = /<file\b[^>]*?\btype="([^"]+)"[^>]*>([\s\S]*?)<\/file>/g;
+  let m;
+  while ((m = re.exec(xml))) {
+    const type = m[1];
+    const block = m[2];
+    const name = _extractTag(block, 'path');
+    if (!name) continue;
+    entries.push({
+      name,
+      isFolder: /Folder/i.test(type),
+      fileSize: parseInt(_extractTag(block, 'fileSize'), 10) || null,
+      modified: _extractTag(block, 'modification') || null,
+      fileType: type,
+    });
+  }
+  // Folders first, then files, alphabetical.
+  entries.sort((a, b) => (b.isFolder - a.isFolder) || String(a.name).localeCompare(String(b.name)));
+  return { datastore: dsName, folderPath: folderPath || '', entries };
 }
 
 // v8.9.13-alpha.3 — parse storage.perDatastoreUsage into
@@ -657,7 +785,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseDatastoreUsage },
 };
 
 if (false) log.info();

@@ -366,10 +366,13 @@ const VSphereResourcesPage = {
         ? `<span class="badge badge-warning" style="font-size:10px">${Utils.escapeHtml(d.maintenanceMode)}</span>`
         : (d.accessible ? '' : `<span class="badge badge-dead" style="font-size:10px">inaccessible</span>`);
       return `<div class="card" style="padding:16px;flex:1 1 300px;min-width:280px;max-width:460px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div><strong>${Utils.escapeHtml(d.name || '—')}</strong>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px">
+          <div style="min-width:0"><strong>${Utils.escapeHtml(d.name || '—')}</strong>
             <span style="font-size:11px;color:var(--text-dim);margin-left:6px">${Utils.escapeHtml(d.type || '')}</span></div>
-          ${statusChip}
+          <div style="display:flex;gap:6px;align-items:center;flex:0 0 auto">
+            ${statusChip}
+            <button class="btn btn-xs btn-secondary" data-ds-browse="${Utils.escapeHtml(d.name)}" title="Browse files"><i class="fas fa-folder-open"></i></button>
+          </div>
         </div>
         ${this._stackBar(vmB, otherB, free, cap)}
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px">
@@ -384,6 +387,93 @@ const VSphereResourcesPage = {
       </div>`;
     }).join('');
     el.innerHTML = summary + `<div style="display:flex;gap:12px;flex-wrap:wrap">${cards}</div>`;
+    el.querySelectorAll('[data-ds-browse]').forEach(b =>
+      b.addEventListener('click', () => this._openDatastoreBrowser(b.getAttribute('data-ds-browse'))));
+  },
+
+  // ─── v8.9.14-alpha.1 — Datastore file browser modal ─────────
+  _openDatastoreBrowser(dsName) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal" style="width:760px;max-width:95vw;height:600px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-folder-open"></i> Datastore: ${Utils.escapeHtml(dsName)}</h3>
+          <button class="modal-close">&times;</button>
+        </div>
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+          <div id="dsb-breadcrumbs" style="font-size:13px;display:flex;gap:4px;flex-wrap:wrap;align-items:center"></div>
+        </div>
+        <div class="modal-body" style="flex:1;overflow:auto;padding:0"><div id="dsb-list"></div></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.modal-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    this._dsbState = { dsName, path: '' };
+    this._loadDatastorePath(modal, dsName, '');
+  },
+
+  async _loadDatastorePath(modal, dsName, path) {
+    const listEl = modal.querySelector('#dsb-list');
+    const crumbEl = modal.querySelector('#dsb-breadcrumbs');
+    listEl.innerHTML = `<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`;
+    // Breadcrumbs
+    const parts = path ? path.split('/').filter(Boolean) : [];
+    const crumbs = [`<a href="#" data-dsb-path="" style="color:var(--accent)">${Utils.escapeHtml(dsName)}</a>`];
+    let acc = '';
+    for (const p of parts) { acc += (acc ? '/' : '') + p; crumbs.push(`<span style="color:var(--text-dim)">/</span><a href="#" data-dsb-path="${Utils.escapeHtml(acc)}" style="color:var(--accent)">${Utils.escapeHtml(p)}</a>`); }
+    crumbEl.innerHTML = crumbs.join(' ');
+    crumbEl.querySelectorAll('[data-dsb-path]').forEach(a => a.addEventListener('click', (e) => {
+      e.preventDefault(); this._loadDatastorePath(modal, dsName, a.getAttribute('data-dsb-path'));
+    }));
+
+    try {
+      const data = await Api.browseVSphereDatastore(this._hostId, dsName, path);
+      const entries = data.entries || [];
+      if (!entries.length) { listEl.innerHTML = `<div class="empty-msg">Empty folder.</div>`; return; }
+      const rows = entries.map(en => {
+        const childPath = path ? `${path}/${en.name}` : en.name;
+        if (en.isFolder) {
+          return `<tr class="dsb-row" data-folder="${Utils.escapeHtml(childPath)}" style="cursor:pointer">
+            <td><i class="fas fa-folder" style="color:var(--yellow);margin-right:8px"></i>${Utils.escapeHtml(en.name)}</td>
+            <td></td><td>${en.modified ? new Date(en.modified).toLocaleString() : ''}</td><td></td></tr>`;
+        }
+        const dlUrl = Api.vsphereDatastoreDownloadUrl(this._hostId, dsName, childPath);
+        return `<tr>
+          <td><i class="${this._fileIcon(en.name)}" style="color:var(--text-dim);margin-right:8px"></i>${Utils.escapeHtml(en.name)}</td>
+          <td style="text-align:right;white-space:nowrap">${en.fileSize != null ? this._fmtBytes(en.fileSize) : ''}</td>
+          <td style="white-space:nowrap">${en.modified ? new Date(en.modified).toLocaleString() : ''}</td>
+          <td><a class="btn btn-xs btn-secondary" href="${dlUrl}" title="Download"><i class="fas fa-download"></i></a></td>
+        </tr>`;
+      }).join('');
+      listEl.innerHTML = `<table class="table" style="margin:0"><thead><tr>
+        <th>Name</th><th style="text-align:right">Size</th><th>Modified</th><th></th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+      listEl.querySelectorAll('.dsb-row').forEach(r => r.addEventListener('click', () =>
+        this._loadDatastorePath(modal, dsName, r.getAttribute('data-folder'))));
+    } catch (err) {
+      listEl.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  _fmtBytes(b) {
+    if (b == null) return '';
+    if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(1) + ' GiB';
+    if (b >= 1024 ** 2) return (b / 1024 ** 2).toFixed(1) + ' MiB';
+    if (b >= 1024) return (b / 1024).toFixed(0) + ' KiB';
+    return b + ' B';
+  },
+
+  _fileIcon(name) {
+    const n = (name || '').toLowerCase();
+    if (n.endsWith('.iso')) return 'fas fa-compact-disc';
+    if (n.endsWith('.vmdk')) return 'fas fa-hdd';
+    if (n.endsWith('.vmx') || n.endsWith('.vmsd') || n.endsWith('.vmxf')) return 'fas fa-file-code';
+    if (n.endsWith('.log')) return 'fas fa-file-alt';
+    if (n.endsWith('.nvram')) return 'fas fa-microchip';
+    if (n.endsWith('.vswp')) return 'fas fa-exchange-alt';
+    return 'fas fa-file';
   },
 
   // Stacked bar: VMs (blue) + other (gray) + free (track), scaled to total.
