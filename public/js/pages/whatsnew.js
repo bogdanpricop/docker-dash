@@ -10,6 +10,77 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.18-alpha.1',
+      date: '2026-07-07',
+      title: 'Dashboard — quick Tools button',
+      changes: [
+        { type: 'improvement', text: 'A small "Tools" button in the Dashboard header (just before the GitHub link) jumps straight to System → Tools — one click to the utility belt (SSH Key Deployer, password/hash generators, converters, etc.) instead of Settings → Tools tab.' },
+      ],
+    },
+    {
+      version: '8.9.17-alpha.1',
+      date: '2026-07-07',
+      title: 'SSH Key Deployer — Test connection',
+      changes: [
+        { type: 'feature', text: 'New "Test connection" button next to "Generate & Deploy" in the SSH Key Deployer. Pre-flights the initial SSH login (password or existing key) BEFORE generating anything — confirms you can log in and reports the remote user + the exact authorized_keys path the deploy would write to. Read-only: it never touches authorized_keys. Green "Connected as <user> — will write to <path>" on success, friendly error otherwise (SSH off / wrong password / unreachable).' },
+      ],
+    },
+    {
+      version: '8.9.16-alpha.1',
+      date: '2026-07-07',
+      title: 'SSH Key Deployer (System → Tools)',
+      changes: [
+        { type: 'feature', text: 'New admin tool: generate an SSH keypair and push the PUBLIC key to a target host’s authorized_keys in one step. Targets: Linux / Docker host, VMware ESXi (root key at /etc/ssh/keys-root/authorized_keys), Proxmox / generic Linux, Git provider (GitHub/GitLab — paste instructions), or just-generate. Per target it asks only the relevant connection fields.' },
+        { type: 'feature', text: 'ed25519 (default) or RSA-4096, via Node crypto — ZERO new npm deps. The OpenSSH authorized_keys line and the ssh2-readable private key (openssh-key-v1 container for ed25519) are built by hand. SHA256 fingerprint shown. Private key is offered for download once and never stored on the server unless you explicitly attach it.' },
+        { type: 'feature', text: 'The initial connection (password or an existing private key) is used ONCE to install the key and is never stored. Idempotent — the key is only appended if not already present. When auto-deploy isn’t possible (SSH off, unreachable, or a Git provider), the wizard shows exact copy-paste commands + a public-key download instead of erroring.' },
+        { type: 'feature', text: 'On ESXi success it offers to attach the private key to a registered vSphere host, so the vSphere SSH Console + Hardware tab work with key auth immediately. Admin-only + audit-logged on every action.' },
+      ],
+    },
+    {
+      version: '8.9.15-alpha.2',
+      date: '2026-07-07',
+      title: 'vSphere / ESXi — interactive SSH console + datastore browse fixes',
+      changes: [
+        { type: 'feature', text: 'Interactive SSH console for ESXi hosts (like Docker exec): a real xterm.js terminal over an ssh2 PTY, streamed through the existing WebSocket protocol (ssh:start/input/resize). Admin-only, audit-logged. Runs esxcli/vim-cmd directly on the host.' },
+        { type: 'feature', text: '"Test SSH" button in the vSphere SSH-access section — verify host/port/user/password or private key before saving.' },
+        { type: 'fix', text: 'Datastore browser: files now show (not just folders) — removed the over-restrictive FileQuery from the SearchDatastore spec (empty query = all files + folders). File/folder lists given more vertical spacing so they’re no longer cramped.' },
+        { type: 'fix', text: 'Browse-datastore and pod-logs modals now use the app-standard .modal-content backdrop so they dim the page behind them properly.' },
+      ],
+    },
+    {
+      version: '8.9.14-alpha.5',
+      date: '2026-07-06',
+      title: 'vSphere / ESXi — Hardware tab, datastore file ops, service control',
+      changes: [
+        { type: 'feature', text: 'Hardware tab (SOS-inspired): CPU/memory/sensors/NICs/VIBs pulled live over SSH via esxcli --formatter=json. Requires SSH access configured on the host.' },
+        { type: 'feature', text: 'Datastore file browser with download (read-only via the ESXi /folder HTTPS API), plus write ops: upload files and delete files/folders.' },
+        { type: 'feature', text: 'Service control: start / stop / restart ESXi host services (e.g. TSM-SSH) from the Services tab. Write ops are admin-only + audit-logged.' },
+        { type: 'feature', text: 'VM cards with running/stopped filter, and a per-datastore usage breakdown (VMs / Other / Free stacked bars).' },
+        { type: 'fix', text: 'FileQueryFlags property order corrected in SearchDatastore_Task (the VMODL DataObject is order-sensitive — fixed "Required property modification is missing").' },
+      ],
+    },
+    {
+      version: '8.9.13-alpha.3',
+      date: '2026-07-06',
+      title: 'vSphere / ESXi — card-forward UI + live metrics + version/EOL/CVE',
+      changes: [
+        { type: 'feature', text: 'vSphere page rebuilt into a 7-tab, card-forward layout: Overview / VMs / Datastores / Network / Services / Hardware / Trends.' },
+        { type: 'feature', text: 'Live host & VM metrics: CPU %, memory %, uptime, guest/tools status, per-VM storage. ESXi version / build with EOL + known-CVE check (ported knowledge base) surfaced in a Version & Security card.' },
+        { type: 'feature', text: 'Trends tab with an SVG sparkline backed by a periodic snapshot poller (migration 079). Host-switcher dropdown now navigates to the right page per daemon type.' },
+        { type: 'improvement', text: 'Professional VMs & Services tabs — status badges, icons, mini usage bars — replacing the plain tables.' },
+      ],
+    },
+    {
+      version: '8.9.12-alpha.1',
+      date: '2026-07-06',
+      title: 'vSphere / ESXi — auth & MoRef fixes, non-Docker page polish',
+      changes: [
+        { type: 'fix', text: 'Standalone ESXi authentication fixed: resolve the real Managed Object References from RetrieveServiceContent (ha-* names) instead of assuming vCenter names, and call RetrieveServiceContent before Login. Fixes "session is not authenticated".' },
+        { type: 'fix', text: 'The vSphere page now resolves its OWN daemon host instead of following the global host selection (which could point at a non-vSphere host).' },
+        { type: 'fix', text: 'Non-Docker pages switched to the app-standard .tabs/.tab styling; endpoint normalization (auto-prepend https://); Info modal + Edit dialog for non-Docker hosts; correct host-card labels. Fixed a Test-connection crash and empty tab content.' },
+      ],
+    },
+    {
       version: '8.9.11-alpha.1',
       date: '2026-07-06',
       title: 'VMware vSphere / ESXi integration + Hosts docs tabs',

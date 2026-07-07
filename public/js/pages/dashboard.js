@@ -18,6 +18,7 @@ const DashboardPage = {
           <div class="page-subtitle">${i18n.t('pages.dashboard.subtitle')}</div>
         </div>
         <div class="page-actions" style="align-items:center">
+          <button class="btn btn-sm btn-secondary" data-tab-jump="tools" title="Open System → Tools" style="margin-right:8px"><i class="fas fa-toolbox"></i> Tools</button>
           <a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" class="text-muted text-xs" style="margin-right:8px" title="Docker Dash on GitHub"><i class="fab fa-github"></i></a>
           <span class="ws-status" id="ws-indicator">
             <i class="fas fa-circle"></i> <span>---</span>
