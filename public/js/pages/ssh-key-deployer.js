@@ -16,6 +16,8 @@ const SshKeyDeployer = {
       hint: 'Root key at /etc/ssh/keys-root/authorized_keys. SSH (TSM-SSH) must be enabled on the host.' },
     proxmox: { label: 'Proxmox / generic Linux', icon: 'fa-server', iconLib: 'fas', deploy: true,
       hint: 'Appends to ~/.ssh/authorized_keys (root for Proxmox).' },
+    windows: { label: 'Windows (OpenSSH)', icon: 'fa-windows', iconLib: 'fab', deploy: true,
+      hint: 'Needs OpenSSH Server enabled. Admin accounts use C:\\ProgramData\\ssh\\administrators_authorized_keys (ACLs set automatically); standard users use their profile .ssh.' },
     git:     { label: 'Git provider (GitHub / GitLab)', icon: 'fa-git-alt', iconLib: 'fab', deploy: false,
       hint: 'No API push — you paste the public key in the provider settings (instructions provided).' },
     manual:  { label: 'Just generate (I\'ll deploy myself)', icon: 'fa-key', iconLib: 'fas', deploy: false,
@@ -74,6 +76,14 @@ const SshKeyDeployer = {
           <select id="skd-authmode" class="form-control"><option value="password">Password</option><option value="key">Existing private key</option></select></div>
         <div class="form-group" id="skd-pw-wrap"><label>Password</label><input type="password" id="skd-password" class="form-control"></div>
         <div class="form-group" id="skd-key-wrap" style="display:none"><label>Existing private key (PEM)</label><textarea id="skd-existing-key" class="form-control" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
+        ${this._target === 'windows' ? `
+        <div class="form-group"><label>Account type <small class="text-muted">(where the key is stored)</small></label>
+          <select id="skd-winadmin" class="form-control">
+            <option value="1">Administrator → C:\\ProgramData\\ssh\\administrators_authorized_keys</option>
+            <option value="0">Standard user → %USERPROFILE%\\.ssh\\authorized_keys</option>
+          </select>
+          <small class="text-muted" style="display:block;margin-top:4px">"Test connection" auto-detects this.</small></div>
+        ` : ''}
       </div>
       <button class="btn btn-secondary" id="skd-test"><i class="fas fa-plug"></i> Test connection</button>
       <button class="btn btn-primary" id="skd-go" style="margin-left:8px"><i class="fas fa-bolt"></i> Generate &amp; Deploy</button>
@@ -112,7 +122,14 @@ const SshKeyDeployer = {
     try {
       const r = await Api.testSshConnection({ targetType: this._target, connection: conn });
       if (r && r.ok) {
-        statusEl.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Connected as <b>${Utils.escapeHtml(r.whoami)}</b> — will write to ${Utils.escapeHtml(r.path)}</span>`;
+        // Windows: auto-select the account type from the detected admin status.
+        if (this._target === 'windows' && typeof r.isAdmin === 'boolean') {
+          const sel = body.querySelector('#skd-winadmin');
+          if (sel) sel.value = r.isAdmin ? '1' : '0';
+        }
+        const admNote = (this._target === 'windows' && typeof r.isAdmin === 'boolean')
+          ? ` <span class="text-muted">(${r.isAdmin ? 'Administrator' : 'standard user'})</span>` : '';
+        statusEl.innerHTML = `<span style="color:var(--green)"><i class="fas fa-check-circle"></i> Connected as <b>${Utils.escapeHtml(r.whoami)}</b>${admNote} — will write to ${Utils.escapeHtml(r.path)}</span>`;
       } else {
         statusEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'Connection failed')}</span>`;
       }
@@ -127,6 +144,7 @@ const SshKeyDeployer = {
     const conn = { host: v('#skd-host').trim(), port: parseInt(v('#skd-port'), 10) || 22, user: v('#skd-user').trim() };
     if (v('#skd-authmode') === 'key') conn.privateKey = v('#skd-existing-key');
     else conn.password = v('#skd-password');
+    if (this._target === 'windows') conn.isAdmin = v('#skd-winadmin') !== '0';
     return conn;
   },
 
@@ -247,6 +265,21 @@ const SshKeyDeployer = {
 cat >> /etc/ssh/keys-root/authorized_keys <<'EOF'
 ${pub}
 EOF`;
+    } else if (this._target === 'windows') {
+      steps = `# On the Windows host, in an ELEVATED PowerShell (Run as administrator).
+# 1) Install + start OpenSSH Server (once):
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd; Set-Service -Name sshd -StartupType Automatic
+
+# 2a) ADMIN account — the default sshd_config serves admins from this file:
+$k = '${pub}'
+$f = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
+Add-Content -Path $f -Value $k
+icacls $f /inheritance:r /grant "SYSTEM:F" /grant "Administrators:F"
+
+# 2b) STANDARD user — profile .ssh instead:
+# $d = "$env:USERPROFILE\\.ssh"; New-Item -ItemType Directory -Force $d | Out-Null
+# Add-Content -Path "$d\\authorized_keys" -Value '${pub}'`;
     } else if (this._target === 'git') {
       steps = `# GitHub: Settings → SSH and GPG keys → New SSH key → paste the public key.
 #   https://github.com/settings/ssh/new

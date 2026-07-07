@@ -18,6 +18,21 @@ function _authorizedKeysPath(targetType, user) {
   return '~/.ssh/authorized_keys'; // linux / docker / proxmox / generic
 }
 
+// Windows OpenSSH authorized_keys path. Members of the Administrators group are
+// served from the machine-wide administrators_authorized_keys (the default
+// sshd_config `Match Group administrators` block), NOT their profile — a very
+// common gotcha. Standard users use their profile ~/.ssh.
+function _windowsKeysPath(isAdmin) {
+  return isAdmin
+    ? 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
+    : '%USERPROFILE%\\.ssh\\authorized_keys';
+}
+
+// PowerShell -EncodedCommand payload: base64 of UTF-16LE. Sidesteps ALL
+// cmd.exe/PowerShell quoting when we exec over SSH (the Windows sshd default
+// shell is cmd.exe, so we can't rely on POSIX quoting).
+function _psEncode(script) { return Buffer.from(script, 'utf16le').toString('base64'); }
+
 function _connect(connection) {
   return new Promise((resolve, reject) => {
     if (!connection || !connection.host || !connection.user) {
@@ -71,6 +86,36 @@ function _friendly(err) {
   const e = new Error(m); e.original = (err && err.message) || null; return e;
 }
 
+// Windows deploy: ensure the key file, append idempotently, and (for admin
+// accounts) lock the ACL to SYSTEM + Administrators with inheritance disabled —
+// sshd rejects administrators_authorized_keys otherwise. Everything runs as one
+// -EncodedCommand PowerShell payload so quoting survives the cmd.exe shell.
+async function _deployWindows(conn, pk, blob, isAdmin) {
+  const psq = (s) => String(s).replace(/'/g, "''"); // PowerShell single-quote literal escape
+  const dirExpr = isAdmin ? "Join-Path $env:ProgramData 'ssh'" : "Join-Path $env:USERPROFILE '.ssh'";
+  const fileName = isAdmin ? 'administrators_authorized_keys' : 'authorized_keys';
+  // SIDs (not localized names): SYSTEM = S-1-5-18, Administrators = S-1-5-32-544.
+  const acl = isAdmin
+    ? "icacls $f /inheritance:r /grant '*S-1-5-18:F' /grant '*S-1-5-32-544:F' | Out-Null;"
+    : '';
+  const script = [
+    "$ErrorActionPreference='Stop';",
+    `$dir = ${dirExpr};`,
+    `$f = Join-Path $dir '${fileName}';`,
+    'New-Item -ItemType Directory -Force -Path $dir | Out-Null;',
+    'if (-not (Test-Path $f)) { New-Item -ItemType File -Path $f | Out-Null; }',
+    `$key = '${psq(pk)}';`,
+    `$blob = '${psq(blob)}';`,
+    '$c = Get-Content -Path $f -Raw -ErrorAction SilentlyContinue;',
+    "if ($c -and $c.Contains($blob)) { $r='PRESENT'; } else { Add-Content -Path $f -Value $key; $r='ADDED'; }",
+    acl,
+    'Write-Output $r;',
+  ].join(' ');
+  const { code, out, errOut } = await _exec(conn, `powershell -NoProfile -NonInteractive -EncodedCommand ${_psEncode(script)}`);
+  if (code !== 0) throw new Error((errOut && errOut.trim()) || `Windows deploy failed (exit ${code})`);
+  return { alreadyPresent: /PRESENT/.test(out) };
+}
+
 /**
  * Append a public key to the target's authorized_keys (idempotent).
  * @param {object} p
@@ -82,9 +127,16 @@ function _friendly(err) {
 async function deployPublicKey({ targetType, connection, publicKey }) {
   if (!publicKey || !publicKey.trim()) throw new Error('publicKey is required');
   const pk = publicKey.trim();
-  const path = _authorizedKeysPath(targetType, connection && connection.user);
+  // The key body (base64 blob) is used for idempotent presence checks.
+  const blob = pk.split(' ')[1] || pk;
   const conn = await _connect(connection);
   try {
+    if (targetType === 'windows') {
+      const isAdmin = !!(connection && connection.isAdmin);
+      const r = await _deployWindows(conn, pk, blob, isAdmin);
+      return { ok: true, path: _windowsKeysPath(isAdmin), alreadyPresent: r.alreadyPresent };
+    }
+    const path = _authorizedKeysPath(targetType, connection && connection.user);
     if (targetType === 'esxi') {
       // ESXi: /etc/ssh/keys-<user>/ ; busybox sh, no `install`. Ensure dir + file.
       const dir = path.replace(/\/authorized_keys$/, '');
@@ -93,7 +145,6 @@ async function deployPublicKey({ targetType, connection, publicKey }) {
       await _exec(conn, `mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`);
     }
     // Idempotency: grep for the exact key body (the base64 blob) to avoid dupes.
-    const blob = pk.split(' ')[1] || pk;
     const check = await _exec(conn, `grep -qF ${_q(blob)} ${_q(path)} 2>/dev/null && echo PRESENT || echo ABSENT`);
     if (/PRESENT/.test(check.out)) {
       return { ok: true, path, alreadyPresent: true };
@@ -124,12 +175,23 @@ async function testKey({ connection, privateKey, passphrase }) {
 async function testConnection({ targetType, connection }) {
   const conn = await _connect(connection);
   try {
+    if (targetType === 'windows') {
+      // Report the remote user AND whether it's an Administrator, so the wizard
+      // can pick the right authorized_keys path automatically.
+      const script = "$id=[Security.Principal.WindowsIdentity]::GetCurrent();"
+        + "$adm=(New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator);"
+        + "Write-Output ($id.Name + '|' + $adm)";
+      const r = await _exec(conn, `powershell -NoProfile -NonInteractive -EncodedCommand ${_psEncode(script)}`);
+      const [name, adm] = (r.out || '').trim().split('|');
+      const isAdmin = /true/i.test(adm || '');
+      return { ok: true, whoami: name || (connection && connection.user) || '?', isAdmin, path: _windowsKeysPath(isAdmin), targetType };
+    }
     const r = await _exec(conn, 'whoami 2>/dev/null || id -un 2>/dev/null || echo "?"');
     const whoami = (r.out || '').trim() || (connection && connection.user) || '?';
     return { ok: true, whoami, path: _authorizedKeysPath(targetType, connection && connection.user), targetType };
   } finally { try { conn.end(); } catch { /* ignore */ } }
 }
 
-module.exports = { deployPublicKey, testKey, testConnection, _authorizedKeysPath, _internals: { _q, _friendly } };
+module.exports = { deployPublicKey, testKey, testConnection, _authorizedKeysPath, _internals: { _q, _friendly, _windowsKeysPath, _psEncode } };
 
 if (false) log.info();

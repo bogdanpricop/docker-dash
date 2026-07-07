@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.20-alpha.1',
+      date: '2026-07-07',
+      title: 'SSH Key Deployer — Windows (OpenSSH) target',
+      changes: [
+        { type: 'feature', text: 'New "Windows (OpenSSH)" target in the SSH Key Deployer. Windows uses a non-POSIX shell and a different key location, so it gets its own code path: the deploy runs as a single PowerShell -EncodedCommand payload (base64/UTF-16LE) so quoting survives the cmd.exe default shell — no reliance on mkdir/chmod/grep.' },
+        { type: 'feature', text: 'Account-type aware: Administrator accounts are served by C:\\ProgramData\\ssh\\administrators_authorized_keys (the default sshd_config Match Group block — a common gotcha), and the deploy locks that file’s ACL to SYSTEM + Administrators with inheritance off (by SID, locale-independent) as sshd requires. Standard users use %USERPROFILE%\\.ssh\\authorized_keys. "Test connection" auto-detects whether the account is an admin and pre-selects the right path.' },
+        { type: 'feature', text: 'Manual fallback for Windows: exact elevated-PowerShell steps (install/start OpenSSH Server, Add-Content, icacls) with a public-key download, shown when auto-deploy isn’t possible.' },
+      ],
+    },
+    {
       version: '8.9.19-alpha.1',
       date: '2026-07-07',
       title: 'Dashboard — vSphere / ESXi aware',
