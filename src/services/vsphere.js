@@ -531,8 +531,8 @@ class VSphereClient {
         <details>
           <fileType>true</fileType>
           <fileSize>true</fileSize>
-          <fileOwner>false</fileOwner>
           <modification>true</modification>
+          <fileOwner>false</fileOwner>
         </details>
         <sortFoldersFirst>true</sortFoldersFirst>
       </searchSpec>
