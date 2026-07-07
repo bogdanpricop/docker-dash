@@ -526,8 +526,6 @@ class VSphereClient {
       <_this type="HostDatastoreBrowser">${browser}</_this>
       <datastorePath>${this._xesc(dsPath)}</datastorePath>
       <searchSpec>
-        <query xsi:type="FolderFileQuery"/>
-        <query xsi:type="FileQuery"/>
         <details>
           <fileType>true</fileType>
           <fileSize>true</fileSize>

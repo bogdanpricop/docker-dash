@@ -53,6 +53,7 @@ const VSphereResourcesPage = {
         <h1><i class="fas fa-server"></i> VMware vSphere / ESXi <span class="badge badge-warning">alpha</span></h1>
         <div>
           ${hostSelector}
+          ${this._isAdmin() ? `<button class="btn btn-sm btn-secondary" id="vs-ssh"><i class="fas fa-terminal"></i> SSH Console</button>` : ''}
           <button class="btn btn-sm btn-secondary" id="vs-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
       </div>
@@ -64,6 +65,7 @@ const VSphereResourcesPage = {
     const hostSel = container.querySelector('#vs-host');
     if (hostSel) hostSel.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._load(); });
     container.querySelector('#vs-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#vs-ssh')?.addEventListener('click', () => this._openSshConsole());
     container.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._tab = e.target.getAttribute('data-tab');
@@ -440,6 +442,67 @@ const VSphereResourcesPage = {
     return !!(window.App && App.user && App.user.role === 'admin');
   },
 
+  // ─── v8.9.15-alpha.1 — interactive SSH console (xterm.js + WS) ──
+  _openSshConsole() {
+    const hostName = (this._hosts.find(h => h.id === this._hostId) || {}).name || 'ESXi';
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="width:900px;max-width:95vw;height:600px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-terminal"></i> SSH Console — ${Utils.escapeHtml(hostName)}
+            <span id="vs-ssh-status" style="font-size:12px;margin-left:10px;color:var(--text-dim)">connecting…</span></h3>
+          <button class="modal-close-btn"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" style="flex:1;padding:8px;background:#0d1117"><div id="vs-ssh-term" style="width:100%;height:100%"></div></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const statusEl = modal.querySelector('#vs-ssh-status');
+    const termEl = modal.querySelector('#vs-ssh-term');
+
+    if (typeof Terminal === 'undefined') {
+      termEl.innerHTML = `<div style="color:#eee;padding:16px">Terminal component not loaded.</div>`;
+      modal.querySelector('.modal-close-btn').addEventListener('click', () => modal.remove());
+      return;
+    }
+    const term = new Terminal({
+      cursorBlink: true, fontSize: 13,
+      fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
+      theme: { background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff', selectionBackground: '#264f78' },
+    });
+    let fit = null;
+    if (typeof FitAddon !== 'undefined') { fit = new FitAddon.FitAddon(); term.loadAddon(fit); }
+    term.open(termEl);
+    if (fit) setTimeout(() => fit.fit(), 30);
+
+    const send = (rows, cols) => WS.send('ssh:resize', { rows, cols });
+    const ro = new ResizeObserver(() => { if (fit) fit.fit(); if (active) send(term.rows, term.cols); });
+    ro.observe(termEl);
+    let active = false;
+    const dataDisp = term.onData((d) => { if (active) WS.send('ssh:input', { data: d }); });
+
+    const unsub = [
+      WS.on('ssh:ready', () => { active = true; statusEl.textContent = 'connected'; statusEl.style.color = 'var(--green)'; term.focus(); WS.send('ssh:resize', { rows: term.rows, cols: term.cols }); }),
+      WS.on('ssh:output', (m) => term.write(m.data)),
+      WS.on('ssh:end', () => { active = false; statusEl.textContent = 'disconnected'; statusEl.style.color = 'var(--red)'; term.write('\r\n\x1b[31m[Session ended]\x1b[0m\r\n'); }),
+      WS.on('ssh:error', (m) => { active = false; statusEl.textContent = 'error'; statusEl.style.color = 'var(--red)'; term.write(`\r\n\x1b[31m${(m.message || 'Connection failed')}\x1b[0m\r\n`); }),
+    ];
+
+    const cleanup = () => {
+      active = false;
+      try { WS.send('ssh:input', { data: '' }); } catch { /* ignore */ }
+      unsub.forEach(u => { try { u(); } catch { /* ignore */ } });
+      try { dataDisp.dispose(); } catch { /* ignore */ }
+      try { ro.disconnect(); } catch { /* ignore */ }
+      try { term.dispose(); } catch { /* ignore */ }
+      modal.remove();
+    };
+    modal.querySelector('.modal-close-btn').addEventListener('click', cleanup);
+    modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+
+    WS.send('ssh:start', { hostId: this._hostId, cols: term.cols, rows: term.rows });
+  },
+
   async _loadDatastorePath(modal, dsName, path) {
     this._dsbState = { dsName, path };
     const admin = this._isAdmin();
@@ -478,8 +541,10 @@ const VSphereResourcesPage = {
           <td style="text-align:right;white-space:nowrap"><a class="btn btn-xs btn-secondary" href="${dlUrl}" title="Download"><i class="fas fa-download"></i></a> ${delBtn(childPath, false)}</td>
         </tr>`;
       }).join('');
-      listEl.innerHTML = `<table class="table" style="margin:0"><thead><tr>
-        <th>Name</th><th style="text-align:right">Size</th><th>Modified</th><th></th>
+      listEl.innerHTML = `<style>#dsb-list .table td, #dsb-list .table th { padding: 12px 18px; }
+        #dsb-list .table tbody tr:hover { background: var(--surface2, rgba(0,0,0,0.03)); }</style>
+        <table class="table" style="margin:0"><thead><tr>
+        <th>Name</th><th style="text-align:right">Size</th><th>Modified</th><th style="width:110px"></th>
       </tr></thead><tbody>${rows}</tbody></table>`;
       listEl.querySelectorAll('.dsb-open').forEach(r => r.addEventListener('click', () =>
         this._loadDatastorePath(modal, dsName, r.getAttribute('data-folder'))));

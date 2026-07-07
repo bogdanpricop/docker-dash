@@ -225,6 +225,17 @@ class WsServer {
         this._handleExecResize(ws, msg);
         break;
 
+      // v8.9.15-alpha.1 — interactive SSH console to a vSphere/ESXi host.
+      case 'ssh:start':
+        this.startVsphereSsh(ws, msg.hostId || 0, msg.cols, msg.rows);
+        break;
+      case 'ssh:input':
+        this._handleSshInput(ws, msg);
+        break;
+      case 'ssh:resize':
+        this._handleSshResize(ws, msg);
+        break;
+
       case 'logs:subscribe': {
         const client2 = this.clients.get(ws);
         if (!client2) break;
@@ -446,6 +457,78 @@ class WsServer {
     try { await client.exec.resize({ w: msg.cols, h: msg.rows }); } catch { /* ignore */ }
   }
 
+  // ─── vSphere/ESXi SSH console (v8.9.15-alpha.1) ─────────────
+  _handleSshInput(ws, msg) {
+    const c = this.clients.get(ws);
+    if (!c || !c.sshStream) return;
+    try { c.sshStream.write(msg.data); } catch { /* ignore */ }
+  }
+
+  _handleSshResize(ws, msg) {
+    const c = this.clients.get(ws);
+    if (!c || !c.sshStream) return;
+    try { c.sshStream.setWindow(msg.rows, msg.cols, 0, 0); } catch { /* ignore */ }
+  }
+
+  /** Open an interactive SSH shell to a vSphere host's ESXi over ssh2. */
+  async startVsphereSsh(ws, hostId, cols = 80, rows = 24) {
+    const client = this.clients.get(ws);
+    // SSH to the hypervisor is powerful — admin only.
+    if (!client || client.user.role !== 'admin') {
+      ws.send(JSON.stringify({ type: 'ssh:error', message: 'Admin role required for the SSH console' }));
+      return;
+    }
+    let sshConfig, hostName;
+    try {
+      const { getDb } = require('../db');
+      const row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+      if (!row || row.daemon_type !== 'vsphere') throw new Error('Not a vSphere host');
+      hostName = row.name;
+      const cfg = require('../services/vsphere').decryptDaemonConfig(row.daemon_config);
+      sshConfig = cfg.sshConfig;
+      if (!sshConfig || !sshConfig.host || !sshConfig.user || !(sshConfig.password || sshConfig.privateKey)) {
+        throw new Error('No SSH credentials configured for this host (Hosts → Edit → SSH access)');
+      }
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'ssh:error', message: err.message }));
+      return;
+    }
+    const { Client: SshClient } = require('ssh2');
+    const conn = new SshClient();
+    conn.on('ready', () => {
+      conn.shell({ term: 'xterm-256color', cols, rows }, (err, stream) => {
+        if (err) { ws.send(JSON.stringify({ type: 'ssh:error', message: err.message })); try { conn.end(); } catch { /* ignore */ } return; }
+        client.sshConn = conn;
+        client.sshStream = stream;
+        ws.send(JSON.stringify({ type: 'ssh:ready' }));
+        const send = (d) => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ssh:output', data: d.toString('utf8') })); };
+        stream.on('data', send);
+        if (stream.stderr) stream.stderr.on('data', send);
+        stream.on('close', () => {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ssh:end' }));
+          try { conn.end(); } catch { /* ignore */ }
+          client.sshConn = null; client.sshStream = null;
+        });
+      });
+      try {
+        require('../services/audit').log({
+          userId: client.user.id, username: client.user.username,
+          action: 'vsphere_ssh_console', targetType: 'host', targetId: String(hostId),
+          details: { host: hostName }, ip: client.ip,
+        });
+      } catch { /* ignore */ }
+    });
+    conn.on('error', (err) => {
+      let m = err.message || 'SSH connection failed';
+      if (/ECONNREFUSED/.test(m)) m = 'SSH not enabled on this ESXi host (Services → start TSM-SSH), or the port is blocked.';
+      else if (/authentication|All configured authentication methods failed/i.test(m)) m = 'SSH authentication failed — check the SSH credentials.';
+      ws.send(JSON.stringify({ type: 'ssh:error', message: m }));
+    });
+    const opts = { host: sshConfig.host, port: sshConfig.port || 22, username: sshConfig.user, readyTimeout: 20000 };
+    if (sshConfig.privateKey) opts.privateKey = sshConfig.privateKey; else opts.password = sshConfig.password;
+    try { conn.connect(opts); } catch (err) { ws.send(JSON.stringify({ type: 'ssh:error', message: err.message })); }
+  }
+
   /** Start exec session for a client */
   async startExec(ws, containerId, shell = '/bin/sh', cols = 80, rows = 24, hostId = 0) {
     if (!config.features.exec) {
@@ -538,6 +621,8 @@ class WsServer {
       try { client.logStream.destroy(); } catch {}
       client.logStream = null;
     }
+    if (client.sshStream) { try { client.sshStream.close(); } catch {} client.sshStream = null; }
+    if (client.sshConn) { try { client.sshConn.end(); } catch {} client.sshConn = null; }
     this.clients.delete(ws);
     log.debug('Client cleaned up', { username: client.user?.username });
   }
