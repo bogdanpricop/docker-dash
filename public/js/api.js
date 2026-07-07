@@ -503,6 +503,7 @@ const Api = {
   getVSphereVMs(hostId)               { return this.get(`/vsphere/vms?hostId=${hostId}`); },
   getVSphereHosts(hostId)             { return this.get(`/vsphere/hosts?hostId=${hostId}`); },
   getVSphereDatastores(hostId)        { return this.get(`/vsphere/datastores?hostId=${hostId}`); },
+  getVSphereVersionCheck(hostId)      { return this.get(`/vsphere/version-check?hostId=${hostId}`); },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },

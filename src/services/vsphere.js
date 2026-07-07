@@ -249,9 +249,15 @@ class VSphereClient {
     const viewId = _extractTag(viewResp, 'returnval');
     if (!viewId) throw new Error('vSphere: CreateContainerView returned no ID');
 
-    // Step 2: retrieve properties
+    // Step 2: retrieve properties.
+    // v8.9.12-alpha.1 — richer per-VM data (ported from SOS ESXi Monitor):
+    // guest IP/hostname/tools, HW version, live cpu/mem usage, storage.
     const props = ['name', 'summary.runtime.powerState', 'summary.config.guestFullName',
-      'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid'];
+      'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid',
+      'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
+      'config.version',
+      'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
+      'summary.storage.committed', 'summary.storage.uncommitted'];
     const rawResp = await this._retrieveProperties(viewId, 'VirtualMachine', props);
     const objs = _extractObjects(rawResp);
     return objs.map(o => ({
@@ -262,6 +268,15 @@ class VSphereClient {
       memoryMB: parseInt(o.props['summary.config.memorySizeMB'], 10) || null,
       numCPU: parseInt(o.props['summary.config.numCpu'], 10) || null,
       uuid: o.props['summary.config.uuid'],
+      guestHostname: o.props['guest.hostName'] || null,
+      ipAddress: o.props['guest.ipAddress'] || null,
+      toolsStatus: o.props['guest.toolsStatus'] || null,
+      toolsVersion: o.props['guest.toolsVersion'] || null,
+      hwVersion: o.props['config.version'] || null,
+      cpuUsageMHz: parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0,
+      memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
+      storageCommittedBytes: parseInt(o.props['summary.storage.committed'], 10) || 0,
+      storageUncommittedBytes: parseInt(o.props['summary.storage.uncommitted'], 10) || 0,
     }));
   }
 
@@ -280,21 +295,54 @@ class VSphereClient {
 </soap:Envelope>`;
     const viewResp = await this._soapPost(createViewBody);
     const viewId = _extractTag(viewResp, 'returnval');
+    // v8.9.12-alpha.1 — live host metrics (ported from SOS ESXi Monitor):
+    // quickStats give CPU MHz used, memory MB used and uptime; product.*
+    // gives version/build/apiVersion; hardware.* the CPU spec + host UUID.
     const props = ['name', 'summary.runtime.connectionState', 'summary.hardware.model',
       'summary.hardware.numCpuCores', 'summary.hardware.cpuMhz', 'summary.hardware.memorySize',
-      'summary.config.product.fullName'];
+      'summary.hardware.numCpuThreads', 'summary.hardware.numCpuPkgs', 'summary.hardware.cpuModel',
+      'summary.hardware.uuid',
+      'summary.quickStats.overallCpuUsage', 'summary.quickStats.overallMemoryUsage',
+      'summary.quickStats.uptime', 'runtime.bootTime',
+      'summary.config.product.fullName', 'summary.config.product.version',
+      'summary.config.product.build', 'summary.config.product.apiVersion'];
     const rawResp = await this._retrieveProperties(viewId, 'HostSystem', props);
     const objs = _extractObjects(rawResp);
-    return objs.map(o => ({
-      moref: o.obj,
-      name: o.props['name'],
-      connectionState: o.props['summary.runtime.connectionState'],
-      model: o.props['summary.hardware.model'],
-      cpuCores: parseInt(o.props['summary.hardware.numCpuCores'], 10) || null,
-      cpuMHz: parseInt(o.props['summary.hardware.cpuMhz'], 10) || null,
-      memoryBytes: parseInt(o.props['summary.hardware.memorySize'], 10) || null,
-      version: o.props['summary.config.product.fullName'],
-    }));
+    return objs.map(o => {
+      const cpuMHz = parseInt(o.props['summary.hardware.cpuMhz'], 10) || 0;
+      const cpuCores = parseInt(o.props['summary.hardware.numCpuCores'], 10) || 0;
+      const memBytes = parseInt(o.props['summary.hardware.memorySize'], 10) || 0;
+      const cpuUsedMHz = parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0;
+      const memUsedMB = parseInt(o.props['summary.quickStats.overallMemoryUsage'], 10) || 0;
+      const cpuTotalMHz = cpuMHz * cpuCores;
+      const memTotalMB = memBytes ? Math.round(memBytes / (1024 * 1024)) : 0;
+      return {
+        moref: o.obj,
+        name: o.props['name'],
+        connectionState: o.props['summary.runtime.connectionState'],
+        model: o.props['summary.hardware.model'],
+        cpuModel: o.props['summary.hardware.cpuModel'] || null,
+        cpuCores,
+        cpuThreads: parseInt(o.props['summary.hardware.numCpuThreads'], 10) || null,
+        cpuPackages: parseInt(o.props['summary.hardware.numCpuPkgs'], 10) || null,
+        cpuMHz,
+        memoryBytes: memBytes || null,
+        hostUuid: o.props['summary.hardware.uuid'] || null,
+        version: o.props['summary.config.product.fullName'],
+        productVersion: o.props['summary.config.product.version'] || null,
+        build: o.props['summary.config.product.build'] || null,
+        apiVersion: o.props['summary.config.product.apiVersion'] || null,
+        // Live metrics + derived percentages.
+        cpuUsageMHz: cpuUsedMHz,
+        cpuTotalMHz,
+        cpuPercent: cpuTotalMHz ? Math.round((cpuUsedMHz / cpuTotalMHz) * 100) : null,
+        memoryUsageMB: memUsedMB,
+        memoryTotalMB: memTotalMB,
+        memoryPercent: memTotalMB ? Math.round((memUsedMB / memTotalMB) * 100) : null,
+        uptimeSeconds: parseInt(o.props['summary.quickStats.uptime'], 10) || null,
+        bootTime: o.props['runtime.bootTime'] || null,
+      };
+    });
   }
 
   async listDatastores() {
@@ -312,7 +360,8 @@ class VSphereClient {
 </soap:Envelope>`;
     const viewResp = await this._soapPost(createViewBody);
     const viewId = _extractTag(viewResp, 'returnval');
-    const props = ['name', 'summary.type', 'summary.capacity', 'summary.freeSpace', 'summary.accessible'];
+    const props = ['name', 'summary.type', 'summary.capacity', 'summary.freeSpace',
+      'summary.accessible', 'summary.maintenanceMode', 'summary.url'];
     const rawResp = await this._retrieveProperties(viewId, 'Datastore', props);
     const objs = _extractObjects(rawResp);
     return objs.map(o => ({
@@ -322,6 +371,8 @@ class VSphereClient {
       capacityBytes: parseInt(o.props['summary.capacity'], 10) || null,
       freeSpaceBytes: parseInt(o.props['summary.freeSpace'], 10) || null,
       accessible: o.props['summary.accessible'] === 'true',
+      maintenanceMode: o.props['summary.maintenanceMode'] || null,
+      url: o.props['summary.url'] || null,
     }));
   }
 
