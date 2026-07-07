@@ -11,6 +11,15 @@ const DashboardPage = {
   _widgetOrder: null,
 
   async render(container) {
+    // v8.9.19-alpha.1 — if the selected host is a vSphere/ESXi host, the Docker
+    // dashboard would run Docker APIs against a non-Docker daemon and show the
+    // wrong (or empty) data even though the switcher shows the ESXi server.
+    // Render a vSphere-specific summary for that host instead.
+    const _curHost = await this._resolveCurrentHost();
+    if (_curHost && _curHost.daemonType === 'vsphere') {
+      return this._renderVSphereDashboard(container, _curHost);
+    }
+
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -714,6 +723,203 @@ const DashboardPage = {
         },
       },
     });
+  },
+
+  // ─── vSphere / ESXi dashboard variant (v8.9.19) ──────────────────
+  // Resolve the host the Dashboard should represent: the explicitly-selected
+  // host, or (when none) the default / first host. Returns null on any error
+  // so the Docker path stays the default.
+  async _resolveCurrentHost() {
+    try {
+      const id = Api.getHostId();
+      const hosts = await Api.getHosts();
+      if (!Array.isArray(hosts) || !hosts.length) return null;
+      if (id) return hosts.find(h => h.id === id) || null;
+      return hosts.find(h => h.isDefault) || hosts[0];
+    } catch { return null; }
+  },
+
+  _renderVSphereDashboard(container, host) {
+    const hostId = host.id;
+    container.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h2><i class="fas fa-server" style="color:#22c55e;margin-right:8px"></i>${Utils.escapeHtml(host.name)}</h2>
+          <div class="page-subtitle"><i class="fab fa-vmware" style="margin-right:6px"></i>VMware vSphere / ESXi — dashboard summary</div>
+        </div>
+        <div class="page-actions" style="align-items:center">
+          <button class="btn btn-sm btn-secondary" data-tab-jump="tools" title="Open System → Tools" style="margin-right:8px"><i class="fas fa-toolbox"></i> Tools</button>
+          <a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" class="text-muted text-xs" style="margin-right:8px" title="Docker Dash on GitHub"><i class="fab fa-github"></i></a>
+          <button class="btn btn-sm btn-primary" id="vdash-open" style="margin-right:8px"><i class="fas fa-external-link-alt"></i> Full vSphere page</button>
+          <span class="text-muted text-sm" style="margin-right:8px"><i class="fas fa-clock" style="margin-right:4px"></i><span id="vdash-updated">—</span></span>
+          <button class="btn btn-sm" id="vdash-refresh"><i class="fas fa-sync-alt"></i> ${i18n.t('common.refresh')}</button>
+        </div>
+      </div>
+
+      <div id="vdash-error" style="display:none;margin-bottom:12px"></div>
+
+      <div class="stat-cards" id="vdash-stats">
+        <div class="stat-card"><div class="stat-icon green"><i class="fas fa-play-circle"></i></div><div class="stat-body"><div class="stat-value" id="vst-on">—</div><div class="stat-label">VMs powered on</div></div></div>
+        <div class="stat-card"><div class="stat-icon red"><i class="fas fa-stop-circle"></i></div><div class="stat-body"><div class="stat-value" id="vst-off">—</div><div class="stat-label">VMs powered off</div></div></div>
+        <div class="stat-card"><div class="stat-icon purple"><i class="fas fa-server"></i></div><div class="stat-body"><div class="stat-value" id="vst-hosts">—</div><div class="stat-label">ESXi hosts</div></div></div>
+        <div class="stat-card"><div class="stat-icon volumes"><i class="fas fa-hdd"></i></div><div class="stat-body"><div class="stat-value" id="vst-ds">—</div><div class="stat-label">Datastores</div></div></div>
+        <div class="stat-card"><div class="stat-icon" id="vst-sec-icon" style="background:var(--text-dim)"><i class="fas fa-shield-alt"></i></div><div class="stat-body"><div class="stat-value" id="vst-sec" style="font-size:16px">—</div><div class="stat-label"><i class="fas fa-lock" style="margin-right:4px"></i>Version</div></div></div>
+      </div>
+
+      <div class="card" id="host-info-card" style="margin-bottom:16px"><div class="card-body" style="padding:10px 16px"><div id="vdash-hostinfo" class="host-info-bar">${i18n.t('common.loading')}</div></div></div>
+
+      <div class="dash-grid" id="vdash-hosts"></div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3><i class="fas fa-hdd text-dim" style="margin-right:8px"></i>Datastores</h3></div>
+        <div class="card-body" id="vdash-datastores">${i18n.t('common.loading')}</div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3><i class="fas fa-desktop text-dim" style="margin-right:8px"></i>Virtual Machines</h3><span class="text-dim text-sm" id="vdash-vm-count"></span></div>
+        <div class="card-body" style="padding:0"><div id="vdash-vms" style="padding:12px 16px">${i18n.t('common.loading')}</div></div>
+      </div>
+    `;
+    container.querySelector('#vdash-open').addEventListener('click', () => App.navigate('/vsphere-resources'));
+    container.querySelector('#vdash-refresh').addEventListener('click', () => this._loadVSphere(hostId));
+    this._loadVSphere(hostId);
+    this._refreshTimer = setInterval(() => this._loadVSphere(hostId), 30000);
+  },
+
+  async _loadVSphere(hostId) {
+    const set = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    try {
+      const [info, hosts, vms, datastores, security] = await Promise.all([
+        Api.getVSphereInfo(hostId).catch(() => ({})),
+        Api.getVSphereHosts(hostId).catch(() => []),
+        Api.getVSphereVMs(hostId).catch(() => []),
+        Api.getVSphereDatastores(hostId).catch(() => []),
+        Api.getVSphereVersionCheck(hostId).catch(() => ({ hosts: [] })),
+      ]);
+      const hostsA = Array.isArray(hosts) ? hosts : [];
+      const vmsA = Array.isArray(vms) ? vms : [];
+      const dsA = Array.isArray(datastores) ? datastores : [];
+      const info2 = info || {};
+
+      const vmOn = vmsA.filter(v => v.powerState === 'poweredOn').length;
+      set('vst-on', vmOn);
+      set('vst-off', vmsA.length - vmOn);
+      set('vst-hosts', hostsA.length);
+      set('vst-ds', dsA.length);
+
+      // Version / security roll-up across all ESXi hosts.
+      const checks = ((security && security.hosts) || []).map(h => h.check).filter(Boolean);
+      let sev = { t: 'OK', bg: '#3fb950' };
+      if (!checks.length) sev = { t: 'n/a', bg: 'var(--text-dim)' };
+      else if (checks.some(c => c.isEndOfLife)) sev = { t: 'End of life', bg: '#f85149' };
+      else if (checks.some(c => (c.criticalCVECount || 0) > 0)) sev = { t: 'Critical CVEs', bg: '#f85149' };
+      else if (checks.some(c => (c.highCVECount || 0) > 0 || c.isEndOfSupportSoon)) sev = { t: 'Attention', bg: '#d29922' };
+      else if (checks.some(c => !c.isUpToDate)) sev = { t: 'Update available', bg: '#d29922' };
+      set('vst-sec', sev.t);
+      const secIcon = document.getElementById('vst-sec-icon');
+      if (secIcon) secIcon.style.background = sev.bg;
+
+      // Host info bar.
+      const hib = document.getElementById('vdash-hostinfo');
+      if (hib) {
+        const bits = [
+          info2.productFullName || info2.productName || 'vSphere',
+          info2.version ? `v${info2.version}${info2.build ? ` (build ${info2.build})` : ''}` : null,
+          info2.apiVersion ? `API ${info2.apiVersion}` : null,
+          `${hostsA.length} host(s) · ${vmsA.length} VM(s) · ${dsA.length} datastore(s)`,
+        ].filter(Boolean);
+        hib.innerHTML = bits.map(b => `<span style="margin-right:16px"><i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:6px;color:var(--text-dim)"></i>${Utils.escapeHtml(String(b))}</span>`).join('');
+      }
+
+      // Per-host CPU/Mem gauge cards.
+      const hostsEl = document.getElementById('vdash-hosts');
+      if (hostsEl) {
+        hostsEl.innerHTML = hostsA.length ? hostsA.map(h => `
+          <div class="card" style="padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(h.name || '—')}</strong>
+              <span class="badge" style="background:${h.connectionState === 'connected' ? '#3fb950' : '#f85149'};color:#fff;font-size:10px">${Utils.escapeHtml(h.connectionState || '?')}</span>
+            </div>
+            ${this._vBar('CPU', h.cpuPercent, `${h.cpuUsageMHz || 0} / ${h.cpuTotalMHz || 0} MHz`)}
+            ${this._vBar('Memory', h.memoryPercent, `${((h.memoryUsageMB || 0) / 1024).toFixed(1)} / ${((h.memoryTotalMB || 0) / 1024).toFixed(0)} GiB`)}
+            <div style="font-size:12px;color:var(--text-dim);display:flex;justify-content:space-between;margin-top:8px">
+              <span>${h.cpuCores || '?'}c / ${h.cpuThreads || '?'}t · ESXi ${Utils.escapeHtml(h.productVersion || '?')}</span>
+              <span>${this._vUptime(h.uptimeSeconds)}</span>
+            </div>
+          </div>`).join('') : '<div class="empty-msg" style="grid-column:1/-1">No ESXi hosts returned.</div>';
+      }
+
+      // Datastore usage bars.
+      const dsEl = document.getElementById('vdash-datastores');
+      if (dsEl) {
+        dsEl.innerHTML = dsA.length ? dsA.map(d => {
+          const cap = d.capacityBytes || 0, free = d.freeSpaceBytes || 0, used = cap - free;
+          const pct = cap ? Math.round(used / cap * 100) : 0;
+          const barCol = pct >= 90 ? '#f85149' : pct >= 75 ? '#d29922' : '#3fb950';
+          return `<div style="margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+              <strong>${Utils.escapeHtml(d.name || '—')}</strong>
+              <span class="text-dim">${this._vGiB(used)} / ${this._vGiB(cap)} GiB · ${pct}%</span>
+            </div>
+            <div style="height:8px;background:var(--surface3);border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${barCol}"></div></div>
+          </div>`;
+        }).join('') : '<div class="empty-msg">No datastores returned.</div>';
+      }
+
+      // VM list (compact — top 30 by power state then name).
+      const vmsEl = document.getElementById('vdash-vms');
+      set('vdash-vm-count', vmsA.length ? `${vmOn} running / ${vmsA.length} total` : '');
+      if (vmsEl) {
+        const sorted = vmsA.slice().sort((a, b) =>
+          (b.powerState === 'poweredOn') - (a.powerState === 'poweredOn') || String(a.name || '').localeCompare(String(b.name || '')));
+        const shown = sorted.slice(0, 30);
+        vmsEl.innerHTML = shown.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px">
+          ${shown.map(vm => {
+            const on = vm.powerState === 'poweredOn';
+            const dot = on ? '#3fb950' : vm.powerState === 'poweredOff' ? '#545d68' : '#d29922';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;min-width:0">
+              <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex:0 0 auto"></span>
+              <div style="min-width:0;flex:1">
+                <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
+                <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);text-align:right;flex:0 0 auto">${vm.numCPU || '?'}vCPU<br>${vm.memoryMB ? (vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1) + 'G' : '—'}</div>
+            </div>`;
+          }).join('')}
+        </div>${sorted.length > 30 ? `<div class="text-dim text-sm" style="margin-top:8px">+ ${sorted.length - 30} more — see the full vSphere page.</div>` : ''}` : '<div class="empty-msg">No virtual machines returned.</div>';
+      }
+
+      const upd = document.getElementById('vdash-updated');
+      if (upd) upd.textContent = new Date().toLocaleTimeString();
+      const err = document.getElementById('vdash-error');
+      if (err) err.style.display = 'none';
+    } catch (e) {
+      const err = document.getElementById('vdash-error');
+      if (err) {
+        err.style.display = 'block';
+        err.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red)">
+          <i class="fas fa-exclamation-triangle"></i> Failed to load vSphere data: ${Utils.escapeHtml(e.message || String(e))}</div>`;
+      }
+    }
+  },
+
+  _vBar(label, pct, sub) {
+    const p = Math.max(0, Math.min(100, Math.round(pct || 0)));
+    const col = p >= 90 ? '#f85149' : p >= 75 ? '#d29922' : '#3fb950';
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span class="text-dim">${label}</span><span>${p}% <span class="text-dim">${Utils.escapeHtml(sub || '')}</span></span></div>
+      <div style="height:8px;background:var(--surface3);border-radius:4px;overflow:hidden"><div style="width:${p}%;height:100%;background:${col}"></div></div>
+    </div>`;
+  },
+
+  _vGiB(bytes) { return (( bytes || 0) / (1024 ** 3)).toFixed(0); },
+
+  _vUptime(sec) {
+    sec = sec || 0;
+    const d = Math.floor(sec / 86400);
+    if (d > 0) return `${d}d up`;
+    const h = Math.floor(sec / 3600);
+    return h > 0 ? `${h}h up` : `${Math.floor(sec / 60)}m up`;
   },
 
   destroy() {

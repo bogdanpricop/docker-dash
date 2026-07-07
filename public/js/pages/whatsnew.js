@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.19-alpha.1',
+      date: '2026-07-07',
+      title: 'Dashboard — vSphere / ESXi aware',
+      changes: [
+        { type: 'feature', text: 'When the selected host is a VMware vSphere / ESXi host, the Dashboard now shows a vSphere summary instead of running Docker widgets against a non-Docker daemon (which showed empty/wrong data even though the host switcher displayed the ESXi server). Stat cards: VMs powered on / off, ESXi hosts, datastores, and a version/security roll-up (green OK / yellow update-available / red EOL or critical CVE).' },
+        { type: 'feature', text: 'Below the cards: an info bar (product, version + build, API, counts), per-ESXi-host CPU/Memory gauge cards with uptime and connection state, datastore usage bars (green/amber/red by fill), and a compact VM grid (power dot, guest OS, vCPU/RAM — top 30 with a link to the full page). Auto-refreshes every 30s; "Full vSphere page" button for the complete 7-tab view.' },
+      ],
+    },
+    {
       version: '8.9.18-alpha.1',
       date: '2026-07-07',
       title: 'Dashboard — quick Tools button',
