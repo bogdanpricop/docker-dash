@@ -53,6 +53,21 @@ class VSphereClient {
       rejectUnauthorized: !config.skipTlsVerify,
     });
     this._sessionCookie = null;
+    // v8.9.11-alpha.8 — Managed Object References differ between vCenter and
+    // standalone ESXi. vCenter: sessionManager=SessionManager,
+    // propertyCollector=propertyCollector, rootFolder=group-d1. Standalone
+    // ESXi: sessionManager=ha-sessionmgr, propertyCollector=ha-property-
+    // collector, rootFolder=ha-folder-root. Hardcoding the vCenter values
+    // makes Login authenticate against a MoRef that doesn't exist on ESXi,
+    // yielding "The session is not authenticated" on the next call. We seed
+    // the vCenter defaults and OVERRIDE them from the real ServiceContent in
+    // retrieveServiceContent() (which works on both).
+    this._moRefs = {
+      sessionManager: { type: 'SessionManager', value: MO_SESSION_MANAGER },
+      propertyCollector: { type: 'PropertyCollector', value: MO_PROPERTY_COLLECTOR },
+      rootFolder: { type: 'Folder', value: MO_ROOT_FOLDER },
+      viewManager: { type: 'ViewManager', value: MO_VIEW_MANAGER },
+    };
   }
 
   get daemonType() { return 'vsphere'; }
@@ -145,11 +160,12 @@ class VSphereClient {
     if (!this._sessionCookie) {
       await this.retrieveServiceContent();
     }
+    const sm = this._moRefs.sessionManager;
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <Login xmlns="urn:vim25">
-      <_this type="SessionManager">${MO_SESSION_MANAGER}</_this>
+      <_this type="${sm.type}">${sm.value}</_this>
       <userName>${this._xesc(this._config.username)}</userName>
       <password>${this._xesc(this._config.password)}</password>
     </Login>
@@ -165,11 +181,12 @@ class VSphereClient {
 
   async logout() {
     if (!this._sessionCookie) return;
+    const sm = this._moRefs.sessionManager;
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <Logout xmlns="urn:vim25">
-      <_this type="SessionManager">${MO_SESSION_MANAGER}</_this>
+      <_this type="${sm.type}">${sm.value}</_this>
     </Logout>
   </soap:Body>
 </soap:Envelope>`;
@@ -189,6 +206,16 @@ class VSphereClient {
   </soap:Body>
 </soap:Envelope>`;
     const resp = await this._soapPost(body);
+    // Override the seeded MoRefs with the real ones for THIS server (ESXi or
+    // vCenter). Keep the seeded default if a ref isn't present in the reply.
+    const sm = _extractMoRef(resp, 'sessionManager');
+    const pc = _extractMoRef(resp, 'propertyCollector');
+    const rf = _extractMoRef(resp, 'rootFolder');
+    const vm = _extractMoRef(resp, 'viewManager');
+    if (sm) this._moRefs.sessionManager = sm;
+    if (pc) this._moRefs.propertyCollector = pc;
+    if (rf) this._moRefs.rootFolder = rf;
+    if (vm) this._moRefs.viewManager = vm;
     return {
       apiVersion: _extractTag(resp, 'apiVersion'),
       version: _extractTag(resp, 'version'),
@@ -211,8 +238,8 @@ class VSphereClient {
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <CreateContainerView xmlns="urn:vim25">
-      <_this type="ViewManager">${MO_VIEW_MANAGER}</_this>
-      <container type="Folder">${MO_ROOT_FOLDER}</container>
+      <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+      <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
       <type>VirtualMachine</type>
       <recursive>true</recursive>
     </CreateContainerView>
@@ -244,8 +271,8 @@ class VSphereClient {
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <CreateContainerView xmlns="urn:vim25">
-      <_this type="ViewManager">${MO_VIEW_MANAGER}</_this>
-      <container type="Folder">${MO_ROOT_FOLDER}</container>
+      <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+      <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
       <type>HostSystem</type>
       <recursive>true</recursive>
     </CreateContainerView>
@@ -276,8 +303,8 @@ class VSphereClient {
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <CreateContainerView xmlns="urn:vim25">
-      <_this type="ViewManager">${MO_VIEW_MANAGER}</_this>
-      <container type="Folder">${MO_ROOT_FOLDER}</container>
+      <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+      <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
       <type>Datastore</type>
       <recursive>true</recursive>
     </CreateContainerView>
@@ -308,7 +335,7 @@ class VSphereClient {
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <RetrievePropertiesEx xmlns="urn:vim25">
-      <_this type="PropertyCollector">${MO_PROPERTY_COLLECTOR}</_this>
+      <_this type="${this._moRefs.propertyCollector.type}">${this._moRefs.propertyCollector.value}</_this>
       <specSet>
         <propSet>
           <type>${type}</type>
@@ -346,6 +373,15 @@ function _extractFault(xml) {
   const fault = /<faultstring>([\s\S]*?)<\/faultstring>/.exec(xml);
   if (fault) return _decodeEntities(fault[1]);
   return null;
+}
+
+// v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent
+// reply: <sessionManager type="SessionManager">ha-sessionmgr</sessionManager>
+// -> { type: 'SessionManager', value: 'ha-sessionmgr' }. Namespace-tolerant.
+function _extractMoRef(xml, tag) {
+  const m = new RegExp(`<(?:\\w+:)?${tag}\\b[^>]*\\btype="([^"]+)"[^>]*>([^<]+)</(?:\\w+:)?${tag}>`).exec(xml);
+  if (!m) return null;
+  return { type: m[1], value: _decodeEntities(m[2].trim()) };
 }
 
 function _decodeEntities(s) {
@@ -414,7 +450,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef },
 };
 
 if (false) log.info();

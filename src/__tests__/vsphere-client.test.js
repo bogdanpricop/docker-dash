@@ -111,6 +111,21 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(_internals._extractFault(xml)).toBe('invalid login');
     });
 
+    it('extractMoRef parses a managed-object reference with type + value', () => {
+      const xml = '<returnval>' +
+        '<sessionManager type="SessionManager">ha-sessionmgr</sessionManager>' +
+        '<rootFolder type="Folder">ha-folder-root</rootFolder>' +
+        '</returnval>';
+      expect(_internals._extractMoRef(xml, 'sessionManager')).toEqual({ type: 'SessionManager', value: 'ha-sessionmgr' });
+      expect(_internals._extractMoRef(xml, 'rootFolder')).toEqual({ type: 'Folder', value: 'ha-folder-root' });
+      expect(_internals._extractMoRef(xml, 'viewManager')).toBeNull();
+    });
+
+    it('extractMoRef tolerates a namespace prefix', () => {
+      const xml = '<vim25:sessionManager type="SessionManager">SessionManager</vim25:sessionManager>';
+      expect(_internals._extractMoRef(xml, 'sessionManager')).toEqual({ type: 'SessionManager', value: 'SessionManager' });
+    });
+
     it('extractObjects parses RetrievePropertiesEx returnval blocks', () => {
       const xml = `
         <returnval>
@@ -142,12 +157,18 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       const seenBodies = [];
       // v8.9.11-alpha.7 — login() now issues RetrieveServiceContent FIRST to
       // establish the session, THEN Login. Queue two responses.
-      // 1) RetrieveServiceContent — sets the session cookie.
+      // 1) RetrieveServiceContent — returns standalone-ESXi MoRefs + cookie.
       mockHttps._mockNext((_opts, cb, req) => {
         seenBodies.push(req._writtenBody.toString('utf8'));
         const res = fakeResponse({
           status: 200,
-          body: '<soap:Envelope><soap:Body><RetrieveServiceContentResponse><returnval><about><version>8.0.0</version></about></returnval></RetrieveServiceContentResponse></soap:Body></soap:Envelope>',
+          body: '<soap:Envelope><soap:Body><RetrieveServiceContentResponse><returnval>' +
+            '<rootFolder type="Folder">ha-folder-root</rootFolder>' +
+            '<propertyCollector type="PropertyCollector">ha-property-collector</propertyCollector>' +
+            '<viewManager type="ViewManager">ViewManager</viewManager>' +
+            '<about><version>8.0.0</version></about>' +
+            '<sessionManager type="SessionManager">ha-sessionmgr</sessionManager>' +
+            '</returnval></RetrieveServiceContentResponse></soap:Body></soap:Envelope>',
           setCookie: 'vmware_soap_session="deadbeef"; Path=/; HttpOnly',
         });
         cb(res); res._fire();
@@ -168,6 +189,12 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(seenBodies[1]).toContain('<userName>root</userName>');
       // XML entity escape on the password
       expect(seenBodies[1]).toContain('<password>p@ss&lt;word&gt;</password>');
+      // CRITICAL: Login must target the ESXi sessionManager MoRef parsed from
+      // ServiceContent (ha-sessionmgr), NOT the hardcoded vCenter default.
+      expect(seenBodies[1]).toContain('ha-sessionmgr');
+      expect(c._moRefs.sessionManager.value).toBe('ha-sessionmgr');
+      expect(c._moRefs.rootFolder.value).toBe('ha-folder-root');
+      expect(c._moRefs.propertyCollector.value).toBe('ha-property-collector');
       expect(c._sessionCookie).toBe('vmware_soap_session="deadbeef"');
     });
 
