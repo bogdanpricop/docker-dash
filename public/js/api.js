@@ -27,7 +27,11 @@ const Api = {
   _appendHostId(path) {
     if (this._currentHostId === 0) return path;
     // Skip host parameter for auth, settings, hosts, and other non-Docker endpoints
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto'];
+    // v8.9.11-alpha.9 — /vsphere carries its OWN daemon host id (the page
+    // resolves the vSphere host explicitly), so the globally-selected host
+    // must NOT be auto-appended — otherwise a selected Docker host leaks in
+    // and the endpoint rejects it ("not a vSphere daemon").
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -493,10 +497,12 @@ const Api = {
   getNomadDeployments(namespace)      { return this.get(`/nomad/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
 
   // ─── vSphere / ESXi (v8.9.11-alpha.1) — read-only alpha ───
-  getVSphereInfo()                    { return this.get('/vsphere/info'); },
-  getVSphereVMs()                     { return this.get('/vsphere/vms'); },
-  getVSphereHosts()                   { return this.get('/vsphere/hosts'); },
-  getVSphereDatastores()              { return this.get('/vsphere/datastores'); },
+  // hostId is explicit: the vSphere page resolves its own daemon host so it
+  // works regardless of which host is selected in the top-bar switcher.
+  getVSphereInfo(hostId)              { return this.get(`/vsphere/info?hostId=${hostId}`); },
+  getVSphereVMs(hostId)               { return this.get(`/vsphere/vms?hostId=${hostId}`); },
+  getVSphereHosts(hostId)             { return this.get(`/vsphere/hosts?hostId=${hostId}`); },
+  getVSphereDatastores(hostId)        { return this.get(`/vsphere/datastores?hostId=${hostId}`); },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },

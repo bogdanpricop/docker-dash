@@ -9,12 +9,44 @@
 
 const VSphereResourcesPage = {
   _tab: 'vms',
+  _hostId: null,      // resolved vSphere host id (NOT the global selection)
+  _hosts: [],         // all registered vSphere hosts
 
   async render(container) {
+    // v8.9.11-alpha.9 — resolve the vSphere host(s) from the fleet, not the
+    // globally-selected host. A Docker host being selected must not leak into
+    // /vsphere calls.
+    try {
+      const allHosts = await Api.getHosts();
+      this._hosts = (allHosts || []).filter(h => h.daemonType === 'vsphere');
+    } catch { this._hosts = []; }
+
+    if (!this._hosts.length) {
+      container.innerHTML = `
+        <div class="page-header">
+          <h1><i class="fas fa-server"></i> VMware vSphere / ESXi <span class="badge badge-warning">alpha</span></h1>
+        </div>
+        <div class="empty-msg"><i class="fas fa-server" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>
+          No vSphere / ESXi host registered. Add one from
+          <a href="#/hosts">Hosts → Non-Docker host</a>.</div>`;
+      return;
+    }
+    // Keep a prior selection if still valid, else default to the first host.
+    if (!this._hostId || !this._hosts.some(h => h.id === this._hostId)) {
+      this._hostId = this._hosts[0].id;
+    }
+
+    const hostSelector = this._hosts.length > 1
+      ? `<select id="vs-host" class="form-control" style="width:auto;display:inline-block;margin-right:8px">
+           ${this._hosts.map(h => `<option value="${h.id}"${h.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(h.name)}</option>`).join('')}
+         </select>`
+      : `<span class="text-muted" style="margin-right:8px">${Utils.escapeHtml(this._hosts[0].name)}</span>`;
+
     container.innerHTML = `
       <div class="page-header">
         <h1><i class="fas fa-server"></i> VMware vSphere / ESXi <span class="badge badge-warning">alpha</span></h1>
         <div>
+          ${hostSelector}
           <button class="btn btn-sm btn-secondary" id="vs-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
       </div>
@@ -26,7 +58,13 @@ const VSphereResourcesPage = {
       </div>
       <div id="vs-tab-container">Loading...</div>
     `;
-    container.querySelector('#vs-refresh').addEventListener('click', () => this._load());
+    const hostSel = container.querySelector('#vs-host');
+    if (hostSel) hostSel.addEventListener('change', (e) => {
+      this._hostId = parseInt(e.target.value, 10);
+      this._loadInfo();
+      this._load();
+    });
+    container.querySelector('#vs-refresh').addEventListener('click', () => { this._loadInfo(); this._load(); });
     container.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this._tab = e.target.getAttribute('data-tab');
@@ -42,7 +80,7 @@ const VSphereResourcesPage = {
     const el = document.getElementById('vs-info-panel');
     if (!el) return;
     try {
-      const info = await Api.getVSphereInfo();
+      const info = await Api.getVSphereInfo(this._hostId);
       el.innerHTML = `
         <div class="card" style="margin-bottom:16px">
           <div class="card-body" style="display:flex;gap:24px;flex-wrap:wrap">
@@ -66,15 +104,15 @@ const VSphereResourcesPage = {
       let rows;
       switch (this._tab) {
         case 'vms':
-          rows = await Api.getVSphereVMs();
+          rows = await Api.getVSphereVMs(this._hostId);
           this._renderVMs(el, rows);
           break;
         case 'hosts':
-          rows = await Api.getVSphereHosts();
+          rows = await Api.getVSphereHosts(this._hostId);
           this._renderHosts(el, rows);
           break;
         case 'datastores':
-          rows = await Api.getVSphereDatastores();
+          rows = await Api.getVSphereDatastores(this._hostId);
           this._renderDatastores(el, rows);
           break;
       }
