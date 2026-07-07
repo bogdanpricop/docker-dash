@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.16-alpha.1] - 2026-07-07 — SSH Key Deployer (System → Tools)
+
+New admin tool that generates an SSH keypair and pushes the **public** key to a target host's `authorized_keys` in one step — with a manual-instructions fallback when automation isn't possible. Zero new npm deps (Node `crypto` for keygen, existing `ssh2` for transport).
+
+**What ships:**
+- `src/services/ssh-keygen.js` — ed25519 (default) / RSA-4096 keypairs via `crypto.generateKeyPairSync`. Node can't emit the OpenSSH public wire format nor an `ssh2`-parseable ed25519 private key, so both are built by hand: the `authorized_keys` line (`ssh-ed25519` / `ssh-rsa`, JWK → SSH string/mpint) and the `openssh-key-v1` private container for ed25519 (RSA uses PKCS#1, which `ssh2` reads). SHA256 fingerprint. 9 unit tests assert `ssh2` parses the output and the derived public blob round-trips.
+- `src/services/ssh-deploy.js` — one-shot `ssh2` connect (initial password **or** an existing key, used once and never stored), idempotent append to `authorized_keys`. Path per target: Linux / Docker / Proxmox → `~/.ssh/authorized_keys`; ESXi → `/etc/ssh/keys-<user>/authorized_keys`. POSIX-quoted commands, friendly error mapping (SSH-off / auth-failed / unreachable). `testKey()` verifies login with the newly deployed key.
+- `src/routes/ssh-keys.js` — `POST /generate|deploy|test|attach-vsphere`, `GET /vsphere-hosts`. Admin-only + `writeable` + audit-logged. Deploy failures return `ok:false` (not HTTP 500) so the wizard can render manual steps instead of erroring.
+- `public/js/pages/ssh-key-deployer.js` — `SshKeyDeployer` wizard: target picker (Linux/Docker, ESXi, Proxmox/Linux, Git provider, manual), key options, one-shot connection, **Generate & Deploy**. Shows the public key + fingerprint + a one-time private-key download, live deploy status, and target-specific copy-paste instructions on failure or for manual targets. On ESXi success it offers to attach the private key to a vSphere host so the SSH Console + Hardware tab work immediately.
+- **"SSH Key Deployer"** card in System → Tools (security category); dedicated wizard modal.
+
+Full suite: **1761 passing** across 108 suites.
+
 ## [8.9.11-alpha.1] - 2026-07-06 — VMware vSphere / ESXi integration + Hosts docs tabs
 
 ### VMware vSphere / ESXi (new daemon type)
