@@ -208,31 +208,81 @@ const VSphereResourcesPage = {
       </div>`;
   },
 
-  // ─── VMs (table) ────────────────────────────────────────────
+  // ─── VMs (polished table) ───────────────────────────────────
   _renderVMs(el, list) {
     if (!list || !list.length) {
       el.innerHTML = `<div class="empty-msg"><i class="fas fa-desktop" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>No VMs.</div>`;
       return;
     }
-    const rows = list.map(vm => {
-      const powerColor = vm.powerState === 'poweredOn' ? 'var(--green)' : vm.powerState === 'poweredOff' ? 'var(--text-dim)' : 'var(--yellow)';
+    const running = list.filter(v => v.powerState === 'poweredOn').length;
+    // Sort: powered-on first, then by name.
+    const sorted = [...list].sort((a, b) =>
+      (b.powerState === 'poweredOn') - (a.powerState === 'poweredOn') || String(a.name).localeCompare(String(b.name)));
+
+    const rows = sorted.map(vm => {
       const on = vm.powerState === 'poweredOn';
-      const toolsColor = vm.toolsStatus === 'toolsOk' ? 'var(--green)'
-        : (vm.toolsStatus && vm.toolsStatus.startsWith('toolsOld')) ? 'var(--yellow)' : 'var(--text-dim)';
+      const powerBadge = on
+        ? `<span class="badge badge-running"><span class="badge-dot"></span>On</span>`
+        : vm.powerState === 'poweredOff'
+          ? `<span class="badge badge-dead"><span class="badge-dot"></span>Off</span>`
+          : `<span class="badge badge-warning"><span class="badge-dot"></span>${Utils.escapeHtml((vm.powerState || '?').replace('powered', ''))}</span>`;
+      const tools = this._toolsBadge(vm.toolsStatus);
+      // Memory used vs allocated mini-bar (only meaningful when powered on).
+      const memPct = (on && vm.memoryMB) ? Math.min(100, Math.round((vm.memoryUsageMB / vm.memoryMB) * 100)) : null;
+      const memCell = vm.memoryMB
+        ? `<div style="font-size:12px">${(vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1)} GiB</div>${memPct !== null ? this._miniBar(memPct) : ''}`
+        : '—';
+      const cpuCell = `${vm.numCPU || '—'} vCPU${on && vm.cpuUsageMHz ? `<div style="font-size:10px;color:var(--text-dim)">${vm.cpuUsageMHz} MHz</div>` : ''}`;
       return `<tr>
-        <td><strong>${Utils.escapeHtml(vm.name || '—')}</strong></td>
-        <td style="color:${powerColor}">${Utils.escapeHtml((vm.powerState || '—').replace('powered', ''))}</td>
-        <td>${Utils.escapeHtml(vm.guestOS || '—')}</td>
-        <td>${Utils.escapeHtml(vm.ipAddress || '—')}</td>
-        <td style="color:${toolsColor};font-size:11px">${Utils.escapeHtml((vm.toolsStatus || '—').replace(/^tools/, ''))}</td>
-        <td>${vm.numCPU || '—'}${on && vm.cpuUsageMHz ? ` <span style="color:var(--text-dim);font-size:10px">(${vm.cpuUsageMHz} MHz)</span>` : ''}</td>
-        <td>${vm.memoryMB ? (vm.memoryMB / 1024).toFixed(1) + ' GiB' : '—'}${on && vm.memoryUsageMB ? ` <span style="color:var(--text-dim);font-size:10px">(${(vm.memoryUsageMB / 1024).toFixed(1)} used)</span>` : ''}</td>
-        <td>${vm.storageCommittedBytes ? (vm.storageCommittedBytes / (1024 ** 3)).toFixed(1) + ' GiB' : '—'}</td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <i class="${this._osIcon(vm.guestOS)}" style="color:var(--text-dim);width:16px;text-align:center"></i>
+          <div><strong>${Utils.escapeHtml(vm.name || '—')}</strong>
+            <div style="font-size:11px;color:var(--text-dim)">${Utils.escapeHtml(vm.guestOS || '')}</div></div>
+        </div></td>
+        <td>${powerBadge}</td>
+        <td>${vm.ipAddress ? `<code style="font-size:11px">${Utils.escapeHtml(vm.ipAddress)}</code>` : '<span class="text-muted">—</span>'}</td>
+        <td>${tools}</td>
+        <td style="text-align:right">${cpuCell}</td>
+        <td style="min-width:90px">${memCell}</td>
+        <td style="text-align:right">${vm.storageCommittedBytes ? (vm.storageCommittedBytes / (1024 ** 3)).toFixed(1) + ' GiB' : '<span class="text-muted">—</span>'}</td>
       </tr>`;
     }).join('');
-    el.innerHTML = `<table class="table"><thead><tr>
-      <th>Name</th><th>Power</th><th>Guest OS</th><th>IP</th><th>Tools</th><th>vCPU</th><th>Memory</th><th>Storage</th>
-    </tr></thead><tbody>${rows}</tbody></table>`;
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="text-muted" style="font-size:13px">${list.length} VM(s) · <span style="color:var(--green)">${running} running</span></div>
+      </div>
+      <table class="table"><thead><tr>
+        <th>Virtual Machine</th><th>Power</th><th>IP Address</th><th>Tools</th>
+        <th style="text-align:right">CPU</th><th>Memory</th><th style="text-align:right">Storage</th>
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  },
+
+  _toolsBadge(status) {
+    if (!status) return '<span class="text-muted">—</span>';
+    if (status === 'toolsOk') return `<span class="badge badge-running">OK</span>`;
+    if (status.startsWith('toolsOld')) return `<span class="badge badge-warning">Outdated</span>`;
+    if (status === 'toolsNotRunning') return `<span class="badge badge-dead">Not running</span>`;
+    return `<span class="badge badge-dead">Not installed</span>`;
+  },
+
+  _osIcon(guestOS) {
+    const s = (guestOS || '').toLowerCase();
+    if (s.includes('windows')) return 'fab fa-windows';
+    if (s.includes('ubuntu')) return 'fab fa-ubuntu';
+    if (s.includes('debian')) return 'fab fa-debian';
+    if (s.includes('red hat') || s.includes('rhel') || s.includes('centos') || s.includes('rocky') || s.includes('alma')) return 'fab fa-redhat';
+    if (s.includes('suse')) return 'fab fa-suse';
+    if (s.includes('linux')) return 'fab fa-linux';
+    if (s.includes('freebsd') || s.includes('bsd')) return 'fab fa-freebsd';
+    return 'fas fa-desktop';
+  },
+
+  _miniBar(pct, width = 70) {
+    const color = pct > 90 ? 'var(--red,#ef4444)' : pct > 75 ? 'var(--yellow,#eab308)' : 'var(--green,#22c55e)';
+    return `<div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+      <div style="flex:0 0 ${width}px;height:5px;background:var(--surface3,#e5e7eb);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(100, pct)}%;background:${color}"></div></div>
+      <span style="font-size:10px;color:var(--text-dim)">${pct}%</span></div>`;
   },
 
   // ─── Datastores (cards) ─────────────────────────────────────
@@ -271,17 +321,49 @@ const VSphereResourcesPage = {
     }</tbody></table>`;
   },
 
-  // ─── Services (table) ───────────────────────────────────────
+  // ─── Services (polished table) ──────────────────────────────
   _renderServices(el, list) {
-    if (!list || !list.length) { el.innerHTML = `<div class="empty-msg">No services (or read denied on this host).</div>`; return; }
-    el.innerHTML = `<table class="table"><thead><tr>
-      <th>Service</th><th>Key</th><th>Running</th><th>Startup policy</th>
-    </tr></thead><tbody>${list.map(s => `<tr>
-      <td><strong>${Utils.escapeHtml(s.label || s.key || '—')}</strong></td>
-      <td><code style="font-size:11px">${Utils.escapeHtml(s.key || '—')}</code></td>
-      <td style="color:${s.running ? 'var(--green)' : 'var(--text-dim)'}">${s.running ? 'running' : 'stopped'}</td>
-      <td>${Utils.escapeHtml(s.policy || '—')}</td>
-    </tr>`).join('')}</tbody></table>`;
+    if (!list || !list.length) {
+      el.innerHTML = `<div class="empty-msg"><i class="fas fa-cogs" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>No services (or read denied on this host).</div>`;
+      return;
+    }
+    const running = list.filter(s => s.running).length;
+    // Running services first, then alphabetical.
+    const sorted = [...list].sort((a, b) => (b.running - a.running) || String(a.label || a.key).localeCompare(String(b.label || b.key)));
+    const policyLabel = (p) => {
+      if (p === 'on' || p === 'automatic') return `<span class="badge badge-info">Automatic</span>`;
+      if (p === 'off') return `<span class="badge badge-dead">Disabled</span>`;
+      if (p === 'automatic') return `<span class="badge badge-info">Automatic</span>`;
+      return `<span class="text-muted" style="font-size:12px">${Utils.escapeHtml(p || '—')}</span>`;
+    };
+    const rows = sorted.map(s => `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <i class="${this._serviceIcon(s.key)}" style="color:var(--text-dim);width:16px;text-align:center"></i>
+        <div><strong>${Utils.escapeHtml(s.label || s.key || '—')}</strong>
+          <div style="font-size:11px;color:var(--text-dim)"><code>${Utils.escapeHtml(s.key || '')}</code>${s.required ? ' · required' : ''}</div></div>
+      </div></td>
+      <td>${s.running
+        ? `<span class="badge badge-running"><span class="badge-dot"></span>Running</span>`
+        : `<span class="badge badge-dead"><span class="badge-dot"></span>Stopped</span>`}</td>
+      <td>${policyLabel(s.policy)}</td>
+    </tr>`).join('');
+    el.innerHTML = `
+      <div class="text-muted" style="font-size:13px;margin-bottom:10px">${list.length} service(s) · <span style="color:var(--green)">${running} running</span></div>
+      <table class="table"><thead><tr><th>Service</th><th>Status</th><th>Startup policy</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  },
+
+  _serviceIcon(key) {
+    const k = (key || '').toLowerCase();
+    if (k.includes('ssh') || k === 'tsm-ssh') return 'fas fa-terminal';
+    if (k.includes('ntp')) return 'fas fa-clock';
+    if (k.includes('shell') || k === 'tsm') return 'fas fa-terminal';
+    if (k.includes('snmp')) return 'fas fa-network-wired';
+    if (k.includes('firewall') || k.includes('esxi-firewall')) return 'fas fa-fire';
+    if (k.includes('slp')) return 'fas fa-server';
+    if (k.includes('dcui')) return 'fas fa-desktop';
+    if (k.includes('syslog')) return 'fas fa-file-alt';
+    return 'fas fa-cog';
   },
 
   // ─── Trends (inline SVG sparkline — no chart lib) ───────────
