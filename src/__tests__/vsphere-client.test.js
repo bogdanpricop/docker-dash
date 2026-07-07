@@ -138,33 +138,59 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
   });
 
   describe('login flow', () => {
-    it('sends SOAP Login envelope and captures session cookie', async () => {
-      let seenBody = null;
+    it('retrieves service content first, then sends Login + captures cookie', async () => {
+      const seenBodies = [];
+      // v8.9.11-alpha.7 — login() now issues RetrieveServiceContent FIRST to
+      // establish the session, THEN Login. Queue two responses.
+      // 1) RetrieveServiceContent — sets the session cookie.
       mockHttps._mockNext((_opts, cb, req) => {
-        seenBody = req._writtenBody.toString('utf8');
+        seenBodies.push(req._writtenBody.toString('utf8'));
+        const res = fakeResponse({
+          status: 200,
+          body: '<soap:Envelope><soap:Body><RetrieveServiceContentResponse><returnval><about><version>8.0.0</version></about></returnval></RetrieveServiceContentResponse></soap:Body></soap:Envelope>',
+          setCookie: 'vmware_soap_session="deadbeef"; Path=/; HttpOnly',
+        });
+        cb(res); res._fire();
+      });
+      // 2) Login — authenticates the session.
+      mockHttps._mockNext((_opts, cb, req) => {
+        seenBodies.push(req._writtenBody.toString('utf8'));
         const res = fakeResponse({
           status: 200,
           body: '<soap:Envelope><soap:Body><LoginResponse></LoginResponse></soap:Body></soap:Envelope>',
-          setCookie: 'vmware_soap_session="deadbeef"; Path=/; HttpOnly',
         });
         cb(res); res._fire();
       });
       const c = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'p@ss<word>' });
       await c.login();
-      expect(seenBody).toContain('<Login xmlns="urn:vim25">');
-      expect(seenBody).toContain('<userName>root</userName>');
+      expect(seenBodies[0]).toContain('<RetrieveServiceContent xmlns="urn:vim25">');
+      expect(seenBodies[1]).toContain('<Login xmlns="urn:vim25">');
+      expect(seenBodies[1]).toContain('<userName>root</userName>');
       // XML entity escape on the password
-      expect(seenBody).toContain('<password>p@ss&lt;word&gt;</password>');
+      expect(seenBodies[1]).toContain('<password>p@ss&lt;word&gt;</password>');
       expect(c._sessionCookie).toBe('vmware_soap_session="deadbeef"');
     });
 
-    it('throws on missing session cookie', async () => {
+    it('surfaces a SOAP fault returned with HTTP 200 (bad credentials)', async () => {
+      // RetrieveServiceContent sets a cookie...
       mockHttps._mockNext((_opts, cb, _req) => {
-        const res = fakeResponse({ status: 200, body: '<Response/>' });
+        const res = fakeResponse({
+          status: 200,
+          body: '<soap:Envelope><soap:Body><RetrieveServiceContentResponse><returnval/></RetrieveServiceContentResponse></soap:Body></soap:Envelope>',
+          setCookie: 'vmware_soap_session="anon"; Path=/',
+        });
         cb(res); res._fire();
       });
-      const c = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
-      await expect(c.login()).rejects.toThrow(/no session cookie/);
+      // ...but Login returns a fault with HTTP 200.
+      mockHttps._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({
+          status: 200,
+          body: '<soap:Envelope><soap:Body><soap:Fault><faultstring>Cannot complete login due to an incorrect user name or password.</faultstring></soap:Fault></soap:Body></soap:Envelope>',
+        });
+        cb(res); res._fire();
+      });
+      const c = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'wrong' });
+      await expect(c.login()).rejects.toThrow(/incorrect user name or password/i);
     });
   });
 });

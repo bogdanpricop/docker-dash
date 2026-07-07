@@ -108,6 +108,16 @@ class VSphereClient {
               status: res.statusCode, vsphereResponse: raw.slice(0, 500),
             }));
           }
+          // v8.9.11-alpha.7 — vSphere can return a SOAP fault with HTTP 200
+          // (e.g. bad credentials, "not authenticated"). Detect it so a failed
+          // Login surfaces clearly instead of silently yielding an anonymous
+          // session that only fails on the next call.
+          const fault200 = _extractFault(raw);
+          if (fault200) {
+            return finish(null, Object.assign(new Error(`vSphere SOAP error: ${fault200}`), {
+              status: res.statusCode, vsphereResponse: raw.slice(0, 500),
+            }));
+          }
           finish(raw);
         });
       });
@@ -124,6 +134,17 @@ class VSphereClient {
   }
 
   async login() {
+    // v8.9.11-alpha.7 — proper vSphere SOAP flow: RetrieveServiceContent
+    // FIRST to establish the session (the server sets the
+    // vmware_soap_session cookie on this first request), THEN Login
+    // authenticates THAT session. Calling Login without first retrieving
+    // service content leaves some ESXi/vCenter builds with an
+    // unauthenticated session -> "The session is not authenticated" on the
+    // next call. Idempotent: retrieveServiceContent may be called again
+    // later by callers that want the About info.
+    if (!this._sessionCookie) {
+      await this.retrieveServiceContent();
+    }
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
@@ -134,8 +155,10 @@ class VSphereClient {
     </Login>
   </soap:Body>
 </soap:Envelope>`;
-    const resp = await this._soapPost(body);
-    // On success we should have captured Set-Cookie already.
+    await this._soapPost(body);
+    // A bad Login now throws via the SOAP-fault detection above, so reaching
+    // here means the session cookie (set during RetrieveServiceContent and
+    // authenticated by Login) is valid.
     if (!this._sessionCookie) throw new Error('vSphere login: no session cookie returned');
     return { ok: true };
   }

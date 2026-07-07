@@ -511,48 +511,56 @@ const HostsPage = {
   },
 
   _collectNonDockerFormData(content) {
-    const daemonType = content.querySelector('#ndh-type').value;
-    const name = content.querySelector('#ndh-name').value.trim();
+    // v8.9.11-alpha.7 — defensive reads. Both the create wizard (#ndh-type
+    // is a <select>) and the edit dialog (#ndh-type is a hidden input) expose
+    // the daemon type here, but never assume an element exists — a missing
+    // field must not throw an unhandled promise rejection from the Test button.
+    const val = (sel) => { const el = content.querySelector(sel); return el ? el.value : ''; };
+    const daemonType = val('#ndh-type');
+    if (!daemonType) return null;
+    const name = val('#ndh-name').trim();
     if (!name) return null;
     const daemonConfig = {};
+    // Checkbox reader (returns bool; false if the element is absent).
+    const chk = (sel) => { const el = content.querySelector(sel); return el ? el.checked : false; };
     switch (daemonType) {
       case 'incus':
       case 'lxd': {
-        const transport = content.querySelector('#ndh-transport').value;
+        const transport = val('#ndh-transport') || 'unix';
         daemonConfig.transport = transport;
         if (transport === 'unix') {
-          daemonConfig.socket = content.querySelector('#ndh-socket').value.trim();
+          daemonConfig.socket = val('#ndh-socket').trim();
         } else {
-          daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
-          daemonConfig.cert = content.querySelector('#ndh-cert').value.trim();
-          daemonConfig.key = content.querySelector('#ndh-key').value.trim();
-          daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+          daemonConfig.endpoint = val('#ndh-endpoint').trim();
+          daemonConfig.cert = val('#ndh-cert').trim();
+          daemonConfig.key = val('#ndh-key').trim();
+          daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         }
         break;
       }
       case 'proxmox':
-        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
-        daemonConfig.tokenId = content.querySelector('#ndh-token-id').value.trim();
-        daemonConfig.tokenSecret = content.querySelector('#ndh-token-secret').value.trim();
-        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        daemonConfig.endpoint = val('#ndh-endpoint').trim();
+        daemonConfig.tokenId = val('#ndh-token-id').trim();
+        daemonConfig.tokenSecret = val('#ndh-token-secret').trim();
+        daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
       case 'kubernetes':
-        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
-        daemonConfig.token = content.querySelector('#ndh-token').value.trim();
-        daemonConfig.caCert = content.querySelector('#ndh-ca').value.trim() || undefined;
-        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        daemonConfig.endpoint = val('#ndh-endpoint').trim();
+        daemonConfig.token = val('#ndh-token').trim();
+        daemonConfig.caCert = val('#ndh-ca').trim() || undefined;
+        daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
       case 'nomad':
-        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
-        daemonConfig.token = content.querySelector('#ndh-token').value.trim() || undefined;
-        daemonConfig.caCert = content.querySelector('#ndh-ca').value.trim() || undefined;
-        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        daemonConfig.endpoint = val('#ndh-endpoint').trim();
+        daemonConfig.token = val('#ndh-token').trim() || undefined;
+        daemonConfig.caCert = val('#ndh-ca').trim() || undefined;
+        daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
       case 'vsphere':
-        daemonConfig.endpoint = content.querySelector('#ndh-endpoint').value.trim();
-        daemonConfig.username = content.querySelector('#ndh-username').value.trim();
-        daemonConfig.password = content.querySelector('#ndh-password').value;
-        daemonConfig.skipTlsVerify = content.querySelector('#ndh-skip-tls').checked;
+        daemonConfig.endpoint = val('#ndh-endpoint').trim();
+        daemonConfig.username = val('#ndh-username').trim();
+        daemonConfig.password = val('#ndh-password');
+        daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
     }
     return { name, daemonType, daemonConfig };
@@ -764,6 +772,10 @@ const HostsPage = {
     const dc = host.daemonConfig || {};
     const daemonType = host.daemonType;
     const html = `
+      <!-- v8.9.11-alpha.7 — hidden #ndh-type so _collectNonDockerFormData
+           (shared with the create wizard) can read the daemon type here too.
+           The disabled input below is display-only. -->
+      <input type="hidden" id="ndh-type" value="${Utils.escapeHtml(daemonType)}">
       <div class="form-group">
         <label>Daemon type</label>
         <input type="text" class="form-control" value="${Utils.escapeHtml(daemonType)}" disabled>
@@ -857,7 +869,9 @@ const HostsPage = {
             resultEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing…';
             resultEl.style.color = 'var(--text-dim)';
             try {
-              const r = await Api.testNonDockerHost(data.daemonType, data.daemonConfig);
+              // Pass host.id so the backend merges stored secrets for any
+              // field left blank ("already set — leave blank to keep").
+              const r = await Api.testNonDockerHost(data.daemonType, data.daemonConfig, host.id);
               if (r && r.ok) {
                 const s = r.summary || {};
                 const bits = [];

@@ -746,9 +746,11 @@ const Api = {
   getHosts() { return this.get('/hosts'); },
   getHost(id) { return this.get(`/hosts/${id}`); },
   createHost(data) { return this.post('/hosts', data); },
-  // v8.9.11-alpha.3 — test non-Docker host connection (wizard "Test" button)
-  testNonDockerHost(daemonType, daemonConfig) {
-    return this.post('/hosts/test-non-docker', { daemonType, daemonConfig });
+  // v8.9.11-alpha.3 — test non-Docker host connection (wizard "Test" button).
+  // hostId (optional) lets the Edit dialog test with stored secrets it can't
+  // see: the backend merges blank fields from the saved daemon_config.
+  testNonDockerHost(daemonType, daemonConfig, hostId) {
+    return this.post('/hosts/test-non-docker', { daemonType, daemonConfig, hostId });
   },
   updateHost(id, data) { return this.put(`/hosts/${id}`, data); },
   deleteHost(id) { return this.delete(`/hosts/${id}`); },

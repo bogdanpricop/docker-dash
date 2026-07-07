@@ -475,13 +475,42 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 // harmless read (info / version / login) to verify credentials.
 // Does NOT persist anything.
 router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  const { daemonType, daemonConfig } = req.body || {};
+  const { daemonType, hostId } = req.body || {};
+  let { daemonConfig } = req.body || {};
   if (!daemonType || !_NON_DOCKER_TYPES.has(daemonType)) {
     return res.status(400).json({ ok: false, error: `Unknown daemonType: ${daemonType}` });
   }
   if (!daemonConfig || typeof daemonConfig !== 'object') {
     return res.status(400).json({ ok: false, error: 'daemonConfig object is required' });
   }
+
+  // v8.9.11-alpha.7 — Test from the Edit dialog: secret fields (password,
+  // token, tokenSecret, cert, key) are left blank to mean "keep the stored
+  // value". When a hostId is supplied, decrypt the stored config and overlay
+  // only the NON-empty submitted fields, so Test works with the saved
+  // credential the frontend never sees.
+  if (hostId) {
+    try {
+      const db = getDb();
+      const existing = db.prepare('SELECT daemon_type, daemon_config FROM docker_hosts WHERE id = ?').get(hostId);
+      if (existing && existing.daemon_type === daemonType && existing.daemon_config) {
+        const decMod = {
+          incus: '../services/incus', lxd: '../services/incus',
+          proxmox: '../services/proxmox', kubernetes: '../services/kubernetes',
+          nomad: '../services/nomad', vsphere: '../services/vsphere',
+        }[daemonType];
+        const stored = require(decMod).decryptDaemonConfig(existing.daemon_config);
+        const merged = { ...stored };
+        for (const [k, v] of Object.entries(daemonConfig)) {
+          if (v === undefined) continue;
+          if (typeof v === 'string' && v === '') continue; // keep stored secret
+          merged[k] = v;
+        }
+        daemonConfig = merged;
+      }
+    } catch { /* fall back to the submitted config as-is */ }
+  }
+
   try {
     let summary;
     switch (daemonType) {
