@@ -210,6 +210,29 @@ router.post('/service/:action', requireAuth, requireRole('admin'), writeable,
   })
 );
 
+// v8.9.14-alpha.4 — SSH esxcli telemetry (hardware sensors / VIBs / NICs /
+// system). Read-only. Requires daemon_config.sshConfig on the host + SSH
+// enabled on the ESXi host. Returns { sshConfigured:false } (not an error)
+// when no SSH config is present, so the UI can show a setup hint.
+router.get('/ssh/telemetry', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  let client;
+  try { client = require('../services/vsphere-ssh').fromHostRow(row); }
+  catch (err) { return res.json({ sshConfigured: false, reason: err.message }); }
+  try {
+    res.json({ sshConfigured: true, ...(await client.collectAll()) });
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+}));
+
+router.post('/ssh/test', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  let client;
+  try { client = require('../services/vsphere-ssh').fromHostRow(row); }
+  catch (err) { return res.json({ ok: false, error: err.message }); }
+  try { res.json(await client.testSsh()); }
+  catch (err) { res.json({ ok: false, error: err.message }); }
+}));
+
 // v8.9.13-alpha.1 — metric history for the Trends tab.
 router.get('/history', requireAuth, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;

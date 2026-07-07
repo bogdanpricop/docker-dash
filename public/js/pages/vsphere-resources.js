@@ -46,7 +46,7 @@ const VSphereResourcesPage = {
 
     const tabs = [
       ['overview', 'Overview'], ['vms', 'VMs'], ['datastores', 'Datastores'],
-      ['network', 'Network'], ['services', 'Services'], ['trends', 'Trends'],
+      ['network', 'Network'], ['services', 'Services'], ['hardware', 'Hardware'], ['trends', 'Trends'],
     ];
     container.innerHTML = `
       <div class="page-header">
@@ -92,6 +92,7 @@ const VSphereResourcesPage = {
         }
         case 'network':    this._renderNetworks(el, await Api.getVSphereNetworks(this._hostId)); break;
         case 'services':   this._renderServices(el, await Api.getVSphereServices(this._hostId)); break;
+        case 'hardware':   this._renderHardware(el, await Api.getVSphereSshTelemetry(this._hostId)); break;
         case 'trends':     this._renderTrends(el, await Api.getVSphereHistory(this._hostId, 500)); break;
       }
     } catch (err) {
@@ -609,6 +610,86 @@ const VSphereResourcesPage = {
     if (k.includes('dcui')) return 'fas fa-desktop';
     if (k.includes('syslog')) return 'fas fa-file-alt';
     return 'fas fa-cog';
+  },
+
+  // ─── Hardware (SSH esxcli telemetry — batch 3) ──────────────
+  _renderHardware(el, data) {
+    if (!data || data.sshConfigured === false) {
+      el.innerHTML = `<div class="empty-msg"><i class="fas fa-microchip" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>
+        <div style="margin-bottom:8px"><strong>SSH not configured for this host.</strong></div>
+        <div style="font-size:13px;color:var(--text-dim);max-width:520px;margin:0 auto">
+          Physical hardware sensors (fans, PSU, temperatures), installed VIBs and physical NICs come from
+          <code>esxcli</code> over SSH. Enable the SSH service on the ESXi host, then add SSH credentials via
+          <a href="#/hosts">Hosts → Edit this host → SSH access</a>.${data && data.reason ? `<br><span style="color:var(--yellow)">${Utils.escapeHtml(data.reason)}</span>` : ''}
+        </div></div>`;
+      return;
+    }
+    const sec = [];
+    const s = data.system;
+    if (s) {
+      const kv = (l, v) => v ? `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--text-dim)">${l}</span><span>${Utils.escapeHtml(String(v))}</span></div>` : '';
+      const pf = s.platform || {}, cpu = s.cpu || {};
+      sec.push(`<div class="card" style="margin-bottom:16px"><div class="card-header"><i class="fas fa-server" style="margin-right:6px"></i><strong>System</strong></div>
+        <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px">
+          <div>${kv('Version', `${s.product || 'ESXi'} ${s.version || ''} ${s.update || ''}`)}${kv('Build', s.build)}${kv('Hostname', s.fqdn || s.hostname)}${kv('Vendor', pf.vendor)}${kv('Model', pf.model)}</div>
+          <div>${kv('Serial', pf.serial)}${kv('CPU', cpu.model)}${kv('Cores / threads', cpu.cores ? `${cpu.cores}c / ${cpu.threads || '?'}t` : null)}${kv('Sockets', cpu.packages)}${kv('Memory', s.memoryBytes ? (s.memoryBytes / (1024 ** 3)).toFixed(0) + ' GiB' : null)}</div>
+        </div></div>`);
+    }
+    // Sensors
+    const sn = data.sensors;
+    if (sn) {
+      const groups = [
+        ['Temperatures', 'fa-thermometer-half', sn.temperatures],
+        ['Fans', 'fa-fan', sn.fans],
+        ['Power supplies', 'fa-plug', sn.powerSupplies],
+        ['Voltages', 'fa-bolt', sn.voltages],
+      ].filter(g => (g[2] || []).length);
+      const overall = sn.overall || {};
+      const ocolor = overall.status === 'green' ? 'var(--green)' : overall.status === 'yellow' ? 'var(--yellow)' : overall.status === 'red' ? 'var(--red)' : 'var(--text-dim)';
+      if (groups.length) {
+        sec.push(`<div class="card" style="margin-bottom:16px">
+          <div class="card-header" style="display:flex;justify-content:space-between"><span><i class="fas fa-heartbeat" style="margin-right:6px"></i><strong>Hardware sensors</strong></span>
+            <span style="color:${ocolor};font-size:12px">${overall.healthy || 0} healthy · ${overall.degraded || 0} degraded</span></div>
+          <div class="card-body" style="display:flex;gap:16px;flex-wrap:wrap">
+          ${groups.map(([label, icon, arr]) => `<div style="flex:1 1 240px;min-width:220px">
+            <div style="font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px"><i class="fas ${icon}"></i> ${label}</div>
+            ${arr.slice(0, 12).map(x => {
+              const sevc = x.severity === 'red' ? 'var(--red)' : x.severity === 'yellow' ? 'var(--yellow)' : 'var(--green)';
+              return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px">${Utils.escapeHtml(x.name || '')}</span>
+                <span style="color:${sevc}">${x.reading != null ? Utils.escapeHtml(String(x.reading)) : ''} ${Utils.escapeHtml(x.units || '')}</span></div>`;
+            }).join('')}</div>`).join('')}
+          </div></div>`);
+      } else {
+        sec.push(`<div class="alert alert-info" style="margin-bottom:16px">No IPMI sensors reported (consumer/whitebox hardware has no BMC, or IPMI is unavailable).</div>`);
+      }
+    }
+    // NICs
+    const nics = data.nics;
+    if (nics && nics.length) {
+      sec.push(`<div class="card" style="margin-bottom:16px"><div class="card-header"><i class="fas fa-ethernet" style="margin-right:6px"></i><strong>Physical NICs</strong></div>
+        <table class="table" style="margin:0"><thead><tr><th>Name</th><th>Driver</th><th>Link</th><th>Speed</th><th>MAC</th><th>Description</th></tr></thead>
+        <tbody>${nics.map(n => `<tr>
+          <td><strong>${Utils.escapeHtml(n.name || '')}</strong></td><td>${Utils.escapeHtml(n.driver || '')}</td>
+          <td style="color:${n.link === 'up' || n.link === true ? 'var(--green)' : 'var(--text-dim)'}">${Utils.escapeHtml(String(n.link ?? ''))}</td>
+          <td>${n.speedMbps ? n.speedMbps + ' Mb/s' : ''} ${Utils.escapeHtml(n.duplex || '')}</td>
+          <td><code style="font-size:11px">${Utils.escapeHtml(n.mac || '')}</code></td><td style="font-size:11px">${Utils.escapeHtml(n.description || '')}</td>
+        </tr>`).join('')}</tbody></table></div>`);
+    }
+    // VIBs
+    const vibs = data.vibs;
+    if (vibs && vibs.length) {
+      sec.push(`<div class="card"><div class="card-header" style="display:flex;justify-content:space-between">
+          <span><i class="fas fa-cubes" style="margin-right:6px"></i><strong>Installed VIBs</strong></span>
+          <span style="font-size:12px;color:var(--text-dim)">${vibs.length}</span></div>
+        <div class="card-body" style="padding:0"><details><summary style="cursor:pointer;padding:10px 16px">Show ${vibs.length} packages</summary>
+        <table class="table" style="margin:0"><thead><tr><th>Name</th><th>Version</th><th>Vendor</th><th>Level</th><th>Installed</th></tr></thead>
+        <tbody>${vibs.map(v => `<tr>
+          <td>${Utils.escapeHtml(v.name || '')}</td><td><code style="font-size:11px">${Utils.escapeHtml(v.version || '')}</code></td>
+          <td>${Utils.escapeHtml(v.vendor || '')}</td><td>${Utils.escapeHtml(v.acceptanceLevel || '')}</td><td>${Utils.escapeHtml(v.installDate || '')}</td>
+        </tr>`).join('')}</tbody></table></details></div></div>`);
+    }
+    el.innerHTML = sec.join('') || `<div class="empty-msg">SSH connected but no telemetry returned.</div>`;
   },
 
   // ─── Trends (inline SVG sparkline — no chart lib) ───────────

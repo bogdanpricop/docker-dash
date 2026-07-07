@@ -504,6 +504,24 @@ const HostsPage = {
           <div class="form-group">
             <label><input type="checkbox" id="ndh-skip-tls" checked> Skip TLS verification (default; ESXi ships with a self-signed cert)</label>
           </div>
+          <details style="margin-top:6px">
+            <summary style="cursor:pointer;font-size:13px">SSH access (optional — unlocks hardware sensors / VIBs / NICs)</summary>
+            <div style="padding:8px 0">
+              <small class="text-muted">Requires the SSH service enabled on the ESXi host. Used only for read-only esxcli telemetry.</small>
+              <div class="form-group"><label>SSH host</label>
+                <input type="text" id="ndh-ssh-host" class="form-control" placeholder="(defaults to the endpoint host)"></div>
+              <div style="display:flex;gap:10px">
+                <div class="form-group" style="flex:0 0 100px"><label>SSH port</label>
+                  <input type="number" id="ndh-ssh-port" class="form-control" value="22"></div>
+                <div class="form-group" style="flex:1"><label>SSH user</label>
+                  <input type="text" id="ndh-ssh-user" class="form-control" value="root"></div>
+              </div>
+              <div class="form-group"><label>SSH password</label>
+                <input type="password" id="ndh-ssh-password" class="form-control" placeholder="(or paste a private key below)"></div>
+              <div class="form-group"><label>SSH private key (PEM, optional)</label>
+                <textarea id="ndh-ssh-key" class="form-control" rows="3" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."></textarea></div>
+            </div>
+          </details>
         `;
       default:
         return '';
@@ -556,12 +574,31 @@ const HostsPage = {
         daemonConfig.caCert = val('#ndh-ca').trim() || undefined;
         daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
-      case 'vsphere':
+      case 'vsphere': {
         daemonConfig.endpoint = val('#ndh-endpoint').trim();
         daemonConfig.username = val('#ndh-username').trim();
         daemonConfig.password = val('#ndh-password');
         daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
+        // Optional SSH config for esxcli telemetry (batch 3). Only include if
+        // a host or credential was provided; default the host to the endpoint.
+        const sshHost = val('#ndh-ssh-host').trim();
+        const sshUser = val('#ndh-ssh-user').trim();
+        const sshPassword = val('#ndh-ssh-password');
+        const sshKey = val('#ndh-ssh-key').trim();
+        if (sshUser && (sshPassword || sshKey)) {
+          let host = sshHost;
+          if (!host && daemonConfig.endpoint) {
+            try { host = new URL(daemonConfig.endpoint.match(/^https?:\/\//) ? daemonConfig.endpoint : 'https://' + daemonConfig.endpoint).hostname; }
+            catch { host = daemonConfig.endpoint; }
+          }
+          daemonConfig.sshConfig = {
+            host, port: parseInt(val('#ndh-ssh-port'), 10) || 22, user: sshUser,
+            ...(sshPassword ? { password: sshPassword } : {}),
+            ...(sshKey ? { privateKey: sshKey } : {}),
+          };
+        }
         break;
+      }
     }
     return { name, daemonType, daemonConfig };
   },

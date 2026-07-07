@@ -531,6 +531,8 @@ const Api = {
   vsphereServiceAction(hostId, action, serviceKey) {
     return this.post(`/vsphere/service/${action}?hostId=${hostId}`, { serviceKey });
   },
+  getVSphereSshTelemetry(hostId)      { return this.get(`/vsphere/ssh/telemetry?hostId=${hostId}`); },
+  testVSphereSsh(hostId)              { return this.post(`/vsphere/ssh/test?hostId=${hostId}`, {}); },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
