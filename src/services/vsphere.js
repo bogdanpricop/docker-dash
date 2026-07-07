@@ -70,6 +70,11 @@ class VSphereClient {
       // v8.9.13-alpha.1 — LicenseManager MoRef (vCenter: LicenseManager,
       // ESXi: ha-license-manager) resolved from ServiceContent.
       licenseManager: { type: 'LicenseManager', value: 'LicenseManager' },
+      // v8.9.14-alpha.2 — FileManager MoRef for datastore file delete
+      // (vCenter: FileManager, ESXi: ha-nfc-file-manager... actually
+      // 'ha-datastorebrowser'? no — FileManager on ESXi is 'ha-nfc-file-
+      // manager'? Resolved from ServiceContent; default is the vCenter value).
+      fileManager: { type: 'FileManager', value: 'FileManager' },
     };
   }
 
@@ -216,11 +221,13 @@ class VSphereClient {
     const rf = _extractMoRef(resp, 'rootFolder');
     const vm = _extractMoRef(resp, 'viewManager');
     const lm = _extractMoRef(resp, 'licenseManager');
+    const fm = _extractMoRef(resp, 'fileManager');
     if (sm) this._moRefs.sessionManager = sm;
     if (pc) this._moRefs.propertyCollector = pc;
     if (rf) this._moRefs.rootFolder = rf;
     if (vm) this._moRefs.viewManager = vm;
     if (lm) this._moRefs.licenseManager = lm;
+    if (fm) this._moRefs.fileManager = fm;
     return {
       apiVersion: _extractTag(resp, 'apiVersion'),
       version: _extractTag(resp, 'version'),
@@ -592,6 +599,111 @@ class VSphereClient {
       req.on('error', reject);
       req.end();
     });
+  }
+
+  // ─── v8.9.14-alpha.2 — Datastore upload/delete + service control ──
+  // WRITE operations. Callers must gate admin + audit at the route layer.
+
+  /**
+   * Stream-upload a file to a datastore via HTTPS PUT (/folder API).
+   * @param {string} dsName
+   * @param {string} filePath  relative path inside the datastore
+   * @param {stream.Readable} bodyStream  the incoming request body
+   * @param {number|string} contentLength  optional; enables PUT w/o chunking
+   */
+  async datastoreUpload(dsName, filePath, bodyStream, contentLength, dcPath = 'ha-datacenter') {
+    await this._ensureLoggedIn();
+    const encPath = String(filePath).split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    const url = new URL(`/folder/${encPath}`, this._config.endpoint);
+    url.searchParams.set('dsName', dsName);
+    url.searchParams.set('dcPath', dcPath);
+    const headers = { Cookie: this._sessionCookie || '', 'Content-Type': 'application/octet-stream' };
+    if (contentLength) headers['Content-Length'] = contentLength;
+    else headers['Transfer-Encoding'] = 'chunked';
+    return new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: url.hostname, port: url.port || 443, method: 'PUT',
+        path: url.pathname + url.search, headers, agent: this._agent,
+      }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          if (res.statusCode >= 400) {
+            return reject(Object.assign(new Error(`Datastore upload failed: HTTP ${res.statusCode}`),
+              { status: res.statusCode, body: Buffer.concat(chunks).toString('utf8').slice(0, 300) }));
+          }
+          resolve({ ok: true, status: res.statusCode });
+        });
+      });
+      req.on('error', reject);
+      bodyStream.on('error', (e) => { try { req.destroy(); } catch { /* ignore */ } reject(e); });
+      bodyStream.pipe(req);
+    });
+  }
+
+  /** Delete a datastore file/folder via FileManager.DeleteDatastoreFile_Task. */
+  async deleteDatastoreFile(dsName, filePath, dcPath = 'ha-datacenter') {
+    await this._ensureLoggedIn();
+    const fm = this._moRefs.fileManager;
+    const dsPath = `[${dsName}] ${filePath}`;
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <DeleteDatastoreFile_Task xmlns="urn:vim25">
+      <_this type="${fm.type}">${fm.value}</_this>
+      <name>${this._xesc(dsPath)}</name>
+      <datacenter type="Datacenter">${this._xesc(dcPath)}</datacenter>
+    </DeleteDatastoreFile_Task>
+  </soap:Body>
+</soap:Envelope>`;
+    // ESXi standalone has no Datacenter MoRef; DeleteDatastoreFile_Task there
+    // accepts the call without <datacenter> on some builds. Try with, and if
+    // it faults on the datacenter arg, retry without it.
+    let taskMoref;
+    try {
+      const resp = await this._soapPost(body);
+      taskMoref = _extractTag(resp, 'returnval');
+    } catch (err) {
+      const bodyNoDc = body.replace(/<datacenter[^>]*>[\s\S]*?<\/datacenter>/, '');
+      const resp = await this._soapPost(bodyNoDc);
+      taskMoref = _extractTag(resp, 'returnval');
+    }
+    if (!taskMoref) throw new Error('DeleteDatastoreFile_Task returned no task');
+    await this._waitForTask(taskMoref, 30_000);
+    return { ok: true };
+  }
+
+  /** Resolve a host's HostServiceSystem MoRef (configManager.serviceSystem). */
+  async _getServiceSystem(hostMoref) {
+    const raw = await this._retrievePropertiesDirect('HostSystem', hostMoref, ['configManager.serviceSystem']);
+    const objs = _extractObjects(raw);
+    return objs.length ? (objs[0].props['configManager.serviceSystem'] || '').trim() : '';
+  }
+
+  /**
+   * Start / stop / restart a host service.
+   * @param {string} hostMoref
+   * @param {string} serviceKey  e.g. "TSM-SSH", "ntpd"
+   * @param {'start'|'stop'|'restart'} action
+   */
+  async hostServiceAction(hostMoref, serviceKey, action) {
+    await this._ensureLoggedIn();
+    const op = { start: 'StartService', stop: 'StopService', restart: 'RestartService' }[action];
+    if (!op) throw new Error(`invalid service action: ${action}`);
+    if (!/^[A-Za-z0-9._-]+$/.test(serviceKey)) throw new Error('invalid service key');
+    const ss = await this._getServiceSystem(hostMoref);
+    if (!ss) throw new Error('HostServiceSystem unavailable on this host');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${op} xmlns="urn:vim25">
+      <_this type="HostServiceSystem">${ss}</_this>
+      <id>${this._xesc(serviceKey)}</id>
+    </${op}>
+  </soap:Body>
+</soap:Envelope>`;
+    await this._soapPost(body);   // synchronous op; faults throw
+    return { ok: true, action, serviceKey };
   }
 
   async _ensureLoggedIn() {

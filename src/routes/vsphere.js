@@ -5,7 +5,9 @@
 const { Router } = require('express');
 const { getDb } = require('../db');
 const { fromHostRow } = require('../services/vsphere');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
+const auditService = require('../services/audit');
+const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
 const asyncHandler = require('../utils/asyncHandler');
 
@@ -131,8 +133,6 @@ router.get('/datastore-download', requireAuth, asyncHandler(async (req, res) => 
   try {
     const c = await _getClient(row);
     const dl = await c.datastoreDownload(datastore, filePath);
-    const auditService = require('../services/audit');
-    const { getClientIp } = require('../utils/helpers');
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'vsphere_datastore_download', targetType: 'vsphere_datastore', targetId: datastore,
@@ -146,6 +146,69 @@ router.get('/datastore-download', requireAuth, asyncHandler(async (req, res) => 
     dl.stream.pipe(res);
   } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
+
+// v8.9.14-alpha.2 — WRITE ops: upload / delete / service control.
+// The upload route streams the raw request body straight to ESXi — the
+// global express.json() parser is content-type-gated so it does not consume
+// application/octet-stream bodies.
+router.put('/datastore-upload', requireAuth, requireRole('admin'), writeable,
+  asyncHandler(async (req, res) => {
+    const row = _getVSphereHost(req, res); if (!row) return;
+    const { datastore, path: filePath } = req.query;
+    if (!datastore || !filePath) return res.status(400).json({ error: 'datastore + path are required' });
+    try {
+      const c = await _getClient(row);
+      const result = await c.datastoreUpload(datastore, filePath, req, req.headers['content-length']);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'vsphere_datastore_upload', targetType: 'vsphere_datastore', targetId: datastore,
+        details: { hostId: req.hostId, path: filePath, bytes: req.headers['content-length'] || null },
+        ip: getClientIp(req),
+      });
+      res.json(result);
+    } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+  })
+);
+
+router.delete('/datastore-file', requireAuth, requireRole('admin'), writeable,
+  asyncHandler(async (req, res) => {
+    const row = _getVSphereHost(req, res); if (!row) return;
+    const { datastore, path: filePath } = req.query;
+    if (!datastore || !filePath) return res.status(400).json({ error: 'datastore + path are required' });
+    try {
+      const c = await _getClient(row);
+      const result = await c.deleteDatastoreFile(datastore, filePath);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'vsphere_datastore_delete', targetType: 'vsphere_datastore', targetId: datastore,
+        details: { hostId: req.hostId, path: filePath }, ip: getClientIp(req),
+      });
+      res.json(result);
+    } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+  })
+);
+
+router.post('/service/:action', requireAuth, requireRole('admin'), writeable,
+  asyncHandler(async (req, res) => {
+    const row = _getVSphereHost(req, res); if (!row) return;
+    const { action } = req.params;
+    const { serviceKey } = req.body || {};
+    if (!['start', 'stop', 'restart'].includes(action)) return res.status(400).json({ error: 'invalid action' });
+    if (!serviceKey) return res.status(400).json({ error: 'serviceKey is required' });
+    try {
+      const c = await _getClient(row);
+      let moref = req.body.moref;
+      if (!moref) { const hosts = await c.listHosts(); moref = hosts[0] && hosts[0].moref; }
+      const result = await c.hostServiceAction(moref, serviceKey, action);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: `vsphere_service_${action}`, targetType: 'vsphere_service', targetId: serviceKey,
+        details: { hostId: req.hostId }, ip: getClientIp(req),
+      });
+      res.json(result);
+    } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+  })
+);
 
 // v8.9.13-alpha.1 — metric history for the Trends tab.
 router.get('/history', requireAuth, asyncHandler(async (req, res) => {

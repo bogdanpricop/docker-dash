@@ -401,8 +401,10 @@ const VSphereResourcesPage = {
           <h3><i class="fas fa-folder-open"></i> Datastore: ${Utils.escapeHtml(dsName)}</h3>
           <button class="modal-close">&times;</button>
         </div>
-        <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <div id="dsb-breadcrumbs" style="font-size:13px;display:flex;gap:4px;flex-wrap:wrap;align-items:center"></div>
+          ${this._isAdmin() ? `<div><input type="file" id="dsb-file" style="display:none">
+            <button class="btn btn-sm btn-secondary" id="dsb-upload"><i class="fas fa-upload"></i> Upload here</button></div>` : ''}
         </div>
         <div class="modal-body" style="flex:1;overflow:auto;padding:0"><div id="dsb-list"></div></div>
       </div>`;
@@ -411,10 +413,35 @@ const VSphereResourcesPage = {
     modal.querySelector('.modal-close').addEventListener('click', close);
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     this._dsbState = { dsName, path: '' };
+    // Upload wiring (admin only).
+    const fileInput = modal.querySelector('#dsb-file');
+    const uploadBtn = modal.querySelector('#dsb-upload');
+    if (uploadBtn && fileInput) {
+      uploadBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', async () => {
+        const f = fileInput.files[0];
+        if (!f) return;
+        const dest = (this._dsbState.path ? this._dsbState.path + '/' : '') + f.name;
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Uploading ${Utils.escapeHtml(f.name)}…`;
+        try {
+          await Api.uploadVSphereDatastoreFile(this._hostId, dsName, dest, f);
+          Toast.success(`Uploaded ${f.name}`);
+          this._loadDatastorePath(modal, dsName, this._dsbState.path);
+        } catch (err) { Toast.error(err.message); }
+        finally { uploadBtn.disabled = false; uploadBtn.innerHTML = `<i class="fas fa-upload"></i> Upload here`; fileInput.value = ''; }
+      });
+    }
     this._loadDatastorePath(modal, dsName, '');
   },
 
+  _isAdmin() {
+    return !!(window.App && App.user && App.user.role === 'admin');
+  },
+
   async _loadDatastorePath(modal, dsName, path) {
+    this._dsbState = { dsName, path };
+    const admin = this._isAdmin();
     const listEl = modal.querySelector('#dsb-list');
     const crumbEl = modal.querySelector('#dsb-breadcrumbs');
     listEl.innerHTML = `<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i> Loading…</div>`;
@@ -432,26 +459,39 @@ const VSphereResourcesPage = {
       const data = await Api.browseVSphereDatastore(this._hostId, dsName, path);
       const entries = data.entries || [];
       if (!entries.length) { listEl.innerHTML = `<div class="empty-msg">Empty folder.</div>`; return; }
+      const delBtn = (childPath, isFolder) => admin
+        ? `<button class="btn btn-xs btn-danger" data-del="${Utils.escapeHtml(childPath)}" data-folder="${isFolder ? 1 : 0}" title="Delete"><i class="fas fa-trash"></i></button>`
+        : '';
       const rows = entries.map(en => {
         const childPath = path ? `${path}/${en.name}` : en.name;
         if (en.isFolder) {
-          return `<tr class="dsb-row" data-folder="${Utils.escapeHtml(childPath)}" style="cursor:pointer">
-            <td><i class="fas fa-folder" style="color:var(--yellow);margin-right:8px"></i>${Utils.escapeHtml(en.name)}</td>
-            <td></td><td>${en.modified ? new Date(en.modified).toLocaleString() : ''}</td><td></td></tr>`;
+          return `<tr>
+            <td class="dsb-open" data-folder="${Utils.escapeHtml(childPath)}" style="cursor:pointer"><i class="fas fa-folder" style="color:var(--yellow);margin-right:8px"></i>${Utils.escapeHtml(en.name)}</td>
+            <td></td><td>${en.modified ? new Date(en.modified).toLocaleString() : ''}</td><td style="text-align:right">${delBtn(childPath, true)}</td></tr>`;
         }
         const dlUrl = Api.vsphereDatastoreDownloadUrl(this._hostId, dsName, childPath);
         return `<tr>
           <td><i class="${this._fileIcon(en.name)}" style="color:var(--text-dim);margin-right:8px"></i>${Utils.escapeHtml(en.name)}</td>
           <td style="text-align:right;white-space:nowrap">${en.fileSize != null ? this._fmtBytes(en.fileSize) : ''}</td>
           <td style="white-space:nowrap">${en.modified ? new Date(en.modified).toLocaleString() : ''}</td>
-          <td><a class="btn btn-xs btn-secondary" href="${dlUrl}" title="Download"><i class="fas fa-download"></i></a></td>
+          <td style="text-align:right;white-space:nowrap"><a class="btn btn-xs btn-secondary" href="${dlUrl}" title="Download"><i class="fas fa-download"></i></a> ${delBtn(childPath, false)}</td>
         </tr>`;
       }).join('');
       listEl.innerHTML = `<table class="table" style="margin:0"><thead><tr>
         <th>Name</th><th style="text-align:right">Size</th><th>Modified</th><th></th>
       </tr></thead><tbody>${rows}</tbody></table>`;
-      listEl.querySelectorAll('.dsb-row').forEach(r => r.addEventListener('click', () =>
+      listEl.querySelectorAll('.dsb-open').forEach(r => r.addEventListener('click', () =>
         this._loadDatastorePath(modal, dsName, r.getAttribute('data-folder'))));
+      listEl.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const target = b.getAttribute('data-del');
+        if (!confirm(`Delete "${target}" from ${dsName}?\n\nThis is permanent.`)) return;
+        try {
+          await Api.deleteVSphereDatastoreFile(this._hostId, dsName, target);
+          Toast.success('Deleted');
+          this._loadDatastorePath(modal, dsName, path);
+        } catch (err) { Toast.error(err.message); }
+      }));
     } catch (err) {
       listEl.innerHTML = `<div class="empty-msg">Error: ${Utils.escapeHtml(err.message)}</div>`;
     }
@@ -535,11 +575,27 @@ const VSphereResourcesPage = {
             : `<span class="badge badge-dead"><span class="badge-dot"></span>Stopped</span>`}
           ${policyLabel(s.policy)}
         </div>
+        ${this._isAdmin() ? `<div style="display:flex;gap:6px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:8px">
+          ${s.running
+            ? `<button class="btn btn-xs btn-secondary" data-svc="stop" data-key="${Utils.escapeHtml(s.key)}" title="Stop"><i class="fas fa-stop"></i></button>
+               <button class="btn btn-xs btn-secondary" data-svc="restart" data-key="${Utils.escapeHtml(s.key)}" title="Restart"><i class="fas fa-redo"></i></button>`
+            : `<button class="btn btn-xs btn-secondary" data-svc="start" data-key="${Utils.escapeHtml(s.key)}" title="Start"><i class="fas fa-play"></i></button>`}
+        </div>` : ''}
       </div>`).join('');
 
     el.innerHTML = this._filterBar('svc', { all: list.length, running, stopped })
       + `<div style="display:flex;gap:12px;flex-wrap:wrap">${cards || '<div class="empty-msg">No services match this filter.</div>'}</div>`;
     this._wireFilterBar(el, 'svc', () => this._renderServices(el, null));
+    el.querySelectorAll('[data-svc]').forEach(b => b.addEventListener('click', async () => {
+      const action = b.getAttribute('data-svc'), key = b.getAttribute('data-key');
+      if ((action === 'stop') && key === 'TSM-SSH' && !confirm('Stop the SSH service? You may lose SSH access to this host.')) return;
+      b.disabled = true;
+      try {
+        await Api.vsphereServiceAction(this._hostId, action, key);
+        Toast.success(`Service ${key}: ${action} ok`);
+        this._renderServices(el, await Api.getVSphereServices(this._hostId));
+      } catch (err) { Toast.error(err.message); b.disabled = false; }
+    }));
   },
 
   _serviceIcon(key) {

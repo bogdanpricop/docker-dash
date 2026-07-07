@@ -514,6 +514,23 @@ const Api = {
   vsphereDatastoreDownloadUrl(hostId, datastore, path) {
     return `/api/vsphere/datastore-download?hostId=${hostId}&datastore=${encodeURIComponent(datastore)}&path=${encodeURIComponent(path)}`;
   },
+  // Upload streams the raw File as the body (octet-stream) so the server can
+  // pipe it straight to ESXi without multipart parsing.
+  async uploadVSphereDatastoreFile(hostId, datastore, path, file) {
+    const url = `/api/vsphere/datastore-upload?hostId=${hostId}&datastore=${encodeURIComponent(datastore)}&path=${encodeURIComponent(path)}`;
+    const headers = { 'Content-Type': 'application/octet-stream' };
+    if (this._bearerToken) headers['Authorization'] = `Bearer ${this._bearerToken}`;
+    const xsrf = this._readXsrfToken(); if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
+    const res = await fetch(url, { method: 'PUT', headers, credentials: 'same-origin', body: file });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Upload failed (${res.status})`); }
+    return res.json();
+  },
+  deleteVSphereDatastoreFile(hostId, datastore, path) {
+    return this.delete(`/vsphere/datastore-file?hostId=${hostId}&datastore=${encodeURIComponent(datastore)}&path=${encodeURIComponent(path)}`);
+  },
+  vsphereServiceAction(hostId, action, serviceKey) {
+    return this.post(`/vsphere/service/${action}?hostId=${hostId}`, { serviceKey });
+  },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
