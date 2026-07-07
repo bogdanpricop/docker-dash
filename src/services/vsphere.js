@@ -262,7 +262,10 @@ class VSphereClient {
       'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
       'config.version',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
-      'summary.storage.committed', 'summary.storage.uncommitted'];
+      'summary.storage.committed', 'summary.storage.uncommitted',
+      // v8.9.13-alpha.3 — per-datastore committed bytes, so the Datastores
+      // tab can attribute used space to VMs vs "other".
+      'storage.perDatastoreUsage'];
     const rawResp = await this._retrieveProperties(viewId, 'VirtualMachine', props);
     const objs = _extractObjects(rawResp);
     return objs.map(o => ({
@@ -282,6 +285,9 @@ class VSphereClient {
       memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
       storageCommittedBytes: parseInt(o.props['summary.storage.committed'], 10) || 0,
       storageUncommittedBytes: parseInt(o.props['summary.storage.uncommitted'], 10) || 0,
+      // Array of { datastore: moref, committed } parsed from
+      // storage.perDatastoreUsage (best-effort; [] if absent).
+      datastoreUsage: _parseDatastoreUsage(o.props['storage.perDatastoreUsage'] || ''),
     }));
   }
 
@@ -557,6 +563,23 @@ function _extractFault(xml) {
   const fault = /<faultstring>([\s\S]*?)<\/faultstring>/.exec(xml);
   if (fault) return _decodeEntities(fault[1]);
   return null;
+}
+
+// v8.9.13-alpha.3 — parse storage.perDatastoreUsage into
+// [{ datastore: moref, committed }]. Each entry is a
+// <VirtualMachineUsageOnDatastore> with <datastore> + <committed>.
+function _parseDatastoreUsage(xml) {
+  if (!xml) return [];
+  const out = [];
+  const re = /<VirtualMachineUsageOnDatastore[^>]*>([\s\S]*?)<\/VirtualMachineUsageOnDatastore>/g;
+  let m;
+  while ((m = re.exec(xml))) {
+    const block = m[1];
+    const dsMatch = /<datastore[^>]*>([^<]+)<\/datastore>/.exec(block);
+    const committed = parseInt(_extractTag(block, 'committed'), 10) || 0;
+    if (dsMatch) out.push({ datastore: dsMatch[1].trim(), committed });
+  }
+  return out;
 }
 
 // v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent

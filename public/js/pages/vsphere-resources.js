@@ -12,6 +12,10 @@ const VSphereResourcesPage = {
   _tab: 'overview',
   _hostId: null,      // resolved vSphere host id (NOT the global selection)
   _hosts: [],         // all registered vSphere hosts
+  _vmFilter: 'all',   // all | running | stopped
+  _svcFilter: 'all',  // all | running | stopped
+  _vmsCache: [],
+  _servicesCache: [],
 
   async render(container) {
     try {
@@ -78,7 +82,14 @@ const VSphereResourcesPage = {
       switch (this._tab) {
         case 'overview':   await this._renderOverview(el); break;
         case 'vms':        this._renderVMs(el, await Api.getVSphereVMs(this._hostId)); break;
-        case 'datastores': this._renderDatastores(el, await Api.getVSphereDatastores(this._hostId)); break;
+        case 'datastores': {
+          const [ds, vms] = await Promise.all([
+            Api.getVSphereDatastores(this._hostId),
+            Api.getVSphereVMs(this._hostId).catch(() => []),
+          ]);
+          this._renderDatastores(el, ds, vms);
+          break;
+        }
         case 'network':    this._renderNetworks(el, await Api.getVSphereNetworks(this._hostId)); break;
         case 'services':   this._renderServices(el, await Api.getVSphereServices(this._hostId)); break;
         case 'trends':     this._renderTrends(el, await Api.getVSphereHistory(this._hostId, 500)); break;
@@ -208,53 +219,79 @@ const VSphereResourcesPage = {
       </div>`;
   },
 
-  // ─── VMs (polished table) ───────────────────────────────────
+  // ─── VMs (elegant cards + running/stopped filter) ───────────
   _renderVMs(el, list) {
-    if (!list || !list.length) {
+    if (list) this._vmsCache = list;
+    list = this._vmsCache || [];
+    if (!list.length) {
       el.innerHTML = `<div class="empty-msg"><i class="fas fa-desktop" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>No VMs.</div>`;
       return;
     }
     const running = list.filter(v => v.powerState === 'poweredOn').length;
-    // Sort: powered-on first, then by name.
-    const sorted = [...list].sort((a, b) =>
+    const stopped = list.length - running;
+    const filtered = list.filter(v =>
+      this._vmFilter === 'all' ? true :
+      this._vmFilter === 'running' ? v.powerState === 'poweredOn' : v.powerState !== 'poweredOn');
+    const sorted = [...filtered].sort((a, b) =>
       (b.powerState === 'poweredOn') - (a.powerState === 'poweredOn') || String(a.name).localeCompare(String(b.name)));
 
-    const rows = sorted.map(vm => {
+    const cards = sorted.map(vm => {
       const on = vm.powerState === 'poweredOn';
       const powerBadge = on
         ? `<span class="badge badge-running"><span class="badge-dot"></span>On</span>`
         : vm.powerState === 'poweredOff'
           ? `<span class="badge badge-dead"><span class="badge-dot"></span>Off</span>`
           : `<span class="badge badge-warning"><span class="badge-dot"></span>${Utils.escapeHtml((vm.powerState || '?').replace('powered', ''))}</span>`;
-      const tools = this._toolsBadge(vm.toolsStatus);
-      // Memory used vs allocated mini-bar (only meaningful when powered on).
       const memPct = (on && vm.memoryMB) ? Math.min(100, Math.round((vm.memoryUsageMB / vm.memoryMB) * 100)) : null;
-      const memCell = vm.memoryMB
-        ? `<div style="font-size:12px">${(vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1)} GiB</div>${memPct !== null ? this._miniBar(memPct) : ''}`
-        : '—';
-      const cpuCell = `${vm.numCPU || '—'} vCPU${on && vm.cpuUsageMHz ? `<div style="font-size:10px;color:var(--text-dim)">${vm.cpuUsageMHz} MHz</div>` : ''}`;
-      return `<tr>
-        <td><div style="display:flex;align-items:center;gap:8px">
-          <i class="${this._osIcon(vm.guestOS)}" style="color:var(--text-dim);width:16px;text-align:center"></i>
-          <div><strong>${Utils.escapeHtml(vm.name || '—')}</strong>
-            <div style="font-size:11px;color:var(--text-dim)">${Utils.escapeHtml(vm.guestOS || '')}</div></div>
-        </div></td>
-        <td>${powerBadge}</td>
-        <td>${vm.ipAddress ? `<code style="font-size:11px">${Utils.escapeHtml(vm.ipAddress)}</code>` : '<span class="text-muted">—</span>'}</td>
-        <td>${tools}</td>
-        <td style="text-align:right">${cpuCell}</td>
-        <td style="min-width:90px">${memCell}</td>
-        <td style="text-align:right">${vm.storageCommittedBytes ? (vm.storageCommittedBytes / (1024 ** 3)).toFixed(1) + ' GiB' : '<span class="text-muted">—</span>'}</td>
-      </tr>`;
+      const kv = (label, val) => `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px">
+        <span style="color:var(--text-dim)">${label}</span><span style="text-align:right">${val}</span></div>`;
+      return `<div class="card" style="padding:14px;flex:1 1 300px;min-width:280px;max-width:420px;opacity:${on ? '1' : '0.75'}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <i class="${this._osIcon(vm.guestOS)}" style="font-size:20px;color:var(--text-dim);flex:0 0 auto"></i>
+            <div style="min-width:0">
+              <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
+              <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
+            </div>
+          </div>
+          ${powerBadge}
+        </div>
+        ${kv('IP', vm.ipAddress ? `<code style="font-size:11px">${Utils.escapeHtml(vm.ipAddress)}</code>` : '—')}
+        ${kv('Tools', this._toolsBadge(vm.toolsStatus))}
+        ${kv('CPU', `${vm.numCPU || '?'} vCPU${on && vm.cpuUsageMHz ? ` <span style="color:var(--text-dim)">· ${vm.cpuUsageMHz} MHz</span>` : ''}`)}
+        <div style="padding:3px 0;font-size:12px">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-dim)">Memory</span>
+            <span>${vm.memoryMB ? (vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1) + ' GiB' : '—'}</span></div>
+          ${memPct !== null ? this._miniBar(memPct, 999) : ''}
+        </div>
+        ${kv('Storage', vm.storageCommittedBytes ? (vm.storageCommittedBytes / (1024 ** 3)).toFixed(1) + ' GiB' : '—')}
+      </div>`;
     }).join('');
-    el.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="text-muted" style="font-size:13px">${list.length} VM(s) · <span style="color:var(--green)">${running} running</span></div>
-      </div>
-      <table class="table"><thead><tr>
-        <th>Virtual Machine</th><th>Power</th><th>IP Address</th><th>Tools</th>
-        <th style="text-align:right">CPU</th><th>Memory</th><th style="text-align:right">Storage</th>
-      </tr></thead><tbody>${rows}</tbody></table>`;
+
+    el.innerHTML = this._filterBar('vm', { all: list.length, running, stopped })
+      + `<div style="display:flex;gap:12px;flex-wrap:wrap">${cards || '<div class="empty-msg">No VMs match this filter.</div>'}</div>`;
+    this._wireFilterBar(el, 'vm', () => this._renderVMs(el, null));
+  },
+
+  // Segmented All / Running (n) / Stopped (n) filter control.
+  _filterBar(kind, counts) {
+    const cur = kind === 'vm' ? this._vmFilter : this._svcFilter;
+    const btn = (val, label) => `<button class="tab ${cur === val ? 'active' : ''}" data-filter="${val}" style="padding:5px 14px">${label}</button>`;
+    return `<div class="tabs" data-filterbar="${kind}" style="margin-bottom:14px">
+      ${btn('all', `All <span style="color:var(--text-dim)">${counts.all}</span>`)}
+      ${btn('running', `Running <span style="color:var(--green)">${counts.running}</span>`)}
+      ${btn('stopped', `Stopped <span style="color:var(--text-dim)">${counts.stopped}</span>`)}
+    </div>`;
+  },
+
+  _wireFilterBar(el, kind, rerender) {
+    el.querySelector(`[data-filterbar="${kind}"]`)?.querySelectorAll('[data-filter]').forEach(b => {
+      b.addEventListener('click', () => {
+        const v = b.getAttribute('data-filter');
+        if (kind === 'vm') this._vmFilter = v; else this._svcFilter = v;
+        rerender();
+      });
+    });
   },
 
   _toolsBadge(status) {
@@ -279,37 +316,91 @@ const VSphereResourcesPage = {
 
   _miniBar(pct, width = 70) {
     const color = pct > 90 ? 'var(--red,#ef4444)' : pct > 75 ? 'var(--yellow,#eab308)' : 'var(--green,#22c55e)';
+    const track = width >= 999 ? 'flex:1' : `flex:0 0 ${width}px`;
     return `<div style="display:flex;align-items:center;gap:6px;margin-top:2px">
-      <div style="flex:0 0 ${width}px;height:5px;background:var(--surface3,#e5e7eb);border-radius:3px;overflow:hidden">
+      <div style="${track};height:5px;background:var(--surface3,#e5e7eb);border-radius:3px;overflow:hidden">
         <div style="height:100%;width:${Math.min(100, pct)}%;background:${color}"></div></div>
       <span style="font-size:10px;color:var(--text-dim)">${pct}%</span></div>`;
   },
 
-  // ─── Datastores (cards) ─────────────────────────────────────
-  _renderDatastores(el, list) {
+  // ─── Datastores (usage breakdown: VMs vs other vs free) ─────
+  _renderDatastores(el, list, vms) {
     if (!list || !list.length) { el.innerHTML = `<div class="empty-msg">No datastores.</div>`; return; }
-    el.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap">` + list.map(d => {
-      const cap = d.capacityBytes || 0, free = d.freeSpaceBytes || 0, used = cap - free;
-      const pct = cap > 0 ? Math.round(100 * used / cap) : 0;
-      const color = pct > 90 ? 'var(--red,#ef4444)' : pct > 75 ? 'var(--yellow,#eab308)' : 'var(--green,#22c55e)';
-      const statusChip = d.maintenanceMode && d.maintenanceMode !== 'normal'
-        ? `<span class="badge" style="background:var(--yellow);color:#fff;font-size:10px">${Utils.escapeHtml(d.maintenanceMode)}</span>`
-        : (d.accessible ? '' : `<span class="badge" style="background:var(--red);color:#fff;font-size:10px">inaccessible</span>`);
-      return `<div class="card" style="padding:16px;flex:1;min-width:260px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <strong>${Utils.escapeHtml(d.name || '—')}</strong>
-          <span style="font-size:11px;color:var(--text-dim)">${Utils.escapeHtml(d.type || '')}</span>
+    vms = vms || [];
+    // Attribute committed VM bytes to each datastore MoRef.
+    const vmBytesByDs = {};
+    for (const vm of vms) {
+      for (const u of (vm.datastoreUsage || [])) {
+        vmBytesByDs[u.datastore] = (vmBytesByDs[u.datastore] || 0) + (u.committed || 0);
+      }
+    }
+    const GiB = (b) => (b / (1024 ** 3));
+    const fmt = (b) => GiB(b) >= 1024 ? (GiB(b) / 1024).toFixed(1) + ' TiB' : GiB(b).toFixed(0) + ' GiB';
+
+    // Cluster summary.
+    const totCap = list.reduce((s, d) => s + (d.capacityBytes || 0), 0);
+    const totFree = list.reduce((s, d) => s + (d.freeSpaceBytes || 0), 0);
+    const totUsed = totCap - totFree;
+    const totVM = list.reduce((s, d) => s + Math.min(vmBytesByDs[d.moref] || 0, (d.capacityBytes || 0) - (d.freeSpaceBytes || 0)), 0);
+    const totOther = Math.max(0, totUsed - totVM);
+    const summary = `
+      <div class="card" style="padding:16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <strong><i class="fas fa-hdd" style="margin-right:6px"></i>Storage usage — ${list.length} datastore(s)</strong>
+          <span style="font-size:12px;color:var(--text-dim)">${fmt(totUsed)} of ${fmt(totCap)} used</span>
         </div>
-        <div style="height:10px;background:var(--surface3,#e5e7eb);border-radius:5px;overflow:hidden;margin-bottom:6px">
-          <div style="height:100%;width:${Math.min(100, pct)}%;background:${color}"></div>
+        ${this._stackBar(totVM, totOther, totFree, totCap)}
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:10px;font-size:12px">
+          ${this._legend('#3b82f6', 'Virtual machines', fmt(totVM))}
+          ${this._legend('#9ca3af', 'Other (snapshots, ISOs, logs, swap)', fmt(totOther))}
+          ${this._legend('var(--surface3,#e5e7eb)', 'Free', fmt(totFree))}
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:12px">
-          <span style="color:${color};font-weight:600">${pct}% used</span>
-          <span style="color:var(--text-dim)">${(used / (1024 ** 3)).toFixed(0)} / ${(cap / (1024 ** 3)).toFixed(0)} GiB</span>
-        </div>
-        ${statusChip ? `<div style="margin-top:8px">${statusChip}</div>` : ''}
       </div>`;
-    }).join('') + `</div>`;
+
+    const cards = list.map(d => {
+      const cap = d.capacityBytes || 0, free = d.freeSpaceBytes || 0, used = cap - free;
+      const vmB = Math.min(vmBytesByDs[d.moref] || 0, used);
+      const otherB = Math.max(0, used - vmB);
+      const pct = cap > 0 ? Math.round(100 * used / cap) : 0;
+      const statusChip = d.maintenanceMode && d.maintenanceMode !== 'normal'
+        ? `<span class="badge badge-warning" style="font-size:10px">${Utils.escapeHtml(d.maintenanceMode)}</span>`
+        : (d.accessible ? '' : `<span class="badge badge-dead" style="font-size:10px">inaccessible</span>`);
+      return `<div class="card" style="padding:16px;flex:1 1 300px;min-width:280px;max-width:460px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div><strong>${Utils.escapeHtml(d.name || '—')}</strong>
+            <span style="font-size:11px;color:var(--text-dim);margin-left:6px">${Utils.escapeHtml(d.type || '')}</span></div>
+          ${statusChip}
+        </div>
+        ${this._stackBar(vmB, otherB, free, cap)}
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px">
+          <span style="font-weight:600;color:${pct > 90 ? 'var(--red)' : pct > 75 ? 'var(--yellow)' : 'var(--green)'}">${pct}% used</span>
+          <span style="color:var(--text-dim)">${fmt(used)} / ${fmt(cap)}</span>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:11px">
+          ${this._legend('#3b82f6', 'VMs', fmt(vmB))}
+          ${this._legend('#9ca3af', 'Other', fmt(otherB))}
+          ${this._legend('var(--surface3,#e5e7eb)', 'Free', fmt(free))}
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = summary + `<div style="display:flex;gap:12px;flex-wrap:wrap">${cards}</div>`;
+  },
+
+  // Stacked bar: VMs (blue) + other (gray) + free (track), scaled to total.
+  _stackBar(vm, other, free, total) {
+    if (!total) return '';
+    const p = (b) => (100 * b / total).toFixed(2);
+    return `<div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface3,#e5e7eb)">
+      <div style="width:${p(vm)}%;background:#3b82f6" title="VMs"></div>
+      <div style="width:${p(other)}%;background:#9ca3af" title="Other"></div>
+    </div>`;
+  },
+
+  _legend(color, label, value) {
+    return `<span style="display:inline-flex;align-items:center;gap:6px">
+      <span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block"></span>
+      <span style="color:var(--text-dim)">${Utils.escapeHtml(label)}</span>
+      <strong>${Utils.escapeHtml(value)}</strong></span>`;
   },
 
   // ─── Network (table) ────────────────────────────────────────
@@ -321,36 +412,44 @@ const VSphereResourcesPage = {
     }</tbody></table>`;
   },
 
-  // ─── Services (polished table) ──────────────────────────────
+  // ─── Services (auto-arranging cards + running/stopped filter) ─
   _renderServices(el, list) {
-    if (!list || !list.length) {
+    if (list) this._servicesCache = list;
+    list = this._servicesCache || [];
+    if (!list.length) {
       el.innerHTML = `<div class="empty-msg"><i class="fas fa-cogs" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>No services (or read denied on this host).</div>`;
       return;
     }
     const running = list.filter(s => s.running).length;
-    // Running services first, then alphabetical.
-    const sorted = [...list].sort((a, b) => (b.running - a.running) || String(a.label || a.key).localeCompare(String(b.label || b.key)));
-    const policyLabel = (p) => {
-      if (p === 'on' || p === 'automatic') return `<span class="badge badge-info">Automatic</span>`;
-      if (p === 'off') return `<span class="badge badge-dead">Disabled</span>`;
-      if (p === 'automatic') return `<span class="badge badge-info">Automatic</span>`;
-      return `<span class="text-muted" style="font-size:12px">${Utils.escapeHtml(p || '—')}</span>`;
-    };
-    const rows = sorted.map(s => `<tr>
-      <td><div style="display:flex;align-items:center;gap:8px">
-        <i class="${this._serviceIcon(s.key)}" style="color:var(--text-dim);width:16px;text-align:center"></i>
-        <div><strong>${Utils.escapeHtml(s.label || s.key || '—')}</strong>
-          <div style="font-size:11px;color:var(--text-dim)"><code>${Utils.escapeHtml(s.key || '')}</code>${s.required ? ' · required' : ''}</div></div>
-      </div></td>
-      <td>${s.running
-        ? `<span class="badge badge-running"><span class="badge-dot"></span>Running</span>`
-        : `<span class="badge badge-dead"><span class="badge-dot"></span>Stopped</span>`}</td>
-      <td>${policyLabel(s.policy)}</td>
-    </tr>`).join('');
-    el.innerHTML = `
-      <div class="text-muted" style="font-size:13px;margin-bottom:10px">${list.length} service(s) · <span style="color:var(--green)">${running} running</span></div>
-      <table class="table"><thead><tr><th>Service</th><th>Status</th><th>Startup policy</th></tr></thead>
-      <tbody>${rows}</tbody></table>`;
+    const stopped = list.length - running;
+    const filtered = list.filter(s =>
+      this._svcFilter === 'all' ? true : this._svcFilter === 'running' ? s.running : !s.running);
+    const sorted = [...filtered].sort((a, b) => (b.running - a.running) || String(a.label || a.key).localeCompare(String(b.label || b.key)));
+    const policyLabel = (p) =>
+      (p === 'on' || p === 'automatic') ? `<span class="badge badge-info">Automatic</span>`
+      : p === 'off' ? `<span class="badge badge-dead">Disabled</span>`
+      : `<span class="text-muted" style="font-size:11px">${Utils.escapeHtml(p || 'manual')}</span>`;
+
+    const cards = sorted.map(s => `
+      <div class="card" style="padding:14px;flex:1 1 240px;min-width:220px;max-width:340px;display:flex;flex-direction:column;gap:10px;border-left:3px solid ${s.running ? 'var(--green,#22c55e)' : 'var(--border,#d1d5db)'}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="${this._serviceIcon(s.key)}" style="font-size:18px;color:var(--text-dim)"></i>
+          <div style="min-width:0">
+            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(s.label || s.key || '—')}</div>
+            <div style="font-size:11px;color:var(--text-dim)"><code>${Utils.escapeHtml(s.key || '')}</code>${s.required ? ' · required' : ''}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          ${s.running
+            ? `<span class="badge badge-running"><span class="badge-dot"></span>Running</span>`
+            : `<span class="badge badge-dead"><span class="badge-dot"></span>Stopped</span>`}
+          ${policyLabel(s.policy)}
+        </div>
+      </div>`).join('');
+
+    el.innerHTML = this._filterBar('svc', { all: list.length, running, stopped })
+      + `<div style="display:flex;gap:12px;flex-wrap:wrap">${cards || '<div class="empty-msg">No services match this filter.</div>'}</div>`;
+    this._wireFilterBar(el, 'svc', () => this._renderServices(el, null));
   },
 
   _serviceIcon(key) {
