@@ -54,6 +54,7 @@ const VSphereResourcesPage = {
         <div>
           ${hostSelector}
           ${this._isAdmin() ? `<button class="btn btn-sm btn-secondary" id="vs-ssh"><i class="fas fa-terminal"></i> SSH Console</button>` : ''}
+          <button class="btn btn-sm btn-secondary" id="vs-reconnect" title="Drop the cached connection and log in again"><i class="fas fa-plug"></i> Reconnect</button>
           <button class="btn btn-sm btn-secondary" id="vs-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
       </div>
@@ -65,6 +66,7 @@ const VSphereResourcesPage = {
     const hostSel = container.querySelector('#vs-host');
     if (hostSel) hostSel.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._load(); });
     container.querySelector('#vs-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#vs-reconnect')?.addEventListener('click', () => this._reconnect());
     container.querySelector('#vs-ssh')?.addEventListener('click', () => this._openSshConsole());
     container.querySelectorAll('.tab').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -98,8 +100,26 @@ const VSphereResourcesPage = {
         case 'trends':     this._renderTrends(el, await Api.getVSphereHistory(this._hostId, 500)); break;
       }
     } catch (err) {
-      el.innerHTML = `<div class="empty-msg">Error loading ${Utils.escapeHtml(this._tab)}: ${Utils.escapeHtml(err.message)}</div>`;
+      el.innerHTML = `<div class="empty-msg">
+        <i class="fas fa-exclamation-triangle" style="color:var(--red);font-size:28px;display:block;margin-bottom:8px"></i>
+        Error loading ${Utils.escapeHtml(this._tab)}: ${Utils.escapeHtml(err.message)}
+        <div style="margin-top:12px"><button class="btn btn-sm btn-primary" id="vs-err-reconnect"><i class="fas fa-plug"></i> Reconnect</button></div>
+      </div>`;
+      el.querySelector('#vs-err-reconnect')?.addEventListener('click', () => this._reconnect());
     }
+  },
+
+  // Drop the server-side cached client (which may be a dead TLS socket) and log
+  // in fresh, then reload the current tab. Backs the Reconnect buttons.
+  async _reconnect() {
+    const btns = document.querySelectorAll('#vs-reconnect, #vs-err-reconnect');
+    btns.forEach(b => { b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting…'; });
+    try {
+      const r = await Api.reconnectVSphere(this._hostId);
+      if (r && r.ok === false) { Toast.error(`Reconnect failed: ${r.error || 'unknown'}`); }
+      else { Toast.success('Reconnected'); }
+    } catch (err) { Toast.error(err.message); }
+    await this._load();
   },
 
   // ─── Overview (cards) ───────────────────────────────────────

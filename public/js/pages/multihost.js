@@ -259,6 +259,18 @@ const MultiHostPage = {
       });
     });
 
+    // Reconnect an offline host card
+    el.querySelectorAll('.mh-reconnect-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const hostId = parseInt(btn.dataset.hostId, 10);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting…';
+        if (btn.dataset.daemon === 'vsphere') { try { await Api.reconnectVSphere(hostId); } catch { /* reload surfaces errors */ } }
+        await this._load();
+      });
+    });
+
     // Container click — switch host context and navigate
     el.querySelectorAll('[data-mh-container]').forEach(link => {
       link.addEventListener('click', (e) => {
@@ -321,9 +333,10 @@ const MultiHostPage = {
             ${this._envBadge(host.environment)}
             <span class="badge badge-stopped" style="margin-left:auto">Offline</span>
           </div>
-          <div class="card-body" style="color:var(--text-muted);padding:12px 16px">
-            <i class="fas fa-exclamation-triangle" style="color:var(--red);margin-right:6px"></i>
-            Host is unreachable or offline.
+          <div class="card-body" style="color:var(--text-muted);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span><i class="fas fa-exclamation-triangle" style="color:var(--red);margin-right:6px"></i>
+            ${host.nonDocker && host.nonDocker.error ? Utils.escapeHtml(host.nonDocker.error) : 'Host is unreachable or offline.'}</span>
+            <button class="btn btn-xs btn-primary mh-reconnect-btn" data-host-id="${host.id}" data-daemon="${Utils.escapeHtml(host.daemonType || 'docker')}" style="margin-left:auto"><i class="fas fa-sync-alt"></i> Reconnect</button>
           </div>
         </div>
       `;
@@ -683,12 +696,23 @@ const MultiHostPage = {
     if (!host) { el.innerHTML = '<div class="text-muted">Host not found</div>'; return; }
 
     if (!host.healthy) {
+      const isVsphere = host.daemonType === 'vsphere';
       el.innerHTML = `<div class="card" style="border:1px solid var(--red);border-left:4px solid var(--red);padding:20px;text-align:center">
         <i class="fas fa-exclamation-triangle" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
         <h3 style="color:var(--red)">Host Offline</h3>
         <p class="text-muted">Cannot reach ${Utils.escapeHtml(host.name)}.</p>
         ${host.nonDocker && host.nonDocker.error ? `<p style="color:var(--red);font-size:12px;margin-top:8px">${Utils.escapeHtml(host.nonDocker.error)}</p>` : ''}
+        <button class="btn btn-sm btn-primary" id="mh-reconnect" style="margin-top:14px"><i class="fas fa-sync-alt"></i> Reconnect</button>
       </div>`;
+      const rc = el.querySelector('#mh-reconnect');
+      if (rc) rc.addEventListener('click', async () => {
+        rc.disabled = true;
+        rc.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting…';
+        // For vSphere, force-drop the (likely dead) cached client first so the
+        // overview re-login lands on a fresh connection; then refresh the page.
+        if (isVsphere) { try { await Api.reconnectVSphere(host.id); } catch { /* the reload will surface any error */ } }
+        await this._load();
+      });
       return;
     }
 

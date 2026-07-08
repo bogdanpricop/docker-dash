@@ -499,6 +499,7 @@ const Api = {
   // ─── vSphere / ESXi (v8.9.11-alpha.1) — read-only alpha ───
   // hostId is explicit: the vSphere page resolves its own daemon host so it
   // works regardless of which host is selected in the top-bar switcher.
+  reconnectVSphere(hostId)           { return this.post(`/vsphere/reconnect?hostId=${hostId}`, {}); },
   getVSphereInfo(hostId)              { return this.get(`/vsphere/info?hostId=${hostId}`); },
   getVSphereVMs(hostId)               { return this.get(`/vsphere/vms?hostId=${hostId}`); },
   getVSphereHosts(hostId)             { return this.get(`/vsphere/hosts?hostId=${hostId}`); },

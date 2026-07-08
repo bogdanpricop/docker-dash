@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.21-alpha.1',
+      date: '2026-07-08',
+      title: 'vSphere — self-healing connection + Reconnect buttons',
+      changes: [
+        { type: 'fix', text: 'Fixed "no data" on the vSphere page after a host blip. The server cached the SOAP client for 20 minutes; if its TLS socket died (host reboot, idle firewall drop) the dead client stayed cached and every request failed with "Client network socket disconnected before secure TLS connection was established" until the cache expired. The cached client is now self-healing: any request that hits a stale connection/session error transparently drops the cache, logs in again, and retries once — so data resumes on the next poll instead of being stuck for up to 20 minutes.' },
+        { type: 'feature', text: 'Explicit Reconnect buttons: on the vSphere page header, in its per-tab error state, and on the Multi-Host "Host Offline" card (both the grid card and the per-host tab). They force-drop the cached connection (POST /api/vsphere/reconnect) and reload, so you can recover immediately instead of waiting for the auto-refresh.' },
+        { type: 'improvement', text: 'The Multi-Host offline card now shows the underlying daemon error (e.g. the TLS message) instead of a generic "unreachable", so it is clear whether the host is down or just needs a reconnect.' },
+      ],
+    },
+    {
       version: '8.9.20-alpha.1',
       date: '2026-07-07',
       title: 'SSH Key Deployer — Windows (OpenSSH) target',

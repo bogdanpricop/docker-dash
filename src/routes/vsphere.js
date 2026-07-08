@@ -29,20 +29,73 @@ function _getVSphereHost(req, res) {
 
 // Cache clients per host id — SOAP login is expensive.
 const _clientCache = new Map();
-async function _getClient(row) {
+
+function _invalidateClient(id) {
+  const c = _clientCache.get(id);
+  _clientCache.delete(id);
+  if (c && c.logout) c.logout().catch(() => {});
+}
+
+// A cached client's TLS socket or SOAP session can die silently (e.g. the ESXi
+// host reboots, or a firewall drops the idle connection). Without this, the
+// dead client stays cached for the full 20-min window and every request fails
+// with "Client network socket disconnected before secure TLS connection…".
+// These errors mean "reconnect and try again", not "host is broken".
+function _isStaleConn(err) {
+  const m = (err && err.message) || String(err || '');
+  return /socket disconnected|before secure TLS|ECONNRESET|EPIPE|ETIMEDOUT|ECONNREFUSED|socket hang up|network socket|not authenticated|session is not authenticated|NotAuthenticated|login required|session.*expired/i.test(m);
+}
+
+// Acquire (or reuse) a logged-in client. Login is lazy — it happens here on a
+// cache miss, inside the caller's try/catch.
+async function _acquireClient(row) {
   const cached = _clientCache.get(row.id);
   if (cached) return cached;
   const c = fromHostRow(row);
-  try { await c.login(); }
-  catch (err) { throw err; }
+  await c.login();
   _clientCache.set(row.id, c);
-  // Expire after 20 min
   setTimeout(() => {
     _clientCache.delete(row.id);
     c.logout().catch(() => {});
   }, 20 * 60 * 1000).unref();
   return c;
 }
+
+// Return a self-healing proxy: any client method that throws a stale
+// connection/session error busts the cache, re-logs in, and retries ONCE.
+// Transparent to every route — call sites keep doing `(await _getClient(row)).method()`.
+function _getClient(row) {
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'then' || typeof prop === 'symbol') return undefined; // don't look thenable to await
+      return async (...args) => {
+        let c = await _acquireClient(row);
+        try {
+          return await c[prop](...args);
+        } catch (err) {
+          if (!_isStaleConn(err)) throw err;
+          _invalidateClient(row.id);
+          c = await _acquireClient(row); // fresh login
+          return await c[prop](...args);
+        }
+      };
+    },
+  });
+}
+
+// Force a fresh reconnect: drop the cached (possibly dead) client and log in
+// again. Backs the "Reconnect" button when a host goes offline mid-session.
+router.post('/reconnect', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getVSphereHost(req, res); if (!row) return;
+  try {
+    _invalidateClient(row.id);
+    const c = await _acquireClient(row);
+    const info = await c.retrieveServiceContent();
+    res.json({ ok: true, version: info.version || null, productFullName: info.productFullName || null });
+  } catch (err) {
+    res.status(200).json({ ok: false, error: err.message });
+  }
+}));
 
 router.get('/info', requireAuth, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
