@@ -1,6 +1,6 @@
 'use strict';
 
-const { iptables, firewalld, ufw } = require('../services/firewall/backends');
+const { iptables, firewalld, ufw, nftables } = require('../services/firewall/backends');
 
 const ctx = { uuid: 'abc-123', reason: 'vendor' };
 
@@ -62,5 +62,24 @@ describe('ufw builder', () => {
     const rm = ufw.buildRemove({ action: 'allow', scope: 'host', source_ip: '89.40.10.20', destination_port: 8082, protocol: 'tcp' });
     expect(rm.commands[0].argv[0]).toBe('delete');
     expect(rm.commands[0].argv).not.toContain('comment');
+  });
+});
+
+describe('nftables builder', () => {
+  test('allow IP to port → inet filter input ip saddr … accept + comment', () => {
+    const r = nftables.buildApply({ action: 'allow', scope: 'host', source_ip: '89.40.10.20', destination_port: 8082, protocol: 'tcp' }, ctx);
+    expect(r.commands[0].bin).toBe('nft');
+    expect(r.commands[0].argv).toEqual(expect.arrayContaining(['add', 'rule', 'inet', 'filter', 'input', 'ip', 'saddr', '89.40.10.20', 'tcp', 'dport', '8082', 'accept', 'comment', 'APPFW uuid=abc-123 reason=vendor']));
+  });
+  test('IPv6 source uses ip6 saddr', () => {
+    const r = nftables.buildApply({ action: 'block', scope: 'host', source_ip: '2001:db8::1', protocol: 'tcp' }, ctx);
+    expect(r.commands[0].argv).toEqual(expect.arrayContaining(['ip6', 'saddr', '2001:db8::1', 'drop']));
+  });
+  test('remove is a handle-lookup sh -c script keyed on the comment', () => {
+    const rm = nftables.buildRemove({ rule_uuid: 'abc-123', comment_tag: 'APPFW uuid=abc-123' });
+    expect(rm.commands[0].bin).toBe('sh');
+    expect(rm.commands[0].argv[0]).toBe('-c');
+    expect(rm.commands[0].argv[1]).toContain('handle');
+    expect(rm.commands[0].argv[1]).toContain('APPFW uuid=abc-123');
   });
 });

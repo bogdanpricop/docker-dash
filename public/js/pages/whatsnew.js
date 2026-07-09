@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.25-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — nftables backend',
+      changes: [
+        { type: 'feature', text: 'nftables joins iptables/firewalld/ufw as a writable backend (host scope: inet filter input). It’s auto-detected last, so the common iptables-nft case still resolves to iptables; nftables is picked on nft-native hosts that lack the iptables command. Rules carry an APPFW comment; removal finds the rule’s nft handle by that comment (POSIX awk, no grep -P needed). Container scope is refused on nftables (as on ufw) since Docker traffic lives in iptables-nft tables. 4 new builder tests.' },
+      ],
+    },
+    {
       version: '8.9.24-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — temporary rules with auto-expiry',

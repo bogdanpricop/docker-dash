@@ -105,8 +105,8 @@ async function applyRule(hostId, rawSpec, user, requesterIp) {
   const det = await _detect(host);
   const backendName = det.backend || (host.channel === 'agent' ? (await runner.agentRequest(host.agentCfg, '/detect', {})).backend : null);
   if (!backendName) throw new Error('No firewall backend detected on this host');
-  if (backendName === 'ufw' && (spec.scope === 'docker' || spec.scope === 'container')) {
-    throw new Error('ufw cannot filter Docker published ports (they bypass ufw via NAT). Use host scope, or manage this host with iptables/DOCKER-USER.');
+  if (backends.HOST_ONLY.has(backendName) && (spec.scope === 'docker' || spec.scope === 'container')) {
+    throw new Error(`${backendName} cannot filter Docker published ports (they bypass it via NAT). Use host scope, or manage this host with iptables/DOCKER-USER.`);
   }
   lockout.check({ sshPort: host.sshPort, spec, adminIps: [], requesterIp });
 
