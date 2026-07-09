@@ -148,7 +148,7 @@ const FirewallPage = {
 
       ${r.raw ? `<div class="card" style="margin-top:16px">
         <div class="card-header"><h3><i class="fas fa-terminal text-dim" style="margin-right:8px"></i>Live host ruleset</h3>
-          <span class="text-dim text-sm">${Utils.escapeHtml(backend || '')}</span></div>
+          <span class="text-dim text-sm">${Utils.escapeHtml(backend || '')}${r.otherRules != null ? ` · ${r.otherRules} non-app rule(s) (incl. Docker/system)` : ''}</span></div>
         <div class="card-body"><pre class="inspect-json" style="max-height:320px;color:var(--text)">${Utils.escapeHtml(r.raw)}</pre></div>
       </div>` : ''}
     `;
@@ -186,11 +186,17 @@ const FirewallPage = {
   },
 
   _renderAudit(el, data) {
+    this._auditData = data;
     const rules = (data && data.rules) || [];
     const snaps = (data && data.snapshots) || [];
     el.innerHTML = `
       <div class="card">
-        <div class="card-header"><h3><i class="fas fa-history text-dim" style="margin-right:8px"></i>Rule history</h3></div>
+        <div class="card-header"><h3><i class="fas fa-history text-dim" style="margin-right:8px"></i>Rule history</h3>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-xs btn-secondary" id="fw-export-csv"><i class="fas fa-file-csv"></i> CSV</button>
+            <button class="btn btn-xs btn-secondary" id="fw-export-json"><i class="fas fa-file-code"></i> JSON</button>
+          </div>
+        </div>
         <div class="card-body" style="padding:0">
           ${rules.length === 0 ? '<div class="empty-msg">No history.</div>' : `
           <table class="data-table">
@@ -226,6 +232,29 @@ const FirewallPage = {
       </div>
     `;
     el.querySelectorAll('[data-fw-rollback]').forEach(b => b.addEventListener('click', () => this._rollback(parseInt(b.getAttribute('data-fw-rollback'), 10))));
+    el.querySelector('#fw-export-csv')?.addEventListener('click', () => this._exportAudit('csv'));
+    el.querySelector('#fw-export-json')?.addEventListener('click', () => this._exportAudit('json'));
+  },
+
+  _exportAudit(format) {
+    const rules = (this._auditData && this._auditData.rules) || [];
+    const host = (this._hosts.find(h => h.id === this._hostId) || {}).name || `host${this._hostId}`;
+    let content, mime, ext;
+    if (format === 'csv') {
+      const cols = ['rule_uuid', 'backend', 'scope', 'action', 'source_ip', 'destination_port', 'protocol', 'reason', 'created_by', 'created_at', 'expires_at', 'is_temporary', 'is_active', 'removed_by', 'removed_at'];
+      const esc = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+      content = [cols.join(',')].concat(rules.map(r => cols.map(c => esc(r[c])).join(','))).join('\n');
+      mime = 'text/csv'; ext = 'csv';
+    } else {
+      content = JSON.stringify({ host, exportedAt: new Date().toISOString(), rules, snapshots: (this._auditData && this._auditData.snapshots) || [] }, null, 2);
+      mime = 'application/json'; ext = 'json';
+    }
+    const blob = new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `firewall-audit-${host}.${ext}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   },
 
   _card(icon, label, valueHtml) {

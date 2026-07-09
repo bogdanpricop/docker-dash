@@ -89,7 +89,15 @@ async function listRules(hostId) {
     r._present = canVerify ? raw.includes(r.rule_uuid) : null;
   }
   const drift = dbRules.filter(r => r._present === false).map(r => r.rule_uuid);
-  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType, rules: dbRules, raw, drift };
+
+  // Manual-change awareness: how many host rules are NOT app-managed (incl.
+  // Docker/system rules). Reliable for iptables (-A lines without APPFW); null
+  // for backends where the listing doesn't map cleanly.
+  let otherRules = null;
+  if (raw && backend === 'iptables') {
+    otherRules = (raw.match(/^-A /gm) || []).filter((l) => !/APPFW/.test(l)).length;
+  }
+  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType, rules: dbRules, raw, drift, otherRules };
 }
 
 // Re-apply app-managed rules that have drifted off the host (removed manually or

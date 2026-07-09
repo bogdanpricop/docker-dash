@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.29-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — audit export + manual-rule awareness',
+      changes: [
+        { type: 'feature', text: 'History tab now exports the full rule history as CSV or JSON (one click, generated client-side). And the Rules tab surfaces how many host rules are NOT managed by docker-dash (incl. Docker/system rules) so drift/manual changes are visible. This completes the firewall roadmap phases (MVP1–MVP3): SSH + agent channels; iptables/firewalld/ufw/nftables/Windows backends; temporary rules with auto-expiry; drift detection + re-apply; RBAC roles; snapshot/rollback; audit export. Remaining hardening (agent mTLS, proactive manual-change alerting) is intentionally deferred.' },
+      ],
+    },
+    {
       version: '8.9.28-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — RBAC roles (viewer / operator / admin)',
