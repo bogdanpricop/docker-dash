@@ -54,14 +54,53 @@ router.get('/info', requireAuth, asyncHandler(async (req, res) => {
   res.json(info && info.metadata);
 }));
 
+// v8.9.32 — Incus returns 403 Forbidden when docker-dash's client cert isn't in
+// its trust store. Turn that into actionable guidance instead of a bare error.
+function _forbiddenMsg(client) {
+  const fp = client.clientFingerprint();
+  return 'Incus/LXD rejected docker-dash as untrusted. Add its client certificate on the Incus host — '
+    + 'generate a token with "incus config trust add docker-dash" and paste it via the "Trust" button, '
+    + 'or run "incus config trust add-certificate <cert.pem>".'
+    + (fp ? ` (docker-dash client cert fingerprint: ${fp})` : '');
+}
+function _isForbidden(err) { return err && (err.status === 403 || /forbidden/i.test(err.message || '')); }
+
+// GET /api/incus/client-info — our client cert fingerprint (for the trust UI).
+router.get('/client-info', requireAuth, asyncHandler(async (req, res) => {
+  const row = _getIncusHost(req, res); if (!row) return;
+  const client = fromHostRow(row);
+  res.json({ fingerprint: client.clientFingerprint(), daemonType: row.daemon_type });
+}));
+
+// POST /api/incus/trust — register our client cert using a trust token.
+router.post('/trust', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const row = _getIncusHost(req, res); if (!row) return;
+  const client = fromHostRow(row);
+  try {
+    await client.trustWithToken(req.body && req.body.token);
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'incus_trust_add', targetType: 'host', targetId: String(req.hostId),
+      details: { daemonType: row.daemon_type, fingerprint: client.clientFingerprint() }, ip: getClientIp(req),
+    });
+    res.json({ ok: true, fingerprint: client.clientFingerprint() });
+  } catch (err) {
+    res.status(200).json({ ok: false, error: err.message });
+  }
+}));
+
 // ─── Instances ──────────────────────────────────────────────
 
 router.get('/instances', requireAuth, asyncHandler(async (req, res) => {
   const row = _getIncusHost(req, res); if (!row) return;
   const client = fromHostRow(row);
   const project = req.query.project || undefined;
-  const list = await client.listInstances(project);
-  res.json(list);
+  try {
+    res.json(await client.listInstances(project));
+  } catch (err) {
+    if (_isForbidden(err)) return res.status(403).json({ error: _forbiddenMsg(client), forbidden: true, fingerprint: client.clientFingerprint() });
+    res.status(err.status || 500).json({ error: err.message });
+  }
 }));
 
 router.get('/instances/:name', requireAuth, asyncHandler(async (req, res) => {

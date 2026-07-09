@@ -63,12 +63,17 @@ class IncusClient {
       this._agent = new http.Agent({ keepAlive: true });
     } else if (config.transport === 'https') {
       if (!config.endpoint) throw new Error('IncusClient: config.endpoint required for https transport');
-      // NOTE: cert/key parsing is stubbed here. Real production use needs:
-      //   - PEM strings passed as opts.cert + opts.key on each request
-      //   - Or a per-endpoint https.Agent with the cert already loaded
-      //   - Fingerprint verification via socket 'secureConnect' hook
-      // Deferred to v8.9.0 proper.
-      this._agent = new https.Agent({ keepAlive: true, rejectUnauthorized: !config.skipTlsVerify });
+      // v8.9.32 — the client cert MUST be on the pooling Agent so it's presented
+      // on every TLS handshake (Incus authenticates clients by their cert). Incus
+      // servers use self-signed certs, so we don't verify the server cert against
+      // a CA — the trust model is the client-cert side. (skipTlsVerify default = do
+      // not verify the server cert, matching how `incus remote add` pins by fp.)
+      this._agent = new https.Agent({
+        keepAlive: true,
+        rejectUnauthorized: config.skipTlsVerify === false ? true : false,
+        cert: config.cert || undefined,
+        key: config.key || undefined,
+      });
     } else {
       throw new Error(`IncusClient: unsupported transport "${config.transport}"`);
     }
@@ -159,6 +164,33 @@ class IncusClient {
   /** GET /1.0 — daemon info + supported API versions. Used for health probing. */
   async info() {
     return this._request('GET', '/1.0');
+  }
+
+  /** SHA-256 fingerprint of our client certificate (lowercase hex, no colons) —
+   * this is what appears in `incus config trust list`. Null if no/invalid cert. */
+  clientFingerprint() {
+    if (!this._config || !this._config.cert) return this._config && this._config.fingerprint || null;
+    try {
+      const x = new (require('crypto').X509Certificate)(this._config.cert);
+      return x.fingerprint256.replace(/:/g, '').toLowerCase();
+    } catch { return this._config.fingerprint || null; }
+  }
+
+  /** Register OUR client cert with the Incus/LXD server using a trust token
+   * (from `incus config trust add <name>`). We present our cert (via the Agent)
+   * and the token authorizes adding it to the trust store. */
+  async trustWithToken(token) {
+    if (!token || typeof token !== 'string') throw new Error('trust token is required');
+    // Incus (and recent LXD) accept trust_token; fall back to the legacy
+    // password field for older LXD servers.
+    try {
+      return await this._request('POST', '/1.0/certificates', { trust_token: token.trim() });
+    } catch (err) {
+      if (err && err.status === 400) {
+        return this._request('POST', '/1.0/certificates', { type: 'client', password: token.trim() });
+      }
+      throw err;
+    }
   }
 
   /**

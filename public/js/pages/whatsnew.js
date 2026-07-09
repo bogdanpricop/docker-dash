@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.32-alpha.1',
+      date: '2026-07-09',
+      title: 'Fix: Incus/LXD "Forbidden" — client cert + trust flow',
+      changes: [
+        { type: 'fix', text: 'Incus/LXD over HTTPS returned "Forbidden" because docker-dash\'s client certificate wasn\'t actually presented (it was set per-request but the pooling https.Agent had no cert) and, separately, wasn\'t trusted by the server. Fixed: the client cert/key now live on the Agent so they\'re presented on every TLS handshake. And when the server still reports untrusted, the page now shows an actionable panel — the docker-dash client-cert fingerprint, the exact "incus config trust add-certificate" command, and a token field: run "incus config trust add docker-dash" on the host, paste the token, and docker-dash self-registers via POST /1.0/certificates, then retries.' },
+      ],
+    },
+    {
       version: '8.9.31-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — proactive drift alerting',

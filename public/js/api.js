@@ -412,6 +412,8 @@ const Api = {
   deleteIncusSnapshot(hostId, name, sn) { return this.delete(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}?hostId=${hostId}`); },
   getIncusImages(hostId)              { return this.get(`/incus/images?hostId=${hostId}`); },
   getIncusProjects(hostId)            { return this.get(`/incus/projects?hostId=${hostId}`); },
+  getIncusClientInfo(hostId)          { return this.get(`/incus/client-info?hostId=${hostId}`); },
+  incusTrust(hostId, token)           { return this.post(`/incus/trust?hostId=${hostId}`, { token }); },
 
   // ─── Proxmox VE (v8.9.1-alpha.1) ────────────────
   getProxmoxInfo()                    { return this.get('/proxmox/info'); },

@@ -99,8 +99,46 @@ const IncusInstancesPage = {
       } catch { /* info is best-effort */ }
       this._renderList(el, list);
     } catch (err) {
+      if (/forbidden|untrusted/i.test(err.message || '')) { await this._renderTrustHelp(el, err); return; }
       el.innerHTML = `<div class="empty-msg">Error loading Incus instances: ${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  // Incus rejects docker-dash until its client cert is trusted. Guide the user
+  // through it: show the fingerprint + manual command, and a token field for
+  // one-click self-registration (incus config trust add <name> → token).
+  async _renderTrustHelp(el, err) {
+    let fp = null;
+    try { fp = (await Api.getIncusClientInfo(this._hostId)).fingerprint; } catch { /* ignore */ }
+    el.innerHTML = `
+      <div class="card" style="border:1px solid var(--yellow);border-left:4px solid var(--yellow)">
+        <div class="card-header"><h3><i class="fas fa-user-lock" style="color:var(--yellow);margin-right:8px"></i>Not trusted by this Incus/LXD server</h3></div>
+        <div class="card-body">
+          <p class="text-muted">${Utils.escapeHtml(err.message)}</p>
+          ${fp ? `<div style="margin:8px 0"><b>docker-dash client cert fingerprint:</b> <span class="mono">${Utils.escapeHtml(fp)}</span></div>` : ''}
+          <h4 style="margin:12px 0 6px">Option A — trust token (recommended)</h4>
+          <p class="text-muted" style="font-size:13px">On the Incus host run <span class="mono">incus config trust add docker-dash</span>, copy the token, and paste it here:</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" id="incus-token" class="form-control" style="flex:1;min-width:240px" placeholder="paste the trust token">
+            <button class="btn btn-primary" id="incus-trust-btn"><i class="fas fa-key"></i> Trust &amp; retry</button>
+          </div>
+          <h4 style="margin:16px 0 6px">Option B — add the certificate manually</h4>
+          <p class="text-muted" style="font-size:13px">On the Incus host, with the docker-dash client certificate saved as <span class="mono">dd.crt</span>:</p>
+          <pre class="inspect-json" style="color:var(--text)">incus config trust add-certificate dd.crt</pre>
+        </div>
+      </div>`;
+    const btn = el.querySelector('#incus-trust-btn');
+    if (btn) btn.addEventListener('click', async () => {
+      const token = el.querySelector('#incus-token').value.trim();
+      if (!token) { Toast.warning('Paste the trust token first'); return; }
+      btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Trusting…';
+      try {
+        const r = await Api.incusTrust(this._hostId, token);
+        if (r && r.ok === false) { Toast.error(r.error || 'Trust failed'); btn.disabled = false; btn.innerHTML = '<i class="fas fa-key"></i> Trust & retry'; return; }
+        Toast.success('Trusted — loading instances');
+        await this._load();
+      } catch (e) { Toast.error(e.message); btn.disabled = false; btn.innerHTML = '<i class="fas fa-key"></i> Trust & retry'; }
+    });
   },
 
   _renderList(el, list) {
