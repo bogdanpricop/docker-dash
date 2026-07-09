@@ -93,6 +93,7 @@ const FirewallPage = {
       ? `<span class="badge badge-running"><span class="badge-dot"></span>${Utils.escapeHtml(backend || 'active')}</span>`
       : `<span class="badge badge-stopped"><span class="badge-dot"></span>unavailable</span>`;
 
+    const drift = (r.drift || []);
     const warn = [];
     if (!available) warn.push('No firewall backend detected on this host. For an SSH host it needs iptables/firewalld/ufw/nftables (or Windows OpenSSH); for the local host use a firewall-agent (button above).');
     if (['ufw', 'nftables', 'windows'].includes(backend)) warn.push(`${backend} is host-only — it does NOT filter Docker published ports. Use an iptables host for container-scope rules.`);
@@ -106,6 +107,10 @@ const FirewallPage = {
         ${this._card('fa-server', 'Daemon', Utils.escapeHtml(s.daemonType || '—'))}
       </div>
       ${warn.map(w => `<div class="alert alert-warning" style="margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(w)}</div>`).join('')}
+      ${drift.length ? `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span><i class="fas fa-triangle-exclamation"></i> <b>${drift.length}</b> app-managed rule(s) are missing on the host (removed manually or lost on restart).</span>
+        <button class="btn btn-xs btn-primary" id="fw-reconcile" style="margin-left:auto"><i class="fas fa-rotate"></i> Re-apply missing</button>
+      </div>` : ''}
 
       <div class="card">
         <div class="card-header"><h3><i class="fas fa-list text-dim" style="margin-right:8px"></i>App-managed rules</h3></div>
@@ -115,8 +120,8 @@ const FirewallPage = {
             <thead><tr><th>Action</th><th>Scope</th><th>Source</th><th>Port</th><th>Proto</th><th>Backend</th><th>By</th><th>Expires</th><th>Reason</th><th></th></tr></thead>
             <tbody>
               ${rules.map(rl => `
-                <tr>
-                  <td><span class="badge ${rl.action === 'allow' ? 'badge-running' : 'badge-stopped'}">${Utils.escapeHtml(rl.action)}</span></td>
+                <tr${rl._present === false ? ' style="opacity:.6"' : ''}>
+                  <td><span class="badge ${rl.action === 'allow' ? 'badge-running' : 'badge-stopped'}">${Utils.escapeHtml(rl.action)}</span>${rl._present === false ? ' <span class="badge badge-warning" title="Not present on the host">drift</span>' : ''}</td>
                   <td>${Utils.escapeHtml(rl.scope)}</td>
                   <td class="mono text-sm">${Utils.escapeHtml(rl.source_ip || 'any')}</td>
                   <td class="mono">${rl.destination_port || 'any'}</td>
@@ -144,6 +149,19 @@ const FirewallPage = {
 
     el.querySelectorAll('[data-fw-remove]').forEach(b => b.addEventListener('click', () => this._removeRule(b.getAttribute('data-fw-remove'))));
     el.querySelectorAll('[data-fw-extend]').forEach(b => b.addEventListener('click', () => this._extendRule(b.getAttribute('data-fw-extend'))));
+    const rec = el.querySelector('#fw-reconcile');
+    if (rec) rec.addEventListener('click', () => this._reconcile());
+  },
+
+  async _reconcile() {
+    const ok = await Modal.confirm('Re-apply all app-managed rules that are missing on this host?', { confirmText: 'Re-apply' });
+    if (!ok) return;
+    try {
+      const r = await Api.fwReconcile(this._hostId);
+      if (r && r.ok === false) { Toast.error(r.error || 'Reconcile failed'); return; }
+      Toast.success(`Re-applied ${r.reapplied}/${r.total}${r.failed ? `, ${r.failed} failed` : ''}`);
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _extendRule(uuid) {

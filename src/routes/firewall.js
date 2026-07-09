@@ -102,6 +102,18 @@ router.post('/:hostId/extend-rule', ...adminWrite, asyncHandler(async (req, res)
   }
 }));
 
+router.post('/:hostId/reconcile', ...adminWrite, asyncHandler(async (req, res) => {
+  const hostId = _hostId(req);
+  try {
+    const r = await fw.reconcile(hostId, req.user);
+    _audit(req, 'firewall_reconcile', hostId, r, true);
+    res.json(r);
+  } catch (err) {
+    _audit(req, 'firewall_reconcile', hostId, {}, false, err.message);
+    res.json({ ok: false, error: err.message });
+  }
+}));
+
 router.post('/:hostId/snapshot', ...adminWrite, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
   try {

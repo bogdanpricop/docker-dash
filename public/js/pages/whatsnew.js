@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.27-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — drift detection + re-apply',
+      changes: [
+        { type: 'feature', text: 'The Rules tab now verifies whether each app-managed rule is actually present on the host (by its APPFW uuid in the live ruleset). Rules that drifted off — removed manually or lost on a daemon/container restart — are flagged with a "drift" badge, and a banner offers "Re-apply missing" which re-applies them using their ORIGINAL uuid (no duplicate DB rows). firewalld presence can’t be verified from its listing, so it’s reported as unknown rather than falsely drifted.' },
+      ],
+    },
+    {
       version: '8.9.26-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — Windows Firewall backend',

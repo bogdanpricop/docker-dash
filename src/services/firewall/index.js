@@ -80,7 +80,44 @@ async function listRules(hostId) {
       raw = await runner.runRead(host, backends.get(backend).buildList(), { timeoutMs: 10000 });
     }
   } catch (e) { raw = `(could not read host rules: ${e.message})`; }
-  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType, rules: dbRules, raw };
+
+  // Drift detection: is each app-managed rule actually present on the host? The
+  // rule uuid appears in the iptables/ufw/nft comment and the Windows DisplayName;
+  // firewalld's list carries no uuid, so presence is unknown there.
+  const canVerify = raw && backend && backend !== 'firewalld';
+  for (const r of dbRules) {
+    r._present = canVerify ? raw.includes(r.rule_uuid) : null;
+  }
+  const drift = dbRules.filter(r => r._present === false).map(r => r.rule_uuid);
+  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType, rules: dbRules, raw, drift };
+}
+
+// Re-apply app-managed rules that have drifted off the host (removed manually or
+// lost on a daemon/container restart). Reuses each rule's ORIGINAL uuid so the
+// DB row and host tag stay in sync — no new rows created.
+async function reconcile(hostId, _user) {
+  const info = await listRules(hostId);
+  const missing = (info.rules || []).filter(r => r._present === false);
+  if (!missing.length) return { reapplied: 0, failed: 0, total: 0 };
+  const host = _resolveHost(hostId);
+  let reapplied = 0, failed = 0;
+  for (const row of missing) {
+    const spec = { action: row.action, scope: row.scope, source_ip: row.source_ip || undefined, destination_port: row.destination_port || undefined, protocol: row.protocol || 'tcp', reason: row.reason || undefined };
+    try {
+      if (host.channel === 'agent') {
+        const r = await runner.agentRequest(host.agentCfg, '/apply', { spec, uuid: row.rule_uuid, reason: row.reason });
+        if (r && r.ok === false) throw new Error(r.error || 'agent apply failed');
+      } else {
+        const be = backends.get(row.backend);
+        if (!be) throw new Error(`Unknown backend "${row.backend}"`);
+        const built = be.buildApply(spec, { uuid: row.rule_uuid, reason: row.reason });
+        const res = await runner.runCommands(host, built.commands, { timeoutMs: 20000 });
+        if (res.exitCode !== 0) throw new Error(res.stderr || `exit ${res.exitCode}`);
+      }
+      reapplied++;
+    } catch { failed++; }
+  }
+  return { reapplied, failed, total: missing.length };
 }
 
 async function snapshot(hostId, user, reason) {
@@ -231,4 +268,4 @@ async function rollback(hostId, snapshotId, user) {
   return { ok: true, snapshotId };
 }
 
-module.exports = { detectBackend, listRules, applyRule, removeRule, snapshot, rollback, cleanupExpired, extendRule, _internals: { _resolveHost, _detect, _hostRemove } };
+module.exports = { detectBackend, listRules, applyRule, removeRule, snapshot, rollback, cleanupExpired, extendRule, reconcile, _internals: { _resolveHost, _detect, _hostRemove } };

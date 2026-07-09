@@ -335,6 +335,7 @@ const Api = {
   fwClosePort(hostId, spec)   { return this.post(`/firewall/${hostId}/close-port`, spec); },
   fwRemoveRule(hostId, uuid)  { return this.post(`/firewall/${hostId}/remove-rule`, { rule_uuid: uuid }); },
   fwExtendRule(hostId, uuid, minutes) { return this.post(`/firewall/${hostId}/extend-rule`, { rule_uuid: uuid, minutes }); },
+  fwReconcile(hostId)         { return this.post(`/firewall/${hostId}/reconcile`, {}); },
   fwSnapshot(hostId, reason)  { return this.post(`/firewall/${hostId}/snapshot`, { reason }); },
   fwRollback(hostId, snapId)  { return this.post(`/firewall/${hostId}/rollback`, { snapshotId: snapId }); },
   fwGetAgentConfig(hostId)    { return this.get(`/firewall/${hostId}/agent-config`); },
