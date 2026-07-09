@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.33-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — read-only status for ESXi, Proxmox, Incus/LXD',
+      changes: [
+        { type: 'feature', text: 'The Firewall page can now show the firewall state of non-Docker hosts too — these platforms have their own firewalls (not iptables), so it is a read-only view (mutations happen in their native tool). ESXi: esxcli network firewall over the host’s vSphere SSH (enabled/default action + rulesets + allowed IPs). Proxmox: pve-firewall via the Proxmox API (cluster + node options and rules). Incus/LXD: network ACLs via the Incus API (ingress/egress). Just pick the host in the Firewall selector; add/snapshot/agent controls hide automatically for these platforms, and an untrusted Incus points you to the trust flow.' },
+      ],
+    },
+    {
       version: '8.9.32-alpha.1',
       date: '2026-07-09',
       title: 'Fix: Incus/LXD "Forbidden" — client cert + trust flow',

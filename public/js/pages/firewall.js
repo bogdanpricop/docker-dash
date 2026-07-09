@@ -28,6 +28,10 @@ const FirewallPage = {
     const role = (window.App && App.user && App.user.role) || 'viewer';
     this._isAdmin = role === 'admin';
     this._canWrite = this._isAdmin || role === 'operator';
+    // Non-Docker platforms (ESXi/Proxmox/Incus/LXD) are read-only here.
+    this._container = container;
+    const selHost0 = this._hosts.find(h => h.id === this._hostId);
+    this._isPlatform = !!(selHost0 && ['vsphere', 'proxmox', 'incus', 'lxd'].includes(selHost0.daemonType));
 
     const sel = this._hosts.length > 1
       ? `<select id="fw-host" class="form-control" style="width:auto;display:inline-block;margin-right:8px">
@@ -43,9 +47,9 @@ const FirewallPage = {
         </div>
         <div class="page-actions" style="align-items:center">
           ${sel}
-          ${this._canWrite ? `<button class="btn btn-sm btn-primary" id="fw-add"><i class="fas fa-plus"></i> Add rule</button>` : ''}
-          ${this._canWrite ? `<button class="btn btn-sm btn-secondary" id="fw-snapshot" title="Save a snapshot of the current ruleset"><i class="fas fa-camera"></i></button>` : ''}
-          ${this._isAdmin ? `<button class="btn btn-sm btn-secondary" id="fw-agent" title="Configure firewall-agent for this host"><i class="fas fa-network-wired"></i></button>` : ''}
+          ${this._canWrite && !this._isPlatform ? `<button class="btn btn-sm btn-primary" id="fw-add"><i class="fas fa-plus"></i> Add rule</button>` : ''}
+          ${this._canWrite && !this._isPlatform ? `<button class="btn btn-sm btn-secondary" id="fw-snapshot" title="Save a snapshot of the current ruleset"><i class="fas fa-camera"></i></button>` : ''}
+          ${this._isAdmin && !this._isPlatform ? `<button class="btn btn-sm btn-secondary" id="fw-agent" title="Configure firewall-agent for this host"><i class="fas fa-network-wired"></i></button>` : ''}
           <button class="btn btn-sm btn-secondary" id="fw-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
@@ -57,7 +61,7 @@ const FirewallPage = {
     `;
 
     const hs = container.querySelector('#fw-host');
-    if (hs) hs.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._load(); });
+    if (hs) hs.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._syncHeaderForHost(); this._load(); });
     container.querySelector('#fw-refresh').addEventListener('click', () => this._load());
     container.querySelector('#fw-add')?.addEventListener('click', () => this._addRuleDialog());
     container.querySelector('#fw-snapshot')?.addEventListener('click', () => this._snapshot());
@@ -88,9 +92,48 @@ const FirewallPage = {
     }
   },
 
+  _syncHeaderForHost() {
+    const h = this._hosts.find(x => x.id === this._hostId);
+    this._isPlatform = !!(h && ['vsphere', 'proxmox', 'incus', 'lxd'].includes(h.daemonType));
+    const setDisp = (id, show) => { const el = document.getElementById(id); if (el) el.style.display = show ? '' : 'none'; };
+    setDisp('fw-add', this._canWrite && !this._isPlatform);
+    setDisp('fw-snapshot', this._canWrite && !this._isPlatform);
+    setDisp('fw-agent', this._isAdmin && !this._isPlatform);
+  },
+
+  _renderPlatform(el, pf) {
+    const badgeClass = pf.available ? 'badge-running' : 'badge-warning';
+    const groups = pf.groups || [];
+    el.innerHTML = `
+      <div class="alert" style="margin-bottom:12px;background:var(--surface2)"><i class="fas fa-eye"></i> Read-only view — ${Utils.escapeHtml((pf.platform || '').toUpperCase())} manages its firewall in its native tool (esxcli / pve-firewall / incus network acl).</div>
+      <div class="stat-cards" style="grid-template-columns:repeat(2,1fr);margin-bottom:16px">
+        ${this._card('fa-shield-alt', 'Platform', `<span class="badge ${badgeClass}"><span class="badge-dot"></span>${Utils.escapeHtml(pf.platform || '')}</span>`)}
+        ${this._card('fa-info-circle', 'Status', Utils.escapeHtml(pf.summary || ''))}
+      </div>
+      ${pf.trustHint ? `<div class="alert alert-warning" style="margin-bottom:12px"><i class="fas fa-user-lock"></i> ${Utils.escapeHtml(pf.summary)} <a href="#/incus-instances">Open Instances →</a></div>` : ''}
+      ${(!pf.available && !pf.trustHint) ? `<div class="alert alert-warning" style="margin-bottom:12px">${Utils.escapeHtml(pf.summary || 'Unavailable')}</div>` : ''}
+      ${groups.map(g => `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><h3><i class="fas fa-list text-dim" style="margin-right:8px"></i>${Utils.escapeHtml(g.title)}</h3><span class="text-dim text-sm">${(g.items || []).length}</span></div>
+          <div class="card-body" style="padding:0">
+            ${(g.items || []).length === 0 ? '<div class="empty-msg">None.</div>' : `
+            <table class="data-table"><thead><tr><th>Rule</th><th>State</th><th>Detail</th></tr></thead>
+            <tbody>${g.items.map(it => `
+              <tr>
+                <td class="mono text-sm">${Utils.escapeHtml(it.name || '')}</td>
+                <td>${it.enabled === false ? '<span class="badge badge-info">off</span>' : '<span class="badge badge-running">on</span>'}</td>
+                <td class="text-sm text-dim">${Utils.escapeHtml(it.detail || '')}</td>
+              </tr>`).join('')}</tbody></table>`}
+          </div>
+        </div>`).join('')}
+      ${pf.raw ? `<div class="card"><div class="card-header"><h3><i class="fas fa-terminal text-dim" style="margin-right:8px"></i>Raw</h3></div><div class="card-body"><pre class="inspect-json" style="max-height:300px;color:var(--text)">${Utils.escapeHtml(pf.raw)}</pre></div></div>` : ''}
+    `;
+  },
+
   _renderRules(el) {
+    const r = this._rules || {};
+    if (r.readOnly && r.platform) { this._renderPlatform(el, r.platform); return; }
     const s = this._status || {};
-    const r = this._rules || { rules: [], raw: '' };
     const backend = r.backend || s.backend;
     const channel = s.channel || r.channel || '?';
     const available = (s.available != null ? s.available : r.available);

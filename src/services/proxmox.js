@@ -145,6 +145,12 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/nodes')) || [];
   }
 
+  // v8.9.33 — pve-firewall state (read-only).
+  async getClusterFirewallOptions() { return this._request('GET', '/api2/json/cluster/firewall/options'); }
+  async getClusterFirewallRules() { return (await this._request('GET', '/api2/json/cluster/firewall/rules')) || []; }
+  async getNodeFirewallOptions(node) { return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/options`); }
+  async getNodeFirewallRules(node) { return (await this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/rules`)) || []; }
+
   /** List all VMs across the cluster (via /cluster/resources?type=vm). */
   async listVMs() {
     return (await this._request('GET', '/api2/json/cluster/resources?type=vm')) || [];

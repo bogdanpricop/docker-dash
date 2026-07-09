@@ -231,6 +231,12 @@ class IncusClient {
     return (resp && resp.metadata) || [];
   }
 
+  /** v8.9.33 — network ACLs (Incus's firewall primitive: ingress/egress rules). */
+  async listNetworkAcls() {
+    const resp = await this._request('GET', '/1.0/network-acls?recursion=1');
+    return (resp && resp.metadata) || [];
+  }
+
   // ─── Operation polling ───────────────────────────────────────
   //
   // Incus write endpoints return `{type: "async", operation: "/1.0/operations/<id>", ...}`

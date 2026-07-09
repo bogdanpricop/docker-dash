@@ -55,6 +55,10 @@ const CMD = {
   ipmiSdr:   'esxcli --formatter=json hardware ipmi sdr list',
   vibList:   'esxcli --formatter=json software vib list',
   nicList:   'esxcli --formatter=json network nic list',
+  // v8.9.33 — ESXi firewall (read-only).
+  fwGet:       'esxcli --formatter=json network firewall get',
+  fwRulesets:  'esxcli --formatter=json network firewall ruleset list',
+  fwAllowedIp: 'esxcli --formatter=json network firewall ruleset allowedip list',
 };
 
 // ─── Public API ──────────────────────────────────────────────
@@ -115,6 +119,17 @@ async function getNics(sshConfig) {
   const ssh = await _connectSsh(sshConfig);
   try { return parseNics(await _runJson(ssh, CMD.nicList)); }
   finally { _end(ssh); }
+}
+
+/** ESXi firewall state (read-only): enabled/default action + rulesets + allowed IPs. */
+async function getFirewall(sshConfig) {
+  const ssh = await _connectSsh(sshConfig);
+  try {
+    const get = await _runJsonSafe(ssh, CMD.fwGet);
+    const rulesets = await _runJsonSafe(ssh, CMD.fwRulesets);
+    const allowed = await _runJsonSafe(ssh, CMD.fwAllowedIp);
+    return parseFirewall({ get, rulesets, allowed });
+  } finally { _end(ssh); }
 }
 
 /** System summary (version/hostname/platform/cpu/memory). */
@@ -507,14 +522,41 @@ function parseSensors(parsed) {
   };
 }
 
+function _splitIps(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v.map(String);
+  const s = String(v).trim();
+  if (!s) return [];
+  if (/^all$/i.test(s)) return ['All'];
+  return s.split(/[,\s]+/).filter(Boolean);
+}
+
+/** esxcli network firewall {get, ruleset list, allowedip list} -> normalized. */
+function parseFirewall({ get, rulesets, allowed }) {
+  const g = firstRow(get) || (get && typeof get === 'object' ? get : {}) || {};
+  const enabled = _asBool(pick(g, ['Enabled', 'enabled']));
+  const defaultAction = pick(g, ['DefaultAction', 'Default Action']);
+  const loaded = _asBool(pick(g, ['Loaded', 'loaded']));
+  const ipByRs = {};
+  for (const a of asArray(allowed)) {
+    const rs = pick(a, ['Ruleset', 'ruleset']);
+    if (rs) ipByRs[String(rs)] = _splitIps(pick(a, ['AllowedIPAddresses', 'Allowed IP Addresses', 'AllowedIP', 'AllIP']));
+  }
+  const rs = asArray(rulesets).map(r => {
+    const name = pick(r, ['Name', 'name']);
+    return { name, enabled: _asBool(pick(r, ['Enabled', 'enabled'])), allowedIps: ipByRs[String(name)] || [] };
+  }).filter(r => r.name);
+  return { enabled, defaultAction, loaded, rulesets: rs };
+}
+
 module.exports = {
   fromHostRow,
-  testSsh, getSensors, getVibs, getNics, getSystem, collectAll,
+  testSsh, getSensors, getVibs, getNics, getSystem, getFirewall, collectAll,
   CMD,
   _internals: {
     parseJson, pick, asArray, firstRow, _norm, _int, _num, _asBool,
     parseVersion, parseHostname, parsePlatform, parseCpu, parseMemory, parseSystem,
-    parseVibs, parseNics, parseSensors, _sensorSeverity,
+    parseVibs, parseNics, parseSensors, _sensorSeverity, parseFirewall, _splitIps,
     _validateSshConfig, _friendlySshError, _cmdError,
   },
 };

@@ -60,12 +60,26 @@ async function _detect(host) {
 
 async function detectBackend(hostId) {
   const host = _resolveHost(hostId);
+  const platform = require('./platform');
+  if (platform.isPlatformHost(host.daemonType)) {
+    const row = _db().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+    const pf = await platform.getPlatformFirewall(row);
+    return { hostId, channel: 'platform', backend: pf.platform, available: pf.available, daemonType: host.daemonType, readOnly: true, platform: pf };
+  }
   const { backend } = await _detect(host);
   return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType };
 }
 
 async function listRules(hostId) {
   const host = _resolveHost(hostId);
+  // Non-Docker platforms (ESXi/Proxmox/Incus) have their own firewalls — show
+  // their state read-only instead of probing for iptables/nftables.
+  const platform = require('./platform');
+  if (platform.isPlatformHost(host.daemonType)) {
+    const row = _db().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+    const pf = await platform.getPlatformFirewall(row);
+    return { hostId, channel: 'platform', backend: pf.platform, available: pf.available, daemonType: host.daemonType, readOnly: true, rules: [], raw: pf.raw, drift: [], otherRules: null, platform: pf };
+  }
   const dbRules = _db().prepare(
     'SELECT * FROM firewall_rules WHERE host_id = ? AND is_active = 1 ORDER BY created_at DESC'
   ).all(hostId);
@@ -148,6 +162,9 @@ async function snapshot(hostId, user, reason) {
 async function applyRule(hostId, rawSpec, user, requesterIp) {
   const spec = assertSafe(rawSpec);
   const host = _resolveHost(hostId);
+  if (require('./platform').isPlatformHost(host.daemonType)) {
+    throw new Error(`${host.daemonType} firewall is read-only in docker-dash — manage it in its native tool (esxcli / pve-firewall / incus network acl).`);
+  }
   const det = await _detect(host);
   const backendName = det.backend || (host.channel === 'agent' ? (await runner.agentRequest(host.agentCfg, '/detect', {})).backend : null);
   if (!backendName) throw new Error('No firewall backend detected on this host');
