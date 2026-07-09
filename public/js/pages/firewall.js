@@ -351,11 +351,27 @@ const FirewallPage = {
         <input type="text" id="fwa-url" class="form-control" placeholder="http://host.docker.internal:9090" value="${Utils.escapeHtml(cur.url || '')}"></div>
       <div class="form-group"><label>Token ${cur.configured ? '<span class="text-muted">(leave blank to keep current)</span>' : ''}</label>
         <input type="password" id="fwa-token" class="form-control" placeholder="the FW_AGENT_TOKEN value"></div>
-      ${cur.configured ? '<div class="alert alert-warning" style="font-size:12px">An agent is already configured. Submit to update, or use Remove.</div>' : ''}
+      <details style="margin-bottom:10px"${cur.mtls ? ' open' : ''}>
+        <summary style="cursor:pointer;font-size:13px">Mutual TLS (optional) ${cur.mtls ? '<span class="badge badge-running">configured</span>' : ''}</summary>
+        <p class="text-muted" style="font-size:12px;margin:6px 0">Paste the client certificate + key docker-dash should present, and the CA that signed the agent's server cert. See the agent README for openssl commands. Leave blank to keep current / use token-only.</p>
+        <div class="form-group"><label>Client certificate (PEM)</label><textarea id="fwa-cert" class="form-control" rows="2" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+        <div class="form-group"><label>Client key (PEM)</label><textarea id="fwa-key" class="form-control" rows="2" placeholder="-----BEGIN PRIVATE KEY-----"></textarea></div>
+        <div class="form-group"><label>CA certificate (PEM)</label><textarea id="fwa-ca" class="form-control" rows="2" placeholder="-----BEGIN CERTIFICATE-----"></textarea></div>
+      </details>
+      ${cur.configured ? '<div class="alert alert-warning" style="font-size:12px">An agent is already configured. Submit to update, or clear the URL + submit to Remove.</div>' : ''}
     `, {
       title: 'Configure firewall-agent',
-      width: '520px',
-      onSubmit: (c) => ({ url: c.querySelector('#fwa-url').value.trim(), token: c.querySelector('#fwa-token').value.trim() }),
+      width: '560px',
+      onSubmit: (c) => ({
+        url: c.querySelector('#fwa-url').value.trim(),
+        token: c.querySelector('#fwa-token').value.trim(),
+        tls: {
+          cert: c.querySelector('#fwa-cert').value.trim(),
+          key: c.querySelector('#fwa-key').value.trim(),
+          ca: c.querySelector('#fwa-ca').value.trim(),
+          keep: true,
+        },
+      }),
     });
     if (!result) return;
     try {

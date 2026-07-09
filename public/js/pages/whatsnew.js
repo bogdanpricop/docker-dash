@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.30-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall-agent — mutual TLS',
+      changes: [
+        { type: 'security', text: 'The firewall-agent channel can now use mutual TLS instead of a bare bearer token. The agent serves HTTPS (FW_AGENT_TLS=1 with server cert/key/CA) and requires a client certificate; docker-dash presents its client cert and verifies the agent’s server cert against the CA (rejectUnauthorized: true). Configure it in Firewall → Configure agent → Mutual TLS (paste client cert/key + CA); the agent README ships the openssl commands to mint a CA + server + client certs. Token-only over loopback still works. 3 new tests.' },
+      ],
+    },
+    {
       version: '8.9.29-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — audit export + manual-rule awareness',

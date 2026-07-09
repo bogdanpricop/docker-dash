@@ -85,24 +85,40 @@ async function runRead(host, command, opts) {
   return r.stdout;
 }
 
-// Agent channel: POST JSON to the standalone firewall-agent with a bearer token.
+// Build the http(s).request options for an agent call. When the agent config
+// carries a client cert+key (mTLS), present them and REQUIRE a valid server cert
+// (verified against the provided CA); otherwise fall back to bearer-token auth
+// over http/https with a relaxed server-cert check (self-signed agent).
+function _agentReqOptions(agentCfg, payloadLen, timeoutMs) {
+  const o = {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': payloadLen,
+      'Authorization': `Bearer ${agentCfg.token || ''}`,
+    },
+    timeout: timeoutMs,
+  };
+  const tls = agentCfg.tls;
+  if (tls && tls.cert && tls.key) {
+    o.cert = tls.cert; o.key = tls.key;
+    if (tls.ca) o.ca = tls.ca;
+    o.rejectUnauthorized = true; // mutual TLS — verify the agent's cert
+  } else {
+    o.rejectUnauthorized = false; // token-only: tolerate a self-signed agent cert
+  }
+  return o;
+}
+
+// Agent channel: POST JSON to the standalone firewall-agent (bearer token, and
+// mutual TLS when client certs are configured).
 function agentRequest(agentCfg, path, body, { timeoutMs = DEFAULT_TIMEOUT } = {}) {
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(path, agentCfg.url); } catch (e) { return reject(new Error(`Bad agent URL: ${e.message}`)); }
     const payload = Buffer.from(JSON.stringify(body || {}));
     const lib = u.protocol === 'https:' ? https : http;
-    const req = lib.request(u, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': payload.length,
-        'Authorization': `Bearer ${agentCfg.token || ''}`,
-      },
-      timeout: timeoutMs,
-      // MVP: allow self-signed agent certs; mTLS is a Phase-3 hardening.
-      rejectUnauthorized: false,
-    }, (res) => {
+    const req = lib.request(u, _agentReqOptions(agentCfg, payload.length, timeoutMs), (res) => {
       let data = '';
       res.on('data', (d) => { data += d; });
       res.on('end', () => {
@@ -119,4 +135,4 @@ function agentRequest(agentCfg, path, body, { timeoutMs = DEFAULT_TIMEOUT } = {}
   });
 }
 
-module.exports = { toShellCommand, runCommands, runRead, agentRequest, DEFAULT_TIMEOUT };
+module.exports = { toShellCommand, runCommands, runRead, agentRequest, psEncode, DEFAULT_TIMEOUT, _internals: { _agentReqOptions } };

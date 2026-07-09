@@ -16,8 +16,11 @@
 //   FW_AGENT_PORT   (default 9090)
 //   FW_AGENT_BIND   (default 127.0.0.1)
 //   FW_AGENT_SUDO   ("1" to prefix commands with sudo)
+//   FW_AGENT_TLS    ("1" to serve HTTPS with mutual TLS — see README)
+//   FW_AGENT_TLS_CERT / FW_AGENT_TLS_KEY / FW_AGENT_TLS_CA  (PEM file paths)
 
 const http = require('http');
+const fs = require('fs');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { assertSafe } = require('./lib/validate');
@@ -27,6 +30,7 @@ const TOKEN = process.env.FW_AGENT_TOKEN || '';
 const PORT = parseInt(process.env.FW_AGENT_PORT, 10) || 9090;
 const BIND = process.env.FW_AGENT_BIND || '127.0.0.1';
 const USE_SUDO = process.env.FW_AGENT_SUDO === '1';
+const USE_TLS = process.env.FW_AGENT_TLS === '1';
 
 if (!TOKEN || TOKEN.length < 16) {
   console.error('FATAL: set FW_AGENT_TOKEN to a long random secret (>=16 chars).');
@@ -78,7 +82,7 @@ function authOk(req) {
 
 function send(res, code, obj) { const s = JSON.stringify(obj); res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(s); }
 
-const server = http.createServer((req, res) => {
+const handler = (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'POST only' });
   if (!authOk(req)) return send(res, 401, { error: 'unauthorized' });
   let body = '';
@@ -122,6 +126,22 @@ const server = http.createServer((req, res) => {
       return send(res, 200, { ok: false, error: err.message });
     }
   });
-});
+};
 
-server.listen(PORT, BIND, () => console.log(`firewall-agent listening on ${BIND}:${PORT} (sudo=${USE_SUDO})`));
+let server;
+if (USE_TLS) {
+  // Mutual TLS: present our server cert AND require a client cert signed by our
+  // CA. docker-dash presents its client cert (configured on the host row).
+  const opts = {
+    cert: fs.readFileSync(process.env.FW_AGENT_TLS_CERT),
+    key: fs.readFileSync(process.env.FW_AGENT_TLS_KEY),
+    ca: fs.readFileSync(process.env.FW_AGENT_TLS_CA),
+    requestCert: true,
+    rejectUnauthorized: true,
+  };
+  server = require('https').createServer(opts, handler);
+} else {
+  server = http.createServer(handler);
+}
+
+server.listen(PORT, BIND, () => console.log(`firewall-agent listening on ${USE_TLS ? 'https' : 'http'}://${BIND}:${PORT} (sudo=${USE_SUDO}, mTLS=${USE_TLS})`));

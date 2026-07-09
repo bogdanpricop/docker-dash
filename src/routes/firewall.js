@@ -157,7 +157,7 @@ router.get('/:hostId/agent-config', ...admin, asyncHandler(async (req, res) => {
   let cfg = {};
   try { const { decryptDaemonConfig } = require('../services/vsphere'); cfg = decryptDaemonConfig(row.daemon_config) || {}; } catch { /* ignore */ }
   const fa = cfg.firewallAgent || null;
-  res.json({ configured: !!(fa && fa.url), url: fa ? fa.url : null });
+  res.json({ configured: !!(fa && fa.url), url: fa ? fa.url : null, mtls: !!(fa && fa.tls && fa.tls.cert) });
 }));
 
 router.post('/:hostId/agent-config', ...adminWrite, asyncHandler(async (req, res) => {
@@ -172,10 +172,20 @@ router.post('/:hostId/agent-config', ...adminWrite, asyncHandler(async (req, res
     delete cfg.firewallAgent;
   } else {
     const url = String((req.body && req.body.url) || '').trim();
-    const token = String((req.body && req.body.token) || '').trim();
+    let token = String((req.body && req.body.token) || '').trim();
+    const existing = cfg.firewallAgent || {};
+    if (!token && existing.token) token = existing.token; // keep current token if left blank
     if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: 'url must start with http:// or https://' });
     if (token.length < 16) return res.status(400).json({ error: 'token must be at least 16 chars' });
-    cfg.firewallAgent = { url, token };
+    const next = { url, token };
+    // Optional mutual TLS: client cert + key (+ CA to verify the agent's cert).
+    const tls = (req.body && req.body.tls) || {};
+    if (tls.cert && tls.key) {
+      next.tls = { cert: tls.cert, key: tls.key, ca: tls.ca || undefined };
+    } else if (tls.keep && existing.tls) {
+      next.tls = existing.tls; // keep existing certs when not re-pasted
+    }
+    cfg.firewallAgent = next;
   }
   db.prepare('UPDATE docker_hosts SET daemon_config = ?, updated_at = datetime(\'now\') WHERE id = ?')
     .run(encryptDaemonConfig(cfg), hostId);

@@ -54,6 +54,45 @@ If docker-dash runs in a container and the agent runs on the host, use
 `http://host.docker.internal:9090` (add `extra_hosts: ["host.docker.internal:host-gateway"]`
 to the compose service on Linux).
 
+## Mutual TLS (recommended for non-loopback)
+
+The bearer token alone is fine on `127.0.0.1`. If the agent is reachable over a
+network, enable **mutual TLS** so both sides authenticate with certificates.
+
+Generate a tiny private CA + a server cert (for the agent) + a client cert (for
+docker-dash):
+
+```bash
+# CA
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj "/CN=dd-fw-ca" -out ca.crt
+
+# Agent server cert (CN/SAN = the host/IP docker-dash connects to)
+openssl genrsa -out agent.key 2048
+openssl req -new -key agent.key -subj "/CN=agent-host" -out agent.csr
+printf "subjectAltName=IP:192.168.13.20" > san.ext   # adjust to your host/IP
+openssl x509 -req -in agent.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 825 -sha256 -extfile san.ext -out agent.crt
+
+# docker-dash client cert
+openssl genrsa -out client.key 2048
+openssl req -new -key client.key -subj "/CN=docker-dash" -out client.csr
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 825 -sha256 -out client.crt
+```
+
+On the agent host, install the server cert + CA and turn on TLS in the service:
+
+```ini
+Environment=FW_AGENT_TLS=1
+Environment=FW_AGENT_TLS_CERT=/opt/firewall-agent/agent.crt
+Environment=FW_AGENT_TLS_KEY=/opt/firewall-agent/agent.key
+Environment=FW_AGENT_TLS_CA=/opt/firewall-agent/ca.crt
+```
+
+In docker-dash (Firewall page → Configure agent → Mutual TLS), set the URL to
+`https://…`, keep the token, and paste **client.crt**, **client.key**, and
+**ca.crt**. docker-dash then presents its client cert and verifies the agent's
+server cert against the CA (`rejectUnauthorized: true`).
+
 ## Endpoints (all POST, `Authorization: Bearer <token>`)
 
 - `/detect`   → `{ backend }`
