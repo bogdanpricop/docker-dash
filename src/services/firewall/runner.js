@@ -22,6 +22,10 @@ function toShellCommand(bin, argv) {
   return [bin, ...argv].map(q).join(' ');
 }
 
+// PowerShell -EncodedCommand payload (base64/UTF-16LE) — cmd.exe-safe, so a
+// validated PS script survives the Windows OpenSSH default shell.
+function psEncode(script) { return Buffer.from(script, 'utf16le').toString('base64'); }
+
 // Run a list of {bin, argv} commands in order. Stops at the first non-zero exit.
 // Returns { exitCode, stdout, stderr }.
 async function runCommands(host, commands, { timeoutMs = DEFAULT_TIMEOUT } = {}) {
@@ -35,7 +39,24 @@ async function runCommands(host, commands, { timeoutMs = DEFAULT_TIMEOUT } = {})
   return { exitCode: 0, stdout, stderr };
 }
 
-async function _runOne(host, { bin, argv }, timeoutMs) {
+async function _runOne(host, command, timeoutMs) {
+  // Windows Firewall: a PowerShell script (encoded so it survives cmd.exe).
+  if (command.shell === 'powershell') {
+    const b64 = psEncode(command.script);
+    if (host.connectionType === 'ssh') {
+      const sshTunnelService = require('../ssh-tunnel');
+      const r = await sshTunnelService.exec(host.id, `powershell -NoProfile -NonInteractive -EncodedCommand ${b64}`, { timeoutMs });
+      return { exitCode: r.exitCode == null ? 0 : r.exitCode, stdout: r.stdout, stderr: r.stderr };
+    }
+    try {
+      const stdout = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', b64], { timeout: timeoutMs, encoding: 'utf8' });
+      return { exitCode: 0, stdout, stderr: '' };
+    } catch (err) {
+      return { exitCode: err.code === 'ENOENT' ? 127 : (err.status == null ? 1 : err.status), stdout: (err.stdout || '').toString(), stderr: (err.stderr || err.message || '').toString() };
+    }
+  }
+
+  const { bin, argv } = command;
   if (host.connectionType === 'ssh') {
     const sshTunnelService = require('../ssh-tunnel');
     const r = await sshTunnelService.exec(host.id, toShellCommand(bin, argv), { timeoutMs });

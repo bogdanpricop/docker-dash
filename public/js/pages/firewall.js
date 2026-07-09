@@ -94,8 +94,8 @@ const FirewallPage = {
       : `<span class="badge badge-stopped"><span class="badge-dot"></span>unavailable</span>`;
 
     const warn = [];
-    if (!available) warn.push('No firewall backend detected on this host. For an SSH host it needs iptables/firewalld/ufw; for the local host use a firewall-agent (button above).');
-    if (backend === 'ufw') warn.push('ufw is host-general only — it does NOT filter Docker published ports. Use an iptables host for container-scope rules.');
+    if (!available) warn.push('No firewall backend detected on this host. For an SSH host it needs iptables/firewalld/ufw/nftables (or Windows OpenSSH); for the local host use a firewall-agent (button above).');
+    if (['ufw', 'nftables', 'windows'].includes(backend)) warn.push(`${backend} is host-only — it does NOT filter Docker published ports. Use an iptables host for container-scope rules.`);
 
     const rules = (r.rules || []);
     el.innerHTML = `

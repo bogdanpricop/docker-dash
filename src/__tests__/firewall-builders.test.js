@@ -1,6 +1,6 @@
 'use strict';
 
-const { iptables, firewalld, ufw, nftables } = require('../services/firewall/backends');
+const { iptables, firewalld, ufw, nftables, windows } = require('../services/firewall/backends');
 
 const ctx = { uuid: 'abc-123', reason: 'vendor' };
 
@@ -81,5 +81,30 @@ describe('nftables builder', () => {
     expect(rm.commands[0].argv[0]).toBe('-c');
     expect(rm.commands[0].argv[1]).toContain('handle');
     expect(rm.commands[0].argv[1]).toContain('APPFW uuid=abc-123');
+  });
+});
+
+describe('windows builder', () => {
+  test('allow IP to port → New-NetFirewallRule powershell script', () => {
+    const r = windows.buildApply({ action: 'allow', scope: 'host', source_ip: '89.40.10.20', destination_port: 8082, protocol: 'tcp' }, ctx);
+    expect(r.commands[0].shell).toBe('powershell');
+    const s = r.commands[0].script;
+    expect(s).toContain('New-NetFirewallRule');
+    expect(s).toContain("-Name 'APPFW_abc-123'");
+    expect(s).toContain('-Action Allow');
+    expect(s).toContain('-Protocol TCP');
+    expect(s).toContain('-LocalPort 8082');
+    expect(s).toContain("-RemoteAddress '89.40.10.20'");
+    expect(r.comment_tag).toBe('APPFW_abc-123');
+  });
+  test('source-only block omits -Protocol (Any) and uses Block', () => {
+    const s = windows.buildApply({ action: 'block', scope: 'host', source_ip: '89.40.10.20', protocol: 'tcp' }, ctx).commands[0].script;
+    expect(s).toContain('-Action Block');
+    expect(s).not.toContain('-Protocol');
+    expect(s).not.toContain('-LocalPort');
+  });
+  test('remove targets the stable rule Name', () => {
+    const s = windows.buildRemove({ rule_uuid: 'abc-123', comment_tag: 'APPFW_abc-123' }).commands[0].script;
+    expect(s).toContain("Remove-NetFirewallRule -Name 'APPFW_abc-123'");
   });
 });

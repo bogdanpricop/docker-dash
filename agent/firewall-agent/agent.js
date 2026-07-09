@@ -35,6 +35,9 @@ if (!TOKEN || TOKEN.length < 16) {
 
 function run(bin, argv, timeoutMs = 20000) {
   return new Promise((resolve) => {
+    // Shell-only backends (e.g. Windows PowerShell) have no argv bin — the Linux
+    // agent doesn't support them, so report "not available" instead of crashing.
+    if (!bin) return resolve({ exitCode: 127, stdout: '', stderr: 'backend not supported by this agent' });
     const file = USE_SUDO ? 'sudo' : bin;
     const args = USE_SUDO ? [bin, ...argv] : argv;
     execFile(file, args, { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout, stderr) => {

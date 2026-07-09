@@ -7,17 +7,18 @@ const iptables = require('./iptables');
 const firewalld = require('./firewalld');
 const ufw = require('./ufw');
 const nftables = require('./nftables');
+const windows = require('./windows');
 
-const BACKENDS = { iptables, firewalld, ufw, nftables };
+const BACKENDS = { iptables, firewalld, ufw, nftables, windows };
 
-// Order the service probes buildDetect() in. First exit-0 wins. nftables is last
-// so it's only picked on nft-native hosts that lack the iptables command (the
-// common iptables-nft case still resolves to 'iptables').
-const DETECT_ORDER = ['firewalld', 'ufw', 'iptables', 'nftables'];
+// Order the service probes buildDetect() in. First exit-0 wins. nftables is
+// before windows so the common iptables-nft Linux case still resolves to
+// iptables; windows is last (its PowerShell probe fails fast on Linux).
+const DETECT_ORDER = ['firewalld', 'ufw', 'iptables', 'nftables', 'windows'];
 
 // Backends that cannot filter Docker published ports → refuse docker/container scope.
-const HOST_ONLY = new Set(['ufw', 'nftables']);
+const HOST_ONLY = new Set(['ufw', 'nftables', 'windows']);
 
 function get(name) { return BACKENDS[name] || null; }
 
-module.exports = { BACKENDS, DETECT_ORDER, HOST_ONLY, get, iptables, firewalld, ufw, nftables };
+module.exports = { BACKENDS, DETECT_ORDER, HOST_ONLY, get, iptables, firewalld, ufw, nftables, windows };

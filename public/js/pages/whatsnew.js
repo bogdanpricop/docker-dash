@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.26-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — Windows Firewall backend',
+      changes: [
+        { type: 'feature', text: 'Windows hosts (OpenSSH) can now be managed too. The runner wraps each operation in powershell -EncodedCommand so it survives the cmd.exe default shell; rules are created with New-NetFirewallRule under a stable Name (APPFW_<uuid>) for deterministic removal. Auto-detected via Get-NetFirewallProfile (probe fails fast on Linux). Host-only (no Docker scope), like ufw/nftables. 3 new builder tests; the firewall-agent gracefully reports Windows backends as unsupported.' },
+      ],
+    },
+    {
       version: '8.9.25-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — nftables backend',

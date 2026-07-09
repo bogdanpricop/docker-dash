@@ -51,6 +51,7 @@ async function _detect(host) {
       const out = await runner.runRead(host, be.buildDetect(), { timeoutMs: 8000 });
       if (name === 'firewalld' && !/running/i.test(out)) continue;
       if (name === 'ufw' && !/Status:\s*active/i.test(out)) continue;
+      if (name === 'windows' && !/windows/i.test(out)) continue;
       return { backend: name, raw: out };
     } catch { /* not this backend, try next */ }
   }
