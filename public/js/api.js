@@ -340,6 +340,8 @@ const Api = {
   fwRollback(hostId, snapId)  { return this.post(`/firewall/${hostId}/rollback`, { snapshotId: snapId }); },
   fwGetAgentConfig(hostId)    { return this.get(`/firewall/${hostId}/agent-config`); },
   fwSetAgentConfig(hostId, d) { return this.post(`/firewall/${hostId}/agent-config`, d); },
+  fwGetSudoConfig(hostId)     { return this.get(`/firewall/${hostId}/sudo-config`); },
+  fwSetSudoConfig(hostId, d)  { return this.post(`/firewall/${hostId}/sudo-config`, d); },
 
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {

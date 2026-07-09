@@ -24,18 +24,19 @@ function _resolveHost(hostId) {
     const ssh = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
     if (ssh && ssh.port) sshPort = parseInt(ssh.port, 10) || 22;
   } catch { /* ignore */ }
-  let agentCfg = null;
+  let agentCfg = null, sudoPassword = null;
   if (row.daemon_config) {
     try {
       const { decryptDaemonConfig } = require('../vsphere');
       const dc = decryptDaemonConfig(row.daemon_config) || {};
       if (dc.firewallAgent && dc.firewallAgent.url) agentCfg = dc.firewallAgent;
+      if (dc.firewallSudo && dc.firewallSudo.password) sudoPassword = dc.firewallSudo.password;
     } catch { /* ignore */ }
   }
   const channel = agentCfg ? 'agent' : (row.connection_type === 'ssh' ? 'ssh' : 'local');
   return {
     id: row.id, name: row.name, connectionType: row.connection_type,
-    daemonType: row.daemon_type || 'docker', sshPort, agentCfg, channel,
+    daemonType: row.daemon_type || 'docker', sshPort, agentCfg, sudoPassword, channel,
   };
 }
 

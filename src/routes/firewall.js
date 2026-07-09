@@ -193,4 +193,37 @@ router.post('/:hostId/agent-config', ...adminWrite, asyncHandler(async (req, res
   res.json({ ok: true, configured: !!cfg.firewallAgent });
 }));
 
+// ── Sudo password (for SSH hosts that need `sudo` and auth by key) ──────────
+// Stored encrypted in daemon_config.firewallSudo. Write-only (never returned).
+router.get('/:hostId/sudo-config', ...admin, asyncHandler(async (req, res) => {
+  const hostId = _hostId(req);
+  const row = getDb().prepare('SELECT daemon_config FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!row) return res.status(404).json({ error: 'Host not found' });
+  let cfg = {};
+  try { const { decryptDaemonConfig } = require('../services/vsphere'); cfg = decryptDaemonConfig(row.daemon_config) || {}; } catch { /* ignore */ }
+  res.json({ configured: !!(cfg.firewallSudo && cfg.firewallSudo.password) });
+}));
+
+router.post('/:hostId/sudo-config', ...adminWrite, asyncHandler(async (req, res) => {
+  const hostId = _hostId(req);
+  const db = getDb();
+  const row = db.prepare('SELECT daemon_config FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!row) return res.status(404).json({ error: 'Host not found' });
+  const { decryptDaemonConfig, encryptDaemonConfig } = require('../services/vsphere');
+  let cfg = {};
+  try { cfg = decryptDaemonConfig(row.daemon_config) || {}; } catch { /* ignore */ }
+  if (req.body && req.body.remove) {
+    delete cfg.firewallSudo;
+  } else {
+    const password = String((req.body && req.body.password) || '');
+    if (!password) return res.status(400).json({ error: 'password is required' });
+    cfg.firewallSudo = { password };
+  }
+  db.prepare('UPDATE docker_hosts SET daemon_config = ?, updated_at = datetime(\'now\') WHERE id = ?')
+    .run(encryptDaemonConfig(cfg), hostId);
+  // Audit the CHANGE, never the value.
+  _audit(req, 'firewall_sudo_config', hostId, { removed: !!(req.body && req.body.remove), configured: !!cfg.firewallSudo }, true);
+  res.json({ ok: true, configured: !!cfg.firewallSudo });
+}));
+
 module.exports = router;

@@ -49,6 +49,7 @@ const FirewallPage = {
           ${sel}
           ${this._canWrite && !this._isPlatform ? `<button class="btn btn-sm btn-primary" id="fw-add"><i class="fas fa-plus"></i> Add rule</button>` : ''}
           ${this._canWrite && !this._isPlatform ? `<button class="btn btn-sm btn-secondary" id="fw-snapshot" title="Save a snapshot of the current ruleset"><i class="fas fa-camera"></i></button>` : ''}
+          ${this._isAdmin && !this._isPlatform ? `<button class="btn btn-sm btn-secondary" id="fw-sudo" title="Set a sudo password (for key-auth SSH hosts whose user needs sudo)"><i class="fas fa-user-shield"></i></button>` : ''}
           ${this._isAdmin && !this._isPlatform ? `<button class="btn btn-sm btn-secondary" id="fw-agent" title="Configure firewall-agent for this host"><i class="fas fa-network-wired"></i></button>` : ''}
           <button class="btn btn-sm btn-secondary" id="fw-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
@@ -66,6 +67,7 @@ const FirewallPage = {
     container.querySelector('#fw-add')?.addEventListener('click', () => this._addRuleDialog());
     container.querySelector('#fw-snapshot')?.addEventListener('click', () => this._snapshot());
     container.querySelector('#fw-agent')?.addEventListener('click', () => this._agentDialog());
+    container.querySelector('#fw-sudo')?.addEventListener('click', () => this._sudoDialog());
     container.querySelectorAll('[data-fw-tab]').forEach(b => b.addEventListener('click', (e) => {
       this._tab = e.target.getAttribute('data-fw-tab');
       container.querySelectorAll('[data-fw-tab]').forEach(x => x.classList.toggle('active', x === e.target));
@@ -99,6 +101,30 @@ const FirewallPage = {
     setDisp('fw-add', this._canWrite && !this._isPlatform);
     setDisp('fw-snapshot', this._canWrite && !this._isPlatform);
     setDisp('fw-agent', this._isAdmin && !this._isPlatform);
+    setDisp('fw-sudo', this._isAdmin && !this._isPlatform);
+  },
+
+  async _sudoDialog() {
+    let cur = { configured: false };
+    try { cur = await Api.fwGetSudoConfig(this._hostId); } catch { /* ignore */ }
+    const result = await Modal.form(`
+      <p class="text-muted" style="font-size:13px">For SSH hosts that authenticate by <b>key</b> but whose user needs <b>sudo</b> (and sudo asks for a password), store that password here. docker-dash feeds it to <span class="mono">sudo -S</span> over stdin — never on the command line, never logged, encrypted at rest.</p>
+      <p class="text-muted" style="font-size:12px">More secure alternative: give the SSH user passwordless sudo scoped to the firewall binaries (see the “no firewall” hint), and leave this empty.</p>
+      <div class="form-group"><label>Sudo password ${cur.configured ? '<span class="badge badge-running">stored</span>' : ''}</label>
+        <input type="password" id="fws-pw" class="form-control" placeholder="${cur.configured ? '•••••• (leave blank to keep)' : 'the account/sudo password'}"></div>
+      ${cur.configured ? '<label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="fws-clear"> Clear the stored sudo password</label>' : ''}
+    `, {
+      title: 'Sudo password',
+      width: '520px',
+      onSubmit: (c) => ({ password: c.querySelector('#fws-pw').value, clear: !!(c.querySelector('#fws-clear') && c.querySelector('#fws-clear').checked) }),
+    });
+    if (!result) return;
+    try {
+      if (result.clear) { await Api.fwSetSudoConfig(this._hostId, { remove: true }); Toast.success('Sudo password cleared'); }
+      else if (result.password) { await Api.fwSetSudoConfig(this._hostId, { password: result.password }); Toast.success('Sudo password saved'); }
+      else { return; }
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   _renderPlatform(el, pf) {

@@ -27,12 +27,21 @@ function toShellCommand(bin, argv) {
 function psEncode(script) { return Buffer.from(script, 'utf16le').toString('base64'); }
 
 // Firewall binaries live in /usr/sbin (often absent from a non-root login PATH)
-// and require root. So over SSH we: (1) put /usr/sbin on PATH, and (2) use
-// passwordless sudo when it's available — a root SSH user runs directly, a user
-// with NOPASSWD sudo runs via sudo, and an unprivileged user fails cleanly.
-function _sshFirewallCommand(bin, argv) {
+// and require root. So over SSH we: (1) put /usr/sbin on PATH, and (2) escalate.
+// Escalation order: run directly (root user) → passwordless "sudo -n" → feed a
+// stored sudo password via stdin ("sudo -S", like Ansible become_password) when
+// one is configured. The password goes through stdin (printf is a shell builtin),
+// never as a process argument, and is never logged.
+function _sshFirewallCommand(bin, argv, sudoPassword) {
   const inner = toShellCommand(bin, argv);
-  return 'export PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH; '
+  const path = 'export PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH; ';
+  if (sudoPassword) {
+    const pw = String(sudoPassword).replace(/'/g, `'\\''`);
+    return path
+      + `if sudo -n true 2>/dev/null; then sudo -n ${inner}; `
+      + `else printf '%s\\n' '${pw}' | sudo -S -p '' ${inner}; fi`;
+  }
+  return path
     + `if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then sudo -n ${inner}; else ${inner}; fi`;
 }
 
@@ -69,7 +78,7 @@ async function _runOne(host, command, timeoutMs) {
   const { bin, argv } = command;
   if (host.connectionType === 'ssh') {
     const sshTunnelService = require('../ssh-tunnel');
-    const r = await sshTunnelService.exec(host.id, _sshFirewallCommand(bin, argv), { timeoutMs });
+    const r = await sshTunnelService.exec(host.id, _sshFirewallCommand(bin, argv, host.sudoPassword), { timeoutMs });
     return { exitCode: r.exitCode == null ? 0 : r.exitCode, stdout: r.stdout, stderr: r.stderr };
   }
   // local (socket/tcp host id representing the machine docker-dash runs on)

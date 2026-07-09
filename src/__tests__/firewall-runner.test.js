@@ -35,4 +35,12 @@ describe('firewall runner — SSH firewall command wrapper', () => {
     expect(cmd).toContain("sudo -n 'iptables' '-S'"); // sudo path
     expect(cmd).toMatch(/else 'iptables' '-S'/);      // direct fallback (root users)
   });
+
+  test('with a stored sudo password → passwordless first, then sudo -S via stdin', () => {
+    const cmd = _internals._sshFirewallCommand('iptables', ['-S'], "s3cr3t'x");
+    expect(cmd).toContain('sudo -n true');                 // still prefer passwordless
+    expect(cmd).toContain("sudo -S -p '' 'iptables' '-S'");// password path via stdin
+    expect(cmd).toContain("printf '%s\\n' 's3cr3t'\\''x'"); // password single-quote-escaped
+    expect(cmd).not.toMatch(/sudo -S[^|]*s3cr3t/);         // password NOT a sudo argument
+  });
 });

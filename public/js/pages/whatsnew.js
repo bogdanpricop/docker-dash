@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.35-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — optional sudo password for key-auth SSH hosts',
+      changes: [
+        { type: 'feature', text: 'For SSH hosts that authenticate by key but whose user still needs a password for sudo (the common case), you can now store a sudo password per host (Firewall → the shield button). docker-dash feeds it to "sudo -S" over stdin — never on the command line, never logged, encrypted at rest — as a fallback after trying root/passwordless sudo. It’s the "become password" model from Ansible: key for the connection, password for the escalation. The more secure alternative (scoped passwordless sudoers) still works and needs no stored secret.' },
+      ],
+    },
+    {
       version: '8.9.34-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — SSH sudo + PATH, clearer "no backend" message',
