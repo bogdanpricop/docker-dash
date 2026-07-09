@@ -28,19 +28,19 @@ describe('firewall runner — agent request options (mTLS)', () => {
 });
 
 describe('firewall runner — SSH firewall command wrapper', () => {
-  test('adds /usr/sbin to PATH and a passwordless-sudo fallback', () => {
+  test('adds /usr/sbin to PATH and runs sudo -n on the real binary (no bad probe)', () => {
     const cmd = _internals._sshFirewallCommand('iptables', ['-S']);
     expect(cmd).toContain('PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH');
-    expect(cmd).toContain('sudo -n true');       // only use sudo when it's passwordless
-    expect(cmd).toContain("sudo -n 'iptables' '-S'"); // sudo path
-    expect(cmd).toMatch(/else 'iptables' '-S'/);      // direct fallback (root users)
+    expect(cmd).not.toContain('sudo -n true');        // probe removed — breaks scoped NOPASSWD
+    expect(cmd).toContain("sudo -n 'iptables' '-S'"); // escalate on the actual command
+    expect(cmd).toMatch(/else 'iptables' '-S'/);      // direct fallback when sudo absent (root)
   });
 
-  test('with a stored sudo password → passwordless first, then sudo -S via stdin', () => {
+  test('with a stored sudo password → sudo -S with the password via stdin', () => {
     const cmd = _internals._sshFirewallCommand('iptables', ['-S'], "s3cr3t'x");
-    expect(cmd).toContain('sudo -n true');                 // still prefer passwordless
-    expect(cmd).toContain("sudo -S -p '' 'iptables' '-S'");// password path via stdin
+    expect(cmd).not.toContain('sudo -n true');
+    expect(cmd).toContain("sudo -S -p '' 'iptables' '-S'"); // password path via stdin
     expect(cmd).toContain("printf '%s\\n' 's3cr3t'\\''x'"); // password single-quote-escaped
-    expect(cmd).not.toMatch(/sudo -S[^|]*s3cr3t/);         // password NOT a sudo argument
+    expect(cmd).not.toMatch(/sudo -S[^|]*s3cr3t/);          // password NOT a sudo argument
   });
 });

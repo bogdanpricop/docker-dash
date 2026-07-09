@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.36-alpha.1',
+      date: '2026-07-09',
+      title: 'Fix: firewall over SSH ignored scoped NOPASSWD sudoers',
+      changes: [
+        { type: 'fix', text: 'Firewall commands over SSH probed sudo with "sudo -n true" to decide whether to escalate — but a sudoers rule scoped to the firewall binaries (NOPASSWD: /usr/sbin/iptables, /usr/sbin/nft, /usr/sbin/ufw …) doesn\'t permit "true", so the probe failed and docker-dash never ran "sudo -n iptables". Removed the probe: it now escalates directly on the real command (sudo -n <binary>), which works for a root SSH user and for the recommended scoped-NOPASSWD user. Stored sudo passwords go straight to "sudo -S". So the least-privilege sudoers line now actually makes the firewall readable.' },
+      ],
+    },
+    {
       version: '8.9.35-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — optional sudo password for key-auth SSH hosts',
