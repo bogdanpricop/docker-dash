@@ -26,3 +26,13 @@ describe('firewall runner — agent request options (mTLS)', () => {
     expect(o.ca).toBeUndefined();
   });
 });
+
+describe('firewall runner — SSH firewall command wrapper', () => {
+  test('adds /usr/sbin to PATH and a passwordless-sudo fallback', () => {
+    const cmd = _internals._sshFirewallCommand('iptables', ['-S']);
+    expect(cmd).toContain('PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH');
+    expect(cmd).toContain('sudo -n true');       // only use sudo when it's passwordless
+    expect(cmd).toContain("sudo -n 'iptables' '-S'"); // sudo path
+    expect(cmd).toMatch(/else 'iptables' '-S'/);      // direct fallback (root users)
+  });
+});

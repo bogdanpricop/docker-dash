@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.34-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — SSH sudo + PATH, clearer "no backend" message',
+      changes: [
+        { type: 'fix', text: 'A Docker host over SSH showed an empty Firewall page when the SSH user wasn\'t root: firewall binaries live in /usr/sbin (missing from a non-root PATH) and need root. docker-dash now runs firewall commands over SSH with /usr/sbin on PATH and a passwordless-"sudo -n" fallback — so a root SSH user works directly, and a user with NOPASSWD sudo for iptables/nft/ufw works too. When it still can\'t read a firewall, the page now explains exactly why (needs root / passwordless sudo, with a ready-to-paste sudoers line, or install the firewall-agent) instead of a vague "no backend".' },
+      ],
+    },
+    {
       version: '8.9.33-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — read-only status for ESXi, Proxmox, Incus/LXD',

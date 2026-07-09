@@ -144,7 +144,7 @@ const FirewallPage = {
 
     const drift = (r.drift || []);
     const warn = [];
-    if (!available) warn.push('No firewall backend detected on this host. For an SSH host it needs iptables/firewalld/ufw/nftables (or Windows OpenSSH); for the local host use a firewall-agent (button above).');
+    if (!available) warn.push('No readable firewall on this host. Firewall commands need root — docker-dash auto-adds /usr/sbin to PATH and tries "sudo -n", so the SSH user must be root OR have passwordless sudo for iptables/nft/ufw (e.g. sudoers: "<user> ALL=(root) NOPASSWD: /usr/sbin/iptables, /usr/sbin/nft, /usr/sbin/ufw, /usr/sbin/iptables-save, /usr/sbin/iptables-restore"). Alternatively install the firewall-agent. (For the local host, the container can\'t reach the host firewall at all — use the agent.)');
     if (['ufw', 'nftables', 'windows'].includes(backend)) warn.push(`${backend} is host-only — it does NOT filter Docker published ports. Use an iptables host for container-scope rules.`);
 
     const rules = (r.rules || []);

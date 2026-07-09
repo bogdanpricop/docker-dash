@@ -26,6 +26,16 @@ function toShellCommand(bin, argv) {
 // validated PS script survives the Windows OpenSSH default shell.
 function psEncode(script) { return Buffer.from(script, 'utf16le').toString('base64'); }
 
+// Firewall binaries live in /usr/sbin (often absent from a non-root login PATH)
+// and require root. So over SSH we: (1) put /usr/sbin on PATH, and (2) use
+// passwordless sudo when it's available — a root SSH user runs directly, a user
+// with NOPASSWD sudo runs via sudo, and an unprivileged user fails cleanly.
+function _sshFirewallCommand(bin, argv) {
+  const inner = toShellCommand(bin, argv);
+  return 'export PATH=/usr/sbin:/sbin:/usr/local/sbin:$PATH; '
+    + `if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then sudo -n ${inner}; else ${inner}; fi`;
+}
+
 // Run a list of {bin, argv} commands in order. Stops at the first non-zero exit.
 // Returns { exitCode, stdout, stderr }.
 async function runCommands(host, commands, { timeoutMs = DEFAULT_TIMEOUT } = {}) {
@@ -59,7 +69,7 @@ async function _runOne(host, command, timeoutMs) {
   const { bin, argv } = command;
   if (host.connectionType === 'ssh') {
     const sshTunnelService = require('../ssh-tunnel');
-    const r = await sshTunnelService.exec(host.id, toShellCommand(bin, argv), { timeoutMs });
+    const r = await sshTunnelService.exec(host.id, _sshFirewallCommand(bin, argv), { timeoutMs });
     return { exitCode: r.exitCode == null ? 0 : r.exitCode, stdout: r.stdout, stderr: r.stderr };
   }
   // local (socket/tcp host id representing the machine docker-dash runs on)
@@ -135,4 +145,4 @@ function agentRequest(agentCfg, path, body, { timeoutMs = DEFAULT_TIMEOUT } = {}
   });
 }
 
-module.exports = { toShellCommand, runCommands, runRead, agentRequest, psEncode, DEFAULT_TIMEOUT, _internals: { _agentReqOptions } };
+module.exports = { toShellCommand, runCommands, runRead, agentRequest, psEncode, DEFAULT_TIMEOUT, _internals: { _agentReqOptions, _sshFirewallCommand } };
