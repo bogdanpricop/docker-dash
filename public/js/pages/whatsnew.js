@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.31-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — proactive drift alerting',
+      changes: [
+        { type: 'feature', text: 'A background monitor (every 10 min) now checks every host with app-managed firewall rules and raises an in-app notification + audit entry (firewall_drift_detected) when rules have drifted off the host — removed manually or lost on a daemon/container restart — with a link straight to the Firewall page to re-apply. De-duplicated so a persistent drift alerts once, not every cycle; unreachable hosts are skipped. This closes the last deferred firewall item alongside agent mTLS — the MVP1–MVP3 roadmap is now fully shipped.' },
+      ],
+    },
+    {
       version: '8.9.30-alpha.1',
       date: '2026-07-09',
       title: 'Firewall-agent — mutual TLS',

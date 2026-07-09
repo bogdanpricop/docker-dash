@@ -438,6 +438,11 @@ async function start() {
     fwTimer.unref();
   } catch (e) { require('./utils/logger')('firewall').debug('expiry job start skipped', { error: e.message }); }
 
+  // v8.9.31 — proactive firewall drift monitor (alerts when app-managed rules go
+  // missing on a host). Every 10 min, best-effort, unref'd, de-duplicated.
+  try { require('./services/firewall/monitor').start(); }
+  catch (e) { require('./utils/logger')('firewall').debug('drift monitor start skipped', { error: e.message }); }
+
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
   // Opt-in via DD_EGRESS_BLOCKLOG_INGESTER=1 (off by default for alpha users
