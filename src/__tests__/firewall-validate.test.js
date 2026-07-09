@@ -33,6 +33,13 @@ describe('firewall validate — primitives', () => {
     expect(v.validateAction('allow')).toBe(true);
     expect(v.validateAction('nuke')).toBe(false);
   });
+  test('expiry minutes (1..10080)', () => {
+    expect(v.validateExpiryMinutes(120)).toBe(true);
+    expect(v.validateExpiryMinutes('60')).toBe(true);
+    expect(v.validateExpiryMinutes(0)).toBe(false);
+    expect(v.validateExpiryMinutes(10081)).toBe(false);
+    expect(v.validateExpiryMinutes(-5)).toBe(false);
+  });
 });
 
 describe('firewall validate — assertSafe', () => {

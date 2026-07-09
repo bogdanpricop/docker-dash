@@ -112,7 +112,7 @@ const FirewallPage = {
         <div class="card-body" style="padding:0">
           ${rules.length === 0 ? '<div class="empty-msg">No app-managed rules on this host yet. Use “Add rule”.</div>' : `
           <table class="data-table">
-            <thead><tr><th>Action</th><th>Scope</th><th>Source</th><th>Port</th><th>Proto</th><th>Backend</th><th>By</th><th>Reason</th><th></th></tr></thead>
+            <thead><tr><th>Action</th><th>Scope</th><th>Source</th><th>Port</th><th>Proto</th><th>Backend</th><th>By</th><th>Expires</th><th>Reason</th><th></th></tr></thead>
             <tbody>
               ${rules.map(rl => `
                 <tr>
@@ -123,8 +123,12 @@ const FirewallPage = {
                   <td>${Utils.escapeHtml(rl.protocol || '—')}</td>
                   <td class="text-sm">${Utils.escapeHtml(rl.backend)}</td>
                   <td class="text-sm text-dim">${Utils.escapeHtml(rl.created_by || '')}</td>
+                  <td class="text-sm">${rl.is_temporary ? `<span class="badge badge-warning" title="Auto-removed at ${Utils.escapeHtml(rl.expires_at || '')}"><i class="fas fa-clock"></i> ${Utils.escapeHtml(rl.expires_at || 'temp')}</span>` : '<span class="text-dim">—</span>'}</td>
                   <td class="text-sm text-dim">${Utils.escapeHtml(rl.reason || '')}</td>
-                  <td><button class="action-btn danger" data-fw-remove="${Utils.escapeHtml(rl.rule_uuid)}" title="Remove rule"><i class="fas fa-trash"></i></button></td>
+                  <td style="white-space:nowrap">
+                    ${rl.is_temporary ? `<button class="action-btn" data-fw-extend="${Utils.escapeHtml(rl.rule_uuid)}" title="Extend expiry"><i class="fas fa-clock"></i></button>` : ''}
+                    <button class="action-btn danger" data-fw-remove="${Utils.escapeHtml(rl.rule_uuid)}" title="Remove rule"><i class="fas fa-trash"></i></button>
+                  </td>
                 </tr>`).join('')}
             </tbody>
           </table>`}
@@ -139,6 +143,22 @@ const FirewallPage = {
     `;
 
     el.querySelectorAll('[data-fw-remove]').forEach(b => b.addEventListener('click', () => this._removeRule(b.getAttribute('data-fw-remove'))));
+    el.querySelectorAll('[data-fw-extend]').forEach(b => b.addEventListener('click', () => this._extendRule(b.getAttribute('data-fw-extend'))));
+  },
+
+  async _extendRule(uuid) {
+    const result = await Modal.form(
+      `<div class="form-group"><label>Extend expiry by (minutes from now)</label>
+        <input type="number" id="fwe-min" class="form-control" value="120" min="1" max="10080"></div>`,
+      { title: 'Extend temporary rule', width: '420px', onSubmit: (c) => ({ minutes: parseInt(c.querySelector('#fwe-min').value, 10) }) }
+    );
+    if (!result || !result.minutes) return;
+    try {
+      const r = await Api.fwExtendRule(this._hostId, uuid, result.minutes);
+      if (r && r.ok === false) { Toast.error(r.error || 'Extend failed'); return; }
+      Toast.success('Expiry extended');
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   _renderAudit(el, data) {
@@ -206,8 +226,12 @@ const FirewallPage = {
         <div class="form-group"><label>Protocol</label>
           <select id="fwd-proto" class="form-control"><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option></select></div>
       </div>
-      <div class="form-group"><label>Reason</label><input type="text" id="fwd-reason" class="form-control" placeholder="Supplier support access"></div>
-      <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-info-circle"></i> Specify at least a source IP or a port. Blocking the SSH/management port for everyone is refused (lockout guard).</div>
+      <div class="form-row">
+        <div class="form-group"><label>Reason</label><input type="text" id="fwd-reason" class="form-control" placeholder="Supplier support access"></div>
+        <div class="form-group"><label>Expires in (minutes) <span class="text-muted">(optional — temporary rule)</span></label>
+          <input type="number" id="fwd-expiry" class="form-control" placeholder="120" min="1" max="10080"></div>
+      </div>
+      <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-info-circle"></i> Specify at least a source IP or a port. Temporary rules are auto-removed when they expire. Blocking the SSH/management port for everyone is refused (lockout guard).</div>
     `, {
       title: 'Add firewall rule',
       width: '520px',
@@ -219,6 +243,7 @@ const FirewallPage = {
           destination_port: c.querySelector('#fwd-port').value.trim() || undefined,
           protocol: c.querySelector('#fwd-proto').value,
           reason: c.querySelector('#fwd-reason').value.trim() || undefined,
+          expires_in_minutes: c.querySelector('#fwd-expiry').value.trim() || undefined,
         };
         if (!spec.source_ip && !spec.destination_port) { Toast.warning('Specify a source IP or a destination port'); return false; }
         return spec;

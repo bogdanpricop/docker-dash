@@ -6,7 +6,7 @@
 // it can be removed deterministically. A snapshot is taken before every mutation.
 
 const crypto = require('../../utils/crypto');
-const { assertSafe } = require('./validate');
+const { assertSafe, validateExpiryMinutes } = require('./validate');
 const backends = require('./backends');
 const runner = require('./runner');
 const lockout = require('./lockout');
@@ -126,16 +126,78 @@ async function applyRule(hostId, rawSpec, user, requesterIp) {
     if (res.exitCode !== 0) throw new Error(res.stderr || `apply failed (exit ${res.exitCode})`);
   }
 
+  // Temporary rule? (auto-expiry cleanup job removes it later.)
+  let isTemp = 0, mins = null;
+  if (rawSpec && rawSpec.expires_in_minutes != null && rawSpec.expires_in_minutes !== '') {
+    mins = parseInt(rawSpec.expires_in_minutes, 10);
+    if (!validateExpiryMinutes(mins)) throw new Error('expires_in_minutes must be 1..10080');
+    isTemp = 1;
+  }
+
   const info = _db().prepare(`INSERT INTO firewall_rules
     (rule_uuid, host_id, backend, scope, action, source_ip, destination_port, protocol, chain_name, rule_expression, comment_tag, reason, created_by, is_temporary, is_active)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)`).run(
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`).run(
     uuid, hostId, backendName, spec.scope, spec.action,
     spec.source_ip || null, spec.destination_port || null, spec.protocol || null,
     built.chain || null, built.rule_expression || null, built.comment_tag || null,
-    spec.reason || null, (user && user.username) || 'system'
+    spec.reason || null, (user && user.username) || 'system', isTemp
   );
+  if (isTemp) {
+    _db().prepare("UPDATE firewall_rules SET expires_at = datetime('now', ?) WHERE id = ?")
+      .run(`+${mins} minutes`, info.lastInsertRowid);
+  }
   const rule = _db().prepare('SELECT * FROM firewall_rules WHERE id = ?').get(info.lastInsertRowid);
   return { ok: true, rule, backend: backendName };
+}
+
+// Host-side removal only (build + run/agent). Caller updates the DB.
+async function _hostRemove(host, row) {
+  if (host.channel === 'agent') {
+    const r = await runner.agentRequest(host.agentCfg, '/remove', { rule: row });
+    if (r && r.ok === false) throw new Error(r.error || 'agent remove failed');
+    return;
+  }
+  const be = backends.get(row.backend);
+  if (!be) throw new Error(`Unknown backend "${row.backend}"`);
+  const res = await runner.runCommands(host, be.buildRemove(row).commands, { timeoutMs: 20000 });
+  if (res.exitCode !== 0) throw new Error(res.stderr || `remove failed (exit ${res.exitCode})`);
+}
+
+// Remove expired temporary rules from every host. Best-effort; a host that's
+// unreachable leaves its rule active and it's retried next cycle. Called on an
+// interval from server.js.
+async function cleanupExpired() {
+  const rows = _db().prepare(
+    "SELECT * FROM firewall_rules WHERE is_active = 1 AND is_temporary = 1 AND expires_at IS NOT NULL AND expires_at <= datetime('now')"
+  ).all();
+  if (!rows.length) return { removed: 0 };
+  const auditService = require('../audit');
+  const byHost = {};
+  for (const r of rows) (byHost[r.host_id] = byHost[r.host_id] || []).push(r);
+  let removed = 0;
+  for (const hid of Object.keys(byHost)) {
+    let host;
+    try { host = _resolveHost(parseInt(hid, 10)); } catch { continue; }
+    for (const row of byHost[hid]) {
+      try {
+        await _hostRemove(host, row);
+        _db().prepare("UPDATE firewall_rules SET is_active = 0, removed_by = 'system-expiration', removed_at = datetime('now') WHERE id = ?").run(row.id);
+        auditService.log({ action: 'firewall_expire_rule', targetType: 'firewall', targetId: String(hid), details: { rule_uuid: row.rule_uuid, backend: row.backend }, username: 'system' });
+        removed++;
+      } catch { /* leave active; retry next cycle */ }
+    }
+  }
+  return { removed };
+}
+
+// Extend (or set) a rule's expiry from now.
+async function extendRule(hostId, uuid, minutes, _user) {
+  const mins = parseInt(minutes, 10);
+  if (!validateExpiryMinutes(mins)) throw new Error('minutes must be 1..10080');
+  const row = _db().prepare('SELECT id FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
+  if (!row) throw new Error('Rule not found');
+  _db().prepare("UPDATE firewall_rules SET is_temporary = 1, expires_at = datetime('now', ?) WHERE id = ?").run(`+${mins} minutes`, row.id);
+  return { ok: true, rule_uuid: uuid };
 }
 
 async function removeRule(hostId, uuid, user) {
@@ -143,17 +205,7 @@ async function removeRule(hostId, uuid, user) {
   if (!row) throw new Error('Rule not found (or already removed)');
   const host = _resolveHost(hostId);
   try { await snapshot(hostId, user, 'pre-remove'); } catch { /* ignore */ }
-
-  if (host.channel === 'agent') {
-    const r = await runner.agentRequest(host.agentCfg, '/remove', { rule: row });
-    if (r && r.ok === false) throw new Error(r.error || 'agent remove failed');
-  } else {
-    const be = backends.get(row.backend);
-    if (!be) throw new Error(`Unknown backend "${row.backend}"`);
-    const built = be.buildRemove(row);
-    const res = await runner.runCommands(host, built.commands, { timeoutMs: 20000 });
-    if (res.exitCode !== 0) throw new Error(res.stderr || `remove failed (exit ${res.exitCode})`);
-  }
+  await _hostRemove(host, row);
   _db().prepare('UPDATE firewall_rules SET is_active = 0, removed_by = ?, removed_at = datetime(\'now\') WHERE id = ?')
     .run((user && user.username) || 'system', row.id);
   return { ok: true, rule_uuid: uuid };
@@ -178,4 +230,4 @@ async function rollback(hostId, snapshotId, user) {
   return { ok: true, snapshotId };
 }
 
-module.exports = { detectBackend, listRules, applyRule, removeRule, snapshot, rollback, _internals: { _resolveHost, _detect } };
+module.exports = { detectBackend, listRules, applyRule, removeRule, snapshot, rollback, cleanupExpired, extendRule, _internals: { _resolveHost, _detect, _hostRemove } };

@@ -428,6 +428,16 @@ async function start() {
   try { require('./services/vsphere-history').start(); }
   catch (e) { require('./utils/logger')('vsphere-history').debug('poller start skipped', { error: e.message }); }
 
+  // v8.9.24 — Firewall temporary-rule auto-expiry. Every 60s, remove rules whose
+  // expires_at has passed (over the same SSH/agent channel). Best-effort, unref'd.
+  try {
+    const fw = require('./services/firewall');
+    const fwTimer = setInterval(() => {
+      fw.cleanupExpired().catch(() => {});
+    }, 60 * 1000);
+    fwTimer.unref();
+  } catch (e) { require('./utils/logger')('firewall').debug('expiry job start skipped', { error: e.message }); }
+
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
   // Opt-in via DD_EGRESS_BLOCKLOG_INGESTER=1 (off by default for alpha users

@@ -50,7 +50,7 @@ router.get('/:hostId/audit', ...admin, asyncHandler(async (req, res) => {
 async function _apply(req, res, spec, action) {
   const hostId = _hostId(req);
   try {
-    const r = await fw.applyRule(hostId, { ...spec, reason: req.body && req.body.reason }, req.user, getClientIp(req));
+    const r = await fw.applyRule(hostId, { ...spec, reason: req.body && req.body.reason, expires_in_minutes: req.body && req.body.expires_in_minutes }, req.user, getClientIp(req));
     _audit(req, 'firewall_apply_rule', hostId, { op: action, spec, backend: r.backend, rule_uuid: r.rule && r.rule.rule_uuid }, true);
     res.json(r);
   } catch (err) {
@@ -86,6 +86,18 @@ router.post('/:hostId/remove-rule', ...adminWrite, asyncHandler(async (req, res)
     res.json(r);
   } catch (err) {
     _audit(req, 'firewall_remove_rule', hostId, { rule_uuid: req.body.rule_uuid }, false, err.message);
+    res.json({ ok: false, error: err.message });
+  }
+}));
+
+router.post('/:hostId/extend-rule', ...adminWrite, asyncHandler(async (req, res) => {
+  const hostId = _hostId(req);
+  try {
+    const r = await fw.extendRule(hostId, req.body.rule_uuid, req.body.minutes, req.user);
+    _audit(req, 'firewall_extend_rule', hostId, { rule_uuid: req.body.rule_uuid, minutes: req.body.minutes }, true);
+    res.json(r);
+  } catch (err) {
+    _audit(req, 'firewall_extend_rule', hostId, { rule_uuid: req.body.rule_uuid }, false, err.message);
     res.json({ ok: false, error: err.message });
   }
 }));

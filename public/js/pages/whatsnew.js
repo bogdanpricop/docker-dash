@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.24-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — temporary rules with auto-expiry',
+      changes: [
+        { type: 'feature', text: 'Add-rule now has an optional “Expires in (minutes)” field — the safest default for vendor/supplier access. Temporary rules are auto-removed when they expire by a background job (every 60s) that deletes them from the host over the same SSH/agent channel and audits it (firewall_expire_rule). The rules table shows an Expires badge and an Extend action to push the expiry out.' },
+        { type: 'improvement', text: 'firewall_extend-rule endpoint + Extend UI; remove path refactored so expiry and manual removal share one host-removal routine. New expiry-bounds validation (1 min .. 7 days) + test.' },
+      ],
+    },
+    {
       version: '8.9.23-alpha.1',
       date: '2026-07-09',
       title: 'Fix: Incus/LXD page followed the wrong host',

@@ -43,6 +43,12 @@ function validateProtocol(p) { return PROTOCOLS.includes(p); }
 function validateScope(s) { return SCOPES.includes(s); }
 function validateAction(a) { return ACTIONS.includes(a); }
 
+// Temporary-rule lifetime: 1 minute .. 7 days.
+function validateExpiryMinutes(m) {
+  const n = typeof m === 'number' ? m : parseInt(m, 10);
+  return Number.isInteger(n) && n >= 1 && n <= 10080;
+}
+
 // Reason is embedded in a rule comment/tag — keep it human but shell-safe.
 function sanitizeReason(reason) {
   if (!reason) return '';
@@ -88,5 +94,5 @@ function assertSafe(spec) {
 module.exports = {
   ACTIONS, SCOPES, PROTOCOLS, DANGEROUS,
   validateIp, validateCidrOrIp, validatePort, validateProtocol, validateScope,
-  validateAction, sanitizeReason, assertSafe,
+  validateAction, validateExpiryMinutes, sanitizeReason, assertSafe,
 };
