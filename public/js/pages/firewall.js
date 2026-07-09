@@ -23,6 +23,12 @@ const FirewallPage = {
     if (this._hosts.some(h => h.id === gid)) this._hostId = gid;
     else if (!this._hostId || !this._hosts.some(h => h.id === this._hostId)) this._hostId = (this._hosts.find(h => h.isDefault) || this._hosts[0]).id;
 
+    // RBAC (v8.9.28): viewer = read-only, operator = temporary rules + own
+    // remove/extend + snapshot, admin = everything.
+    const role = (window.App && App.user && App.user.role) || 'viewer';
+    this._isAdmin = role === 'admin';
+    this._canWrite = this._isAdmin || role === 'operator';
+
     const sel = this._hosts.length > 1
       ? `<select id="fw-host" class="form-control" style="width:auto;display:inline-block;margin-right:8px">
            ${this._hosts.map(h => `<option value="${h.id}"${h.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(h.name)}</option>`).join('')}
@@ -37,9 +43,9 @@ const FirewallPage = {
         </div>
         <div class="page-actions" style="align-items:center">
           ${sel}
-          <button class="btn btn-sm btn-primary" id="fw-add"><i class="fas fa-plus"></i> Add rule</button>
-          <button class="btn btn-sm btn-secondary" id="fw-snapshot" title="Save a snapshot of the current ruleset"><i class="fas fa-camera"></i></button>
-          <button class="btn btn-sm btn-secondary" id="fw-agent" title="Configure firewall-agent for this host"><i class="fas fa-network-wired"></i></button>
+          ${this._canWrite ? `<button class="btn btn-sm btn-primary" id="fw-add"><i class="fas fa-plus"></i> Add rule</button>` : ''}
+          ${this._canWrite ? `<button class="btn btn-sm btn-secondary" id="fw-snapshot" title="Save a snapshot of the current ruleset"><i class="fas fa-camera"></i></button>` : ''}
+          ${this._isAdmin ? `<button class="btn btn-sm btn-secondary" id="fw-agent" title="Configure firewall-agent for this host"><i class="fas fa-network-wired"></i></button>` : ''}
           <button class="btn btn-sm btn-secondary" id="fw-refresh"><i class="fas fa-sync-alt"></i></button>
         </div>
       </div>
@@ -53,9 +59,9 @@ const FirewallPage = {
     const hs = container.querySelector('#fw-host');
     if (hs) hs.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._load(); });
     container.querySelector('#fw-refresh').addEventListener('click', () => this._load());
-    container.querySelector('#fw-add').addEventListener('click', () => this._addRuleDialog());
-    container.querySelector('#fw-snapshot').addEventListener('click', () => this._snapshot());
-    container.querySelector('#fw-agent').addEventListener('click', () => this._agentDialog());
+    container.querySelector('#fw-add')?.addEventListener('click', () => this._addRuleDialog());
+    container.querySelector('#fw-snapshot')?.addEventListener('click', () => this._snapshot());
+    container.querySelector('#fw-agent')?.addEventListener('click', () => this._agentDialog());
     container.querySelectorAll('[data-fw-tab]').forEach(b => b.addEventListener('click', (e) => {
       this._tab = e.target.getAttribute('data-fw-tab');
       container.querySelectorAll('[data-fw-tab]').forEach(x => x.classList.toggle('active', x === e.target));
@@ -109,7 +115,7 @@ const FirewallPage = {
       ${warn.map(w => `<div class="alert alert-warning" style="margin-bottom:12px"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(w)}</div>`).join('')}
       ${drift.length ? `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span><i class="fas fa-triangle-exclamation"></i> <b>${drift.length}</b> app-managed rule(s) are missing on the host (removed manually or lost on restart).</span>
-        <button class="btn btn-xs btn-primary" id="fw-reconcile" style="margin-left:auto"><i class="fas fa-rotate"></i> Re-apply missing</button>
+        ${this._isAdmin ? '<button class="btn btn-xs btn-primary" id="fw-reconcile" style="margin-left:auto"><i class="fas fa-rotate"></i> Re-apply missing</button>' : ''}
       </div>` : ''}
 
       <div class="card">
@@ -131,8 +137,8 @@ const FirewallPage = {
                   <td class="text-sm">${rl.is_temporary ? `<span class="badge badge-warning" title="Auto-removed at ${Utils.escapeHtml(rl.expires_at || '')}"><i class="fas fa-clock"></i> ${Utils.escapeHtml(rl.expires_at || 'temp')}</span>` : '<span class="text-dim">—</span>'}</td>
                   <td class="text-sm text-dim">${Utils.escapeHtml(rl.reason || '')}</td>
                   <td style="white-space:nowrap">
-                    ${rl.is_temporary ? `<button class="action-btn" data-fw-extend="${Utils.escapeHtml(rl.rule_uuid)}" title="Extend expiry"><i class="fas fa-clock"></i></button>` : ''}
-                    <button class="action-btn danger" data-fw-remove="${Utils.escapeHtml(rl.rule_uuid)}" title="Remove rule"><i class="fas fa-trash"></i></button>
+                    ${this._canWrite && rl.is_temporary ? `<button class="action-btn" data-fw-extend="${Utils.escapeHtml(rl.rule_uuid)}" title="Extend expiry"><i class="fas fa-clock"></i></button>` : ''}
+                    ${this._canWrite ? `<button class="action-btn danger" data-fw-remove="${Utils.escapeHtml(rl.rule_uuid)}" title="Remove rule"><i class="fas fa-trash"></i></button>` : '<span class="text-dim">—</span>'}
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -214,7 +220,7 @@ const FirewallPage = {
               <td class="text-sm text-dim">${Utils.escapeHtml(sn.created_at || '')}</td>
               <td class="text-sm text-dim">${Utils.escapeHtml(sn.created_by || '')}</td>
               <td class="text-sm text-dim">${Utils.escapeHtml(sn.reason || '')}</td>
-              <td><button class="btn btn-xs btn-secondary" data-fw-rollback="${sn.id}" title="Restore this snapshot (iptables)"><i class="fas fa-undo"></i> Rollback</button></td></tr>`).join('')}</tbody>
+              <td>${this._isAdmin ? `<button class="btn btn-xs btn-secondary" data-fw-rollback="${sn.id}" title="Restore this snapshot (iptables)"><i class="fas fa-undo"></i> Rollback</button>` : ''}</td></tr>`).join('')}</tbody>
           </table>`}
         </div>
       </div>
@@ -246,8 +252,8 @@ const FirewallPage = {
       </div>
       <div class="form-row">
         <div class="form-group"><label>Reason</label><input type="text" id="fwd-reason" class="form-control" placeholder="Supplier support access"></div>
-        <div class="form-group"><label>Expires in (minutes) <span class="text-muted">(optional — temporary rule)</span></label>
-          <input type="number" id="fwd-expiry" class="form-control" placeholder="120" min="1" max="10080"></div>
+        <div class="form-group"><label>Expires in (minutes) ${this._isAdmin ? '<span class="text-muted">(optional — temporary rule)</span>' : '<span style="color:var(--yellow)">(required for operators)</span>'}</label>
+          <input type="number" id="fwd-expiry" class="form-control" placeholder="120" min="1" max="10080" value="${this._isAdmin ? '' : '120'}"></div>
       </div>
       <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-info-circle"></i> Specify at least a source IP or a port. Temporary rules are auto-removed when they expire. Blocking the SSH/management port for everyone is refused (lockout guard).</div>
     `, {
@@ -264,6 +270,7 @@ const FirewallPage = {
           expires_in_minutes: c.querySelector('#fwd-expiry').value.trim() || undefined,
         };
         if (!spec.source_ip && !spec.destination_port) { Toast.warning('Specify a source IP or a destination port'); return false; }
+        if (!this._isAdmin && !spec.expires_in_minutes) { Toast.warning('Operators can only add temporary rules — set an expiry.'); return false; }
         return spec;
       },
     });

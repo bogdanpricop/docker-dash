@@ -229,11 +229,14 @@ async function cleanupExpired() {
 }
 
 // Extend (or set) a rule's expiry from now.
-async function extendRule(hostId, uuid, minutes, _user) {
+async function extendRule(hostId, uuid, minutes, user) {
   const mins = parseInt(minutes, 10);
   if (!validateExpiryMinutes(mins)) throw new Error('minutes must be 1..10080');
-  const row = _db().prepare('SELECT id FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
+  const row = _db().prepare('SELECT id, created_by FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
   if (!row) throw new Error('Rule not found');
+  if (user && user.role && user.role !== 'admin' && row.created_by !== user.username) {
+    throw new Error('You can only extend rules you created (admin required for others).');
+  }
   _db().prepare("UPDATE firewall_rules SET is_temporary = 1, expires_at = datetime('now', ?) WHERE id = ?").run(`+${mins} minutes`, row.id);
   return { ok: true, rule_uuid: uuid };
 }
@@ -241,6 +244,9 @@ async function extendRule(hostId, uuid, minutes, _user) {
 async function removeRule(hostId, uuid, user) {
   const row = _db().prepare('SELECT * FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
   if (!row) throw new Error('Rule not found (or already removed)');
+  if (user && user.role && user.role !== 'admin' && row.created_by !== user.username) {
+    throw new Error('You can only remove rules you created (admin required for others).');
+  }
   const host = _resolveHost(hostId);
   try { await snapshot(hostId, user, 'pre-remove'); } catch { /* ignore */ }
   await _hostRemove(host, row);

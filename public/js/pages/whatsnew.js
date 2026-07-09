@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.28-alpha.1',
+      date: '2026-07-09',
+      title: 'Firewall — RBAC roles (viewer / operator / admin)',
+      changes: [
+        { type: 'security', text: 'Firewall management is now role-aware instead of admin-only. Viewers can read status/rules/history. Operators can add TEMPORARY rules (an expiry is required), plus remove/extend/snapshot — but only rules they created. Admins keep everything: permanent rules, re-apply/reconcile, rollback, and firewall-agent configuration. Enforced on both the API (per-route guards + ownership checks) and the UI (buttons hidden by role).' },
+      ],
+    },
+    {
       version: '8.9.27-alpha.1',
       date: '2026-07-09',
       title: 'Firewall — drift detection + re-apply',

@@ -14,8 +14,13 @@ const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+// RBAC tiers (v8.9.28):
+//  viewer   → read status/rules/audit (any authenticated user)
+//  operator → add TEMPORARY rules, remove/extend their OWN rules, snapshot
+//  admin    → everything (permanent rules, reconcile, rollback, agent config)
 const admin = [requireAuth, requireRole('admin')];
 const adminWrite = [requireAuth, requireRole('admin'), writeable];
+const operatorWrite = [requireAuth, requireRole('operator', 'admin'), writeable];
 
 function _hostId(req) { return parseInt(req.params.hostId, 10); }
 
@@ -28,17 +33,17 @@ function _audit(req, action, hostId, details, success, error) {
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────
-router.get('/:hostId/status', ...admin, asyncHandler(async (req, res) => {
+router.get('/:hostId/status', requireAuth, asyncHandler(async (req, res) => {
   try { res.json(await fw.detectBackend(_hostId(req))); }
   catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
-router.get('/:hostId/rules', ...admin, asyncHandler(async (req, res) => {
+router.get('/:hostId/rules', requireAuth, asyncHandler(async (req, res) => {
   try { res.json(await fw.listRules(_hostId(req))); }
   catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
-router.get('/:hostId/audit', ...admin, asyncHandler(async (req, res) => {
+router.get('/:hostId/audit', requireAuth, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
   const db = getDb();
   const rules = db.prepare('SELECT * FROM firewall_rules WHERE host_id = ? ORDER BY created_at DESC LIMIT 200').all(hostId);
@@ -49,6 +54,10 @@ router.get('/:hostId/audit', ...admin, asyncHandler(async (req, res) => {
 // ── Mutations (whitelisted) ─────────────────────────────────────────────────
 async function _apply(req, res, spec, action) {
   const hostId = _hostId(req);
+  // Operators may only add TEMPORARY rules; permanent rules are admin-only.
+  if (req.user && req.user.role !== 'admin' && !(req.body && req.body.expires_in_minutes)) {
+    return res.status(403).json({ ok: false, error: 'Operators can only add temporary rules — set an expiry (minutes). Ask an admin for permanent rules.' });
+  }
   try {
     const r = await fw.applyRule(hostId, { ...spec, reason: req.body && req.body.reason, expires_in_minutes: req.body && req.body.expires_in_minutes }, req.user, getClientIp(req));
     _audit(req, 'firewall_apply_rule', hostId, { op: action, spec, backend: r.backend, rule_uuid: r.rule && r.rule.rule_uuid }, true);
@@ -59,26 +68,26 @@ async function _apply(req, res, spec, action) {
   }
 }
 
-router.post('/:hostId/allow-ip', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/allow-ip', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: 'allow', scope: req.body.scope || 'host', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'allow-ip')));
 
-router.post('/:hostId/block-ip', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/block-ip', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: 'block', scope: req.body.scope || 'host', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'block-ip')));
 
-router.post('/:hostId/open-port', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/open-port', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: 'allow', scope: req.body.scope || 'host', destination_port: req.body.destination_port, protocol: req.body.protocol }, 'open-port')));
 
-router.post('/:hostId/close-port', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/close-port', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: 'block', scope: req.body.scope || 'host', destination_port: req.body.destination_port, protocol: req.body.protocol }, 'close-port')));
 
-router.post('/:hostId/allow-container-port', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/allow-container-port', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: 'allow', scope: 'docker', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'allow-container-port')));
 
 // Generic add-rule (Add-rule form): action + scope + fields from body.
-router.post('/:hostId/rule', ...adminWrite, asyncHandler((req, res) =>
+router.post('/:hostId/rule', ...operatorWrite, asyncHandler((req, res) =>
   _apply(req, res, { action: req.body.action, scope: req.body.scope || 'host', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'add-rule')));
 
-router.post('/:hostId/remove-rule', ...adminWrite, asyncHandler(async (req, res) => {
+router.post('/:hostId/remove-rule', ...operatorWrite, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
   try {
     const r = await fw.removeRule(hostId, req.body.rule_uuid, req.user);
@@ -90,7 +99,7 @@ router.post('/:hostId/remove-rule', ...adminWrite, asyncHandler(async (req, res)
   }
 }));
 
-router.post('/:hostId/extend-rule', ...adminWrite, asyncHandler(async (req, res) => {
+router.post('/:hostId/extend-rule', ...operatorWrite, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
   try {
     const r = await fw.extendRule(hostId, req.body.rule_uuid, req.body.minutes, req.user);
@@ -114,7 +123,7 @@ router.post('/:hostId/reconcile', ...adminWrite, asyncHandler(async (req, res) =
   }
 }));
 
-router.post('/:hostId/snapshot', ...adminWrite, asyncHandler(async (req, res) => {
+router.post('/:hostId/snapshot', ...operatorWrite, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
   try {
     const r = await fw.snapshot(hostId, req.user, (req.body && req.body.reason) || 'manual');
