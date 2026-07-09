@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -392,22 +392,24 @@ const Api = {
   // v8.8.3 — deploy a stack from a compose YAML string.
   deploySwarmStack(name, compose)     { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, { compose }); },
 
-  // ─── Incus (v8.9.0-alpha.2) ─────────────────────
-  getIncusInfo()                      { return this.get('/incus/info'); },
-  getIncusInstances(project)          { return this.get(`/incus/instances${project ? `?project=${encodeURIComponent(project)}` : ''}`); },
-  getIncusInstance(name, project)     { return this.get(`/incus/instances/${encodeURIComponent(name)}${project ? `?project=${encodeURIComponent(project)}` : ''}`); },
-  startIncusInstance(name)            { return this.post(`/incus/instances/${encodeURIComponent(name)}/start`, {}); },
-  stopIncusInstance(name, force)      { return this.post(`/incus/instances/${encodeURIComponent(name)}/stop`, { force: !!force }); },
-  restartIncusInstance(name)          { return this.post(`/incus/instances/${encodeURIComponent(name)}/restart`, {}); },
-  freezeIncusInstance(name)           { return this.post(`/incus/instances/${encodeURIComponent(name)}/freeze`, {}); },
-  unfreezeIncusInstance(name)         { return this.post(`/incus/instances/${encodeURIComponent(name)}/unfreeze`, {}); },
-  deleteIncusInstance(name)           { return this.delete(`/incus/instances/${encodeURIComponent(name)}`); },
-  getIncusSnapshots(name)             { return this.get(`/incus/instances/${encodeURIComponent(name)}/snapshots`); },
-  createIncusSnapshot(name, sn, st)   { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots`, { snapshotName: sn, stateful: !!st }); },
-  restoreIncusSnapshot(name, sn)      { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}/restore`, {}); },
-  deleteIncusSnapshot(name, sn)       { return this.delete(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}`); },
-  getIncusImages()                    { return this.get('/incus/images'); },
-  getIncusProjects()                  { return this.get('/incus/projects'); },
+  // ─── Incus (v8.9.0-alpha.2; hostId explicit as of v8.9.23) ───
+  // Each call carries the Incus/LXD host id so the page works regardless of the
+  // top-bar host selection (mirrors the vSphere page). /incus is in skipPrefixes.
+  getIncusInfo(hostId)                { return this.get(`/incus/info?hostId=${hostId}`); },
+  getIncusInstances(hostId, project)  { return this.get(`/incus/instances?hostId=${hostId}${project ? `&project=${encodeURIComponent(project)}` : ''}`); },
+  getIncusInstance(hostId, name, project) { return this.get(`/incus/instances/${encodeURIComponent(name)}?hostId=${hostId}${project ? `&project=${encodeURIComponent(project)}` : ''}`); },
+  startIncusInstance(hostId, name)    { return this.post(`/incus/instances/${encodeURIComponent(name)}/start?hostId=${hostId}`, {}); },
+  stopIncusInstance(hostId, name, force) { return this.post(`/incus/instances/${encodeURIComponent(name)}/stop?hostId=${hostId}`, { force: !!force }); },
+  restartIncusInstance(hostId, name)  { return this.post(`/incus/instances/${encodeURIComponent(name)}/restart?hostId=${hostId}`, {}); },
+  freezeIncusInstance(hostId, name)   { return this.post(`/incus/instances/${encodeURIComponent(name)}/freeze?hostId=${hostId}`, {}); },
+  unfreezeIncusInstance(hostId, name) { return this.post(`/incus/instances/${encodeURIComponent(name)}/unfreeze?hostId=${hostId}`, {}); },
+  deleteIncusInstance(hostId, name)   { return this.delete(`/incus/instances/${encodeURIComponent(name)}?hostId=${hostId}`); },
+  getIncusSnapshots(hostId, name)     { return this.get(`/incus/instances/${encodeURIComponent(name)}/snapshots?hostId=${hostId}`); },
+  createIncusSnapshot(hostId, name, sn, st) { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots?hostId=${hostId}`, { snapshotName: sn, stateful: !!st }); },
+  restoreIncusSnapshot(hostId, name, sn) { return this.post(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}/restore?hostId=${hostId}`, {}); },
+  deleteIncusSnapshot(hostId, name, sn) { return this.delete(`/incus/instances/${encodeURIComponent(name)}/snapshots/${encodeURIComponent(sn)}?hostId=${hostId}`); },
+  getIncusImages(hostId)              { return this.get(`/incus/images?hostId=${hostId}`); },
+  getIncusProjects(hostId)            { return this.get(`/incus/projects?hostId=${hostId}`); },
 
   // ─── Proxmox VE (v8.9.1-alpha.1) ────────────────
   getProxmoxInfo()                    { return this.get('/proxmox/info'); },

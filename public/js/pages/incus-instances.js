@@ -16,12 +16,35 @@
 
 const IncusInstancesPage = {
   _project: null,
+  _hosts: [],
+  _hostId: null,
 
   async render(container) {
+    // v8.9.23 — resolve THIS page's own Incus/LXD host instead of following the
+    // top-bar selection (which may be a Docker host → "not an Incus daemon").
+    try { this._hosts = ((await Api.getHosts()) || []).filter(h => h.daemonType === 'incus' || h.daemonType === 'lxd'); } catch { this._hosts = []; }
+    if (!this._hosts.length) {
+      container.innerHTML = `
+        <div class="page-header"><h1><i class="fas fa-cubes"></i> Incus / LXD instances</h1></div>
+        <div class="empty-msg"><i class="fas fa-cubes" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>
+          No Incus / LXD host registered. Add one from <a href="#/hosts">Hosts → Non-Docker host</a>.</div>`;
+      return;
+    }
+    const gid = Api.getHostId();
+    if (this._hosts.some(h => h.id === gid)) this._hostId = gid;
+    else if (!this._hostId || !this._hosts.some(h => h.id === this._hostId)) this._hostId = this._hosts[0].id;
+
+    const hostSel = this._hosts.length > 1
+      ? `<select id="incus-host" class="form-control" style="width:auto;display:inline-block;margin-right:8px">
+           ${this._hosts.map(h => `<option value="${h.id}"${h.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(h.name)}</option>`).join('')}
+         </select>`
+      : `<span class="text-muted" style="margin-right:8px">${Utils.escapeHtml(this._hosts[0].name)}</span>`;
+
     container.innerHTML = `
       <div class="page-header">
         <h1><i class="fas fa-cubes"></i> Incus / LXD instances</h1>
         <div>
+          ${hostSel}
           <select id="incus-project" class="form-control" style="width:auto;display:inline-block"></select>
           <button class="btn btn-sm btn-secondary" id="incus-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
@@ -29,6 +52,8 @@ const IncusInstancesPage = {
       <div id="incus-info-panel"></div>
       <div id="incus-list-container">Loading...</div>
     `;
+    const hs = container.querySelector('#incus-host');
+    if (hs) hs.addEventListener('change', (e) => { this._hostId = parseInt(e.target.value, 10); this._project = null; this._loadProjects().then(() => this._load()); });
     container.querySelector('#incus-refresh').addEventListener('click', () => this._load());
     container.querySelector('#incus-project').addEventListener('change', (e) => {
       this._project = e.target.value || null;
@@ -40,7 +65,7 @@ const IncusInstancesPage = {
 
   async _loadProjects() {
     try {
-      const projects = await Api.getIncusProjects();
+      const projects = await Api.getIncusProjects(this._hostId);
       const sel = document.getElementById('incus-project');
       sel.innerHTML = `<option value="">(default)</option>` + projects
         .map(p => `<option value="${Utils.escapeHtml(p.name)}"${p.name === this._project ? ' selected' : ''}>${Utils.escapeHtml(p.name)}</option>`)
@@ -53,10 +78,10 @@ const IncusInstancesPage = {
     if (!el) return;
     el.innerHTML = `<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i> Loading instances...</div>`;
     try {
-      const list = await Api.getIncusInstances(this._project);
+      const list = await Api.getIncusInstances(this._hostId, this._project);
       // Info panel
       try {
-        const info = await Api.getIncusInfo();
+        const info = await Api.getIncusInfo(this._hostId);
         const infoEl = document.getElementById('incus-info-panel');
         if (infoEl && info) {
           const env = info.environment || {};
@@ -147,10 +172,10 @@ const IncusInstancesPage = {
     }
     try {
       let promise;
-      if (action === 'start')        promise = Api.startIncusInstance(name);
-      else if (action === 'stop')    promise = Api.stopIncusInstance(name, false);
-      else if (action === 'restart') promise = Api.restartIncusInstance(name);
-      else if (action === 'delete')  promise = Api.deleteIncusInstance(name);
+      if (action === 'start')        promise = Api.startIncusInstance(this._hostId, name);
+      else if (action === 'stop')    promise = Api.stopIncusInstance(this._hostId, name, false);
+      else if (action === 'restart') promise = Api.restartIncusInstance(this._hostId, name);
+      else if (action === 'delete')  promise = Api.deleteIncusInstance(this._hostId, name);
       else return;
       Toast.info(`${action.charAt(0).toUpperCase() + action.slice(1)}...`);
       await promise;

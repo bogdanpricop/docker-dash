@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.23-alpha.1',
+      date: '2026-07-09',
+      title: 'Fix: Incus/LXD page followed the wrong host',
+      changes: [
+        { type: 'fix', text: 'The Incus / LXD instances page showed "Host 1 (Local) is not an Incus/LXD daemon" when the top-bar selection was a Docker host. Like the vSphere page, it now resolves its OWN Incus/LXD host (with a host selector when several are registered) and passes that host id explicitly on every call — regardless of the global selection. /incus is now in the API skip-prefixes.' },
+      ],
+    },
+    {
       version: '8.9.22-alpha.1',
       date: '2026-07-08',
       title: 'Firewall management (MVP1) — per-host, over SSH or an agent',
