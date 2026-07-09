@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.22-alpha.1',
+      date: '2026-07-08',
+      title: 'Firewall management (MVP1) — per-host, over SSH or an agent',
+      changes: [
+        { type: 'feature', text: 'The Firewall page now actually administers host firewalls per host (was local-only UFW read). Pick a host; docker-dash auto-detects the backend (iptables / firewalld / ufw) and runs whitelisted operations: allow/block an IP, open/close a port, allow a container port, remove a rule. Container traffic uses iptables DOCKER-USER with conntrack --ctorigdstport (the port before Docker DNAT); ufw is refused for container scope because it bypasses Docker NAT.' },
+        { type: 'feature', text: 'Two execution channels, neither of which gives the app container host privileges: SSH (reuses each host’s existing tunnel + stored credentials) and a standalone firewall-agent (systemd, bearer-token) for the local host or hosts where SSH-as-root isn’t wanted. Agent ships under agent/firewall-agent/ with install + least-privilege sudoers docs.' },
+        { type: 'security', text: 'Safety first: strict validation of IP/CIDR/port/protocol/scope (dangerous chars rejected), commands built from fixed templates with POSIX-quoted tokens (never string-concatenated from UI), a lockout guard that refuses closing the SSH/management port for everyone or blocking your own/an admin IP, a full ruleset snapshot before every change, iptables rollback, and every action audited (firewall_* actions). App-managed rules are tagged (APPFW uuid=…) and tracked in the DB; the live host ruleset is shown read-only.' },
+        { type: 'improvement', text: 'History tab: full rule history (active + removed) and snapshots with one-click rollback. Migration 080 adds firewall_rules + firewall_snapshots. 22 new unit tests (validation, per-backend builders, lockout, shell-quoting). Deep-spec + feature-spec in plans/. Windows Firewall, temporary-rule auto-expiry, fine RBAC roles and mTLS are the next phases.' },
+      ],
+    },
+    {
       version: '8.9.21-alpha.1',
       date: '2026-07-08',
       title: 'vSphere — self-healing connection + Reconnect buttons',

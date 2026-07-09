@@ -324,6 +324,21 @@ const Api = {
   addFirewallRule(data) { return this.post('/system/firewall/rule', data); },
   deleteFirewallRule(number) { return this.delete(`/system/firewall/rule/${number}`); },
 
+  // ─── Firewall management MVP1 (v8.9.22, per-host over SSH/agent) ───
+  fwStatus(hostId)            { return this.get(`/firewall/${hostId}/status`); },
+  fwRules(hostId)             { return this.get(`/firewall/${hostId}/rules`); },
+  fwAudit(hostId)            { return this.get(`/firewall/${hostId}/audit`); },
+  fwAddRule(hostId, spec)     { return this.post(`/firewall/${hostId}/rule`, spec); },
+  fwAllowIp(hostId, spec)     { return this.post(`/firewall/${hostId}/allow-ip`, spec); },
+  fwBlockIp(hostId, spec)     { return this.post(`/firewall/${hostId}/block-ip`, spec); },
+  fwOpenPort(hostId, spec)    { return this.post(`/firewall/${hostId}/open-port`, spec); },
+  fwClosePort(hostId, spec)   { return this.post(`/firewall/${hostId}/close-port`, spec); },
+  fwRemoveRule(hostId, uuid)  { return this.post(`/firewall/${hostId}/remove-rule`, { rule_uuid: uuid }); },
+  fwSnapshot(hostId, reason)  { return this.post(`/firewall/${hostId}/snapshot`, { reason }); },
+  fwRollback(hostId, snapId)  { return this.post(`/firewall/${hostId}/rollback`, { snapshotId: snapId }); },
+  fwGetAgentConfig(hostId)    { return this.get(`/firewall/${hostId}/agent-config`); },
+  fwSetAgentConfig(hostId, d) { return this.post(`/firewall/${hostId}/agent-config`, d); },
+
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {
     const qs = new URLSearchParams(params).toString();

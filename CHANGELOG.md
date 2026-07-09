@@ -2,6 +2,42 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.9.22-alpha.1] - 2026-07-08 — Firewall management MVP1 (per-host, SSH/agent)
+
+The Firewall page becomes a real per-host firewall manager (was local-only UFW
+read). Deep-spec + feature-spec in `plans/`. Zero new npm deps.
+
+**Architecture (adapted from the user's firewall-in-Docker doc):** the app
+container has a read-only Docker socket and no NET_ADMIN, so it *cannot* touch the
+local host firewall directly — matching the doc's "web app holds no host
+privileges" thesis. Privileged work runs **outside** the container via two channels:
+- **SSH** — reuses each host's live tunnel (`sshTunnelService.exec`) + stored
+  encrypted credentials.
+- **firewall-agent** — a standalone stdlib-only Node systemd service
+  (`agent/firewall-agent/`, bearer token) for the local host / non-SSH hosts. It
+  reuses verbatim copies of the same pure validation + builder modules.
+
+**Backends:** iptables (+DOCKER-USER + conntrack `--ctorigdstport` for container
+scope), firewalld (rich rules + reload), ufw (host-general; refused for container
+scope). Auto-detected per host (firewalld → ufw → iptables).
+
+**Operations (whitelisted):** allow-ip, block-ip, open-port, close-port,
+allow-container-port, remove-rule, list, snapshot, rollback (iptables).
+
+**Safety:** strict IP/CIDR/port/protocol/scope validation (dangerous chars
+rejected); commands built from fixed templates with POSIX-quoted tokens (never
+concatenated from UI); lockout guard (refuses closing the SSH/mgmt port for
+everyone or blocking your own/admin IP); snapshot before every mutation; every
+action audited (`firewall_*`); app rules tagged `APPFW uuid=…` and tracked in DB.
+
+- Migration `080_firewall.js` (`firewall_rules`, `firewall_snapshots`).
+- `src/services/firewall/*` (validate, backends, runner, lockout, service),
+  `src/routes/firewall.js` (`/api/firewall/:hostId/*`), `public/js/pages/firewall.js`
+  (multi-host UI: Rules + History tabs, Add-rule, Snapshot, Configure-agent).
+- 22 new unit tests. Full suite: 1787 passing across 112 suites.
+- OUT (later phases): Windows Firewall, temporary-rule auto-expiry, fine RBAC
+  roles, mTLS, drift reconciliation.
+
 ## [8.9.16-alpha.1] - 2026-07-07 — SSH Key Deployer (System → Tools)
 
 New admin tool that generates an SSH keypair and pushes the **public** key to a target host's `authorized_keys` in one step — with a manual-instructions fallback when automation isn't possible. Zero new npm deps (Node `crypto` for keygen, existing `ssh2` for transport).

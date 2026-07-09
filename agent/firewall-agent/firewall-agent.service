@@ -1,0 +1,22 @@
+[Unit]
+Description=docker-dash Firewall Agent
+After=network.target docker.service
+
+[Service]
+Type=simple
+# Runs as root so it can modify the firewall. For least privilege, run as a
+# dedicated user and grant only the firewall binaries via /etc/sudoers.d (see
+# README), then set Environment=FW_AGENT_SUDO=1 and User=firewall-agent.
+User=root
+Group=root
+Environment=FW_AGENT_TOKEN=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
+Environment=FW_AGENT_PORT=9090
+Environment=FW_AGENT_BIND=127.0.0.1
+ExecStart=/usr/bin/node /opt/firewall-agent/agent.js
+Restart=always
+RestartSec=5
+WorkingDirectory=/opt/firewall-agent
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

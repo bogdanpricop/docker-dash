@@ -1,0 +1,181 @@
+'use strict';
+
+// v8.9.22-alpha.1 — Firewall service (MVP1). Ties validation + per-backend builders
+// + execution channel + DB + audit into whitelisted operations. The DB is the
+// source of truth for app-managed rules; each host rule is tagged APPFW uuid=… so
+// it can be removed deterministically. A snapshot is taken before every mutation.
+
+const crypto = require('../../utils/crypto');
+const { assertSafe } = require('./validate');
+const backends = require('./backends');
+const runner = require('./runner');
+const lockout = require('./lockout');
+
+function _db() { return require('../../db').getDb(); }
+
+// Resolve a host into everything the firewall needs: channel + ssh port + backend
+// hint + optional agent config (stored in daemon_config.firewallAgent).
+function _resolveHost(hostId) {
+  const row = _db().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!row) { const e = new Error(`Host ${hostId} not found`); e.status = 404; throw e; }
+  let sshPort = 22;
+  try {
+    const { decryptSshConfig } = require('../host-config-crypto');
+    const ssh = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
+    if (ssh && ssh.port) sshPort = parseInt(ssh.port, 10) || 22;
+  } catch { /* ignore */ }
+  let agentCfg = null;
+  if (row.daemon_config) {
+    try {
+      const { decryptDaemonConfig } = require('../vsphere');
+      const dc = decryptDaemonConfig(row.daemon_config) || {};
+      if (dc.firewallAgent && dc.firewallAgent.url) agentCfg = dc.firewallAgent;
+    } catch { /* ignore */ }
+  }
+  const channel = agentCfg ? 'agent' : (row.connection_type === 'ssh' ? 'ssh' : 'local');
+  return {
+    id: row.id, name: row.name, connectionType: row.connection_type,
+    daemonType: row.daemon_type || 'docker', sshPort, agentCfg, channel,
+  };
+}
+
+// Detect the active backend on a host (firewalld → ufw → iptables).
+async function _detect(host) {
+  if (host.channel === 'agent') {
+    const r = await runner.agentRequest(host.agentCfg, '/detect', {});
+    return { backend: r.backend || null, raw: r.raw || '' };
+  }
+  for (const name of backends.DETECT_ORDER) {
+    const be = backends.get(name);
+    try {
+      const out = await runner.runRead(host, be.buildDetect(), { timeoutMs: 8000 });
+      if (name === 'firewalld' && !/running/i.test(out)) continue;
+      if (name === 'ufw' && !/Status:\s*active/i.test(out)) continue;
+      return { backend: name, raw: out };
+    } catch { /* not this backend, try next */ }
+  }
+  return { backend: null, raw: '' };
+}
+
+async function detectBackend(hostId) {
+  const host = _resolveHost(hostId);
+  const { backend } = await _detect(host);
+  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType };
+}
+
+async function listRules(hostId) {
+  const host = _resolveHost(hostId);
+  const dbRules = _db().prepare(
+    'SELECT * FROM firewall_rules WHERE host_id = ? AND is_active = 1 ORDER BY created_at DESC'
+  ).all(hostId);
+  let backend = null, raw = '';
+  try {
+    const det = await _detect(host);
+    backend = det.backend;
+    if (host.channel === 'agent') {
+      const r = await runner.agentRequest(host.agentCfg, '/list', {});
+      raw = r.raw || ''; backend = r.backend || backend;
+    } else if (backend) {
+      raw = await runner.runRead(host, backends.get(backend).buildList(), { timeoutMs: 10000 });
+    }
+  } catch (e) { raw = `(could not read host rules: ${e.message})`; }
+  return { hostId, channel: host.channel, backend, available: !!backend, daemonType: host.daemonType, rules: dbRules, raw };
+}
+
+async function snapshot(hostId, user, reason) {
+  const host = _resolveHost(hostId);
+  const det = await _detect(host);
+  if (!det.backend && host.channel !== 'agent') throw new Error('No firewall backend detected on this host');
+  let content, backend = det.backend;
+  if (host.channel === 'agent') {
+    const r = await runner.agentRequest(host.agentCfg, '/snapshot', {});
+    content = r.content || ''; backend = r.backend || backend;
+  } else {
+    content = await runner.runRead(host, backends.get(backend).buildSnapshot(), { timeoutMs: 15000 });
+  }
+  const info = _db().prepare(
+    'INSERT INTO firewall_snapshots (host_id, backend, snapshot_content, created_by, reason) VALUES (?,?,?,?,?)'
+  ).run(hostId, backend || 'unknown', content || '', (user && user.username) || 'system', reason || null);
+  return { id: info.lastInsertRowid, backend, hostId };
+}
+
+async function applyRule(hostId, rawSpec, user, requesterIp) {
+  const spec = assertSafe(rawSpec);
+  const host = _resolveHost(hostId);
+  const det = await _detect(host);
+  const backendName = det.backend || (host.channel === 'agent' ? (await runner.agentRequest(host.agentCfg, '/detect', {})).backend : null);
+  if (!backendName) throw new Error('No firewall backend detected on this host');
+  if (backendName === 'ufw' && (spec.scope === 'docker' || spec.scope === 'container')) {
+    throw new Error('ufw cannot filter Docker published ports (they bypass ufw via NAT). Use host scope, or manage this host with iptables/DOCKER-USER.');
+  }
+  lockout.check({ sshPort: host.sshPort, spec, adminIps: [], requesterIp });
+
+  // Snapshot before mutating (best effort — don't block the change if it fails).
+  try { await snapshot(hostId, user, 'pre-apply'); } catch { /* ignore */ }
+
+  const uuid = crypto.generateToken(12);
+  let built;
+  if (host.channel === 'agent') {
+    const r = await runner.agentRequest(host.agentCfg, '/apply', { spec, uuid, reason: spec.reason });
+    if (r && r.ok === false) throw new Error(r.error || 'agent apply failed');
+    built = r.built || { chain: null, comment_tag: `APPFW uuid=${uuid}`, rule_expression: r.rule_expression || '' };
+  } else {
+    const be = backends.get(backendName);
+    built = be.buildApply(spec, { uuid, reason: spec.reason });
+    const res = await runner.runCommands(host, built.commands, { timeoutMs: 20000 });
+    if (res.exitCode !== 0) throw new Error(res.stderr || `apply failed (exit ${res.exitCode})`);
+  }
+
+  const info = _db().prepare(`INSERT INTO firewall_rules
+    (rule_uuid, host_id, backend, scope, action, source_ip, destination_port, protocol, chain_name, rule_expression, comment_tag, reason, created_by, is_temporary, is_active)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0,1)`).run(
+    uuid, hostId, backendName, spec.scope, spec.action,
+    spec.source_ip || null, spec.destination_port || null, spec.protocol || null,
+    built.chain || null, built.rule_expression || null, built.comment_tag || null,
+    spec.reason || null, (user && user.username) || 'system'
+  );
+  const rule = _db().prepare('SELECT * FROM firewall_rules WHERE id = ?').get(info.lastInsertRowid);
+  return { ok: true, rule, backend: backendName };
+}
+
+async function removeRule(hostId, uuid, user) {
+  const row = _db().prepare('SELECT * FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
+  if (!row) throw new Error('Rule not found (or already removed)');
+  const host = _resolveHost(hostId);
+  try { await snapshot(hostId, user, 'pre-remove'); } catch { /* ignore */ }
+
+  if (host.channel === 'agent') {
+    const r = await runner.agentRequest(host.agentCfg, '/remove', { rule: row });
+    if (r && r.ok === false) throw new Error(r.error || 'agent remove failed');
+  } else {
+    const be = backends.get(row.backend);
+    if (!be) throw new Error(`Unknown backend "${row.backend}"`);
+    const built = be.buildRemove(row);
+    const res = await runner.runCommands(host, built.commands, { timeoutMs: 20000 });
+    if (res.exitCode !== 0) throw new Error(res.stderr || `remove failed (exit ${res.exitCode})`);
+  }
+  _db().prepare('UPDATE firewall_rules SET is_active = 0, removed_by = ?, removed_at = datetime(\'now\') WHERE id = ?')
+    .run((user && user.username) || 'system', row.id);
+  return { ok: true, rule_uuid: uuid };
+}
+
+// MVP1 rollback: iptables only (iptables-restore). Other backends store the
+// snapshot for manual restore and report that automated rollback lands in MVP2.
+async function rollback(hostId, snapshotId, user) {
+  const snap = _db().prepare('SELECT * FROM firewall_snapshots WHERE id = ? AND host_id = ?').get(snapshotId, hostId);
+  if (!snap) throw new Error('Snapshot not found');
+  const host = _resolveHost(hostId);
+  if (snap.backend !== 'iptables') {
+    throw new Error(`Automated rollback for "${snap.backend}" is not available yet (MVP2). The snapshot is stored for manual restore.`);
+  }
+  const b64 = Buffer.from(snap.snapshot_content || '', 'utf8').toString('base64');
+  const cmd = { bin: 'sh', argv: ['-c', `printf %s '${b64}' | base64 -d | iptables-restore`] };
+  const res = await runner.runCommands(host, [cmd], { timeoutMs: 20000 });
+  if (res.exitCode !== 0) throw new Error(res.stderr || `rollback failed (exit ${res.exitCode})`);
+  // Deactivate app rules created after this snapshot (host state was reset).
+  _db().prepare('UPDATE firewall_rules SET is_active = 0, removed_by = ?, removed_at = datetime(\'now\') WHERE host_id = ? AND is_active = 1 AND created_at > ?')
+    .run((user && user.username) || 'system', hostId, snap.created_at);
+  return { ok: true, snapshotId };
+}
+
+module.exports = { detectBackend, listRules, applyRule, removeRule, snapshot, rollback, _internals: { _resolveHost, _detect } };

@@ -226,6 +226,7 @@ app.use('/api/host-permissions', apiLimiter, require('./routes/host-permissions'
 app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
 // v8.9.16-alpha.1 — SSH Key Deployer (System → Tools)
 app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
+app.use('/api/firewall', apiLimiter, require('./routes/firewall'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
