@@ -343,6 +343,14 @@ const Api = {
   fwGetSudoConfig(hostId)     { return this.get(`/firewall/${hostId}/sudo-config`); },
   fwSetSudoConfig(hostId, d)  { return this.post(`/firewall/${hostId}/sudo-config`, d); },
 
+  // ─── Security Posture (v8.9.37) ───
+  getPosture()                { return this.get('/posture'); },
+  rescanPosture()             { return this.post('/posture/rescan', {}); },
+  getPostureTrend(hostId)     { return this.get(`/posture/trend${hostId != null ? `?hostId=${hostId}` : ''}`); },
+  getPostureMutes()           { return this.get('/posture/mutes'); },
+  mutePosture(d)              { return this.post('/posture/mute', d); },
+  unmutePosture(findingKey)   { return this.post('/posture/unmute', { findingKey }); },
+
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {
     const qs = new URLSearchParams(params).toString();

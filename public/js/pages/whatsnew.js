@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.37-alpha.1',
+      date: '2026-07-12',
+      title: 'Security Posture — one score for your whole estate (MVP1)',
+      changes: [
+        { type: 'feature', text: 'New Security → Posture page: a single posture score (0–100 + A–F) for the estate and per host, built from signals docker-dash already collects — no telemetry, all local. MVP checks: Docker daemon exposed over plain TCP without TLS, firewall drift, ESXi End-of-Life + critical CVEs, default admin password, incomplete security setup, and legacy host-access default. Findings are computed live (never persisted, so they never drift from reality), deduped, and severity-ranked, each with a concrete remediation (guided steps + a jump to the owning page).' },
+        { type: 'feature', text: 'Admins can Rescan and Mute/acknowledge a finding (with a reason and optional expiry) — muted findings leave the score but stay visible and are audited, so a low score can’t be silently faked. A background job snapshots the score every 15 min for a trend sparkline. Score = weighted penalty (critical 40 / high 20 / medium 8 / low 3). Deep-spec + feature-spec in plans/. This is the first piece of the “security-as-wedge, posture-as-heart” direction; one-click remediation + egress/exposed-port checks come next.' },
+      ],
+    },
+    {
       version: '8.9.36-alpha.1',
       date: '2026-07-09',
       title: 'Fix: firewall over SSH ignored scoped NOPASSWD sudoers',

@@ -18,6 +18,7 @@ const App = {
     networks:   () => NetworksPage,
     alerts:     () => AlertsPage,
     security:   () => SecurityPage,
+    posture:    () => PosturePage,
     system:     () => SystemPage,
     firewall:   () => FirewallPage,
     hosts:      () => HostsPage,

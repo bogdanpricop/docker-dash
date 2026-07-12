@@ -227,6 +227,7 @@ app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
 // v8.9.16-alpha.1 — SSH Key Deployer (System → Tools)
 app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
 app.use('/api/firewall', apiLimiter, require('./routes/firewall'));
+app.use('/api/posture', apiLimiter, require('./routes/posture'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
@@ -442,6 +443,16 @@ async function start() {
   // missing on a host). Every 10 min, best-effort, unref'd, de-duplicated.
   try { require('./services/firewall/monitor').start(); }
   catch (e) { require('./utils/logger')('firewall').debug('drift monitor start skipped', { error: e.message }); }
+
+  // v8.9.37 — Security Posture snapshot scheduler. Every 15 min, scan + store a
+  // score snapshot for the trend. Best-effort, unref'd. First run after 60s so
+  // boot isn't slowed.
+  try {
+    const posture = require('./services/posture');
+    const snap = () => posture.scan().then((r) => posture.snapshot(r)).catch(() => {});
+    setTimeout(snap, 60 * 1000).unref();
+    setInterval(snap, 15 * 60 * 1000).unref();
+  } catch (e) { require('./utils/logger')('posture').debug('posture scheduler start skipped', { error: e.message }); }
 
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
