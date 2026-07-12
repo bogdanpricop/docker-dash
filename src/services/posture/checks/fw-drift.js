@@ -13,12 +13,11 @@ module.exports = {
       hostIds = ctx.db.prepare('SELECT DISTINCT host_id FROM firewall_rules WHERE is_active = 1').all().map(r => r.host_id);
     } catch { return out; }
     if (!hostIds.length) return out;
-    const fw = require('../../firewall');
     for (const hostId of hostIds) {
       const h = ctx.hosts.find(x => x.id === hostId);
       if (!h) continue;
       try {
-        const info = await fw.listRules(hostId);
+        const info = await ctx.firewall.info(hostId);
         if (info && info.drift && info.drift.length) {
           out.push({
             checkId: 'fw.drift', severity: 'medium', hostId, subject: `host:${hostId}`,

@@ -9,6 +9,7 @@ const ALL = [
   require('./rbac'),
   require('./insecure-docker'),
   require('./fw-drift'),
+  require('./exposed-port'),
   require('./egress'),
   require('./vsphere'),
 ];

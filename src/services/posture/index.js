@@ -56,7 +56,21 @@ function _activeMuteKeys(db) {
 async function scan() {
   const db = _db();
   const hosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
-  const ctx = { db, hosts, log };
+  // Per-scan firewall cache so fw-drift and fw-exposed-port share ONE listRules
+  // (SSH) call per host instead of two.
+  const _fwCache = new Map();
+  const ctx = {
+    db, hosts, log,
+    firewall: {
+      async info(hostId) {
+        if (!_fwCache.has(hostId)) {
+          try { _fwCache.set(hostId, await require('../firewall').listRules(hostId)); }
+          catch { _fwCache.set(hostId, null); }
+        }
+        return _fwCache.get(hostId);
+      },
+    },
+  };
   const { ALL } = require('./checks');
 
   let findings = [];

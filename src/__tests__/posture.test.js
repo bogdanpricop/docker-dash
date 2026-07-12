@@ -52,6 +52,61 @@ describe('posture remediation dispatcher', () => {
   });
 });
 
+describe('exposed-port parser (high precision)', () => {
+  const { _worldOpenPorts } = require('../services/posture/checks/exposed-port')._internals;
+  test('ufw: flags Anywhere, ignores subnet-restricted + default DENY', () => {
+    const ufw = [
+      'Status: active',
+      'To                         Action      From',
+      '--                         ------      ----',
+      '2375/tcp on ens192         ALLOW IN    Anywhere',
+      '22/tcp on ens192           ALLOW IN    192.168.0.0/20',
+      'Anywhere on ens192         DENY IN     Anywhere',
+    ].join('\n');
+    const open = _worldOpenPorts('ufw', ufw);
+    expect(open.has(2375)).toBe(true);
+    expect(open.has(22)).toBe(false);   // subnet-restricted
+  });
+  test('iptables: flags --dport without -s, ignores with -s', () => {
+    const ipt = [
+      '-P INPUT ACCEPT',
+      '-A INPUT -p tcp --dport 2375 -j ACCEPT',
+      '-A INPUT -p tcp -s 10.0.0.0/8 --dport 22 -j ACCEPT',
+    ].join('\n');
+    const open = _worldOpenPorts('iptables', ipt);
+    expect(open.has(2375)).toBe(true);
+    expect(open.has(22)).toBe(false);
+  });
+  test('nftables: flags dport without saddr', () => {
+    const nft = [
+      'chain input {',
+      '  tcp dport 2375 accept',
+      '  ip saddr 10.0.0.0/8 tcp dport 22 accept',
+      '}',
+    ].join('\n');
+    const open = _worldOpenPorts('nftables', nft);
+    expect(open.has(2375)).toBe(true);
+    expect(open.has(22)).toBe(false);
+  });
+});
+
+describe('exposed-port check', () => {
+  const chk = require('../services/posture/checks/exposed-port');
+  test('emits a critical for world-open 2375 (Docker API)', async () => {
+    const ctx = {
+      hosts: [{ id: 5, name: 'edge', daemon_type: 'docker' }],
+      firewall: { info: async () => ({ available: true, backend: 'ufw', raw: '2375/tcp ALLOW IN Anywhere' }) },
+    };
+    const out = await chk.run(ctx);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ checkId: 'fw.exposed-port', severity: 'critical', hostId: 5 });
+  });
+  test('skips vsphere/platform hosts', async () => {
+    const ctx = { hosts: [{ id: 6, name: 'esxi', daemon_type: 'vsphere' }], firewall: { info: async () => { throw new Error('should not be called'); } } };
+    expect(await chk.run(ctx)).toHaveLength(0);
+  });
+});
+
 describe('insecure-docker check', () => {
   const ctx = (hosts) => ({ hosts });
   test('flags a plain-TCP docker host without TLS as critical', async () => {

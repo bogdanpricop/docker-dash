@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.39-alpha.1',
+      date: '2026-07-12',
+      title: 'Posture — exposed-port check (world-open sensitive ports)',
+      changes: [
+        { type: 'feature', text: 'Posture now flags sensitive ports open to the world by parsing each host’s live firewall ruleset (ufw/iptables/nftables): Docker API 2375 (critical), RDP, databases (Postgres/MySQL/Redis/Mongo), SSH, VNC, docker-dash. High precision — it only flags a port ALLOWed from ANY source, so a port restricted to a subnet is not a false positive (validated against real ufw output). Guided remediation to the Firewall page (closing a port stays guided so the lockout guard prevents self-lockout). The firewall ruleset is fetched once per scan and shared between the drift and exposed-port checks, so no extra SSH round-trips.' },
+      ],
+    },
+    {
       version: '8.9.38-alpha.1',
       date: '2026-07-12',
       title: 'Posture — egress check + one-click remediation',
