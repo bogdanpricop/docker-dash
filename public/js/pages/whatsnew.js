@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.41-alpha.1',
+      date: '2026-07-12',
+      title: 'Dashboard — posture grade at a glance',
+      changes: [
+        { type: 'improvement', text: 'The estate security grade now shows as a small colored pill in the Dashboard header (e.g. “B · 84”, red with a ✕ count when there are criticals), linking straight to Security → Posture. It reads the latest snapshot (a cheap DB read — no live scan), and stays hidden until the first posture snapshot exists. Posture is now where you land, not just where you go looking.' },
+      ],
+    },
+    {
       version: '8.9.40-alpha.1',
       date: '2026-07-12',
       title: 'Posture — regression alerting',

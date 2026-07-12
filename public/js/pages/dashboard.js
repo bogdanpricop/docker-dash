@@ -27,6 +27,7 @@ const DashboardPage = {
           <div class="page-subtitle">${i18n.t('pages.dashboard.subtitle')}</div>
         </div>
         <div class="page-actions" style="align-items:center">
+          <a href="#/posture" id="dash-posture" title="Security posture" style="margin-right:8px;display:none;text-decoration:none"></a>
           <button class="btn btn-sm btn-secondary" data-tab-jump="tools" title="Open System → Tools" style="margin-right:8px"><i class="fas fa-toolbox"></i> Tools</button>
           <a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" class="text-muted text-xs" style="margin-right:8px" title="Docker Dash on GitHub"><i class="fab fa-github"></i></a>
           <span class="ws-status" id="ws-indicator">
@@ -162,6 +163,7 @@ const DashboardPage = {
     this._restoreWidgetOrder();
 
     await this._load();
+    this._loadPosturePill();
     this._refreshTimer = setInterval(() => this._load(), 30000);
 
     this._cpuHistory = [];
@@ -231,6 +233,23 @@ const DashboardPage = {
     const el = document.getElementById(id);
     if (!el) return;
     el.textContent = target;
+  },
+
+  // Compact posture grade in the header, from the latest snapshot (cheap DB read
+  // — no live scan). Hidden until there's a snapshot.
+  async _loadPosturePill() {
+    const el = document.getElementById('dash-posture');
+    if (!el) return;
+    try {
+      const { points } = await Api.getPostureTrend();
+      if (!points || !points.length) return;
+      const p = points[points.length - 1];
+      const col = { A: '#3fb950', B: '#3fb950', C: '#d29922', D: '#db6d28', F: '#f85149' }[p.grade] || '#8b949e';
+      const crit = p.critical || 0;
+      el.innerHTML = `<span class="badge" style="background:${col};color:#fff" title="Security posture: grade ${p.grade}, score ${p.score}${crit ? `, ${crit} critical` : ''}">
+        <i class="fas fa-shield-halved"></i> ${p.grade} · ${p.score}${crit ? ` · ${crit}✕` : ''}</span>`;
+      el.style.display = '';
+    } catch { /* leave hidden */ }
   },
 
   _renderStateChart(containers) {
