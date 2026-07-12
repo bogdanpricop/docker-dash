@@ -444,15 +444,11 @@ async function start() {
   try { require('./services/firewall/monitor').start(); }
   catch (e) { require('./utils/logger')('firewall').debug('drift monitor start skipped', { error: e.message }); }
 
-  // v8.9.37 — Security Posture snapshot scheduler. Every 15 min, scan + store a
-  // score snapshot for the trend. Best-effort, unref'd. First run after 60s so
-  // boot isn't slowed.
-  try {
-    const posture = require('./services/posture');
-    const snap = () => posture.scan().then((r) => posture.snapshot(r)).catch(() => {});
-    setTimeout(snap, 60 * 1000).unref();
-    setInterval(snap, 15 * 60 * 1000).unref();
-  } catch (e) { require('./utils/logger')('posture').debug('posture scheduler start skipped', { error: e.message }); }
+  // v8.9.37/8.9.40 — Security Posture monitor. Every 15 min: scan, alert on a
+  // regression (score drop / new critical) vs the previous snapshot, then store a
+  // snapshot for the trend. Best-effort, unref'd. First run 60s after boot.
+  try { require('./services/posture/monitor').start(); }
+  catch (e) { require('./utils/logger')('posture').debug('posture monitor start skipped', { error: e.message }); }
 
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.

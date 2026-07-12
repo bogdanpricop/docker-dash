@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.40-alpha.1',
+      date: '2026-07-12',
+      title: 'Posture — regression alerting',
+      changes: [
+        { type: 'feature', text: 'The posture background job now alerts you when things get worse: every 15 min it compares the estate score + critical count to the previous snapshot and raises an in-app notification (+ audit: posture_regression) when the score drops by ≥10 or a new critical finding appears — with a link straight to Security → Posture. It compares against the previous snapshot (a delta), so a persistent issue alerts once, not every cycle. Posture is now a living signal, not just a page you have to remember to open.' },
+      ],
+    },
+    {
       version: '8.9.39-alpha.1',
       date: '2026-07-12',
       title: 'Posture — exposed-port check (world-open sensitive ports)',
