@@ -350,6 +350,7 @@ const Api = {
   getPostureMutes()           { return this.get('/posture/mutes'); },
   mutePosture(d)              { return this.post('/posture/mute', d); },
   unmutePosture(findingKey)   { return this.post('/posture/unmute', { findingKey }); },
+  remediatePosture(action)    { return this.post('/posture/remediate', { action }); },
 
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {

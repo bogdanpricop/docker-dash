@@ -196,7 +196,10 @@ const PosturePage = {
         <div class="card" style="padding:12px;margin-top:8px">
           <div style="font-weight:600;margin-bottom:6px"><i class="fas fa-wrench"></i> Remediation</div>
           ${r.steps ? `<p class="text-sm" style="white-space:pre-wrap">${Utils.escapeHtml(r.steps)}</p>` : ''}
-          ${r.link ? `<a class="btn btn-sm btn-primary" href="${Utils.escapeHtml(r.link)}" id="pt-goto"><i class="fas fa-arrow-right"></i> ${Utils.escapeHtml(r.label || 'Open')}</a>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${(r.action && this._isAdmin && !f.muted) ? `<button class="btn btn-sm btn-primary" id="pt-apply"><i class="fas fa-wand-magic-sparkles"></i> Apply fix</button>` : ''}
+            ${r.link ? `<a class="btn btn-sm ${r.action ? 'btn-secondary' : 'btn-primary'}" href="${Utils.escapeHtml(r.link)}" id="pt-goto"><i class="fas fa-arrow-right"></i> ${Utils.escapeHtml(r.label || 'Open')}</a>` : ''}
+          </div>
         </div>
         ${f.muted
           ? `<div style="margin-top:12px">${this._isAdmin ? '<button class="btn btn-sm btn-secondary" id="pt-unmute"><i class="fas fa-volume-high"></i> Un-mute</button>' : '<span class="text-dim text-sm">Muted.</span>'}</div>`
@@ -205,6 +208,14 @@ const PosturePage = {
     Modal.open(html, { width: '620px' });
     Modal._content.querySelector('#pt-x').addEventListener('click', () => Modal.close());
     Modal._content.querySelector('#pt-goto')?.addEventListener('click', () => Modal.close());
+    Modal._content.querySelector('#pt-apply')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Applying…';
+      try {
+        const res = await Api.remediatePosture(f.remediation.action);
+        if (res && res.ok === false) { Toast.error(res.error || 'Fix failed'); btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Apply fix'; return; }
+        Toast.success('Fix applied'); Modal.close(); await this._load();
+      } catch (err) { Toast.error(err.message); btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Apply fix'; }
+    });
     Modal._content.querySelector('#pt-mute')?.addEventListener('click', () => { Modal.close(); this._muteDialog(f); });
     Modal._content.querySelector('#pt-unmute')?.addEventListener('click', async () => {
       try { await Api.unmutePosture(f.key); Toast.success('Un-muted'); Modal.close(); await this._load(); } catch (e) { Toast.error(e.message); }

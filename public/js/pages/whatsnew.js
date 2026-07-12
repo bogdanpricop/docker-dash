@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.38-alpha.1',
+      date: '2026-07-12',
+      title: 'Posture — egress check + one-click remediation',
+      changes: [
+        { type: 'feature', text: 'Posture now assesses outbound network exposure too: per Docker/Podman host it reuses the egress analyzer to flag containers that can reach cloud metadata (IMDS 169.254.169.254 → credential theft via SSRF) or have critical internet exposure — as per-host summaries, so it never floods the score.' },
+        { type: 'feature', text: 'One-click remediation lands: a finding with a SAFE fix shows an “Apply fix” button. First action wired — re-apply drifted firewall rules straight from the finding (goes through the firewall lockout guard; only re-applies rules you already defined, so it can’t create new exposure). Risky fixes (e.g. closing an exposed port) stay guided by design to avoid self-lockout. Admin + audited. This turns the findings list into a real remediation queue.' },
+      ],
+    },
+    {
       version: '8.9.37-alpha.1',
       date: '2026-07-12',
       title: 'Security Posture — one score for your whole estate (MVP1)',

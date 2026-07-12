@@ -25,7 +25,9 @@ module.exports = {
             title: `${info.drift.length} firewall rule(s) drifted on ${h.name}`,
             detail: 'App-managed firewall rules are missing on the host — removed manually or lost on a daemon/container restart.',
             evidence: `drift=${info.drift.length}`,
-            remediation: { type: 'link', label: 'Re-apply in Firewall', link: '#/firewall' },
+            // Safe one-click: re-applies rules the admin already defined (no
+            // lockout risk — no new exposure is created).
+            remediation: { type: 'action', label: 'Re-apply drifted rules', link: '#/firewall', action: { type: 'fw-reconcile', hostId } },
           });
         }
       } catch { /* unreachable → coverage gap, not a false pass */ }

@@ -40,6 +40,18 @@ describe('posture dedupe + key', () => {
   });
 });
 
+describe('posture remediation dispatcher', () => {
+  test('rejects a missing action', async () => {
+    await expect(posture.remediate(undefined, {})).rejects.toThrow(/action is required/);
+  });
+  test('rejects an unsupported action (only safe actions are one-click)', async () => {
+    await expect(posture.remediate({ type: 'fw-block-port', port: 2375 }, {})).rejects.toThrow(/Unsupported remediation/);
+  });
+  test('fw-reconcile requires a hostId', async () => {
+    await expect(posture.remediate({ type: 'fw-reconcile' }, {})).rejects.toThrow(/hostId required/);
+  });
+});
+
 describe('insecure-docker check', () => {
   const ctx = (hosts) => ({ hosts });
   test('flags a plain-TCP docker host without TLS as critical', async () => {

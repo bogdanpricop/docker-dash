@@ -58,6 +58,21 @@ router.post('/mute', ...admin, asyncHandler(async (req, res) => {
   } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
 }));
 
+// One-click remediation (admin, audited). Only safe actions are accepted.
+router.post('/remediate', ...admin, asyncHandler(async (req, res) => {
+  const action = req.body && req.body.action;
+  try {
+    const r = await posture.remediate(action, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'posture_remediate', targetType: 'posture', targetId: (action && action.type) || 'unknown', details: { action }, ip: getClientIp(req) });
+    // Invalidate the cached scan so the next load reflects the fix.
+    _cache = { result: null, ts: 0, running: null };
+    res.json(r);
+  } catch (err) {
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'posture_remediate', targetType: 'posture', targetId: (action && action.type) || 'unknown', details: { action, error: err.message }, ip: getClientIp(req) });
+    res.status(400).json({ ok: false, error: err.message });
+  }
+}));
+
 router.post('/unmute', ...admin, asyncHandler(async (req, res) => {
   const { findingKey } = req.body || {};
   posture.unmute(findingKey);

@@ -130,7 +130,24 @@ function unmute(findingKey) {
   return { ok: true, findingKey };
 }
 
+// One-click remediation dispatcher. Only SAFE actions are one-click — anything
+// that could create exposure or lock out the admin stays guided (link-only).
+// Currently: fw-reconcile (re-apply the admin's own drifted firewall rules).
+async function remediate(action, user) {
+  if (!action || typeof action !== 'object') throw new Error('action is required');
+  switch (action.type) {
+    case 'fw-reconcile': {
+      const hostId = parseInt(action.hostId, 10);
+      if (!hostId) throw new Error('hostId required');
+      const r = await require('../firewall').reconcile(hostId, user);
+      return { ok: true, action: action.type, result: r };
+    }
+    default:
+      throw new Error(`Unsupported remediation "${action.type}"`);
+  }
+}
+
 module.exports = {
-  scan, snapshot, trend, mute, unmute, listMutes,
+  scan, snapshot, trend, mute, unmute, listMutes, remediate,
   _internals: { _key, _grade, _score, _dedupe },
 };
