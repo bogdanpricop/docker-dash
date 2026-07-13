@@ -352,6 +352,18 @@ const Api = {
   unmutePosture(findingKey)   { return this.post('/posture/unmute', { findingKey }); },
   remediatePosture(action)    { return this.post('/posture/remediate', { action }); },
 
+  // ─── Reconciler / Blueprints (v8.9.42) ───
+  listBlueprints()            { return this.get('/blueprints'); },
+  getBlueprint(id)            { return this.get(`/blueprints/${id}`); },
+  createBlueprint(d)          { return this.post('/blueprints', d); },
+  updateBlueprint(id, d)      { return this.put(`/blueprints/${id}`, d); },
+  deleteBlueprint(id)         { return this.delete(`/blueprints/${id}`); },
+  captureBlueprint(name)      { return this.post('/blueprints/capture', { name }); },
+  planBlueprint(id)           { return this.get(`/blueprints/${id}/plan`); },
+  applyBlueprint(id)          { return this.post(`/blueprints/${id}/apply`, {}); },
+  importBlueprint(d)          { return this.post('/blueprints/import', d); },
+  enforceBlueprint(id, on)    { return this.post(`/blueprints/${id}/enforce`, { enforce: on }); },
+
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {
     const qs = new URLSearchParams(params).toString();

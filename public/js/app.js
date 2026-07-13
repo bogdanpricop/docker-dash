@@ -19,6 +19,7 @@ const App = {
     alerts:     () => AlertsPage,
     security:   () => SecurityPage,
     posture:    () => PosturePage,
+    blueprints: () => BlueprintsPage,
     system:     () => SystemPage,
     firewall:   () => FirewallPage,
     hosts:      () => HostsPage,

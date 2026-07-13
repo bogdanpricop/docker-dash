@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.42-alpha.1',
+      date: '2026-07-13',
+      title: 'Reconciler — declarative desired-state for your firewall (MVP1)',
+      changes: [
+        { type: 'feature', text: 'New Reconciler page: a Git-friendly JSON “blueprint” describes the firewall rules that SHOULD exist across your hosts, and docker-dash converges reality to it — GitOps for host firewall, self-hosted, no telemetry. Capture builds a blueprint from your current app-managed rules; Plan shows a per-host diff (to create / to remove / in sync) read-only and safe; Apply converges through the existing firewall lockout guard, snapshot and audit (idempotent, best-effort per host, never touches manual/system rules). Export/Import round-trips the JSON so Git is your source of truth.' },
+        { type: 'feature', text: 'A background monitor plans each active blueprint every 15 min and alerts on drift (delta-deduped) with a link to the Reconciler; an opt-in “Enforce” toggle auto-applies to converge. This generalizes the firewall drift/reconcile primitive into a desired-state engine — deep-spec + feature-spec in plans/. Migration 082 (blueprints, blueprint_runs). Firewall rules are the first resource type; containers/egress and sync-from-a-Git-URL are the next steps.' },
+      ],
+    },
+    {
       version: '8.9.41-alpha.1',
       date: '2026-07-12',
       title: 'Dashboard — posture grade at a glance',

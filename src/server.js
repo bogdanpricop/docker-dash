@@ -228,6 +228,7 @@ app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
 app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
 app.use('/api/firewall', apiLimiter, require('./routes/firewall'));
 app.use('/api/posture', apiLimiter, require('./routes/posture'));
+app.use('/api/blueprints', apiLimiter, require('./routes/blueprints'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
@@ -449,6 +450,11 @@ async function start() {
   // snapshot for the trend. Best-effort, unref'd. First run 60s after boot.
   try { require('./services/posture/monitor').start(); }
   catch (e) { require('./utils/logger')('posture').debug('posture monitor start skipped', { error: e.message }); }
+
+  // v8.9.42 — Reconciler drift monitor. Every 15 min: plan each active blueprint,
+  // alert on drift (or auto-apply if enforce is on). Best-effort, unref'd.
+  try { require('./services/reconciler/monitor').start(); }
+  catch (e) { require('./utils/logger')('reconciler').debug('reconciler monitor start skipped', { error: e.message }); }
 
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
