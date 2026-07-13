@@ -364,6 +364,13 @@ const Api = {
   importBlueprint(d)          { return this.post('/blueprints/import', d); },
   enforceBlueprint(id, on)    { return this.post(`/blueprints/${id}/enforce`, { enforce: on }); },
 
+  // ─── Ops Copilot (v8.9.43) ───
+  getCopilotBriefing(fresh)   { return this.get(`/copilot/briefing${fresh ? '?fresh=1' : ''}`); },
+  askCopilot(question)        { return this.post('/copilot/ask', { question }); },
+  getCopilotConfig()          { return this.get('/copilot/config'); },
+  setCopilotConfig(d)         { return this.post('/copilot/config', d); },
+  testCopilotConfig()         { return this.post('/copilot/config/test', {}); },
+
   // ─── Notifications ─────────────────────────────
   getNotifications(params = {}) {
     const qs = new URLSearchParams(params).toString();

@@ -229,6 +229,7 @@ app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
 app.use('/api/firewall', apiLimiter, require('./routes/firewall'));
 app.use('/api/posture', apiLimiter, require('./routes/posture'));
 app.use('/api/blueprints', apiLimiter, require('./routes/blueprints'));
+app.use('/api/copilot', apiLimiter, require('./routes/copilot'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

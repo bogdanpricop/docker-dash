@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.43-alpha.1',
+      date: '2026-07-13',
+      title: 'Ops Copilot — local-first, cross-layer advisor (MVP1)',
+      changes: [
+        { type: 'feature', text: 'New Copilot page: a security/ops advisor that correlates signals docker-dash already has (posture score + findings, firewall drift, blueprint drift, ESXi EOL/CVE, exposed ports, egress, host inventory, recent activity) into a prioritized “what to fix first” briefing — with deep-links to the guarded pages. Tier 1 is fully rule-based and works with ZERO setup and no LLM.' },
+        { type: 'feature', text: 'Tier 2 (optional): bring your own OpenAI-compatible LLM endpoint — a local Ollama / LM Studio, or any endpoint you configure — for a natural-language briefing and Q&A over your estate (“what should I fix first?”, “is anything reachable from the internet?”). No bundled model, no telemetry: a secret-free context bundle is sent ONLY to the endpoint you set (local Ollama = nothing leaves the box), the API key is encrypted at rest and never returned, and the copilot is advise-only — it never executes anything. Deep-spec + feature-spec in plans/. Migration 083. Node stdlib only (no new deps).' },
+      ],
+    },
+    {
       version: '8.9.42-alpha.1',
       date: '2026-07-13',
       title: 'Reconciler — declarative desired-state for your firewall (MVP1)',
