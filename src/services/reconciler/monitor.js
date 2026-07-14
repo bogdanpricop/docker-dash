@@ -10,12 +10,33 @@ function _db() { return require('../../db').getDb(); }
 // blueprintId -> last-alerted drift signature ('' = in sync)
 const _lastDrift = new Map();
 
+// Has this auto-sync blueprint's pull interval elapsed? SQLite datetime('now') is
+// UTC 'YYYY-MM-DD HH:MM:SS' with no zone marker — normalise to a parseable UTC ts.
+function _syncDue(bp) {
+  const interval = Math.max(1, parseInt(bp.source_interval_min, 10) || 60);
+  if (!bp.last_synced_at) return true;
+  const last = Date.parse(String(bp.last_synced_at).replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(last)) return true;
+  return (Date.now() - last) >= interval * 60 * 1000;
+}
+
 async function tick() {
   const rec = require('./index');
   let blueprints = [];
-  try { blueprints = _db().prepare('SELECT id, name, enforce FROM blueprints WHERE is_active = 1').all(); } catch { return { checked: 0 }; }
-  let alerted = 0;
+  try { blueprints = _db().prepare('SELECT id, name, enforce, source_auto_sync, source_url, source_interval_min, last_synced_at FROM blueprints WHERE is_active = 1').all(); } catch { return { checked: 0 }; }
+  let alerted = 0, synced = 0;
   for (const bp of blueprints) {
+    // Best-effort GitOps pull for auto-sync sources whose interval has elapsed.
+    // Runs BEFORE plan so a freshly-pulled doc is what we diff/enforce this tick.
+    if (bp.source_auto_sync && bp.source_url && _syncDue(bp)) {
+      try {
+        const r = await rec.syncNow(bp.id, { username: 'system-sync' });
+        if (r && r.changed) {
+          require('../audit').log({ action: 'blueprint_sync', targetType: 'blueprint', targetId: String(bp.id), details: { changed: true, source: 'auto' }, username: 'system' });
+          synced++;
+        }
+      } catch { /* best-effort; syncNow records last_sync_error itself */ }
+    }
     let full;
     try { full = rec.get(bp.id); } catch { continue; }
     if (!full || !full.doc) continue;
@@ -44,7 +65,7 @@ async function tick() {
     }
     _lastDrift.set(bp.id, drift > 0 ? sig : '');
   }
-  return { checked: blueprints.length, alerted };
+  return { checked: blueprints.length, alerted, synced };
 }
 
 function start(intervalMs = 15 * 60 * 1000) {

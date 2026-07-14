@@ -100,4 +100,30 @@ router.post('/:id/enforce', ...admin, asyncHandler(async (req, res) => {
   res.json(bp);
 }));
 
+// ── Remote source (GitOps pull) ─────────────────────────────
+// Set the remote HTTPS(S) source of truth. Token (optional) is encrypted at rest
+// and never returned. Rejects non-http(s) URLs with 400.
+router.put('/:id/source', ...admin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  try {
+    const source = rec.setSource(id, {
+      url: req.body.url, token: req.body.token, clearToken: !!req.body.clearToken,
+      autoSync: !!req.body.autoSync, intervalMin: req.body.intervalMin,
+    });
+    _audit(req, 'blueprint_set_source', id, { url: source.url, autoSync: source.autoSync, intervalMin: source.intervalMin, hasToken: source.hasToken });
+    res.json(source);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+}));
+
+// Pull the blueprint's desired-state from its remote source now.
+router.post('/:id/sync', ...admin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!rec.get(id)) return res.status(404).json({ error: 'Blueprint not found' });
+  try {
+    const r = await rec.syncNow(id, req.user);
+    _audit(req, 'blueprint_sync', id, { ok: r.ok, changed: r.changed, error: r.error });
+    res.json(r);
+  } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
+}));
+
 module.exports = router;

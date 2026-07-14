@@ -82,12 +82,21 @@ const BlueprintsPage = {
             <button class="btn btn-xs btn-primary" id="bpd-plan"><i class="fas fa-magnifying-glass"></i> Plan</button>
             ${this._isAdmin ? '<button class="btn btn-xs btn-secondary" id="bpd-apply"><i class="fas fa-play"></i> Apply</button>' : ''}
             <button class="btn btn-xs btn-secondary" id="bpd-export"><i class="fas fa-file-export"></i> Export</button>
+            ${this._isAdmin ? '<button class="btn btn-xs btn-secondary" id="bpd-source"><i class="fas fa-cloud-arrow-down"></i> Remote source</button>' : ''}
+            ${(this._isAdmin && b.source && b.source.url) ? '<button class="btn btn-xs btn-secondary" id="bpd-sync"><i class="fas fa-rotate"></i> Sync now</button>' : ''}
             ${this._isAdmin ? `<button class="btn btn-xs btn-secondary" id="bpd-enforce"><i class="fas fa-lock"></i> Enforce: ${b.enforce ? 'ON' : 'OFF'}</button>` : ''}
             ${this._isAdmin ? '<button class="btn btn-xs btn-danger" id="bpd-del"><i class="fas fa-trash"></i></button>' : ''}
           </div>
         </div>
         <div class="card-body">
           <div class="text-sm text-dim" style="margin-bottom:8px">${hostCount} host(s) in this blueprint.</div>
+          ${(b.source && b.source.url) ? `<div class="text-sm" style="margin-bottom:10px">
+            <i class="fas fa-cloud text-dim"></i> Source: <span class="mono">${Utils.escapeHtml(b.source.url)}</span>
+            ${b.source.autoSync ? `<span class="badge badge-warning" style="margin-left:6px">auto every ${b.source.intervalMin}m</span>` : ''}
+            ${b.source.lastSyncStatus ? `<span class="badge ${b.source.lastSyncStatus === 'ok' ? 'badge-running' : 'badge-stopped'}" style="margin-left:6px">${Utils.escapeHtml(b.source.lastSyncStatus)}</span>` : ''}
+            ${b.source.lastSyncedAt ? `<span class="text-dim" style="margin-left:6px">last synced ${Utils.escapeHtml(b.source.lastSyncedAt)}</span>` : ''}
+            ${(b.source.lastSyncStatus === 'error' && b.source.lastSyncError) ? `<div style="color:var(--yellow);margin-top:4px">${Utils.escapeHtml(b.source.lastSyncError)}</div>` : ''}
+          </div>` : ''}
           <div id="bpd-plan-out"></div>
           <details style="margin-top:12px"><summary style="cursor:pointer;font-size:13px">Blueprint JSON</summary>
             <pre class="inspect-json" style="max-height:320px;color:var(--text)">${Utils.escapeHtml(JSON.stringify(b.doc, null, 2))}</pre>
@@ -101,6 +110,8 @@ const BlueprintsPage = {
     el.querySelector('#bpd-plan').addEventListener('click', () => this._runPlan());
     el.querySelector('#bpd-apply')?.addEventListener('click', () => this._apply());
     el.querySelector('#bpd-export')?.addEventListener('click', () => this._export());
+    el.querySelector('#bpd-source')?.addEventListener('click', () => this._sourceDialog());
+    el.querySelector('#bpd-sync')?.addEventListener('click', () => this._syncNow());
     el.querySelector('#bpd-enforce')?.addEventListener('click', () => this._toggleEnforce());
     el.querySelector('#bpd-del')?.addEventListener('click', () => this._delete());
     if (this._plan) this._renderPlan();
@@ -195,6 +206,40 @@ const BlueprintsPage = {
     if (!ok) return;
     try { await Api.deleteBlueprint(this._detail.id); this._detail = null; Toast.success('Deleted'); await this._load(); }
     catch (err) { Toast.error(err.message); }
+  },
+
+  async _sourceDialog() {
+    const src = (this._detail && this._detail.source) || {};
+    const result = await Modal.form(`
+      <div class="form-group"><label>Remote URL (raw JSON over HTTPS)</label>
+        <input type="text" id="bps-url" class="form-control" placeholder="https://raw.githubusercontent.com/org/repo/main/blueprint.json" value="${Utils.escapeHtml(src.url || '')}"></div>
+      <div class="form-group"><label>Bearer token (optional)</label>
+        <input type="password" id="bps-token" class="form-control" placeholder="${src.hasToken ? 'stored — leave blank to keep' : 'none'}" autocomplete="new-password"></div>
+      ${src.hasToken ? '<div class="form-group"><label><input type="checkbox" id="bps-cleartoken"> Remove stored token</label></div>' : ''}
+      <div class="form-group"><label><input type="checkbox" id="bps-auto" ${src.autoSync ? 'checked' : ''}> Auto-sync on a schedule</label></div>
+      <div class="form-group"><label>Interval (minutes)</label>
+        <input type="number" id="bps-interval" class="form-control" min="1" value="${src.intervalMin || 60}"></div>
+      <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-info-circle"></i> The pulled JSON is validated (same rules as Import) before it replaces the desired state. A bad remote never overwrites a good blueprint. Prefer HTTPS.</div>
+    `, { title: 'Remote source (GitOps pull)', width: '620px', onSubmit: (c) => ({
+        url: c.querySelector('#bps-url').value.trim(),
+        token: c.querySelector('#bps-token').value,
+        clearToken: !!(c.querySelector('#bps-cleartoken') && c.querySelector('#bps-cleartoken').checked),
+        autoSync: c.querySelector('#bps-auto').checked,
+        intervalMin: parseInt(c.querySelector('#bps-interval').value, 10) || 60,
+      }) });
+    if (!result) return;
+    if (!result.url) { Toast.error('Enter a URL'); return; }
+    try { await Api.setBlueprintSource(this._detail.id, result); Toast.success('Remote source saved'); await this._open(this._detail.id); }
+    catch (err) { Toast.error(err.message); }
+  },
+
+  async _syncNow() {
+    try {
+      const r = await Api.syncBlueprint(this._detail.id);
+      if (r && r.ok === false) { Toast.error(r.error || 'Sync failed'); await this._open(this._detail.id); return; }
+      Toast.success(r.changed ? 'Synced — desired state updated' : 'Synced — already up to date');
+      await this._open(this._detail.id);
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _importDialog() {

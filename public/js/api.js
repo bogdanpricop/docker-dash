@@ -363,6 +363,8 @@ const Api = {
   applyBlueprint(id)          { return this.post(`/blueprints/${id}/apply`, {}); },
   importBlueprint(d)          { return this.post('/blueprints/import', d); },
   enforceBlueprint(id, on)    { return this.post(`/blueprints/${id}/enforce`, { enforce: on }); },
+  setBlueprintSource(id, body){ return this.put(`/blueprints/${id}/source`, body); },
+  syncBlueprint(id)           { return this.post(`/blueprints/${id}/sync`, {}); },
 
   // ─── Ops Copilot (v8.9.43) ───
   getCopilotBriefing(fresh)   { return this.get(`/copilot/briefing${fresh ? '?fresh=1' : ''}`); },

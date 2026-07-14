@@ -38,6 +38,10 @@ function get(id) {
   row.doc = _parse(row.doc);
   row.runs = _db().prepare('SELECT id, kind, summary, by, at FROM blueprint_runs WHERE blueprint_id = ? ORDER BY at DESC LIMIT 25').all(id)
     .map(r => ({ ...r, summary: _parse(r.summary) }));
+  // Redacted remote-source config (never the token). Strip the raw source_*
+  // columns picked up by SELECT * so the encrypted token never leaves the server.
+  row.source = require('./remote-sync').getSource(id);
+  for (const c of ['source_url', 'source_token_enc', 'source_auto_sync', 'source_interval_min', 'last_synced_at', 'last_sync_status', 'last_sync_error']) delete row[c];
   return row;
 }
 function _parse(s) { try { return s ? JSON.parse(s) : null; } catch { return null; } }
@@ -219,8 +223,11 @@ function recordRun(blueprintId, kind, summary, by) {
   if (col) _db().prepare(`UPDATE blueprints SET ${col} = datetime('now') WHERE id = ?`).run(blueprintId);
 }
 
+const remoteSync = require('./remote-sync');
+
 module.exports = {
   list, get, create, update, remove, setEnforce,
   validateDoc, capture, plan, apply, recordRun,
+  setSource: remoteSync.setSource, getSource: remoteSync.getSource, syncNow: remoteSync.syncNow,
   _internals: { _ruleKey, _diff },
 };
