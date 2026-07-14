@@ -10,6 +10,19 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.10.0',
+      date: '2026-07-14',
+      title: 'Security Posture + Reconciler + Ops Copilot — graduated to stable',
+      changes: [
+        { type: 'feature', text: 'This release graduates the whole 8.9.2x–8.9.4x alpha line to a stable minor. docker-dash is now a self-hosted estate control plane, not just a Docker UI with a firewall page — it scores your security posture, converges your infrastructure to a declarative desired state, and reasons across all of it. Local-first, zero telemetry, zero new dependencies.' },
+        { type: 'feature', text: 'Security Posture: a unified A–F security grade across your estate from live checks (secrets, RBAC, insecure Docker, firewall/blueprint drift, world-open ports, egress, vSphere EOL/CVE, and now Proxmox + Kubernetes). One-click safe remediation, mutes, trend snapshots, regression alerting, and a grade pill in the Dashboard header.' },
+        { type: 'feature', text: 'Reconciler: a Git-friendly JSON blueprint of what SHOULD exist (firewall rules + containers-that-should-run), converged safely through the lockout guard + snapshot + audit. Capture/Plan/Apply/Export/Import, a drift monitor with opt-in Enforce, and — new — Sync from a remote HTTPS URL (raw GitHub/GitLab or any endpoint; encrypted token; validated before storing; never overwrites a good doc on failure).' },
+        { type: 'feature', text: 'Ops Copilot: a cross-layer advisor that correlates everything docker-dash already knows into a prioritized “what to fix first” briefing with deep-links. Fully rule-based out of the box (no LLM), with an optional bring-your-own OpenAI-compatible endpoint (local Ollama = nothing leaves the box), one-click safe fixes, and — new — persisted conversation history (question/answer text only; the context bundle is never stored).' },
+        { type: 'feature', text: 'Firewall hardened into a real per-host manager: temporary rules with auto-expiry, nftables + Windows Firewall backends, drift detection + re-apply, RBAC (viewer/operator/admin), audit export (CSV/JSON), a mutual-TLS agent channel, drift alerting, and read-only firewall status for ESXi/Proxmox/Incus. SSH execution hardened for non-root, key-auth hosts.' },
+        { type: 'fix', text: 'Release deploys could silently leave a host on the previous image (a piped remote build masked its exit code). Deploy now verifies the running /api/health version on every target before declaring success.' },
+      ],
+    },
+    {
       version: '8.9.45-alpha.1',
       date: '2026-07-13',
       title: 'Reconciler — now spans containers too (ensure-running)',

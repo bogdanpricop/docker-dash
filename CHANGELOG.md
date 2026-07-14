@@ -2,6 +2,99 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.10.0] - 2026-07-14 — **PLATFORM**: Security Posture + Reconciler + Ops Copilot, graduated to stable
+
+Graduates the `8.9.22`–`8.9.45` alpha line to a stable minor. This is the release
+where docker-dash stops being "a Docker UI with a firewall page" and becomes a
+**self-hosted estate control plane**: it scores your security posture, converges
+your infrastructure to a declarative desired state, and reasons across all of it —
+all local-first, zero telemetry, zero new npm dependencies, single binary.
+
+Three new pillars ship together, plus a hardened firewall subsystem.
+
+### Security Posture — the estate's security grade
+
+A unified, weighted security score (A–F) across your whole estate, computed from
+live checks — findings are **never persisted** (only the score snapshot is, for trend).
+
+- **Checks:** hard-coded secrets, RBAC weaknesses, insecure Docker daemon config,
+  firewall drift, world-open sensitive exposed ports, egress policy, vSphere/ESXi
+  EOL + CVE, and now **Proxmox and Kubernetes** hosts (TLS-verification-disabled +
+  unencrypted stored credentials, read-only from existing connection config).
+- **One-click safe remediation** for findings whose fix creates no new exposure
+  (e.g. re-apply drifted firewall rules through the lockout guard). Risky fixes stay
+  guided-only.
+- **Mutes**, **trend snapshots**, a **regression-alerting monitor** (in-app alert +
+  `posture_regression` audit when the score drops ≥10 or a new critical appears),
+  and a **posture grade pill** in the Dashboard header linking straight to Posture.
+
+### Reconciler — declarative desired-state (GitOps for your estate)
+
+A Git-friendly JSON "blueprint" describes what SHOULD exist; docker-dash converges
+reality to it — self-hosted, no telemetry.
+
+- **Firewall + containers:** blueprints declare firewall rules AND containers that
+  should be running per host. Plan shows a read-only per-host diff; Apply converges
+  through the firewall lockout guard + snapshot + audit, and **only starts** stopped
+  containers (never stops/deletes anything; Docker/Podman hosts only).
+- **Capture / Plan / Apply / Export / Import** round-trip the JSON so Git is your
+  source of truth.
+- **Sync from a remote URL (new):** a blueprint can pull its desired-state JSON from
+  a remote HTTPS endpoint (raw GitHub/GitLab or any HTTP URL) — Node stdlib https,
+  10s timeout, optional **encrypted** Bearer token, validated before storing, and it
+  never overwrites a good doc on a failed fetch. On-demand ("Sync now") or best-effort
+  scheduled, folded into the drift monitor.
+- A **drift monitor** alerts on divergence (delta-deduped); an opt-in **Enforce**
+  toggle auto-applies to converge.
+
+### Ops Copilot — local-first, cross-layer advisor
+
+A security/ops advisor that correlates signals docker-dash already has (posture,
+firewall/blueprint drift, ESXi EOL/CVE, exposed ports, egress, inventory, recent
+activity) into a prioritized "what to fix first" briefing with deep-links.
+
+- **Tier 1** is fully rule-based — zero setup, no LLM, works out of the box.
+- **Tier 2 (optional):** bring your own OpenAI-compatible endpoint (local Ollama /
+  LM Studio / any URL you set) for natural-language briefing + Q&A. No bundled model,
+  no telemetry: a **secret-free** context bundle is sent ONLY to your endpoint (local
+  Ollama = nothing leaves the box), the API key is encrypted at rest and never
+  returned, and the copilot is **advise-only** — it never executes anything.
+- **Actionable recommendations:** briefing items that map to a safe fix offer an
+  "Apply fix" button reusing the guarded Posture remediation path.
+- **Persisted conversation history (new):** the Copilot now remembers its Q&A across
+  reloads (new `copilot_history` table, "Clear history" button — admin, audited).
+  Only the literal question/answer text is stored; the context bundle is never persisted.
+
+### Firewall — hardened into a real per-host manager
+
+Building on the `8.9.22` MVP: **temporary rules with auto-expiry**, **nftables** and
+**Windows Firewall (PowerShell over SSH)** backends, **drift detection + re-apply**,
+fine-grained **RBAC** (viewer/operator/admin), **audit export** (CSV/JSON) with
+manual-rule awareness, a **mutual-TLS** channel for the firewall-agent, a proactive
+**drift-alerting monitor**, and **read-only firewall status** for ESXi/Proxmox/Incus.
+SSH execution hardened for non-root, key-auth hosts: `/usr/sbin` PATH, passwordless
+sudo, optional per-host sudo password via `sudo -S` stdin, and a fix for scoped
+`NOPASSWD` sudoers (no more `sudo -n true` capability probe). Incus fixes: own-host
+resolution and the client-cert + trust-token flow.
+
+### Under the hood
+
+- Migrations `080`–`085` (firewall, posture, blueprints, copilot, copilot history,
+  blueprint remote-source). All auto-apply at startup; monotonic.
+- New background monitors (firewall drift, posture regression, reconciler drift/sync)
+  — all `setInterval` + `unref`'d, ~15 min, best-effort.
+- Test suite grew to **1856 passing across 119 suites**. Zero new npm dependencies
+  across the entire line. Deep-specs + feature-specs for every pillar in `plans/`.
+
+### Fixed
+
+- Release deploys could silently leave a host on the previous image: piping the
+  remote build through `tail` masked its exit code, so a failed build still reported
+  "done" and `docker compose` kept launching the old image tag. Deploy verification
+  now gates on the running `/api/health` version string on every target.
+- `scripts/sync-version.js` compose-fallback regex didn't match pre-release
+  (`-alpha.N`) fallbacks; the `docker-compose.yml` `APP_VERSION` fallback is now `8.10.0`.
+
 ## [8.9.22-alpha.1] - 2026-07-08 — Firewall management MVP1 (per-host, SSH/agent)
 
 The Firewall page becomes a real per-host firewall manager (was local-only UFW
