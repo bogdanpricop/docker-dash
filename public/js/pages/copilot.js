@@ -30,7 +30,28 @@ const CopilotPage = {
     `;
     container.querySelector('#cp-refresh').addEventListener('click', () => this._load(true));
     container.querySelector('#cp-config')?.addEventListener('click', () => this._configDialog());
+    await this._loadHistory();
     await this._load(false);
+  },
+
+  // Restore prior turns on page load (admin-only endpoint — same auth as ask).
+  async _loadHistory() {
+    if (!this._isAdmin) return;
+    try {
+      const rows = await Api.getCopilotHistory();
+      this._chat = (rows || []).map(r => ({ role: r.role, content: r.content }));
+    } catch { /* non-fatal — conversation just starts empty */ }
+  },
+
+  async _clearHistory() {
+    const ok = await Modal.confirm('Clear the copilot conversation history? This cannot be undone.', { danger: true, confirmText: 'Clear history' });
+    if (!ok) return;
+    try {
+      await Api.clearCopilotHistory();
+      this._chat = [];
+      this._renderTranscript();
+      Toast.success('Copilot history cleared');
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _load(fresh) {
@@ -73,7 +94,10 @@ const CopilotPage = {
       </div>
 
       <div class="card" style="margin-top:16px">
-        <div class="card-header"><h3><i class="fas fa-comments text-dim" style="margin-right:8px"></i>Ask the copilot</h3></div>
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+          <h3><i class="fas fa-comments text-dim" style="margin-right:8px"></i>Ask the copilot</h3>
+          ${(this._isAdmin && this._chat.length > 0) ? '<button class="btn btn-xs btn-secondary" id="cp-clear-history"><i class="fas fa-trash"></i> Clear history</button>' : ''}
+        </div>
         <div class="card-body">
           ${!b.llmEnabled ? '<div class="text-dim text-sm">Configure an LLM endpoint (LLM settings) to ask questions over your estate. Everything stays local if you point it at Ollama.</div>'
             : `<div id="cp-transcript" style="max-height:320px;overflow:auto;margin-bottom:10px"></div>
@@ -88,6 +112,7 @@ const CopilotPage = {
     this._renderTranscript();
     el.querySelector('#cp-send')?.addEventListener('click', () => this._ask());
     el.querySelector('#cp-q')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this._ask(); });
+    el.querySelector('#cp-clear-history')?.addEventListener('click', () => this._clearHistory());
     el.querySelectorAll('[data-cp-fix]').forEach(btn => btn.addEventListener('click', () => this._applyFix(parseInt(btn.getAttribute('data-cp-fix'), 10), btn)));
   },
 

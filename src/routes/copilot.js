@@ -28,10 +28,18 @@ router.get('/briefing', requireAuth, asyncHandler(async (req, res) => {
 router.post('/ask', ...admin, asyncHandler(async (req, res) => {
   const question = req.body && req.body.question;
   try {
-    const r = await copilot.ask(question);
+    const r = await copilot.ask(question, { userId: req.user.id });
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'copilot_ask', targetType: 'copilot', targetId: 'estate', details: { q: String(question || '').slice(0, 200) }, ip: getClientIp(req) });
     res.json(r);
   } catch (err) { res.status(err.status && err.status < 500 ? err.status : 200).json({ error: err.message }); }
+}));
+
+router.get('/history', ...admin, asyncHandler(async (_req, res) => res.json(copilot.history({ limit: 50 }))));
+
+router.delete('/history', ...admin, asyncHandler(async (req, res) => {
+  const r = copilot.clearHistory({});
+  auditService.log({ userId: req.user.id, username: req.user.username, action: 'copilot_history_clear', targetType: 'copilot', targetId: 'history', details: {}, ip: getClientIp(req) });
+  res.json(r);
 }));
 
 router.get('/config', ...admin, asyncHandler(async (_req, res) => res.json(copilot.getConfig())));

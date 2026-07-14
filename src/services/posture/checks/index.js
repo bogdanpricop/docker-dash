@@ -12,6 +12,8 @@ const ALL = [
   require('./exposed-port'),
   require('./egress'),
   require('./vsphere'),
+  require('./proxmox'),
+  require('./k8s'),
 ];
 
 module.exports = { ALL };

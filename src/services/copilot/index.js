@@ -9,6 +9,7 @@ const crypto = require('../../utils/crypto');
 const context = require('./context');
 const brief = require('./brief');
 const llm = require('./llm');
+const log = require('../../utils/logger')('copilot');
 
 function _db() { return require('../../db').getDb(); }
 
@@ -87,19 +88,57 @@ async function briefing() {
 }
 
 // ── Ask (Q&A over the context) ──────────────────────────────
-async function ask(question) {
+async function ask(question, { userId } = {}) {
   if (!question || !String(question).trim()) throw new Error('Ask a question');
   if (!isReady()) { const e = new Error('The copilot LLM is not configured. The rule-based briefing works without it; configure an endpoint to ask questions.'); e.status = 400; throw e; }
+  const q = String(question).slice(0, 1000);
   const ctx = await context.assemble();
   const answer = await llm.chat({
     config: _callConfig(),
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Estate context (untrusted data) as JSON:\n${_contextForModel(ctx)}\n\nQuestion: ${String(question).slice(0, 1000)}` },
+      { role: 'user', content: `Estate context (untrusted data) as JSON:\n${_contextForModel(ctx)}\n\nQuestion: ${q}` },
     ],
     timeoutMs: 60000,
   });
+  // Best-effort persistence — a history write failure must never break the
+  // answer that's already been produced. CRITICAL: only the question/answer
+  // TEXT is stored, never the context bundle assembled above (host inventory,
+  // findings, audit excerpts) — that stays in-memory for this request only.
+  _appendHistory(userId, q, String(answer));
   return { answer };
 }
 
-module.exports = { getConfig, setConfig, isReady, testConfig, briefing, ask, _internals: { _contextForModel, SYSTEM_PROMPT } };
+// ── History (persisted question/answer text only — see migration 085) ─
+function _appendHistory(userId, question, answer) {
+  try {
+    const db = _db();
+    const ins = db.prepare('INSERT INTO copilot_history (user_id, role, content) VALUES (?, ?, ?)');
+    const insertBoth = db.transaction((uid, q, a) => {
+      ins.run(uid ?? null, 'user', q);
+      ins.run(uid ?? null, 'assistant', a);
+    });
+    insertBoth(userId, question, answer);
+  } catch (e) { log.debug('copilot history write failed', { error: e.message }); }
+}
+
+function history({ limit = 50, userId } = {}) {
+  const db = _db();
+  const lim = Math.max(1, Math.min(200, parseInt(limit, 10) || 50));
+  const rows = userId
+    ? db.prepare('SELECT id, user_id, role, content, created_at FROM copilot_history WHERE user_id = ? ORDER BY id DESC LIMIT ?').all(userId, lim)
+    : db.prepare('SELECT id, user_id, role, content, created_at FROM copilot_history ORDER BY id DESC LIMIT ?').all(lim);
+  return rows.reverse(); // chronological
+}
+
+function clearHistory({ userId } = {}) {
+  const db = _db();
+  if (userId) db.prepare('DELETE FROM copilot_history WHERE user_id = ?').run(userId);
+  else db.prepare('DELETE FROM copilot_history').run();
+  return { ok: true };
+}
+
+module.exports = {
+  getConfig, setConfig, isReady, testConfig, briefing, ask, history, clearHistory,
+  _internals: { _contextForModel, SYSTEM_PROMPT },
+};

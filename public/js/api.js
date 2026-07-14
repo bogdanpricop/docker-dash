@@ -369,6 +369,8 @@ const Api = {
   // ─── Ops Copilot (v8.9.43) ───
   getCopilotBriefing(fresh)   { return this.get(`/copilot/briefing${fresh ? '?fresh=1' : ''}`); },
   askCopilot(question)        { return this.post('/copilot/ask', { question }); },
+  getCopilotHistory()         { return this.get('/copilot/history'); },
+  clearCopilotHistory()       { return this.delete('/copilot/history'); },
   getCopilotConfig()          { return this.get('/copilot/config'); },
   setCopilotConfig(d)         { return this.post('/copilot/config', d); },
   testCopilotConfig()         { return this.post('/copilot/config/test', {}); },
