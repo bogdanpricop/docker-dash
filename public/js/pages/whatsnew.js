@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.44-alpha.1',
+      date: '2026-07-13',
+      title: 'Copilot — actionable recommendations (one-click safe fixes)',
+      changes: [
+        { type: 'feature', text: 'Copilot recommendations that map to a SAFE remediation now offer an “Apply fix” button right in the briefing (admin) — it reuses the exact same guarded path as Posture (e.g. re-apply drifted firewall rules through the lockout guard), then re-briefs. Risky fixes still stay guided (deep-link only). The copilot stays advise-only; the one-click is limited to actions that create no new exposure. Ties Copilot → Posture remediation into one flow.' },
+      ],
+    },
+    {
       version: '8.9.43-alpha.1',
       date: '2026-07-13',
       title: 'Ops Copilot — local-first, cross-layer advisor (MVP1)',

@@ -59,12 +59,15 @@ const CopilotPage = {
         <div class="card-body" style="padding:0">
           ${(b.recommendations || []).length === 0 ? '<div class="empty-msg"><i class="fas fa-circle-check" style="color:var(--green)"></i> Nothing pressing — your estate looks clean.</div>'
             : `<table class="data-table"><thead><tr><th style="width:80px">Sev</th><th>What</th><th>Why</th><th style="width:150px"></th></tr></thead>
-              <tbody>${b.recommendations.map(r => `
+              <tbody>${b.recommendations.map((r, i) => `
                 <tr>
                   <td><span class="badge" style="background:${this._SEV[r.severity] || '#8b949e'};color:#fff">${Utils.escapeHtml(r.severity)}</span></td>
                   <td><strong>${Utils.escapeHtml(r.title)}</strong>${r.host ? `<div class="text-sm text-dim">${Utils.escapeHtml(r.host)}</div>` : ''}</td>
                   <td class="text-sm text-dim">${Utils.escapeHtml(r.why || '')}</td>
-                  <td style="text-align:right">${r.link ? `<a class="btn btn-xs btn-secondary" href="${Utils.escapeHtml(r.link)}"><i class="fas fa-arrow-right"></i> ${Utils.escapeHtml(r.action || 'Open')}</a>` : ''}</td>
+                  <td style="text-align:right;white-space:nowrap">
+                    ${(r.fixAction && this._isAdmin) ? `<button class="btn btn-xs btn-primary" data-cp-fix="${i}"><i class="fas fa-wand-magic-sparkles"></i> Apply fix</button> ` : ''}
+                    ${r.link ? `<a class="btn btn-xs btn-secondary" href="${Utils.escapeHtml(r.link)}"><i class="fas fa-arrow-right"></i> ${Utils.escapeHtml(r.action || 'Open')}</a>` : ''}
+                  </td>
                 </tr>`).join('')}</tbody></table>`}
         </div>
       </div>
@@ -85,6 +88,21 @@ const CopilotPage = {
     this._renderTranscript();
     el.querySelector('#cp-send')?.addEventListener('click', () => this._ask());
     el.querySelector('#cp-q')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') this._ask(); });
+    el.querySelectorAll('[data-cp-fix]').forEach(btn => btn.addEventListener('click', () => this._applyFix(parseInt(btn.getAttribute('data-cp-fix'), 10), btn)));
+  },
+
+  async _applyFix(idx, btn) {
+    const rec = (this._brief.recommendations || [])[idx];
+    if (!rec || !rec.fixAction) return;
+    const ok = await Modal.confirm(`Apply the safe fix for “${rec.title}”? (Goes through the firewall lockout guard.)`, { confirmText: 'Apply fix' });
+    if (!ok) return;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+    try {
+      const r = await Api.remediatePosture(rec.fixAction);
+      if (r && r.ok === false) { Toast.error(r.error || 'Fix failed'); }
+      else { Toast.success('Fix applied'); }
+      await this._load(true);
+    } catch (err) { Toast.error(err.message); if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Apply fix'; } }
   },
 
   _renderTranscript() {

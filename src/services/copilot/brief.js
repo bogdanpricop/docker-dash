@@ -13,6 +13,9 @@ function recommend(ctx) {
       severity: f.severity, title: f.title, why: f.detail || '',
       action: (f.remediation && f.remediation.label) || 'Review',
       link: (f.remediation && f.remediation.link) || null,
+      // Carry a SAFE one-click action (e.g. re-apply firewall drift) so the
+      // Copilot can offer "Apply fix" straight from the recommendation.
+      fixAction: (f.remediation && f.remediation.action) || null,
       host: f.host || null,
     });
   }

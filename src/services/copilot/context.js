@@ -20,10 +20,12 @@ async function assemble() {
     out.score = scan.global.score; out.grade = scan.global.grade; out.counts = scan.global.counts;
     const hostName = new Map((scan.hosts || []).map(h => [h.hostId, h.name]));
     out.findings = (scan.findings || []).filter(f => !f.muted).slice(0, 12).map(f => ({
-      severity: f.severity, checkId: f.checkId, title: f.title,
+      severity: f.severity, checkId: f.checkId, title: f.title, key: f.key,
       host: f.hostId != null ? (hostName.get(f.hostId) || `host ${f.hostId}`) : null,
       detail: f.detail,
-      remediation: f.remediation ? { label: f.remediation.label, link: f.remediation.link } : null,
+      // Keep the SAFE one-click action (if any) for the UI path — the LLM path
+      // trims findings down separately and never sees this.
+      remediation: f.remediation ? { label: f.remediation.label, link: f.remediation.link, action: f.remediation.action || null } : null,
     }));
     out.hostScores = (scan.hosts || []).map(h => ({ name: h.name, grade: h.grade, score: h.score }));
   } catch (e) { log.debug('posture context failed', { error: e.message }); }

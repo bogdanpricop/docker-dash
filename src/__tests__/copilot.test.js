@@ -19,6 +19,16 @@ describe('copilot rule-based briefing', () => {
     // blueprint drift becomes a recommendation
     expect(recs.some(r => /drifted/.test(r.title))).toBe(true);
   });
+
+  test('carries a safe one-click fixAction through from the finding', () => {
+    const recs = brief.recommend({ findings: [
+      { severity: 'medium', title: 'drifted', detail: 'd', remediation: { label: 'Re-apply', link: '#/firewall', action: { type: 'fw-reconcile', hostId: 2 } } },
+      { severity: 'high', title: 'no fix', detail: 'x', remediation: { label: 'Open', link: '#/x' } },
+    ] });
+    const drift = recs.find(r => r.title === 'drifted');
+    expect(drift.fixAction).toEqual({ type: 'fw-reconcile', hostId: 2 });
+    expect(recs.find(r => r.title === 'no fix').fixAction).toBeNull();
+  });
   test('summaryLine reflects counts', () => {
     expect(brief.summaryLine({ grade: 'C', score: 60, counts: { critical: 1, high: 0, medium: 2 }, hosts: [{}, {}] }))
       .toMatch(/grade C \(60\/100\).*1 critical.*2 medium.*2 host/);
