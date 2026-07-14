@@ -48,4 +48,10 @@ describe('reconciler validateDoc', () => {
     expect(() => reconciler.validateDoc({ version: 1, hosts: { 3: { firewall: [{ action: 'nuke', scope: 'host', destination_port: 22 }] } } }))
       .toThrow(/host 3 firewall\[0\]/);
   });
+  test('accepts container ensure-running and rejects bad container name/state', () => {
+    const out = reconciler.validateDoc({ version: 1, hosts: { 2: { containers: [{ name: 'web-1', state: 'running' }] } } });
+    expect(out.hosts['2'].containers).toEqual([{ name: 'web-1', state: 'running' }]);
+    expect(() => reconciler.validateDoc({ version: 1, hosts: { 2: { containers: [{ name: 'bad name!', state: 'running' }] } } })).toThrow(/invalid name/);
+    expect(() => reconciler.validateDoc({ version: 1, hosts: { 2: { containers: [{ name: 'web', state: 'stopped' }] } } })).toThrow(/only state "running"/);
+  });
 });

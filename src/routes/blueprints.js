@@ -72,8 +72,8 @@ router.post('/:id/apply', ...admin, asyncHandler(async (req, res) => {
   if (!bp) return res.status(404).json({ error: 'Blueprint not found' });
   try {
     const r = await rec.apply(bp.doc, req.user);
-    rec.recordRun(id, 'apply', { applied: r.applied, removed: r.removed, failed: r.failed }, req.user.username);
-    _audit(req, 'blueprint_apply', id, { applied: r.applied, removed: r.removed, failed: r.failed });
+    rec.recordRun(id, 'apply', { applied: r.applied, removed: r.removed, started: r.started, failed: r.failed }, req.user.username);
+    _audit(req, 'blueprint_apply', id, { applied: r.applied, removed: r.removed, started: r.started, failed: r.failed });
     res.json(r);
   } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
 }));

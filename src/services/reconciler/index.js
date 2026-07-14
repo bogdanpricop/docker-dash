@@ -76,12 +76,28 @@ function validateDoc(doc) {
   for (const [hostId, block] of Object.entries(hosts)) {
     const fw = (block && block.firewall) || [];
     if (!Array.isArray(fw)) throw new Error(`host ${hostId}: firewall must be an array`);
-    out.hosts[hostId] = { firewall: fw.map((r, i) => {
-      try { return assertSafe(r); }
-      catch (e) { throw new Error(`host ${hostId} firewall[${i}]: ${e.message}`); }
-    }) };
+    const containers = (block && block.containers) || [];
+    if (!Array.isArray(containers)) throw new Error(`host ${hostId}: containers must be an array`);
+    out.hosts[hostId] = {
+      firewall: fw.map((r, i) => {
+        try { return assertSafe(r); }
+        catch (e) { throw new Error(`host ${hostId} firewall[${i}]: ${e.message}`); }
+      }),
+      containers: containers.map((c, i) => _validateContainer(c, hostId, i)),
+    };
   }
   return out;
+}
+
+// Container desired-state (MVP: ensure-running only — never delete). Name must be
+// a safe container name; state must be 'running'.
+function _validateContainer(c, hostId, i) {
+  if (!c || typeof c !== 'object') throw new Error(`host ${hostId} containers[${i}]: must be an object`);
+  const name = c.name;
+  if (typeof name !== 'string' || !/^[\w.-]+$/.test(name)) throw new Error(`host ${hostId} containers[${i}]: invalid name "${name}"`);
+  const state = c.state || 'running';
+  if (state !== 'running') throw new Error(`host ${hostId} containers[${i}]: only state "running" is supported`);
+  return { name, state: 'running' };
 }
 
 // ── Capture ─────────────────────────────────────────────────
@@ -89,16 +105,28 @@ async function capture() {
   const hosts = _db().prepare('SELECT id, name FROM docker_hosts WHERE is_active = 1').all();
   const out = { version: 1, kind: 'estate-blueprint', capturedAt: new Date().toISOString(), hosts: {} };
   for (const h of hosts) {
+    const key = String(h.id);
+    // Firewall rules (app-managed).
     try {
       const info = await _fw().listRules(h.id);
       const rules = (info && info.rules) || [];
-      if (!rules.length) continue;
-      out.hosts[String(h.id)] = { firewall: rules.map(r => ({
-        action: r.action, scope: r.scope,
-        source_ip: r.source_ip || undefined, destination_port: r.destination_port || undefined,
-        protocol: r.protocol || 'tcp', reason: r.reason || undefined,
-      })) };
-    } catch { /* unreachable → skip this host in the capture */ }
+      if (rules.length) {
+        (out.hosts[key] = out.hosts[key] || {}).firewall = rules.map(r => ({
+          action: r.action, scope: r.scope,
+          source_ip: r.source_ip || undefined, destination_port: r.destination_port || undefined,
+          protocol: r.protocol || 'tcp', reason: r.reason || undefined,
+        }));
+      }
+    } catch { /* unreachable → skip firewall for this host */ }
+    // Currently-running containers → an ensure-running baseline (Docker/Podman only).
+    const dt = h.daemon_type || 'docker';
+    if (dt === 'docker' || dt === 'podman') {
+      try {
+        const cs = await require('../docker').listContainers(h.id);
+        const running = (cs || []).filter(c => c.state === 'running').map(c => ({ name: c.name, state: 'running' }));
+        if (running.length) (out.hosts[key] = out.hosts[key] || {}).containers = running;
+      } catch { /* unreachable → skip containers */ }
+    }
   }
   return out;
 }
@@ -106,22 +134,52 @@ async function capture() {
 // ── Plan (diff desired vs actual app-managed rules) ─────────
 async function plan(doc) {
   const norm = validateDoc(doc);
-  const result = { hosts: {}, summary: { create: 0, remove: 0, inSync: 0, hosts: 0, unreachable: 0 } };
+  const result = { hosts: {}, summary: { create: 0, remove: 0, inSync: 0, hosts: 0, unreachable: 0, containerStart: 0, containerMissing: 0 } };
   for (const [hostIdStr, block] of Object.entries(norm.hosts)) {
     const hostId = parseInt(hostIdStr, 10);
-    const hostRow = _db().prepare('SELECT name FROM docker_hosts WHERE id = ?').get(hostId);
+    const hostRow = _db().prepare('SELECT name, daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
     if (!hostRow) { result.hosts[hostIdStr] = { orphaned: true, hostName: `host ${hostId}` }; continue; }
     result.summary.hosts++;
-    let actual;
-    try { const info = await _fw().listRules(hostId); actual = (info && info.rules) || []; }
-    catch (e) { result.hosts[hostIdStr] = { unreachable: true, error: e.message, hostName: hostRow.name }; result.summary.unreachable++; continue; }
+    const hostResult = { hostName: hostRow.name };
 
-    // Removals only ever touch app-managed rules (listRules.rules are all APPFW-tagged).
-    const { toCreate, toRemove, inSync } = _diff(block.firewall, actual);
-    result.hosts[hostIdStr] = { hostName: hostRow.name, toCreate, toRemove, inSync };
-    result.summary.create += toCreate.length;
-    result.summary.remove += toRemove.length;
-    result.summary.inSync += inSync.length;
+    // Firewall (only if the blueprint declares any for this host).
+    if ((block.firewall || []).length || true) {
+      try {
+        const info = await _fw().listRules(hostId);
+        const actual = (info && info.rules) || [];
+        // Removals only ever touch app-managed rules (listRules.rules are all APPFW-tagged).
+        const { toCreate, toRemove, inSync } = _diff(block.firewall || [], actual);
+        Object.assign(hostResult, { toCreate, toRemove, inSync });
+        result.summary.create += toCreate.length;
+        result.summary.remove += toRemove.length;
+        result.summary.inSync += inSync.length;
+      } catch (e) {
+        // Firewall unreachable — still try containers below; note the gap.
+        Object.assign(hostResult, { toCreate: [], toRemove: [], inSync: [], firewallError: e.message });
+      }
+    }
+
+    // Containers (ensure-running; Docker/Podman only; never delete).
+    const dt = hostRow.daemon_type || 'docker';
+    if ((block.containers || []).length && (dt === 'docker' || dt === 'podman')) {
+      try {
+        const actualC = await require('../docker').listContainers(hostId);
+        const byName = new Map((actualC || []).map(c => [c.name, c]));
+        const toStart = [], missing = [], running = [];
+        for (const d of block.containers) {
+          const a = byName.get(d.name);
+          if (!a) missing.push({ name: d.name });
+          else if (a.state !== 'running') toStart.push({ name: d.name, id: a.id });
+          else running.push({ name: d.name });
+        }
+        hostResult.containers = { toStart, missing, running };
+        result.summary.containerStart += toStart.length;
+        result.summary.containerMissing += missing.length;
+      } catch (e) { hostResult.containers = { toStart: [], missing: [], running: [], error: e.message }; }
+    }
+
+    if (hostResult.firewallError && !hostResult.containers) { hostResult.unreachable = true; hostResult.error = hostResult.firewallError; result.summary.unreachable++; }
+    result.hosts[hostIdStr] = hostResult;
   }
   return result;
 }
@@ -131,22 +189,27 @@ async function apply(doc, user) {
   const p = await plan(doc);
   const fw = _fw();
   const perHost = {};
-  let applied = 0, removed = 0, failed = 0;
+  let applied = 0, removed = 0, started = 0, failed = 0;
   for (const [hostIdStr, h] of Object.entries(p.hosts)) {
-    if (h.unreachable || h.orphaned) { perHost[hostIdStr] = { skipped: h.unreachable ? 'unreachable' : 'orphaned' }; continue; }
+    if (h.orphaned) { perHost[hostIdStr] = { skipped: 'orphaned' }; continue; }
     const hostId = parseInt(hostIdStr, 10);
-    const res = { created: 0, removed: 0, errors: [] };
-    for (const spec of h.toCreate) {
+    const res = { created: 0, removed: 0, started: 0, errors: [] };
+    for (const spec of (h.toCreate || [])) {
       try { await fw.applyRule(hostId, spec, user); res.created++; applied++; }
       catch (e) { res.errors.push(`create ${_ruleKey(spec)}: ${e.message}`); failed++; }
     }
-    for (const rule of h.toRemove) {
+    for (const rule of (h.toRemove || [])) {
       try { await fw.removeRule(hostId, rule.rule_uuid, user); res.removed++; removed++; }
       catch (e) { res.errors.push(`remove ${rule.rule_uuid}: ${e.message}`); failed++; }
     }
+    // Containers: start stopped ones (never delete). Missing ones can't be started.
+    for (const c of ((h.containers && h.containers.toStart) || [])) {
+      try { await require('../docker').getDocker(hostId).getContainer(c.id || c.name).start(); res.started++; started++; }
+      catch (e) { res.errors.push(`start ${c.name}: ${e.message}`); failed++; }
+    }
     perHost[hostIdStr] = res;
   }
-  return { ok: failed === 0, applied, removed, failed, perHost };
+  return { ok: failed === 0, applied, removed, started, failed, perHost };
 }
 
 function recordRun(blueprintId, kind, summary, by) {

@@ -21,8 +21,8 @@ async function tick() {
     if (!full || !full.doc) continue;
     let p;
     try { p = await rec.plan(full.doc); } catch { continue; }
-    const drift = p.summary.create + p.summary.remove;
-    const sig = `${p.summary.create}/${p.summary.remove}`;
+    const drift = p.summary.create + p.summary.remove + (p.summary.containerStart || 0);
+    const sig = `${p.summary.create}/${p.summary.remove}/${p.summary.containerStart || 0}`;
     const prev = _lastDrift.get(bp.id) || '';
 
     if (drift > 0) {

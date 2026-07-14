@@ -117,29 +117,42 @@ const BlueprintsPage = {
     const p = this._plan; const out = document.getElementById('bpd-plan-out');
     if (!out) return;
     const s = p.summary;
-    const inSync = s.create === 0 && s.remove === 0;
+    const cStart = s.containerStart || 0;
+    const inSync = s.create === 0 && s.remove === 0 && cStart === 0;
     out.innerHTML = `
       <div class="alert ${inSync ? '' : 'alert-warning'}" style="margin-bottom:10px${inSync ? ';background:var(--surface2)' : ''}">
         ${inSync ? '<i class="fas fa-circle-check" style="color:var(--green)"></i> In sync — reality matches the blueprint.'
-          : `<i class="fas fa-triangle-exclamation"></i> Drift: <b>${s.create}</b> to create, <b>${s.remove}</b> to remove across ${s.hosts} host(s).`}
+          : `<i class="fas fa-triangle-exclamation"></i> Drift: <b>${s.create}</b> rule(s) to create, <b>${s.remove}</b> to remove${cStart ? `, <b>${cStart}</b> container(s) to start` : ''} across ${s.hosts} host(s).`}
         ${s.unreachable ? ` <span class="text-dim">(${s.unreachable} host(s) unreachable)</span>` : ''}
+        ${s.containerMissing ? ` <span class="text-dim">(${s.containerMissing} declared container(s) not found)</span>` : ''}
       </div>
       ${Object.entries(p.hosts).map(([hid, h]) => {
         if (h.orphaned) return `<div class="text-sm text-dim">Host ${hid}: orphaned (no longer registered).</div>`;
         if (h.unreachable) return `<div class="text-sm" style="color:var(--yellow)">${Utils.escapeHtml(h.hostName)}: unreachable — ${Utils.escapeHtml(h.error || '')}</div>`;
         const rows = [
-          ...h.toCreate.map(r => ({ op: 'create', r })),
-          ...h.toRemove.map(r => ({ op: 'remove', r })),
+          ...(h.toCreate || []).map(r => ({ op: 'create', r })),
+          ...(h.toRemove || []).map(r => ({ op: 'remove', r })),
         ];
-        if (!rows.length && !h.inSync.length) return '';
+        const c = h.containers || null;
+        const cRows = c ? [...(c.toStart || []).map(x => ({ op: 'start', name: x.name })), ...(c.missing || []).map(x => ({ op: 'missing', name: x.name }))] : [];
+        const inSyncN = (h.inSync || []).length + (c ? (c.running || []).length : 0);
+        if (!rows.length && !cRows.length && !inSyncN) return '';
         return `<div style="margin-bottom:10px">
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px">${Utils.escapeHtml(h.hostName)} <span class="text-dim">(${h.inSync.length} in sync)</span></div>
-          ${rows.length ? `<table class="data-table"><tbody>${rows.map(x => `
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px">${Utils.escapeHtml(h.hostName)} <span class="text-dim">(${inSyncN} in sync)</span></div>
+          ${(rows.length || cRows.length) ? `<table class="data-table"><tbody>
+            ${rows.map(x => `
             <tr>
               <td style="width:80px"><span class="badge ${x.op === 'create' ? 'badge-running' : 'badge-stopped'}">${x.op}</span></td>
-              <td>${Utils.escapeHtml(x.r.action)} ${Utils.escapeHtml(x.r.scope)}</td>
+              <td>fw: ${Utils.escapeHtml(x.r.action)} ${Utils.escapeHtml(x.r.scope)}</td>
               <td class="mono text-sm">${Utils.escapeHtml(x.r.source_ip || 'any')}${x.r.destination_port ? ':' + x.r.destination_port : ''}/${Utils.escapeHtml(x.r.protocol || 'tcp')}</td>
-            </tr>`).join('')}</tbody></table>` : '<div class="text-dim text-sm">no changes</div>'}
+            </tr>`).join('')}
+            ${cRows.map(x => `
+            <tr>
+              <td style="width:80px"><span class="badge ${x.op === 'start' ? 'badge-running' : 'badge-warning'}">${x.op}</span></td>
+              <td>container</td>
+              <td class="mono text-sm">${Utils.escapeHtml(x.name)}</td>
+            </tr>`).join('')}
+          </tbody></table>` : '<div class="text-dim text-sm">no changes</div>'}
         </div>`;
       }).join('')}
     `;
@@ -161,7 +174,7 @@ const BlueprintsPage = {
     try {
       const r = await Api.applyBlueprint(this._detail.id);
       if (r && r.ok === false && r.error) { Toast.error(r.error); return; }
-      Toast.success(`Applied ${r.applied}, removed ${r.removed}${r.failed ? `, ${r.failed} failed` : ''}`);
+      Toast.success(`Applied ${r.applied}, removed ${r.removed}${r.started ? `, started ${r.started}` : ''}${r.failed ? `, ${r.failed} failed` : ''}`);
       await this._open(this._detail.id); this._runPlan();
     } catch (err) { Toast.error(err.message); }
   },

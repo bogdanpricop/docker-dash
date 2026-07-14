@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.9.45-alpha.1',
+      date: '2026-07-13',
+      title: 'Reconciler — now spans containers too (ensure-running)',
+      changes: [
+        { type: 'feature', text: 'Blueprints are no longer firewall-only — they can now declare containers that should be running per host. Plan diffs actual container state (to start / already running / declared-but-missing) and Apply starts stopped ones — self-healing desired state. Strictly safe: it only STARTS containers, never stops or deletes anything, and only touches Docker/Podman hosts. Capture now also records your currently-running containers as an ensure-running baseline. The drift monitor + alerting count container drift too. This makes the Reconciler genuinely span the estate (firewall + containers), the moat the analysis called for.' },
+      ],
+    },
+    {
       version: '8.9.44-alpha.1',
       date: '2026-07-13',
       title: 'Copilot — actionable recommendations (one-click safe fixes)',
