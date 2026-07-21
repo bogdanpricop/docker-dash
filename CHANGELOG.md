@@ -2,6 +2,31 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.13.0] - 2026-07-22 — Hypervisor firewall WRITE — Phase B: ESXi / vSphere
+
+ESXi/vSphere firewall is now **writable** from the Firewall page (was read-only status).
+Phase B of hypervisor firewall write; it rides the same commit-confirmed safety pipeline as
+Phase A (Proxmox). ESXi is the highest lockout risk of the three — an `esxcli` firewall
+change over SSH can lock docker-dash out of the host — so the safety net is mandatory here.
+
+- **Operations (ruleset-level):** enable/disable a firewall ruleset, add/remove an allowed
+  IP/CIDR on a ruleset, toggle a ruleset's allowed-all. Whole-firewall on/off is deliberately
+  out (too blunt).
+- **ESXi lockout guard:** refuses disabling the SSH management ruleset (`sshServer`), refuses
+  removing an allowed IP that would leave *your* IP uncovered for SSH, and refuses turning off
+  allowed-all when the explicit allow-list wouldn't cover you. Fail-closed: any state that
+  can't be positively verified as keeping you connected is refused.
+- **Commit-confirmed auto-revert (mandatory):** every ESXi change applies **provisionally**
+  and auto-reverts after `DD_PLATFORM_CONFIRM_MINUTES` (default 5) unless confirmed — a change
+  that locks you out simply un-does itself. Live countdown banner with Confirm / Revert now.
+- **Injection-safe:** all esxcli commands are fixed templates; the only interpolated tokens
+  are a whitelisted ruleset-id (`[A-Za-z0-9_.-]`), a `validateCidrOrIp`-checked address, and
+  literal booleans — over a write-only SSH module kept separate from the read path.
+
+New `src/services/vsphere-ssh-write.js`; ESXi validation + lockout guard + revert added to the
+shared `platform-write.js` pipeline (reuses migration `087`, no new schema). 26 new tests
+(suite: **1947 passing / 122 suites**). Incus is Phase C. Zero new npm deps.
+
 ## [8.12.0] - 2026-07-22 — Proxmox firewall WRITE (Phase A) + docker_events bloat fix
 
 ### Hypervisor firewall write — Phase A: Proxmox

@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.13.0',
+      date: '2026-07-22',
+      title: 'ESXi / vSphere firewall write (Phase B) — with lockout safety',
+      changes: [
+        { type: 'feature', text: 'ESXi/vSphere firewall is now editable from the Firewall page, not just viewable. You can enable/disable firewall rulesets, add or remove allowed IPs per ruleset, and toggle allowed-all. Because an esxcli firewall change can lock docker-dash out of the host over SSH, a dedicated guard refuses disabling the SSH ruleset (sshServer), removing your own IP’s access to it, or restricting it to a list that excludes you.' },
+        { type: 'feature', text: 'Every ESXi change is commit-confirmed: it applies provisionally and auto-reverts after 5 minutes unless you confirm it — so a change that locks you out rolls itself back automatically. Live countdown banner with Confirm / Revert now, pre-change snapshot, and full audit. All esxcli commands use fixed templates with strictly-validated tokens. This is Phase B of hypervisor firewall write (Proxmox shipped in 8.12.0; Incus is next).' },
+      ],
+    },
+    {
       version: '8.12.0',
       date: '2026-07-22',
       title: 'Proxmox firewall write (with lockout safety) + Docker events bloat fix',
