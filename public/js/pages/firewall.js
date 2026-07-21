@@ -134,14 +134,16 @@ const FirewallPage = {
     const groups = pf.groups || [];
     const canWrite = this._platformCanWrite(pf);
     const isEsxi = pf.platform === 'esxi';
+    const isIncus = pf.platform === 'incus';
     el.innerHTML = `
       <div id="fw-pending-banner"></div>
       ${canWrite
         ? `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-             <span style="flex:1"><i class="fas fa-shield-halved"></i> Write-enabled (${Utils.escapeHtml((pf.platform || '').toUpperCase())}). Every change is applied <b>provisionally</b> and <b>auto-reverts</b> unless you confirm it — a bad rule can't lock you out permanently.${isEsxi ? ' Use the per-ruleset controls (enable/disable, allowed IPs, allowed-all).' : ''}</span>
-             ${isEsxi ? '' : '<button class="btn btn-sm btn-primary" id="fw-plat-add"><i class="fas fa-plus"></i> Add firewall rule</button>'}
+             <span style="flex:1"><i class="fas fa-shield-halved"></i> Write-enabled (${Utils.escapeHtml((pf.platform || '').toUpperCase())}). Every change is applied <b>provisionally</b> and <b>auto-reverts</b> unless you confirm it — a bad rule can't lock you out permanently.${isEsxi ? ' Use the per-ruleset controls (enable/disable, allowed IPs, allowed-all).' : ''}${isIncus ? ' Use the per-ACL Add rule and the ✕ on a rule.' : ''}</span>
+             ${(isEsxi || isIncus) ? '' : '<button class="btn btn-sm btn-primary" id="fw-plat-add"><i class="fas fa-plus"></i> Add firewall rule</button>'}
            </div>`
         : `<div class="alert" style="margin-bottom:12px;background:var(--surface2)"><i class="fas fa-eye"></i> Read-only view — ${Utils.escapeHtml((pf.platform || '').toUpperCase())} manages its firewall in its native tool (esxcli / pve-firewall / incus network acl).</div>`}
+      ${isIncus ? `<div class="alert alert-warning" style="margin-bottom:12px"><i class="fas fa-triangle-exclamation"></i> <b>Incus ACLs only filter traffic once attached to a NIC or network.</b> Attachment is <b>not managed by docker-dash</b> — do it in Incus (<span class="mono">incus network ... / profile device ... add</span>). An unattached ACL edit has no effect on traffic until you attach it.</div>` : ''}
       <div class="stat-cards" style="grid-template-columns:repeat(2,1fr);margin-bottom:16px">
         ${this._card('fa-shield-alt', 'Platform', `<span class="badge ${badgeClass}"><span class="badge-dot"></span>${Utils.escapeHtml(pf.platform || '')}</span>`)}
         ${this._card('fa-info-circle', 'Status', Utils.escapeHtml(pf.summary || ''))}
@@ -150,7 +152,14 @@ const FirewallPage = {
       ${(!pf.available && !pf.trustHint) ? `<div class="alert alert-warning" style="margin-bottom:12px">${Utils.escapeHtml(pf.summary || 'Unavailable')}</div>` : ''}
       ${groups.map(g => `
         <div class="card" style="margin-bottom:16px">
-          <div class="card-header"><h3><i class="fas fa-list text-dim" style="margin-right:8px"></i>${Utils.escapeHtml(g.title)}</h3><span class="text-dim text-sm">${(g.items || []).length}</span></div>
+          <div class="card-header"><h3><i class="fas fa-list text-dim" style="margin-right:8px"></i>${Utils.escapeHtml(g.title)}</h3>
+            <span style="display:flex;align-items:center;gap:8px;margin-left:auto">
+              ${g.incus ? (g.attached
+                ? `<span class="badge badge-warning" title="Attached to ${(g.usedBy || []).length} target(s) — this ACL is filtering traffic">attached</span>`
+                : '<span class="badge badge-info" title="Not attached — no effect on traffic until attached in Incus">unattached</span>') : ''}
+              ${(canWrite && g.incus) ? `<button class="btn btn-xs btn-primary" data-fw-incus-add="1" data-fw-acl="${Utils.escapeHtml(g.aclName || '')}"><i class="fas fa-plus"></i> Add rule</button>` : ''}
+              <span class="text-dim text-sm">${(g.items || []).length}</span>
+            </span></div>
           <div class="card-body" style="padding:0">
             ${(g.items || []).length === 0 ? '<div class="empty-msg">None.</div>' : `
             <table class="data-table"><thead><tr><th>Rule</th><th>State</th><th>Detail</th>${canWrite ? '<th></th>' : ''}</tr></thead>
@@ -164,7 +173,9 @@ const FirewallPage = {
                      <button class="action-btn" title="Add an allowed IP (provisional)" data-fw-esxi-addip="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}"><i class="fas fa-plus"></i></button>
                      <button class="action-btn" title="Remove an allowed IP (provisional)" data-fw-esxi-removeip="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}" data-fw-ips="${Utils.escapeHtml((it.allowedIps || []).join(','))}"><i class="fas fa-minus"></i></button>
                      <button class="action-btn" title="Toggle allowed-all (provisional)" data-fw-esxi-allowedall="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}" data-fw-allowedall="${it.allowedAll ? '1' : '0'}"><i class="fas fa-globe"></i></button>`
-                  : (it.removable
+                  : it.incus
+                    ? `<button class="action-btn danger" title="Remove this ACL rule (provisional, auto-reverts unless confirmed)" data-fw-incus-remove="1" data-fw-acl="${Utils.escapeHtml(it.aclName || '')}" data-fw-dir="${Utils.escapeHtml(it.direction || '')}" data-fw-idx="${Utils.escapeHtml(String(it.index))}"><i class="fas fa-times"></i></button>`
+                    : (it.removable
                     ? `<button class="action-btn danger" title="Remove this rule (provisional, auto-reverts unless confirmed)" data-fw-plat-remove="1" data-fw-pos="${Utils.escapeHtml(String(it.pos))}" data-fw-scope="${Utils.escapeHtml(it.scope || '')}" data-fw-node="${Utils.escapeHtml(it.node || '')}"><i class="fas fa-times"></i></button>`
                     : '<span class="text-dim">—</span>')}</td>` : ''}
               </tr>`).join('')}</tbody></table>`}
@@ -189,6 +200,11 @@ const FirewallPage = {
         this._esxiRemoveAllowedIp(b.getAttribute('data-fw-rs'), (b.getAttribute('data-fw-ips') || '').split(',').filter(Boolean))));
       el.querySelectorAll('[data-fw-esxi-allowedall]').forEach(b => b.addEventListener('click', () =>
         this._esxiToggleAllowedAll(b.getAttribute('data-fw-rs'), b.getAttribute('data-fw-allowedall') === '1')));
+      // Incus/LXD per-ACL controls (Phase C).
+      el.querySelectorAll('[data-fw-incus-add]').forEach(b => b.addEventListener('click', () =>
+        this._incusAddRuleDialog(b.getAttribute('data-fw-acl'))));
+      el.querySelectorAll('[data-fw-incus-remove]').forEach(b => b.addEventListener('click', () =>
+        this._incusRemoveRule(b.getAttribute('data-fw-acl'), b.getAttribute('data-fw-dir'), parseInt(b.getAttribute('data-fw-idx'), 10))));
       // Live commit-confirmed countdown banner (fetch now + start the 1s poller).
       this._renderPendingBanner();
       this._refreshPending();
@@ -221,6 +237,12 @@ const FirewallPage = {
     if (ch.operation === 'ruleset-set-allowedall') return `set allowed-all=${s.allowedAll} on ruleset ${s.rulesetId || scope}`;
     if (ch.operation === 'allowedip-add') return `allow IP ${s.ipAddress} on ruleset ${s.rulesetId || scope}`;
     if (ch.operation === 'allowedip-remove') return `remove allowed IP ${s.ipAddress} from ruleset ${s.rulesetId || scope}`;
+    // Incus/LXD (Phase C) — network-ACL rule operations.
+    if (ch.operation === 'acl-add-rule' && s.rule) {
+      const r = s.rule;
+      return `add ${s.direction} ${r.action}${r.protocol ? ' ' + r.protocol : ''}${r.destination_port ? ' dport ' + r.destination_port : ''}${r.source ? ' from ' + r.source : ''} on ACL ${s.aclName || scope}`;
+    }
+    if (ch.operation === 'acl-remove-rule') return `remove ${s.direction} rule #${s.index} from ACL ${s.aclName || scope}`;
     return `${ch.operation} on ${scope}`;
   },
 
@@ -429,6 +451,97 @@ const FirewallPage = {
     if (!result || !result.ip) return;
     const summary = `Remove allowed IP <b>${Utils.escapeHtml(result.ip)}</b> from ruleset <b>${Utils.escapeHtml(rulesetId)}</b>`;
     return this._esxiApply({ operation: 'allowedip-remove', rulesetId, ipAddress: result.ip }, summary, true);
+  },
+
+  // ── Incus / LXD (Phase C) network-ACL write controls ──
+  // Every Incus mutation runs through the SAME commit-confirmed pipeline: applied
+  // provisionally, auto-reverts unless confirmed. Rules belong to a NAMED ACL, so
+  // Add rule is per-ACL and each rule carries a ✕. Reminder throughout: an ACL has
+  // no effect on traffic until it is attached to a NIC/network in Incus.
+  async _incusAddRuleDialog(aclName) {
+    const result = await Modal.form(`
+      <div class="form-row">
+        <div class="form-group"><label>Direction</label>
+          <select id="fwi-dir" class="form-control"><option value="ingress">ingress (inbound)</option><option value="egress">egress (outbound)</option></select></div>
+        <div class="form-group"><label>Action</label>
+          <select id="fwi-action" class="form-control"><option value="allow">allow</option><option value="drop">drop</option><option value="reject">reject</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>State</label>
+          <select id="fwi-state" class="form-control"><option value="enabled">enabled</option><option value="disabled">disabled</option><option value="logged">logged</option></select></div>
+        <div class="form-group"><label>Protocol</label>
+          <select id="fwi-proto" class="form-control"><option value="">any</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp4">icmp4</option><option value="icmp6">icmp6</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Source <span class="text-muted">(IP/CIDR or ACL name, optional)</span></label>
+          <input type="text" id="fwi-src" class="form-control" placeholder="10.0.0.0/24"></div>
+        <div class="form-group"><label>Destination <span class="text-muted">(optional)</span></label>
+          <input type="text" id="fwi-dest" class="form-control" placeholder="10.0.0.5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Source port <span class="text-muted">(tcp/udp; n, n-m, list)</span></label>
+          <input type="text" id="fwi-sport" class="form-control" placeholder="1024-65535"></div>
+        <div class="form-group"><label>Destination port <span class="text-muted">(tcp/udp)</span></label>
+          <input type="text" id="fwi-dport" class="form-control" placeholder="443 or 80,443"></div>
+      </div>
+      <div class="form-group"><label>Description</label><input type="text" id="fwi-desc" class="form-control" placeholder="Allow web tier"></div>
+      <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-triangle-exclamation"></i> This ACL only takes effect once <b>attached</b> to a NIC/network in Incus (attachment is not managed here). The change applies provisionally and auto-reverts unless you confirm it.</div>
+    `, {
+      title: `Add rule — ACL ${aclName}`,
+      width: '620px',
+      onSubmit: (c) => {
+        const proto = c.querySelector('#fwi-proto').value;
+        const spec = {
+          operation: 'acl-add-rule',
+          aclName,
+          direction: c.querySelector('#fwi-dir').value,
+          action: c.querySelector('#fwi-action').value,
+          state: c.querySelector('#fwi-state').value,
+          protocol: proto || undefined,
+          source: c.querySelector('#fwi-src').value.trim() || undefined,
+          destination: c.querySelector('#fwi-dest').value.trim() || undefined,
+          source_port: c.querySelector('#fwi-sport').value.trim() || undefined,
+          destination_port: c.querySelector('#fwi-dport').value.trim() || undefined,
+          description: c.querySelector('#fwi-desc').value.trim() || undefined,
+        };
+        if (!spec.protocol && !spec.source && !spec.destination && !spec.source_port && !spec.destination_port) {
+          Toast.warning('Specify at least a protocol, source, destination, or port'); return false;
+        }
+        if ((spec.source_port || spec.destination_port) && spec.protocol !== 'tcp' && spec.protocol !== 'udp') {
+          Toast.warning('Ports require protocol tcp or udp'); return false;
+        }
+        return spec;
+      },
+    });
+    if (!result) return;
+    const summary = `${Utils.escapeHtml(result.direction)} <b>${Utils.escapeHtml(result.action)}</b>${result.protocol ? ' ' + Utils.escapeHtml(result.protocol) : ''}${result.destination_port ? ' dport ' + Utils.escapeHtml(result.destination_port) : ''}<br>Source: ${Utils.escapeHtml(result.source || 'any')} → Dest: ${Utils.escapeHtml(result.destination || 'any')}<br>ACL: ${Utils.escapeHtml(aclName)}`;
+    const ok = await Modal.confirm(
+      `<p>Add this rule to Incus ACL <b>${Utils.escapeHtml(aclName)}</b>?</p><p class="mono text-sm" style="background:var(--surface2);padding:10px;border-radius:6px">${summary}</p><p class="text-sm text-dim">It applies <b>provisionally</b> and auto-reverts unless you confirm it. The ACL has no effect until attached to a NIC/network in Incus.</p>`,
+      { title: 'Confirm ACL change', html: true, danger: result.action !== 'allow', confirmText: 'Apply provisionally' }
+    );
+    if (!ok) return;
+    try {
+      const r = await Api.fwAddRule(this._hostId, result);
+      if (r && r.ok === false) { Toast.error(r.error || 'Failed to add rule'); return; }
+      Toast.success('Change applied provisionally — confirm it before the timer runs out');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _incusRemoveRule(aclName, direction, index) {
+    const ok = await Modal.confirm(
+      `<p>Remove the ${Utils.escapeHtml(direction)} rule at index <b>#${index}</b> from Incus ACL <b>${Utils.escapeHtml(aclName)}</b>?</p><p class="text-sm text-dim">It applies <b>provisionally</b> and auto-reverts (restores the rule) unless you confirm it in time.</p>`,
+      { title: 'Remove ACL rule', html: true, danger: true, confirmText: 'Remove provisionally' }
+    );
+    if (!ok) return;
+    try {
+      const r = await Api.fwAddRule(this._hostId, { operation: 'acl-remove-rule', aclName, direction, index });
+      if (r && r.ok === false) { Toast.error(r.error || 'Failed to remove'); return; }
+      Toast.success('Removal applied provisionally — confirm it before the timer runs out');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _confirmChange(changeId) {

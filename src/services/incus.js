@@ -237,6 +237,31 @@ class IncusClient {
     return (resp && resp.metadata) || [];
   }
 
+  /** v8.14 (Phase C) — read a single network ACL by name. Cleaner than
+   * filtering listNetworkAcls() when we only need one ACL's pre-state.
+   * Returns { name, description, ingress:[...], egress:[...], config, used_by }. */
+  async getNetworkAcl(name) {
+    if (!name) throw new Error('ACL name required');
+    const resp = await this._request('GET', `/1.0/network-acls/${encodeURIComponent(name)}`);
+    return resp && resp.metadata;
+  }
+
+  /** v8.14 (Phase C) — replace a network ACL's full definition. Incus has NO
+   * "add one rule" endpoint: the caller GETs the ACL, edits its ingress/egress
+   * arrays, and PUTs the whole object back (read-modify-write). A network-ACL
+   * config PUT is normally SYNCHRONOUS (HTTP 200, no operation); if a given
+   * server returns an async operation instead, we wait for it to complete. The
+   * ACL name lives in the URL — the body carries { description, egress, ingress,
+   * config }. */
+  async updateNetworkAcl(name, aclObject, opts = {}) {
+    if (!name) throw new Error('ACL name required');
+    if (!aclObject || typeof aclObject !== 'object') throw new Error('ACL object required');
+    const resp = await this._request('PUT', `/1.0/network-acls/${encodeURIComponent(name)}`, aclObject);
+    if (opts.async) return resp;
+    if (resp && resp.operation) return this._awaitOperation(resp.operation, { timeoutSec: opts.waitSec || 60 });
+    return resp;
+  }
+
   // ─── Operation polling ───────────────────────────────────────
   //
   // Incus write endpoints return `{type: "async", operation: "/1.0/operations/<id>", ...}`

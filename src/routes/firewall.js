@@ -120,6 +120,9 @@ router.post('/:hostId/rule', ...operatorWrite, asyncHandler((req, res) => {
     comment: b.comment, node: b.node, operation: b.operation, enable: b.enable, setOptions: b.setOptions,
     // platform (esxi) fields — ruleset-based change (operation shared above):
     rulesetId: b.rulesetId, ipAddress: b.ipAddress, enabled: b.enabled, allowedAll: b.allowedAll,
+    // platform (incus/lxd) fields — network-ACL rule change (operation shared above):
+    aclName: b.aclName, direction: b.direction, state: b.state, destination: b.destination,
+    source_port: b.source_port, description: b.description, index: b.index,
   }, 'add-rule');
 }));
 

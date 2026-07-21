@@ -114,11 +114,17 @@ async function _proxmox(row) {
 }
 
 // ─── Incus / LXD (network ACLs via API) ──────────────────────
+// direction + index + aclName ride along so the Firewall page can address a rule
+// for the platform-write pipeline (acl-remove-rule). Read-only clients ignore them.
 function _aclItems(acl, dir) {
-  return (acl[dir] || []).map(r => ({
+  return (acl[dir] || []).map((r, i) => ({
     name: `${dir} ${r.action || ''}${r.protocol ? ` ${r.protocol}` : ''}`.trim(),
     enabled: (r.state || 'enabled') !== 'disabled',
     detail: `${r.source || 'any'} → ${r.destination || 'any'}${r.destination_port ? `:${r.destination_port}` : ''}${r.description ? ` · ${r.description}` : ''}`,
+    incus: true,
+    direction: dir,
+    index: i,
+    aclName: acl.name,
   }));
 }
 
@@ -127,11 +133,22 @@ async function _incus(row) {
   try {
     const client = require('../incus').fromHostRow(row);
     const acls = await client.listNetworkAcls();
-    const groups = (acls || []).map(acl => ({
-      title: `ACL ${acl.name}${acl.description ? ` — ${acl.description}` : ''}`,
-      items: [..._aclItems(acl, 'ingress'), ..._aclItems(acl, 'egress')],
-    }));
-    return { ...base, available: true, summary: `${(acls || []).length} network ACL(s). Note: host-level firewall (iptables/nftables) needs an SSH-registered host.`, groups, raw: JSON.stringify(acls, null, 2) };
+    // Write capability (Phase C): the Firewall page surfaces per-ACL add-rule and
+    // per-rule remove controls when this is true and the viewer is an admin.
+    let writesSupported = false;
+    try { writesSupported = require('./platform-write').supportsWrite(row.daemon_type); } catch { /* ignore */ }
+    const groups = (acls || []).map(acl => {
+      const usedBy = acl.used_by || [];
+      return {
+        title: `ACL ${acl.name}${acl.description ? ` — ${acl.description}` : ''}`,
+        incus: true,
+        aclName: acl.name,
+        usedBy,
+        attached: usedBy.length > 0,
+        items: [..._aclItems(acl, 'ingress'), ..._aclItems(acl, 'egress')],
+      };
+    });
+    return { ...base, available: true, writesSupported, summary: `${(acls || []).length} network ACL(s). Note: an ACL only filters once ATTACHED to a NIC/network (attachment is manual in Incus).`, groups, raw: JSON.stringify(acls, null, 2) };
   } catch (err) {
     const forbidden = err && (err.status === 403 || /forbidden|untrusted/i.test(err.message || ''));
     return { ...base, available: false, trustHint: !!forbidden, summary: forbidden ? 'Incus/LXD rejected docker-dash as untrusted — trust it on the Instances page first, then reload.' : `Could not read Incus ACLs: ${err.message}` };

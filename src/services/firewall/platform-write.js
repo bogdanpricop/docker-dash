@@ -42,9 +42,14 @@ const RULE_ACTIONS = ['ACCEPT', 'DROP', 'REJECT'];
 const RULE_PROTOS = ['tcp', 'udp', 'icmp'];
 
 // ─── Capability gate ─────────────────────────────────────────
-// Proxmox (Phase A) and vSphere/ESXi (Phase B) are writable. Incus/LXD return
-// false so the dispatcher keeps throwing the read-only error for them.
-function supportsWrite(daemonType) { return daemonType === 'proxmox' || daemonType === 'vsphere'; }
+// Proxmox (Phase A), vSphere/ESXi (Phase B) and Incus/LXD (Phase C) are all
+// writable. Both Incus daemon types ('incus' and 'lxd') use the same IncusClient
+// and REST surface, so both are enabled here.
+function supportsWrite(daemonType) {
+  return daemonType === 'proxmox' || daemonType === 'vsphere'
+    || daemonType === 'incus' || daemonType === 'lxd';
+}
+function _isIncus(daemonType) { return daemonType === 'incus' || daemonType === 'lxd'; }
 
 // ─── Validation ──────────────────────────────────────────────
 // A Proxmox dport is a single port OR an "n:m" inclusive range.
@@ -602,12 +607,303 @@ async function _revertEsxiChangeRow(row) {
   db.prepare("UPDATE platform_firewall_changes SET state='reverted', reverted_at=datetime('now'), revert_at=NULL WHERE id = ?").run(row.id);
 }
 
+// ═══ Incus / LXD — Phase C ═══════════════════════════════════
+// Incus's firewall primitive is the network ACL: a NAMED object with `ingress`
+// and `egress` arrays of rules. There is NO "add one rule" endpoint — a mutation
+// is a read-modify-write: GET the ACL, edit an array, PUT the whole ACL back.
+//
+// Incus is the LOWEST lockout risk of the three hypervisors: an ACL does not
+// filter ANY traffic until it is ATTACHED to a NIC or network, and docker-dash
+// does NOT manage attachment (that stays a manual step in Incus). So an ACL edit
+// usually cannot lock anyone out. It still rides the SAME commit-confirmed
+// pipeline (validate → snapshot → provisional → confirm/revert/auto-revert) for
+// reversibility and consistency with Proxmox/ESXi.
+const INCUS_DIRECTIONS = ['ingress', 'egress'];
+const INCUS_ACTIONS = ['allow', 'drop', 'reject'];
+const INCUS_STATES = ['enabled', 'disabled', 'logged'];
+const INCUS_PROTOCOLS = ['tcp', 'udp', 'icmp4', 'icmp6'];
+// Incus source/destination accept an IP/CIDR OR an ACL-name reference / selector
+// token (not just IPs). For a non-CIDR token we accept a conservative whitelist
+// and re-reject via DANGEROUS as defence-in-depth.
+const INCUS_SUBJECT_RE = /^[A-Za-z0-9_./:-]+$/;
+
+// Validate a source/destination value: a comma-separated list where each part is
+// either a valid IP/CIDR or a safe ACL-name/selector token. Returns the trimmed,
+// re-joined value (or undefined for empty).
+function _validateIncusSubject(raw, field) {
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  for (const p of parts) {
+    if (validate.validateCidrOrIp(p)) continue;
+    if (!INCUS_SUBJECT_RE.test(p) || validate.DANGEROUS.test(p)) {
+      throw new Error(`Invalid ${field} "${p}" (expected an IP/CIDR or a safe ACL-name/selector token)`);
+    }
+  }
+  return parts.join(',');
+}
+
+// Validate an Incus port spec: a comma-separated list where each part is a single
+// port OR an inclusive "n-m" range. Returns the trimmed, re-joined value.
+function _validateIncusPorts(raw, field) {
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  const parts = s.split(',').map(p => p.trim()).filter(Boolean);
+  if (!parts.length) return undefined;
+  for (const p of parts) {
+    if (p.includes('-')) {
+      const seg = p.split('-');
+      if (seg.length !== 2 || !validate.validatePort(seg[0]) || !validate.validatePort(seg[1])
+          || parseInt(seg[0], 10) > parseInt(seg[1], 10)) {
+        throw new Error(`Invalid ${field} range "${p}" (1-65535, n-m)`);
+      }
+    } else if (!validate.validatePort(p)) {
+      throw new Error(`Invalid ${field} "${p}" (1-65535, comma list, or n-m range)`);
+    }
+  }
+  return parts.join(',');
+}
+
+/**
+ * Validate + normalize an Incus ACL rule change. Throws on the first problem.
+ * @param {object} spec { direction, action, state?, protocol?, source?, destination?, source_port?, destination_port?, description? }
+ * @returns {{direction:'ingress'|'egress', rule:object}} normalized
+ */
+function validateIncusRule(spec) {
+  if (!spec || typeof spec !== 'object') throw new Error('Missing Incus rule spec');
+
+  const direction = String(spec.direction || '').toLowerCase();
+  if (!INCUS_DIRECTIONS.includes(direction)) throw new Error(`Invalid direction "${spec.direction}" (ingress|egress)`);
+
+  const action = String(spec.action || '').toLowerCase();
+  if (!INCUS_ACTIONS.includes(action)) throw new Error(`Invalid action "${spec.action}" (allow|drop|reject)`);
+
+  const stateRaw = (spec.state === undefined || spec.state === null || spec.state === '')
+    ? 'enabled' : String(spec.state).toLowerCase();
+  if (!INCUS_STATES.includes(stateRaw)) throw new Error(`Invalid state "${spec.state}" (enabled|disabled|logged)`);
+
+  const rule = { action, state: stateRaw };
+
+  if (spec.protocol !== undefined && spec.protocol !== null && spec.protocol !== '') {
+    const proto = String(spec.protocol).toLowerCase();
+    if (!INCUS_PROTOCOLS.includes(proto)) throw new Error(`Invalid protocol "${spec.protocol}" (tcp|udp|icmp4|icmp6)`);
+    rule.protocol = proto;
+  }
+
+  const source = _validateIncusSubject(spec.source != null ? spec.source : '', 'source');
+  if (source) rule.source = source;
+  const destination = _validateIncusSubject(spec.destination != null ? spec.destination : '', 'destination');
+  if (destination) rule.destination = destination;
+
+  // Ports are only meaningful for tcp/udp in Incus — refuse them otherwise.
+  const wantsSport = spec.source_port !== undefined && spec.source_port !== null && spec.source_port !== '';
+  const wantsDport = spec.destination_port !== undefined && spec.destination_port !== null && spec.destination_port !== '';
+  if ((wantsSport || wantsDport) && rule.protocol !== 'tcp' && rule.protocol !== 'udp') {
+    throw new Error('Ports require protocol tcp or udp');
+  }
+  if (wantsSport) rule.source_port = _validateIncusPorts(spec.source_port, 'source_port');
+  if (wantsDport) rule.destination_port = _validateIncusPorts(spec.destination_port, 'destination_port');
+
+  const description = validate.sanitizeReason(spec.description);
+  if (description) rule.description = description;
+
+  // Mirror the other validators: refuse an unconstrained rule.
+  if (rule.protocol === undefined && rule.source === undefined && rule.destination === undefined
+      && rule.source_port === undefined && rule.destination_port === undefined) {
+    throw new Error('An Incus ACL rule must constrain at least a protocol, source, destination, or port (refusing an unconstrained rule)');
+  }
+  return { direction, rule };
+}
+
+/**
+ * The Incus lockout guard is intentionally LIGHT. An Incus network ACL does not
+ * filter any traffic until it is ATTACHED to a NIC or network, and docker-dash
+ * does NOT manage attachment — the main lockout vector is therefore out of scope.
+ * So an ACL edit usually cannot lock anyone out, and drops are entirely normal in
+ * microsegmentation, which means over-blocking here would be wrong. The one
+ * conservative case we warn on: adding an UNSCOPED inbound drop/reject to an ACL
+ * that is ALREADY in use (its `used_by` is non-empty, i.e. attached to something)
+ * — that could match management traffic on whatever it is bound to. Everything
+ * else is allowed; reversibility comes from validate + snapshot + the
+ * provisional/auto-revert pipeline, not from refusing the change here.
+ * @param {object} p
+ * @param {object} p.change     { direction, rule, aclName? }
+ * @param {string[]} p.aclUsedBy the ACL's used_by list (non-empty ⇒ attached)
+ * @throws Error only for the attached-unscoped-inbound-drop case
+ */
+function lockoutCheckIncus({ change, aclUsedBy } = {}) {
+  if (!change || !change.rule) return;
+  const usedBy = Array.isArray(aclUsedBy) ? aclUsedBy : [];
+  if (!usedBy.length) return; // unattached ACL cannot lock anyone out — permissive
+  const r = change.rule;
+  const isDropOrReject = r.action === 'drop' || r.action === 'reject';
+  const inbound = change.direction === 'ingress';
+  const scoped = r.source !== undefined && r.source !== null && r.source !== '';
+  if (inbound && isDropOrReject && !scoped) {
+    throw new Error(`Refusing this inbound ${r.action} rule: ACL "${change.aclName || ''}" is attached (in use) and the rule has no source scope, so it could match management traffic. Scope it by source IP/subject, or detach the ACL first.`);
+  }
+}
+
+// ─── Incus apply / snapshot / revert helpers ─────────────────
+function _incusHostRow(hostId) {
+  const row = _db().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!row) { const e = new Error(`Host ${hostId} not found`); e.status = 404; throw e; }
+  return row;
+}
+
+function _incusClient(hostId) {
+  const row = _incusHostRow(hostId);
+  return { row, client: require('../incus').fromHostRow(row) };
+}
+
+// Read one ACL's pre-state. FAIL-CLOSED: if we can't read it we must NOT mutate.
+// Prefer the single-ACL read; fall back to filtering the list if that path errors.
+async function _fetchIncusAcl(client, name) {
+  let acl = null;
+  try {
+    acl = await client.getNetworkAcl(name);
+  } catch {
+    const all = await client.listNetworkAcls();
+    acl = (all || []).find(a => a && a.name === name) || null;
+  }
+  if (!acl) throw new Error(`Incus network ACL "${name}" not found on this host.`);
+  return acl;
+}
+
+// The body Incus expects on PUT /1.0/network-acls/<name>: the ACL name is in the
+// URL, the body carries the mutable definition.
+function _incusAclPutBody(acl) {
+  return {
+    description: acl.description || '',
+    egress: Array.isArray(acl.egress) ? acl.egress : [],
+    ingress: Array.isArray(acl.ingress) ? acl.ingress : [],
+    config: acl.config || {},
+  };
+}
+
+// Snapshot the pre-mutation state: the getPlatformFirewall human view PLUS the
+// full ACL pre-state, which the revert reads back to restore the affected
+// direction declaratively.
+async function _snapshotPreIncus(row, hostId, user, aclName, aclPre, change) {
+  let pfView = null;
+  try { pfView = await require('./platform').getPlatformFirewall(row); } catch { /* best-effort */ }
+  const content = JSON.stringify({
+    platform: pfView,
+    incus: { scope: aclName, operation: change.operation, direction: change.direction, acl: aclPre },
+  });
+  const info = _db().prepare(
+    'INSERT INTO firewall_snapshots (host_id, backend, snapshot_content, created_by, reason) VALUES (?,?,?,?,?)'
+  ).run(hostId, 'incus', content, (user && user.username) || 'system', 'pre-platform-apply');
+  return info.lastInsertRowid;
+}
+
+function _incusPriorAclFromSnapshot(changeRow) {
+  if (!changeRow.pre_snapshot_id) return null;
+  const snap = _db().prepare('SELECT snapshot_content FROM firewall_snapshots WHERE id = ?').get(changeRow.pre_snapshot_id);
+  if (!snap) return null;
+  const content = _parseJson(snap.snapshot_content);
+  return content && content.incus ? content.incus.acl : null;
+}
+
+// The Incus apply pipeline: read pre-state (FAIL-CLOSED — no read, no mutation),
+// validate, lockout-guard, snapshot, read-modify-PUT, record a provisional change
+// with the commit-confirmed auto-revert deadline. Two operations:
+//   • acl-add-rule    — append a rule to ingress/egress, PUT the whole ACL back
+//   • acl-remove-rule — drop the rule at (direction, index), PUT the ACL back
+async function _applyIncus(host, rawSpec, user) {
+  const db = _db();
+  const { row, client } = _incusClient(host.id);
+  const aclName = String((rawSpec && (rawSpec.aclName || rawSpec.acl || rawSpec.scope)) || '').trim();
+  if (!aclName || validate.DANGEROUS.test(aclName)) {
+    throw new Error('A valid Incus ACL name (aclName) is required.');
+  }
+  const operation = (rawSpec && rawSpec.operation === 'acl-remove-rule') ? 'acl-remove-rule' : 'acl-add-rule';
+
+  // 1. Pre-state (FAIL-CLOSED).
+  const aclPre = await _fetchIncusAcl(client, aclName);
+  const preBody = _incusAclPutBody(aclPre);
+
+  let direction, specForDb, newBody;
+  if (operation === 'acl-add-rule') {
+    const norm = validateIncusRule(rawSpec); // { direction, rule }
+    direction = norm.direction;
+    // 2. Lockout guard (light — attachment isn't managed).
+    lockoutCheckIncus({ change: { direction, rule: norm.rule, aclName }, aclUsedBy: aclPre.used_by });
+    newBody = _incusAclPutBody(aclPre);
+    newBody[direction] = newBody[direction].concat([norm.rule]);
+    specForDb = { operation, aclName, direction, rule: norm.rule, preDirection: preBody[direction] };
+  } else {
+    direction = String((rawSpec && rawSpec.direction) || '').toLowerCase();
+    if (!INCUS_DIRECTIONS.includes(direction)) throw new Error(`Invalid direction "${rawSpec && rawSpec.direction}" (ingress|egress)`);
+    const index = parseInt(rawSpec && rawSpec.index, 10);
+    const arr = preBody[direction];
+    if (!Number.isInteger(index) || index < 0 || index >= arr.length) {
+      throw new Error(`No ${direction} rule at index ${rawSpec && rawSpec.index} on ACL "${aclName}".`);
+    }
+    const removedRule = arr[index];
+    newBody = _incusAclPutBody(aclPre);
+    newBody[direction] = arr.filter((_, i) => i !== index);
+    specForDb = { operation, aclName, direction, index, removedRule, preDirection: preBody[direction] };
+  }
+
+  // 3. Snapshot BEFORE mutating (non-negotiable rollback source).
+  const snapshotId = await _snapshotPreIncus(row, host.id, user, aclName, aclPre, { operation, direction });
+
+  // 4. Mutate (read-modify-PUT). On failure record a 'failed' row so a host is
+  //    never mutated without a trace.
+  try {
+    await client.updateNetworkAcl(aclName, newBody);
+  } catch (err) {
+    db.prepare(`INSERT INTO platform_firewall_changes
+      (host_id, platform, scope, operation, spec, pre_snapshot_id, state, applied_by, error)
+      VALUES (?,?,?,?,?,?,'failed',?,?)`).run(
+      host.id, 'incus', aclName, operation, JSON.stringify(specForDb),
+      snapshotId, (user && user.username) || 'system', String(err.message).slice(0, 500));
+    throw err;
+  }
+
+  // 5. Provisional row with the commit-confirmed deadline.
+  const mins = _confirmMinutes();
+  const info = db.prepare(`INSERT INTO platform_firewall_changes
+    (host_id, platform, scope, operation, spec, pre_snapshot_id, state, applied_by, revert_at)
+    VALUES (?,?,?,?,?,?, 'provisional', ?, datetime('now', ?))`).run(
+    host.id, 'incus', aclName, operation, JSON.stringify(specForDb),
+    snapshotId, (user && user.username) || 'system', `+${mins} minutes`);
+
+  const changeId = info.lastInsertRowid;
+  const rowNow = db.prepare('SELECT revert_at FROM platform_firewall_changes WHERE id = ?').get(changeId);
+  return { ok: true, changeId, revertAt: rowNow.revert_at, provisional: true, operation, scope: aclName };
+}
+
+// Undo an Incus change: declaratively restore the affected direction's array from
+// the captured pre-state snapshot (idempotent — safe to run repeatedly), merging
+// into the current ACL so the OTHER direction isn't clobbered.
+async function _revertIncusChangeRow(row) {
+  const db = _db();
+  const spec = _parseJson(row.spec) || {};
+  const aclName = spec.aclName || row.scope;
+  const direction = spec.direction;
+  const prior = _incusPriorAclFromSnapshot(row);
+  const { client } = _incusClient(row.host_id);
+
+  if (prior && INCUS_DIRECTIONS.includes(direction)) {
+    const current = await _fetchIncusAcl(client, aclName);
+    const body = _incusAclPutBody(current);
+    body[direction] = Array.isArray(prior[direction]) ? prior[direction] : [];
+    await client.updateNetworkAcl(aclName, body);
+  }
+
+  db.prepare("UPDATE platform_firewall_changes SET state='reverted', reverted_at=datetime('now'), revert_at=NULL WHERE id = ?").run(row.id);
+}
+
 // ─── Apply (add-rule / set-options), provisional ─────────────
 async function applyPlatformRule(host, rawSpec, user, requesterIp) {
   if (!supportsWrite(host.daemonType)) {
     throw new Error(`${host.daemonType} firewall write is not supported yet.`);
   }
   if (host.daemonType === 'vsphere') return _applyEsxi(host, rawSpec, user, requesterIp);
+  if (_isIncus(host.daemonType)) return _applyIncus(host, rawSpec, user, requesterIp);
   const db = _db();
   const scope = _normalizeScope(rawSpec);
   const { row, client } = _client(host.id);
@@ -673,6 +969,12 @@ async function removePlatformRule(host, params, user, requesterIp) {
   // allowed IP or toggling a ruleset goes through applyPlatformRule instead.
   if (host.daemonType === 'vsphere') {
     throw new Error('ESXi firewall has no positional rules to remove — use an allowedip-remove or a ruleset toggle (via Add firewall change) instead.');
+  }
+  // Incus ACL rules are addressed by (direction, index) within a named ACL, not
+  // by a firewall_rules position — removal goes through applyPlatformRule as an
+  // 'acl-remove-rule' change (the ✕ control on a rule), consistent with ESXi.
+  if (_isIncus(host.daemonType)) {
+    throw new Error('Incus ACL rules are removed by (direction, index) via an acl-remove-rule change, not by position — use the ✕ control on the rule.');
   }
   const db = _db();
   const scope = _normalizeScope(params);
@@ -753,6 +1055,7 @@ function _priorOptionsFromSnapshot(changeRow) {
 // Perform the actual restore for a change row (shared by manual revert + sweep).
 async function _revertChangeRow(row) {
   if (row.platform === 'esxi') return _revertEsxiChangeRow(row);
+  if (row.platform === 'incus') return _revertIncusChangeRow(row);
   const db = _db();
   const spec = _parseJson(row.spec) || {};
   const node = spec.node || _nodeFromScope(row.scope);
@@ -863,6 +1166,8 @@ module.exports = {
   lockoutCheckProxmox,
   validateEsxiChange,
   lockoutCheckEsxi,
+  validateIncusRule,
+  lockoutCheckIncus,
   applyPlatformRule,
   removePlatformRule,
   confirmPlatformChange,
@@ -876,5 +1181,8 @@ module.exports = {
     _confirmMinutes, _lockoutCheckRemoval,
     ESXI_OPERATIONS, ESXI_MGMT_RULESET_NAMES, _strictBool, _esxiListIsAllowedAll,
     _isEsxiMgmtRuleset, _esxiRulesetByName, _esxiPriorRulesetFromSnapshot,
+    INCUS_DIRECTIONS, INCUS_ACTIONS, INCUS_STATES, INCUS_PROTOCOLS,
+    _validateIncusSubject, _validateIncusPorts, _incusAclPutBody,
+    _incusPriorAclFromSnapshot, _isIncus,
   },
 };
