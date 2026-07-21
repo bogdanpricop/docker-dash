@@ -127,11 +127,21 @@ const FirewallPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
+  _platformCanWrite(pf) { return !!(pf && pf.writesSupported && this._isAdmin); },
+
   _renderPlatform(el, pf) {
     const badgeClass = pf.available ? 'badge-running' : 'badge-warning';
     const groups = pf.groups || [];
+    const canWrite = this._platformCanWrite(pf);
+    const cols = canWrite ? 4 : 3;
     el.innerHTML = `
-      <div class="alert" style="margin-bottom:12px;background:var(--surface2)"><i class="fas fa-eye"></i> Read-only view — ${Utils.escapeHtml((pf.platform || '').toUpperCase())} manages its firewall in its native tool (esxcli / pve-firewall / incus network acl).</div>
+      <div id="fw-pending-banner"></div>
+      ${canWrite
+        ? `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+             <span style="flex:1"><i class="fas fa-shield-halved"></i> Write-enabled (${Utils.escapeHtml((pf.platform || '').toUpperCase())}). Every change is applied <b>provisionally</b> and <b>auto-reverts</b> unless you confirm it — a bad rule can't lock you out permanently.</span>
+             <button class="btn btn-sm btn-primary" id="fw-plat-add"><i class="fas fa-plus"></i> Add firewall rule</button>
+           </div>`
+        : `<div class="alert" style="margin-bottom:12px;background:var(--surface2)"><i class="fas fa-eye"></i> Read-only view — ${Utils.escapeHtml((pf.platform || '').toUpperCase())} manages its firewall in its native tool (esxcli / pve-firewall / incus network acl).</div>`}
       <div class="stat-cards" style="grid-template-columns:repeat(2,1fr);margin-bottom:16px">
         ${this._card('fa-shield-alt', 'Platform', `<span class="badge ${badgeClass}"><span class="badge-dot"></span>${Utils.escapeHtml(pf.platform || '')}</span>`)}
         ${this._card('fa-info-circle', 'Status', Utils.escapeHtml(pf.summary || ''))}
@@ -143,17 +153,215 @@ const FirewallPage = {
           <div class="card-header"><h3><i class="fas fa-list text-dim" style="margin-right:8px"></i>${Utils.escapeHtml(g.title)}</h3><span class="text-dim text-sm">${(g.items || []).length}</span></div>
           <div class="card-body" style="padding:0">
             ${(g.items || []).length === 0 ? '<div class="empty-msg">None.</div>' : `
-            <table class="data-table"><thead><tr><th>Rule</th><th>State</th><th>Detail</th></tr></thead>
+            <table class="data-table"><thead><tr><th>Rule</th><th>State</th><th>Detail</th>${canWrite ? '<th></th>' : ''}</tr></thead>
             <tbody>${g.items.map(it => `
               <tr>
                 <td class="mono text-sm">${Utils.escapeHtml(it.name || '')}</td>
                 <td>${it.enabled === false ? '<span class="badge badge-info">off</span>' : '<span class="badge badge-running">on</span>'}</td>
                 <td class="text-sm text-dim">${Utils.escapeHtml(it.detail || '')}</td>
+                ${canWrite ? `<td style="white-space:nowrap;text-align:right">${it.removable
+                  ? `<button class="action-btn danger" title="Remove this rule (provisional, auto-reverts unless confirmed)" data-fw-plat-remove="1" data-fw-pos="${Utils.escapeHtml(String(it.pos))}" data-fw-scope="${Utils.escapeHtml(it.scope || '')}" data-fw-node="${Utils.escapeHtml(it.node || '')}"><i class="fas fa-times"></i></button>`
+                  : '<span class="text-dim">—</span>'}</td>` : ''}
               </tr>`).join('')}</tbody></table>`}
           </div>
         </div>`).join('')}
       ${pf.raw ? `<div class="card"><div class="card-header"><h3><i class="fas fa-terminal text-dim" style="margin-right:8px"></i>Raw</h3></div><div class="card-body"><pre class="inspect-json" style="max-height:300px;color:var(--text)">${Utils.escapeHtml(pf.raw)}</pre></div></div>` : ''}
     `;
+
+    if (canWrite) {
+      el.querySelector('#fw-plat-add')?.addEventListener('click', () => this._addPlatformRuleDialog(pf));
+      el.querySelectorAll('[data-fw-plat-remove]').forEach(b => b.addEventListener('click', () => this._removePlatformRule({
+        pos: parseInt(b.getAttribute('data-fw-pos'), 10),
+        scope: b.getAttribute('data-fw-scope'),
+        node: b.getAttribute('data-fw-node') || undefined,
+      })));
+      // Live commit-confirmed countdown banner (fetch now + start the 1s poller).
+      this._renderPendingBanner();
+      this._refreshPending();
+      this._startPendingPoll();
+    } else {
+      this._stopPendingPoll();
+      this._pendingChanges = [];
+    }
+  },
+
+  // ── Platform (hypervisor) commit-confirmed write flow (v8.11, Proxmox) ──
+  _parseSqlUtc(s) {
+    if (!s) return 0;
+    // SQLite datetime('now') is UTC "YYYY-MM-DD HH:MM:SS" (no tz marker).
+    const t = Date.parse(String(s).replace(' ', 'T') + 'Z');
+    return Number.isNaN(t) ? 0 : t;
+  },
+
+  _describeChange(ch) {
+    const s = ch.spec || {};
+    const scope = ch.scope || '';
+    if (ch.operation === 'add-rule' && s.rule) {
+      const r = s.rule;
+      return `add ${r.type} ${r.action}${r.proto ? ' ' + r.proto : ''}${r.dport ? ' dport ' + r.dport : ''}${r.source ? ' from ' + r.source : ''} on ${scope}`;
+    }
+    if (ch.operation === 'remove-rule') return `remove rule #${s.pos} on ${scope}`;
+    if (ch.operation === 'set-options') return `set firewall options on ${scope}`;
+    return `${ch.operation} on ${scope}`;
+  },
+
+  _fmtRemaining(sec) {
+    const s = Math.max(0, sec);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  },
+
+  _renderPendingBanner() {
+    const el = document.getElementById('fw-pending-banner');
+    if (!el) return;
+    const pend = this._pendingChanges || [];
+    if (!pend.length) { el.innerHTML = ''; return; }
+    const now = Date.now();
+    el.innerHTML = pend.map(ch => {
+      const remaining = Math.floor((this._parseSqlUtc(ch.revert_at) - now) / 1000);
+      return `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="flex:1"><i class="fas fa-hourglass-half"></i> <b>Change applied provisionally</b> — auto-reverts in <b class="mono" data-fw-countdown="${ch.id}">${this._fmtRemaining(remaining)}</b> unless confirmed. <span class="text-dim">${Utils.escapeHtml(this._describeChange(ch))}</span></span>
+        <button class="btn btn-xs btn-primary" data-fw-confirm="${ch.id}"><i class="fas fa-check"></i> Confirm</button>
+        <button class="btn btn-xs btn-danger" data-fw-revert="${ch.id}"><i class="fas fa-undo"></i> Revert now</button>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('[data-fw-confirm]').forEach(b => b.addEventListener('click', () => this._confirmChange(parseInt(b.getAttribute('data-fw-confirm'), 10))));
+    el.querySelectorAll('[data-fw-revert]').forEach(b => b.addEventListener('click', () => this._revertChange(parseInt(b.getAttribute('data-fw-revert'), 10))));
+  },
+
+  async _refreshPending() {
+    if (!this._isPlatform) { this._pendingChanges = []; this._renderPendingBanner(); return; }
+    try {
+      const r = await Api.fwPendingChanges(this._hostId);
+      this._pendingChanges = (r && r.pending) || [];
+    } catch { this._pendingChanges = this._pendingChanges || []; }
+    this._renderPendingBanner();
+  },
+
+  _startPendingPoll() {
+    this._stopPendingPoll();
+    this._pendingTick = 0;
+    this._pendingTimer = setInterval(() => {
+      this._pendingTick++;
+      const now = Date.now();
+      let refresh = (this._pendingTick % 5 === 0);
+      (this._pendingChanges || []).forEach(ch => {
+        const span = document.querySelector(`[data-fw-countdown="${ch.id}"]`);
+        if (!span) return;
+        const remaining = Math.floor((this._parseSqlUtc(ch.revert_at) - now) / 1000);
+        if (remaining <= 0) refresh = true;
+        span.textContent = this._fmtRemaining(remaining);
+      });
+      // Stop polling if there's nothing pending and the banner element is gone.
+      if (!document.getElementById('fw-pending-banner')) { this._stopPendingPoll(); return; }
+      if (refresh) this._refreshPending();
+    }, 1000);
+  },
+
+  _stopPendingPoll() { if (this._pendingTimer) { clearInterval(this._pendingTimer); this._pendingTimer = null; } },
+
+  async _addPlatformRuleDialog(pf) {
+    const nodeName = (pf && pf.node) ? pf.node : '';
+    const result = await Modal.form(`
+      <div class="form-row">
+        <div class="form-group"><label>Direction</label>
+          <select id="fwp-type" class="form-control"><option value="in">in (inbound)</option><option value="out">out (outbound)</option></select></div>
+        <div class="form-group"><label>Action</label>
+          <select id="fwp-action" class="form-control"><option value="ACCEPT">ACCEPT</option><option value="DROP">DROP</option><option value="REJECT">REJECT</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Source IP / CIDR <span class="text-muted">(optional)</span></label>
+          <input type="text" id="fwp-src" class="form-control" placeholder="89.40.10.20 or 10.0.0.0/8"></div>
+        <div class="form-group"><label>Destination IP / CIDR <span class="text-muted">(optional)</span></label>
+          <input type="text" id="fwp-dest" class="form-control" placeholder="10.0.0.5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Protocol</label>
+          <select id="fwp-proto" class="form-control"><option value="">any</option><option value="tcp">tcp</option><option value="udp">udp</option><option value="icmp">icmp</option></select></div>
+        <div class="form-group"><label>Destination port <span class="text-muted">(single or n:m range)</span></label>
+          <input type="text" id="fwp-dport" class="form-control" placeholder="8006 or 8000:8010"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Scope</label>
+          <select id="fwp-scope" class="form-control"><option value="cluster">Cluster</option><option value="node">Node</option></select></div>
+        <div class="form-group"><label>Node <span class="text-muted">(when scope = node)</span></label>
+          <input type="text" id="fwp-node" class="form-control" placeholder="${Utils.escapeHtml(nodeName)}" value="${Utils.escapeHtml(nodeName)}"></div>
+      </div>
+      <div class="form-group"><label>Comment</label><input type="text" id="fwp-comment" class="form-control" placeholder="Supplier support access"></div>
+      <div class="alert alert-warning" style="font-size:12px"><i class="fas fa-triangle-exclamation"></i> The lockout guard refuses a DROP/REJECT that would drop SSH (22) / PVE web (8006) for everyone, and refuses enabling the firewall without an ACCEPT protecting your IP. This change applies provisionally and auto-reverts unless you confirm it.</div>
+    `, {
+      title: 'Add Proxmox firewall rule',
+      width: '560px',
+      onSubmit: (c) => {
+        const scope = c.querySelector('#fwp-scope').value;
+        const spec = {
+          type: c.querySelector('#fwp-type').value,
+          action: c.querySelector('#fwp-action').value,
+          source: c.querySelector('#fwp-src').value.trim() || undefined,
+          dest: c.querySelector('#fwp-dest').value.trim() || undefined,
+          proto: c.querySelector('#fwp-proto').value || undefined,
+          dport: c.querySelector('#fwp-dport').value.trim() || undefined,
+          comment: c.querySelector('#fwp-comment').value.trim() || undefined,
+          scope,
+          node: scope === 'node' ? (c.querySelector('#fwp-node').value.trim() || undefined) : undefined,
+        };
+        if (!spec.dport && !spec.source && !spec.dest) { Toast.warning('Specify at least a destination port, a source, or a destination'); return false; }
+        if (spec.scope === 'node' && !spec.node) { Toast.warning('Enter the node name for node scope'); return false; }
+        return spec;
+      },
+    });
+    if (!result) return;
+    const summary = `${Utils.escapeHtml(result.type)} <b>${Utils.escapeHtml(result.action)}</b>${result.proto ? ' ' + Utils.escapeHtml(result.proto) : ''}${result.dport ? ' dport ' + Utils.escapeHtml(result.dport) : ''}<br>Source: ${Utils.escapeHtml(result.source || 'any')} → Dest: ${Utils.escapeHtml(result.dest || 'any')}<br>Scope: ${result.scope === 'node' ? 'node ' + Utils.escapeHtml(result.node) : 'cluster'}`;
+    const ok = await Modal.confirm(
+      `<p>Apply this firewall change to the Proxmox host?</p><p class="mono text-sm" style="background:var(--surface2);padding:10px;border-radius:6px">${summary}</p><p class="text-sm text-dim">It applies <b>provisionally</b> and auto-reverts unless you confirm it in time.</p>`,
+      { title: 'Confirm firewall change', html: true, danger: result.action !== 'ACCEPT', confirmText: 'Apply provisionally' }
+    );
+    if (!ok) return;
+    try {
+      const r = await Api.fwAddRule(this._hostId, result);
+      if (r && r.ok === false) { Toast.error(r.error || 'Failed to apply rule'); return; }
+      Toast.success('Change applied provisionally — confirm it before the timer runs out');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _removePlatformRule({ pos, scope, node }) {
+    const ok = await Modal.confirm(
+      `<p>Remove firewall rule <b>#${pos}</b> on <b>${Utils.escapeHtml(scope === 'node' ? 'node ' + (node || '') : 'cluster')}</b>?</p><p class="text-sm text-dim">It applies <b>provisionally</b> and auto-reverts (re-creates the rule) unless you confirm it in time.</p>`,
+      { title: 'Remove firewall rule', html: true, danger: true, confirmText: 'Remove provisionally' }
+    );
+    if (!ok) return;
+    try {
+      const r = await Api.fwRemoveRule(this._hostId, null, { pos, scope, node });
+      if (r && r.ok === false) { Toast.error(r.error || 'Failed to remove'); return; }
+      Toast.success('Removal applied provisionally — confirm it before the timer runs out');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _confirmChange(changeId) {
+    const ok = await Modal.confirm('Confirm this change and cancel its auto-revert? Only confirm once you have verified you still have access to the host.', { confirmText: 'Confirm change' });
+    if (!ok) return;
+    try {
+      const r = await Api.fwConfirmChange(this._hostId, changeId);
+      if (r && r.ok === false) { Toast.error(r.error || 'Confirm failed'); return; }
+      Toast.success('Change confirmed');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _revertChange(changeId) {
+    const ok = await Modal.confirm('Revert this change now (restore the pre-change state)?', { danger: true, confirmText: 'Revert now' });
+    if (!ok) return;
+    try {
+      const r = await Api.fwRevertChange(this._hostId, changeId);
+      if (r && r.ok === false) { Toast.error(r.error || 'Revert failed'); return; }
+      Toast.success('Change reverted');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   _renderRules(el) {
@@ -450,7 +658,7 @@ const FirewallPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
-  destroy() {},
+  destroy() { this._stopPendingPoll(); },
 };
 
 window.FirewallPage = FirewallPage;

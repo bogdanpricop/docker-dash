@@ -34,8 +34,16 @@ function _audit(req, action, hostId, details, success, error) {
 
 // ── Read ──────────────────────────────────────────────────────────────────
 router.get('/:hostId/status', requireAuth, asyncHandler(async (req, res) => {
-  try { res.json(await fw.detectBackend(_hostId(req))); }
-  catch (err) { res.status(err.status || 500).json({ error: err.message }); }
+  try {
+    const status = await fw.detectBackend(_hostId(req));
+    // Surface the platform write capability so the UI can gate write controls.
+    if (status && status.channel === 'platform') {
+      const pw = require('../services/firewall/platform-write');
+      status.writesSupported = pw.supportsWrite(status.daemonType);
+      if (status.platform) status.platform.writesSupported = status.writesSupported;
+    }
+    res.json(status);
+  } catch (err) { res.status(err.status || 500).json({ error: err.message }); }
 }));
 
 router.get('/:hostId/rules', requireAuth, asyncHandler(async (req, res) => {
@@ -52,18 +60,32 @@ router.get('/:hostId/audit', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // ── Mutations (whitelisted) ─────────────────────────────────────────────────
+function _isPlatformHost(hostId) {
+  try {
+    const row = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
+    return !!(row && require('../services/firewall/platform').isPlatformHost(row.daemon_type));
+  } catch { return false; }
+}
+
 async function _apply(req, res, spec, action) {
   const hostId = _hostId(req);
-  // Operators may only add TEMPORARY rules; permanent rules are admin-only.
-  if (req.user && req.user.role !== 'admin' && !(req.body && req.body.expires_in_minutes)) {
+  const isPlatform = _isPlatformHost(hostId);
+  if (isPlatform) {
+    // Hypervisor firewall writes carry a host-lockout risk — admin-only, always.
+    if (!(req.user && req.user.role === 'admin')) {
+      return res.status(403).json({ ok: false, error: 'Hypervisor firewall changes require an admin.' });
+    }
+  } else if (req.user && req.user.role !== 'admin' && !(req.body && req.body.expires_in_minutes)) {
+    // Operators may only add TEMPORARY rules; permanent rules are admin-only.
     return res.status(403).json({ ok: false, error: 'Operators can only add temporary rules — set an expiry (minutes). Ask an admin for permanent rules.' });
   }
   try {
     const r = await fw.applyRule(hostId, { ...spec, reason: req.body && req.body.reason, expires_in_minutes: req.body && req.body.expires_in_minutes }, req.user, getClientIp(req));
-    _audit(req, 'firewall_apply_rule', hostId, { op: action, spec, backend: r.backend, rule_uuid: r.rule && r.rule.rule_uuid }, true);
+    const auditAction = r && r.provisional ? 'firewall_platform_apply' : 'firewall_apply_rule';
+    _audit(req, auditAction, hostId, { op: action, spec, backend: r.backend, rule_uuid: r.rule && r.rule.rule_uuid, changeId: r && r.changeId, provisional: r && r.provisional }, true);
     res.json(r);
   } catch (err) {
-    _audit(req, 'firewall_apply_rule', hostId, { op: action, spec }, false, err.message);
+    _audit(req, isPlatform ? 'firewall_platform_apply' : 'firewall_apply_rule', hostId, { op: action, spec }, false, err.message);
     res.status(err.status && err.status < 500 ? err.status : 200).json({ ok: false, error: err.message });
   }
 }
@@ -84,18 +106,66 @@ router.post('/:hostId/allow-container-port', ...operatorWrite, asyncHandler((req
   _apply(req, res, { action: 'allow', scope: 'docker', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'allow-container-port')));
 
 // Generic add-rule (Add-rule form): action + scope + fields from body.
-router.post('/:hostId/rule', ...operatorWrite, asyncHandler((req, res) =>
-  _apply(req, res, { action: req.body.action, scope: req.body.scope || 'host', source_ip: req.body.source_ip, destination_port: req.body.destination_port, protocol: req.body.protocol }, 'add-rule')));
+// For platform (hypervisor) hosts the body carries a proxmox-shaped rule
+// (type/action/source/dest/proto/dport/comment + scope cluster|node) or a
+// set-options toggle; those extra fields ride along in the spec and are ignored
+// by the iptables path's assertSafe (which reads only its own keys).
+router.post('/:hostId/rule', ...operatorWrite, asyncHandler((req, res) => {
+  const b = req.body || {};
+  return _apply(req, res, {
+    action: b.action, scope: b.scope || 'host',
+    source_ip: b.source_ip, destination_port: b.destination_port, protocol: b.protocol,
+    // platform (proxmox) fields:
+    type: b.type, source: b.source, dest: b.dest, dport: b.dport, proto: b.proto,
+    comment: b.comment, node: b.node, operation: b.operation, enable: b.enable, setOptions: b.setOptions,
+  }, 'add-rule');
+}));
 
 router.post('/:hostId/remove-rule', ...operatorWrite, asyncHandler(async (req, res) => {
   const hostId = _hostId(req);
+  const isPlatform = _isPlatformHost(hostId);
+  if (isPlatform && !(req.user && req.user.role === 'admin')) {
+    return res.status(403).json({ ok: false, error: 'Hypervisor firewall changes require an admin.' });
+  }
   try {
-    const r = await fw.removeRule(hostId, req.body.rule_uuid, req.user);
-    _audit(req, 'firewall_remove_rule', hostId, { rule_uuid: req.body.rule_uuid }, true);
+    // Platform hosts remove by position/scope (no rule_uuid); iptables hosts by uuid.
+    const r = await fw.removeRule(hostId, req.body.rule_uuid, req.user, { pos: req.body.pos, scope: req.body.scope, node: req.body.node, requesterIp: getClientIp(req) });
+    _audit(req, r && r.provisional ? 'firewall_platform_remove' : 'firewall_remove_rule', hostId, { rule_uuid: req.body.rule_uuid, pos: req.body.pos, scope: req.body.scope, changeId: r && r.changeId }, true);
     res.json(r);
   } catch (err) {
-    _audit(req, 'firewall_remove_rule', hostId, { rule_uuid: req.body.rule_uuid }, false, err.message);
+    _audit(req, isPlatform ? 'firewall_platform_remove' : 'firewall_remove_rule', hostId, { rule_uuid: req.body.rule_uuid, pos: req.body.pos }, false, err.message);
     res.json({ ok: false, error: err.message });
+  }
+}));
+
+// ── Platform (hypervisor) commit-confirmed lifecycle (v8.11, Phase A) ────────
+// confirm-change makes a provisional change permanent (clears the auto-revert);
+// revert-change rolls it back now; pending-changes powers the countdown banner.
+// The service layer audits confirm / revert / auto-revert (auto-revert has no
+// route), so we pass the requester's ip through the user object.
+router.post('/:hostId/confirm-change', ...operatorWrite, asyncHandler(async (req, res) => {
+  try {
+    const r = require('../services/firewall/platform-write').confirmPlatformChange(parseInt(req.body.changeId, 10), { ...req.user, ip: getClientIp(req) });
+    res.json(r);
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+}));
+
+router.post('/:hostId/revert-change', ...operatorWrite, asyncHandler(async (req, res) => {
+  try {
+    const r = await require('../services/firewall/platform-write').revertPlatformChange(parseInt(req.body.changeId, 10), { ...req.user, ip: getClientIp(req) }, { reason: (req.body && req.body.reason) || 'manual' });
+    res.json(r);
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+}));
+
+router.get('/:hostId/pending-changes', requireAuth, asyncHandler(async (req, res) => {
+  try {
+    res.json(require('../services/firewall/platform-write').getPendingChanges(_hostId(req)));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 }));
 

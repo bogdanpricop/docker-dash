@@ -446,6 +446,12 @@ async function start() {
   try { require('./services/firewall/monitor').start(); }
   catch (e) { require('./utils/logger')('firewall').debug('drift monitor start skipped', { error: e.message }); }
 
+  // v8.11 — Platform (Proxmox) firewall commit-confirmed auto-revert sweep. Every
+  // 60s, revert any provisional hypervisor firewall change whose deadline passed
+  // without an admin confirming it (self-healing lockout net). Best-effort, unref'd.
+  try { require('./services/firewall/platform-write').startSweep(); }
+  catch (e) { require('./utils/logger')('firewall').debug('platform auto-revert sweep start skipped', { error: e.message }); }
+
   // v8.9.37/8.9.40 — Security Posture monitor. Every 15 min: scan, alert on a
   // regression (score drop / new critical) vs the previous snapshot, then store a
   // snapshot for the trend. Best-effort, unref'd. First run 60s after boot.

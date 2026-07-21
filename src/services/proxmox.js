@@ -151,6 +151,18 @@ class ProxmoxClient {
   async getNodeFirewallOptions(node) { return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/options`); }
   async getNodeFirewallRules(node) { return (await this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/rules`)) || []; }
 
+  // v8.11 — pve-firewall WRITE (Phase A). Thin wrappers over _request; the
+  // safety pipeline (validate + lockout guard + snapshot + commit-confirmed
+  // auto-revert) lives in src/services/firewall/platform-write.js. These just
+  // move bytes. Rule body shape: {type, action, source?, dest?, proto?, dport?,
+  // enable, comment}. Options body e.g. {enable}.
+  async setClusterFirewallOptions(opts) { return this._request('PUT', '/api2/json/cluster/firewall/options', opts); }
+  async createClusterFirewallRule(rule) { return this._request('POST', '/api2/json/cluster/firewall/rules', rule); }
+  async deleteClusterFirewallRule(pos) { return this._request('DELETE', `/api2/json/cluster/firewall/rules/${encodeURIComponent(pos)}`); }
+  async setNodeFirewallOptions(node, opts) { return this._request('PUT', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/options`, opts); }
+  async createNodeFirewallRule(node, rule) { return this._request('POST', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/rules`, rule); }
+  async deleteNodeFirewallRule(node, pos) { return this._request('DELETE', `/api2/json/nodes/${encodeURIComponent(node)}/firewall/rules/${encodeURIComponent(pos)}`); }
+
   /** List all VMs across the cluster (via /cluster/resources?type=vm). */
   async listVMs() {
     return (await this._request('GET', '/api2/json/cluster/resources?type=vm')) || [];

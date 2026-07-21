@@ -333,7 +333,7 @@ const Api = {
   fwBlockIp(hostId, spec)     { return this.post(`/firewall/${hostId}/block-ip`, spec); },
   fwOpenPort(hostId, spec)    { return this.post(`/firewall/${hostId}/open-port`, spec); },
   fwClosePort(hostId, spec)   { return this.post(`/firewall/${hostId}/close-port`, spec); },
-  fwRemoveRule(hostId, uuid)  { return this.post(`/firewall/${hostId}/remove-rule`, { rule_uuid: uuid }); },
+  fwRemoveRule(hostId, uuid, extra) { return this.post(`/firewall/${hostId}/remove-rule`, { rule_uuid: uuid, ...(extra || {}) }); },
   fwExtendRule(hostId, uuid, minutes) { return this.post(`/firewall/${hostId}/extend-rule`, { rule_uuid: uuid, minutes }); },
   fwReconcile(hostId)         { return this.post(`/firewall/${hostId}/reconcile`, {}); },
   fwSnapshot(hostId, reason)  { return this.post(`/firewall/${hostId}/snapshot`, { reason }); },
@@ -342,6 +342,13 @@ const Api = {
   fwSetAgentConfig(hostId, d) { return this.post(`/firewall/${hostId}/agent-config`, d); },
   fwGetSudoConfig(hostId)     { return this.get(`/firewall/${hostId}/sudo-config`); },
   fwSetSudoConfig(hostId, d)  { return this.post(`/firewall/${hostId}/sudo-config`, d); },
+
+  // ─── Platform (hypervisor) firewall write — Phase A: Proxmox (v8.11) ───
+  // Commit-confirmed lifecycle: an apply/remove returns { changeId, revertAt,
+  // provisional } and auto-reverts unless confirmed within the deadline.
+  fwConfirmChange(hostId, changeId) { return this.post(`/firewall/${hostId}/confirm-change`, { changeId }); },
+  fwRevertChange(hostId, changeId)  { return this.post(`/firewall/${hostId}/revert-change`, { changeId }); },
+  fwPendingChanges(hostId)          { return this.get(`/firewall/${hostId}/pending-changes`); },
 
   // ─── Security Posture (v8.9.37) ───
   getPosture()                { return this.get('/posture'); },

@@ -161,11 +161,21 @@ async function snapshot(hostId, user, reason) {
 }
 
 async function applyRule(hostId, rawSpec, user, requesterIp) {
-  const spec = assertSafe(rawSpec);
-  const host = _resolveHost(hostId);
-  if (require('./platform').isPlatformHost(host.daemonType)) {
+  // Platform (hypervisor) hosts have their own firewall and a proxmox-shaped
+  // rule spec, so they dispatch BEFORE the iptables-shaped assertSafe. A cheap
+  // daemon_type peek keeps the non-platform path below byte-for-byte unchanged
+  // (assertSafe still runs first for Linux/Windows hosts).
+  const platform = require('./platform');
+  const dt = _db().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
+  if (dt && platform.isPlatformHost(dt.daemon_type)) {
+    const host = _resolveHost(hostId);
+    const pw = require('./platform-write');
+    if (pw.supportsWrite(host.daemonType)) return pw.applyPlatformRule(host, rawSpec, user, requesterIp);
     throw new Error(`${host.daemonType} firewall is read-only in docker-dash — manage it in its native tool (esxcli / pve-firewall / incus network acl).`);
   }
+
+  const spec = assertSafe(rawSpec);
+  const host = _resolveHost(hostId);
   const det = await _detect(host);
   const backendName = det.backend || (host.channel === 'agent' ? (await runner.agentRequest(host.agentCfg, '/detect', {})).backend : null);
   if (!backendName) throw new Error('No firewall backend detected on this host');
@@ -267,7 +277,21 @@ async function extendRule(hostId, uuid, minutes, user) {
   return { ok: true, rule_uuid: uuid };
 }
 
-async function removeRule(hostId, uuid, user) {
+async function removeRule(hostId, uuid, user, opts = {}) {
+  // Platform (hypervisor) hosts have no firewall_rules rows — dispatch removal
+  // (by position/scope) to the platform-write pipeline. Non-platform path below
+  // is unchanged.
+  const platform = require('./platform');
+  const dt = _db().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
+  if (dt && platform.isPlatformHost(dt.daemon_type)) {
+    const host = _resolveHost(hostId);
+    const pw = require('./platform-write');
+    if (pw.supportsWrite(host.daemonType)) {
+      return pw.removePlatformRule(host, { pos: opts.pos, scope: opts.scope, node: opts.node }, user, opts.requesterIp);
+    }
+    throw new Error(`${host.daemonType} firewall is read-only in docker-dash — manage it in its native tool (esxcli / pve-firewall / incus network acl).`);
+  }
+
   const row = _db().prepare('SELECT * FROM firewall_rules WHERE host_id = ? AND rule_uuid = ? AND is_active = 1').get(hostId, uuid);
   if (!row) throw new Error('Rule not found (or already removed)');
   if (user && user.role && user.role !== 'admin' && row.created_by !== user.username) {

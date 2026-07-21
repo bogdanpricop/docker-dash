@@ -52,7 +52,10 @@ async function _esxi(row) {
 }
 
 // ─── Proxmox (pve-firewall via API) ──────────────────────────
-function _pxRuleItem(r) {
+// scopeInfo carries the write-target coordinates (scope 'cluster'|'node', node
+// name, and the rule's position) so the Firewall page can remove a specific rule
+// via the platform-write pipeline. Read-only clients simply ignore these fields.
+function _pxRuleItem(r, scopeInfo = {}) {
   const dir = (r.type || '').toUpperCase();
   const act = r.action || r.macro || '';
   const proto = r.proto ? ` ${r.proto}` : '';
@@ -61,6 +64,10 @@ function _pxRuleItem(r) {
     name: `${dir} ${act}${proto}${dport}`.trim(),
     enabled: r.enable === undefined ? true : Number(r.enable) !== 0,
     detail: `${r.source || 'any'} → ${r.dest || 'any'}${r.comment ? ` · ${r.comment}` : ''}`,
+    pos: r.pos != null ? Number(r.pos) : null,
+    scope: scopeInfo.scope || null,
+    node: scopeInfo.node || null,
+    removable: scopeInfo.scope != null && r.pos != null,
   };
 }
 
@@ -77,11 +84,15 @@ async function _proxmox(row) {
       node ? client.getNodeFirewallRules(node).catch(() => []) : Promise.resolve([]),
     ]);
     const groups = [
-      { title: 'Cluster rules', items: (crules || []).map(_pxRuleItem) },
-      { title: `Node ${node || '?'} rules`, items: (nrules || []).map(_pxRuleItem) },
+      { title: 'Cluster rules', scope: 'cluster', items: (crules || []).map(r => _pxRuleItem(r, { scope: 'cluster' })) },
+      { title: `Node ${node || '?'} rules`, scope: node ? 'node' : null, node: node || null, items: (nrules || []).map(r => _pxRuleItem(r, { scope: node ? 'node' : null, node: node || null })) },
     ];
     const clusterOn = copts && (copts.enable === undefined ? null : Number(copts.enable) !== 0);
-    return { ...base, available: true, summary: `Cluster firewall ${clusterOn === null ? 'unknown' : clusterOn ? 'enabled' : 'disabled'} · ${(crules || []).length} cluster + ${(nrules || []).length} node rule(s)`, groups, raw: JSON.stringify({ clusterOptions: copts, nodeOptions: nopts }, null, 2) };
+    // Write capability flag so the Firewall page can surface add/remove controls
+    // for Proxmox (Phase A) while keeping ESXi/Incus read-only.
+    let writesSupported = false;
+    try { writesSupported = require('./platform-write').supportsWrite('proxmox'); } catch { /* ignore */ }
+    return { ...base, available: true, writesSupported, node: node || null, summary: `Cluster firewall ${clusterOn === null ? 'unknown' : clusterOn ? 'enabled' : 'disabled'} · ${(crules || []).length} cluster + ${(nrules || []).length} node rule(s)`, groups, raw: JSON.stringify({ clusterOptions: copts, nodeOptions: nopts }, null, 2) };
   } catch (err) {
     return { ...base, available: false, summary: `Could not read Proxmox firewall: ${err.message}` };
   }
