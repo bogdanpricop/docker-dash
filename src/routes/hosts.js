@@ -9,6 +9,7 @@ const { getDb } = require('../db');
 const log = require('../utils/logger')('hosts');
 const { encryptSshConfig, decryptSshConfig } = require('../services/host-config-crypto');
 const asyncHandler = require('../utils/asyncHandler');
+const connectionHealth = require('../services/connection-health');
 
 // Validate docker socket path — must be an absolute path with safe characters only
 const SOCKET_RE = /^\/[a-zA-Z0-9_./-]+$/;
@@ -36,6 +37,14 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
       createdAt: h.created_at,
       healthy: status.healthy,
       lastCheck: status.lastCheck,
+      // v8.10.x — Connection Health circuit breaker: surface which host +
+      // why, straight from the persisted conn_* columns (no secrets here).
+      connState: h.conn_state || 'unknown',
+      connPaused: !!h.conn_paused,
+      connPausedReason: h.conn_paused_reason || null,
+      connLastError: h.conn_last_error || null,
+      connLastErrorAt: h.conn_last_error_at || null,
+      connReachable: h.conn_reachable === null || h.conn_reachable === undefined ? null : !!h.conn_reachable,
       // Don't expose secrets
       // v8.9.0-alpha.3 — expose daemon_type so the frontend can render
       // per-daemon badges on host cards and gate nav items based on
@@ -99,6 +108,13 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
     healthy: status.healthy,
     hasTls: !!(host.tls_config && host.tls_config !== '{}'),
     hasSsh: !!(host.ssh_config && host.ssh_config !== '{}'),
+    // v8.10.x — Connection Health circuit breaker fields (see GET / above).
+    connState: host.conn_state || 'unknown',
+    connPaused: !!host.conn_paused,
+    connPausedReason: host.conn_paused_reason || null,
+    connLastError: host.conn_last_error || null,
+    connLastErrorAt: host.conn_last_error_at || null,
+    connReachable: host.conn_reachable === null || host.conn_reachable === undefined ? null : !!host.conn_reachable,
   };
 
   // Include SSH config (without password/key) for editing
@@ -427,6 +443,12 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
       try {
         const sshTunnelService = require('../services/ssh-tunnel');
         sshTunnelService.closeTunnel(hostId);
+        // v8.10.x — Connection Health circuit breaker: saving new
+        // credentials is the admin's signal that the problem is fixed.
+        // Clear any open circuit BEFORE recreating the tunnel so the fresh
+        // attempt isn't short-circuited by _ensureTunnel/_scheduleReconnect
+        // still seeing this host as paused.
+        connectionHealth.resume(hostId, { username: req.user.username });
         const hostConfig = dockerService._getHostConfig(hostId);
         await sshTunnelService.createTunnel(hostConfig);
       } catch (err) {
@@ -651,6 +673,42 @@ router.post('/:id/test', requireAuth, asyncHandler(async (req, res) => {
   const hostConfig = dockerService._getHostConfig(hostId);
   const result = await dockerService.testConnection(hostConfig);
   res.json(result);
+}));
+
+// v8.10.x — POST /hosts/:id/reconnect — manual "Retry" for a paused/failing
+// host. Clears the Connection Health circuit breaker (if open) and forces a
+// fresh tunnel attempt, without requiring a credential change first (e.g.
+// the credentials were fine all along and the remote host is back up).
+router.post('/:id/reconnect', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+  const hostId = parseInt(req.params.id);
+  const db = getDb();
+  const host = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!host) return res.status(404).json({ error: 'Host not found' });
+
+  connectionHealth.resume(hostId, { username: req.user.username });
+
+  // Best-effort: force a fresh connection attempt. Failures here are
+  // expected if the host is still genuinely down — the circuit stays
+  // closed (resumed) so ssh-tunnel.js's normal backoff picks it back up.
+  try {
+    const sshTunnelService = require('../services/ssh-tunnel');
+    sshTunnelService.closeTunnel(hostId);
+    dockerService.dropConnection(hostId);
+    if (host.connection_type === 'ssh') {
+      const hostConfig = dockerService._getHostConfig(hostId);
+      await sshTunnelService.createTunnel(hostConfig);
+    }
+  } catch (err) {
+    log.warn(`Manual reconnect attempt failed for host ${hostId}: ${err.message}`);
+  }
+
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'host_conn_reconnect', targetType: 'host', targetId: String(hostId),
+    details: { name: host.name }, ip: getClientIp(req),
+  });
+
+  res.json({ ok: true, health: connectionHealth.getHealth(hostId) });
 }));
 
 // POST /hosts/:id/drain — put host in maintenance mode

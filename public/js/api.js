@@ -858,6 +858,9 @@ const Api = {
   deleteHost(id) { return this.delete(`/hosts/${id}`); },
   testHostConnection(data) { return this.post('/hosts/test', data); },
   testHost(id) { return this.post(`/hosts/${id}/test`); },
+  // v8.10.x — Connection Health circuit breaker: manual "Retry" for a
+  // paused/failing host (clears the circuit + forces a fresh attempt).
+  reconnectHost(id) { return this.post(`/hosts/${id}/reconnect`); },
   getHostInfo(id) { return this.get(`/hosts/${id}/info`); },
   setDefaultHost(id) { return this.post(`/hosts/${id}/default`); },
   drainHost(id) { return this.post(`/hosts/${id}/drain`); },

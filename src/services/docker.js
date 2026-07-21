@@ -144,6 +144,16 @@ class DockerService {
 
   /** Ensure SSH tunnel is created (async, non-blocking) */
   _ensureTunnel(hostConfig) {
+    // v8.10.x — Connection Health circuit breaker. If this host's circuit is
+    // open (a confirmed-reachable auth/host-key rejection at/above
+    // threshold), fail fast instead of launching another doomed tunnel
+    // attempt. On-demand callers (e.g. sandbox-ttl-sweep) already catch +
+    // warn + continue on this kind of error, so this keeps them fast and
+    // quiet instead of hanging on a fresh 20s connect timeout every cycle.
+    if (require('./connection-health').isPaused(hostConfig.id)) {
+      throw new Error('Host connection paused — credentials need updating.');
+    }
+
     // Don't try multiple times in parallel
     if (this._pendingTunnels?.has(hostConfig.id)) return;
     if (!this._pendingTunnels) this._pendingTunnels = new Set();
@@ -239,6 +249,11 @@ class DockerService {
   async _checkAllHosts() {
     const hosts = this.getActiveHosts();
     for (const host of hosts) {
+      // v8.10.x — Connection Health circuit breaker. A paused host's
+      // circuit is open on purpose (credentials need updating); pinging it
+      // every 60s would just fail predictably and add noise. Skip it here —
+      // the connection-health service already has fresher state for it.
+      if (require('./connection-health').isPaused(host.id)) continue;
       try {
         const docker = this.getDocker(host.id);
         await Promise.race([

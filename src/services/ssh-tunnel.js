@@ -56,6 +56,10 @@ class SshTunnelService {
       // Wait for SSH to be ready, THEN start local server
       sshClient.on('ready', () => {
         log.info(`SSH connected to ${sshConfig.host}:${sshConfig.port || 22} for host ${id}`);
+        // v8.10.x — Connection Health circuit breaker: a successful connect
+        // clears any failure counter / pause for this host. Best-effort —
+        // must never block a successful connection.
+        try { require('./connection-health').recordSuccess(id); } catch { /* best-effort */ }
 
         // Create local TCP server that forwards each connection through SSH to Docker socket
         // Try 3 methods in order: openssh streamlocal, socat, raw shell redirect
@@ -89,8 +93,15 @@ class SshTunnelService {
         });
       });
 
-      sshClient.on('error', (err) => {
+      sshClient.on('error', async (err) => {
         log.error(`SSH error for host ${id}`, err.message);
+        // v8.10.x — Connection Health circuit breaker. Classify + persist
+        // this failure BEFORE deciding whether to reconnect, so that if
+        // this failure trips the auth-failure threshold, the
+        // _scheduleReconnect() call below (or the retry loop's own
+        // _scheduleReconnect, reached via the rejected promise) sees the
+        // pause immediately instead of scheduling one more doomed attempt.
+        try { await require('./connection-health').recordFailure(id, err.message); } catch { /* never block reconnect logic on this */ }
         if (!resolved) { resolved = true; reject(err); }
         else { this._scheduleReconnect(hostConfig); }
       });
@@ -101,11 +112,16 @@ class SshTunnelService {
       });
 
       // Timeout for connection
-      const timeout = setTimeout(() => {
+      const timeout = setTimeout(async () => {
         if (!resolved) {
           resolved = true;
           try { sshClient.end(); } catch {}
-          reject(new Error(`SSH connection timeout to ${sshConfig.host}:${sshConfig.port || 22}`));
+          const timeoutErr = new Error(`SSH connection timeout to ${sshConfig.host}:${sshConfig.port || 22}`);
+          // v8.10.x — Connection Health circuit breaker: a connect timeout
+          // classifies as 'timeout' (transient), so this never pauses —
+          // it just gets counted/persisted like any other failure kind.
+          try { await require('./connection-health').recordFailure(id, timeoutErr.message); } catch { /* never block on this */ }
+          reject(timeoutErr);
         }
       }, 20000);
 
@@ -207,6 +223,20 @@ class SshTunnelService {
   }
 
   _scheduleReconnect(hostConfig) {
+    // v8.10.x — Connection Health circuit breaker. If recordFailure has
+    // opened the circuit for this host (a confirmed-reachable auth/host-key
+    // rejection at/above DD_CONN_FAIL_THRESHOLD), stop scheduling further
+    // reconnect attempts entirely — this is what stops the infinite
+    // "SSH error ... All configured authentication methods failed" spam.
+    // Transient failures (refused/timeout/unreachable) never set this flag,
+    // so their existing infinite backoff is completely unaffected.
+    try {
+      if (require('./connection-health').isPaused(hostConfig.id)) {
+        log.info(`SSH reconnect paused for host ${hostConfig.id} (circuit open — credentials need updating)`);
+        return;
+      }
+    } catch { /* best-effort — never block reconnect scheduling on this check */ }
+
     const tunnel = this._tunnels.get(hostConfig.id);
     if (!tunnel) return;
     if (tunnel.reconnectTimer) return; // Already scheduled

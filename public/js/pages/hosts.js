@@ -84,9 +84,16 @@ const HostsPage = {
       const isOnline = h.healthy === true;
       const isOffline = h.healthy === false;
       const isPending = h.healthy === null;
-      const statusClass = isOnline ? 'online' : isOffline ? 'offline' : 'pending';
-      const statusText = isOnline ? i18n.t('pages.hosts.online') : isOffline ? i18n.t('pages.hosts.offline') : i18n.t('pages.hosts.checking');
-      const statusIcon = isOnline ? 'fa-check-circle' : isOffline ? 'fa-times-circle' : 'fa-spinner fa-spin';
+      // v8.10.x — Connection Health circuit breaker. A paused host gets its
+      // own "needs credentials" state — distinct from the transient
+      // online/offline/pending states, since the whole point is that this
+      // one won't fix itself with a retry loop; a human has to act.
+      const isConnPaused = !!h.connPaused;
+      const isConnFailing = !isConnPaused && (h.connState === 'unreachable' || h.connState === 'auth_failed' || h.connState === 'error');
+      const statusClass = isConnPaused ? 'needs-attention' : (isOnline ? 'online' : isOffline ? 'offline' : 'pending');
+      const statusText = isConnPaused ? i18n.t('pages.hosts.needsCredentials') : (isOnline ? i18n.t('pages.hosts.online') : isOffline ? i18n.t('pages.hosts.offline') : i18n.t('pages.hosts.checking'));
+      const statusIcon = isConnPaused ? 'fa-key' : (isOnline ? 'fa-check-circle' : isOffline ? 'fa-times-circle' : 'fa-spinner fa-spin');
+      const connReasonText = h.connPausedReason || h.connLastError || '';
       // v8.9.11-alpha.6 — non-Docker hosts show their daemon endpoint
       // instead of the (missing) Docker host/port.
       const isNonDocker = h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman';
@@ -122,6 +129,7 @@ const HostsPage = {
             <div class="host-conn"><i class="fas ${connIcon}"></i> ${Utils.escapeHtml(connLabel)}</div>
             ${h.lastSeenAt ? `<div class="host-seen text-sm text-muted">${i18n.t('pages.hosts.lastSeen')}: ${Utils.timeAgo(h.lastSeenAt)}</div>` : ''}
             ${h.hasTls ? '<div class="text-sm" style="color:var(--green)"><i class="fas fa-lock"></i> TLS</div>' : ''}
+            ${(isConnPaused || isConnFailing) && connReasonText ? `<div class="host-conn-reason text-sm"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(connReasonText)}${h.connLastErrorAt ? ` · ${Utils.timeAgo(h.connLastErrorAt)}` : ''}</div>` : ''}
           </div>
           <div class="host-card-actions">
             <button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i> ${i18n.t('pages.hosts.switchTo')}</button>
@@ -130,6 +138,9 @@ const HostsPage = {
             ${!h.isDefault ? `<button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>
             <button class="btn btn-xs btn-danger host-delete" data-id="${h.id}" title="${i18n.t('common.remove')}"><i class="fas fa-trash"></i></button>` : `
             <button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button>`}
+            ${(isConnPaused || isConnFailing) ? `
+            <button class="btn btn-xs btn-warning host-update-creds" data-id="${h.id}" title="${i18n.t('pages.hosts.updateCredentials')}"><i class="fas fa-key"></i> ${i18n.t('pages.hosts.updateCredentials')}</button>
+            <button class="btn btn-xs btn-secondary host-retry" data-id="${h.id}" title="${i18n.t('common.retry')}"><i class="fas fa-redo"></i> ${i18n.t('common.retry')}</button>` : ''}
           </div>
         </div>
       `;
@@ -246,6 +257,38 @@ const HostsPage = {
           if (Api.getHostId() === hostId) Api.setHost(0);
           await this._load();
         } catch (err) { Toast.error(err.message); }
+      });
+    });
+
+    // v8.10.x — Connection Health circuit breaker actions.
+    grid.querySelectorAll('.host-update-creds').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const hostId = parseInt(e.currentTarget.dataset.id);
+        try {
+          const host = await Api.getHost(hostId);
+          this._editHostDialog(host);
+        } catch (err) {
+          Toast.error(err.message);
+        }
+      });
+    });
+
+    grid.querySelectorAll('.host-retry').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const btn2 = e.currentTarget;
+        const hostId = parseInt(btn2.dataset.id);
+        btn2.disabled = true;
+        const originalHtml = btn2.innerHTML;
+        btn2.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+          await Api.reconnectHost(hostId);
+          Toast.success(i18n.t('pages.hosts.reconnected'));
+          await this._load();
+        } catch (err) {
+          Toast.error(err.message || i18n.t('pages.hosts.reconnectFailed'));
+          btn2.disabled = false;
+          btn2.innerHTML = originalHtml;
+        }
       });
     });
   },

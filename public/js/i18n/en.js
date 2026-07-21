@@ -385,6 +385,11 @@ i18n.register('en', 'EN', 'English', {
       created: 'Host added', updated: 'Host updated', deleted: 'Host removed',
       deleteConfirm: 'Remove host "{{name}}"? This cannot be undone.',
       switched: 'Switched to {{name}}', lastSeen: 'Last seen',
+      // v8.10.x — Connection Health circuit breaker
+      needsCredentials: 'Needs credentials',
+      updateCredentials: 'Update credentials',
+      reconnected: 'Reconnect attempted',
+      reconnectFailed: 'Reconnect failed',
       // Guide
       guideTitle: 'How to Connect Docker Hosts',
       recommended: 'Recommended',

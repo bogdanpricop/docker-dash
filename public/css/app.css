@@ -944,6 +944,12 @@ select.form-control:focus { border-color: var(--accent); outline: none; box-shad
 .host-card.online .host-status { color: var(--green); }
 .host-card.offline .host-status { color: var(--red); }
 .host-card.pending .host-status { color: var(--yellow); }
+/* v8.10.x — Connection Health circuit breaker: paused (auth-failing but
+   reachable) hosts get their own amber state, distinct from the transient
+   "offline"/"pending" states — the point is that this one needs a human. */
+.host-card.needs-attention { border-color: var(--yellow); }
+.host-card.needs-attention .host-status { color: var(--yellow); }
+.host-conn-reason { margin-top: 4px; color: var(--yellow); }
 .host-name { margin: 0 0 6px; font-size: 16px; }
 .host-conn { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
 .host-seen { margin-bottom: 4px; }
