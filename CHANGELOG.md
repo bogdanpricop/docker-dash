@@ -2,6 +2,46 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.12.0] - 2026-07-22 — Proxmox firewall WRITE (Phase A) + docker_events bloat fix
+
+### Hypervisor firewall write — Phase A: Proxmox
+
+The Firewall page can now **mutate** a Proxmox host's firewall (was read-only status).
+This is Phase A of hypervisor firewall write (deep-spec in `plans/`); ESXi and Incus
+follow in their own phases and stay read-only until then. Writing a firewall rule on a
+hypervisor can lock you out of the host itself, so every mutation runs a safety pipeline
+**stricter than the Linux one**:
+
+- **Validate** against a Proxmox rule schema (type/action/source/dest/proto/dport,
+  reusing the existing validators; unconstrained rules refused).
+- **Extended lockout guard** — refuses enabling the firewall unless an ACCEPT rule
+  protects **SSH (22)** and **PVE web (8006)** for *your* IP; refuses an unscoped
+  `DROP`/`REJECT` of a management port (an explicit `0.0.0.0/0` // `::/0` source counts
+  as unscoped — hardened in review); refuses blocking your own IP; refuses removing the
+  only ACCEPT that protects your management access while the firewall is enabled.
+- **Snapshot before mutate** (fail-closed — no change without a rollback source).
+- **Commit-confirmed auto-revert** — every change applies **provisionally** and
+  auto-reverts after `DD_PLATFORM_CONFIRM_MINUTES` (default 5) unless you confirm it.
+  If a rule locks you out you can't confirm → it rolls back → access restored. A live
+  countdown banner offers **Confirm / Revert now**.
+- **Audited** end to end (`firewall_platform_apply/remove/confirm/revert/auto_revert`).
+
+New: `ProxmoxClient` firewall write methods, migration `087` (`platform_firewall_changes`),
+`src/services/firewall/platform-write.js`, `POST /:hostId/confirm-change` +
+`/revert-change` + `GET /:hostId/pending-changes`, write controls in the platform
+firewall UI (admin-only, gated on a `writesSupported` capability flag).
+
+### Fixed — docker_events database bloat (healthcheck exec noise)
+
+On busy hosts, `docker_events` grew to tens of GB (observed: a 31 GB DB, ~26 GB of it this
+one table, 19.4M rows in ~4 days). Root cause: every container **healthcheck** emits three
+`exec_create`/`exec_start`/`exec_die` events every few seconds, and all of them were being
+persisted — >95% of rows were healthcheck noise with no diagnostic value, and 3-day
+retention couldn't keep up with the volume. docker-dash now **skips persisting `exec_*`
+events** (they're still broadcast live to the UI and fed to the crash/OOM/health notifier —
+only the DB write is skipped). Opt back in with `DD_STORE_EXEC_EVENTS=true`. This stops the
+growth; a one-time reclaim (delete existing exec rows + `VACUUM`) recovers the space.
+
 ## [8.11.0] - 2026-07-21 — Connection Health & Circuit Breaker for managed hosts
 
 When a managed host's SSH credentials changed (password rotated, key replaced),

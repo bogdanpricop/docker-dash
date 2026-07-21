@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.12.0',
+      date: '2026-07-22',
+      title: 'Proxmox firewall write (with lockout safety) + Docker events bloat fix',
+      changes: [
+        { type: 'feature', text: 'The Firewall page can now change a Proxmox host’s firewall, not just view it (Phase A of hypervisor firewall write; ESXi and Incus come next). Because a bad rule on a hypervisor can lock you out of the host itself, every change runs a strict safety pipeline: it refuses to enable the firewall unless an ACCEPT rule protects SSH (22) and the PVE web UI (8006) for your IP, refuses to drop a management port for everyone, and refuses to block your own IP.' },
+        { type: 'feature', text: 'Commit-confirmed changes: every Proxmox firewall change applies provisionally and auto-reverts after 5 minutes unless you confirm it — so if a rule locks you out, you simply can’t confirm and it rolls itself back. A live countdown banner offers Confirm / Revert now, and the pre-change state is always snapshotted. Everything is admin-only and fully audited.' },
+        { type: 'fix', text: 'Fixed a database-bloat problem where docker_events could grow to tens of GB (a real host hit 31 GB, ~26 GB in this one table). The cause: container healthchecks fire three exec events every few seconds, and all of them were being stored — over 95% of rows were healthcheck noise. docker-dash now skips persisting these exec_* events (they’re still shown live and still trigger crash/health notifications). Set DD_STORE_EXEC_EVENTS=true to keep storing them.' },
+      ],
+    },
+    {
       version: '8.11.0',
       date: '2026-07-21',
       title: 'Connection Health & Circuit Breaker — hosts that need new credentials',
