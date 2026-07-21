@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.11.0',
+      date: '2026-07-21',
+      title: 'Connection Health & Circuit Breaker — hosts that need new credentials',
+      changes: [
+        { type: 'feature', text: 'When a managed host’s SSH credentials change (password rotated, key replaced), docker-dash no longer retries forever and floods the log. After 4 consecutive auth failures on a host that a TCP probe confirms is still reachable, it opens a circuit breaker: auto-reconnect stops and the Hosts page shows an amber “Needs credentials” badge with the exact reason and when it started — so you see which host has a problem and what it is.' },
+        { type: 'feature', text: 'Fix it in one place: click “Update credentials” to edit the host, or “Retry” to force a fresh attempt. Saving new credentials clears the circuit automatically, and a successful reconnect is auto-detected as recovered (with a notification). A single warning notification fires when a host is paused — not one per failed attempt.' },
+        { type: 'improvement', text: 'Transient failures are never paused: a host that’s simply down, refused, or briefly unreachable keeps the existing infinite backoff and recovers on its own. Only a reachable-but-rejected auth failure (a real credential problem) trips the breaker. Every hook into the connection path is additive and guarded — a healthy host behaves exactly as before. Threshold tunable via DD_CONN_FAIL_THRESHOLD.' },
+      ],
+    },
+    {
       version: '8.10.0',
       date: '2026-07-14',
       title: 'Security Posture + Reconciler + Ops Copilot — graduated to stable',

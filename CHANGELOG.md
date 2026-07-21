@@ -2,6 +2,39 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.11.0] - 2026-07-21 — Connection Health & Circuit Breaker for managed hosts
+
+When a managed host's SSH credentials changed (password rotated, key replaced),
+docker-dash used to retry forever on exponential backoff — flooding the log with
+`SSH error … All configured authentication methods failed` every cycle and stalling
+on-demand callers like `sandbox-ttl-sweep` on a fresh 20s connect timeout each time.
+
+Now each host has a **connection-health circuit breaker**:
+
+- After **4 consecutive auth/host-key failures** on a host **confirmed reachable by a
+  raw TCP probe**, the circuit opens: auto-reconnect stops, the host is marked
+  `auth_failed` / paused, and a **"Needs credentials"** amber badge + the failure
+  reason + timestamp surface on the Hosts page — so you see *which* host and *why*.
+- **Transient failures are never paused.** Refused / timeout / unreachable keep the
+  existing infinite backoff untouched — a host that's merely down or briefly
+  unreachable still recovers on its own. Only a *reachable-but-rejected* auth failure
+  (a real credential problem needing a human) trips the breaker.
+- **Resume paths:** updating the host's credentials (`PUT /hosts/:id`) clears the
+  circuit automatically; a one-click **Retry** (`POST /hosts/:id/reconnect`, admin +
+  audited) forces a fresh attempt. A successful reconnect auto-detects recovery
+  (audit `host_conn_recovered` + notification).
+- A warning notification + audit (`host_conn_paused`) fire **once** on the transition
+  to paused — not on every failure.
+
+Every hook into the core connection path (`ssh-tunnel.js`, `docker.js`) is additive
+and `try/catch`-wrapped: a healthy host's connect path is behaviourally unchanged, and
+a bug in the breaker can never break connectivity. Migration `086` adds
+`conn_state / conn_failures / conn_last_error(_at) / conn_reachable / conn_paused
+(_reason/_at)` to `docker_hosts`. New service `src/services/connection-health.js`
+(classify → probe → record → pause/resume). Threshold overridable via
+`DD_CONN_FAIL_THRESHOLD`. 37 new tests; suite at **1893 passing across 120 suites**.
+Zero new npm deps.
+
 ## [8.10.0] - 2026-07-14 — **PLATFORM**: Security Posture + Reconciler + Ops Copilot, graduated to stable
 
 Graduates the `8.9.22`–`8.9.45` alpha line to a stable minor. This is the release
