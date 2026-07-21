@@ -394,16 +394,24 @@ class WsServer {
             hostName,
           };
 
-          // Store in DB
-          dockerEvents.store({
-            eventType: data.type,
-            action: data.action,
-            actorId: data.actorId,
-            actorName: data.actorName,
-            attributes: data.attributes,
-            eventTime: new Date(event.time * 1000).toISOString(),
-            hostId,
-          });
+          // Store in DB — but skip the high-frequency `exec_*` noise
+          // (exec_create / exec_start / exec_die). Container healthchecks emit
+          // 3 of these every few seconds per container; persisting them bloats
+          // docker_events (>95% of rows on busy hosts) with no diagnostic value.
+          // They're still broadcast live + fed to the notifier below; we only
+          // skip PERSISTING them. Opt back in with DD_STORE_EXEC_EVENTS=true.
+          const isExecNoise = data.type === 'container' && /^exec_/.test(String(data.action || ''));
+          if (config.retention.storeExecEvents || !isExecNoise) {
+            dockerEvents.store({
+              eventType: data.type,
+              action: data.action,
+              actorId: data.actorId,
+              actorName: data.actorName,
+              attributes: data.attributes,
+              eventTime: new Date(event.time * 1000).toISOString(),
+              hostId,
+            });
+          }
 
           // Broadcast to WebSocket clients
           this.broadcastAll('event', data);

@@ -126,6 +126,18 @@ describe('lockoutCheckProxmox', () => {
     })).toThrow(/for everyone/);
   });
 
+  test('treats an explicit 0.0.0.0/0 source as unscoped — refuses DROP of SSH', () => {
+    expect(() => pw.lockoutCheckProxmox({
+      rule: { type: 'in', action: 'DROP', dport: '22', source: '0.0.0.0/0' }, requesterIp: '1.2.3.4', currentRules: [],
+    })).toThrow(/for everyone/);
+  });
+
+  test('treats an explicit ::/0 source as unscoped — refuses DROP of PVE web', () => {
+    expect(() => pw.lockoutCheckProxmox({
+      rule: { type: 'in', action: 'DROP', dport: '8006', source: '::/0' }, requesterIp: '1.2.3.4', currentRules: [],
+    })).toThrow(/for everyone/);
+  });
+
   test('allows a safe scoped ACCEPT rule', () => {
     expect(() => pw.lockoutCheckProxmox({
       rule: { type: 'in', action: 'ACCEPT', dport: '22', source: '1.2.3.4' }, requesterIp: '1.2.3.4', currentRules: [],

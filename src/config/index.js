@@ -64,6 +64,12 @@ module.exports = {
   retention: {
     auditDays: int('AUDIT_RETENTION_DAYS', 365),
     eventDays: int('EVENT_RETENTION_DAYS', 7),
+    // Persist high-frequency Docker `exec_*` events (exec_create/start/die).
+    // Default OFF: container healthchecks fire 3 exec events every few seconds
+    // per container, which dominates docker_events (>95% on busy hosts) and
+    // bloats the DB. They're still broadcast live + fed to the notifier; we just
+    // don't store them. Set DD_STORE_EXEC_EVENTS=true to persist them anyway.
+    storeExecEvents: bool('DD_STORE_EXEC_EVENTS', false),
   },
   features: {
     exec: bool('ENABLE_EXEC', true),

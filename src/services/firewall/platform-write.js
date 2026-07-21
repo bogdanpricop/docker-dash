@@ -186,9 +186,13 @@ function lockoutCheckProxmox({ rule, enableFirewall, requesterIp, currentRules }
   }
 
   // (2) A DROP/REJECT inbound rule with NO scoped source that would match a
-  //     management port drops SSH/PVE for everyone — refuse it.
+  //     management port drops SSH/PVE for everyone — refuse it. An explicit
+  //     "everyone" source (0.0.0.0/0 or ::/0) counts as UNSCOPED here: a
+  //     `DROP in, source 0.0.0.0/0, dport 22` drops SSH for everyone just as
+  //     surely as one with no source at all.
   if (rule && (rule.action === 'DROP' || rule.action === 'REJECT')) {
-    const scoped = rule.source !== undefined && rule.source !== null && rule.source !== '';
+    const scoped = rule.source !== undefined && rule.source !== null && rule.source !== ''
+      && rule.source !== '0.0.0.0/0' && rule.source !== '::/0';
     if (String(rule.type || '').toLowerCase() === 'in' && !scoped && _dportCoversMgmt(rule.dport)) {
       throw new Error(`Refusing this ${rule.action} rule: it would drop SSH (22) / PVE web (8006) for everyone (no scoped source) — lockout guard. Restrict it by source IP if you really need this.`);
     }
