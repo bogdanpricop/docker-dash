@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.14.0',
+      date: '2026-07-22',
+      title: 'Incus/LXD firewall write (Phase C) — hypervisor firewall write complete',
+      changes: [
+        { type: 'feature', text: 'Incus/LXD network-ACL rules are now editable from the Firewall page — you can add and remove ingress/egress rules on an ACL. This is the final phase: docker-dash can now write firewall rules on all three hypervisors (Proxmox, ESXi, Incus), each through the same safety pipeline — validated, snapshotted, and applied provisionally with a 5-minute auto-revert unless you confirm.' },
+        { type: 'feature', text: 'Important Incus caveat, shown throughout: an ACL only filters traffic once it’s attached to a NIC or network, and docker-dash does not manage attachment — each ACL shows an attached/unattached badge and the reminder repeats in every dialog. Creating/deleting whole ACLs and attaching them stay manual in Incus. The full ACL (description, config, both rule directions) is preserved on every edit.' },
+      ],
+    },
+    {
       version: '8.13.0',
       date: '2026-07-22',
       title: 'ESXi / vSphere firewall write (Phase B) — with lockout safety',

@@ -2,6 +2,33 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.14.0] - 2026-07-22 — Hypervisor firewall WRITE — Phase C: Incus / LXD (series complete)
+
+Incus/LXD network-ACL rules are now **writable** from the Firewall page — the final phase of
+hypervisor firewall write. All three hypervisor backends (Proxmox, ESXi, Incus) now share one
+commit-confirmed safety pipeline.
+
+- **Operations:** add / remove an ingress or egress rule on an existing network ACL
+  (validated action/state/protocol/source/destination/ports). Creating or deleting whole
+  ACLs — and **attaching** ACLs to NICs/networks — stay out of scope (attachment is manual).
+- **Attachment caveat, surfaced everywhere:** an Incus ACL only filters traffic once it's
+  attached to a NIC or network, which docker-dash does not manage. Each ACL shows an
+  attached/unattached badge, and the warning is repeated in the add-rule + confirm dialogs.
+- **Commit-confirmed pipeline (shared with Proxmox/ESXi):** every change is validated,
+  snapshotted (fail-closed), and applied **provisionally** with an auto-revert deadline
+  (`DD_PLATFORM_CONFIRM_MINUTES`, default 5) unless confirmed. Revert declaratively restores
+  the affected direction from the pre-change snapshot. Lockout risk is inherently low here
+  (an unattached ACL can't sever access), so the guard is light: it only warns on an unscoped
+  inbound drop/reject to an ACL that's already in use.
+- Read-modify-PUT preserves the full ACL (`description`/`config`/both rule arrays) — no field
+  is clobbered. New `IncusClient` methods `getNetworkAcl`/`updateNetworkAcl`. Reuses migration
+  `087` (no new schema). 31 new tests (suite: **1978 passing / 123 suites**). Zero new npm deps.
+
+### Hypervisor firewall write — series complete
+Proxmox (8.12.0) → ESXi/vSphere (8.13.0) → Incus/LXD (8.14.0). Every mutation across all three
+runs the same guard → snapshot → provisional apply → commit-confirmed auto-revert flow, so a
+change that locks you out un-does itself.
+
 ## [8.13.0] - 2026-07-22 — Hypervisor firewall WRITE — Phase B: ESXi / vSphere
 
 ESXi/vSphere firewall is now **writable** from the Firewall page (was read-only status).
