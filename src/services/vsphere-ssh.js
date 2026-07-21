@@ -558,5 +558,9 @@ module.exports = {
     parseVersion, parseHostname, parsePlatform, parseCpu, parseMemory, parseSystem,
     parseVibs, parseNics, parseSensors, _sensorSeverity, parseFirewall, _splitIps,
     _validateSshConfig, _friendlySshError, _cmdError,
+    // SSH connect/exec plumbing shared with the (separate) write module. Exposed
+    // here so vsphere-ssh-write.js can reuse ONE connect/auth implementation
+    // without this read-only module ever gaining a mutation command of its own.
+    _connectSsh, _sshExec, _end,
   },
 };

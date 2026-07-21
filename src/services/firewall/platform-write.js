@@ -17,8 +17,14 @@
 //   5. Audit every confirm / revert / auto-revert (apply/remove are audited by
 //      the route layer, matching the existing firewall route pattern).
 //
-// ESXi / Incus writes stay read-only until their own phases (supportsWrite gates
-// them). Nothing here touches non-platform (Linux/Windows iptables) hosts.
+// v8.12 — Phase B adds ESXi (vSphere). ESXi is the HIGHEST lockout risk of the
+// three hypervisors: a bad `esxcli network firewall` change over SSH can lock
+// docker-dash out of the host. It rides the SAME commit-confirmed pipeline as
+// Proxmox (provisional → snapshot → confirm/revert/auto-revert), plus an
+// ESXi-specific lockout guard that protects the SSH management ruleset.
+//
+// Incus writes stay read-only until Phase C (supportsWrite gates them). Nothing
+// here touches non-platform (Linux/Windows iptables) hosts.
 
 const validate = require('./validate');
 const lockout = require('./lockout');
@@ -36,9 +42,9 @@ const RULE_ACTIONS = ['ACCEPT', 'DROP', 'REJECT'];
 const RULE_PROTOS = ['tcp', 'udp', 'icmp'];
 
 // ─── Capability gate ─────────────────────────────────────────
-// Only Proxmox is writable in this phase. ESXi/Incus return false so the
-// dispatcher keeps throwing the read-only error for them.
-function supportsWrite(daemonType) { return daemonType === 'proxmox'; }
+// Proxmox (Phase A) and vSphere/ESXi (Phase B) are writable. Incus/LXD return
+// false so the dispatcher keeps throwing the read-only error for them.
+function supportsWrite(daemonType) { return daemonType === 'proxmox' || daemonType === 'vsphere'; }
 
 // ─── Validation ──────────────────────────────────────────────
 // A Proxmox dport is a single port OR an "n:m" inclusive range.
@@ -229,6 +235,124 @@ function _lockoutCheckRemoval({ target, requesterIp, currentRules, currentOption
   }
 }
 
+// ═══ ESXi (vSphere) — Phase B ════════════════════════════════
+// ESXi's firewall is RULESET-based (named services like `sshServer`,
+// `vSphereClient`, each enabled/disabled with an allowed-IP list), NOT arbitrary
+// rules. The four supported operations map 1:1 to fixed esxcli templates in
+// vsphere-ssh-write.js.
+const ESXI_OPERATIONS = ['ruleset-set-enabled', 'allowedip-add', 'allowedip-remove', 'ruleset-set-allowedall'];
+const ESXI_RULESET_ID_RE = /^[A-Za-z0-9_.-]+$/;
+// The ruleset(s) that govern the SSH management access docker-dash rides. On
+// ESXi the inbound-SSH service is always the `sshServer` ruleset.
+const ESXI_MGMT_RULESET_NAMES = ['sshServer'];
+
+// Strict boolean coercion — accept only unambiguous boolean-ish inputs (a JSON
+// body may deliver true/false, "true"/"false", or 1/0). Anything else throws.
+function _strictBool(v, field) {
+  if (v === true || v === 'true' || v === 1 || v === '1') return true;
+  if (v === false || v === 'false' || v === 0 || v === '0') return false;
+  throw new Error(`Field "${field}" must be a boolean (true|false)`);
+}
+
+/**
+ * Validate + normalize an ESXi firewall change. Throws on the first problem.
+ * @param {object} rawSpec { operation, rulesetId|ruleset, ipAddress?|ip?, enabled?, allowedAll? }
+ * @param {string[]} [knownRulesets] the host's actual ruleset names — when
+ *        provided, an unknown ruleset is rejected (defence-in-depth).
+ * @returns {{operation, rulesetId, ipAddress?, enabled?, allowedAll?}}
+ */
+function validateEsxiChange(rawSpec, knownRulesets) {
+  if (!rawSpec || typeof rawSpec !== 'object') throw new Error('Missing ESXi change spec');
+  const operation = String(rawSpec.operation || '').trim();
+  if (!ESXI_OPERATIONS.includes(operation)) {
+    throw new Error(`Invalid ESXi operation "${rawSpec.operation}" (${ESXI_OPERATIONS.join('|')})`);
+  }
+  const rulesetId = String(rawSpec.rulesetId || rawSpec.ruleset || '').trim();
+  if (!ESXI_RULESET_ID_RE.test(rulesetId)) {
+    throw new Error(`Invalid ESXi ruleset id "${rawSpec.rulesetId || rawSpec.ruleset}" (letters, digits, _ . - only)`);
+  }
+  if (Array.isArray(knownRulesets) && knownRulesets.length &&
+      !knownRulesets.some(n => String(n).toLowerCase() === rulesetId.toLowerCase())) {
+    throw new Error(`Unknown ESXi ruleset "${rulesetId}" — it is not present on this host.`);
+  }
+
+  const out = { operation, rulesetId };
+  if (operation === 'allowedip-add' || operation === 'allowedip-remove') {
+    const ipAddress = String(rawSpec.ipAddress != null ? rawSpec.ipAddress : (rawSpec.ip || '')).trim();
+    if (!validate.validateCidrOrIp(ipAddress)) throw new Error(`Invalid IP/CIDR "${rawSpec.ipAddress || rawSpec.ip}"`);
+    out.ipAddress = ipAddress;
+  } else if (operation === 'ruleset-set-enabled') {
+    out.enabled = _strictBool(rawSpec.enabled, 'enabled');
+  } else if (operation === 'ruleset-set-allowedall') {
+    out.allowedAll = _strictBool(rawSpec.allowedAll, 'allowedAll');
+  }
+  return out;
+}
+
+// Allowed-all is signalled by the literal "All" marker in the allowed-IP list
+// (the read parser emits ['All']). An EMPTY list is treated as NOT allowed-all
+// (fail-safe): from the read view alone we can't distinguish "allowed-all with no
+// explicit entries" from "restricted with zero entries", so the guard assumes the
+// more dangerous of the two.
+function _esxiListIsAllowedAll(ips) {
+  return (ips || []).some(ip => /^all$/i.test(String(ip).trim()));
+}
+
+function _esxiRulesetByName(firewallView, name) {
+  const rs = (firewallView && firewallView.rulesets) || [];
+  return rs.find(r => String(r.name).toLowerCase() === String(name).toLowerCase()) || null;
+}
+
+function _isEsxiMgmtRuleset(rulesetId) {
+  return ESXI_MGMT_RULESET_NAMES.some(n => n.toLowerCase() === String(rulesetId).toLowerCase());
+}
+
+/**
+ * The ESXi lockout guard. Only changes to the SSH MANAGEMENT ruleset (the one
+ * docker-dash's own SSH connection rides — `sshServer`) can sever access, so the
+ * guard is a no-op for every other ruleset. For the management ruleset it refuses
+ * any change that would leave the requester's IP uncovered for SSH. FAIL-SAFE: if
+ * coverage cannot be positively verified, it REFUSES.
+ * @param {object} p
+ * @param {object} p.change        normalized change from validateEsxiChange
+ * @param {string} p.requesterIp   the admin's own IP
+ * @param {object} p.firewallView  { rulesets:[{name,enabled,allowedIps}] } pre-state
+ * @throws Error if the change could sever SSH management access
+ */
+function lockoutCheckEsxi({ change, requesterIp, firewallView } = {}) {
+  if (!change) return;
+  if (!_isEsxiMgmtRuleset(change.rulesetId)) return; // non-mgmt rulesets can't lock us out
+
+  const rs = _esxiRulesetByName(firewallView, change.rulesetId) || { name: change.rulesetId, allowedIps: [] };
+  const currentIps = rs.allowedIps || [];
+
+  // (A) Disabling the SSH ruleset closes inbound SSH → certain lockout.
+  if (change.operation === 'ruleset-set-enabled' && change.enabled === false) {
+    throw new Error(`Refusing to disable the "${change.rulesetId}" ruleset: it governs the SSH access docker-dash uses to reach this host — you would be locked out.`);
+  }
+
+  // (B) Removing an allowed IP from the mgmt ruleset that leaves the requester
+  //     uncovered → lockout. After removal the ruleset must be allowed-all OR
+  //     still contain a range covering the requester IP.
+  if (change.operation === 'allowedip-remove') {
+    const post = currentIps.filter(ip => String(ip).trim() !== String(change.ipAddress).trim());
+    const covered = _esxiListIsAllowedAll(post) || post.some(r => _sourceMatchesIp(r, requesterIp));
+    if (!covered) {
+      throw new Error(`Refusing to remove ${change.ipAddress} from the "${change.rulesetId}" ruleset: afterwards it would not cover your IP (${requesterIp || 'unknown'}) for SSH — you would be locked out.`);
+    }
+  }
+
+  // (C) Turning OFF allowed-all restricts the ruleset to its explicit allowed-IP
+  //     list; refuse if that list wouldn't cover the requester.
+  if (change.operation === 'ruleset-set-allowedall' && change.allowedAll === false) {
+    const explicit = currentIps.filter(ip => !/^all$/i.test(String(ip).trim()));
+    const covered = explicit.some(r => _sourceMatchesIp(r, requesterIp));
+    if (!covered) {
+      throw new Error(`Refusing to disable allowed-all on the "${change.rulesetId}" ruleset: its explicit allowed-IP list would not cover your IP (${requesterIp || 'unknown'}) — SSH would be restricted to a list that excludes you.`);
+    }
+  }
+}
+
 // ─── Helpers: scope, client, bodies, snapshot ────────────────
 function _normalizeScope(rawSpec) {
   const scope = (rawSpec && rawSpec.scope) || 'cluster';
@@ -323,11 +447,167 @@ function _audit(action, hostId, details, user) {
   } catch { /* audit is best-effort; never break the mutation on an audit failure */ }
 }
 
+// ─── ESXi apply / snapshot / revert helpers ──────────────────
+function _esxiHostRow(hostId) {
+  const row = _db().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!row) { const e = new Error(`Host ${hostId} not found`); e.status = 404; throw e; }
+  return row;
+}
+
+function _esxiSshConfig(row) {
+  let cfg;
+  try { cfg = require('../vsphere').decryptDaemonConfig(row.daemon_config) || {}; }
+  catch (e) { throw new Error(`Invalid ESXi daemon_config: ${e.message}`); }
+  const sshConfig = cfg.sshConfig;
+  if (!sshConfig || !sshConfig.host) {
+    throw new Error('SSH is not configured for this ESXi host — add SSH (host/user/key) on the Hosts page before writing firewall rules.');
+  }
+  return sshConfig;
+}
+
+function _execEsxiChange(sshConfig, change) {
+  const wr = require('../vsphere-ssh-write');
+  switch (change.operation) {
+    case 'ruleset-set-enabled':    return wr.setRulesetEnabled(sshConfig, change.rulesetId, change.enabled);
+    case 'ruleset-set-allowedall': return wr.setRulesetAllowedAll(sshConfig, change.rulesetId, change.allowedAll);
+    case 'allowedip-add':          return wr.addAllowedIp(sshConfig, change.rulesetId, change.ipAddress);
+    case 'allowedip-remove':       return wr.removeAllowedIp(sshConfig, change.rulesetId, change.ipAddress);
+    default: throw new Error(`Unsupported ESXi operation "${change.operation}"`);
+  }
+}
+
+// Snapshot the pre-mutation state: the getPlatformFirewall human view PLUS the
+// full firewall view AND the targeted ruleset's structured pre-state, which the
+// revert reads back to restore prior enabled / allowed-all / allowed-IP list.
+async function _snapshotPreEsxi(row, hostId, user, firewallView, change) {
+  let pfView = null;
+  try { pfView = await require('./platform').getPlatformFirewall(row); } catch { /* best-effort */ }
+  const targeted = _esxiRulesetByName(firewallView, change.rulesetId);
+  const preRuleset = targeted
+    ? { name: targeted.name, enabled: targeted.enabled, allowedIps: targeted.allowedIps || [], allowedAll: _esxiListIsAllowedAll(targeted.allowedIps) }
+    : { name: change.rulesetId, enabled: null, allowedIps: [], allowedAll: false };
+  const content = JSON.stringify({
+    platform: pfView,
+    esxi: { scope: change.rulesetId, operation: change.operation, firewall: firewallView, ruleset: preRuleset },
+  });
+  const info = _db().prepare(
+    'INSERT INTO firewall_snapshots (host_id, backend, snapshot_content, created_by, reason) VALUES (?,?,?,?,?)'
+  ).run(hostId, 'esxi', content, (user && user.username) || 'system', 'pre-platform-apply');
+  return info.lastInsertRowid;
+}
+
+function _esxiPriorRulesetFromSnapshot(changeRow) {
+  if (!changeRow.pre_snapshot_id) return null;
+  const snap = _db().prepare('SELECT snapshot_content FROM firewall_snapshots WHERE id = ?').get(changeRow.pre_snapshot_id);
+  if (!snap) return null;
+  const content = _parseJson(snap.snapshot_content);
+  return content && content.esxi ? content.esxi.ruleset : null;
+}
+
+// esxcli add/remove of an IP is not naturally idempotent (adding a present IP or
+// removing an absent one errors). During a best-effort revert we treat those
+// "already in the target state" errors as success.
+function _esxiAlreadyDone(err) {
+  return /already|exist|not\s*found|no such|not in|not present/i.test(String(err && err.message));
+}
+
+// The ESXi apply pipeline: read pre-state (FAIL-CLOSED — no read, no mutation),
+// validate, lockout-guard, snapshot, mutate, record a provisional change with the
+// commit-confirmed auto-revert deadline.
+async function _applyEsxi(host, rawSpec, user, requesterIp) {
+  const db = _db();
+  const row = _esxiHostRow(host.id);
+  const sshConfig = _esxiSshConfig(row);
+
+  // 1. Pre-state firewall view. If we cannot read it we MUST NOT mutate.
+  const firewallView = await require('../vsphere-ssh').getFirewall(sshConfig);
+  const knownRulesets = (firewallView.rulesets || []).map(r => r.name);
+
+  // 2. Validate (structural + reject an unknown ruleset).
+  const change = validateEsxiChange(rawSpec, knownRulesets);
+
+  // 3. Lockout guard (protects the SSH management ruleset for the requester).
+  lockoutCheckEsxi({ change, requesterIp, firewallView });
+
+  // 4. Snapshot BEFORE mutating (non-negotiable rollback source).
+  const snapshotId = await _snapshotPreEsxi(row, host.id, user, firewallView, change);
+  const specForDb = { operation: change.operation, rulesetId: change.rulesetId };
+  if (change.ipAddress !== undefined) specForDb.ipAddress = change.ipAddress;
+  if (change.enabled !== undefined) specForDb.enabled = change.enabled;
+  if (change.allowedAll !== undefined) specForDb.allowedAll = change.allowedAll;
+
+  // 5. Mutate. On failure record a 'failed' row so a host is never mutated
+  //    without a trace.
+  try {
+    await _execEsxiChange(sshConfig, change);
+  } catch (err) {
+    db.prepare(`INSERT INTO platform_firewall_changes
+      (host_id, platform, scope, operation, spec, pre_snapshot_id, state, applied_by, error)
+      VALUES (?,?,?,?,?,?,'failed',?,?)`).run(
+      host.id, 'esxi', change.rulesetId, change.operation, JSON.stringify(specForDb),
+      snapshotId, (user && user.username) || 'system', String(err.message).slice(0, 500));
+    throw err;
+  }
+
+  // 6. Provisional row with the commit-confirmed deadline.
+  const mins = _confirmMinutes();
+  const info = db.prepare(`INSERT INTO platform_firewall_changes
+    (host_id, platform, scope, operation, spec, pre_snapshot_id, state, applied_by, revert_at)
+    VALUES (?,?,?,?,?,?, 'provisional', ?, datetime('now', ?))`).run(
+    host.id, 'esxi', change.rulesetId, change.operation, JSON.stringify(specForDb),
+    snapshotId, (user && user.username) || 'system', `+${mins} minutes`);
+
+  const changeId = info.lastInsertRowid;
+  const rowNow = db.prepare('SELECT revert_at FROM platform_firewall_changes WHERE id = ?').get(changeId);
+  return { ok: true, changeId, revertAt: rowNow.revert_at, provisional: true, operation: change.operation, scope: change.rulesetId };
+}
+
+// Undo an ESXi change from its captured pre-state. Best-effort + idempotent.
+async function _revertEsxiChangeRow(row) {
+  const db = _db();
+  const spec = _parseJson(row.spec) || {};
+  const hostRow = _esxiHostRow(row.host_id);
+  const sshConfig = _esxiSshConfig(hostRow);
+  const wr = require('../vsphere-ssh-write');
+  const prior = _esxiPriorRulesetFromSnapshot(row);
+
+  if (row.operation === 'ruleset-set-enabled') {
+    // Restore prior enabled state (declarative set — idempotent).
+    if (prior && typeof prior.enabled === 'boolean') {
+      await wr.setRulesetEnabled(sshConfig, spec.rulesetId, prior.enabled);
+    }
+  } else if (row.operation === 'allowedip-add') {
+    // We added an IP → remove it.
+    try { await wr.removeAllowedIp(sshConfig, spec.rulesetId, spec.ipAddress); }
+    catch (e) { if (!_esxiAlreadyDone(e)) throw e; }
+  } else if (row.operation === 'allowedip-remove') {
+    // We removed an IP → add it back.
+    try { await wr.addAllowedIp(sshConfig, spec.rulesetId, spec.ipAddress); }
+    catch (e) { if (!_esxiAlreadyDone(e)) throw e; }
+  } else if (row.operation === 'ruleset-set-allowedall') {
+    // Restore prior allowed-all; if it was a custom (restricted) list, re-add the
+    // prior explicit IPs too.
+    if (prior) {
+      await wr.setRulesetAllowedAll(sshConfig, spec.rulesetId, !!prior.allowedAll);
+      if (!prior.allowedAll) {
+        const priorIps = (prior.allowedIps || []).filter(ip => !/^all$/i.test(String(ip).trim()));
+        for (const ip of priorIps) {
+          try { await wr.addAllowedIp(sshConfig, spec.rulesetId, ip); }
+          catch (e) { if (!_esxiAlreadyDone(e)) throw e; }
+        }
+      }
+    }
+  }
+
+  db.prepare("UPDATE platform_firewall_changes SET state='reverted', reverted_at=datetime('now'), revert_at=NULL WHERE id = ?").run(row.id);
+}
+
 // ─── Apply (add-rule / set-options), provisional ─────────────
 async function applyPlatformRule(host, rawSpec, user, requesterIp) {
   if (!supportsWrite(host.daemonType)) {
-    throw new Error(`${host.daemonType} firewall write is not supported in this phase (Proxmox only).`);
+    throw new Error(`${host.daemonType} firewall write is not supported yet.`);
   }
+  if (host.daemonType === 'vsphere') return _applyEsxi(host, rawSpec, user, requesterIp);
   const db = _db();
   const scope = _normalizeScope(rawSpec);
   const { row, client } = _client(host.id);
@@ -387,7 +667,12 @@ async function applyPlatformRule(host, rawSpec, user, requesterIp) {
 // ─── Remove (delete a rule by position), provisional ─────────
 async function removePlatformRule(host, params, user, requesterIp) {
   if (!supportsWrite(host.daemonType)) {
-    throw new Error(`${host.daemonType} firewall write is not supported in this phase (Proxmox only).`);
+    throw new Error(`${host.daemonType} firewall write is not supported yet.`);
+  }
+  // ESXi has no positional rules — its firewall is ruleset-based. Removing an
+  // allowed IP or toggling a ruleset goes through applyPlatformRule instead.
+  if (host.daemonType === 'vsphere') {
+    throw new Error('ESXi firewall has no positional rules to remove — use an allowedip-remove or a ruleset toggle (via Add firewall change) instead.');
   }
   const db = _db();
   const scope = _normalizeScope(params);
@@ -467,6 +752,7 @@ function _priorOptionsFromSnapshot(changeRow) {
 
 // Perform the actual restore for a change row (shared by manual revert + sweep).
 async function _revertChangeRow(row) {
+  if (row.platform === 'esxi') return _revertEsxiChangeRow(row);
   const db = _db();
   const spec = _parseJson(row.spec) || {};
   const node = spec.node || _nodeFromScope(row.scope);
@@ -575,6 +861,8 @@ module.exports = {
   supportsWrite,
   validateProxmoxRule,
   lockoutCheckProxmox,
+  validateEsxiChange,
+  lockoutCheckEsxi,
   applyPlatformRule,
   removePlatformRule,
   confirmPlatformChange,
@@ -586,5 +874,7 @@ module.exports = {
     MGMT_PORTS, DEFAULT_CONFIRM_MINUTES, _dportRange, _dportCoversMgmt,
     _acceptCoversPort, _sourceMatchesIp, _findMatchingRulePos, _normalizeScope,
     _confirmMinutes, _lockoutCheckRemoval,
+    ESXI_OPERATIONS, ESXI_MGMT_RULESET_NAMES, _strictBool, _esxiListIsAllowedAll,
+    _isEsxiMgmtRuleset, _esxiRulesetByName, _esxiPriorRulesetFromSnapshot,
   },
 };

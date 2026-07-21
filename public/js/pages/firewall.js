@@ -133,13 +133,13 @@ const FirewallPage = {
     const badgeClass = pf.available ? 'badge-running' : 'badge-warning';
     const groups = pf.groups || [];
     const canWrite = this._platformCanWrite(pf);
-    const cols = canWrite ? 4 : 3;
+    const isEsxi = pf.platform === 'esxi';
     el.innerHTML = `
       <div id="fw-pending-banner"></div>
       ${canWrite
         ? `<div class="alert alert-warning" style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-             <span style="flex:1"><i class="fas fa-shield-halved"></i> Write-enabled (${Utils.escapeHtml((pf.platform || '').toUpperCase())}). Every change is applied <b>provisionally</b> and <b>auto-reverts</b> unless you confirm it — a bad rule can't lock you out permanently.</span>
-             <button class="btn btn-sm btn-primary" id="fw-plat-add"><i class="fas fa-plus"></i> Add firewall rule</button>
+             <span style="flex:1"><i class="fas fa-shield-halved"></i> Write-enabled (${Utils.escapeHtml((pf.platform || '').toUpperCase())}). Every change is applied <b>provisionally</b> and <b>auto-reverts</b> unless you confirm it — a bad rule can't lock you out permanently.${isEsxi ? ' Use the per-ruleset controls (enable/disable, allowed IPs, allowed-all).' : ''}</span>
+             ${isEsxi ? '' : '<button class="btn btn-sm btn-primary" id="fw-plat-add"><i class="fas fa-plus"></i> Add firewall rule</button>'}
            </div>`
         : `<div class="alert" style="margin-bottom:12px;background:var(--surface2)"><i class="fas fa-eye"></i> Read-only view — ${Utils.escapeHtml((pf.platform || '').toUpperCase())} manages its firewall in its native tool (esxcli / pve-firewall / incus network acl).</div>`}
       <div class="stat-cards" style="grid-template-columns:repeat(2,1fr);margin-bottom:16px">
@@ -159,9 +159,14 @@ const FirewallPage = {
                 <td class="mono text-sm">${Utils.escapeHtml(it.name || '')}</td>
                 <td>${it.enabled === false ? '<span class="badge badge-info">off</span>' : '<span class="badge badge-running">on</span>'}</td>
                 <td class="text-sm text-dim">${Utils.escapeHtml(it.detail || '')}</td>
-                ${canWrite ? `<td style="white-space:nowrap;text-align:right">${it.removable
-                  ? `<button class="action-btn danger" title="Remove this rule (provisional, auto-reverts unless confirmed)" data-fw-plat-remove="1" data-fw-pos="${Utils.escapeHtml(String(it.pos))}" data-fw-scope="${Utils.escapeHtml(it.scope || '')}" data-fw-node="${Utils.escapeHtml(it.node || '')}"><i class="fas fa-times"></i></button>`
-                  : '<span class="text-dim">—</span>'}</td>` : ''}
+                ${canWrite ? `<td style="white-space:nowrap;text-align:right">${it.esxi
+                  ? `<button class="action-btn" title="${it.enabled === false ? 'Enable' : 'Disable'} this ruleset (provisional)" data-fw-esxi-toggle="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}" data-fw-enabled="${it.enabled === false ? '0' : '1'}"><i class="fas fa-power-off"></i></button>
+                     <button class="action-btn" title="Add an allowed IP (provisional)" data-fw-esxi-addip="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}"><i class="fas fa-plus"></i></button>
+                     <button class="action-btn" title="Remove an allowed IP (provisional)" data-fw-esxi-removeip="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}" data-fw-ips="${Utils.escapeHtml((it.allowedIps || []).join(','))}"><i class="fas fa-minus"></i></button>
+                     <button class="action-btn" title="Toggle allowed-all (provisional)" data-fw-esxi-allowedall="1" data-fw-rs="${Utils.escapeHtml(it.rulesetId || '')}" data-fw-allowedall="${it.allowedAll ? '1' : '0'}"><i class="fas fa-globe"></i></button>`
+                  : (it.removable
+                    ? `<button class="action-btn danger" title="Remove this rule (provisional, auto-reverts unless confirmed)" data-fw-plat-remove="1" data-fw-pos="${Utils.escapeHtml(String(it.pos))}" data-fw-scope="${Utils.escapeHtml(it.scope || '')}" data-fw-node="${Utils.escapeHtml(it.node || '')}"><i class="fas fa-times"></i></button>`
+                    : '<span class="text-dim">—</span>')}</td>` : ''}
               </tr>`).join('')}</tbody></table>`}
           </div>
         </div>`).join('')}
@@ -175,6 +180,15 @@ const FirewallPage = {
         scope: b.getAttribute('data-fw-scope'),
         node: b.getAttribute('data-fw-node') || undefined,
       })));
+      // ESXi per-ruleset controls (Phase B).
+      el.querySelectorAll('[data-fw-esxi-toggle]').forEach(b => b.addEventListener('click', () =>
+        this._esxiToggleRuleset(b.getAttribute('data-fw-rs'), b.getAttribute('data-fw-enabled') === '1')));
+      el.querySelectorAll('[data-fw-esxi-addip]').forEach(b => b.addEventListener('click', () =>
+        this._esxiAddAllowedIp(b.getAttribute('data-fw-rs'))));
+      el.querySelectorAll('[data-fw-esxi-removeip]').forEach(b => b.addEventListener('click', () =>
+        this._esxiRemoveAllowedIp(b.getAttribute('data-fw-rs'), (b.getAttribute('data-fw-ips') || '').split(',').filter(Boolean))));
+      el.querySelectorAll('[data-fw-esxi-allowedall]').forEach(b => b.addEventListener('click', () =>
+        this._esxiToggleAllowedAll(b.getAttribute('data-fw-rs'), b.getAttribute('data-fw-allowedall') === '1')));
       // Live commit-confirmed countdown banner (fetch now + start the 1s poller).
       this._renderPendingBanner();
       this._refreshPending();
@@ -202,6 +216,11 @@ const FirewallPage = {
     }
     if (ch.operation === 'remove-rule') return `remove rule #${s.pos} on ${scope}`;
     if (ch.operation === 'set-options') return `set firewall options on ${scope}`;
+    // ESXi (Phase B) — ruleset-based operations.
+    if (ch.operation === 'ruleset-set-enabled') return `${s.enabled ? 'enable' : 'disable'} ruleset ${s.rulesetId || scope}`;
+    if (ch.operation === 'ruleset-set-allowedall') return `set allowed-all=${s.allowedAll} on ruleset ${s.rulesetId || scope}`;
+    if (ch.operation === 'allowedip-add') return `allow IP ${s.ipAddress} on ruleset ${s.rulesetId || scope}`;
+    if (ch.operation === 'allowedip-remove') return `remove allowed IP ${s.ipAddress} from ruleset ${s.rulesetId || scope}`;
     return `${ch.operation} on ${scope}`;
   },
 
@@ -338,6 +357,78 @@ const FirewallPage = {
       await this._refreshPending();
       await this._load();
     } catch (err) { Toast.error(err.message); }
+  },
+
+  // ── ESXi (Phase B) per-ruleset write controls ──
+  // Every ESXi mutation runs through the SAME commit-confirmed pipeline: it is
+  // applied provisionally and auto-reverts unless confirmed. Each control shows a
+  // confirm dialog first, then posts an esxi-shaped body to the apply route.
+  async _esxiApply(body, summaryHtml, danger) {
+    const ok = await Modal.confirm(
+      `<p>Apply this ESXi firewall change?</p><p class="mono text-sm" style="background:var(--surface2);padding:10px;border-radius:6px">${summaryHtml}</p><p class="text-sm text-dim">It applies <b>provisionally</b> and auto-reverts unless you confirm it in time. The lockout guard refuses any change that would cut off SSH access for your IP.</p>`,
+      { title: 'Confirm ESXi firewall change', html: true, danger: !!danger, confirmText: 'Apply provisionally' }
+    );
+    if (!ok) return;
+    try {
+      const r = await Api.fwAddRule(this._hostId, body);
+      if (r && r.ok === false) { Toast.error(r.error || 'Failed to apply change'); return; }
+      Toast.success('Change applied provisionally — confirm it before the timer runs out');
+      await this._refreshPending();
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _esxiToggleRuleset(rulesetId, currentEnabled) {
+    const next = !currentEnabled;
+    const summary = `${next ? 'Enable' : 'Disable'} ruleset <b>${Utils.escapeHtml(rulesetId)}</b>`;
+    return this._esxiApply(
+      { operation: 'ruleset-set-enabled', rulesetId, enabled: next },
+      summary, !next // disabling is the dangerous direction
+    );
+  },
+
+  async _esxiToggleAllowedAll(rulesetId, currentAllowedAll) {
+    const next = !currentAllowedAll;
+    const summary = `Set <b>allowed-all=${next}</b> on ruleset <b>${Utils.escapeHtml(rulesetId)}</b>`;
+    return this._esxiApply(
+      { operation: 'ruleset-set-allowedall', rulesetId, allowedAll: next },
+      summary, !next // restricting (allowed-all=false) is the dangerous direction
+    );
+  },
+
+  async _esxiAddAllowedIp(rulesetId) {
+    const result = await Modal.form(`
+      <div class="form-group"><label>Allowed IP / CIDR</label>
+        <input type="text" id="fwe-ip" class="form-control" placeholder="89.40.10.20 or 10.0.0.0/24"></div>
+      <p class="text-muted" style="font-size:12px">Adds the IP/range to ruleset <b>${Utils.escapeHtml(rulesetId)}</b>'s allowed list.</p>
+    `, {
+      title: `Add allowed IP — ${rulesetId}`,
+      width: '460px',
+      onSubmit: (c) => {
+        const ip = c.querySelector('#fwe-ip').value.trim();
+        if (!ip) { Toast.warning('Enter an IP or CIDR'); return false; }
+        return { ip };
+      },
+    });
+    if (!result) return;
+    const summary = `Allow <b>${Utils.escapeHtml(result.ip)}</b> on ruleset <b>${Utils.escapeHtml(rulesetId)}</b>`;
+    return this._esxiApply({ operation: 'allowedip-add', rulesetId, ipAddress: result.ip }, summary, false);
+  },
+
+  async _esxiRemoveAllowedIp(rulesetId, ips) {
+    if (!ips || !ips.length) { Toast.warning('This ruleset has no explicit allowed IPs to remove (it is allowed-all).'); return; }
+    const result = await Modal.form(`
+      <div class="form-group"><label>Allowed IP to remove</label>
+        <select id="fwe-ip" class="form-control">${ips.map(ip => `<option value="${Utils.escapeHtml(ip)}">${Utils.escapeHtml(ip)}</option>`).join('')}</select></div>
+      <p class="text-muted" style="font-size:12px">Removes the IP/range from ruleset <b>${Utils.escapeHtml(rulesetId)}</b>'s allowed list. The lockout guard refuses removing the entry that covers your own IP on the SSH ruleset.</p>
+    `, {
+      title: `Remove allowed IP — ${rulesetId}`,
+      width: '460px',
+      onSubmit: (c) => ({ ip: c.querySelector('#fwe-ip').value }),
+    });
+    if (!result || !result.ip) return;
+    const summary = `Remove allowed IP <b>${Utils.escapeHtml(result.ip)}</b> from ruleset <b>${Utils.escapeHtml(rulesetId)}</b>`;
+    return this._esxiApply({ operation: 'allowedip-remove', rulesetId, ipAddress: result.ip }, summary, true);
   },
 
   async _confirmChange(changeId) {

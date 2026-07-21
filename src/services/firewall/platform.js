@@ -37,15 +37,30 @@ async function _esxi(row) {
   }
   try {
     const fw = await require('../vsphere-ssh').getFirewall(sshConfig);
+    // Write capability (Phase B): the Firewall page surfaces per-ruleset write
+    // controls for ESXi when this is true and the viewer is an admin.
+    let writesSupported = false;
+    try { writesSupported = require('./platform-write').supportsWrite('vsphere'); } catch { /* ignore */ }
     const groups = [{
       title: 'Rulesets',
-      items: (fw.rulesets || []).map(r => ({
-        name: r.name,
-        enabled: r.enabled,
-        detail: (r.allowedIps && r.allowedIps.length) ? `Allowed: ${r.allowedIps.join(', ')}` : 'Allowed: All',
-      })),
+      items: (fw.rulesets || []).map(r => {
+        const ips = r.allowedIps || [];
+        // Allowed-all is the explicit 'All' marker; an empty list is shown as
+        // "All" (ESXi's display default) but is NOT treated as allowed-all by the
+        // write controls / lockout guard (fail-safe).
+        const allowedAll = ips.some(ip => /^all$/i.test(String(ip).trim()));
+        return {
+          name: r.name,
+          rulesetId: r.name,
+          enabled: r.enabled,
+          allowedIps: ips.filter(ip => !/^all$/i.test(String(ip).trim())),
+          allowedAll,
+          esxi: true,
+          detail: ips.length ? `Allowed: ${ips.join(', ')}` : 'Allowed: All',
+        };
+      }),
     }];
-    return { ...base, available: true, summary: `Firewall ${fw.enabled ? 'enabled' : 'disabled'} · default ${fw.defaultAction || '?'} · ${(fw.rulesets || []).length} ruleset(s)`, groups, raw: JSON.stringify(fw, null, 2) };
+    return { ...base, available: true, writesSupported, summary: `Firewall ${fw.enabled ? 'enabled' : 'disabled'} · default ${fw.defaultAction || '?'} · ${(fw.rulesets || []).length} ruleset(s)`, groups, raw: JSON.stringify(fw, null, 2) };
   } catch (err) {
     return { ...base, available: false, summary: `Could not read ESXi firewall: ${err.message}` };
   }

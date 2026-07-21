@@ -118,6 +118,8 @@ router.post('/:hostId/rule', ...operatorWrite, asyncHandler((req, res) => {
     // platform (proxmox) fields:
     type: b.type, source: b.source, dest: b.dest, dport: b.dport, proto: b.proto,
     comment: b.comment, node: b.node, operation: b.operation, enable: b.enable, setOptions: b.setOptions,
+    // platform (esxi) fields — ruleset-based change (operation shared above):
+    rulesetId: b.rulesetId, ipAddress: b.ipAddress, enabled: b.enabled, allowedAll: b.allowedAll,
   }, 'add-rule');
 }));
 
