@@ -2,6 +2,45 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.17.0] - 2026-07-22 — Onboarding Phase 3 — Demo/Trial modes + synthetic mock data
+
+Phase 3 of 4. A prospect can now pick **Demo** (or **Trial**) in the onboarding wizard and land
+in a fully populated app — a believable estate to click through immediately — with zero real
+infrastructure and zero risk to real data.
+
+### Deterministic, synthetic-only generator
+A hand-rolled generator (mulberry32 seeded PRNG — no new deps) populates a demo tenant across
+hosts, containers, stats history, events, firewall rules + snapshot, posture snapshot + a
+critical finding, blueprints, teams, registries, and a valid audit trail. Three volume profiles
+(**small ≈ 3.8k / medium ≈ 13k / large ≈ 32k rows, < 25 MB**) and three scenarios
+(healthy-shop, busy-estate with drift, multi-daemon-plant). Identical inputs produce a
+byte-identical dataset.
+
+### Safe by construction
+- Every generated row is tagged `seed_run_id`; **real rows are `NULL`**, so reset / regenerate /
+  purge run `DELETE … WHERE seed_run_id = ?` and are **structurally incapable** of touching real
+  data (proved by a canary test). Table names come only from a static allow-list, never data.
+- All addresses are RFC1918/TEST-NET, all hostnames use reserved `*.test`/`*.example` TLDs, demo
+  users are **viewer-only**, and even the fake credentials are AES-encrypted at rest. No real or
+  PII data, ever. The `docker_events` bloat lesson is encoded: hard row budgets and **no `exec_*`
+  events**.
+- **Mock Docker adapter** — demo hosts have no daemon, so a narrow, isolated adapter serves the
+  synthetic container roster + stats. It engages **only** for a host whose `seed_run_id` is set
+  with an active dataset; real hosts are byte-for-byte unaffected, and it refuses every mutation
+  rather than faking success.
+- **Production promotion gate** — a tenant cannot be switched to `production` while any synthetic
+  batch or placeholder credential remains; the gate returns actionable blockers, and going live
+  requires purging the demo data first.
+
+### Wizard
+Demo/Trial are enabled in step 0; a new **Mock data** step picks the volume profile (with live row
+estimates) and scenario; the summary gains **Reset / Regenerate / Purge** demo-data actions and a
+promotion warning. Production hides mock-data entirely. (en/ro.)
+
+Migration `093` (+ a guarded `seed_run_id` column across 26 seedable tables + the `seed_containers`
+roster). New audit actions for seed lifecycle + tenant promotion. 47 new tests — suite at **2131
+passing across 129 suites**. Zero new npm dependencies.
+
 ## [8.16.0] - 2026-07-22 — Onboarding Phase 2 — templates, nomenclatures & onboarding-as-code
 
 Phase 2 of 4. Turns the Phase-1 wizard into a repeatable, scriptable onboarding system.

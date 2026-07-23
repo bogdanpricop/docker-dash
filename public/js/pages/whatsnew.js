@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.17.0',
+      date: '2026-07-22',
+      title: 'Onboarding Phase 3 — Demo & Trial modes with realistic sample data',
+      changes: [
+        { type: 'feature', text: 'Pick Demo or Trial in the onboarding wizard and land in a fully populated docker-dash — a believable estate of hosts, containers, live-looking stats, events, firewall rules, a posture score with a critical finding, blueprints and teams — so a new client can explore every feature immediately, with no real servers to connect. Choose a size (small/medium/large, with row estimates) and a scenario (healthy shop, busy estate with drift, multi-daemon plant).' },
+        { type: 'feature', text: 'The sample data is completely safe: every row is tagged, and Reset / Regenerate / Purge only ever delete tagged rows — it is structurally impossible to touch real data. All addresses are private/reserved, all hostnames use .test domains, demo users are view-only, and nothing contains real or personal information. A demo host renders through a built-in mock adapter (no daemon needed) and can’t run any real action.' },
+        { type: 'feature', text: 'A production safety gate stops a tenant from going live while demo data or placeholder credentials are still present — you purge the sample data first, then promote. Volumes are strictly bounded (even the large profile stays under ~25 MB), so demo data never bloats the database.' },
+      ],
+    },
+    {
       version: '8.16.0',
       date: '2026-07-22',
       title: 'Onboarding Phase 2 — environment templates & onboarding-as-code',
