@@ -18,7 +18,7 @@ module.exports = {
     const t = decl.tenant;
     const createdBy = (ctx.user && ctx.user.username) || 'system';
 
-    const existing = db.prepare('SELECT id, is_default FROM tenants WHERE slug = ? COLLATE NOCASE').get(t.slug);
+    const existing = db.prepare('SELECT id, is_default, usage_mode FROM tenants WHERE slug = ? COLLATE NOCASE').get(t.slug);
     let tenantId;
     let created;
     if (existing) {
@@ -27,6 +27,13 @@ module.exports = {
       // Idempotent re-apply: refresh name/kind but NEVER touch is_default/status here.
       db.prepare("UPDATE tenants SET name = ?, kind = ?, updated_at = datetime('now') WHERE id = ?")
         .run(t.name, t.kind, tenantId);
+      // v8.17.0 (Phase 3) — a re-apply that CHANGES the mode of an existing tenant
+      // is a mode transition, so it must go through the one guarded mutator. When
+      // the target is `production` the promotion gate refuses while any live
+      // synthetic batch or placeholder credential exists (security C4 / TC-03).
+      if (existing.usage_mode !== decl.mode) {
+        require('../promotion').setUsageMode(tenantId, decl.mode, { user: ctx.user, ip: ctx.ip, db });
+      }
     } else {
       const r = db.prepare(`
         INSERT INTO tenants (slug, name, kind, usage_mode, status, is_default, created_by)

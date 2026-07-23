@@ -255,6 +255,37 @@ function _validateNomenclatures(list) {
   });
 }
 
+// v8.17.0 (Phase 3) — the demo/trial mock-data block. Deliberately a CLOSED,
+// preset-only shape (enum profile + enum scenario + an optional reproducibility
+// seed): free-form row counts would be an unbounded-volume DoS vector
+// (onboarding-security.md C5/T13), so volume can only be chosen from the fixed
+// presets in seed/profiles.js. The block is REJECTED outright in production —
+// the first of three independent guards against synthetic data reaching a
+// production tenant.
+function _validateMockData(mock, mode) {
+  if (mock === undefined || mock === null) return undefined;
+  if (typeof mock !== 'object' || Array.isArray(mock)) throw new Error('mockData must be an object');
+  if (mode === 'production') {
+    throw new Error('mockData is not permitted in production mode (synthetic data is never written to production)');
+  }
+  const seedModule = require('./seed');
+  const profile = mock.profile === undefined ? (mode === 'trial' ? 'small' : 'medium') : _str(mock.profile, 'mockData.profile', { max: 16 });
+  if (!seedModule.PROFILE_KEYS.includes(profile)) {
+    throw new Error(`mockData.profile must be one of ${seedModule.PROFILE_KEYS.join(', ')}`);
+  }
+  const scenario = mock.scenario === undefined ? 'healthy-shop' : _str(mock.scenario, 'mockData.scenario', { max: 64 });
+  if (!seedModule.SCENARIO_KEYS.includes(scenario)) {
+    throw new Error(`mockData.scenario must be one of ${seedModule.SCENARIO_KEYS.join(', ')}`);
+  }
+  const out = { profile, scenario };
+  if (mock.seed !== undefined && mock.seed !== null && mock.seed !== '') {
+    const s = _str(String(mock.seed), 'mockData.seed', { max: 64 });
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(s)) throw new Error('mockData.seed has invalid characters');
+    out.seed = s;
+  }
+  return out;
+}
+
 function _validatePermissions(perms) {
   if (perms === undefined || perms === null) return [];
   if (!Array.isArray(perms)) throw new Error('permissions must be an array');
@@ -319,6 +350,7 @@ function validateDeclaration(rawDoc) {
     hosts: _validateHosts(doc.hosts),
     users: _validateUsers(doc.users, mode),
     permissions: _validatePermissions(doc.permissions),
+    mockData: _validateMockData(doc.mockData, mode),
   };
   return out;
 }
@@ -360,6 +392,7 @@ function fingerprintDeclaration(decl) {
     hosts: decl.hosts.map((h) => `${h.name}|${h.connectionType}`).sort(),
     users: decl.users.map((u) => `${u.username.toLowerCase()}|${u.role}|${u.isOwner ? 1 : 0}`).sort(),
     permissions: decl.permissions.map((p) => `${p.username.toLowerCase()}|${p.hostName}|${p.permission}`).sort(),
+    mockData: decl.mockData ? `${decl.mockData.profile}|${decl.mockData.scenario}|${decl.mockData.seed || ''}` : null,
   };
   return sha256(JSON.stringify(canonical));
 }

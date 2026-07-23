@@ -13,6 +13,8 @@ const catalog = require('./catalog');
 const templates = require('./templates');
 const templateMerge = require('./template-merge');
 const bootstrap = require('./bootstrap');
+const seed = require('./seed');
+const promotion = require('./promotion');
 
 module.exports = {
   // saga
@@ -35,6 +37,12 @@ module.exports = {
   // headless bootstrap (Phase 2)
   bootstrap,
   maybeBootstrap: bootstrap.maybeBootstrap,
+  // mock data + promotion gate (Phase 3)
+  seed,
+  promotion,
+  assertProductionReady: promotion.assertProductionReady,
+  checkProductionReady: promotion.checkProductionReady,
+  setUsageMode: promotion.setUsageMode,
   // catalog
   catalog,
   DEFAULT_TENANT_ID: 1,

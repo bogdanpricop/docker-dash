@@ -20,6 +20,9 @@
 // +4 as of v8.16.0 (Onboarding Phase 2 — templates, nomenclatures,
 //   onboarding-as-code): nomenclature_seed, onboarding_headless_apply,
 //   onboarding_template_save, onboarding_template_delete.
+// +5 as of v8.17.0 (Onboarding Phase 3 — demo/trial + mock data):
+//   seed_dataset_create, seed_dataset_purge, seed_dataset_reset,
+//   seed_dataset_regenerate, tenant_promote.
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -176,6 +179,10 @@ const auditActionsList = [
   "secret_rotation_scan",
   "secret_update",
   "secrets_deploy_remote",
+  "seed_dataset_create",
+  "seed_dataset_purge",
+  "seed_dataset_regenerate",
+  "seed_dataset_reset",
   "send_invitation",
   "send_password_reset",
   "session_terminate",
@@ -208,6 +215,7 @@ const auditActionsList = [
   "template_reset",
   "template_update",
   "tenant_create",
+  "tenant_promote",
   "tenant_update",
   "translation_batch",
   "translation_exported",

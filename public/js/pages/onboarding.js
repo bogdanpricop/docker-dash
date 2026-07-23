@@ -41,13 +41,26 @@ const ONBOARDING_MODULE_CATALOG = [
   { key: 'copilot', requires: [], defaultOn: false },
 ];
 
-// The saga's fixed step order (src/services/provisioning/steps/index.js) —
-// used to render the Provision checklist even before any provisioning_steps
-// rows exist yet.
+// The saga's step order (src/services/provisioning/steps/index.js) — used to
+// render the Provision checklist even before any provisioning_steps rows exist.
+// `seed_mock_data` is CONDITIONAL: the server only builds it for demo/trial runs
+// (steps/index.js STEP_PREDICATES), so the checklist mirrors that.
 const ONBOARDING_RUN_STEP_KEYS = [
   'create_tenant', 'set_regional', 'seed_nomenclatures', 'enable_modules', 'create_hosts',
   'create_users', 'grant_permissions', 'finalize',
 ];
+function _obRunStepKeys(mode) {
+  if (mode === 'production') return ONBOARDING_RUN_STEP_KEYS;
+  const keys = ONBOARDING_RUN_STEP_KEYS.slice();
+  keys.splice(keys.indexOf('finalize'), 0, 'seed_mock_data');
+  return keys;
+}
+
+// Mock-data presets. Volume can ONLY be chosen from these fixed profiles (a
+// free-form row count would be an unbounded-volume vector); the server validates
+// the same closed sets in declaration.js.
+const ONBOARDING_SEED_PROFILES = ['small', 'medium', 'large'];
+const ONBOARDING_SEED_SCENARIOS = ['healthy-shop', 'busy-estate', 'multi-daemon-plant'];
 
 // Reserved template keys the server treats as "no template" (template-merge.js
 // RESERVED_NOOP_KEYS). `custom` is what the picker sends for "Custom / blank".
@@ -169,6 +182,14 @@ function buildOnboardingDeclaration(state) {
 
   const permissions = (state.permissions || []).map((p) => ({ username: p.username, hostName: p.hostName, permission: p.permission }));
 
+  // The mock-data block exists ONLY for demo/trial — declaration.js rejects it
+  // outright in production, so never send it there.
+  const mockData = state.mode === 'production' ? undefined : {
+    profile: state.mockData.profile,
+    scenario: state.mockData.scenario,
+    ...(state.mockData.seed ? { seed: String(state.mockData.seed) } : {}),
+  };
+
   return {
     version: 1,
     kind: 'onboarding-declaration',
@@ -177,6 +198,7 @@ function buildOnboardingDeclaration(state) {
     mode: state.mode,
     tenant: { slug: state.tenant.slug, name: state.tenant.name, kind: state.tenant.kind },
     regional: { ...state.regional },
+    ...(mockData ? { mockData } : {}),
     modules: state.modules.map((m) => ({ key: m.key, enabled: !!m.enabled })),
     // Sent explicitly so what the user SAW on the Regional step is exactly what
     // is applied; the server merges the template's own list underneath anyway
@@ -264,6 +286,8 @@ function _obNonSecretSnapshot(state) {
     hosts: state.hosts.map((h) => ({ name: h.name, connectionType: h.connectionType, socketPath: h.socketPath, host: h.host, port: h.port, sshHost: h.sshHost, sshPort: h.sshPort, sshUsername: h.sshUsername, sshDockerSocket: h.sshDockerSocket })),
     users: state.users.map((u) => ({ username: u.username, displayName: u.displayName, email: u.email, role: u.role, isOwner: u.isOwner, _existing: u._existing })),
     permissions: state.permissions,
+    // Mock-data choices carry no secret and no PII — safe to draft-persist.
+    mockData: state.mockData ? { profile: state.mockData.profile, scenario: state.mockData.scenario, seed: state.mockData.seed } : undefined,
   };
 }
 
@@ -289,20 +313,25 @@ const _stepMode = {
     })();
   },
   render(body, state, wiz) {
+    // v8.17.0 (Phase 3) — demo and trial are live. Selecting either activates
+    // wizard step 7 (Mock data); switching back to production deactivates it and
+    // the declaration drops the mockData block entirely.
     const modes = ['production', 'trial', 'demo'];
     const icon = { production: 'fa-server', trial: 'fa-hourglass-half', demo: 'fa-flask' };
     body.innerHTML = `
       <p class="wiz-step-help">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.help'))}</p>
       <div class="wiz-radio-group" role="radiogroup" aria-label="${Utils.escapeHtml(i18n.t('pages.onboarding.mode.title'))}">
         ${modes.map((m) => `
-          <label class="wiz-radio-card ${state.mode === m ? 'is-selected' : ''} ${m !== 'production' ? 'is-disabled' : ''}">
-            <input type="radio" name="ob-mode" value="${m}" ${state.mode === m ? 'checked' : ''} ${m !== 'production' ? 'disabled' : ''}>
-            <div class="wiz-radio-card-title"><i class="fas ${icon[m]}"></i> ${Utils.escapeHtml(i18n.t(`pages.onboarding.mode.${m}`))}
-              ${m !== 'production' ? `<span class="badge badge-warning" style="margin-left:6px">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.comingSoon'))}</span>` : ''}
-            </div>
+          <label class="wiz-radio-card ${state.mode === m ? 'is-selected' : ''}">
+            <input type="radio" name="ob-mode" value="${m}" ${state.mode === m ? 'checked' : ''}>
+            <div class="wiz-radio-card-title"><i class="fas ${icon[m]}"></i> ${Utils.escapeHtml(i18n.t(`pages.onboarding.mode.${m}`))}</div>
             <div class="wiz-radio-card-desc">${Utils.escapeHtml(i18n.t(`pages.onboarding.mode.${m}Desc`))}</div>
           </label>`).join('')}
       </div>
+      ${state.mode !== 'production' ? `
+      <div class="alert" style="background:var(--surface2);padding:10px 14px;border-radius:var(--radius-sm);margin-top:10px">
+        <i class="fas fa-flask"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.syntheticNotice'))}
+      </div>` : ''}
       <label style="display:block;margin:20px 0 8px;font-size:11px;font-weight:600;color:var(--text-dim)">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.template'))}</label>
       <div class="wiz-radio-group" role="radiogroup" aria-label="${Utils.escapeHtml(i18n.t('pages.onboarding.mode.template'))}">
         <label class="wiz-radio-card ${state.templateKey === ONBOARDING_NOOP_TEMPLATE ? 'is-selected' : ''}">
@@ -329,8 +358,13 @@ const _stepMode = {
       ${state._templatesError ? `<div class="text-sm" style="color:var(--yellow)"><i class="fas fa-triangle-exclamation"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templatesError', { error: state._templatesError }))}</div>` : ''}
     `;
     body.querySelectorAll('input[name="ob-mode"]').forEach((r) => r.addEventListener('change', () => {
-      if (r.disabled) return;
+      if (r.disabled || !r.checked) return;
       state.mode = r.value;
+      // Sensible per-mode default volume: trial is "real but empty-ish", demo is
+      // the populated showcase (plans/onboarding-ux.md step 7 defaults).
+      state.mockData.profile = r.value === 'trial' ? 'small' : 'medium';
+      state._seedCatalog = null; // re-estimate for the new default
+      state._plan = null;
       wiz.render();
     }));
     body.querySelectorAll('input[name="ob-template"]').forEach((r) => r.addEventListener('change', () => {
@@ -867,6 +901,120 @@ function _obWireUserRows(body, state, wiz) {
 }
 
 // ── step 6 — preview & impact (dry-run) ─────────────────────────────────────
+// ── step 6 — mock data (demo/trial ONLY) ────────────────────────────────────
+// Hard-inactive in production: the step is filtered out of the rail entirely
+// (active() === false), the declaration omits the mockData block, and the server
+// rejects it anyway. Three independent layers, per onboarding-security.md §3.
+const _stepMockData = {
+  key: 'mockdata',
+  get title() { return i18n.t('pages.onboarding.mockdata.title'); },
+  get help() { return i18n.t('pages.onboarding.mockdata.help'); },
+  active(state) { return state.mode !== 'production'; },
+  onEnter(state, wiz) {
+    if (state._seedCatalog || state._seedCatalogLoading) return;
+    state._seedCatalogLoading = true;
+    state._seedCatalogError = null;
+    (async () => {
+      try {
+        const r = await Api.getSeedCatalog(state.mockData.scenario);
+        state._seedCatalog = r || null;
+      } catch (err) {
+        state._seedCatalog = null;
+        state._seedCatalogError = err.message;
+      } finally {
+        state._seedCatalogLoading = false;
+        wiz.render();
+      }
+    })();
+  },
+  render(body, state, wiz) {
+    const cat = state._seedCatalog;
+    const byProfile = {};
+    ((cat && cat.profiles) || []).forEach((p) => { byProfile[p.profile] = p; });
+    const chosen = byProfile[state.mockData.profile];
+
+    body.innerHTML = `
+      <div class="alert" style="background:var(--surface2);padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:14px">
+        <i class="fas fa-shield-halved"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.safetyNote'))}
+      </div>
+
+      <label style="display:block;margin-bottom:8px;font-size:11px;font-weight:600;color:var(--text-dim)">${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.volume'))}</label>
+      <div class="wiz-radio-group" role="radiogroup" aria-label="${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.volume'))}">
+        ${ONBOARDING_SEED_PROFILES.map((p) => {
+          const est = byProfile[p];
+          return `
+          <label class="wiz-radio-card ${state.mockData.profile === p ? 'is-selected' : ''}">
+            <input type="radio" name="ob-seed-profile" value="${p}" ${state.mockData.profile === p ? 'checked' : ''}>
+            <div class="wiz-radio-card-title"><i class="fas fa-database"></i> ${Utils.escapeHtml(i18n.t(`pages.onboarding.mockdata.profiles.${p}.label`))}</div>
+            <div class="wiz-radio-card-desc">${Utils.escapeHtml(i18n.t(`pages.onboarding.mockdata.profiles.${p}.desc`))}</div>
+            <div class="text-sm text-dim">${est
+              ? Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.rowEstimate', { rows: est.total, tables: est.tables.length }))
+              : Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.estimating'))}</div>
+          </label>`;
+        }).join('')}
+      </div>
+
+      <label style="display:block;margin:18px 0 8px;font-size:11px;font-weight:600;color:var(--text-dim)">${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.scenario'))}</label>
+      <div class="wiz-radio-group" role="radiogroup" aria-label="${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.scenario'))}">
+        ${ONBOARDING_SEED_SCENARIOS.map((s) => `
+          <label class="wiz-radio-card ${state.mockData.scenario === s ? 'is-selected' : ''}">
+            <input type="radio" name="ob-seed-scenario" value="${s}" ${state.mockData.scenario === s ? 'checked' : ''}>
+            <div class="wiz-radio-card-title"><i class="fas fa-diagram-project"></i> ${Utils.escapeHtml(i18n.t(`pages.onboarding.mockdata.scenarios.${s}.label`))}</div>
+            <div class="wiz-radio-card-desc">${Utils.escapeHtml(i18n.t(`pages.onboarding.mockdata.scenarios.${s}.desc`))}</div>
+          </label>`).join('')}
+      </div>
+
+      <div class="form-group" style="margin-top:18px;max-width:320px">
+        <label for="ob-seed-seed">${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.seed'))}</label>
+        <input type="text" id="ob-seed-seed" class="form-control mono" value="${Utils.escapeHtml(state.mockData.seed || '')}"
+               placeholder="${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.seedAuto'))}" aria-describedby="ob-seed-seed-help">
+        <small id="ob-seed-seed-help" class="text-muted">${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.seedHelp'))}</small>
+      </div>
+
+      ${chosen ? `
+      <h3 style="font-size:14px;margin:18px 0 4px">${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.impactTitle'))}</h3>
+      <div style="max-height:220px;overflow:auto">
+        <table class="data-table"><tbody>
+          ${chosen.tables.map((t) => `<tr><td class="mono">${Utils.escapeHtml(t.name)}</td><td style="text-align:right">${Utils.escapeHtml(String(t.count))}</td></tr>`).join('')}
+        </tbody></table>
+      </div>` : ''}
+      ${state._seedCatalogError ? `<div class="text-sm" style="color:var(--yellow)"><i class="fas fa-triangle-exclamation"></i> ${Utils.escapeHtml(state._seedCatalogError)}</div>` : ''}
+
+      <label style="display:flex;gap:8px;align-items:center;margin-top:16px">
+        <input type="checkbox" id="ob-seed-ack" ${state.mockData.ack ? 'checked' : ''}>
+        ${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.ack'))}
+      </label>
+    `;
+
+    body.querySelectorAll('input[name="ob-seed-profile"]').forEach((r) => r.addEventListener('change', () => {
+      if (!r.checked) return;
+      state.mockData.profile = r.value;
+      state._plan = null;
+      wiz.render();
+    }));
+    body.querySelectorAll('input[name="ob-seed-scenario"]').forEach((r) => r.addEventListener('change', () => {
+      if (!r.checked) return;
+      state.mockData.scenario = r.value;
+      state._plan = null;
+      wiz.render();
+    }));
+    body.querySelector('#ob-seed-seed').addEventListener('input', (e) => {
+      state.mockData.seed = e.target.value.trim();
+      state._plan = null;
+    });
+    body.querySelector('#ob-seed-ack').addEventListener('change', (e) => { state.mockData.ack = e.target.checked; });
+  },
+  validate(state) {
+    const errors = [];
+    if (!ONBOARDING_SEED_PROFILES.includes(state.mockData.profile)) errors.push(i18n.t('pages.onboarding.errors.seedProfileInvalid'));
+    if (!ONBOARDING_SEED_SCENARIOS.includes(state.mockData.scenario)) errors.push(i18n.t('pages.onboarding.errors.seedScenarioInvalid'));
+    if (state.mockData.seed && !/^[A-Za-z0-9._-]{1,64}$/.test(state.mockData.seed)) errors.push(i18n.t('pages.onboarding.errors.seedValueInvalid'));
+    if (!state.mockData.ack) errors.push(i18n.t('pages.onboarding.errors.seedAckRequired'));
+    return { ok: errors.length === 0, errors };
+  },
+  onLeave(state) { state._plan = null; },
+};
+
 const _stepPreview = {
   key: 'preview',
   get title() { return i18n.t('pages.onboarding.preview.title'); },
@@ -935,6 +1083,10 @@ const _stepPreview = {
           tenants: creates.tenants || 0, modules: creates.modules || 0, hosts: creates.hosts || 0,
           users: creates.users || 0, grants: creates.grants || 0, nomenclatures: creates.nomenclatures || 0,
         }))}
+        ${creates.syntheticRows ? `<div style="margin-top:4px"><i class="fas fa-flask"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.preview.willCreateSynthetic', {
+          rows: creates.syntheticRows, tables: creates.syntheticTables || 0,
+          profile: state.mockData.profile, scenario: state.mockData.scenario,
+        }))}</div>` : ''}
       </div>
       ${(plan.warnings || []).length ? `
       <div class="alert alert-warning" style="background:var(--yellow-dim);border-left:3px solid var(--yellow);padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:12px">
@@ -984,7 +1136,7 @@ const _stepProvision = {
   },
   render(body, state, wiz) {
     const run = state._run;
-    const rows = (run && run.steps && run.steps.length) ? run.steps : ONBOARDING_RUN_STEP_KEYS.map((k) => ({ step_key: k, status: 'pending' }));
+    const rows = (run && run.steps && run.steps.length) ? run.steps : _obRunStepKeys(state.mode).map((k) => ({ step_key: k, status: 'pending' }));
     body.innerHTML = `
       <ol class="wiz-checklist" aria-live="polite">
         ${rows.map((s) => {
@@ -1105,6 +1257,28 @@ const _stepSummary = {
   key: 'summary',
   get title() { return i18n.t('pages.onboarding.summary.title'); },
   get help() { return i18n.t('pages.onboarding.summary.help'); },
+  onEnter(state, wiz) {
+    // Demo/trial only: load the live batches + the promotion-gate verdict so the
+    // Reset/Regenerate/Purge actions and the promotion warning can render.
+    const tenantId = (state._run && state._run.tenantId) || null;
+    if (state.mode === 'production' || !tenantId || state._seedStateLoading) return;
+    if (state._seedState !== undefined && state._seedState !== null) return;
+    state._seedStateLoading = true;
+    (async () => {
+      try {
+        const [seedRes, gate] = await Promise.all([
+          Api.getTenantSeed(tenantId),
+          Api.getTenantPromotion(tenantId).catch(() => null),
+        ]);
+        state._seedState = { datasets: (seedRes && seedRes.datasets) || [], gate };
+      } catch (err) {
+        state._seedState = { datasets: [], gate: null, error: err.message };
+      } finally {
+        state._seedStateLoading = false;
+        wiz.render();
+      }
+    })();
+  },
   render(body, state, wiz) {
     const run = state._run || {};
     const result = run.result || {};
@@ -1125,6 +1299,7 @@ const _stepSummary = {
         <div style="font-weight:600;margin-bottom:6px;color:var(--yellow)"><i class="fas fa-triangle-exclamation"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.warningsCarried'))}</div>
         ${result.warnings.map((w) => `<div>${Utils.escapeHtml(w)}</div>`).join('')}
       </div>` : ''}
+      ${_obRenderDemoDataCard(state)}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-export"><i class="fas fa-file-export"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.exportJson'))}</button>
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-save-template"><i class="fas fa-layer-group"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.saveAsTemplate'))}</button>
@@ -1138,6 +1313,7 @@ const _stepSummary = {
       a.href = url; a.download = `onboarding-run-${run.id}.json`;
       document.body.appendChild(a); a.click(); a.remove();
     });
+    _obWireDemoDataCard(body, state, wiz);
     body.querySelector('#ob-summary-save-template').addEventListener('click', () => _obSaveAsTemplate(state, run));
     body.querySelector('#ob-summary-copy').addEventListener('click', () => {
       const snippet = `curl -sS -X POST "$DOCKER_DASH_URL/api/onboarding/apply" \\\n  -H "Content-Type: application/json" \\\n  --cookie "<admin session cookie>" \\\n  -d @<(curl -sS "$DOCKER_DASH_URL${Api.exportOnboardingRunUrl(run.id)}")`;
@@ -1147,6 +1323,96 @@ const _stepSummary = {
   validate() { return { ok: true }; },
   footer() { return { hideBack: true }; },
 };
+
+/**
+ * Demo-data control panel on the Summary step (demo/trial only).
+ * Renders the live batch(es), the Reset / Regenerate / Purge actions, and the
+ * PROMOTION WARNING — the same server-side gate verdict the API enforces, so the
+ * user learns here (not at the moment of promotion) that synthetic rows block
+ * production.
+ */
+function _obRenderDemoDataCard(state) {
+  if (state.mode === 'production') return '';
+  const tenantId = (state._run && state._run.tenantId) || null;
+  if (!tenantId) return '';
+  const s = state._seedState;
+  if (!s) {
+    return `<div class="card" style="margin-bottom:12px"><div class="card-body text-sm text-dim">
+      <i class="fas fa-spinner fa-spin"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataLoading'))}
+    </div></div>`;
+  }
+  const live = (s.datasets || []).filter((d) => d.status === 'active');
+  const totalRows = live.reduce((acc, d) => acc + (d.rowCount || 0), 0);
+  const gate = s.gate;
+  return `
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-header"><h3><i class="fas fa-flask"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataTitle'))}</h3></div>
+      <div class="card-body">
+        ${live.length ? `
+          <table class="data-table"><tbody>
+            ${live.map((d) => `<tr>
+              <td><span class="badge badge-info">${Utils.escapeHtml(d.profile)}</span> ${Utils.escapeHtml(d.scenario || '')}</td>
+              <td class="text-sm text-dim mono">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataSeed', { seed: d.seed }))}</td>
+              <td style="text-align:right">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataRows', { rows: d.rowCount, tables: (d.tables || []).length }))}</td>
+            </tr>`).join('')}
+          </tbody></table>
+        ` : `<p class="text-sm text-dim">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataNone'))}</p>`}
+        <p class="text-sm text-dim" style="margin-top:8px"><i class="fas fa-shield-halved"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mockdata.safetyNote'))}</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button type="button" class="btn btn-sm btn-secondary" id="ob-seed-reset" ${live.length ? '' : 'disabled'}><i class="fas fa-rotate-left"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataReset'))}</button>
+          <button type="button" class="btn btn-sm btn-secondary" id="ob-seed-regen"><i class="fas fa-dice"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataRegenerate'))}</button>
+          <button type="button" class="btn btn-sm btn-danger" id="ob-seed-purge" ${live.length ? '' : 'disabled'}><i class="fas fa-trash"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.demoDataPurge'))}</button>
+        </div>
+        ${gate && !gate.ok ? `
+        <div class="alert alert-warning" style="background:var(--yellow-dim);border-left:3px solid var(--yellow);padding:10px 14px;border-radius:var(--radius-sm);margin-top:12px">
+          <div style="font-weight:600;color:var(--yellow)"><i class="fas fa-triangle-exclamation"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.promotionBlockedTitle'))}</div>
+          ${gate.blockers.map((b) => `<div class="text-sm" style="margin-top:4px">${Utils.escapeHtml(b.message)}<br><span class="text-dim">${Utils.escapeHtml(b.remediation)}</span></div>`).join('')}
+        </div>` : ''}
+        ${gate && gate.ok ? `<p class="text-sm" style="color:var(--green);margin-top:10px"><i class="fas fa-circle-check"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.promotionReady'))}</p>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function _obWireDemoDataCard(body, state, wiz) {
+  const tenantId = (state._run && state._run.tenantId) || null;
+  if (!tenantId) return;
+  const refresh = () => { state._seedState = null; wiz.render(); };
+  const call = async (fn, successKey, confirmKey, danger) => {
+    if (confirmKey) {
+      const ok = await Modal.confirm(i18n.t(confirmKey), { danger: !!danger });
+      if (!ok) return;
+    }
+    try {
+      const r = await fn();
+      Toast.success(i18n.t(successKey, { rows: r.total || 0 }));
+      refresh();
+    } catch (err) { Toast.error((err.body && err.body.error) || err.message); }
+  };
+  const resetBtn = body.querySelector('#ob-seed-reset');
+  if (resetBtn) resetBtn.addEventListener('click', () => call(
+    () => Api.resetTenantSeed(tenantId),
+    'pages.onboarding.summary.demoDataResetDone',
+    'pages.onboarding.summary.demoDataResetConfirm',
+  ));
+  const regenBtn = body.querySelector('#ob-seed-regen');
+  if (regenBtn) regenBtn.addEventListener('click', () => call(
+    () => Api.regenerateTenantSeed(tenantId, {
+      profile: state.mockData.profile,
+      scenario: state.mockData.scenario,
+      locale: state.regional && state.regional.locale,
+    }),
+    'pages.onboarding.summary.demoDataRegenerateDone',
+    'pages.onboarding.summary.demoDataRegenerateConfirm',
+  ));
+  const purgeBtn = body.querySelector('#ob-seed-purge');
+  if (purgeBtn) purgeBtn.addEventListener('click', () => call(
+    () => Api.purgeTenantSeed(tenantId),
+    'pages.onboarding.summary.demoDataPurgeDone',
+    'pages.onboarding.summary.demoDataPurgeConfirm',
+    true,
+  ));
+}
 
 /**
  * "Save as template": POST the just-applied declaration to /templates. The
@@ -1207,7 +1473,12 @@ async function _obSaveAsTemplate(state, run) {
   });
 }
 
-const ONBOARDING_STEPS = [_stepMode, _stepIdentity, _stepRegional, _stepModules, _stepServers, _stepUsers, _stepPreview, _stepProvision, _stepSummary];
+// _stepMockData sits between Users and Preview and is mode-gated: active() is
+// false in production, so the Wizard primitive drops it from the rail entirely.
+const ONBOARDING_STEPS = [
+  _stepMode, _stepIdentity, _stepRegional, _stepModules, _stepServers, _stepUsers,
+  _stepMockData, _stepPreview, _stepProvision, _stepSummary,
+];
 
 // ── the page / launcher ──────────────────────────────────────────────────────
 const OnboardingPage = {
@@ -1305,19 +1576,32 @@ const OnboardingPage = {
       hosts: [_obBlankHostRow()],
       users: [_obOwnerRow()],
       permissions: [],
+      // Phase 3 — demo/trial mock data. Only sent for demo/trial declarations.
+      mockData: { profile: 'medium', scenario: 'healthy-shop', seed: '', ack: false },
       _templates: null, _templatesLoading: false, _templatesError: null,
+      _seedCatalog: null, _seedCatalogLoading: false, _seedCatalogError: null,
+      _seedState: null, _seedStateLoading: false,
       _plan: null, _planError: null, _planLoading: false, _reviewedAck: false,
       _run: null, _runId: null, _applying: false, _applyError: null,
     };
     if (stored && stored.tenant) {
       Object.assign(base, {
         idempotencyKey: stored.idempotencyKey || base.idempotencyKey,
-        mode: 'production', // Phase 1: mode is never restored into a functional demo/trial state
+        // v8.17.0 (Phase 3): demo/trial are real modes now, so the draft's mode is
+        // restored — but only from the closed allow-list, never trusted verbatim.
+        mode: ['production', 'trial', 'demo'].includes(stored.mode) ? stored.mode : 'production',
         templateKey: stored.templateKey || base.templateKey,
         tenant: stored.tenant,
         regional: stored.regional || {},
         modules: stored.modules && stored.modules.length ? stored.modules : base.modules,
         nomenclatures: stored.nomenclatures || [],
+        // The ack is deliberately NOT restored — the user re-confirms every session.
+        mockData: {
+          profile: ONBOARDING_SEED_PROFILES.includes(stored.mockData && stored.mockData.profile) ? stored.mockData.profile : base.mockData.profile,
+          scenario: ONBOARDING_SEED_SCENARIOS.includes(stored.mockData && stored.mockData.scenario) ? stored.mockData.scenario : base.mockData.scenario,
+          seed: (stored.mockData && typeof stored.mockData.seed === 'string') ? stored.mockData.seed : '',
+          ack: false,
+        },
         hosts: (stored.hosts && stored.hosts.length ? stored.hosts : [_obBlankHostRow()]).map((h) => ({ ..._obBlankHostRow(), ...h, _probe: { status: 'idle' } })),
         users: (stored.users && stored.users.length ? stored.users : [_obOwnerRow()]).map((u) => (u.isOwner ? _obOwnerRow() : { ..._obBlankUserRow(), ...u, password: '', _confirmPassword: '' })),
         permissions: stored.permissions || [],

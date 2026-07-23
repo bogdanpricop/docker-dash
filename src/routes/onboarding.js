@@ -19,6 +19,15 @@
 //   GET  /api/onboarding/templates/:key    (auth)             one template
 //   POST /api/onboarding/templates         (admin+writeable)  save-as-template (secrets stripped)
 //   DELETE /api/onboarding/templates/:key  (admin+writeable)  custom templates only
+//
+// Phase 3 (v8.17.0) — demo/trial mock data + the promotion gate:
+//   GET  /api/onboarding/seed/catalog                 (admin)  profiles+scenarios+row estimates
+//   GET  /api/onboarding/tenants/:id/seed             (admin)  live datasets + manifest
+//   POST /api/onboarding/tenants/:id/seed/purge       (admin+writeable, audited)
+//   POST /api/onboarding/tenants/:id/seed/reset       (admin+writeable, audited)
+//   POST /api/onboarding/tenants/:id/seed/regenerate  (admin+writeable, audited)
+//   GET  /api/onboarding/tenants/:id/promotion        (admin)  gate check (no writes)
+//   POST /api/onboarding/tenants/:id/promote          (admin+writeable, audited)
 
 const { Router } = require('express');
 const provisioning = require('../services/provisioning');
@@ -50,6 +59,9 @@ function _fail(res, err, fallback = 400) {
   if (err.runId) body.runId = err.runId;
   if (err.step) body.step = err.step;
   if (err.resumable) body.resumable = true;
+  if (err.code) body.code = err.code;
+  // The promotion gate returns a structured remediation list, never just "no".
+  if (Array.isArray(err.blockers)) body.blockers = err.blockers;
   return res.status(status).json(body);
 }
 
@@ -187,6 +199,106 @@ router.delete('/templates/:key', ...adminWrite, asyncHandler(async (req, res) =>
     _audit(req, 'onboarding_template_delete', 'onboarding_template', key, {});
     res.json({ success: true });
   } catch (err) { _fail(res, err); }
+}));
+
+// ── seed / demo data (Phase 3) ──────────────────────────────────────────────
+// Every mutating route is admin + writeable + audited. Production is refused at
+// three independent layers (wizard step, provisioning step, generator), and the
+// promotion gate is the matching outbound lock.
+
+// GET /seed/catalog — profiles, scenarios and pure row estimates (no writes).
+router.get('/seed/catalog', ...admin, asyncHandler(async (req, res) => {
+  const scenario = typeof req.query.scenario === 'string' ? req.query.scenario : undefined;
+  try {
+    const scenarios = provisioning.seed.listScenarios();
+    const profiles = provisioning.seed.PROFILE_KEYS.map((p) => provisioning.seed.estimate({
+      profile: p,
+      scenario: scenario && provisioning.seed.SCENARIO_KEYS.includes(scenario) ? scenario : undefined,
+    }));
+    res.json({ profiles, scenarios, maxTotalRows: provisioning.seed.MAX_TOTAL_ROWS });
+  } catch (err) { _fail(res, err); }
+}));
+
+// GET /tenants/:id/seed — live datasets + their purge manifests.
+router.get('/tenants/:id/seed', ...admin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+  try {
+    res.json({ datasets: provisioning.seed.listDatasets(id, { includePurged: req.query.all === '1' }) });
+  } catch (err) { _fail(res, err); }
+}));
+
+function _seedOp(opName, action) {
+  return asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+    const body = req.body || {};
+    try {
+      let result;
+      if (opName === 'purge') {
+        result = provisioning.seed.purgeAll(id);
+      } else {
+        // reset/regenerate both route through purge+generate, so no path can
+        // ever accumulate a second live batch.
+        result = provisioning.seed[opName]({
+          tenantId: id,
+          profile: body.profile,
+          scenario: body.scenario,
+          locale: body.locale,
+          seed: body.seed,
+          createdBy: (req.user && req.user.username) || 'system',
+        });
+      }
+      const hasDataset = result.datasetId != null;
+      _audit(req, action, hasDataset ? 'seed_dataset' : 'tenant', hasDataset ? result.datasetId : id, {
+        tenantId: id,
+        profile: result.profile,
+        scenario: result.scenario,
+        rows: result.total,
+        purged: result.purged,
+        purgedRows: result.purgedRows,
+        skipped: (result.results || []).flatMap((r) => r.skipped || []),
+      });
+      res.json(result);
+    } catch (err) {
+      log.warn(`seed ${opName} failed`, { tenantId: id, error: err.message });
+      _fail(res, err);
+    }
+  });
+}
+
+router.post('/tenants/:id/seed/purge', ...adminWrite, _seedOp('purge', 'seed_dataset_purge'));
+router.post('/tenants/:id/seed/reset', ...adminWrite, _seedOp('reset', 'seed_dataset_reset'));
+router.post('/tenants/:id/seed/regenerate', ...adminWrite, _seedOp('regenerate', 'seed_dataset_regenerate'));
+
+// GET /tenants/:id/promotion — run the gate WITHOUT changing anything.
+router.get('/tenants/:id/promotion', ...admin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+  try {
+    res.json(provisioning.checkProductionReady(id));
+  } catch (err) { _fail(res, err); }
+}));
+
+// POST /tenants/:id/promote — switch usage_mode, gated + audited.
+// `?purgeFirst=1` (or body.purgeFirst) performs the remediation then promotes.
+router.post('/tenants/:id/promote', ...adminWrite, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+  const body = req.body || {};
+  const mode = body.mode || 'production';
+  try {
+    const result = (body.purgeFirst === true && mode === 'production')
+      ? provisioning.promotion.purgeAndPromote(id, { user: req.user, ip: getClientIp(req) })
+      : provisioning.setUsageMode(id, mode, { user: req.user, ip: getClientIp(req) });
+    // setUsageMode already writes the `tenant_promote` chain row; this records the
+    // API entry point + outcome (mirrors the /apply pattern).
+    _audit(req, 'tenant_promote', 'tenant', id, { from: result.from, to: result.to, changed: result.changed, via: 'api' });
+    res.json(result);
+  } catch (err) {
+    log.warn('promotion refused', { tenantId: id, error: err.message });
+    _fail(res, err);
+  }
 }));
 
 module.exports = router;

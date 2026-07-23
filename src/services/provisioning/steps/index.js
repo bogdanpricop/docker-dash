@@ -14,6 +14,7 @@ const enableModules = require('./enable-modules');
 const createHosts = require('./create-hosts');
 const createUsers = require('./create-users');
 const grantPermissions = require('./grant-permissions');
+const seedMockData = require('./seed-mock-data');
 const finalize = require('./finalize');
 
 // The canonical order. v8.16.0 (Phase 2) inserted seed_nomenclatures right after
@@ -30,21 +31,39 @@ const ORDERED = [
   createHosts,       // 5  external
   createUsers,       // 6  external
   grantPermissions,  // 7  db
-  finalize,          // 8  db
+  seedMockData,      // 8  db   — demo/trial ONLY (see isActive below)
+  finalize,          // 9  db
 ];
 
 const STEP_REGISTRY = Object.freeze(
   ORDERED.reduce((acc, s) => { acc[s.key] = s; return acc; }, {}),
 );
 
+// v8.17.0 (Phase 3) — the first CONDITIONAL step. `seed_mock_data` is built only
+// for demo/trial runs; a production run never even has the step in its plan (the
+// step itself and the generator refuse independently — three guards).
+//
+// Conditionality is safe because a run's `mode` is fixed at creation and stored in
+// input_json, so buildSteps() is still deterministic FOR A GIVEN RUN: the same
+// declaration always yields the same list, and the engine resumes on `step_key`
+// rather than a hard-coded ordinal.
+const STEP_PREDICATES = {
+  seed_mock_data: (ctx) => {
+    const mode = (ctx && ctx.decl && ctx.decl.mode) || 'production';
+    return mode === 'demo' || mode === 'trial';
+  },
+};
+
 /**
- * Return the ordered step list with 1-based ordinals attached. Deterministic —
- * rebuilt identically on plan/apply/resume so the ordinal↔step_key mapping is
- * stable across a run's lifetime.
+ * Return the ordered step list with 1-based ordinals attached. Deterministic for
+ * a given ctx — rebuilt identically on plan/apply/resume so the ordinal↔step_key
+ * mapping is stable across a run's lifetime.
  * @returns {Array<{key,kind,ordinal,run,compensate?,estimate?}>}
  */
-function buildSteps(/* ctx */) {
-  return ORDERED.map((s, i) => ({ ...s, ordinal: i + 1 }));
+function buildSteps(ctx) {
+  return ORDERED
+    .filter((s) => (STEP_PREDICATES[s.key] ? STEP_PREDICATES[s.key](ctx) : true))
+    .map((s, i) => ({ ...s, ordinal: i + 1 }));
 }
 
-module.exports = { buildSteps, STEP_REGISTRY, ORDERED };
+module.exports = { buildSteps, STEP_REGISTRY, ORDERED, STEP_PREDICATES };

@@ -20,10 +20,34 @@ class DockerService {
   getDocker(hostId = 0) {
     if (this.connections.has(hostId)) return this.connections.get(hostId);
 
+    // v8.17.0 (Onboarding Phase 3) — DEMO/SEEDED HOSTS ONLY.
+    // A seeded host has no daemon behind it (RFC1918 address, `.test` FQDN,
+    // placeholder credentials), so we serve the synthetic seed_containers roster
+    // instead of attempting a connection that can never succeed.
+    //
+    // ISOLATION: getMockDocker() returns null unless docker_hosts.seed_run_id IS
+    // NOT NULL *and* its dataset is still active. A real host has
+    // seed_run_id IS NULL, so it can never match — behaviour for real hosts is
+    // byte-for-byte unchanged. Mock instances are deliberately NOT cached in
+    // this.connections, so a purge takes effect immediately and a real host that
+    // is already cached never even reaches this branch.
+    const mock = this._getMockDocker(hostId);
+    if (mock) return mock;
+
     const hostConfig = this._getHostConfig(hostId);
     const docker = this._createConnection(hostConfig);
     this.connections.set(hostId, docker);
     return docker;
+  }
+
+  /** @returns {object|null} a MockDocker for a seeded host, null for a real one. */
+  _getMockDocker(hostId) {
+    if (!hostId || hostId <= 0) return null;   // host 0 (local default) is never seeded
+    try {
+      return require('./provisioning/seed/mock-docker').getMockDocker(hostId);
+    } catch {
+      return null; // pre-093 schema / module unavailable → always the real path
+    }
   }
 
   /** Read host config from DB (or use defaults for host 0) */

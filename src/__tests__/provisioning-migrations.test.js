@@ -123,10 +123,17 @@ describe('provisioning migrations (088/089/090)', () => {
       .not.toThrow();
   });
 
-  it('nomenclatures does NOT carry seed_run_id yet (Phase 3 adds it uniformly)', () => {
-    const cols = db.prepare('PRAGMA table_info(nomenclatures)').all().map((c) => c.name);
-    expect(cols).toEqual(expect.arrayContaining(['id', 'tenant_id', 'kind', 'code', 'label', 'sort', 'meta_json', 'created_at']));
-    expect(cols).not.toContain('seed_run_id');
+  // v8.17.0 (Phase 3): 093 adds the tag uniformly to the whole SEED_TABLES
+  // allow-list, so `nomenclatures` DOES carry seed_run_id now — nullable, with
+  // real (template-seeded) rows staying NULL. 091 still does not define it: the
+  // tagging mechanism has exactly one definition site (093).
+  it('nomenclatures carries a NULLABLE seed_run_id added by 093 (real rows stay NULL)', () => {
+    const cols = db.prepare('PRAGMA table_info(nomenclatures)').all();
+    const names = cols.map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(['id', 'tenant_id', 'kind', 'code', 'label', 'sort', 'meta_json', 'created_at', 'seed_run_id']));
+    const tag = cols.find((c) => c.name === 'seed_run_id');
+    expect(tag.notnull).toBe(0);
+    expect(tag.dflt_value).toBeNull();
   });
 
   // ── 092 onboarding_templates ─────────────────────────────────────────────

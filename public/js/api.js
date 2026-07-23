@@ -903,6 +903,21 @@ const Api = {
   saveOnboardingTemplate(body) { return this.post('/onboarding/templates', body); },
   deleteOnboardingTemplate(key) { return this.delete(`/onboarding/templates/${encodeURIComponent(key)}`); },
 
+  // ─── Demo / trial mock data + promotion gate (v8.17.0, Phase 3) ───
+  // The generator is synthetic-by-construction (RFC1918/TEST-NET addresses,
+  // *.test/*.example domains, viewer-only demo users) and every row it writes is
+  // tagged `seed_run_id`, so purge/reset can never touch a real row. Production
+  // is refused at three independent layers, and promoting a tenant to production
+  // is blocked while any live batch or placeholder credential exists —
+  // getTenantPromotion() returns the structured remediation list.
+  getSeedCatalog(scenario) { return this.get(`/onboarding/seed/catalog${scenario ? `?scenario=${encodeURIComponent(scenario)}` : ''}`); },
+  getTenantSeed(tenantId, all) { return this.get(`/onboarding/tenants/${tenantId}/seed${all ? '?all=1' : ''}`); },
+  purgeTenantSeed(tenantId) { return this.post(`/onboarding/tenants/${tenantId}/seed/purge`); },
+  resetTenantSeed(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/seed/reset`, body || {}); },
+  regenerateTenantSeed(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/seed/regenerate`, body || {}); },
+  getTenantPromotion(tenantId) { return this.get(`/onboarding/tenants/${tenantId}/promotion`); },
+  promoteTenant(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/promote`, body || {}); },
+
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
   getAboutFile(name) { return this.get(`/about/file/${encodeURIComponent(name)}`); },
