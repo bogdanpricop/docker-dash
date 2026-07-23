@@ -11,6 +11,7 @@ const { getClientIp } = require('../utils/helpers');
 const { getDb } = require('../db');
 const sslService = require('../services/ssl');
 const cisBenchmark = require('../services/cis-benchmark');
+const { humanizeDockerError } = require('../utils/docker-errors');
 const log = require('../utils/logger')('system');
 
 const { extractHostId } = require('../middleware/hostId');
@@ -53,7 +54,7 @@ router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeatu
     auditService.log({ userId: req.user.id, username: req.user.username,
       action: 'system_prune', details: req.body, ip: getClientIp(req) });
     res.json(results);
-  } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
+  } catch (err) { res.status(500).json({ error: humanizeDockerError(err) }); }
 });
 
 // Per-type prune — the frontend (System → Tools → Prune buttons) sends
@@ -78,7 +79,7 @@ router.post('/prune/:type', requireAuth, requireRole('admin'), writeable, requir
     res.json(results);
   } catch (err) {
     log.error('Prune failed', { type, message: err.message || String(err) });
-    res.status(500).json({ error: `Prune ${type} failed: ${err.message || 'internal error'}` });
+    res.status(500).json({ error: humanizeDockerError(err) });
   }
 });
 

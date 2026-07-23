@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.19.3] - 2026-07-24 — Human-friendly Docker error messages
+
+Raw Docker daemon errors (e.g. `(HTTP code 500) unexpected - --live-restore daemon configuration is
+incompatible with swarm mode`) are now translated into plain, actionable language. New shared
+`humanizeDockerError()` maps the common cases — live-restore vs swarm, multi-homed advertise
+address, already-in-a-swarm, port already in use, no-such-container/image, out-of-disk, connection
+refused / timed out / SSH auth failed — to a short "what went wrong + how to fix it" sentence, and
+cleans up anything it doesn't recognise instead of leaking the HTTP-code preamble. Applied to Swarm
+init/leave and System → Prune. Example: the swarm live-restore failure now reads *"This host's
+Docker has 'live-restore' turned on, which can't be used together with swarm mode. On that host, set
+'live-restore': false in /etc/docker/daemon.json and restart Docker, then try again."* 13 tests.
+
 ## [8.19.2] - 2026-07-23 — Fix: Swarm init/leave surface the real Docker error
 
 Initializing a swarm returned a bare **"Internal server error"** (500) with no explanation — the

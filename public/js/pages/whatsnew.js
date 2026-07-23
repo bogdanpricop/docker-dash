@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.19.3',
+      date: '2026-07-24',
+      title: 'Human-friendly Docker error messages',
+      changes: [
+        { type: 'improvement', text: 'Cryptic Docker daemon errors are now shown in plain language with a fix. Instead of “(HTTP code 500) unexpected - --live-restore daemon configuration is incompatible with swarm mode”, you now get “This host’s Docker has live-restore turned on, which can’t be used together with swarm mode — set live-restore: false in /etc/docker/daemon.json and restart Docker, then try again.” Covers swarm setup, ports already in use, missing containers/images, out-of-disk, connection/auth failures and more — applied to Swarm and Prune first.' },
+      ],
+    },
+    {
       version: '8.19.2',
       date: '2026-07-23',
       title: 'Fix — Swarm init now tells you why it failed',
