@@ -46,7 +46,7 @@ const ONBOARDING_MODULE_CATALOG = [
 // `seed_mock_data` is CONDITIONAL: the server only builds it for demo/trial runs
 // (steps/index.js STEP_PREDICATES), so the checklist mirrors that.
 const ONBOARDING_RUN_STEP_KEYS = [
-  'create_tenant', 'set_regional', 'seed_nomenclatures', 'enable_modules', 'create_hosts',
+  'create_tenant', 'set_regional', 'seed_nomenclatures', 'seed_entities', 'enable_modules', 'create_hosts',
   'create_users', 'grant_permissions', 'finalize',
 ];
 function _obRunStepKeys(mode) {
@@ -204,6 +204,12 @@ function buildOnboardingDeclaration(state) {
     // is applied; the server merges the template's own list underneath anyway
     // (template-merge.js) — same (kind, code) entries collapse, ours win.
     nomenclatures: (state.nomenclatures || []).map((n) => ({ kind: n.kind, code: n.code, label: n.label, sort: n.sort || 0 })),
+    // Phase 4 — the generic entity graph. Both are idempotent on their natural
+    // keys server-side; relations reference entities by (type, code).
+    entities: (state.entities || []).map((e) => ({ entityType: e.entityType, code: e.code, name: e.name })),
+    relations: (state.relations || []).map((r) => ({
+      fromType: r.fromType, fromCode: r.fromCode, toType: r.toType, toCode: r.toCode, relationType: r.relationType,
+    })),
     hosts,
     users,
     permissions,
@@ -227,6 +233,8 @@ function _obSelectedTemplate(state) {
 function _obApplyTemplateToState(state, tpl) {
   state.templateKey = tpl ? tpl.key : ONBOARDING_NOOP_TEMPLATE;
   state.nomenclatures = [];
+  state.entities = [];
+  state.relations = [];
   if (!tpl) return;
   const spec = tpl.spec || {};
   if (spec.tenant && spec.tenant.kind && !state._kindManuallyEdited) state.tenant.kind = spec.tenant.kind;
@@ -250,7 +258,25 @@ function _obApplyTemplateToState(state, tpl) {
   if (Array.isArray(spec.nomenclatures)) {
     state.nomenclatures = spec.nomenclatures.map((n) => ({ kind: n.kind, code: n.code, label: n.label, sort: n.sort || 0 }));
   }
+  // Templates MAY define entities/relations (unlike users — an entity mints no
+  // principal). The server merge is authoritative; this mirrors it so step 6 is
+  // pre-filled and editable.
+  if (Array.isArray(spec.entities)) {
+    state.entities = spec.entities.map((e) => ({ _rid: ++_obEntitySeq, entityType: e.entityType, code: e.code, name: e.name }));
+  }
+  if (Array.isArray(spec.relations)) {
+    state.relations = spec.relations.map((r) => ({
+      _rid: ++_obRelationSeq, fromType: r.fromType, fromCode: r.fromCode, toType: r.toType, toCode: r.toCode, relationType: r.relationType,
+    }));
+  }
 }
+
+let _obEntitySeq = 0;
+let _obRelationSeq = 0;
+const ONBOARDING_ENTITY_TYPES = ['site', 'department', 'cost_center', 'product_line', 'application', 'service', 'custom'];
+const ONBOARDING_RELATION_TYPES = ['belongs_to', 'depends_on', 'located_at', 'owns'];
+function _obBlankEntity() { return { _rid: ++_obEntitySeq, entityType: 'site', code: '', name: '' }; }
+function _obEntityKey(type, code) { return `${type}::${String(code || '').toLowerCase()}`; }
 
 function _obHostProbeBadge(probe) {
   const p = probe || { status: 'idle' };
@@ -283,6 +309,9 @@ function _obNonSecretSnapshot(state) {
     regional: state.regional,
     modules: state.modules,
     nomenclatures: state.nomenclatures,
+    // Entities/relations carry no secret and no PII — safe to draft-persist.
+    entities: state.entities,
+    relations: state.relations,
     hosts: state.hosts.map((h) => ({ name: h.name, connectionType: h.connectionType, socketPath: h.socketPath, host: h.host, port: h.port, sshHost: h.sshHost, sshPort: h.sshPort, sshUsername: h.sshUsername, sshDockerSocket: h.sshDockerSocket })),
     users: state.users.map((u) => ({ username: u.username, displayName: u.displayName, email: u.email, role: u.role, isOwner: u.isOwner, _existing: u._existing })),
     permissions: state.permissions,
@@ -421,12 +450,13 @@ const _stepIdentity = {
   },
   validate(state) {
     const errors = [];
+    const fields = [];
     const name = (state.tenant.name || '').trim();
-    if (name.length < 2 || name.length > 80) errors.push(i18n.t('pages.onboarding.errors.nameInvalid'));
+    if (name.length < 2 || name.length > 80) { errors.push(i18n.t('pages.onboarding.errors.nameInvalid')); fields.push({ sel: '#ob-id-name', msg: i18n.t('pages.onboarding.errors.nameInvalid') }); }
     const slug = (state.tenant.slug || '').trim();
-    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug)) errors.push(i18n.t('pages.onboarding.errors.slugInvalid'));
-    if (!['client', 'plant', 'internal'].includes(state.tenant.kind)) errors.push(i18n.t('pages.onboarding.errors.kindInvalid'));
-    return { ok: errors.length === 0, errors };
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(slug)) { errors.push(i18n.t('pages.onboarding.errors.slugInvalid')); fields.push({ sel: '#ob-id-slug', msg: i18n.t('pages.onboarding.errors.slugInvalid') }); }
+    if (!['client', 'plant', 'internal'].includes(state.tenant.kind)) { errors.push(i18n.t('pages.onboarding.errors.kindInvalid')); fields.push({ sel: '#ob-id-kind', msg: i18n.t('pages.onboarding.errors.kindInvalid') }); }
+    return { ok: errors.length === 0, errors, fields };
   },
   onLeave(state) { state._plan = null; },
 };
@@ -496,11 +526,12 @@ const _stepRegional = {
   validate(state) {
     const r = state.regional || {};
     const errors = [];
-    if (!r.locale) errors.push(i18n.t('pages.onboarding.errors.localeRequired'));
-    if (!r.timezone) errors.push(i18n.t('pages.onboarding.errors.timezoneRequired'));
-    if (!r.currency || r.currency.length !== 3) errors.push(i18n.t('pages.onboarding.errors.currencyInvalid'));
+    const fields = [];
+    if (!r.locale) { errors.push(i18n.t('pages.onboarding.errors.localeRequired')); fields.push({ sel: '#ob-rg-locale', msg: i18n.t('pages.onboarding.errors.localeRequired') }); }
+    if (!r.timezone) { errors.push(i18n.t('pages.onboarding.errors.timezoneRequired')); fields.push({ sel: '#ob-rg-timezone', msg: i18n.t('pages.onboarding.errors.timezoneRequired') }); }
+    if (!r.currency || r.currency.length !== 3) { errors.push(i18n.t('pages.onboarding.errors.currencyInvalid')); fields.push({ sel: '#ob-rg-currency', msg: i18n.t('pages.onboarding.errors.currencyInvalid') }); }
     if (!['metric', 'imperial'].includes(r.unitSystem)) errors.push(i18n.t('pages.onboarding.errors.unitsInvalid'));
-    return { ok: errors.length === 0, errors };
+    return { ok: errors.length === 0, errors, fields };
   },
   onLeave(state) { state._plan = null; },
 };
@@ -783,24 +814,25 @@ const _stepUsers = {
   },
   validate(state) {
     const errors = [];
+    const fields = [];
     const names = new Set();
     let ownerCount = 0;
-    state.users.forEach((u) => {
+    state.users.forEach((u, i) => {
       const uname = (u.username || '').trim();
       if (u.isOwner) ownerCount++;
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}$/.test(uname)) errors.push(i18n.t('pages.onboarding.errors.usernameInvalid', { username: uname || '?' }));
-      else if (names.has(uname.toLowerCase())) errors.push(i18n.t('pages.onboarding.errors.usernameDuplicate', { username: uname }));
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}$/.test(uname)) { errors.push(i18n.t('pages.onboarding.errors.usernameInvalid', { username: uname || '?' })); fields.push({ sel: `#ob-user-name-${i}`, msg: i18n.t('pages.onboarding.errors.usernameInvalid', { username: uname || '?' }) }); }
+      else if (names.has(uname.toLowerCase())) { errors.push(i18n.t('pages.onboarding.errors.usernameDuplicate', { username: uname })); fields.push({ sel: `#ob-user-name-${i}`, msg: i18n.t('pages.onboarding.errors.usernameDuplicate', { username: uname }) }); }
       names.add(uname.toLowerCase());
       if (!['viewer', 'operator', 'admin'].includes(u.role)) errors.push(i18n.t('pages.onboarding.errors.roleInvalid'));
       if (u.role === 'admin' && state.mode !== 'production') errors.push(i18n.t('pages.onboarding.errors.adminNotAllowed'));
       if (!u._existing) {
-        if (!u.password || u.password.length < 8) errors.push(i18n.t('pages.onboarding.errors.passwordShort', { username: uname || '?' }));
-        else if (!/\d/.test(u.password)) errors.push(i18n.t('pages.onboarding.errors.passwordNoNumber', { username: uname || '?' }));
-        if (u.password !== u._confirmPassword) errors.push(i18n.t('pages.onboarding.errors.passwordMismatch', { username: uname || '?' }));
+        if (!u.password || u.password.length < 8) { errors.push(i18n.t('pages.onboarding.errors.passwordShort', { username: uname || '?' })); fields.push({ sel: `#ob-user-pass-${i}`, msg: i18n.t('pages.onboarding.errors.passwordShort', { username: uname || '?' }) }); }
+        else if (!/\d/.test(u.password)) { errors.push(i18n.t('pages.onboarding.errors.passwordNoNumber', { username: uname || '?' })); fields.push({ sel: `#ob-user-pass-${i}`, msg: i18n.t('pages.onboarding.errors.passwordNoNumber', { username: uname || '?' }) }); }
+        if (u.password !== u._confirmPassword) { errors.push(i18n.t('pages.onboarding.errors.passwordMismatch', { username: uname || '?' })); fields.push({ sel: `#ob-user-confirm-${i}`, msg: i18n.t('pages.onboarding.errors.passwordMismatch', { username: uname || '?' }) }); }
       }
     });
     if (ownerCount !== 1) errors.push(i18n.t('pages.onboarding.errors.ownerRequired'));
-    return { ok: errors.length === 0, errors };
+    return { ok: errors.length === 0, errors: [...new Set(errors)], fields };
   },
   onLeave(state) { state._plan = null; },
 };
@@ -900,8 +932,164 @@ function _obWireUserRows(body, state, wiz) {
   });
 }
 
-// ── step 6 — preview & impact (dry-run) ─────────────────────────────────────
-// ── step 6 — mock data (demo/trial ONLY) ────────────────────────────────────
+// ── step 6 — entities & relationships ───────────────────────────────────────
+// The generic, data-model-agnostic entity graph (Phase 4). Template-prefilled
+// and fully editable: add/remove entities + relations. Both are inert structural
+// data (no credential, no principal), so it is demo/trial safe and applies
+// through the idempotent seed_entities saga step. Optional — skippable if empty.
+const _stepEntities = {
+  key: 'entities',
+  get title() { return i18n.t('pages.onboarding.entities.title'); },
+  get help() { return i18n.t('pages.onboarding.entities.help'); },
+  active() { return true; },
+  optional() { return true; },
+  render(body, state, wiz) {
+    state.entities = state.entities || [];
+    state.relations = state.relations || [];
+    const entities = state.entities;
+    body.innerHTML = `
+      <div id="ob-ent-rows">${entities.map((e, i) => _obRenderEntityRow(e, i)).join('')}</div>
+      <button type="button" class="btn btn-sm btn-primary" id="ob-ent-add"><i class="fas fa-plus"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.entities.addEntity'))}</button>
+      ${entities.length === 0 ? `<p class="text-sm text-dim" style="margin-top:8px">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.empty'))}</p>` : ''}
+      <hr style="border-color:var(--border);margin:18px 0">
+      <h3 style="font-size:14px;margin-bottom:6px">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.relationsTitle'))}</h3>
+      <p class="text-sm text-dim">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.relationsHelp'))}</p>
+      <div id="ob-rel-rows">${(state.relations || []).map((r, i) => _obRenderRelationRow(r, i, entities)).join('')}</div>
+      <button type="button" class="btn btn-sm btn-secondary" id="ob-rel-add" ${entities.length < 2 ? 'disabled' : ''}><i class="fas fa-plus"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.entities.addRelation'))}</button>
+      <p class="text-sm text-dim" style="margin-top:10px"><i class="fas fa-circle-info"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.entities.impactHint'))}</p>
+    `;
+    _obWireEntityRows(body, state, wiz);
+  },
+  validate(state) {
+    const errors = [];
+    const fields = [];
+    const seen = new Set();
+    (state.entities || []).forEach((e, i) => {
+      const code = (e.code || '').trim();
+      const name = (e.name || '').trim();
+      if (!ONBOARDING_ENTITY_TYPES.includes(e.entityType)) errors.push(i18n.t('pages.onboarding.errors.entityTypeInvalid'));
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(code)) {
+        errors.push(i18n.t('pages.onboarding.errors.entityCodeInvalid', { code: code || '?' }));
+        fields.push({ sel: `#ob-ent-code-${i}`, msg: i18n.t('pages.onboarding.errors.entityCodeInvalid', { code: code || '?' }) });
+      } else {
+        const key = _obEntityKey(e.entityType, code);
+        if (seen.has(key)) {
+          errors.push(i18n.t('pages.onboarding.errors.entityDuplicate', { code }));
+          fields.push({ sel: `#ob-ent-code-${i}`, msg: i18n.t('pages.onboarding.errors.entityDuplicate', { code }) });
+        }
+        seen.add(key);
+      }
+      if (!name) {
+        errors.push(i18n.t('pages.onboarding.errors.entityNameRequired', { code: code || '?' }));
+        fields.push({ sel: `#ob-ent-name-${i}`, msg: i18n.t('pages.onboarding.errors.entityNameRequired', { code: code || '?' }) });
+      }
+    });
+    (state.relations || []).forEach((r) => {
+      const fromKey = _obEntityKey(r.fromType, r.fromCode);
+      const toKey = _obEntityKey(r.toType, r.toCode);
+      if (!seen.has(fromKey) || !seen.has(toKey)) errors.push(i18n.t('pages.onboarding.errors.relationEndpointMissing'));
+      else if (fromKey === toKey) errors.push(i18n.t('pages.onboarding.errors.relationSelf'));
+      if (!ONBOARDING_RELATION_TYPES.includes(r.relationType)) errors.push(i18n.t('pages.onboarding.errors.relationTypeInvalid'));
+    });
+    return { ok: errors.length === 0, errors: [...new Set(errors)], fields };
+  },
+  onLeave(state) { state._plan = null; },
+};
+
+function _obRenderEntityRow(e, i) {
+  const typeOptions = ONBOARDING_ENTITY_TYPES.map((t) => `<option value="${t}" ${e.entityType === t ? 'selected' : ''}>${Utils.escapeHtml(i18n.t(`pages.onboarding.entities.types.${t}`))}</option>`).join('');
+  return `
+    <div class="wiz-entity-row" data-ent-idx="${i}">
+      <div class="form-group" style="flex:1;min-width:130px">
+        <label for="ob-ent-type-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.entityType'))}</label>
+        <select id="ob-ent-type-${i}" class="form-control">${typeOptions}</select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:110px">
+        <label for="ob-ent-code-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.code'))}</label>
+        <input type="text" id="ob-ent-code-${i}" class="form-control mono" value="${Utils.escapeHtml(e.code)}">
+      </div>
+      <div class="form-group" style="flex:2;min-width:150px">
+        <label for="ob-ent-name-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.name'))}</label>
+        <input type="text" id="ob-ent-name-${i}" class="form-control" value="${Utils.escapeHtml(e.name)}">
+      </div>
+      <button type="button" class="btn btn-sm btn-secondary" data-remove-ent="${i}" title="${Utils.escapeHtml(i18n.t('pages.onboarding.entities.remove'))}"><i class="fas fa-trash"></i></button>
+    </div>`;
+}
+
+function _obRenderRelationRow(r, i, entities) {
+  const entOptions = (sel) => entities.filter((e) => (e.code || '').trim()).map((e) => {
+    const val = `${e.entityType}::${e.code}`;
+    return `<option value="${Utils.escapeHtml(val)}" ${sel === val ? 'selected' : ''}>${Utils.escapeHtml(`${e.name || e.code} (${e.entityType})`)}</option>`;
+  }).join('');
+  const fromVal = `${r.fromType}::${r.fromCode}`;
+  const toVal = `${r.toType}::${r.toCode}`;
+  const relOptions = ONBOARDING_RELATION_TYPES.map((t) => `<option value="${t}" ${r.relationType === t ? 'selected' : ''}>${Utils.escapeHtml(i18n.t(`pages.onboarding.entities.relations.${t}`))}</option>`).join('');
+  return `
+    <div class="wiz-entity-row" data-rel-idx="${i}">
+      <div class="form-group" style="flex:2;min-width:140px">
+        <label for="ob-rel-from-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.relFrom'))}</label>
+        <select id="ob-rel-from-${i}" class="form-control">${entOptions(fromVal)}</select>
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px">
+        <label for="ob-rel-type-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.relationType'))}</label>
+        <select id="ob-rel-type-${i}" class="form-control">${relOptions}</select>
+      </div>
+      <div class="form-group" style="flex:2;min-width:140px">
+        <label for="ob-rel-to-${i}">${Utils.escapeHtml(i18n.t('pages.onboarding.entities.relTo'))}</label>
+        <select id="ob-rel-to-${i}" class="form-control">${entOptions(toVal)}</select>
+      </div>
+      <button type="button" class="btn btn-sm btn-secondary" data-remove-rel="${i}" title="${Utils.escapeHtml(i18n.t('pages.onboarding.entities.remove'))}"><i class="fas fa-trash"></i></button>
+    </div>`;
+}
+
+function _obWireEntityRows(body, state, wiz) {
+  const splitVal = (v) => { const [t, c] = String(v || '').split('::'); return { type: t, code: c }; };
+  state.entities.forEach((e, i) => {
+    const typeEl = body.querySelector(`#ob-ent-type-${i}`);
+    if (typeEl) typeEl.addEventListener('change', () => { e.entityType = typeEl.value; });
+    const codeEl = body.querySelector(`#ob-ent-code-${i}`);
+    if (codeEl) codeEl.addEventListener('input', () => { e.code = codeEl.value; });
+    const nameEl = body.querySelector(`#ob-ent-name-${i}`);
+    if (nameEl) nameEl.addEventListener('input', () => { e.name = nameEl.value; });
+    const rm = body.querySelector(`[data-remove-ent="${i}"]`);
+    if (rm) rm.addEventListener('click', () => {
+      const removed = state.entities[i];
+      const key = _obEntityKey(removed.entityType, removed.code);
+      state.entities.splice(i, 1);
+      // Drop any relation that pointed at the removed entity.
+      state.relations = (state.relations || []).filter((r) => _obEntityKey(r.fromType, r.fromCode) !== key && _obEntityKey(r.toType, r.toCode) !== key);
+      wiz.render();
+    });
+  });
+  const addEnt = body.querySelector('#ob-ent-add');
+  if (addEnt) addEnt.addEventListener('click', () => { state.entities.push(_obBlankEntity()); wiz.render(); });
+
+  (state.relations || []).forEach((r, i) => {
+    const fromEl = body.querySelector(`#ob-rel-from-${i}`);
+    if (fromEl) fromEl.addEventListener('change', () => { const s = splitVal(fromEl.value); r.fromType = s.type; r.fromCode = s.code; });
+    const toEl = body.querySelector(`#ob-rel-to-${i}`);
+    if (toEl) toEl.addEventListener('change', () => { const s = splitVal(toEl.value); r.toType = s.type; r.toCode = s.code; });
+    const typeEl = body.querySelector(`#ob-rel-type-${i}`);
+    if (typeEl) typeEl.addEventListener('change', () => { r.relationType = typeEl.value; });
+    const rm = body.querySelector(`[data-remove-rel="${i}"]`);
+    if (rm) rm.addEventListener('click', () => { state.relations.splice(i, 1); wiz.render(); });
+  });
+  const addRel = body.querySelector('#ob-rel-add');
+  if (addRel) addRel.addEventListener('click', () => {
+    const withCode = state.entities.filter((e) => (e.code || '').trim());
+    if (withCode.length < 2) return;
+    state.relations = state.relations || [];
+    state.relations.push({
+      _rid: ++_obRelationSeq,
+      fromType: withCode[0].entityType, fromCode: withCode[0].code,
+      toType: withCode[1].entityType, toCode: withCode[1].code, relationType: 'belongs_to',
+    });
+    wiz.render();
+  });
+}
+
+// ── step 7 — preview & impact (dry-run) ─────────────────────────────────────
+// ── step 7 — mock data (demo/trial ONLY) ────────────────────────────────────
 // Hard-inactive in production: the step is filtered out of the rail entirely
 // (active() === false), the declaration omits the mockData block, and the server
 // rejects it anyway. Three independent layers, per onboarding-security.md §3.
@@ -1083,6 +1271,9 @@ const _stepPreview = {
           tenants: creates.tenants || 0, modules: creates.modules || 0, hosts: creates.hosts || 0,
           users: creates.users || 0, grants: creates.grants || 0, nomenclatures: creates.nomenclatures || 0,
         }))}
+        ${(creates.entities || creates.relations) ? `<div style="margin-top:4px"><i class="fas fa-diagram-project"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.preview.willCreateEntities', {
+          entities: creates.entities || 0, relations: creates.relations || 0,
+        }))}</div>` : ''}
         ${creates.syntheticRows ? `<div style="margin-top:4px"><i class="fas fa-flask"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.preview.willCreateSynthetic', {
           rows: creates.syntheticRows, tables: creates.syntheticTables || 0,
           profile: state.mockData.profile, scenario: state.mockData.scenario,
@@ -1301,6 +1492,8 @@ const _stepSummary = {
       </div>` : ''}
       ${_obRenderDemoDataCard(state)}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-drift"><i class="fas fa-rotate"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.checkDrift'))}</button>
+        ${state.mode === 'trial' ? `<button type="button" class="btn btn-sm btn-secondary" id="ob-summary-extend"><i class="fas fa-hourglass-half"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.extendTrial'))}</button>` : ''}
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-export"><i class="fas fa-file-export"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.exportJson'))}</button>
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-save-template"><i class="fas fa-layer-group"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.saveAsTemplate'))}</button>
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-copy"><i class="fas fa-copy"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.copyApi'))}</button>
@@ -1314,6 +1507,9 @@ const _stepSummary = {
       document.body.appendChild(a); a.click(); a.remove();
     });
     _obWireDemoDataCard(body, state, wiz);
+    body.querySelector('#ob-summary-drift').addEventListener('click', () => _obCheckDrift(state, run));
+    const extendBtn = body.querySelector('#ob-summary-extend');
+    if (extendBtn) extendBtn.addEventListener('click', () => _obExtendTrial(state, run));
     body.querySelector('#ob-summary-save-template').addEventListener('click', () => _obSaveAsTemplate(state, run));
     body.querySelector('#ob-summary-copy').addEventListener('click', () => {
       const snippet = `curl -sS -X POST "$DOCKER_DASH_URL/api/onboarding/apply" \\\n  -H "Content-Type: application/json" \\\n  --cookie "<admin session cookie>" \\\n  -d @<(curl -sS "$DOCKER_DASH_URL${Api.exportOnboardingRunUrl(run.id)}")`;
@@ -1473,11 +1669,84 @@ async function _obSaveAsTemplate(state, run) {
   });
 }
 
-// _stepMockData sits between Users and Preview and is mode-gated: active() is
-// false in production, so the Wizard primitive drops it from the rail entirely.
+/**
+ * "Re-run / check drift" (Phase 4): a READ-ONLY diff of the current declaration
+ * against the just-provisioned tenant (POST /tenants/:id/replan). Shows what
+ * would be created/updated vs what is already in sync; convergence is the same
+ * idempotent /apply. Secrets never leave — replan validates but writes nothing.
+ */
+async function _obCheckDrift(state, run) {
+  const tenantId = (run && run.tenantId) || (state._run && state._run.tenantId);
+  if (!tenantId) { Toast.error(i18n.t('pages.onboarding.summary.driftNoTenant')); return; }
+  let diff;
+  try {
+    diff = await Api.replanOnboarding(tenantId, buildOnboardingDeclaration(state));
+  } catch (err) { Toast.error((err.body && err.body.error) || err.message); return; }
+
+  const RES = ['settings', 'modules', 'nomenclatures', 'entities', 'relations', 'hosts', 'users'];
+  const rows = RES.map((k) => {
+    const b = diff[k] || { toCreate: [], toUpdate: [], inSync: [] };
+    return `<tr>
+      <td>${Utils.escapeHtml(i18n.t(`pages.onboarding.drift.res.${k}`))}</td>
+      <td style="text-align:center">${b.toCreate.length ? `<span class="badge badge-info">${b.toCreate.length}</span>` : '—'}</td>
+      <td style="text-align:center">${b.toUpdate.length ? `<span class="badge badge-warning">${b.toUpdate.length}</span>` : '—'}</td>
+      <td style="text-align:center;color:var(--text-dim)">${b.inSync.length}</td>
+    </tr>`;
+  }).join('');
+  const inSync = diff.inSync;
+  const html = `
+    <div class="modal-header"><h3><i class="fas fa-rotate" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(i18n.t('pages.onboarding.summary.checkDrift'))}</h3>
+      <button class="modal-close-btn" id="ob-drift-x"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <p class="text-sm ${inSync ? '' : 'text-dim'}" style="${inSync ? 'color:var(--green)' : ''}">
+        <i class="fas ${inSync ? 'fa-circle-check' : 'fa-circle-info'}"></i>
+        ${Utils.escapeHtml(inSync ? i18n.t('pages.onboarding.drift.inSync') : i18n.t('pages.onboarding.drift.summary', { toCreate: diff.summary.toCreate, toUpdate: diff.summary.toUpdate }))}
+      </p>
+      <div style="overflow-x:auto"><table class="data-table"><thead><tr>
+        <th>${Utils.escapeHtml(i18n.t('pages.onboarding.drift.resource'))}</th>
+        <th style="text-align:center">${Utils.escapeHtml(i18n.t('pages.onboarding.drift.toCreate'))}</th>
+        <th style="text-align:center">${Utils.escapeHtml(i18n.t('pages.onboarding.drift.toUpdate'))}</th>
+        <th style="text-align:center">${Utils.escapeHtml(i18n.t('pages.onboarding.drift.inSyncCol'))}</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="ob-drift-close">${Utils.escapeHtml(i18n.t('common.close'))}</button>
+      ${inSync ? '' : `<button class="btn btn-primary" id="ob-drift-apply"><i class="fas fa-play"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.drift.applyBtn'))}</button>`}
+    </div>`;
+  Modal.open(html, { width: '560px' });
+  Modal._content.querySelector('#ob-drift-x').addEventListener('click', () => Modal.close());
+  Modal._content.querySelector('#ob-drift-close').addEventListener('click', () => Modal.close());
+  const applyBtn = Modal._content.querySelector('#ob-drift-apply');
+  if (applyBtn) applyBtn.addEventListener('click', async () => {
+    applyBtn.disabled = true;
+    try {
+      // Converge with a FRESH idempotency key so it re-runs against the existing
+      // tenant (natural-key upserts dedupe — no duplication).
+      const decl = buildOnboardingDeclaration(state);
+      decl.idempotencyKey = `${state.idempotencyKey}-reprovision-${Date.now()}`;
+      await Api.onboardingApply(decl);
+      Modal.close();
+      Toast.success(i18n.t('pages.onboarding.drift.applied'));
+    } catch (err) { Toast.error((err.body && err.body.error) || err.message); applyBtn.disabled = false; }
+  });
+}
+
+/** Extend the trial expiry (Phase 4). Reactivates a suspended trial server-side. */
+async function _obExtendTrial(state, run) {
+  const tenantId = (run && run.tenantId) || (state._run && state._run.tenantId);
+  if (!tenantId) { Toast.error(i18n.t('pages.onboarding.summary.driftNoTenant')); return; }
+  try {
+    const r = await Api.extendTrial(tenantId, {});
+    Toast.success(i18n.t('pages.onboarding.summary.extendTrialDone', { date: (r.trialExpiresAt || '').slice(0, 10) }));
+  } catch (err) { Toast.error((err.body && err.body.error) || err.message); }
+}
+
+// _stepEntities + _stepMockData sit between Users and Preview; mock data is
+// mode-gated (active() === false in production) so the Wizard drops it from the
+// rail entirely, while entities are shown in every mode (shape, not data).
 const ONBOARDING_STEPS = [
   _stepMode, _stepIdentity, _stepRegional, _stepModules, _stepServers, _stepUsers,
-  _stepMockData, _stepPreview, _stepProvision, _stepSummary,
+  _stepEntities, _stepMockData, _stepPreview, _stepProvision, _stepSummary,
 ];
 
 // ── the page / launcher ──────────────────────────────────────────────────────
@@ -1573,6 +1842,8 @@ const OnboardingPage = {
       regional: {},
       modules: ONBOARDING_MODULE_CATALOG.map((m) => ({ key: m.key, enabled: !!m.defaultOn })),
       nomenclatures: [],
+      entities: [],
+      relations: [],
       hosts: [_obBlankHostRow()],
       users: [_obOwnerRow()],
       permissions: [],
@@ -1595,6 +1866,8 @@ const OnboardingPage = {
         regional: stored.regional || {},
         modules: stored.modules && stored.modules.length ? stored.modules : base.modules,
         nomenclatures: stored.nomenclatures || [],
+        entities: (stored.entities || []).map((e) => ({ _rid: ++_obEntitySeq, entityType: e.entityType, code: e.code, name: e.name })),
+        relations: (stored.relations || []).map((r) => ({ _rid: ++_obRelationSeq, fromType: r.fromType, fromCode: r.fromCode, toType: r.toType, toCode: r.toCode, relationType: r.relationType })),
         // The ack is deliberately NOT restored — the user re-confirms every session.
         mockData: {
           profile: ONBOARDING_SEED_PROFILES.includes(stored.mockData && stored.mockData.profile) ? stored.mockData.profile : base.mockData.profile,

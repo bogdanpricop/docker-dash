@@ -105,7 +105,66 @@ function validateNomenclatureKind(kind) {
   return kind;
 }
 
+// ── Entity + relation types (v8.18.0, Phase 4) ──────────────────────────────
+//
+// The generic entity model (migration 094) is data-model-agnostic: the SAME
+// tenant_entities / tenant_entity_relations tables carry a homelab's
+// Site→Host→Service or a plant's Site→Department→Line. `entity_type` /
+// `relation_type` are free-text at the DB level (094 has no CHECK — same
+// rationale as tenant_modules.module_key: the domain grows in code and SQLite
+// cannot ALTER a CHECK). The known set is validated HERE, in-service, on every
+// write (declaration ingest + template spec validation + the mock generator).
+const ENTITY_TYPES = [
+  'site',          // physical / logical site or location
+  'department',    // org department
+  'cost_center',   // finance cost centre
+  'product_line',  // manufacturing / retail product line
+  'application',   // a deployed application
+  'service',       // a service within an application
+  'custom',        // escape hatch for template-defined shapes
+];
+
+const RELATION_TYPES = [
+  'belongs_to',    // child → parent (dept belongs_to site)
+  'depends_on',    // app depends_on app
+  'located_at',    // thing located_at site
+  'owns',          // team/dept owns application
+];
+
+const _ENTITY_SET = new Set(ENTITY_TYPES);
+const _RELATION_SET = new Set(RELATION_TYPES);
+
+/** True if `type` is a known entity type. */
+function isEntityType(type) { return _ENTITY_SET.has(type); }
+
+/**
+ * Assert `type` is a known entity type; throw with context otherwise.
+ * @returns {string} the same type (for chaining)
+ */
+function validateEntityType(type) {
+  if (typeof type !== 'string' || !_ENTITY_SET.has(type)) {
+    throw new Error(`unknown entity type: ${JSON.stringify(type)}`);
+  }
+  return type;
+}
+
+/** True if `type` is a known relation type. */
+function isRelationType(type) { return _RELATION_SET.has(type); }
+
+/**
+ * Assert `type` is a known relation type; throw with context otherwise.
+ * @returns {string} the same type (for chaining)
+ */
+function validateRelationType(type) {
+  if (typeof type !== 'string' || !_RELATION_SET.has(type)) {
+    throw new Error(`unknown relation type: ${JSON.stringify(type)}`);
+  }
+  return type;
+}
+
 module.exports = {
   MODULE_CATALOG, listModules, isModule, validateModuleKey, resolveDependencies,
   NOMENCLATURE_KINDS, isNomenclatureKind, validateNomenclatureKind,
+  ENTITY_TYPES, isEntityType, validateEntityType,
+  RELATION_TYPES, isRelationType, validateRelationType,
 };

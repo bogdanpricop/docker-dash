@@ -15,11 +15,20 @@
 //                     the `enabled` flag / append new keys
 //   - nomenclatures — per (kind, code): template entries first, user entries
 //                     override the label/sort/meta or append new codes
+//   - entities      — per (entityType, code): template entries first, user
+//                     entries override name/meta or append new codes (v8.18.0)
+//   - relations     — per (fromType,fromCode,relationType,toType,toCode):
+//                     template first, user overrides meta or appends (v8.18.0)
 //
 // NOT merged, deliberately: `roles` and `users`. A template must never mint an
 // account — that would let a shipped/imported preset create real principals on a
 // headless apply (plans/onboarding-security.md T3/T9). They stay in the spec as a
-// suggested shape the wizard renders, nothing more.
+// suggested shape the wizard renders, nothing more. ENTITIES ARE DIFFERENT: an
+// entity is inert structural data (a Site, a Department) — it grants no access
+// and authenticates nobody — so merging a template's entities carries none of
+// the privilege-escalation risk that merging its users would, and it is exactly
+// what makes a template useful for step 6 (the entity graph is the template's
+// whole point). Hence entities/relations merge; users/roles do not.
 //
 // Unknown template key → hard error, EXCEPT the reserved no-op keys below (the
 // wizard sends `custom` when the user picked "Custom / blank"). Silently
@@ -85,6 +94,61 @@ function _mergeNomenclatures(templateNoms, userNoms) {
   return order.map((k) => byKey.get(k)).concat(passthrough);
 }
 
+function _entityKey(e) {
+  return `${e && e.entityType}::${String((e && e.code) || '').toLowerCase()}`;
+}
+
+function _mergeEntities(templateEntities, userEntities) {
+  if (!Array.isArray(templateEntities) || !templateEntities.length) return userEntities;
+  const order = [];
+  const byKey = new Map();
+  const put = (e) => {
+    const k = _entityKey(e);
+    if (!byKey.has(k)) order.push(k);
+    byKey.set(k, e);
+  };
+  for (const e of templateEntities) put(e);
+
+  const passthrough = [];
+  if (Array.isArray(userEntities)) {
+    for (const e of userEntities) {
+      if (e && typeof e === 'object' && typeof e.entityType === 'string' && typeof e.code === 'string') put(e);
+      else passthrough.push(e); // malformed → keep for the validator
+    }
+  } else if (userEntities !== undefined && userEntities !== null) {
+    return userEntities; // not an array → let validateDeclaration reject it
+  }
+  return order.map((k) => byKey.get(k)).concat(passthrough);
+}
+
+function _relationKey(r) {
+  return [r && r.fromType, String((r && r.fromCode) || '').toLowerCase(), r && r.relationType,
+    r && r.toType, String((r && r.toCode) || '').toLowerCase()].join('::');
+}
+
+function _mergeRelations(templateRelations, userRelations) {
+  if (!Array.isArray(templateRelations) || !templateRelations.length) return userRelations;
+  const order = [];
+  const byKey = new Map();
+  const put = (r) => {
+    const k = _relationKey(r);
+    if (!byKey.has(k)) order.push(k);
+    byKey.set(k, r);
+  };
+  for (const r of templateRelations) put(r);
+
+  const passthrough = [];
+  if (Array.isArray(userRelations)) {
+    for (const r of userRelations) {
+      if (r && typeof r === 'object' && typeof r.fromCode === 'string' && typeof r.toCode === 'string') put(r);
+      else passthrough.push(r);
+    }
+  } else if (userRelations !== undefined && userRelations !== null) {
+    return userRelations;
+  }
+  return order.map((k) => byKey.get(k)).concat(passthrough);
+}
+
 /**
  * Pure merge: apply `spec` as defaults UNDER `doc`. Returns a shallow copy of
  * `doc` with the merged blocks replaced; `doc` itself is never mutated.
@@ -115,6 +179,12 @@ function mergeSpecIntoDoc(doc, spec) {
 
   const noms = _mergeNomenclatures(spec.nomenclatures, doc.nomenclatures);
   if (noms !== doc.nomenclatures) out.nomenclatures = noms;
+
+  const entities = _mergeEntities(spec.entities, doc.entities);
+  if (entities !== doc.entities) out.entities = entities;
+
+  const relations = _mergeRelations(spec.relations, doc.relations);
+  if (relations !== doc.relations) out.relations = relations;
 
   return out;
 }

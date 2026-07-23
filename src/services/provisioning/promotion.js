@@ -121,23 +121,37 @@ function setUsageMode(tenantId, mode, { user, ip, db: dbOverride } = {}) {
   if (!['demo', 'trial', 'production'].includes(mode)) {
     const e = new Error(`invalid usage_mode ${JSON.stringify(mode)}`); e.status = 400; throw e;
   }
-  const tenant = db.prepare('SELECT id, slug, usage_mode FROM tenants WHERE id = ?').get(tenantId);
+  const tenant = db.prepare('SELECT id, slug, usage_mode, status FROM tenants WHERE id = ?').get(tenantId);
   if (!tenant) { const e = new Error(`tenant ${tenantId} not found`); e.status = 404; throw e; }
   if (tenant.usage_mode === mode) return { tenantId, from: mode, to: mode, changed: false };
 
   if (mode === 'production') assertProductionReady(tenantId, { db }); // throws with remediation
 
-  db.prepare("UPDATE tenants SET usage_mode = ?, updated_at = datetime('now') WHERE id = ?").run(mode, tenantId);
+  // v8.18.0 (Phase 4) — leaving trial (→ production/demo) drops the trial clock:
+  // clear trial_expires_at, and REACTIVATE a tenant that a lapsed trial had
+  // suspended (promotion is one of the two reactivation paths; extend-trial is
+  // the other). The trial warning marker is cleared too so it can never dangle.
+  const leavingTrial = tenant.usage_mode === 'trial' && mode !== 'trial';
+  const reactivated = leavingTrial && tenant.status === 'suspended';
+  if (leavingTrial) {
+    db.prepare(
+      "UPDATE tenants SET usage_mode = ?, trial_expires_at = NULL, "
+      + "status = CASE WHEN status = 'suspended' THEN 'active' ELSE status END, updated_at = datetime('now') WHERE id = ?",
+    ).run(mode, tenantId);
+    try { db.prepare("DELETE FROM tenant_settings WHERE tenant_id = ? AND key = 'trial.warned_for'").run(tenantId); } catch { /* absent */ }
+  } else {
+    db.prepare("UPDATE tenants SET usage_mode = ?, updated_at = datetime('now') WHERE id = ?").run(mode, tenantId);
+  }
   auditService.log({
     userId: user && user.id,
     username: (user && user.username) || 'system',
     action: 'tenant_promote',
     targetType: 'tenant',
     targetId: String(tenantId),
-    details: { slug: tenant.slug, from: tenant.usage_mode, to: mode, gatePassed: mode === 'production' },
+    details: { slug: tenant.slug, from: tenant.usage_mode, to: mode, gatePassed: mode === 'production', reactivated },
     ip: ip || null,
   });
-  return { tenantId, from: tenant.usage_mode, to: mode, changed: true };
+  return { tenantId, from: tenant.usage_mode, to: mode, changed: true, reactivated };
 }
 
 /**

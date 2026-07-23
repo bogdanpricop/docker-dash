@@ -52,6 +52,8 @@ const REGIONAL_KEYS = ['locale', 'timezone', 'currency', 'unitSystem', 'dateForm
 const MAX_SPEC_BYTES = 128 * 1024;   // serialized spec_json cap
 const MAX_MODULES = 32;
 const MAX_NOMENCLATURES = 500;
+const MAX_ENTITIES = 1000;    // v8.18.0 (Phase 4)
+const MAX_RELATIONS = 2000;
 const MAX_ROLES = 16;
 const MAX_USERS = 50;
 const MAX_NOTES = 4000;
@@ -158,6 +160,69 @@ function _validateNomenclatures(list) {
   return out.length ? out : undefined;
 }
 
+// v8.18.0 (Phase 4) — templates MAY define entities/relations (unlike users —
+// an entity mints no principal; template-merge.js explains why merging them is
+// safe). Same shape as the declaration's blocks.
+function _validateEntities(list) {
+  if (list === undefined || list === null) return undefined;
+  if (!Array.isArray(list)) throw new Error('spec.entities must be an array');
+  if (list.length > MAX_ENTITIES) throw new Error(`spec.entities: too many entries (max ${MAX_ENTITIES})`);
+  const seen = new Set();
+  const out = [];
+  list.forEach((e, i) => {
+    if (!e || typeof e !== 'object') throw new Error(`spec.entities[${i}] must be an object`);
+    const entityType = _str(e.entityType, `spec.entities[${i}].entityType`, { required: true, max: 64 });
+    catalog.validateEntityType(entityType);
+    const code = _str(e.code, `spec.entities[${i}].code`, { required: true, max: 64 });
+    if (!CODE_RE.test(code)) throw new Error(`spec.entities[${i}].code has invalid characters`);
+    const name = _str(e.name, `spec.entities[${i}].name`, { required: true, max: 200 });
+    const dedupe = `${entityType} ${code.toLowerCase()}`;
+    if (seen.has(dedupe)) throw new Error(`spec.entities[${i}]: duplicate ${entityType}/${code}`);
+    seen.add(dedupe);
+    const entry = { entityType, code, name };
+    if (e.meta !== undefined && e.meta !== null) {
+      if (typeof e.meta !== 'object' || Array.isArray(e.meta)) throw new Error(`spec.entities[${i}].meta must be an object`);
+      const metaJson = JSON.stringify(e.meta);
+      if (metaJson.length > 2048) throw new Error(`spec.entities[${i}].meta is too large`);
+      entry.meta = JSON.parse(metaJson);
+    }
+    out.push(entry);
+  });
+  return out.length ? out : undefined;
+}
+
+function _validateRelations(list, entities) {
+  if (list === undefined || list === null) return undefined;
+  if (!Array.isArray(list)) throw new Error('spec.relations must be an array');
+  if (list.length > MAX_RELATIONS) throw new Error(`spec.relations: too many entries (max ${MAX_RELATIONS})`);
+  const known = new Set((entities || []).map((e) => `${e.entityType} ${e.code.toLowerCase()}`));
+  const seen = new Set();
+  const out = [];
+  list.forEach((r, i) => {
+    if (!r || typeof r !== 'object') throw new Error(`spec.relations[${i}] must be an object`);
+    const fromType = _str(r.fromType, `spec.relations[${i}].fromType`, { required: true, max: 64 });
+    catalog.validateEntityType(fromType);
+    const fromCode = _str(r.fromCode, `spec.relations[${i}].fromCode`, { required: true, max: 64 });
+    const toType = _str(r.toType, `spec.relations[${i}].toType`, { required: true, max: 64 });
+    catalog.validateEntityType(toType);
+    const toCode = _str(r.toCode, `spec.relations[${i}].toCode`, { required: true, max: 64 });
+    const relationType = _str(r.relationType, `spec.relations[${i}].relationType`, { required: true, max: 64 });
+    catalog.validateRelationType(relationType);
+    const fromKey = `${fromType} ${fromCode.toLowerCase()}`;
+    const toKey = `${toType} ${toCode.toLowerCase()}`;
+    if (known.size) {
+      if (!known.has(fromKey)) throw new Error(`spec.relations[${i}]: from-entity ${fromType}/${fromCode} is not in spec.entities`);
+      if (!known.has(toKey)) throw new Error(`spec.relations[${i}]: to-entity ${toType}/${toCode} is not in spec.entities`);
+    }
+    if (fromKey === toKey) throw new Error(`spec.relations[${i}]: an entity cannot relate to itself`);
+    const dedupe = `${fromKey} ${toKey} ${relationType}`;
+    if (seen.has(dedupe)) throw new Error(`spec.relations[${i}]: duplicate relation`);
+    seen.add(dedupe);
+    out.push({ fromType, fromCode, toType, toCode, relationType });
+  });
+  return out.length ? out : undefined;
+}
+
 function _validateRoles(roles) {
   if (roles === undefined || roles === null) return undefined;
   if (!Array.isArray(roles)) throw new Error('spec.roles must be an array');
@@ -235,6 +300,10 @@ function validateTemplateSpec(spec) {
     spec.nomenclatures !== undefined ? spec.nomenclatures : spec.nomenclators,
   );
   if (nomenclatures) out.nomenclatures = nomenclatures;
+  const entities = _validateEntities(spec.entities);
+  if (entities) out.entities = entities;
+  const relations = _validateRelations(spec.relations, entities);
+  if (relations) out.relations = relations;
   const roles = _validateRoles(spec.roles);
   if (roles) out.roles = roles;
   const users = _validateUsers(spec.users);
@@ -370,6 +439,16 @@ function specFromDeclaration(decl) {
   }
   if (Array.isArray(d.nomenclatures) && d.nomenclatures.length) {
     spec.nomenclatures = d.nomenclatures.map((n) => ({ kind: n.kind, code: n.code, label: n.label, sort: n.sort, meta: n.meta }));
+  }
+  // Entities/relations are inert structural data (no credential, no principal) —
+  // safe to capture into a reusable template. validateTemplateSpec re-checks them.
+  if (Array.isArray(d.entities) && d.entities.length) {
+    spec.entities = d.entities.map((e) => ({ entityType: e.entityType, code: e.code, name: e.name, meta: e.meta }));
+  }
+  if (Array.isArray(d.relations) && d.relations.length) {
+    spec.relations = d.relations.map((r) => ({
+      fromType: r.fromType, fromCode: r.fromCode, toType: r.toType, toCode: r.toCode, relationType: r.relationType,
+    }));
   }
   if (Array.isArray(d.users) && d.users.length) {
     // Shape only — username/role/owner. No password, ever.

@@ -88,6 +88,58 @@ const Wizard = {
   next() { return this._next(); },
   back() { return this._back(); },
   saveExit() { return this._saveExit(); },
+
+  // ── per-field validation (v8.18.0, Phase 4) ─────────────────────────────
+  // A small helper the steps can call to mark the SPECIFIC offending input —
+  // aria-invalid + a red-border class + an inline message under the field —
+  // instead of only the summary alert panel. `field` is an element or a CSS
+  // selector resolved within the current step body. Steps usually don't call
+  // these directly: a step's validate() returns `fields: [{sel, msg}]` and the
+  // Wizard applies them on a failed next() (see _next / _applyFieldErrors).
+  setFieldError(field, message) {
+    const el = this._resolveField(field);
+    if (!el) return;
+    el.classList.add('is-invalid');
+    el.setAttribute('aria-invalid', 'true');
+    // One message node per field, placed right after the control.
+    let msgEl = el.parentNode && el.parentNode.querySelector(':scope > .wiz-field-error');
+    if (!msgEl) {
+      msgEl = document.createElement('div');
+      msgEl.className = 'wiz-field-error';
+      msgEl.setAttribute('role', 'alert');
+      if (el.id) { msgEl.id = `${el.id}-err`; el.setAttribute('aria-describedby', ((el.getAttribute('aria-describedby') || '') + ` ${el.id}-err`).trim()); }
+      el.insertAdjacentElement('afterend', msgEl);
+    }
+    msgEl.textContent = message || '';
+  },
+  clearFieldError(field) {
+    const el = this._resolveField(field);
+    if (!el) return;
+    el.classList.remove('is-invalid');
+    el.removeAttribute('aria-invalid');
+    const msgEl = el.parentNode && el.parentNode.querySelector(':scope > .wiz-field-error');
+    if (msgEl) msgEl.remove();
+  },
+  _resolveField(field) {
+    if (!field) return null;
+    if (typeof field === 'string') {
+      const body = this._overlay && this._overlay.querySelector('#wiz-step-body');
+      return body ? body.querySelector(field) : null;
+    }
+    return field.nodeType === 1 ? field : null;
+  },
+  _clearAllFieldErrors() {
+    const body = this._overlay && this._overlay.querySelector('#wiz-step-body');
+    if (!body) return;
+    body.querySelectorAll('.is-invalid').forEach((el) => { el.classList.remove('is-invalid'); el.removeAttribute('aria-invalid'); });
+    body.querySelectorAll('.wiz-field-error').forEach((n) => n.remove());
+  },
+  _applyFieldErrors(fields) {
+    if (!Array.isArray(fields)) return;
+    for (const f of fields) {
+      if (f && (f.sel || f.el)) this.setFieldError(f.el || f.sel, f.msg || f.message || '');
+    }
+  },
   /** Jump straight to a step by key without validating (used by resume flows). */
   goTo(key) {
     const active = this._activeSteps();
@@ -263,9 +315,14 @@ const Wizard = {
       stepBodyEl.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`;
     }
 
-    // Debounced persist on any edit within the step body.
-    stepBodyEl.addEventListener('input', () => this._schedulePersist());
-    stepBodyEl.addEventListener('change', () => this._schedulePersist());
+    // Debounced persist on any edit within the step body. Editing a field that
+    // was flagged invalid clears its inline error immediately (least astonishment).
+    const onEdit = (e) => {
+      if (e.target && e.target.classList && e.target.classList.contains('is-invalid')) this.clearFieldError(e.target);
+      this._schedulePersist();
+    };
+    stepBodyEl.addEventListener('input', onEdit);
+    stepBodyEl.addEventListener('change', onEdit);
 
     // Footer per-step overrides.
     const cfg = (typeof step.footer === 'function') ? (step.footer(this._state) || {}) : {};
@@ -293,10 +350,12 @@ const Wizard = {
     const step = this._currentStep();
     if (!step) return;
     this._els.next.disabled = true;
+    this._clearAllFieldErrors();
     try {
       const result = (typeof step.validate === 'function') ? await step.validate(this._state) : { ok: true };
       if (!result || result.ok === false) {
         this._visited[step.key] = 'error';
+        this._applyFieldErrors(result && result.fields); // mark the specific inputs
         this._showMessages((result && result.errors) || [i18n.t('pages.onboarding.errors.generic')], 'error');
         this._focusFirstInvalid();
         this._paintRailStatus();

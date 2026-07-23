@@ -488,6 +488,11 @@ async function start() {
   try { require('./services/reconciler/monitor').start(); }
   catch (e) { require('./utils/logger')('reconciler').debug('reconciler monitor start skipped', { error: e.message }); }
 
+  // v8.18.0 (Onboarding Phase 4) — trial-expiry lifecycle. Hourly: suspend
+  // expired trial tenants + notify, warn a few days out. Best-effort, unref'd.
+  try { require('./services/provisioning/trial-monitor').start(); }
+  catch (e) { require('./utils/logger')('trial-monitor').debug('trial monitor start skipped', { error: e.message }); }
+
   // Egress Filter block-log ingester (v6.7.0-rc1): tails the sidecar's
   // deny log and inserts new entries into egress_block_log every 30s.
   // Opt-in via DD_EGRESS_BLOCKLOG_INGESTER=1 (off by default for alpha users

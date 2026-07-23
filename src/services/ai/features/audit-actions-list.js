@@ -23,6 +23,9 @@
 // +5 as of v8.17.0 (Onboarding Phase 3 — demo/trial + mock data):
 //   seed_dataset_create, seed_dataset_purge, seed_dataset_reset,
 //   seed_dataset_regenerate, tenant_promote.
+// +4 as of v8.18.0 (Onboarding Phase 4 — entities/relations, drift, trial
+//   lifecycle): onboarding_replan, tenant_entity_seed, tenant_trial_expired,
+//   tenant_trial_extend.
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -130,6 +133,7 @@ const auditActionsList = [
   "oidc_login",
   "onboarding_export",
   "onboarding_headless_apply",
+  "onboarding_replan",
   "onboarding_template_delete",
   "onboarding_template_save",
   "password_reset_requested",
@@ -215,7 +219,10 @@ const auditActionsList = [
   "template_reset",
   "template_update",
   "tenant_create",
+  "tenant_entity_seed",
   "tenant_promote",
+  "tenant_trial_expired",
+  "tenant_trial_extend",
   "tenant_update",
   "translation_batch",
   "translation_exported",

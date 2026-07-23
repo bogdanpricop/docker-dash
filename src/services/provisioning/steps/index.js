@@ -10,6 +10,7 @@
 const createTenant = require('./create-tenant');
 const setRegional = require('./set-regional');
 const seedNomenclatures = require('./seed-nomenclatures');
+const seedEntities = require('./seed-entities');
 const enableModules = require('./enable-modules');
 const createHosts = require('./create-hosts');
 const createUsers = require('./create-users');
@@ -23,16 +24,23 @@ const finalize = require('./finalize');
 // reading order. Ordinals shift for everything after it; that is safe because
 // buildSteps() is rebuilt deterministically on every plan/apply/resume and the
 // engine resumes on `step_key`, not on a hard-coded ordinal.
+// v8.18.0 (Phase 4) inserted seed_entities right after seed_nomenclatures —
+// both are pure tenant-config writes with no cross-dependency, so slotting it
+// there keeps the "configure the tenant, then populate its structure" reading
+// order. Ordinals shift for everything after it; that is safe because
+// buildSteps() is rebuilt deterministically on every plan/apply/resume and the
+// engine resumes on `step_key`, not on a hard-coded ordinal.
 const ORDERED = [
   createTenant,      // 1  pivot — db
   setRegional,       // 2  db
   seedNomenclatures, // 3  db
-  enableModules,     // 4  db
-  createHosts,       // 5  external
-  createUsers,       // 6  external
-  grantPermissions,  // 7  db
-  seedMockData,      // 8  db   — demo/trial ONLY (see isActive below)
-  finalize,          // 9  db
+  seedEntities,      // 4  db
+  enableModules,     // 5  db
+  createHosts,       // 6  external
+  createUsers,       // 7  external
+  grantPermissions,  // 8  db
+  seedMockData,      // 9  db   — demo/trial ONLY (see isActive below)
+  finalize,          // 10 db
 ];
 
 const STEP_REGISTRY = Object.freeze(

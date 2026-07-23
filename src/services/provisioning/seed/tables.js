@@ -13,6 +13,11 @@
 
 const SEED_TABLES = Object.freeze([
   'nomenclatures',
+  // v8.18.0 (Phase 4) — the generic entity model. tenant_entities before
+  // tenant_entity_relations (parent before child); PURGE_ORDER reverses this so
+  // relations (children) are deleted before entities (parents).
+  'tenant_entities',
+  'tenant_entity_relations',
   'users',
   'user_tenants',
   'docker_hosts',

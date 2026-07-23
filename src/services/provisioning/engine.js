@@ -26,6 +26,7 @@ const auditService = require('../audit');
 const log = require('../../utils/logger')('provisioning');
 const { validateDeclaration, redactDeclaration, fingerprintDeclaration, revealSecret } = require('./declaration');
 const { buildSteps, STEP_REGISTRY } = require('./steps');
+const catalog = require('./catalog');
 
 const _nowIso = () => new Date().toISOString();
 const _parse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -134,6 +135,98 @@ function plan({ declaration, user, ip }) {
   const decl = validateDeclaration(declaration);
   const ctx = _buildCtx({ decl, user, run: { id: null }, ip });
   return _computePlanData(decl, ctx);
+}
+
+// ── replan / drift (READ-ONLY diff of a declaration vs an existing tenant) ────
+//
+// v8.18.0 (Phase 4). Diffs the DESIRED declaration against the tenant's CURRENT
+// state and returns a categorized { toCreate, toUpdate, inSync } per resource —
+// reconciler-plan style, writing NOTHING. Convergence is the existing idempotent
+// apply(): every step upserts on its natural key, so re-applying the same
+// declaration turns every resource `inSync` with no duplication.
+const _REGIONAL_KEY_MAP = {
+  locale: 'locale', timezone: 'timezone', currency: 'currency',
+  unitSystem: 'unit_system', dateFormat: 'date_format', numberFormat: 'number_format',
+};
+
+function replan(tenantId, declaration) {
+  const db = getDb();
+  const tenant = db.prepare('SELECT id, slug, usage_mode, status FROM tenants WHERE id = ?').get(tenantId);
+  if (!tenant) { const e = new Error(`tenant ${tenantId} not found`); e.status = 404; throw e; }
+  const decl = validateDeclaration(declaration); // same contract as apply()
+
+  const cat = () => ({ toCreate: [], toUpdate: [], inSync: [] });
+  const diff = {
+    tenantId, slug: tenant.slug, usageMode: tenant.usage_mode, mode: decl.mode,
+    settings: cat(), modules: cat(), nomenclatures: cat(),
+    entities: cat(), relations: cat(), hosts: cat(), users: cat(),
+  };
+
+  // regional → tenant_settings (snake_case)
+  const r = decl.regional || {};
+  for (const [camel, snake] of Object.entries(_REGIONAL_KEY_MAP)) {
+    if (r[camel] === undefined) continue;
+    const row = db.prepare('SELECT value FROM tenant_settings WHERE tenant_id = ? AND key = ?').get(tenantId, snake);
+    const desired = String(r[camel]);
+    if (!row) diff.settings.toCreate.push({ key: snake, value: desired });
+    else if (row.value !== desired) diff.settings.toUpdate.push({ key: snake, from: row.value, to: desired });
+    else diff.settings.inSync.push({ key: snake });
+  }
+
+  // modules → dependency closure vs tenant_modules(enabled)
+  let closure = [];
+  try { closure = catalog.resolveDependencies((decl.modules || []).filter((m) => m.enabled !== false).map((m) => m.key)); } catch { closure = []; }
+  for (const key of closure) {
+    const row = db.prepare('SELECT enabled FROM tenant_modules WHERE tenant_id = ? AND module_key = ?').get(tenantId, key);
+    if (!row) diff.modules.toCreate.push({ key });
+    else if (!row.enabled) diff.modules.toUpdate.push({ key, from: 'disabled', to: 'enabled' });
+    else diff.modules.inSync.push({ key });
+  }
+
+  // nomenclatures → by (kind, code)
+  for (const n of decl.nomenclatures || []) {
+    const row = db.prepare('SELECT label, sort FROM nomenclatures WHERE tenant_id = ? AND kind = ? AND code = ?').get(tenantId, n.kind, n.code);
+    if (!row) diff.nomenclatures.toCreate.push({ kind: n.kind, code: n.code });
+    else if (row.label !== n.label || row.sort !== (n.sort || 0)) diff.nomenclatures.toUpdate.push({ kind: n.kind, code: n.code });
+    else diff.nomenclatures.inSync.push({ kind: n.kind, code: n.code });
+  }
+
+  // entities → by (entity_type, code)
+  for (const e of decl.entities || []) {
+    const row = db.prepare('SELECT name FROM tenant_entities WHERE tenant_id = ? AND entity_type = ? AND code = ?').get(tenantId, e.entityType, e.code);
+    if (!row) diff.entities.toCreate.push({ entityType: e.entityType, code: e.code });
+    else if (row.name !== e.name) diff.entities.toUpdate.push({ entityType: e.entityType, code: e.code });
+    else diff.entities.inSync.push({ entityType: e.entityType, code: e.code });
+  }
+
+  // relations → resolve endpoints, then presence by (from,to,relationType)
+  const findEntity = db.prepare('SELECT id FROM tenant_entities WHERE tenant_id = ? AND entity_type = ? AND code = ?');
+  for (const rel of decl.relations || []) {
+    const label = { fromType: rel.fromType, fromCode: rel.fromCode, toType: rel.toType, toCode: rel.toCode, relationType: rel.relationType };
+    const from = findEntity.get(tenantId, rel.fromType, rel.fromCode);
+    const to = findEntity.get(tenantId, rel.toType, rel.toCode);
+    if (!from || !to) { diff.relations.toCreate.push(label); continue; } // endpoint not yet created
+    const row = db.prepare('SELECT id FROM tenant_entity_relations WHERE tenant_id = ? AND from_entity_id = ? AND to_entity_id = ? AND relation_type = ?').get(tenantId, from.id, to.id, rel.relationType);
+    if (!row) diff.relations.toCreate.push(label);
+    else diff.relations.inSync.push(label); // relations carry no updatable payload beyond meta
+  }
+
+  // hosts / users are a SHARED pool (not tenant-scoped) — presence-only, matched
+  // by their natural key. create_hosts/create_users upsert by the same key.
+  for (const h of decl.hosts || []) {
+    const row = db.prepare('SELECT id FROM docker_hosts WHERE name = ?').get(h.name);
+    (row ? diff.hosts.inSync : diff.hosts.toCreate).push({ name: h.name });
+  }
+  for (const u of decl.users || []) {
+    const row = db.prepare('SELECT id FROM users WHERE username = ? COLLATE NOCASE').get(u.username);
+    (row ? diff.users.inSync : diff.users.toCreate).push({ username: u.username });
+  }
+
+  const resourceKeys = ['settings', 'modules', 'nomenclatures', 'entities', 'relations', 'hosts', 'users'];
+  const sum = (bucket) => resourceKeys.reduce((s, k) => s + diff[k][bucket].length, 0);
+  diff.summary = { toCreate: sum('toCreate'), toUpdate: sum('toUpdate'), inSync: sum('inSync') };
+  diff.inSync = diff.summary.toCreate === 0 && diff.summary.toUpdate === 0;
+  return diff;
 }
 
 // ── apply ────────────────────────────────────────────────────────────────────
@@ -282,6 +375,10 @@ function _collectResult(runId) {
     if (Array.isArray(cp.modules)) summary.created.modules = cp.modules.length;
     if (s.step_key === 'seed_nomenclatures') {
       summary.created.nomenclatures = (Array.isArray(cp.inserted) ? cp.inserted.length : 0) + (cp.updated || 0);
+    }
+    if (s.step_key === 'seed_entities') {
+      summary.created.entities = (Array.isArray(cp.insertedEntities) ? cp.insertedEntities.length : 0) + (cp.updatedEntities || 0);
+      summary.created.relations = Array.isArray(cp.insertedRelations) ? cp.insertedRelations.length : 0;
     }
     if (Array.isArray(cp.hosts)) summary.created.hosts = cp.hosts.length;
     if (Array.isArray(cp.users)) summary.created.users = cp.users.length;
@@ -432,6 +529,7 @@ function exportRunAsTemplate(runId, { key, name, description, industry, version 
 
 module.exports = {
   plan,
+  replan,
   apply,
   resume,
   rollback,

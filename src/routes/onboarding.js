@@ -28,6 +28,10 @@
 //   POST /api/onboarding/tenants/:id/seed/regenerate  (admin+writeable, audited)
 //   GET  /api/onboarding/tenants/:id/promotion        (admin)  gate check (no writes)
 //   POST /api/onboarding/tenants/:id/promote          (admin+writeable, audited)
+//
+// Phase 4 (v8.18.0) — drift re-provision + trial lifecycle:
+//   POST /api/onboarding/tenants/:id/replan           (admin)  read-only drift diff
+//   POST /api/onboarding/tenants/:id/extend-trial     (admin+writeable, audited)
 
 const { Router } = require('express');
 const provisioning = require('../services/provisioning');
@@ -95,6 +99,20 @@ router.post('/apply', ...adminWrite, asyncHandler(async (req, res) => {
 // GET /runs/active — the latest pending/running/failed run (for wizard resume).
 router.get('/runs/active', ...admin, asyncHandler(async (_req, res) => {
   res.json({ run: provisioning.getActiveRun() });
+}));
+
+// POST /tenants/:id/replan — READ-ONLY drift diff of a declaration vs an existing
+// tenant. Convergence is the existing idempotent /apply (natural-key upserts).
+router.post('/tenants/:id/replan', ...admin, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+  try {
+    const diff = provisioning.replan(id, req.body);
+    _audit(req, 'onboarding_replan', 'tenant', id, {
+      toCreate: diff.summary.toCreate, toUpdate: diff.summary.toUpdate, inSync: diff.summary.inSync, dryRun: true,
+    });
+    res.json(diff);
+  } catch (err) { _fail(res, err); }
 }));
 
 // GET /runs/:id — run + steps status (secrets redacted).
@@ -297,6 +315,26 @@ router.post('/tenants/:id/promote', ...adminWrite, asyncHandler(async (req, res)
     res.json(result);
   } catch (err) {
     log.warn('promotion refused', { tenantId: id, error: err.message });
+    _fail(res, err);
+  }
+}));
+
+// POST /tenants/:id/extend-trial — push the trial expiry out (default DD_TRIAL_DAYS
+// or body.days) and REACTIVATE the tenant if a lapsed trial had suspended it.
+// The extend itself is audited inside the service (`tenant_trial_extend`); this
+// records the API entry point + outcome, mirroring /apply and /promote.
+router.post('/tenants/:id/extend-trial', ...adminWrite, asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid tenant id' });
+  const body = req.body || {};
+  try {
+    const result = provisioning.extendTrial(id, { days: body.days, user: req.user, ip: getClientIp(req) });
+    _audit(req, 'tenant_trial_extend', 'tenant', id, {
+      days: result.days, trialExpiresAt: result.trialExpiresAt, reactivated: result.reactivated, via: 'api',
+    });
+    res.json(result);
+  } catch (err) {
+    log.warn('extend-trial failed', { tenantId: id, error: err.message });
     _fail(res, err);
   }
 }));

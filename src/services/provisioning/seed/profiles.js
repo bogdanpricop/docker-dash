@@ -40,6 +40,10 @@ const PROFILES = Object.freeze({
     blueprints: 1,
     blueprintRuns: 3,
     nomenclatures: 25,
+    // v8.18.0 (Phase 4) — the generic entity graph (site → department → application).
+    entitySites: 2,
+    entityDepartments: 4,
+    entityApplications: 6,
     auditRows: 60,
   }),
   medium: Object.freeze({
@@ -68,6 +72,9 @@ const PROFILES = Object.freeze({
     blueprints: 1,
     blueprintRuns: 3,
     nomenclatures: 40,
+    entitySites: 3,
+    entityDepartments: 9,
+    entityApplications: 18,
     auditRows: 150,
   }),
   large: Object.freeze({
@@ -96,9 +103,20 @@ const PROFILES = Object.freeze({
     blueprints: 2,
     blueprintRuns: 6,
     nomenclatures: 60,
+    entitySites: 5,
+    entityDepartments: 15,
+    entityApplications: 40,
     auditRows: 300,
   }),
 });
+
+// The relation count is a pure function of the entity plan and MUST match
+// seed/entities.js exactly (dept→site belongs_to + app→dept belongs_to +
+// app→app depends_on for every other app). Duplicated here so estimate() stays
+// write-free, mirroring the stats formulas below.
+function _entityRelationCount(p) {
+  return (p.entityDepartments || 0) + (p.entityApplications || 0) + Math.floor((p.entityApplications || 0) / 2);
+}
 
 const PROFILE_KEYS = Object.freeze(Object.keys(PROFILES));
 
@@ -131,6 +149,8 @@ function estimate({ profile = 'medium', scenario = 'healthy-shop' } = {}) {
 
   const tables = [
     { name: 'nomenclatures', count: p.nomenclatures },
+    { name: 'tenant_entities', count: (p.entitySites || 0) + (p.entityDepartments || 0) + (p.entityApplications || 0) },
+    { name: 'tenant_entity_relations', count: _entityRelationCount(p) },
     { name: 'users', count: p.users },
     { name: 'user_tenants', count: p.users },
     { name: 'docker_hosts', count: p.hosts },

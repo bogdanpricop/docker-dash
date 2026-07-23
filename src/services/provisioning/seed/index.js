@@ -46,6 +46,7 @@ const { getScenario, SCENARIO_KEYS, listScenarios } = require('./scenarios');
 const { SEED_TABLES, PURGE_ORDER, INSERT_ORDER, assertSeedTable, CHAINED_TABLE } = require('./tables');
 
 const nomenclatures = require('./nomenclatures');
+const entities = require('./entities');
 const users = require('./users');
 const hosts = require('./hosts');
 const teams = require('./teams');
@@ -169,6 +170,7 @@ function generate({
 
     // ── FK-dependency order: parents strictly before children ───────────────
     nomenclatures.generate(ctx);      // tenant-owned lookups
+    entities.generate(ctx);           // tenant_entities + tenant_entity_relations
     users.generate(ctx);              // users + user_tenants (viewer-only)
     hosts.generate(ctx);              // docker_hosts
     hosts.generateGroups(ctx);        // host_groups + members

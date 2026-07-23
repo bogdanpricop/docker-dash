@@ -8,6 +8,16 @@
 // ON DELETE CASCADE unwinds all tenant-owned state (tenant_settings,
 // tenant_modules, user_tenants). It REFUSES is_default=1 (the default tenant can
 // never be deleted by rollback) and never deletes a tenant that pre-existed the run.
+//
+// v8.18.0 (Phase 4) — a `trial` tenant gets a `trial_expires_at` set here at
+// creation (DD_TRIAL_DAYS env, default 14 days out). The trial-monitor sweeps
+// expired trials to `suspended`; extend-trial / promote-to-production reactivate.
+
+/** Trial length in days (DD_TRIAL_DAYS, default 14). */
+function _trialDays() {
+  const n = parseInt(process.env.DD_TRIAL_DAYS, 10);
+  return Number.isFinite(n) && n > 0 ? n : 14;
+}
 
 module.exports = {
   key: 'create_tenant',
@@ -35,10 +45,14 @@ module.exports = {
         require('../promotion').setUsageMode(tenantId, decl.mode, { user: ctx.user, ip: ctx.ip, db });
       }
     } else {
+      // A trial tenant is born with an expiry N days out; other modes leave it NULL.
+      const trialExpires = decl.mode === 'trial'
+        ? db.prepare(`SELECT datetime('now', '+${_trialDays()} days') AS t`).get().t
+        : null;
       const r = db.prepare(`
-        INSERT INTO tenants (slug, name, kind, usage_mode, status, is_default, created_by)
-        VALUES (?, ?, ?, ?, 'provisioning', 0, ?)
-      `).run(t.slug, t.name, t.kind, decl.mode, createdBy);
+        INSERT INTO tenants (slug, name, kind, usage_mode, status, is_default, trial_expires_at, created_by)
+        VALUES (?, ?, ?, ?, 'provisioning', 0, ?, ?)
+      `).run(t.slug, t.name, t.kind, decl.mode, trialExpires, createdBy);
       tenantId = Number(r.lastInsertRowid);
       created = true;
     }

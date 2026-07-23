@@ -39,6 +39,8 @@ const MAX_USERS = 100;
 const MAX_MODULES = 32;
 const MAX_PERMISSIONS = 500;
 const MAX_NOMENCLATURES = 500;
+const MAX_ENTITIES = 1000;    // v8.18.0 (Phase 4)
+const MAX_RELATIONS = 2000;
 const MAX_STR = 512;          // generic string cap
 const MAX_SECRET = 65536;     // an SSH private key can be a few KB
 
@@ -286,6 +288,78 @@ function _validateMockData(mock, mode) {
   return out;
 }
 
+// v8.18.0 (Phase 4) — the generic entity model. Templates MAY define entities
+// and relations (unlike users — an entity mints no principal, so merging a
+// shipped/imported preset's entities is safe; see template-merge.js). Both are
+// idempotent on their natural keys and are safe to seed in demo/trial.
+function _validateEntities(list) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new Error('entities must be an array');
+  if (list.length > MAX_ENTITIES) throw new Error(`too many entities (max ${MAX_ENTITIES})`);
+  const seen = new Set();
+  return list.map((e, i) => {
+    if (!e || typeof e !== 'object') throw new Error(`entities[${i}] must be an object`);
+    const entityType = _str(e.entityType, `entities[${i}].entityType`, { required: true, max: 64 });
+    catalog.validateEntityType(entityType); // known-set guard (094 has no CHECK)
+    const code = _str(e.code, `entities[${i}].code`, { required: true, max: 64 });
+    if (!CODE_RE.test(code)) throw new Error(`entities[${i}].code has invalid characters`);
+    const name = _str(e.name, `entities[${i}].name`, { required: true, max: 200 });
+    const dedupe = `${entityType}::${code.toLowerCase()}`;
+    if (seen.has(dedupe)) throw new Error(`entities[${i}]: duplicate ${entityType}/${code}`);
+    seen.add(dedupe);
+
+    const out = { entityType, code, name };
+    if (e.meta !== undefined && e.meta !== null) {
+      if (typeof e.meta !== 'object' || Array.isArray(e.meta)) throw new Error(`entities[${i}].meta must be an object`);
+      const metaJson = JSON.stringify(e.meta);
+      if (metaJson.length > 2048) throw new Error(`entities[${i}].meta is too large`);
+      out.meta = JSON.parse(metaJson);
+    }
+    return out;
+  });
+}
+
+// Relations reference entities by (type, code). They must point at an entity
+// DECLARED IN THE SAME DOCUMENT — the validator is pure (no DB), so this keeps
+// it self-contained and catches typo'd references before the run touches state.
+function _validateRelations(list, entities) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new Error('relations must be an array');
+  if (list.length > MAX_RELATIONS) throw new Error(`too many relations (max ${MAX_RELATIONS})`);
+  const known = new Set(entities.map((e) => `${e.entityType}::${e.code.toLowerCase()}`));
+  const seen = new Set();
+  return list.map((r, i) => {
+    if (!r || typeof r !== 'object') throw new Error(`relations[${i}] must be an object`);
+    const fromType = _str(r.fromType, `relations[${i}].fromType`, { required: true, max: 64 });
+    catalog.validateEntityType(fromType);
+    const fromCode = _str(r.fromCode, `relations[${i}].fromCode`, { required: true, max: 64 });
+    const toType = _str(r.toType, `relations[${i}].toType`, { required: true, max: 64 });
+    catalog.validateEntityType(toType);
+    const toCode = _str(r.toCode, `relations[${i}].toCode`, { required: true, max: 64 });
+    const relationType = _str(r.relationType, `relations[${i}].relationType`, { required: true, max: 64 });
+    catalog.validateRelationType(relationType);
+
+    const fromKey = `${fromType}::${fromCode.toLowerCase()}`;
+    const toKey = `${toType}::${toCode.toLowerCase()}`;
+    if (!known.has(fromKey)) throw new Error(`relations[${i}]: from-entity ${fromType}/${fromCode} is not declared in entities[]`);
+    if (!known.has(toKey)) throw new Error(`relations[${i}]: to-entity ${toType}/${toCode} is not declared in entities[]`);
+    if (fromKey === toKey) throw new Error(`relations[${i}]: an entity cannot relate to itself`);
+
+    const dedupe = `${fromKey}::${toKey}::${relationType}`;
+    if (seen.has(dedupe)) throw new Error(`relations[${i}]: duplicate ${fromType}/${fromCode} ${relationType} ${toType}/${toCode}`);
+    seen.add(dedupe);
+
+    const out = { fromType, fromCode, toType, toCode, relationType };
+    if (r.meta !== undefined && r.meta !== null) {
+      if (typeof r.meta !== 'object' || Array.isArray(r.meta)) throw new Error(`relations[${i}].meta must be an object`);
+      const metaJson = JSON.stringify(r.meta);
+      if (metaJson.length > 2048) throw new Error(`relations[${i}].meta is too large`);
+      out.meta = JSON.parse(metaJson);
+    }
+    return out;
+  });
+}
+
 function _validatePermissions(perms) {
   if (perms === undefined || perms === null) return [];
   if (!Array.isArray(perms)) throw new Error('permissions must be an array');
@@ -337,6 +411,7 @@ function validateDeclaration(rawDoc) {
   const idempotencyKey = _str(doc.idempotencyKey, 'idempotencyKey', { max: 128 });
   const templateKey = _str(doc.template, 'template', { max: 128 });
 
+  const entities = _validateEntities(doc.entities);
   const out = {
     version: 1,
     kind: 'onboarding-declaration',
@@ -347,6 +422,8 @@ function validateDeclaration(rawDoc) {
     regional: _validateRegional(doc.regional),
     modules: _validateModules(doc.modules),
     nomenclatures: _validateNomenclatures(doc.nomenclatures),
+    entities,
+    relations: _validateRelations(doc.relations, entities),
     hosts: _validateHosts(doc.hosts),
     users: _validateUsers(doc.users, mode),
     permissions: _validatePermissions(doc.permissions),
@@ -389,6 +466,8 @@ function fingerprintDeclaration(decl) {
     regional: decl.regional ? REGIONAL_KEYS.filter((k) => decl.regional[k] !== undefined).map((k) => [k, decl.regional[k]]) : [],
     modules: decl.modules.map((m) => `${m.key}:${m.enabled ? 1 : 0}`).sort(),
     nomenclatures: (decl.nomenclatures || []).map((n) => `${n.kind}|${n.code}|${n.label}|${n.sort}`).sort(),
+    entities: (decl.entities || []).map((e) => `${e.entityType}|${e.code}|${e.name}`).sort(),
+    relations: (decl.relations || []).map((r) => `${r.fromType}|${r.fromCode}|${r.relationType}|${r.toType}|${r.toCode}`).sort(),
     hosts: decl.hosts.map((h) => `${h.name}|${h.connectionType}`).sort(),
     users: decl.users.map((u) => `${u.username.toLowerCase()}|${u.role}|${u.isOwner ? 1 : 0}`).sort(),
     permissions: decl.permissions.map((p) => `${p.username.toLowerCase()}|${p.hostName}|${p.permission}`).sort(),

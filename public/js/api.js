@@ -918,6 +918,14 @@ const Api = {
   getTenantPromotion(tenantId) { return this.get(`/onboarding/tenants/${tenantId}/promotion`); },
   promoteTenant(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/promote`, body || {}); },
 
+  // ─── Drift re-provision + trial lifecycle (v8.18.0, Phase 4) ───
+  // replanOnboarding() is a READ-ONLY diff of a declaration vs an existing tenant
+  // (categorized toCreate/toUpdate/inSync per resource); convergence is the
+  // existing idempotent /apply. extendTrial() pushes a trial's expiry out and
+  // reactivates a lapsed/suspended trial.
+  replanOnboarding(tenantId, declaration) { return this.post(`/onboarding/tenants/${tenantId}/replan`, declaration); },
+  extendTrial(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/extend-trial`, body || {}); },
+
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
   getAboutFile(name) { return this.get(`/about/file/${encodeURIComponent(name)}`); },

@@ -15,10 +15,12 @@ const templateMerge = require('./template-merge');
 const bootstrap = require('./bootstrap');
 const seed = require('./seed');
 const promotion = require('./promotion');
+const trialMonitor = require('./trial-monitor');
 
 module.exports = {
   // saga
   plan: engine.plan,
+  replan: engine.replan,
   apply: engine.apply,
   resume: engine.resume,
   rollback: engine.rollback,
@@ -43,6 +45,9 @@ module.exports = {
   assertProductionReady: promotion.assertProductionReady,
   checkProductionReady: promotion.checkProductionReady,
   setUsageMode: promotion.setUsageMode,
+  // trial lifecycle (Phase 4)
+  trialMonitor,
+  extendTrial: trialMonitor.extendTrial,
   // catalog
   catalog,
   DEFAULT_TENANT_ID: 1,
