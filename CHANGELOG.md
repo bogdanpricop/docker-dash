@@ -2,6 +2,43 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.18.0] - 2026-07-22 — Onboarding Phase 4 (final) — entities, drift re-provision & trial lifecycle
+
+The final phase of the Onboarding & Provisioning Wizard. The four-phase feature is now complete:
+guided setup (v8.15.0), templates + onboarding-as-code (v8.16.0), demo/trial + mock data
+(v8.17.0), and now entities, drift and lifecycle.
+
+### Entities & relationships
+A generic, template-definable graph — migration `094` adds `tenant_entities` +
+`tenant_entity_relations` (both seed-taggable and purgeable). The same two tables model a
+homelab's Site→Host→Service or a plant's Site→Department→Line; typing lives in `entity_type` /
+`relation_type` + metadata, not in schema. A new idempotent `seed_entities` provisioning step and
+a fully-editable wizard step 6 create them; templates may pre-fill entities/relations (safe —
+unlike users, an entity grants no access and authenticates nobody, so a preset can never mint a
+principal).
+
+### Drift re-provision
+`engine.replan()` + `POST /api/onboarding/tenants/:id/replan` return a read-only
+`toCreate / toUpdate / inSync` diff of a declaration against an existing tenant (settings, modules,
+nomenclatures, entities, relations, hosts, users) — converged through the existing idempotent
+apply, so re-running is safe and never duplicates.
+
+### Trial lifecycle
+Trial tenants get a `trial_expires_at` (`DD_TRIAL_DAYS`, default 14). An hourly monitor
+(unref'd, like the reconciler/posture monitors) suspends expired trials — notify + audit
+`tenant_trial_expired` — and warns once a few days out; the suspend is structurally idempotent
+(`WHERE status != 'suspended'`), so restarts never re-fire. `extend-trial` and promote-to-production
+reactivate. Suspension is intentionally lightweight (mark + notify + surface) — the tenant seam is
+a logical grouping, not a security boundary.
+
+### UX
+Per-field inline validation across the wizard (`aria-invalid` + red border + message on the exact
+offending input, auto-clearing on edit).
+
+Migration `094`. 4 new audit actions. 25 new tests — suite at **2156 passing across 130 suites**.
+Zero new npm dependencies. The onboarding wizard is usable from the UI, the REST API, and a
+headless `DD_ONBOARD_FILE` at deploy time.
+
 ## [8.17.0] - 2026-07-22 — Onboarding Phase 3 — Demo/Trial modes + synthetic mock data
 
 Phase 3 of 4. A prospect can now pick **Demo** (or **Trial**) in the onboarding wizard and land

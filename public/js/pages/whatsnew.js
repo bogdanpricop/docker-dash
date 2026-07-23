@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.18.0',
+      date: '2026-07-22',
+      title: 'Onboarding Phase 4 (final) — entities, drift check & trial lifecycle',
+      changes: [
+        { type: 'feature', text: 'The onboarding wizard is now complete. Step 6 lets you define your environment’s entities and how they relate — sites, departments, product lines, applications, services and custom types, with relationships like belongs-to / depends-on / located-at. Templates can pre-fill these, and you edit them freely; the whole graph is generic, so it fits a homelab or a manufacturing plant equally.' },
+        { type: 'feature', text: 'Drift check / re-run: point an updated configuration at an existing tenant and get a read-only diff of exactly what would be created or updated versus what’s already in sync, before you apply it — and applying is idempotent, so re-running never duplicates anything.' },
+        { type: 'feature', text: 'Trial lifecycle: trial environments now get an expiry date; they’re suspended automatically when the trial ends (with a heads-up notification a few days before), and can be extended or promoted to production at any time. Per-field inline validation was added across every wizard step so errors point at the exact field.' },
+        { type: 'improvement', text: 'This completes the four-phase Onboarding & Provisioning Wizard (v8.15–v8.18): guided setup, industry templates + onboarding-as-code, demo/trial with realistic sample data, and now entities, drift and lifecycle — usable from the UI, a REST API, or a headless file at deploy time.' },
+      ],
+    },
+    {
       version: '8.17.0',
       date: '2026-07-22',
       title: 'Onboarding Phase 3 — Demo & Trial modes with realistic sample data',
