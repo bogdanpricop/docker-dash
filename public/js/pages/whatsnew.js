@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.18.1',
+      date: '2026-07-22',
+      title: 'Fix — System → Prune now actually frees disk space',
+      changes: [
+        { type: 'fix', text: 'Prune used to leave disk usage almost unchanged because it never touched the build cache — usually the largest reclaimable item — and only removed dangling images. Now there is a dedicated Prune Build Cache action, image prune removes all unused images (matching the docker image prune -a it always advertised), and Prune Everything covers containers, images, volumes, networks and build cache. The result toast now reports exactly how many bytes were reclaimed.' },
+      ],
+    },
+    {
       version: '8.18.0',
       date: '2026-07-22',
       title: 'Onboarding Phase 4 (final) — entities, drift check & trial lifecycle',

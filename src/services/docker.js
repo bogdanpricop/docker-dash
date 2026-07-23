@@ -840,13 +840,23 @@ class DockerService {
     return await docker.df();
   }
 
-  async prune({ containers, images, volumes, networks, buildCache: _buildCache } = {}, hostId = 0) {
+  async prune({ containers, images, volumes, networks, buildCache } = {}, hostId = 0) {
     const docker = this.getDocker(hostId);
     const results = {};
     if (containers) results.containers = await docker.pruneContainers();
-    if (images) results.images = await docker.pruneImages();
+    // Remove ALL unused images (not just dangling), matching the UI's advertised
+    // `docker image prune -a -f`. Without the dangling=false filter the API only
+    // removes untagged layers, which reclaims almost nothing on a real host.
+    if (images) results.images = await docker.pruneImages({ filters: '{"dangling":{"false":true}}' });
     if (volumes) results.volumes = await docker.pruneVolumes();
     if (networks) results.networks = await docker.pruneNetworks();
+    // Build cache is frequently the LARGEST reclaimable item (`docker builder prune`)
+    // and was previously never touched — the #1 reason "Disk Usage doesn't change".
+    if (buildCache) results.buildCache = await docker.pruneBuilder();
+    // Aggregate a single top-level SpaceReclaimed so callers/UI can report the real
+    // total (each dockerode prune result carries its own SpaceReclaimed).
+    results.SpaceReclaimed = Object.values(results)
+      .reduce((sum, r) => sum + ((r && r.SpaceReclaimed) || 0), 0);
     return results;
   }
 

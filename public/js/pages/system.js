@@ -2123,7 +2123,8 @@ DB_PASS=secret"></textarea>
       images:     'docker image prune -a -f',
       volumes:    'docker volume prune -f',
       networks:   'docker network prune -f',
-      all:        'docker system prune -a --volumes -f',
+      buildcache: 'docker builder prune -a -f',
+      all:        'docker system prune -a --volumes -f && docker builder prune -a -f',
     };
     const renderCmd = (key) => `
       <div class="prune-cmd" role="group" aria-label="Manual CLI command">
@@ -2172,6 +2173,12 @@ DB_PASS=secret"></textarea>
               <p>${i18n.t('pages.system.pruneNetworksDesc')}</p>
               <button class="btn btn-sm btn-warning" data-prune="networks">${i18n.t('pages.system.pruneNetworksBtn')}</button>
               ${renderCmd('networks')}
+            </div>
+            <div class="prune-item">
+              <h4><i class="fas fa-hammer"></i> ${i18n.t('pages.system.pruneBuildCache')}</h4>
+              <p>${i18n.t('pages.system.pruneBuildCacheDesc')}</p>
+              <button class="btn btn-sm btn-warning" data-prune="buildcache">${i18n.t('pages.system.pruneBuildCacheBtn')}</button>
+              ${renderCmd('buildcache')}
             </div>
             <div class="prune-item">
               <h4><i class="fas fa-broom"></i> ${i18n.t('pages.system.pruneEverything')}</h4>

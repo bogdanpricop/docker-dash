@@ -2,7 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
-## [8.18.0] - 2026-07-22 — Onboarding Phase 4 (final) — entities, drift re-provision & trial lifecycle
+## [8.18.1] - 2026-07-22 — Fix: System → Prune now reclaims build cache + all unused images
+
+Prune ran but "Disk Usage barely changed" because it skipped the two biggest reclaimable items.
+
+- **Build cache is now pruned.** `dockerService.prune()` previously ignored build cache entirely;
+  it's frequently the single largest reclaimable item (`docker builder prune`). Added a **Prune
+  Build Cache** tile, and **Prune Everything** now covers it too (== `docker system prune -a
+  --volumes` + build cache).
+- **Image prune now removes ALL unused images**, not just dangling — matching the `docker image
+  prune -a -f` the UI already advertised (previously it only removed untagged layers, reclaiming
+  almost nothing on a real host).
+- **The reclaimed-space total is now reported.** The API returns an aggregated top-level
+  `SpaceReclaimed`, so the post-prune toast finally shows how much was actually freed (it was
+  always reading a field that didn't exist → always 0).
+
+Verify: **System → Audit** logs every `system_prune`, and the toast now reports the bytes freed;
+`docker system df` on the host confirms the drop.
 
 The final phase of the Onboarding & Provisioning Wizard. The four-phase feature is now complete:
 guided setup (v8.15.0), templates + onboarding-as-code (v8.16.0), demo/trial + mock data

@@ -63,13 +63,14 @@ router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeatu
 // route above remains for any external caller using the old contract.
 router.post('/prune/:type', requireAuth, requireRole('admin'), writeable, requireFeature('prune'), async (req, res) => {
   const type = String(req.params.type || '').toLowerCase();
-  const validTypes = ['containers', 'images', 'volumes', 'networks', 'all'];
+  const validTypes = ['containers', 'images', 'volumes', 'networks', 'buildcache', 'all'];
   if (!validTypes.includes(type)) {
     return res.status(400).json({ error: `Invalid prune type "${type}". Expected one of: ${validTypes.join(', ')}.` });
   }
+  // 'all' == `docker system prune -a --volumes` + build cache (the biggest reclaimable).
   const flags = type === 'all'
-    ? { containers: true, images: true, volumes: true, networks: true }
-    : { [type]: true };
+    ? { containers: true, images: true, volumes: true, networks: true, buildCache: true }
+    : (type === 'buildcache' ? { buildCache: true } : { [type]: true });
   try {
     const results = await dockerService.prune(flags, req.hostId);
     auditService.log({ userId: req.user.id, username: req.user.username,
