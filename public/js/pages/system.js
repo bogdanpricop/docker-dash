@@ -2193,9 +2193,18 @@ DB_PASS=secret"></textarea>
 
     el.querySelector('#prune-help').addEventListener('click', () => this._showPruneHelp());
 
-    // Wire up prune buttons
+    // Wire up prune buttons + attach a session run-log container under each tile.
     el.querySelectorAll('[data-prune]').forEach(btn => {
-      btn.addEventListener('click', () => SystemPage._prune(btn.dataset.prune));
+      const type = btn.dataset.prune;
+      btn.addEventListener('click', () => SystemPage._prune(type));
+      const item = btn.closest('.prune-item');
+      if (item && !item.querySelector('.prune-runs')) {
+        const box = document.createElement('div');
+        box.className = 'prune-runs';
+        box.id = 'prune-runs-' + type;
+        item.appendChild(box);
+      }
+      SystemPage._renderRunsInto(type);   // repaint any runs from this session
     });
   },
 
@@ -2251,14 +2260,63 @@ DB_PASS=secret"></textarea>
       { danger: true, confirmText: i18n.t('common.prune') }
     );
     if (!ok) return;
+    // Session-scoped run log (kept on the SystemPage singleton → survives tab
+    // switches, cleared on a full page reload). Newest first, capped.
+    if (!this._pruneRuns) this._pruneRuns = {};
+    const runs = (this._pruneRuns[type] = this._pruneRuns[type] || []);
+    const run = { startedAt: Date.now(), finishedAt: null, durationMs: null, ok: null, reclaimed: 0, error: null };
+    runs.unshift(run);
+    if (runs.length > 20) runs.length = 20;
+    this._renderRunsInto(type);
     try {
       const result = await Api.prune(type);
-      const freed = result.SpaceReclaimed || result.space_reclaimed || 0;
-      Toast.success(freed
-        ? i18n.t('pages.system.pruneSuccess', { freed: Utils.formatBytes(freed) })
+      run.reclaimed = result.SpaceReclaimed || result.space_reclaimed || 0;
+      run.ok = true;
+      Toast.success(run.reclaimed
+        ? i18n.t('pages.system.pruneSuccess', { freed: Utils.formatBytes(run.reclaimed) })
         : i18n.t('pages.system.pruneDone')
       );
-    } catch (err) { Toast.error(err.message); }
+    } catch (err) {
+      run.ok = false;
+      run.error = err && err.message ? err.message : String(err);
+      Toast.error(run.error);
+    } finally {
+      run.finishedAt = Date.now();
+      run.durationMs = run.finishedAt - run.startedAt;
+      this._renderRunsInto(type);
+    }
+  },
+
+  // Render the session run-log sub-cards under a prune tile.
+  _renderRunsInto(type) {
+    const box = document.getElementById('prune-runs-' + type);
+    if (!box) return;
+    const runs = (this._pruneRuns && this._pruneRuns[type]) || [];
+    if (!runs.length) {
+      box.innerHTML = `<div class="prune-runs-empty">${i18n.t('pages.system.pruneRunNone')}</div>`;
+      return;
+    }
+    const fmtTime = (ts) => new Date(ts).toLocaleTimeString();
+    const fmtDur = (ms) => ms == null ? '' : (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`);
+    const rows = runs.map((r, i) => {
+      const n = runs.length - i;
+      const state = r.finishedAt == null ? 'running' : (r.ok ? 'ok' : 'fail');
+      const badge = r.finishedAt == null
+        ? `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.system.pruneRunRunning')}`
+        : (r.ok
+          ? `<i class="fas fa-check-circle"></i> ${i18n.t('pages.system.pruneRunSuccess')}`
+          : `<i class="fas fa-times-circle"></i> ${i18n.t('pages.system.pruneRunFailed')}`);
+      const dur = r.durationMs != null ? ` · ${i18n.t('pages.system.pruneRunDuration')} ${fmtDur(r.durationMs)}` : '';
+      const reclaimed = (r.ok && r.reclaimed) ? ` · ${i18n.t('pages.system.pruneRunReclaimed')} ${Utils.formatBytes(r.reclaimed)}` : '';
+      const fin = r.finishedAt != null ? ` · ${i18n.t('pages.system.pruneRunFinished')} ${fmtTime(r.finishedAt)}` : '';
+      const err = r.error ? `<div class="prune-run-err">${Utils.escapeHtml(r.error)}</div>` : '';
+      return `<div class="prune-run ${state}">
+        <div class="prune-run-head"><span class="prune-run-badge">#${n} ${badge}</span></div>
+        <div class="prune-run-meta">${i18n.t('pages.system.pruneRunStarted')} ${fmtTime(r.startedAt)}${fin}${dur}${reclaimed}</div>
+        ${err}
+      </div>`;
+    }).join('');
+    box.innerHTML = `<div class="prune-runs-title">${i18n.t('pages.system.pruneRunsTitle')}</div>${rows}`;
   },
 
   async _renderAudit(el) {

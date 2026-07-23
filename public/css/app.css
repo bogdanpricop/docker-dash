@@ -768,6 +768,26 @@ tr.clickable:hover td { color: var(--text-bright); }
 .prune-cmd-btn:hover { color: var(--text-bright); background: var(--surface2); }
 .prune-cmd-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* Session run-log under each prune tile */
+.prune-runs { margin-top: 12px; }
+.prune-runs-title { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.prune-runs-empty { font-size: 11.5px; color: var(--text-dim); font-style: italic; }
+.prune-run {
+  margin-top: 6px; padding: 7px 9px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-left: 3px solid var(--border-bright); border-radius: var(--radius-sm);
+}
+.prune-run.ok { border-left-color: var(--success, #3fb950); }
+.prune-run.fail { border-left-color: var(--danger, #f85149); }
+.prune-run.running { border-left-color: var(--accent); }
+.prune-run-head { display: flex; align-items: center; gap: 6px; }
+.prune-run-badge { font-size: 12px; font-weight: 600; color: var(--text-bright); }
+.prune-run.ok .prune-run-badge i { color: var(--success, #3fb950); }
+.prune-run.fail .prune-run-badge i { color: var(--danger, #f85149); }
+.prune-run.running .prune-run-badge i { color: var(--accent); }
+.prune-run-meta { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.prune-run-err { font-size: 11px; color: var(--danger, #f85149); margin-top: 4px; font-family: var(--mono); word-break: break-word; }
+
 /* v8.7.44 — daemon type badge (Podman on the Engine card title). */
 .daemon-badge {
   display: inline-block; vertical-align: middle;

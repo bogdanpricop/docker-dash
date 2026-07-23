@@ -2,6 +2,31 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.19.0] - 2026-07-23 — Full i18n coverage (all 11 languages) + prune run-log + version-notification fix
+
+### Fixed — the "new version available" notification showed a raw key
+The update toast called `i18n.t('common.newVersionAvailable')` and `i18n.t('common.reload')`, but
+those strings were defined under `errors.*`. Since a missing key falls through to returning the key
+itself, the notification rendered the literal text **`common.newVersionAvailable`** — in every
+language, English included. The keys now live under `common` (where the code looks), translated in
+all 11 locales.
+
+### Translations — every locale brought to 100% key parity
+A full audit found the 10 non-English locales were only **~60% translated** (German 59%, Romanian
+86%, the rest ~60%) — roughly **669 keys missing each**, covering all recent features (onboarding,
+firewall write, posture, reconciler, Copilot…) plus whole groups (`updates.*`, `login.*`, `nav.*`,
+`errors.*`). All missing strings were translated and every locale (de, es, fr, it, ja, ko, pt, ro,
+zh, tlh) is now at **100% parity with English** (1684 keys), interpolation tokens (`{{version}}` …)
+preserved, product/technology names kept untranslated.
+
+### Added — System → Prune session run-log
+Each Prune tile now keeps a **session run-log** beneath it: for every prune you trigger it records
+when it started, when it finished, how long it took, whether it succeeded or failed (with the error
+if not), and how much space was reclaimed — shown as sub-cards, newest first. The log lives for the
+open session (cleared on a full page reload). Fully translated.
+
+No backend changes; suite unchanged at 2156 passing across 130 suites. Zero new npm dependencies.
+
 ## [8.18.1] - 2026-07-22 — Fix: System → Prune now reclaims build cache + all unused images
 
 Prune ran but "Disk Usage barely changed" because it skipped the two biggest reclaimable items.

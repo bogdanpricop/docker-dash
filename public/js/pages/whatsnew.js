@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.19.0',
+      date: '2026-07-23',
+      title: 'Every language now fully translated + prune run-log + notification fix',
+      changes: [
+        { type: 'fix', text: 'The “new version available” notification was showing the raw text “common.newVersionAvailable” instead of a real message — in every language, including English — because the string was filed under the wrong key. Fixed and translated everywhere.' },
+        { type: 'improvement', text: 'Full translation coverage: an audit found the 10 non-English languages were only about 60% translated (Romanian 86%), with recent features and whole sections untranslated. Every language — German, Spanish, French, Italian, Japanese, Korean, Portuguese, Romanian, Chinese and Klingon — is now at 100% parity with English (1684 keys).' },
+        { type: 'feature', text: 'System → Prune now keeps a run-log under each tile: for every prune you run it shows when it started, when it finished, how long it took, whether it succeeded or failed, and how much space was reclaimed — as sub-cards, newest first, for the current session.' },
+      ],
+    },
+    {
       version: '8.18.1',
       date: '2026-07-22',
       title: 'Fix — System → Prune now actually frees disk space',

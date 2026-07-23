@@ -3,6 +3,7 @@
 // This is the base/fallback language. All keys must be defined here.
 i18n.register('en', 'EN', 'English', {
   common: {
+    newVersionAvailable: 'New version {{version}} available', reload: 'Reload',
     close: 'Close', cancel: 'Cancel', confirm: 'Confirm', save: 'Save',
     remove: 'Remove', delete: 'Delete', create: 'Create', edit: 'Edit',
     refresh: 'Refresh', loading: 'Loading...', error: 'Error', retry: 'Retry',
@@ -852,6 +853,9 @@ i18n.register('en', 'EN', 'English', {
       pruneContainersBtn: 'Prune Containers',
       pruneImages: 'Images', pruneImagesDesc: 'Remove all unused images (not just dangling)', pruneImagesBtn: 'Prune Images',
       pruneBuildCache: 'Build Cache', pruneBuildCacheDesc: 'Remove the BuildKit build cache — often the largest reclaimable item', pruneBuildCacheBtn: 'Prune Build Cache',
+      pruneRunsTitle: 'Runs this session', pruneRunNone: 'No runs yet this session.',
+      pruneRunStarted: 'Started', pruneRunFinished: 'finished', pruneRunDuration: 'took', pruneRunReclaimed: 'reclaimed',
+      pruneRunSuccess: 'Success', pruneRunFailed: 'Failed', pruneRunRunning: 'Running…',
       pruneVolumes: 'Volumes', pruneVolumesDesc: 'Remove unused volumes', pruneVolumesBtn: 'Prune Volumes',
       pruneNetworks: 'Networks', pruneNetworksDesc: 'Remove unused networks', pruneNetworksBtn: 'Prune Networks',
       diskLabel: 'Disk (Docker root)', diskAvailable: 'available',
