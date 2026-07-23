@@ -280,6 +280,9 @@ function _collectResult(runId) {
     if (s.step_key === 'create_tenant' && cp.tenantId) summary.created.tenantId = cp.tenantId;
     if (Array.isArray(cp.keys)) summary.created.settings = cp.keys.length;
     if (Array.isArray(cp.modules)) summary.created.modules = cp.modules.length;
+    if (s.step_key === 'seed_nomenclatures') {
+      summary.created.nomenclatures = (Array.isArray(cp.inserted) ? cp.inserted.length : 0) + (cp.updated || 0);
+    }
     if (Array.isArray(cp.hosts)) summary.created.hosts = cp.hosts.length;
     if (Array.isArray(cp.users)) summary.created.users = cp.users.length;
     if (s.step_key === 'grant_permissions' && Array.isArray(cp.created)) summary.created.grants = cp.created.length;
@@ -387,7 +390,9 @@ function listRuns({ limit = 50 } = {}) {
 /**
  * Golden-config export: the declaration as a re-usable document with secrets
  * STRIPPED (never plaintext, never ciphertext) and the instance-specific
- * idempotencyKey dropped.
+ * idempotencyKey dropped. v8.16.0 also pins the `template` key the run actually
+ * used (from the run row, which is authoritative) so the exported doc replays
+ * with the same defaults.
  */
 function exportRun(runId) {
   const run = _getRun(runId);
@@ -396,7 +401,33 @@ function exportRun(runId) {
   if (!input) return null;
   const golden = redactDeclaration(input);
   delete golden.idempotencyKey;
+  const templateKey = run.template_key || input.template || null;
+  if (templateKey) golden.template = templateKey;
+  else delete golden.template;
   return golden;
+}
+
+/**
+ * Golden config re-shaped as an onboarding TEMPLATE, ready to POST to
+ * /api/onboarding/templates. Secrets are stripped twice over: the source is the
+ * already-redacted export, and specFromDeclaration() drops hosts wholesale and
+ * runs validateTemplateSpec() (which throws on any secret-shaped key).
+ */
+function exportRunAsTemplate(runId, { key, name, description, industry, version } = {}) {
+  const run = _getRun(runId);
+  if (!run) return null;
+  const golden = exportRun(runId);
+  if (!golden) return null;
+  const templates = require('./templates');
+  const slug = (golden.tenant && golden.tenant.slug) || `run-${runId}`;
+  return {
+    key: key || `${slug}-template`.slice(0, 63),
+    name: name || `${(golden.tenant && golden.tenant.name) || slug} template`,
+    description: description !== undefined ? description : `Captured from provisioning run #${runId}.`,
+    industry: industry || null,
+    version: version || '1.0.0',
+    spec: templates.specFromDeclaration(golden),
+  };
 }
 
 module.exports = {
@@ -408,4 +439,5 @@ module.exports = {
   getActiveRun,
   listRuns,
   exportRun,
+  exportRunAsTemplate,
 };

@@ -9,21 +9,28 @@
 
 const createTenant = require('./create-tenant');
 const setRegional = require('./set-regional');
+const seedNomenclatures = require('./seed-nomenclatures');
 const enableModules = require('./enable-modules');
 const createHosts = require('./create-hosts');
 const createUsers = require('./create-users');
 const grantPermissions = require('./grant-permissions');
 const finalize = require('./finalize');
 
-// The canonical Phase-1 order.
+// The canonical order. v8.16.0 (Phase 2) inserted seed_nomenclatures right after
+// set_regional — both are pure tenant-config writes and neither depends on the
+// other, so slotting it there keeps the "configure the tenant, then populate it"
+// reading order. Ordinals shift for everything after it; that is safe because
+// buildSteps() is rebuilt deterministically on every plan/apply/resume and the
+// engine resumes on `step_key`, not on a hard-coded ordinal.
 const ORDERED = [
-  createTenant,     // 1  pivot — db
-  setRegional,      // 2  db
-  enableModules,    // 3  db
-  createHosts,      // 4  external
-  createUsers,      // 5  external
-  grantPermissions, // 6  db
-  finalize,         // 7  db
+  createTenant,      // 1  pivot — db
+  setRegional,       // 2  db
+  seedNomenclatures, // 3  db
+  enableModules,     // 4  db
+  createHosts,       // 5  external
+  createUsers,       // 6  external
+  grantPermissions,  // 7  db
+  finalize,          // 8  db
 ];
 
 const STEP_REGISTRY = Object.freeze(

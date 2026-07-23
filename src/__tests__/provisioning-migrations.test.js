@@ -1,6 +1,7 @@
 'use strict';
 
 // v8.15.0 (Onboarding — Phase 1) — migrations 088/089/090 schema + invariants.
+// v8.16.0 (Onboarding — Phase 2) — + 091 nomenclatures / 092 onboarding_templates.
 
 process.env.APP_SECRET = 'test-secret-key-for-jest-provisioning';
 process.env.ENCRYPTION_KEY = 'test-encryption-key-for-jest-32chars';
@@ -17,9 +18,12 @@ describe('provisioning migrations (088/089/090)', () => {
     db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name),
   );
 
-  it('creates all six new tables', () => {
+  it('creates all eight new tables', () => {
     const t = tableNames();
-    for (const name of ['tenants', 'tenant_settings', 'user_tenants', 'provisioning_runs', 'provisioning_steps', 'tenant_modules']) {
+    for (const name of [
+      'tenants', 'tenant_settings', 'user_tenants', 'provisioning_runs', 'provisioning_steps',
+      'tenant_modules', 'nomenclatures', 'onboarding_templates',
+    ]) {
       expect(t.has(name)).toBe(true);
     }
   });
@@ -96,5 +100,49 @@ describe('provisioning migrations (088/089/090)', () => {
     db.prepare("INSERT INTO tenant_modules (tenant_id, module_key) VALUES (?, 'firewall')").run(tid);
     expect(() => db.prepare("INSERT INTO tenant_modules (tenant_id, module_key) VALUES (?, 'firewall')").run(tid))
       .toThrow(/UNIQUE|PRIMARY|constraint/i);
+  });
+
+  // ── 091 nomenclatures ────────────────────────────────────────────────────
+  it('nomenclatures enforces UNIQUE(tenant_id, kind, code) and cascades on tenant delete', () => {
+    const tid = db.prepare("INSERT INTO tenants (slug, name) VALUES ('nom-t', 'N')").run().lastInsertRowid;
+    db.prepare("INSERT INTO nomenclatures (tenant_id, kind, code, label) VALUES (?, 'environment', 'dev', 'Dev')").run(tid);
+    expect(() => db.prepare("INSERT INTO nomenclatures (tenant_id, kind, code, label) VALUES (?, 'environment', 'dev', 'Dup')").run(tid))
+      .toThrow(/UNIQUE|constraint/i);
+    // the same (kind, code) is fine under ANOTHER tenant
+    const tid2 = db.prepare("INSERT INTO tenants (slug, name) VALUES ('nom-t2', 'N2')").run().lastInsertRowid;
+    db.prepare("INSERT INTO nomenclatures (tenant_id, kind, code, label) VALUES (?, 'environment', 'dev', 'Dev')").run(tid2);
+
+    db.prepare('DELETE FROM tenants WHERE id = ?').run(tid);
+    expect(db.prepare('SELECT COUNT(*) c FROM nomenclatures WHERE tenant_id = ?').get(tid).c).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) c FROM nomenclatures WHERE tenant_id = ?').get(tid2).c).toBe(1);
+  });
+
+  it('nomenclatures.kind is deliberately NOT CHECK-constrained (validated in-service)', () => {
+    const tid = db.prepare("INSERT INTO tenants (slug, name) VALUES ('nom-t3', 'N3')").run().lastInsertRowid;
+    expect(() => db.prepare("INSERT INTO nomenclatures (tenant_id, kind, code, label) VALUES (?, 'future_kind', 'x', 'X')").run(tid))
+      .not.toThrow();
+  });
+
+  it('nomenclatures does NOT carry seed_run_id yet (Phase 3 adds it uniformly)', () => {
+    const cols = db.prepare('PRAGMA table_info(nomenclatures)').all().map((c) => c.name);
+    expect(cols).toEqual(expect.arrayContaining(['id', 'tenant_id', 'kind', 'code', 'label', 'sort', 'meta_json', 'created_at']));
+    expect(cols).not.toContain('seed_run_id');
+  });
+
+  // ── 092 onboarding_templates ─────────────────────────────────────────────
+  it('onboarding_templates keys on `key` and rejects a duplicate key', () => {
+    db.prepare("INSERT INTO onboarding_templates (key, name, spec_json) VALUES ('mig-tpl', 'T', '{}')").run();
+    expect(() => db.prepare("INSERT INTO onboarding_templates (key, name, spec_json) VALUES ('mig-tpl', 'T2', '{}')").run())
+      .toThrow(/UNIQUE|PRIMARY|constraint/i);
+    const row = db.prepare("SELECT * FROM onboarding_templates WHERE key = 'mig-tpl'").get();
+    expect(row.is_builtin).toBe(0);   // custom by default
+    expect(row.version).toBe('1.0.0');
+  });
+
+  it('onboarding_templates requires name + spec_json', () => {
+    expect(() => db.prepare("INSERT INTO onboarding_templates (key, spec_json) VALUES ('no-name', '{}')").run())
+      .toThrow(/NOT NULL|constraint/i);
+    expect(() => db.prepare("INSERT INTO onboarding_templates (key, name) VALUES ('no-spec', 'X')").run())
+      .toThrow(/NOT NULL|constraint/i);
   });
 });

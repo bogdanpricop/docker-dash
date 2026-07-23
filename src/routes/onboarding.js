@@ -14,6 +14,11 @@
 //   POST /api/onboarding/runs/:id/resume   (admin+writeable)  continue from cursor
 //   POST /api/onboarding/runs/:id/rollback (admin+writeable)  compensate in reverse
 //   GET  /api/onboarding/runs/:id/export   (admin)            golden config (secrets stripped)
+//                                                             ?asTemplate=1 → template-shaped spec
+//   GET  /api/onboarding/templates         (auth)             built-in + custom templates
+//   GET  /api/onboarding/templates/:key    (auth)             one template
+//   POST /api/onboarding/templates         (admin+writeable)  save-as-template (secrets stripped)
+//   DELETE /api/onboarding/templates/:key  (admin+writeable)  custom templates only
 
 const { Router } = require('express');
 const provisioning = require('../services/provisioning');
@@ -108,14 +113,80 @@ router.post('/runs/:id/rollback', ...adminWrite, asyncHandler(async (req, res) =
 }));
 
 // GET /runs/:id/export — golden-config declaration with secrets STRIPPED.
+// `?asTemplate=1` emits a template-shaped document ready to POST to /templates.
 router.get('/runs/:id/export', ...admin, asyncHandler(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const golden = provisioning.exportRun(id);
-  if (!golden) return res.status(404).json({ error: 'Run not found' });
-  _audit(req, 'onboarding_export', 'provisioning_run', id, { tenantSlug: golden.tenant && golden.tenant.slug });
+  const asTemplate = req.query.asTemplate === '1' || req.query.asTemplate === 'true';
+  let payload;
+  try {
+    payload = asTemplate ? provisioning.exportRunAsTemplate(id) : provisioning.exportRun(id);
+  } catch (err) { return _fail(res, err); }
+  if (!payload) return res.status(404).json({ error: 'Run not found' });
+  _audit(req, 'onboarding_export', 'provisioning_run', id, {
+    asTemplate,
+    tenantSlug: (payload.tenant && payload.tenant.slug) || null,
+    templateKey: asTemplate ? payload.key : (payload.template || null),
+  });
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="onboarding-run-${id}.json"`);
-  res.send(JSON.stringify(golden, null, 2));
+  res.setHeader('Content-Disposition', `attachment; filename="onboarding-${asTemplate ? 'template' : 'run'}-${id}.json"`);
+  res.send(JSON.stringify(payload, null, 2));
+}));
+
+// ── templates (Phase 2) ─────────────────────────────────────────────────────
+// Reads are open to any authenticated user (the wizard's step-0 picker needs
+// them and a template carries no secrets by construction). Writes are
+// admin + writeable + audited, and a built-in key can never be overwritten or
+// deleted — built-ins are owned by the files under src/db/onboarding-templates/.
+
+// GET /templates — built-ins first, then custom.
+router.get('/templates', requireAuth, asyncHandler(async (_req, res) => {
+  res.json({ templates: provisioning.templates.list() });
+}));
+
+// GET /templates/:key — one template (404 if unknown).
+router.get('/templates/:key', requireAuth, asyncHandler(async (req, res) => {
+  const tpl = provisioning.templates.get(req.params.key);
+  if (!tpl) return res.status(404).json({ error: 'Template not found' });
+  res.json(tpl);
+}));
+
+// POST /templates — save (or update) a CUSTOM template.
+// Accepts either an explicit `spec`, or a `declaration` to derive one from —
+// in which case secrets are stripped BEFORE validation (hosts dropped wholesale,
+// passwords never copied) and validateTemplateSpec throws on anything
+// secret-shaped that survived.
+router.post('/templates', ...adminWrite, asyncHandler(async (req, res) => {
+  const body = req.body || {};
+  try {
+    const spec = body.declaration !== undefined
+      ? provisioning.templates.specFromDeclaration(body.declaration)
+      : body.spec;
+    const saved = provisioning.templates.saveCustom({
+      key: body.key,
+      name: body.name,
+      description: body.description,
+      industry: body.industry,
+      version: body.version,
+      spec,
+    }, req.user);
+    _audit(req, 'onboarding_template_save', 'onboarding_template', saved.key, {
+      name: saved.name, version: saved.version, industry: saved.industry, isBuiltin: false,
+    });
+    res.status(201).json(saved);
+  } catch (err) {
+    log.warn('template save failed', { error: err.message });
+    _fail(res, err);
+  }
+}));
+
+// DELETE /templates/:key — custom templates only (built-ins are file-owned).
+router.delete('/templates/:key', ...adminWrite, asyncHandler(async (req, res) => {
+  const key = req.params.key;
+  try {
+    provisioning.templates.remove(key);
+    _audit(req, 'onboarding_template_delete', 'onboarding_template', key, {});
+    res.json({ success: true });
+  } catch (err) { _fail(res, err); }
 }));
 
 module.exports = router;

@@ -49,7 +49,7 @@ describe('engine.plan (dry-run)', () => {
     const p = provisioning.plan({ declaration: decl({ slug: 'planonly' }), user: USER });
 
     expect(p.steps.map((s) => s.key)).toEqual([
-      'create_tenant', 'set_regional', 'enable_modules', 'create_hosts', 'create_users', 'grant_permissions', 'finalize',
+      'create_tenant', 'set_regional', 'seed_nomenclatures', 'enable_modules', 'create_hosts', 'create_users', 'grant_permissions', 'finalize',
     ]);
     expect(p.steps.find((s) => s.key === 'create_hosts').kind).toBe('external');
     expect(p.steps.find((s) => s.key === 'create_tenant').kind).toBe('db');
@@ -80,10 +80,10 @@ describe('engine.apply (happy path)', () => {
   let db;
   beforeAll(() => { db = getDb(); });
 
-  it('runs all seven steps and creates tenant/settings/modules/hosts/users/grants', async () => {
+  it('runs all eight steps and creates tenant/settings/modules/hosts/users/grants', async () => {
     const run = await provisioning.apply({ declaration: decl({ slug: 'full' }), user: USER });
     expect(run.status).toBe('completed');
-    expect(run.currentStep).toBe(7);
+    expect(run.currentStep).toBe(8);
     expect(run.steps.every((s) => s.status === 'completed')).toBe(true);
 
     const tid = run.tenantId;
@@ -100,7 +100,7 @@ describe('engine.apply (happy path)', () => {
   it('writes a result_json summary', async () => {
     const run = await provisioning.apply({ declaration: decl({ slug: 'summary' }), user: USER });
     expect(run.result).toBeTruthy();
-    expect(run.result.steps.length).toBe(7);
+    expect(run.result.steps.length).toBe(8);
     expect(run.result.created).toMatchObject({ hosts: 1, users: 1 });
   });
 
@@ -132,7 +132,7 @@ describe('engine idempotency', () => {
     expect(db.prepare("SELECT COUNT(*) c FROM tenants WHERE slug = 'idem'").get().c).toBe(1);
     expect(db.prepare("SELECT COUNT(*) c FROM users WHERE username = 'idem-owner'").get().c).toBe(1);
     expect(db.prepare("SELECT COUNT(*) c FROM docker_hosts WHERE name = 'idem-host'").get().c).toBe(1);
-    expect(db.prepare('SELECT COUNT(*) c FROM provisioning_steps WHERE run_id = ?').get(run1.id).c).toBe(7);
+    expect(db.prepare('SELECT COUNT(*) c FROM provisioning_steps WHERE run_id = ?').get(run1.id).c).toBe(8);
   });
 
   it('the same idempotency key with a DIFFERENT declaration is a 409', async () => {
@@ -172,17 +172,17 @@ describe('engine failure + resume', () => {
     const runId = thrown.runId;
     let run = provisioning.getRun(runId);
     expect(run.status).toBe('failed');
-    // steps 1-5 done, grant_permissions failed, finalize not started
+    // steps 1-6 done, grant_permissions failed, finalize not started
     const byKey = Object.fromEntries(run.steps.map((s) => [s.step_key, s.status]));
     expect(byKey.create_users).toBe('completed');
     expect(byKey.grant_permissions).toBe('failed');
-    expect(run.currentStep).toBe(5);
+    expect(run.currentStep).toBe(6);
 
     // Restore the step and resume.
     grantStep.run = orig;
     run = await provisioning.resume(runId, { user: USER });
     expect(run.status).toBe('completed');
-    expect(run.currentStep).toBe(7);
+    expect(run.currentStep).toBe(8);
     expect(run.steps.every((s) => s.status === 'completed')).toBe(true);
 
     // No duplication from the partial-then-resumed run.
@@ -242,7 +242,7 @@ describe('engine.rollback (compensation)', () => {
 
   it('REFUSES to delete the default tenant during rollback, and a failed compensation does not abort the others', async () => {
     // Craft a run whose create_tenant checkpoint points at the DEFAULT tenant (id=1).
-    const rid = db.prepare("INSERT INTO provisioning_runs (tenant_id, mode, status, idempotency_key, input_json, current_step, total_steps) VALUES (1, 'production', 'failed', 'rb-default', ?, 2, 7)")
+    const rid = db.prepare("INSERT INTO provisioning_runs (tenant_id, mode, status, idempotency_key, input_json, current_step, total_steps) VALUES (1, 'production', 'failed', 'rb-default', ?, 2, 8)")
       .run(JSON.stringify(provisioning.validateDeclaration(decl({ slug: 'rbdef' })))).lastInsertRowid;
     db.prepare("INSERT INTO provisioning_steps (run_id, step_key, ordinal, status, checkpoint_json) VALUES (?, 'create_tenant', 1, 'completed', ?)")
       .run(rid, JSON.stringify({ tenantId: 1, created: true }));
@@ -291,7 +291,7 @@ describe('engine secret hygiene + audit', () => {
     const run = await provisioning.apply({ declaration: decl({ slug: 'shape' }), user: USER });
     const shaped = provisioning.getRun(run.id);
     expect(shaped.declaration.hosts[0].secret.sshPrivateKey).toBe('<redacted>');
-    expect(shaped.steps.length).toBe(7);
+    expect(shaped.steps.length).toBe(8);
     expect(shaped.steps[0]).not.toHaveProperty('checkpoint_json');
   });
 

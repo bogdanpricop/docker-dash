@@ -1,0 +1,53 @@
+{
+  "key": "msp-client",
+  "name": "MSP Client",
+  "description": "One managed customer inside a service provider's estate: multi-host oriented, service tiers, per-site grouping and the full compliance module set.",
+  "industry": "msp",
+  "version": "1.0.0",
+  "spec": {
+    "tenant": { "kind": "client" },
+    "regional": {
+      "locale": "en",
+      "timezone": "UTC",
+      "currency": "EUR",
+      "unitSystem": "metric",
+      "dateFormat": "YYYY-MM-DD"
+    },
+    "modules": [
+      { "key": "hosts", "enabled": true },
+      { "key": "firewall", "enabled": true },
+      { "key": "posture", "enabled": true },
+      { "key": "reconciler", "enabled": true },
+      { "key": "registries", "enabled": true },
+      { "key": "teams", "enabled": true }
+    ],
+    "nomenclatures": [
+      { "kind": "service_tier", "code": "bronze", "label": "Bronze (business hours)", "sort": 1 },
+      { "kind": "service_tier", "code": "silver", "label": "Silver (extended hours)", "sort": 2 },
+      { "kind": "service_tier", "code": "gold", "label": "Gold (24/7)", "sort": 3 },
+
+      { "kind": "site", "code": "hq", "label": "Head office", "sort": 1 },
+      { "kind": "site", "code": "dc1", "label": "Primary data centre", "sort": 2 },
+      { "kind": "site", "code": "dc2", "label": "Secondary data centre", "sort": 3 },
+      { "kind": "site", "code": "cloud", "label": "Public cloud", "sort": 4 },
+
+      { "kind": "environment", "code": "prod", "label": "Production", "sort": 1 },
+      { "kind": "environment", "code": "dr", "label": "Disaster recovery", "sort": 2 },
+      { "kind": "environment", "code": "test", "label": "Test", "sort": 3 },
+
+      { "kind": "severity", "code": "p1", "label": "P1 - Service down", "sort": 1 },
+      { "kind": "severity", "code": "p2", "label": "P2 - Degraded", "sort": 2 },
+      { "kind": "severity", "code": "p3", "label": "P3 - Advisory", "sort": 3 },
+
+      { "kind": "priority", "code": "urgent", "label": "Urgent", "sort": 1 },
+      { "kind": "priority", "code": "normal", "label": "Normal", "sort": 2 },
+      { "kind": "priority", "code": "low", "label": "Low", "sort": 3 }
+    ],
+    "roles": [
+      { "role": "admin", "isOwner": true, "label": "Account owner" },
+      { "role": "operator", "label": "Service desk engineer" },
+      { "role": "viewer", "label": "Client read-only contact" }
+    ],
+    "notes": "Register one host per customer site and group them by the `site` nomenclature. Give the client's own contacts 'viewer' only — operate rights stay with the service desk."
+  }
+}

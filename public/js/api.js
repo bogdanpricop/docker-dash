@@ -889,7 +889,19 @@ const Api = {
   rollbackOnboardingRun(id) { return this.post(`/onboarding/runs/${id}/rollback`); },
   // Returns the download URL (Content-Disposition: attachment) — same
   // pattern as exportAuditCsv() below; the caller drives the actual download.
-  exportOnboardingRunUrl(id) { return `/api/onboarding/runs/${id}/export`; },
+  // `asTemplate` emits a template-shaped spec instead of a declaration.
+  exportOnboardingRunUrl(id, asTemplate) { return `/api/onboarding/runs/${id}/export${asTemplate ? '?asTemplate=1' : ''}`; },
+
+  // ─── Onboarding templates (v8.16.0, Phase 2) ─────────────────
+  // Built-ins (is_builtin=1) come from src/db/onboarding-templates/*.json and
+  // are re-imported at every boot — the FILE overrides the DB row, so they can
+  // be read but never written or deleted through the API. Custom templates
+  // (is_builtin=0) are admin-created via saveOnboardingTemplate(). A template
+  // never carries a secret: the server strips them before validating.
+  listOnboardingTemplates() { return this.get('/onboarding/templates'); },
+  getOnboardingTemplate(key) { return this.get(`/onboarding/templates/${encodeURIComponent(key)}`); },
+  saveOnboardingTemplate(body) { return this.post('/onboarding/templates', body); },
+  deleteOnboardingTemplate(key) { return this.delete(`/onboarding/templates/${encodeURIComponent(key)}`); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

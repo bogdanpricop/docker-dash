@@ -1,0 +1,56 @@
+{
+  "key": "manufacturing-plant",
+  "name": "Manufacturing Plant",
+  "description": "A single production site: metric units, EUR, shift and production-line nomenclatures, and the firewall/posture modules a shop-floor estate needs.",
+  "industry": "manufacturing",
+  "version": "1.0.0",
+  "spec": {
+    "tenant": { "kind": "plant" },
+    "regional": {
+      "locale": "en",
+      "timezone": "Europe/Bucharest",
+      "currency": "EUR",
+      "unitSystem": "metric",
+      "dateFormat": "DD.MM.YYYY",
+      "numberFormat": "1.234,56"
+    },
+    "modules": [
+      { "key": "hosts", "enabled": true },
+      { "key": "firewall", "enabled": true },
+      { "key": "posture", "enabled": true },
+      { "key": "reconciler", "enabled": true },
+      { "key": "teams", "enabled": true }
+    ],
+    "nomenclatures": [
+      { "kind": "plant_type", "code": "assembly", "label": "Assembly", "sort": 1 },
+      { "kind": "plant_type", "code": "printing", "label": "Printing", "sort": 2 },
+      { "kind": "plant_type", "code": "converting", "label": "Converting", "sort": 3 },
+      { "kind": "plant_type", "code": "warehouse", "label": "Warehouse", "sort": 4 },
+
+      { "kind": "shift", "code": "s1", "label": "Shift 1 (06:00-14:00)", "sort": 1 },
+      { "kind": "shift", "code": "s2", "label": "Shift 2 (14:00-22:00)", "sort": 2 },
+      { "kind": "shift", "code": "s3", "label": "Shift 3 (22:00-06:00)", "sort": 3 },
+
+      { "kind": "line", "code": "L1", "label": "Line 1", "sort": 1 },
+      { "kind": "line", "code": "L2", "label": "Line 2", "sort": 2 },
+      { "kind": "line", "code": "L3", "label": "Line 3", "sort": 3 },
+
+      { "kind": "environment", "code": "ot", "label": "OT / shop floor", "sort": 1 },
+      { "kind": "environment", "code": "it", "label": "IT / office", "sort": 2 },
+
+      { "kind": "unit", "code": "mm", "label": "Millimetre", "sort": 1 },
+      { "kind": "unit", "code": "kg", "label": "Kilogram", "sort": 2 },
+      { "kind": "unit", "code": "pcs", "label": "Pieces", "sort": 3 },
+
+      { "kind": "severity", "code": "line_stop", "label": "Line stop", "sort": 1 },
+      { "kind": "severity", "code": "degraded", "label": "Degraded", "sort": 2 },
+      { "kind": "severity", "code": "cosmetic", "label": "Cosmetic", "sort": 3 }
+    ],
+    "roles": [
+      { "role": "admin", "isOwner": true, "label": "Plant IT owner" },
+      { "role": "operator", "label": "Shift operator" },
+      { "role": "viewer", "label": "Production supervisor" }
+    ],
+    "notes": "Shop-floor hosts are usually reachable only over SSH from the plant network. Register one host per line controller and grant operators 'operate' on their own line only."
+  }
+}

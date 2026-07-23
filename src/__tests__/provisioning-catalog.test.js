@@ -54,3 +54,23 @@ describe('module catalog', () => {
     expect(catalog.resolveDependencies(['git', 'registries'])).toEqual(['registries', 'git']);
   });
 });
+
+// ── nomenclature kinds (v8.16.0, Phase 2) ───────────────────────────────────
+describe('nomenclature kinds', () => {
+  it('exposes a non-empty, de-duplicated known set', () => {
+    expect(Array.isArray(catalog.NOMENCLATURE_KINDS)).toBe(true);
+    expect(catalog.NOMENCLATURE_KINDS.length).toBeGreaterThan(5);
+    expect(new Set(catalog.NOMENCLATURE_KINDS).size).toBe(catalog.NOMENCLATURE_KINDS.length);
+    for (const k of ['region', 'currency', 'unit', 'industry', 'plant_type', 'environment', 'severity']) {
+      expect(catalog.NOMENCLATURE_KINDS).toContain(k);
+    }
+  });
+
+  it('isNomenclatureKind / validateNomenclatureKind gate the known set', () => {
+    expect(catalog.isNomenclatureKind('environment')).toBe(true);
+    expect(catalog.isNomenclatureKind('bogus')).toBe(false);
+    expect(catalog.validateNomenclatureKind('shift')).toBe('shift');
+    expect(() => catalog.validateNomenclatureKind('bogus')).toThrow(/unknown nomenclature kind/);
+    expect(() => catalog.validateNomenclatureKind(null)).toThrow(/unknown nomenclature kind/);
+  });
+});

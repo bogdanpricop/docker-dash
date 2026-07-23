@@ -166,3 +166,36 @@ describe('fingerprintDeclaration', () => {
     expect(fingerprintDeclaration(a1)).not.toBe(fingerprintDeclaration(b));
   });
 });
+
+// ── nomenclatures block (v8.16.0, Phase 2) ──────────────────────────────────
+describe('declaration.nomenclatures', () => {
+  it('defaults to an empty array and normalizes sort/meta', () => {
+    expect(validateDeclaration(base()).nomenclatures).toEqual([]);
+    const out = validateDeclaration({
+      ...base(),
+      nomenclatures: [
+        { kind: 'environment', code: 'dev', label: 'Dev' },
+        { kind: 'severity', code: 'sev1', label: 'SEV1', sort: '3', meta: { color: 'red' } },
+      ],
+    });
+    expect(out.nomenclatures[0]).toEqual({ kind: 'environment', code: 'dev', label: 'Dev', sort: 0 });
+    expect(out.nomenclatures[1]).toEqual({ kind: 'severity', code: 'sev1', label: 'SEV1', sort: 3, meta: { color: 'red' } });
+  });
+
+  it('rejects unknown kinds, bad codes, duplicates, non-arrays and over-cap volumes', () => {
+    const withNoms = (nomenclatures) => validateDeclaration({ ...base(), nomenclatures });
+    expect(() => withNoms('nope')).toThrow(/must be an array/);
+    expect(() => withNoms([{ kind: 'bogus', code: 'a', label: 'A' }])).toThrow(/unknown nomenclature kind/);
+    expect(() => withNoms([{ kind: 'environment', code: '../x', label: 'A' }])).toThrow(/invalid characters/);
+    expect(() => withNoms([{ kind: 'environment', code: 'dev', label: '' }])).toThrow(/label is required/);
+    expect(() => withNoms([{ kind: 'environment', code: 'dev', label: 'A' }, { kind: 'environment', code: 'DEV', label: 'B' }])).toThrow(/duplicate/);
+    expect(() => withNoms([{ kind: 'environment', code: 'dev', label: 'A', sort: 'x' }])).toThrow(/must be an integer/);
+    expect(() => withNoms(Array.from({ length: 501 }, (_, i) => ({ kind: 'environment', code: `c${i}`, label: 'L' })))).toThrow(/too many nomenclatures/);
+  });
+
+  it('folds nomenclatures into the fingerprint', () => {
+    const a = validateDeclaration({ ...base(), nomenclatures: [{ kind: 'environment', code: 'dev', label: 'Dev' }] });
+    const b = validateDeclaration({ ...base(), nomenclatures: [{ kind: 'environment', code: 'dev', label: 'Development' }] });
+    expect(fingerprintDeclaration(a)).not.toBe(fingerprintDeclaration(b));
+  });
+});

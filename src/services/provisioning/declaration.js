@@ -18,10 +18,13 @@
 //   - Bounded volumes (anti-DoS).
 
 const { encrypt, decrypt, sha256 } = require('../../utils/crypto');
+const catalog = require('./catalog');
+const { applyTemplateDefaults } = require('./template-merge');
 
 // ── field domains ────────────────────────────────────────────────────────────
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;          // also blocks path traversal if slug→filename
 const USERNAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const KINDS = new Set(['client', 'plant', 'internal']);
 const MODES = new Set(['demo', 'trial', 'production']);
 const ROLES = new Set(['viewer', 'operator', 'admin']);
@@ -35,6 +38,7 @@ const MAX_HOSTS = 100;
 const MAX_USERS = 100;
 const MAX_MODULES = 32;
 const MAX_PERMISSIONS = 500;
+const MAX_NOMENCLATURES = 500;
 const MAX_STR = 512;          // generic string cap
 const MAX_SECRET = 65536;     // an SSH private key can be a few KB
 
@@ -217,6 +221,40 @@ function _validateUsers(users, mode) {
   });
 }
 
+// v8.16.0 (Phase 2) — per-tenant lookup lists. Templates pre-fill them; the
+// seed_nomenclatures step upserts them by (tenant_id, kind, code).
+function _validateNomenclatures(list) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new Error('nomenclatures must be an array');
+  if (list.length > MAX_NOMENCLATURES) throw new Error(`too many nomenclatures (max ${MAX_NOMENCLATURES})`);
+  const seen = new Set();
+  return list.map((n, i) => {
+    if (!n || typeof n !== 'object') throw new Error(`nomenclatures[${i}] must be an object`);
+    const kind = _str(n.kind, `nomenclatures[${i}].kind`, { required: true, max: 64 });
+    catalog.validateNomenclatureKind(kind); // known-set guard (091 has no CHECK)
+    const code = _str(n.code, `nomenclatures[${i}].code`, { required: true, max: 64 });
+    if (!CODE_RE.test(code)) throw new Error(`nomenclatures[${i}].code has invalid characters`);
+    const label = _str(n.label, `nomenclatures[${i}].label`, { required: true, max: 200 });
+    const dedupe = `${kind}\u0000${code.toLowerCase()}`; // NUL separator: unambiguous composite key
+    if (seen.has(dedupe)) throw new Error(`nomenclatures[${i}]: duplicate ${kind}/${code}`);
+    seen.add(dedupe);
+
+    const out = { kind, code, label, sort: 0 };
+    if (n.sort !== undefined && n.sort !== null && n.sort !== '') {
+      const sort = Number(n.sort);
+      if (!Number.isInteger(sort)) throw new Error(`nomenclatures[${i}].sort must be an integer`);
+      out.sort = sort;
+    }
+    if (n.meta !== undefined && n.meta !== null) {
+      if (typeof n.meta !== 'object' || Array.isArray(n.meta)) throw new Error(`nomenclatures[${i}].meta must be an object`);
+      const metaJson = JSON.stringify(n.meta);
+      if (metaJson.length > 2048) throw new Error(`nomenclatures[${i}].meta is too large`);
+      out.meta = JSON.parse(metaJson);
+    }
+    return out;
+  });
+}
+
 function _validatePermissions(perms) {
   if (perms === undefined || perms === null) return [];
   if (!Array.isArray(perms)) throw new Error('permissions must be an array');
@@ -233,21 +271,31 @@ function _validatePermissions(perms) {
 
 /**
  * Validate + normalize an onboarding-declaration v1 document.
+ *
+ * If `doc.template` names a template, its spec is merged in as DEFAULTS FIRST
+ * (user values always win) — so the MERGED document is what is validated,
+ * fingerprinted and stored. See template-merge.js for the precedence rules.
+ *
  * @returns the whitelisted canonical declaration (secrets encrypted inline).
  * @throws Error with per-field context on the first problem.
  */
-function validateDeclaration(doc) {
-  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('declaration must be an object');
-  _assertNoProtoPollution(doc, 'declaration');
+function validateDeclaration(rawDoc) {
+  if (!rawDoc || typeof rawDoc !== 'object' || Array.isArray(rawDoc)) throw new Error('declaration must be an object');
+  _assertNoProtoPollution(rawDoc, 'declaration');
 
-  if (doc.version !== 1) throw new Error('unsupported declaration.version (expected 1)');
-  if (doc.kind !== undefined && doc.kind !== 'onboarding-declaration') {
+  if (rawDoc.version !== 1) throw new Error('unsupported declaration.version (expected 1)');
+  if (rawDoc.kind !== undefined && rawDoc.kind !== 'onboarding-declaration') {
     throw new Error("declaration.kind must be 'onboarding-declaration'");
   }
   // Reject any wire-supplied tenant identity at the top level too (TC-02).
   for (const forbidden of ['tenant_id', 'tenantId', 'org_id', 'orgId']) {
-    if (doc[forbidden] !== undefined) throw new Error(`${forbidden} is not allowed (tenant is derived server-side)`);
+    if (rawDoc[forbidden] !== undefined) throw new Error(`${forbidden} is not allowed (tenant is derived server-side)`);
   }
+
+  // Template defaults go UNDER the user's explicit values, before anything else
+  // is normalized. Proto-pollution was already rejected above, so the merge can
+  // never introduce a poisoned key.
+  const doc = applyTemplateDefaults(rawDoc);
 
   const tenant = _validateTenant(doc.tenant);
   // mode comes from top-level `mode` OR tenant.usageMode; default production.
@@ -267,6 +315,7 @@ function validateDeclaration(doc) {
     tenant,
     regional: _validateRegional(doc.regional),
     modules: _validateModules(doc.modules),
+    nomenclatures: _validateNomenclatures(doc.nomenclatures),
     hosts: _validateHosts(doc.hosts),
     users: _validateUsers(doc.users, mode),
     permissions: _validatePermissions(doc.permissions),
@@ -307,6 +356,7 @@ function fingerprintDeclaration(decl) {
     template: decl.template || null,
     regional: decl.regional ? REGIONAL_KEYS.filter((k) => decl.regional[k] !== undefined).map((k) => [k, decl.regional[k]]) : [],
     modules: decl.modules.map((m) => `${m.key}:${m.enabled ? 1 : 0}`).sort(),
+    nomenclatures: (decl.nomenclatures || []).map((n) => `${n.kind}|${n.code}|${n.label}|${n.sort}`).sort(),
     hosts: decl.hosts.map((h) => `${h.name}|${h.connectionType}`).sort(),
     users: decl.users.map((u) => `${u.username.toLowerCase()}|${u.role}|${u.isOwner ? 1 : 0}`).sort(),
     permissions: decl.permissions.map((p) => `${p.username.toLowerCase()}|${p.hostName}|${p.permission}`).sort(),

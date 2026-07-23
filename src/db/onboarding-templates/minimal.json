@@ -1,0 +1,24 @@
+{
+  "key": "minimal",
+  "name": "Minimal",
+  "description": "A bare tenant: hosts only, no opinions. Start here when you want to configure everything yourself.",
+  "industry": "general",
+  "version": "1.0.0",
+  "spec": {
+    "tenant": { "kind": "internal" },
+    "regional": {
+      "locale": "en",
+      "timezone": "UTC",
+      "currency": "USD",
+      "unitSystem": "metric"
+    },
+    "modules": [
+      { "key": "hosts", "enabled": true }
+    ],
+    "roles": [
+      { "role": "admin", "isOwner": true },
+      { "role": "viewer" }
+    ],
+    "notes": "Nothing is pre-created beyond the hosts module. Enable more modules and add nomenclatures as you need them."
+  }
+}

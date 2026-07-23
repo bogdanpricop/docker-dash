@@ -17,6 +17,9 @@
 // +10 as of v8.15.0 (Onboarding & Provisioning Wizard, Phase 1): tenant_create,
 //   tenant_update, provisioning_run_start/complete/fail/resume/rollback,
 //   provisioning_step_apply/compensate, onboarding_export.
+// +4 as of v8.16.0 (Onboarding Phase 2 — templates, nomenclatures,
+//   onboarding-as-code): nomenclature_seed, onboarding_headless_apply,
+//   onboarding_template_save, onboarding_template_delete.
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -116,12 +119,16 @@ const auditActionsList = [
   "network_create",
   "network_disconnect",
   "network_remove",
+  "nomenclature_seed",
   "notification_channel_create",
   "notification_channel_delete",
   "observability_dashboard_import_failed",
   "observability_dashboard_imported",
   "oidc_login",
   "onboarding_export",
+  "onboarding_headless_apply",
+  "onboarding_template_delete",
+  "onboarding_template_save",
   "password_reset_requested",
   "password_reset_via_token",
   "pcloud_config_update",

@@ -1,0 +1,49 @@
+{
+  "key": "software-team",
+  "name": "Software Team",
+  "description": "A product team running its own dev/staging/prod estate: Git-driven stacks, registries, and environment + priority nomenclatures.",
+  "industry": "software",
+  "version": "1.0.0",
+  "spec": {
+    "tenant": { "kind": "internal" },
+    "regional": {
+      "locale": "en",
+      "timezone": "UTC",
+      "currency": "USD",
+      "unitSystem": "metric",
+      "dateFormat": "YYYY-MM-DD",
+      "numberFormat": "1,234.56"
+    },
+    "modules": [
+      { "key": "hosts", "enabled": true },
+      { "key": "git", "enabled": true },
+      { "key": "registries", "enabled": true },
+      { "key": "reconciler", "enabled": true },
+      { "key": "posture", "enabled": true }
+    ],
+    "nomenclatures": [
+      { "kind": "environment", "code": "dev", "label": "Development", "sort": 1 },
+      { "kind": "environment", "code": "staging", "label": "Staging", "sort": 2 },
+      { "kind": "environment", "code": "prod", "label": "Production", "sort": 3 },
+
+      { "kind": "department", "code": "backend", "label": "Backend", "sort": 1 },
+      { "kind": "department", "code": "frontend", "label": "Frontend", "sort": 2 },
+      { "kind": "department", "code": "platform", "label": "Platform / SRE", "sort": 3 },
+      { "kind": "department", "code": "qa", "label": "QA", "sort": 4 },
+
+      { "kind": "severity", "code": "sev1", "label": "SEV1 - Outage", "sort": 1 },
+      { "kind": "severity", "code": "sev2", "label": "SEV2 - Partial outage", "sort": 2 },
+      { "kind": "severity", "code": "sev3", "label": "SEV3 - Minor", "sort": 3 },
+
+      { "kind": "priority", "code": "now", "label": "Now", "sort": 1 },
+      { "kind": "priority", "code": "next", "label": "Next", "sort": 2 },
+      { "kind": "priority", "code": "later", "label": "Later", "sort": 3 }
+    ],
+    "roles": [
+      { "role": "admin", "isOwner": true, "label": "Platform owner" },
+      { "role": "operator", "label": "Developer on call" },
+      { "role": "viewer", "label": "Team member" }
+    ],
+    "notes": "Register one host per environment. Give developers 'operate' on dev and staging and keep production behind an operator/admin grant."
+  }
+}

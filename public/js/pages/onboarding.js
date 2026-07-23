@@ -45,9 +45,13 @@ const ONBOARDING_MODULE_CATALOG = [
 // used to render the Provision checklist even before any provisioning_steps
 // rows exist yet.
 const ONBOARDING_RUN_STEP_KEYS = [
-  'create_tenant', 'set_regional', 'enable_modules', 'create_hosts',
+  'create_tenant', 'set_regional', 'seed_nomenclatures', 'enable_modules', 'create_hosts',
   'create_users', 'grant_permissions', 'finalize',
 ];
+
+// Reserved template keys the server treats as "no template" (template-merge.js
+// RESERVED_NOOP_KEYS). `custom` is what the picker sends for "Custom / blank".
+const ONBOARDING_NOOP_TEMPLATE = 'custom';
 
 // ── small helpers ───────────────────────────────────────────────────────────
 
@@ -169,15 +173,61 @@ function buildOnboardingDeclaration(state) {
     version: 1,
     kind: 'onboarding-declaration',
     idempotencyKey: state.idempotencyKey,
-    template: state.templateKey || 'custom',
+    template: state.templateKey || ONBOARDING_NOOP_TEMPLATE,
     mode: state.mode,
     tenant: { slug: state.tenant.slug, name: state.tenant.name, kind: state.tenant.kind },
     regional: { ...state.regional },
     modules: state.modules.map((m) => ({ key: m.key, enabled: !!m.enabled })),
+    // Sent explicitly so what the user SAW on the Regional step is exactly what
+    // is applied; the server merges the template's own list underneath anyway
+    // (template-merge.js) — same (kind, code) entries collapse, ours win.
+    nomenclatures: (state.nomenclatures || []).map((n) => ({ kind: n.kind, code: n.code, label: n.label, sort: n.sort || 0 })),
     hosts,
     users,
     permissions,
   };
+}
+
+// ── template helpers ────────────────────────────────────────────────────────
+
+/** The currently-selected template record, or null for "Custom / blank". */
+function _obSelectedTemplate(state) {
+  if (!state.templateKey || state.templateKey === ONBOARDING_NOOP_TEMPLATE) return null;
+  return (state._templates || []).find((t) => t.key === state.templateKey) || null;
+}
+
+/**
+ * Reflect a template's defaults in the UI. The AUTHORITATIVE merge is
+ * server-side (template-merge.js); this only mirrors it so the later steps
+ * aren't blank. User edits made after this point still win — the server merges
+ * the template UNDER whatever the declaration carries.
+ */
+function _obApplyTemplateToState(state, tpl) {
+  state.templateKey = tpl ? tpl.key : ONBOARDING_NOOP_TEMPLATE;
+  state.nomenclatures = [];
+  if (!tpl) return;
+  const spec = tpl.spec || {};
+  if (spec.tenant && spec.tenant.kind && !state._kindManuallyEdited) state.tenant.kind = spec.tenant.kind;
+  if (spec.regional) state.regional = Object.assign({}, state.regional, spec.regional);
+  if (Array.isArray(spec.modules) && spec.modules.length) {
+    const wanted = new Map(spec.modules.map((m) => [m.key, m.enabled !== false]));
+    state.modules = ONBOARDING_MODULE_CATALOG.map((m) => ({
+      key: m.key,
+      enabled: wanted.has(m.key) ? wanted.get(m.key) : false,
+    }));
+    // Close the dependency graph client-side so the checkboxes agree with the
+    // server's resolveDependencies() closure.
+    ONBOARDING_MODULE_CATALOG.forEach((m) => {
+      const on = state.modules.find((x) => x.key === m.key);
+      if (on && on.enabled) (m.requires || []).forEach((dep) => {
+        const d = state.modules.find((x) => x.key === dep);
+        if (d) d.enabled = true;
+      });
+    });
+  }
+  if (Array.isArray(spec.nomenclatures)) {
+    state.nomenclatures = spec.nomenclatures.map((n) => ({ kind: n.kind, code: n.code, label: n.label, sort: n.sort || 0 }));
+  }
 }
 
 function _obHostProbeBadge(probe) {
@@ -210,6 +260,7 @@ function _obNonSecretSnapshot(state) {
     tenant: state.tenant,
     regional: state.regional,
     modules: state.modules,
+    nomenclatures: state.nomenclatures,
     hosts: state.hosts.map((h) => ({ name: h.name, connectionType: h.connectionType, socketPath: h.socketPath, host: h.host, port: h.port, sshHost: h.sshHost, sshPort: h.sshPort, sshUsername: h.sshUsername, sshDockerSocket: h.sshDockerSocket })),
     users: state.users.map((u) => ({ username: u.username, displayName: u.displayName, email: u.email, role: u.role, isOwner: u.isOwner, _existing: u._existing })),
     permissions: state.permissions,
@@ -220,6 +271,23 @@ function _obNonSecretSnapshot(state) {
 const _stepMode = {
   key: 'mode',
   get title() { return i18n.t('pages.onboarding.mode.title'); },
+  onEnter(state, wiz) {
+    if (state._templates || state._templatesLoading) return;
+    state._templatesLoading = true;
+    state._templatesError = null;
+    (async () => {
+      try {
+        const r = await Api.listOnboardingTemplates();
+        state._templates = (r && r.templates) || [];
+      } catch (err) {
+        state._templates = [];
+        state._templatesError = err.message;
+      } finally {
+        state._templatesLoading = false;
+        wiz.render();
+      }
+    })();
+  },
   render(body, state, wiz) {
     const modes = ['production', 'trial', 'demo'];
     const icon = { production: 'fa-server', trial: 'fa-hourglass-half', demo: 'fa-flask' };
@@ -237,23 +305,39 @@ const _stepMode = {
       </div>
       <label style="display:block;margin:20px 0 8px;font-size:11px;font-weight:600;color:var(--text-dim)">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.template'))}</label>
       <div class="wiz-radio-group" role="radiogroup" aria-label="${Utils.escapeHtml(i18n.t('pages.onboarding.mode.template'))}">
-        <label class="wiz-radio-card is-selected">
-          <input type="radio" name="ob-template" value="custom" checked>
+        <label class="wiz-radio-card ${state.templateKey === ONBOARDING_NOOP_TEMPLATE ? 'is-selected' : ''}">
+          <input type="radio" name="ob-template" value="${ONBOARDING_NOOP_TEMPLATE}" ${state.templateKey === ONBOARDING_NOOP_TEMPLATE ? 'checked' : ''}>
           <div class="wiz-radio-card-title"><i class="fas fa-sliders"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateCustom'))}</div>
           <div class="wiz-radio-card-desc">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateCustomDesc'))}</div>
         </label>
-        <label class="wiz-radio-card is-disabled">
-          <input type="radio" name="ob-template" value="_other" disabled>
-          <div class="wiz-radio-card-title"><i class="fas fa-layer-group"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateOther'))}
-            <span class="badge badge-warning" style="margin-left:6px">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.comingSoon'))}</span>
-          </div>
-          <div class="wiz-radio-card-desc">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateComingSoonDesc'))}</div>
-        </label>
+        ${(state._templates || []).map((t) => `
+          <label class="wiz-radio-card ${state.templateKey === t.key ? 'is-selected' : ''}">
+            <input type="radio" name="ob-template" value="${Utils.escapeHtml(t.key)}" ${state.templateKey === t.key ? 'checked' : ''}>
+            <div class="wiz-radio-card-title"><i class="fas fa-layer-group"></i> ${Utils.escapeHtml(t.name)}
+              ${t.industry ? `<span class="badge badge-info" style="margin-left:6px">${Utils.escapeHtml(t.industry)}</span>` : ''}
+              ${t.isBuiltin ? '' : `<span class="badge" style="margin-left:6px">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateCustomBadge'))}</span>`}
+            </div>
+            <div class="wiz-radio-card-desc">${Utils.escapeHtml(t.description || '')}</div>
+            <div class="text-sm text-dim">${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templateMeta', {
+              version: t.version,
+              modules: ((t.spec && t.spec.modules) || []).length,
+              nomenclatures: ((t.spec && t.spec.nomenclatures) || []).length,
+            }))}</div>
+          </label>`).join('')}
       </div>
+      ${state._templatesLoading ? `<div class="text-sm text-dim"><i class="fas fa-spinner fa-spin"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templatesLoading'))}</div>` : ''}
+      ${state._templatesError ? `<div class="text-sm" style="color:var(--yellow)"><i class="fas fa-triangle-exclamation"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.mode.templatesError', { error: state._templatesError }))}</div>` : ''}
     `;
     body.querySelectorAll('input[name="ob-mode"]').forEach((r) => r.addEventListener('change', () => {
       if (r.disabled) return;
       state.mode = r.value;
+      wiz.render();
+    }));
+    body.querySelectorAll('input[name="ob-template"]').forEach((r) => r.addEventListener('change', () => {
+      if (r.disabled || !r.checked) return;
+      const tpl = (state._templates || []).find((t) => t.key === r.value) || null;
+      _obApplyTemplateToState(state, tpl);
+      state._plan = null; // the impact estimate changes with the template
       wiz.render();
     }));
   },
@@ -299,7 +383,7 @@ const _stepIdentity = {
       state._slugManuallyEdited = true;
       state.tenant.slug = slugEl.value.toLowerCase();
     });
-    kindEl.addEventListener('change', () => { state.tenant.kind = kindEl.value; });
+    kindEl.addEventListener('change', () => { state.tenant.kind = kindEl.value; state._kindManuallyEdited = true; });
   },
   validate(state) {
     const errors = [];
@@ -366,6 +450,7 @@ const _stepRegional = {
           </select>
         </div>
       </div>
+      ${_obRenderNomenclatures(state)}
     `;
     body.querySelector('#ob-rg-locale').addEventListener('input', (e) => { r.locale = e.target.value; });
     body.querySelector('#ob-rg-timezone').addEventListener('input', (e) => { r.timezone = e.target.value; });
@@ -385,6 +470,32 @@ const _stepRegional = {
   },
   onLeave(state) { state._plan = null; },
 };
+
+/**
+ * Read-only view of the nomenclatures the selected template will seed. They are
+ * applied by the server's `seed_nomenclatures` step; editing them is Phase 4.
+ */
+function _obRenderNomenclatures(state) {
+  const list = state.nomenclatures || [];
+  if (!list.length) return '';
+  const tpl = _obSelectedTemplate(state);
+  const byKind = {};
+  list.forEach((n) => { (byKind[n.kind] = byKind[n.kind] || []).push(n); });
+  return `
+    <hr style="border-color:var(--border);margin:18px 0">
+    <h3 style="font-size:14px;margin-bottom:4px">${Utils.escapeHtml(i18n.t('pages.onboarding.regional.nomenclaturesTitle'))}</h3>
+    <p class="text-sm text-dim">${Utils.escapeHtml(i18n.t('pages.onboarding.regional.nomenclaturesHelp', {
+      template: (tpl && tpl.name) || '—', count: list.length,
+    }))}</p>
+    <table class="data-table"><tbody>
+      ${Object.keys(byKind).sort().map((kind) => `
+        <tr>
+          <td style="white-space:nowrap"><span class="badge badge-info">${Utils.escapeHtml(kind)}</span></td>
+          <td>${byKind[kind].map((n) => `<span class="badge" style="margin:2px" title="${Utils.escapeHtml(n.code)}">${Utils.escapeHtml(n.label)}</span>`).join('')}</td>
+        </tr>`).join('')}
+    </tbody></table>
+  `;
+}
 
 // ── step 3 — modules ─────────────────────────────────────────────────────────
 const _stepModules = {
@@ -822,7 +933,7 @@ const _stepPreview = {
       <div class="alert" style="background:var(--surface2);padding:12px 14px;border-radius:var(--radius-sm);margin-bottom:12px">
         <i class="fas fa-cubes"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.preview.willCreate', {
           tenants: creates.tenants || 0, modules: creates.modules || 0, hosts: creates.hosts || 0,
-          users: creates.users || 0, grants: creates.grants || 0,
+          users: creates.users || 0, grants: creates.grants || 0, nomenclatures: creates.nomenclatures || 0,
         }))}
       </div>
       ${(plan.warnings || []).length ? `
@@ -1016,8 +1127,10 @@ const _stepSummary = {
       </div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-export"><i class="fas fa-file-export"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.exportJson'))}</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-save-template"><i class="fas fa-layer-group"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.saveAsTemplate'))}</button>
         <button type="button" class="btn btn-sm btn-secondary" id="ob-summary-copy"><i class="fas fa-copy"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.copyApi'))}</button>
       </div>
+      <p class="text-sm text-dim" style="margin-top:8px"><i class="fas fa-lock"></i> ${Utils.escapeHtml(i18n.t('pages.onboarding.summary.templateNoSecrets'))}</p>
     `;
     body.querySelector('#ob-summary-export').addEventListener('click', () => {
       const url = Api.exportOnboardingRunUrl(run.id);
@@ -1025,6 +1138,7 @@ const _stepSummary = {
       a.href = url; a.download = `onboarding-run-${run.id}.json`;
       document.body.appendChild(a); a.click(); a.remove();
     });
+    body.querySelector('#ob-summary-save-template').addEventListener('click', () => _obSaveAsTemplate(state, run));
     body.querySelector('#ob-summary-copy').addEventListener('click', () => {
       const snippet = `curl -sS -X POST "$DOCKER_DASH_URL/api/onboarding/apply" \\\n  -H "Content-Type: application/json" \\\n  --cookie "<admin session cookie>" \\\n  -d @<(curl -sS "$DOCKER_DASH_URL${Api.exportOnboardingRunUrl(run.id)}")`;
       Utils.copyToClipboard(snippet).then(() => Toast.success(i18n.t('pages.onboarding.summary.copied')));
@@ -1033,6 +1147,65 @@ const _stepSummary = {
   validate() { return { ok: true }; },
   footer() { return { hideBack: true }; },
 };
+
+/**
+ * "Save as template": POST the just-applied declaration to /templates. The
+ * SERVER derives the spec (specFromDeclaration) so hosts are dropped wholesale
+ * and no credential can ever reach the template — the client never has to be
+ * trusted to strip anything.
+ */
+async function _obSaveAsTemplate(state, run) {
+  const suggestedKey = _obSlugify(`${state.tenant.slug || 'tenant'}-template`);
+  const html = `
+    <div class="modal-header"><h3><i class="fas fa-layer-group" style="margin-right:8px;color:var(--accent)"></i>${Utils.escapeHtml(i18n.t('pages.onboarding.summary.saveAsTemplate'))}</h3>
+      <button class="modal-close-btn" id="ob-tpl-x"><i class="fas fa-times"></i></button></div>
+    <div class="modal-body">
+      <p class="text-sm text-dim">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.saveAsTemplateHelp'))}</p>
+      <div class="form-group">
+        <label for="ob-tpl-key">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.templateKey'))}</label>
+        <input type="text" id="ob-tpl-key" class="form-control mono" value="${Utils.escapeHtml(suggestedKey)}">
+      </div>
+      <div class="form-group">
+        <label for="ob-tpl-name">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.templateName'))}</label>
+        <input type="text" id="ob-tpl-name" class="form-control" value="${Utils.escapeHtml(state.tenant.name || suggestedKey)}">
+      </div>
+      <div class="form-group">
+        <label for="ob-tpl-desc">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.templateDescription'))}</label>
+        <input type="text" id="ob-tpl-desc" class="form-control" value="">
+      </div>
+      <div class="form-group">
+        <label for="ob-tpl-industry">${Utils.escapeHtml(i18n.t('pages.onboarding.summary.templateIndustry'))}</label>
+        <input type="text" id="ob-tpl-industry" class="form-control" value="">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="ob-tpl-cancel">${Utils.escapeHtml(i18n.t('common.cancel'))}</button>
+      <button class="btn btn-primary" id="ob-tpl-save">${Utils.escapeHtml(i18n.t('common.save'))}</button>
+    </div>
+  `;
+  Modal.open(html, { width: '520px' });
+  Modal._content.querySelector('#ob-tpl-x').addEventListener('click', () => Modal.close());
+  Modal._content.querySelector('#ob-tpl-cancel').addEventListener('click', () => Modal.close());
+  Modal._content.querySelector('#ob-tpl-save').addEventListener('click', async () => {
+    const key = (Modal._content.querySelector('#ob-tpl-key').value || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(key)) { Toast.error(i18n.t('pages.onboarding.errors.templateKeyInvalid')); return; }
+    const declaration = (run && run.declaration) || buildOnboardingDeclaration(state);
+    try {
+      await Api.saveOnboardingTemplate({
+        key,
+        name: (Modal._content.querySelector('#ob-tpl-name').value || key).trim(),
+        description: (Modal._content.querySelector('#ob-tpl-desc').value || '').trim(),
+        industry: (Modal._content.querySelector('#ob-tpl-industry').value || '').trim(),
+        declaration,
+      });
+      Modal.close();
+      state._templates = null; // force a refetch next time the picker opens
+      Toast.success(i18n.t('pages.onboarding.summary.templateSaved', { key }));
+    } catch (err) {
+      Toast.error((err.body && err.body.error) || err.message);
+    }
+  });
+}
 
 const ONBOARDING_STEPS = [_stepMode, _stepIdentity, _stepRegional, _stepModules, _stepServers, _stepUsers, _stepPreview, _stepProvision, _stepSummary];
 
@@ -1122,14 +1295,17 @@ const OnboardingPage = {
     const base = {
       idempotencyKey: _obUuid(),
       mode: 'production',
-      templateKey: 'custom',
+      templateKey: ONBOARDING_NOOP_TEMPLATE,
       _slugManuallyEdited: false,
+      _kindManuallyEdited: false,
       tenant: { name: '', slug: '', kind: 'internal' },
       regional: {},
       modules: ONBOARDING_MODULE_CATALOG.map((m) => ({ key: m.key, enabled: !!m.defaultOn })),
+      nomenclatures: [],
       hosts: [_obBlankHostRow()],
       users: [_obOwnerRow()],
       permissions: [],
+      _templates: null, _templatesLoading: false, _templatesError: null,
       _plan: null, _planError: null, _planLoading: false, _reviewedAck: false,
       _run: null, _runId: null, _applying: false, _applyError: null,
     };
@@ -1141,6 +1317,7 @@ const OnboardingPage = {
         tenant: stored.tenant,
         regional: stored.regional || {},
         modules: stored.modules && stored.modules.length ? stored.modules : base.modules,
+        nomenclatures: stored.nomenclatures || [],
         hosts: (stored.hosts && stored.hosts.length ? stored.hosts : [_obBlankHostRow()]).map((h) => ({ ..._obBlankHostRow(), ...h, _probe: { status: 'idle' } })),
         users: (stored.users && stored.users.length ? stored.users : [_obOwnerRow()]).map((u) => (u.isOwner ? _obOwnerRow() : { ..._obBlankUserRow(), ...u, password: '', _confirmPassword: '' })),
         permissions: stored.permissions || [],

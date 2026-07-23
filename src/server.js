@@ -366,9 +366,31 @@ async function start() {
     log.warn('How-to markdown loader failed (continuing)', err.message);
   }
 
+  // v8.16.0 (Onboarding Phase 2) — UPSERT built-in onboarding templates from
+  // src/db/onboarding-templates/*.json. Same precedence rule as how-tos: the
+  // FILE overrides the DB row. Idempotent, no-op if the dir is empty.
+  try {
+    const provisioningTemplates = require('./services/provisioning/templates');
+    provisioningTemplates.loadBuiltins(db);
+  } catch (err) {
+    log.warn('Onboarding template loader failed (continuing)', err.message);
+  }
+
   // Seed admin user
   const authService = require('./services/auth');
   authService.seedAdmin();
+
+  // v8.16.0 (Onboarding Phase 2) — "Onboarding as code". Applies DD_ONBOARD_FILE
+  // ONLY on an empty instance (see services/provisioning/bootstrap.js for the
+  // exact gate); on a populated instance it refuses, warns and boot continues.
+  // Deliberately AFTER seedAdmin() so an admin account always exists even if the
+  // declaration only defines lower-privileged users. It never throws.
+  try {
+    const provisioningBootstrap = require('./services/provisioning/bootstrap');
+    await provisioningBootstrap.maybeBootstrap();
+  } catch (err) {
+    log.error('Headless onboarding bootstrap raised unexpectedly (continuing)', err.message);
+  }
 
   // Initialize security alerting (hook into audit service)
   const securityAlerts = require('./services/securityAlerts');
