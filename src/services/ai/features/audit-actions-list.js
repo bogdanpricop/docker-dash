@@ -14,6 +14,9 @@
 //     | tr -d "'\"" | sort -u
 //
 // 175 entries as of 2026-05-20 (v8.3.0 — +git_drift_detected).
+// +10 as of v8.15.0 (Onboarding & Provisioning Wizard, Phase 1): tenant_create,
+//   tenant_update, provisioning_run_start/complete/fail/resume/rollback,
+//   provisioning_step_apply/compensate, onboarding_export.
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -118,11 +121,19 @@ const auditActionsList = [
   "observability_dashboard_import_failed",
   "observability_dashboard_imported",
   "oidc_login",
+  "onboarding_export",
   "password_reset_requested",
   "password_reset_via_token",
   "pcloud_config_update",
   "pcloud_prune",
   "pipeline_deploy",
+  "provisioning_run_complete",
+  "provisioning_run_fail",
+  "provisioning_run_resume",
+  "provisioning_run_rollback",
+  "provisioning_run_start",
+  "provisioning_step_apply",
+  "provisioning_step_compensate",
   "registry_create",
   "registry_delete",
   "registry_pull",
@@ -189,6 +200,8 @@ const auditActionsList = [
   "template_import",
   "template_reset",
   "template_update",
+  "tenant_create",
+  "tenant_update",
   "translation_batch",
   "translation_exported",
   "translation_provider_deleted",
