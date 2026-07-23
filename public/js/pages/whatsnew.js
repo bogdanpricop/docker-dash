@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.16.0',
+      date: '2026-07-22',
+      title: 'Onboarding Phase 2 — environment templates & onboarding-as-code',
+      changes: [
+        { type: 'feature', text: 'Start a new environment from a template instead of a blank form. Four presets ship built-in — Minimal, Manufacturing Plant (metric/EUR, shifts and production lines), MSP Client (multi-site, service tiers) and Software Team (dev/staging/prod) — and they pre-fill modules, regional settings and nomenclatures. Anything you set yourself always overrides the template. Presets are plain JSON files re-read at every boot, so adding your own is just dropping a file.' },
+        { type: 'feature', text: 'Onboarding as code: point DD_ONBOARD_FILE at a declaration document and a fresh container comes up fully provisioned with no clicking at all — same document the wizard posts, same safety pipeline. It only ever runs on an empty instance; on an already-configured install it refuses, warns and boots normally. You can also save a finished run as a reusable template, or export it as one, to onboard the next client in minutes.' },
+        { type: 'feature', text: 'Per-tenant nomenclatures (environments, shifts, production lines, sites, service tiers, severities…) are now seeded as part of provisioning, with the same idempotent/rollback-safe behaviour as every other step.' },
+        { type: 'security', text: 'A template can describe modules, regional settings and nomenclatures — but is never allowed to create user accounts, so an imported preset can’t mint privileged users during an unattended headless onboarding. Templates and exports never contain credentials.' },
+      ],
+    },
+    {
       version: '8.15.0',
       date: '2026-07-22',
       title: 'Onboarding & Provisioning Wizard — guided setup for a new tenant / client / plant',

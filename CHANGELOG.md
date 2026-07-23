@@ -2,6 +2,43 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.16.0] - 2026-07-22 — Onboarding Phase 2 — templates, nomenclatures & onboarding-as-code
+
+Phase 2 of 4. Turns the Phase-1 wizard into a repeatable, scriptable onboarding system.
+
+### Environment templates
+Four built-in presets ship as JSON files in `src/db/onboarding-templates/` — **Minimal**,
+**Manufacturing Plant** (metric/EUR, shift + production-line nomenclatures), **MSP Client**
+(multi-site, service tiers), **Software Team** (dev/staging/prod). They are re-imported at every
+boot with the **file as source of truth** (howto-loader pattern), so authoring a preset means
+dropping a file — no migration. Picking a template pre-fills modules, regional settings and
+nomenclatures; **your explicit choices always win** over the template's.
+
+Security note: a template may describe modules/regional/nomenclatures but is **never allowed to
+create accounts** — `users`/`roles` are deliberately not merged into a declaration, so an imported
+preset cannot mint privileged users during an unattended headless apply.
+
+### Nomenclatures
+New per-tenant `nomenclatures` table (migration `091`) — environments, shifts, production lines,
+sites, service tiers, severities and more (13 validated kinds) — seeded by a new idempotent
+provisioning step with its own compensation.
+
+### Onboarding as code
+Point **`DD_ONBOARD_FILE`** at a declaration document and a fresh container comes up fully
+provisioned with zero click-path — the same validated declaration the wizard posts, applied
+through the same saga. It is **strictly limited to an empty instance**: the gate refuses if setup
+is already complete, if any non-default tenant exists, or if any provisioning run has completed —
+and **fails closed** if instance state can't be verified. On an already-configured install it
+logs a warning, writes nothing, and boots normally; it runs after the admin seed so an instance
+can never end up adminless, and the file's contents are never logged or audited.
+
+Also: save any completed run as a reusable template, or export one directly
+(`GET /runs/:id/export?asTemplate=1`). Templates and exports never contain credentials —
+`validateTemplateSpec` rejects secret-shaped keys outright rather than silently stripping them.
+
+Migrations `091`–`092`. 4 new audit actions. 48 new tests — suite at **2084 passing across 128
+suites**. Zero new npm dependencies.
+
 ## [8.15.0] - 2026-07-22 — Onboarding & Provisioning Wizard — Phase 1 (tenant model + saga engine + wizard)
 
 A professional, guided initialization flow for a new **tenant / client / plant** — usable at a
