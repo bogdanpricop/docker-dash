@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.19.1',
+      date: '2026-07-23',
+      title: 'Fix — prune no longer fails with “socket hang up” on large caches',
+      changes: [
+        { type: 'fix', text: 'Pruning a large build cache or image set could fail with “socket hang up” because the operation ran past the 30-second connection timeout. Prune now gets a dedicated long (15-minute) timeout, so big reclaims complete instead of being cut off mid-run.' },
+      ],
+    },
+    {
       version: '8.19.0',
       date: '2026-07-23',
       title: 'Every language now fully translated + prune run-log + notification fix',

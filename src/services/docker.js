@@ -90,8 +90,9 @@ class DockerService {
     };
   }
 
-  /** Create Dockerode instance from host config */
-  _createConnection(hostConfig) {
+  /** Create Dockerode instance from host config. `timeoutMs` overrides the
+   *  default 30s per-request timeout (used by prune, which can run for minutes). */
+  _createConnection(hostConfig, timeoutMs) {
     // v8.7.12 — applied consistently across all connection types. Previously
     // only the TCP path passed `timeout` to dockerode; SSH-tunneled and Unix-
     // socket connections relied on default (no timeout) so a hung remote
@@ -103,7 +104,7 @@ class DockerService {
     // and the modem doesn't auto-close on the 'timeout' event (per node
     // http req.setTimeout semantics), so live consumers are unaffected —
     // same behavior TCP-connected hosts have had since their inception.
-    const DOCKER_REQUEST_TIMEOUT_MS = 30_000;
+    const DOCKER_REQUEST_TIMEOUT_MS = timeoutMs || 30_000;
 
     switch (hostConfig.connectionType) {
       case 'socket':
@@ -841,7 +842,13 @@ class DockerService {
   }
 
   async prune({ containers, images, volumes, networks, buildCache } = {}, hostId = 0) {
-    const docker = this.getDocker(hostId);
+    // Prune (esp. a large build cache or image set) can run for minutes. The
+    // normal cached connection has a 30s per-request timeout that cuts the
+    // socket mid-prune → "socket hang up". Use a dedicated long-timeout
+    // connection for prune only; the cached 30s connection stays for everything
+    // else. Not cached — short-lived, used just for this call.
+    const PRUNE_TIMEOUT_MS = 15 * 60_000;
+    const docker = this._createConnection(this._getHostConfig(hostId), PRUNE_TIMEOUT_MS);
     const results = {};
     if (containers) results.containers = await docker.pruneContainers();
     // Remove ALL unused images (not just dangling), matching the UI's advertised

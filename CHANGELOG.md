@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.19.1] - 2026-07-23 — Fix: prune "socket hang up" on large build cache / image sets
+
+Pruning a large build cache (or image set) failed with **`socket hang up`**. Root cause: the
+shared Docker connection has a 30-second per-request timeout, and a prune that runs longer than
+that (a multi-GB build cache can take minutes) had its socket cut mid-request. Prune now uses a
+dedicated connection with a **15-minute** timeout; every other request keeps the 30 s default.
+Confirmed against a real host: a 13 GB build-cache prune that previously hung up now completes.
+
 ## [8.19.0] - 2026-07-23 — Full i18n coverage (all 11 languages) + prune run-log + version-notification fix
 
 ### Fixed — the "new version available" notification showed a raw key
