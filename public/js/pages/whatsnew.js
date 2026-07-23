@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.15.0',
+      date: '2026-07-22',
+      title: 'Onboarding & Provisioning Wizard — guided setup for a new tenant / client / plant',
+      changes: [
+        { type: 'feature', text: 'New admin-only Onboarding wizard (#/onboarding): a guided, 9-step setup for a brand-new environment — organization identity, regional settings (locale/timezone/currency/units, pre-filled from your browser), active modules, servers & connections with live connection testing, initial users/roles/permissions, then a dry-run preview showing exactly what will be created before you commit.' },
+        { type: 'feature', text: 'Provisioning is idempotent, resumable and reversible. Every run is checkpointed step-by-step: if something fails you get the exact failing step with Retry or Roll back, and if your browser closes mid-run the wizard offers to resume it. Re-running the same configuration never duplicates anything. Rollback is deliberately safe — it refuses to delete the default tenant and deactivates users rather than deleting them.' },
+        { type: 'feature', text: 'Everything is driven by a validated “onboarding declaration” document — the foundation for onboarding-as-code (API and headless deploy-time onboarding arrive in the next phase). You can export the finished configuration as a golden config (secrets stripped) to reuse for the next client. Credentials you enter are encrypted the moment they arrive and are never echoed back, redacted in every preview, response and export.' },
+        { type: 'improvement', text: 'Under the hood this adds a tenant model (with an auto-created default tenant) without changing any existing table — docker-dash stays a single-binary self-hosted tool, and every existing feature works exactly as before. Demo/trial modes with automatically generated realistic sample data are shown in the wizard and arrive in Phase 3.' },
+      ],
+    },
+    {
       version: '8.14.0',
       date: '2026-07-22',
       title: 'Incus/LXD firewall write (Phase C) — hypervisor firewall write complete',

@@ -2,6 +2,61 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.15.0] - 2026-07-22 — Onboarding & Provisioning Wizard — Phase 1 (tenant model + saga engine + wizard)
+
+A professional, guided initialization flow for a new **tenant / client / plant** — usable at a
+fresh deployment or when onboarding a new customer. Phase 1 of 4 (deep-spec + feature-spec in
+`plans/`); it ships the foundation and the full **production** onboarding path. Demo/trial mock
+data arrives in Phase 3.
+
+**Architecture decision:** docker-dash stays single-binary and self-hosted — we did NOT bolt on
+full multi-tenancy. Instead this adds an **Environment Provisioning** layer with a
+forward-compatible tenant seam: a `tenants` table with an auto-seeded default row, and
+`tenant_id` plumbed only through the new provisioning tables. **No `tenant_id` retrofit on any
+existing table**, so every existing feature is untouched. Real isolation remains at the
+deployment level (each client = their own instance) — the strongest isolation available — while
+the seam makes future logical multi-tenancy an additive migration rather than a rewrite.
+
+### Provisioning engine (saga)
+- Migrations `088`–`090`: `tenants` / `tenant_settings` / `user_tenants` (+ default tenant,
+  partial-unique index enforcing exactly one default), `provisioning_runs` /
+  `provisioning_steps`, `tenant_modules`.
+- **Idempotent, resumable, rollback-able**: `plan` (dry-run: impact estimate + warnings, no
+  writes) → `apply` → `resume` → `rollback`. Steps split `db` (synchronous, transaction-wrapped)
+  vs `external` (outside any transaction, with an explicit compensation). Three-layer
+  idempotency — unique run key, `UNIQUE(run_id, step_key)`, and natural-key upserts — so
+  re-running the same declaration never duplicates anything.
+- Safe compensations: the tenant-delete pivot **refuses to touch the default tenant**, and user
+  rollback **deactivates** rather than deletes (shared user pool).
+- 7 steps: create_tenant → set_regional → enable_modules → create_hosts → create_users →
+  grant_permissions → finalize.
+
+### Declaration document (onboarding-as-code foundation)
+A validated `onboarding-declaration` v1 doc drives provisioning. The validator is a strict trust
+boundary: whitelist-canonicalized (unknown keys dropped), recursive prototype-pollution guard,
+bounded volumes, strict field domains — and it **rejects any wire-supplied `tenant_id`/`org_id`**
+(the tenant is derived server-side). **Least-privilege enforced:** demo/trial declarations may
+not create an `admin`, and at most one owner per run.
+
+### Secrets
+Host credentials and user passwords are `crypto.encrypt`'d **on ingest**, decrypted only in-process
+into their real homes (encrypted `ssh_config`, bcrypt hash), then wiped from the stored input on
+success. Every response, run/step JSON, and the golden-config export are redacted — no plaintext
+or ciphertext ever leaves the server.
+
+### Wizard UI
+New admin-only `#/onboarding` page plus a reusable `Wizard` primitive (`public/js/components/wizard.js`)
+— a vanilla-JS render() state machine (no framework, no new deps): full-viewport stepper with a
+rail (segmented progress under 900px), per-step validation gating, focus management, and debounced
+persistence. Nine steps: mode/template → organization identity → regional (locale/timezone/currency/
+units/formats, defaulted from `Intl`) → modules → servers & connections (with **live connection
+testing**) → users, roles & starter grants → **dry-run preview with impact counts + warnings** →
+live provisioning (per-step progress, Retry-step / Roll-back on failure) → summary + golden-config
+export. Resumes an interrupted run on launch. Full `pages.onboarding.*` i18n (en + ro).
+
+Admin-only, fully audited (10 new audit actions). 58 new backend tests — suite at **2036 passing
+across 127 suites**. Zero new npm dependencies.
+
 ## [8.14.0] - 2026-07-22 — Hypervisor firewall WRITE — Phase C: Incus / LXD (series complete)
 
 Incus/LXD network-ACL rules are now **writable** from the Firewall page — the final phase of
