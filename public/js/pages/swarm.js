@@ -140,7 +140,11 @@ const SwarmPage = {
   // placement.constraints, labels). Anything else is silently skipped
   // server-side and reported back in skippedFeatures so the operator
   // knows what didn't apply.
-  _showDeployStackModal() {
+  // `prefill` (optional) = { name, compose, source }. Used by bridge (b):
+  // an existing single-host compose stack is loaded and its YAML pre-filled
+  // so the operator reviews (and sees the swarm "skipped fields" note) before
+  // confirming.
+  _showDeployStackModal(prefill) {
     const placeholderYaml = `services:\n  web:\n    image: nginx:latest\n    ports:\n      - "8080:80"\n    deploy:\n      replicas: 2\n\n  redis:\n    image: redis:7\n    deploy:\n      replicas: 1`;
     const html = `
       <div class="modal-header">
@@ -167,6 +171,13 @@ const SwarmPage = {
     `;
     Modal.open(html, { width: '720px' });
     const close = () => Modal.close();
+    // Pre-fill from an existing single-host stack (bridge b).
+    if (prefill) {
+      const nameEl0 = Modal._content.querySelector('#stack-name');
+      const yamlEl0 = Modal._content.querySelector('#stack-yaml');
+      if (nameEl0 && prefill.name) nameEl0.value = prefill.name;
+      if (yamlEl0 && prefill.compose) yamlEl0.value = prefill.compose;
+    }
     Modal._content.querySelector('#stack-deploy-x').addEventListener('click', close);
     Modal._content.querySelector('#stack-deploy-cancel').addEventListener('click', close);
     Modal._content.querySelector('#stack-deploy-go').addEventListener('click', async () => {
@@ -182,7 +193,7 @@ const SwarmPage = {
       resultEl.style.display = 'block';
       resultEl.textContent = 'Deploying...';
       try {
-        const r = await Api.deploySwarmStack(name, yaml);
+        const r = await Api.deploySwarmStack(name, yaml, prefill && prefill.source);
         const lines = [];
         lines.push(r.ok ? `Deploy OK — stack "${r.stack}"` : `Deploy partial — stack "${r.stack}"`);
         lines.push('');
@@ -644,42 +655,94 @@ const SwarmPage = {
     });
   },
 
-  async _createServiceDialog(el) {
+  // `prefill` (optional) = { spec, warnings } as returned by the
+  // container→service derive endpoint. When present the form is pre-filled
+  // and the warnings are shown prominently at the top; the operator reviews,
+  // edits and confirms, then the SAME POST /swarm/services creates it.
+  async _createServiceDialog(el, prefill) {
+    const esc = Utils.escapeHtml;
+    const spec = (prefill && prefill.spec) || {};
+    const warnings = (prefill && prefill.warnings) || [];
+    const isPromotion = !!prefill;
+
+    const nameVal = esc(spec.name || '');
+    const imageVal = esc(spec.image || '');
+    const replicasVal = spec.replicas || 1;
+    const portsVal = esc((spec.ports || []).map(p =>
+      `${p.published}:${p.target}${p.protocol && p.protocol !== 'tcp' ? '/' + p.protocol : ''}`
+    ).join('\n'));
+    const envVal = esc((spec.env || []).join('\n'));
+
+    // Carried through the form untouched (no dedicated inputs).
+    const carriedCommand = Array.isArray(spec.command) ? spec.command : null;
+    const carriedLabels = (spec.labels && typeof spec.labels === 'object') ? spec.labels : {};
+    const carriedRestart = spec.restartPolicy || null;
+
+    const warningsHtml = warnings.length ? `
+      <div style="background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px">
+        <div style="font-weight:600;margin-bottom:8px;color:var(--yellow)"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>${i18n.t('pages.swarm.reviewWarningsTitle')}</div>
+        <p class="text-sm text-muted" style="margin:0 0 8px">${i18n.t('pages.swarm.reviewWarningsIntro')}</p>
+        <ul style="margin:0;padding-left:18px" class="text-sm">
+          ${warnings.map(w => `<li style="margin-bottom:4px">${esc(w)}</li>`).join('')}
+        </ul>
+      </div>` : '';
+
+    const commandRow = (isPromotion && carriedCommand && carriedCommand.length) ? `
+        <div class="form-group" style="grid-column:1/-1">
+          <label>Command</label>
+          <input type="text" id="svc-command" class="form-control" value="${esc(carriedCommand.join(' '))}">
+          <small class="text-muted">Overrides the image ENTRYPOINT/CMD. Space-separated.</small>
+        </div>` : '';
+
     const result = await Modal.form(`
+      ${warningsHtml}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group" style="grid-column:1/-1">
           <label>Service Name <span class="text-red">*</span></label>
-          <input type="text" id="svc-name" class="form-control" placeholder="my-service">
+          <input type="text" id="svc-name" class="form-control" placeholder="my-service" value="${nameVal}">
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label>Image <span class="text-red">*</span></label>
-          <input type="text" id="svc-image" class="form-control" placeholder="nginx:latest">
+          <input type="text" id="svc-image" class="form-control" placeholder="nginx:latest" value="${imageVal}">
         </div>
         <div class="form-group">
           <label>Replicas</label>
-          <input type="number" id="svc-replicas" class="form-control" value="1" min="1" max="100">
+          <input type="number" id="svc-replicas" class="form-control" value="${replicasVal}" min="1" max="100">
         </div>
         <div class="form-group">
           <label>Published Port → Container Port</label>
-          <input type="text" id="svc-ports" class="form-control" placeholder="8080:80">
-          <small class="text-muted">One port mapping (published:target)</small>
+          <textarea id="svc-ports" class="form-control" rows="3" placeholder="8080:80&#10;443:443/tcp">${portsVal}</textarea>
+          <small class="text-muted">One mapping per line (published:target[/proto])</small>
         </div>
+        ${commandRow}
         <div class="form-group" style="grid-column:1/-1">
           <label>Environment Variables</label>
-          <textarea id="svc-env" class="form-control" rows="3" placeholder="KEY=value&#10;ANOTHER=value"></textarea>
+          <textarea id="svc-env" class="form-control" rows="3" placeholder="KEY=value&#10;ANOTHER=value">${envVal}</textarea>
         </div>
       </div>
     `, {
-      title: 'Create Swarm Service',
-      width: '520px',
+      title: isPromotion ? i18n.t('pages.swarm.deployToSwarmContainerTitle') : 'Create Swarm Service',
+      width: '560px',
       onSubmit: c => {
         const name  = c.querySelector('#svc-name').value.trim();
         const image = c.querySelector('#svc-image').value.trim();
         if (!name || !image) { Toast.warning('Name and image are required'); return false; }
-        const portsRaw = c.querySelector('#svc-ports').value.trim();
-        const ports = portsRaw ? [{ published: portsRaw.split(':')[0], target: portsRaw.split(':')[1] || portsRaw.split(':')[0] }] : [];
-        const env = c.querySelector('#svc-env').value.trim().split('\n').filter(Boolean);
-        return { name, image, replicas: parseInt(c.querySelector('#svc-replicas').value) || 1, ports, env };
+        const ports = c.querySelector('#svc-ports').value.trim().split('\n')
+          .map(l => l.trim()).filter(Boolean).map(line => {
+            const [hostPart, protoPart] = line.split('/');
+            const [pub, tgt] = hostPart.split(':');
+            return { published: (pub || '').trim(), target: (tgt || pub || '').trim(), protocol: (protoPart || 'tcp').trim() };
+          });
+        const env = c.querySelector('#svc-env').value.trim().split('\n').map(l => l.trim()).filter(Boolean);
+        const payload = { name, image, replicas: parseInt(c.querySelector('#svc-replicas').value) || 1, ports, env };
+        if (isPromotion) {
+          const cmdEl = c.querySelector('#svc-command');
+          if (cmdEl && cmdEl.value.trim()) payload.command = cmdEl.value.trim();
+          if (carriedLabels && Object.keys(carriedLabels).length) payload.labels = carriedLabels;
+          if (carriedRestart) payload.restartPolicy = carriedRestart;
+          payload.source = 'container';
+        }
+        return payload;
       },
     });
 
@@ -687,7 +750,15 @@ const SwarmPage = {
     try {
       await Api.createSwarmService(result);
       Toast.success(`Service "${result.name}" created`);
-      await this._renderServices(el);
+      // From the Services tab we refresh in place; from a container page
+      // (no swarm content element on screen) we route to the Swarm page so
+      // the operator lands on the newly-created service.
+      const contentEl = el || document.getElementById('swarm-content');
+      if (contentEl && document.body.contains(contentEl)) {
+        await this._renderServices(contentEl);
+      } else {
+        location.hash = '#/swarm';
+      }
     } catch (err) { Toast.error(err.message); }
   },
 

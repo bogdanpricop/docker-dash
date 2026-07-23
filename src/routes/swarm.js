@@ -8,6 +8,7 @@ const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
 const asyncHandler = require('../utils/asyncHandler');
 const { humanizeDockerError } = require('../utils/docker-errors');
+const { deriveServiceSpecFromInspect } = require('../services/swarm-derive');
 
 const router = Router();
 router.use(extractHostId);
@@ -129,6 +130,40 @@ router.get('/services', requireAuth, asyncHandler(async (req, res) => {
   res.json(services);
 }));
 
+// GET /api/swarm/services/from-container — DERIVE (do not create) a proposed
+// service spec from a standalone container's inspect. Bridge (a) of the
+// deploy-to-swarm feature: the frontend pre-fills the "Create Service" dialog
+// with what comes back, shows the warnings, and the operator confirms.
+//
+// MUST be declared before GET /services/:id or Express would route
+// "from-container" into the :id param.
+router.get('/services/from-container', requireAuth, requireRole('admin', 'operator'), asyncHandler(async (req, res) => {
+  const containerId = String(req.query.containerId || '').trim();
+  if (!containerId) return res.status(400).json({ error: 'containerId is required' });
+
+  const docker = dockerService.getDocker(req.hostId);
+
+  // Precondition: the target host must be an ACTIVE swarm manager, otherwise
+  // the derived spec could never be deployed. Fail early with a humanized
+  // message rather than handing back a spec that can't be created.
+  let info;
+  try { info = await docker.info(); }
+  catch (err) { return res.status(400).json(swarmError(err)); }
+  const state = info && info.Swarm && info.Swarm.LocalNodeState;
+  if (!info || !info.Swarm || state === 'inactive' || !info.Swarm.ControlAvailable) {
+    return res.status(400).json({ error: humanizeDockerError('This node is not a swarm manager') });
+  }
+
+  let raw;
+  try { raw = await docker.getContainer(containerId).inspect({ size: false }); }
+  catch (err) {
+    return res.status(err && err.statusCode === 404 ? 404 : 400).json(swarmError(err));
+  }
+
+  const { spec, warnings } = deriveServiceSpecFromInspect(raw);
+  res.json({ spec, warnings, hostId: req.hostId });
+}));
+
 // GET /api/swarm/services/:id — dynamic 404/500 status, leave alone
 router.get('/services/:id', requireAuth, async (req, res) => {
   try {
@@ -142,8 +177,26 @@ router.get('/services/:id', requireAuth, async (req, res) => {
 
 // POST /api/swarm/services — create service
 router.post('/services', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
-  const { name, image, replicas, ports, env, constraints, labels } = req.body;
+  // `command`, `restartPolicy` and `source` are optional additions (v deploy-to-swarm
+  // bridge). They let the container→service promotion carry the container's
+  // CMD and restart policy through the SAME create endpoint, and tag the
+  // audit trail. Manual "Create Service" calls omit them and behave as before.
+  const { name, image, replicas, ports, env, constraints, labels, command, restartPolicy, source } = req.body;
   if (!name || !image) return res.status(400).json({ error: 'name and image are required' });
+
+  // Map the simplified restart policy ({ condition, maxAttempts }) to the
+  // dockerode shape. When omitted, keep the historical default.
+  const rp = (restartPolicy && typeof restartPolicy === 'object')
+    ? {
+        Condition: restartPolicy.condition || 'any',
+        Delay: 5000000000,
+        MaxAttempts: parseInt(restartPolicy.maxAttempts, 10) || 0,
+      }
+    : { Condition: 'any', Delay: 5000000000, MaxAttempts: 3 };
+
+  const cmd = Array.isArray(command)
+    ? command.map(String)
+    : (typeof command === 'string' && command.trim() ? command.trim().split(/\s+/) : undefined);
 
   const docker = dockerService.getDocker(req.hostId);
   const spec = {
@@ -152,8 +205,9 @@ router.post('/services', requireAuth, requireRole('admin', 'operator'), writeabl
       ContainerSpec: {
         Image: image,
         Env: env || [],
+        ...(cmd && cmd.length ? { Command: cmd } : {}),
       },
-      RestartPolicy: { Condition: 'any', Delay: 5000000000, MaxAttempts: 3 },
+      RestartPolicy: rp,
       Placement: constraints?.length ? { Constraints: constraints } : undefined,
     },
     Mode: { Replicated: { Replicas: parseInt(replicas) || 1 } },
@@ -168,11 +222,17 @@ router.post('/services', requireAuth, requireRole('admin', 'operator'), writeabl
     } : undefined,
   };
 
-  const svc = await docker.createService(spec);
+  let svc;
+  try {
+    svc = await docker.createService(spec);
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
   auditService.log({
     userId: req.user.id, username: req.user.username,
-    action: 'swarm_service_create', targetType: 'swarm_service', targetId: name,
-    details: { image, replicas }, ip: getClientIp(req),
+    action: source === 'container' ? 'swarm_service_from_container' : 'swarm_service_create',
+    targetType: 'swarm_service', targetId: name,
+    details: { image, replicas, source: source || 'manual' }, ip: getClientIp(req),
   });
   res.status(201).json({ ok: true, id: svc.id });
 }));
@@ -289,7 +349,7 @@ router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, async
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/.test(stackName)) {
     return res.status(400).json({ error: 'Invalid stack name (alphanumeric, dot, underscore, dash; up to 63 chars)' });
   }
-  const { compose } = req.body || {};
+  const { compose, source } = req.body || {};
   if (!compose || typeof compose !== 'string') {
     return res.status(400).json({ error: 'compose (YAML string) is required' });
   }
@@ -426,8 +486,11 @@ router.post('/stacks/:name', requireAuth, requireRole('admin'), writeable, async
   const okCount = results.filter(r => r.ok).length;
   auditService.log({
     userId: req.user.id, username: req.user.username,
-    action: 'swarm_stack_deploy', targetType: 'swarm_stack', targetId: stackName,
-    details: { hostId: req.hostId, services: results.length, succeeded: okCount, skipped: [...skipped] },
+    // `source: 'local-stack'` marks the (b)-bridge (an existing single-host
+    // compose stack promoted onto the swarm) vs a raw YAML paste.
+    action: source === 'local-stack' ? 'swarm_stack_from_local' : 'swarm_stack_deploy',
+    targetType: 'swarm_stack', targetId: stackName,
+    details: { hostId: req.hostId, services: results.length, succeeded: okCount, skipped: [...skipped], source: source || 'yaml' },
     ip: getClientIp(req),
   });
   res.status(okCount === results.length ? 200 : 207).json({

@@ -26,6 +26,9 @@
 // +4 as of v8.18.0 (Onboarding Phase 4 — entities/relations, drift, trial
 //   lifecycle): onboarding_replan, tenant_entity_seed, tenant_trial_expired,
 //   tenant_trial_extend.
+// +2 (deploy-to-swarm bridges): swarm_service_from_container (promote a
+//   standalone container to a service), swarm_stack_from_local (promote an
+//   existing single-host compose stack onto the swarm).
 
 const auditActionsList = [
   "acme_certificate_remove",
@@ -209,8 +212,10 @@ const auditActionsList = [
   "swarm_node_remove",
   "swarm_node_update",
   "swarm_service_create",
+  "swarm_service_from_container",
   "swarm_service_remove",
   "swarm_service_scale",
+  "swarm_stack_from_local",
   "system_prune",
   "template_create",
   "template_delete",

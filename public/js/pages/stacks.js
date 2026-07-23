@@ -209,6 +209,7 @@ const StacksPage = {
           <button class="btn btn-sm btn-secondary" id="cs-down"><i class="fas fa-stop"></i> Down</button>
           <button class="btn btn-sm btn-secondary" id="cs-restart"><i class="fas fa-sync-alt"></i> Restart</button>
           <button class="btn btn-sm btn-secondary" id="cs-pull"><i class="fas fa-download"></i> Pull</button>
+          <button class="btn btn-sm btn-secondary" id="cs-to-swarm" title="${i18n.t('pages.swarm.deployToSwarmStackTitle')}"><i class="fas fa-project-diagram"></i> ${i18n.t('pages.swarm.deployToSwarm')}</button>
         </div>
       </div>
       <div class="tabs" style="margin-bottom:16px">
@@ -230,6 +231,10 @@ const StacksPage = {
         } catch (err) { Toast.error(err.message); }
       });
     });
+
+    // Deploy-to-swarm bridge (b): load this stack's compose YAML and open the
+    // existing Swarm "Deploy Stack" modal pre-filled for review.
+    container.querySelector('#cs-to-swarm')?.addEventListener('click', () => this._deployStackToSwarm());
 
     // Tabs
     let activeTab = 'services';
@@ -402,6 +407,50 @@ const StacksPage = {
       },
       onSubmit: () => ({}),
     });
+  },
+
+  // Deploy-to-swarm bridge (b): promote this existing single-host compose
+  // stack onto the swarm. Reuses the compose-config endpoint to fetch the
+  // YAML and the swarm page's existing "Deploy Stack" modal to review + apply.
+  async _deployStackToSwarm() {
+    if (typeof SwarmPage === 'undefined' || typeof SwarmPage._showDeployStackModal !== 'function') {
+      Toast.error('Swarm module not available');
+      return;
+    }
+    const stackName = String(this._detailStack || '');
+
+    // Precondition — target host must be an active swarm manager.
+    let status;
+    try { status = await Api.getSwarmStatus(); }
+    catch (err) { Toast.error(err.message); return; }
+    const isManager = !!(status && status.active && status.info && status.info.ControlAvailable);
+    if (!isManager) {
+      const go = await Modal.confirm(i18n.t('pages.swarm.noActiveSwarm'), {
+        title: i18n.t('pages.swarm.deployToSwarmStackTitle'),
+        confirmText: i18n.t('nav.swarm'),
+      });
+      if (go) location.hash = '#/swarm';
+      return;
+    }
+
+    // Fetch the compose YAML via the EXISTING compose-config endpoint, which
+    // already falls back (docker compose config → file read → inspect).
+    Toast.info(i18n.t('pages.swarm.loadingCompose'));
+    let cfg;
+    try { cfg = await Api.composeConfig(stackName); }
+    catch (err) { Toast.error(i18n.t('pages.swarm.composeLoadFailed', { message: err.message })); return; }
+    const compose = (cfg && cfg.config) ? cfg.config : '';
+    if (!compose.trim()) {
+      Toast.error(i18n.t('pages.swarm.composeLoadFailed', { message: i18n.t('pages.stacks.noComposeConfig') }));
+      return;
+    }
+
+    // Swarm stack names must match [a-zA-Z0-9][a-zA-Z0-9._-]{0,62}.
+    let swarmName = stackName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!/^[a-zA-Z0-9]/.test(swarmName)) swarmName = 's_' + swarmName;
+    swarmName = swarmName.slice(0, 63);
+
+    SwarmPage._showDeployStackModal({ name: swarmName, compose, source: 'local-stack' });
   },
 
   async _createStackDialog() {

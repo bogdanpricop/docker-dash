@@ -1124,6 +1124,19 @@ i18n.register('en', 'EN', 'English', {
       updatesAvailable: 'Updates available',
       upToDate: 'Already up to date',
     },
+    // ── Swarm deploy bridges (promote container / stack to swarm) ──
+    swarm: {
+      deployToSwarm: 'Deploy to Swarm',
+      deployToSwarmContainerTitle: 'Promote container to a Swarm service',
+      deployToSwarmStackTitle: 'Deploy this stack to the Swarm',
+      derivingSpec: 'Analyzing container…',
+      loadingCompose: 'Loading compose file…',
+      noActiveSwarm: 'This host is not an active Swarm manager. Initialize a Swarm here (or join it to an existing one) first, then try again.',
+      reviewWarningsTitle: 'Review before promoting',
+      reviewWarningsIntro: 'Some settings on this container don\'t map cleanly to a Swarm service. Review these before you create it:',
+      deriveFailed: 'Could not read the container: {{message}}',
+      composeLoadFailed: 'Could not load the compose file: {{message}}',
+    },
     // ── Onboarding & Provisioning Wizard (v8.15.0) ──
     onboarding: {
       launcher: {

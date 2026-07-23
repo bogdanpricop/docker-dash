@@ -425,6 +425,13 @@ const Api = {
   getSwarmServices()                  { return this.get('/swarm/services'); },
   getSwarmService(id)                 { return this.get(`/swarm/services/${id}`); },
   createSwarmService(data)            { return this.post('/swarm/services', data); },
+  // Deploy-to-swarm bridge (a): derive (do NOT create) a proposed service
+  // spec from an existing standalone container. `hostId` is sent explicitly;
+  // when it matches the globally-selected host the client also auto-appends
+  // it, and the server takes the first value (the container's host wins).
+  deriveSwarmServiceFromContainer(containerId, hostId) {
+    return this.get(`/swarm/services/from-container?containerId=${encodeURIComponent(containerId)}&hostId=${encodeURIComponent(hostId || 0)}`);
+  },
   scaleSwarmService(id, replicas)     { return this.post(`/swarm/services/${id}/scale`, { replicas }); },
   removeSwarmService(id)              { return this.delete(`/swarm/services/${id}`); },
   getSwarmTasks(serviceId)            { return this.get(`/swarm/tasks${serviceId ? `?service=${serviceId}` : ''}`); },
@@ -432,8 +439,10 @@ const Api = {
   // services grouped by the com.docker.stack.namespace label.
   getSwarmStacks()                    { return this.get('/swarm/stacks'); },
   removeSwarmStack(name)              { return this.delete(`/swarm/stacks/${encodeURIComponent(name)}`); },
-  // v8.8.3 — deploy a stack from a compose YAML string.
-  deploySwarmStack(name, compose)     { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, { compose }); },
+  // v8.8.3 — deploy a stack from a compose YAML string. `source` is optional:
+  // 'local-stack' tags a promotion of an existing single-host compose stack
+  // (bridge b) for the audit trail; omitted for a raw YAML paste.
+  deploySwarmStack(name, compose, source) { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, source ? { compose, source } : { compose }); },
 
   // ─── Incus (v8.9.0-alpha.2; hostId explicit as of v8.9.23) ───
   // Each call carries the Incus/LXD host id so the page works regardless of the

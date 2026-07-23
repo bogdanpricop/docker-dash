@@ -109,6 +109,7 @@ const ContainersPageDetail = {
       <button class="btn btn-sm btn-accent" data-act="doctor" title="AI Container Doctor — deep analysis with log pattern matching"><i class="fas fa-user-md"></i> Doctor</button>
       <button class="btn btn-sm btn-secondary" data-act="rename"><i class="fas fa-pencil-alt"></i> Rename</button>
       <button class="btn btn-sm btn-secondary" data-act="clone"><i class="fas fa-clone"></i> Clone</button>
+      <button class="btn btn-sm btn-secondary" data-act="deploy-swarm" title="${i18n.t('pages.swarm.deployToSwarmContainerTitle')}"><i class="fas fa-project-diagram"></i> ${i18n.t('pages.swarm.deployToSwarm')}</button>
       <button class="btn btn-sm btn-secondary" data-act="export"><i class="fas fa-file-export"></i> Export</button>
       <button class="btn btn-sm btn-danger" data-act="remove"><i class="fas fa-trash"></i> ${i18n.t('common.remove')}</button>
     `;
@@ -122,6 +123,7 @@ const ContainersPageDetail = {
         if (btn.dataset.act === 'diagnose') return this._diagnoseContainer(this._detailId, info.name);
         if (btn.dataset.act === 'doctor') return this._doctorContainer(this._detailId, info.name);
         if (btn.dataset.act === 'clone') return this._cloneContainer(this._detailId, info.name, info.image);
+        if (btn.dataset.act === 'deploy-swarm') return this._deployToSwarm();
         if (btn.dataset.act === 'rollback') return this._rollbackDialog(this._detailId, info.name);
         if (btn.dataset.act === 'meta') return this._editMetaDialog(info.name);
         if (btn.dataset.act === 'resources') return this._editResources();
@@ -129,6 +131,51 @@ const ContainersPageDetail = {
         this._containerAction(this._detailId, btn.dataset.act);
       });
     });
+  },
+
+  // Deploy-to-swarm bridge (a): promote this standalone container to a Swarm
+  // service. Verifies the container's host is an active swarm manager, asks the
+  // backend to DERIVE a proposed service spec (nothing is created), then opens
+  // the existing Swarm "Create Service" dialog pre-filled with warnings shown.
+  async _deployToSwarm() {
+    const hostId = Api.getHostId();
+
+    // Precondition — the target host must be an active swarm manager, or there
+    // is nowhere to create the service. Surface a clear, humanized message
+    // instead of failing silently.
+    let status;
+    try {
+      status = await Api.getSwarmStatus();
+    } catch (err) {
+      Toast.error(err.message);
+      return;
+    }
+    const isManager = !!(status && status.active && status.info && status.info.ControlAvailable);
+    if (!isManager) {
+      const go = await Modal.confirm(i18n.t('pages.swarm.noActiveSwarm'), {
+        title: i18n.t('pages.swarm.deployToSwarmContainerTitle'),
+        confirmText: i18n.t('nav.swarm'),
+      });
+      if (go) location.hash = '#/swarm';
+      return;
+    }
+
+    // Derive the proposed spec (read-only on the server).
+    Toast.info(i18n.t('pages.swarm.derivingSpec'));
+    let derived;
+    try {
+      derived = await Api.deriveSwarmServiceFromContainer(this._detailId, hostId);
+    } catch (err) {
+      Toast.error(i18n.t('pages.swarm.deriveFailed', { message: err.message }));
+      return;
+    }
+
+    if (typeof SwarmPage === 'undefined' || typeof SwarmPage._createServiceDialog !== 'function') {
+      Toast.error('Swarm module not available');
+      return;
+    }
+    // Reuse the EXISTING swarm dialog, pre-filled with the derived spec.
+    await SwarmPage._createServiceDialog(null, { spec: derived.spec, warnings: derived.warnings });
   },
 
   async _editResources() {

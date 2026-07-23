@@ -1876,6 +1876,19 @@ i18n.register('ro', 'RO', "Română", {
       deploymentStarted: "Deployment pornit",
       updatesAvailable: "Actualizări disponibile",
       upToDate: "Deja la zi"
+    },
+    // ── Punți deploy către Swarm (promovează container / stack în swarm) ──
+    swarm: {
+      deployToSwarm: "Deploy în Swarm",
+      deployToSwarmContainerTitle: "Promovează containerul într-un serviciu Swarm",
+      deployToSwarmStackTitle: "Deployează acest stack în Swarm",
+      derivingSpec: "Se analizează containerul…",
+      loadingCompose: "Se încarcă fișierul compose…",
+      noActiveSwarm: "Acest host nu este un manager Swarm activ. Inițializează un Swarm aici (sau alătură-l unuia existent) mai întâi, apoi încearcă din nou.",
+      reviewWarningsTitle: "Verifică înainte de promovare",
+      reviewWarningsIntro: "Unele setări ale acestui container nu se traduc curat într-un serviciu Swarm. Verifică-le înainte de a-l crea:",
+      deriveFailed: "Nu s-a putut citi containerul: {{message}}",
+      composeLoadFailed: "Nu s-a putut încărca fișierul compose: {{message}}"
     }
   }
 });
