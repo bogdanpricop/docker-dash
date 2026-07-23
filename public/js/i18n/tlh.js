@@ -1838,6 +1838,18 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
         relationSelf: "rarwI' Doch ghaH'e' rarlaHbe'.",
         relationTypeInvalid: "rarwI' Segh nIb yIwIv."
       }
+    },
+    swarm: {
+      deployToSwarm: "Swarm-Daq lan",
+      deployToSwarmContainerTitle: "container Swarm service-Daq nobHa'",
+      deployToSwarmStackTitle: "vam stack Swarm-Daq lan",
+      derivingSpec: "container nuD…",
+      loadingCompose: "compose file laD…",
+      noActiveSwarm: "vam host Swarm manager Qubqu'be'. wa'DIch naDev Swarm taghmoH (pagh Swarm tu'lu'bogh yItaH), vaj yInID.",
+      reviewWarningsTitle: "nobHa'pa' yIlaD",
+      reviewWarningsIntro: "vam container Dotlh puS Swarm service-Daq luchoHlaHbe'. yIchenmoH pa' yIlaD:",
+      deriveFailed: "container laDlaHbe': {{message}}",
+      composeLoadFailed: "compose file laDlaHbe': {{message}}"
     }
   },
   errors: {

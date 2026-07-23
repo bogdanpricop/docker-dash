@@ -1838,6 +1838,18 @@ i18n.register('ja', 'JP', "日本語", {
         relationSelf: "関係は同一のエンティティ同士を接続できません。",
         relationTypeInvalid: "有効な関係の種類を選択してください。"
       }
+    },
+    swarm: {
+      deployToSwarm: "Swarm にデプロイ",
+      deployToSwarmContainerTitle: "コンテナを Swarm サービスに昇格",
+      deployToSwarmStackTitle: "このスタックを Swarm にデプロイ",
+      derivingSpec: "コンテナを解析中…",
+      loadingCompose: "compose ファイルを読み込み中…",
+      noActiveSwarm: "このホストはアクティブな Swarm マネージャーではありません。まずここで Swarm を初期化する（または既存の Swarm に参加する）してから、もう一度お試しください。",
+      reviewWarningsTitle: "昇格前に確認",
+      reviewWarningsIntro: "このコンテナの一部の設定は Swarm サービスにきれいに変換されません。作成する前に確認してください:",
+      deriveFailed: "コンテナを読み取れませんでした: {{message}}",
+      composeLoadFailed: "compose ファイルを読み込めませんでした: {{message}}"
     }
   },
   errors: {

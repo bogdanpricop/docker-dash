@@ -1838,6 +1838,18 @@ i18n.register('zh', '中文', "中文", {
         relationSelf: "关系不能将某个实体连接到自身。",
         relationTypeInvalid: "请选择有效的关系类型。"
       }
+    },
+    swarm: {
+      deployToSwarm: "部署到 Swarm",
+      deployToSwarmContainerTitle: "将容器提升为 Swarm 服务",
+      deployToSwarmStackTitle: "将此堆栈部署到 Swarm",
+      derivingSpec: "正在分析容器…",
+      loadingCompose: "正在加载 compose 文件…",
+      noActiveSwarm: "此主机不是活动的 Swarm 管理节点。请先在此初始化 Swarm（或加入现有 Swarm），然后重试。",
+      reviewWarningsTitle: "提升前请检查",
+      reviewWarningsIntro: "此容器的部分设置无法完全映射到 Swarm 服务。创建前请检查以下内容：",
+      deriveFailed: "无法读取容器：{{message}}",
+      composeLoadFailed: "无法加载 compose 文件：{{message}}"
     }
   },
   errors: {

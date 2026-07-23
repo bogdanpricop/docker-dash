@@ -1838,6 +1838,18 @@ i18n.register('ko', 'KR', "한국어", {
         relationSelf: "관계는 동일한 엔터티를 자기 자신과 연결할 수 없습니다.",
         relationTypeInvalid: "올바른 관계 유형을 선택하세요."
       }
+    },
+    swarm: {
+      deployToSwarm: "Swarm에 배포",
+      deployToSwarmContainerTitle: "컨테이너를 Swarm 서비스로 승격",
+      deployToSwarmStackTitle: "이 스택을 Swarm에 배포",
+      derivingSpec: "컨테이너 분석 중…",
+      loadingCompose: "compose 파일 로드 중…",
+      noActiveSwarm: "이 호스트는 활성 Swarm 매니저가 아닙니다. 먼저 여기에서 Swarm을 초기화하거나 기존 Swarm에 조인한 후 다시 시도하세요.",
+      reviewWarningsTitle: "승격 전 검토",
+      reviewWarningsIntro: "이 컨테이너의 일부 설정은 Swarm 서비스로 깔끔하게 변환되지 않습니다. 생성하기 전에 검토하세요:",
+      deriveFailed: "컨테이너를 읽을 수 없습니다: {{message}}",
+      composeLoadFailed: "compose 파일을 로드할 수 없습니다: {{message}}"
     }
   },
   errors: {

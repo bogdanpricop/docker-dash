@@ -1838,6 +1838,18 @@ i18n.register('es', 'ES', "Español", {
         relationSelf: "Una relación no puede conectar una entidad consigo misma.",
         relationTypeInvalid: "Elija un tipo de relación válido."
       }
+    },
+    swarm: {
+      deployToSwarm: "Desplegar en Swarm",
+      deployToSwarmContainerTitle: "Promover el contenedor a un servicio de Swarm",
+      deployToSwarmStackTitle: "Desplegar este stack en el Swarm",
+      derivingSpec: "Analizando el contenedor…",
+      loadingCompose: "Cargando el archivo compose…",
+      noActiveSwarm: "Este host no es un manager de Swarm activo. Inicializa un Swarm aquí (o únelo a uno existente) primero y vuelve a intentarlo.",
+      reviewWarningsTitle: "Revisar antes de promover",
+      reviewWarningsIntro: "Algunos ajustes de este contenedor no se traducen limpiamente a un servicio de Swarm. Revísalos antes de crearlo:",
+      deriveFailed: "No se pudo leer el contenedor: {{message}}",
+      composeLoadFailed: "No se pudo cargar el archivo compose: {{message}}"
     }
   },
   errors: {

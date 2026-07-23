@@ -2,6 +2,12 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.20.1] - 2026-07-24 — i18n: the new Deploy-to-Swarm strings translated everywhere
+
+The `pages.swarm.*` strings added in 8.20.0 shipped in English + Romanian only. They're now
+translated into the remaining 9 languages (de, es, fr, it, ja, ko, pt, zh, tlh), so all 11 locales
+are back to 100% key parity with English (1694 keys).
+
 ## [8.20.0] - 2026-07-24 — Deploy to Swarm — promote a container or an existing stack
 
 You can now push already-existing workloads onto a swarm without re-entering everything by hand.
