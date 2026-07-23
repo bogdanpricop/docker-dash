@@ -873,6 +873,24 @@ const Api = {
   drainHost(id) { return this.post(`/hosts/${id}/drain`); },
   activateHost(id) { return this.post(`/hosts/${id}/activate`); },
 
+  // ─── Onboarding & Provisioning Wizard (v8.15.0, Phase 1) ─────
+  // One engine, one document (onboarding-declaration v1 — src/services/
+  // provisioning/declaration.js). plan() is a dry-run (writes nothing);
+  // apply() validates -> plans -> executes the saga and either resolves with
+  // the completed run or rejects with {error, runId, step, resumable:true}
+  // (409) so the wizard can offer Resume/Rollback. Secrets travel in the
+  // declaration body (encrypted server-side on ingest) but are never echoed
+  // back — every read endpoint below returns them redacted.
+  onboardingPlan(decl) { return this.post('/onboarding/plan', decl); },
+  onboardingApply(decl) { return this.post('/onboarding/apply', decl); },
+  getActiveOnboardingRun() { return this.get('/onboarding/runs/active'); },
+  getOnboardingRun(id) { return this.get(`/onboarding/runs/${id}`); },
+  resumeOnboardingRun(id) { return this.post(`/onboarding/runs/${id}/resume`); },
+  rollbackOnboardingRun(id) { return this.post(`/onboarding/runs/${id}/rollback`); },
+  // Returns the download URL (Content-Disposition: attachment) — same
+  // pattern as exportAuditCsv() below; the caller drives the actual download.
+  exportOnboardingRunUrl(id) { return `/api/onboarding/runs/${id}/export`; },
+
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
   getAboutFile(name) { return this.get(`/about/file/${encodeURIComponent(name)}`); },

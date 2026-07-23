@@ -50,6 +50,7 @@ const App = {
     'observability':  () => ObservabilityWizardPage,
     'sample-feature': () => SampleFeaturePage,
     'registry-browse': () => RegistryBrowsePage,
+    onboarding:       () => OnboardingPage,
   },
 
   async init() {
@@ -936,7 +937,7 @@ const App = {
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
         { label: 'Operations',  items: ['system', 'workflows'] },
-        { label: 'Admin',       items: ['hosts', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
+        { label: 'Admin',       items: ['hosts', 'onboarding', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
 
       // Collect all existing nav items by data-page
@@ -1627,6 +1628,11 @@ const App = {
     const sidebar = document.getElementById('sidebar');
     const toggle = document.getElementById('sidebar-toggle');
     const logo = document.querySelector('.sidebar-logo');
+
+    // Onboarding wizard — admin-only surface (the API already enforces this;
+    // the nav entry is gated too so non-admins never see a dead end).
+    const onboardingNav = document.getElementById('onboarding-nav');
+    if (onboardingNav) onboardingNav.style.display = (this.user && this.user.role === 'admin') ? '' : 'none';
 
     const doToggle = () => {
       sidebar.classList.toggle('collapsed');
