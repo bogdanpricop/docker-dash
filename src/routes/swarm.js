@@ -11,6 +11,24 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = Router();
 router.use(extractHostId);
 
+// Swarm lifecycle ops (init/leave) are admin-only and their failures come
+// straight from the Docker daemon with an ACTIONABLE message (e.g. live-restore
+// incompatible with swarm mode, multi-homed host needs an advertise address).
+// Surface that instead of a generic 500, plus a hint for the common footguns.
+function swarmError(err) {
+  const raw = String((err && err.message) || err || 'Swarm operation failed');
+  const msg = raw.replace(/^\(HTTP code \d+\)\s*\w+\s*-\s*/i, '').trim() || raw;
+  let hint;
+  if (/live-restore/i.test(msg)) {
+    hint = 'The target host\'s Docker daemon has live-restore enabled, which is incompatible with swarm mode. Set "live-restore": false in /etc/docker/daemon.json on that host and restart Docker, then retry.';
+  } else if (/multiple addresses|advertise[- ]addr/i.test(msg)) {
+    hint = 'This host has multiple IP addresses — provide an Advertise address so Docker knows which interface to use for the swarm.';
+  } else if (/already part of a swarm|node is already/i.test(msg)) {
+    hint = 'This host is already part of a swarm — leave the current one first, or manage the existing swarm.';
+  }
+  return { error: hint ? `${msg} — ${hint}` : msg };
+}
+
 // ── Swarm status ───────────────────────────────────────────────
 
 // GET /api/swarm — swarm info + node count
@@ -28,10 +46,15 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 router.post('/init', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const { advertiseAddr, listenAddr } = req.body;
   const docker = dockerService.getDocker(req.hostId);
-  const result = await docker.swarmInit({
-    ListenAddr: listenAddr || '0.0.0.0:2377',
-    AdvertiseAddr: advertiseAddr || undefined,
-  });
+  let result;
+  try {
+    result = await docker.swarmInit({
+      ListenAddr: listenAddr || '0.0.0.0:2377',
+      AdvertiseAddr: advertiseAddr || undefined,
+    });
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'swarm_init', targetType: 'swarm', targetId: 'local',
@@ -43,7 +66,11 @@ router.post('/init', requireAuth, requireRole('admin'), writeable, asyncHandler(
 // POST /api/swarm/leave — leave swarm
 router.post('/leave', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
-  await docker.swarmLeave({ Force: !!req.body.force });
+  try {
+    await docker.swarmLeave({ Force: !!req.body.force });
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'swarm_leave', targetType: 'swarm', targetId: 'local',

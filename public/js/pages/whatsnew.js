@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.19.2',
+      date: '2026-07-23',
+      title: 'Fix — Swarm init now tells you why it failed',
+      changes: [
+        { type: 'fix', text: 'Initializing a Docker Swarm used to fail with a bare “Internal server error”. It now shows the actual reason from the Docker daemon plus a hint — for example, that the host’s daemon has live-restore enabled (incompatible with swarm mode) and how to fix it, or that a multi-homed host needs an advertise address.' },
+      ],
+    },
+    {
       version: '8.19.1',
       date: '2026-07-23',
       title: 'Fix — prune no longer fails with “socket hang up” on large caches',

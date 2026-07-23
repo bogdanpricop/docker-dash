@@ -2,6 +2,15 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.19.2] - 2026-07-23 — Fix: Swarm init/leave surface the real Docker error
+
+Initializing a swarm returned a bare **"Internal server error"** (500) with no explanation — the
+route funnelled the daemon's error through the generic handler. `POST /api/swarm/init` and
+`/leave` now return the actual Docker message plus a hint for the common footguns, e.g.:
+`--live-restore daemon configuration is incompatible with swarm mode — set "live-restore": false in
+/etc/docker/daemon.json on that host and restart Docker, then retry` (also covers multi-homed hosts
+that need an advertise address, and hosts already in a swarm).
+
 ## [8.19.1] - 2026-07-23 — Fix: prune "socket hang up" on large build cache / image sets
 
 Pruning a large build cache (or image set) failed with **`socket hang up`**. Root cause: the
