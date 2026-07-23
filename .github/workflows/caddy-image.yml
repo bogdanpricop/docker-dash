@@ -12,6 +12,10 @@ name: Build Caddy Custom Image
 
 on:
   push:
+    # branches only — WITHOUT this, tag pushes (every release) trigger this slow
+    # multi-arch build because GitHub IGNORES `paths` filters on tag pushes. The
+    # Caddy image only needs rebuilding when its own files change on main.
+    branches: [main]
     paths:
       - 'docker/caddy/**'
       - '.github/workflows/caddy-image.yml'

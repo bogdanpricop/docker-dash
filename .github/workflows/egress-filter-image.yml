@@ -12,6 +12,9 @@ name: Build Egress Filter Sidecar Image
 
 on:
   push:
+    # branches only — tag pushes ignore `paths` filters and would rebuild this on
+    # every release. Rebuild only when the egress-filter files change on main.
+    branches: [main]
     paths:
       - 'docker/egress-filter/**'
       - '.github/workflows/egress-filter-image.yml'

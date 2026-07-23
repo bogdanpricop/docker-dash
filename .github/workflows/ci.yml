@@ -23,8 +23,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check for critical vulnerabilities
-        run: npm audit --audit-level=critical
+      - name: Check for critical vulnerabilities (production deps only)
+        # Only PRODUCTION dependencies gate CI. npm audit hits the live advisory
+        # DB, so auditing dev tooling (jest/eslint/etc.) made CI flip red with no
+        # code change whenever a new advisory dropped. `--omit=dev` keeps a real
+        # gate on shipped code while removing that flakiness.
+        run: npm audit --audit-level=critical --omit=dev
 
       - name: Validate JavaScript syntax (backend)
         run: |
