@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.20.0',
+      date: '2026-07-24',
+      title: 'Deploy to Swarm — promote a container or an existing stack',
+      changes: [
+        { type: 'feature', text: 'A standalone container now has a “Deploy to Swarm” action: it reads the container’s configuration (image, environment, command, published ports, labels, restart policy) and opens the swarm Create Service dialog pre-filled, so you just review and confirm. A warnings panel tells you upfront about anything that doesn’t translate cleanly to a service — bind mounts that must exist on every node, interactive/tty containers, host networking, privileged, devices, links, and that ports become swarm ingress ports.' },
+        { type: 'feature', text: 'An existing single-host compose stack gets a “Deploy to Swarm” action too — it loads the stack’s compose file and hands it to the swarm stack-deploy flow for review. Both actions tell you clearly (in plain language) if the host isn’t a swarm manager yet, instead of failing with a generic error.' },
+      ],
+    },
+    {
       version: '8.19.3',
       date: '2026-07-24',
       title: 'Human-friendly Docker error messages',

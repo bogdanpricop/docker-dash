@@ -2,6 +2,30 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.20.0] - 2026-07-24 — Deploy to Swarm — promote a container or an existing stack
+
+You can now push already-existing workloads onto a swarm without re-entering everything by hand.
+
+- **Container → service.** A standalone container gains a **Deploy to Swarm** action (container
+  detail) that derives a proposed service spec from its `docker inspect` — image, env, command,
+  published ports, cleaned labels (compose/stack bookkeeping stripped), and a mapped restart
+  policy — then opens the swarm "Create Service" dialog **pre-filled** so you review/adjust before
+  creating. A prominent warnings panel flags everything that doesn't map cleanly to a service:
+  bind mounts (must exist on all nodes), named volumes (node-local), `-it`/tty, `network_mode:
+  host`, `--privileged`, `--device`, legacy `--link`, entrypoint overrides, and that published
+  ports become ingress/routing-mesh ports.
+- **Existing stack → swarm.** A single-host compose stack gains a **Deploy to Swarm** action that
+  loads its compose YAML (via the existing compose-config resolver) and hands it to the swarm
+  stack-deploy flow for review.
+- Both surface a **clear, humanized message** when the target host isn't an active swarm manager
+  (initialize/join a swarm first) instead of a 500. Admin-gated + audited
+  (`swarm_service_from_container`, `swarm_stack_from_local`).
+
+No new database or dependencies — a thin bridge over the existing swarm create/deploy. Derivation
+is a pure, unit-tested helper (`src/services/swarm-derive.js`). 16 new tests — suite at **2185
+passing across 132 suites**. New UI strings in en + ro (other locales fall back to English until a
+follow-up backfill).
+
 ## [8.19.3] - 2026-07-24 — Human-friendly Docker error messages
 
 Raw Docker daemon errors (e.g. `(HTTP code 500) unexpected - --live-restore daemon configuration is
