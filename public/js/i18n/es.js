@@ -82,7 +82,16 @@ i18n.register('es', 'ES', "Español", {
     observability: "Observabilidad",
     "sample-feature": "Plugin de Ejemplo",
     "registry-browse": "Registros",
-    onboarding: "Configuración del Entorno"
+    onboarding: "Configuración del Entorno",
+    posture: "Postura",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD (alfa)",
+    "proxmox-resources": "Proxmox (alfa)",
+    "migration-vm": "Migración de VM (alfa)",
+    "kubernetes-resources": "Kubernetes (alfa)",
+    "nomad-jobs": "Nomad (alfa)",
+    "vsphere-resources": "vSphere / ESXi (alfa)"
   },
   login: {
     title: "Docker Dash",

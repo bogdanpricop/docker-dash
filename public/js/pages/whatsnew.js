@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.20.4',
+      date: '2026-07-24',
+      title: 'Fix — sidebar labels for 9 newer pages',
+      changes: [
+        { type: 'fix', text: 'Nine sidebar items (Posture, Reconciler, Copilot, and the Incus/Proxmox/VM-Migration/Kubernetes/Nomad/vSphere alpha pages) were missing translation keys, so they showed their raw key (like “nav.posture”) and logged “[i18n] Missing” warnings in the console. All nine now have proper labels in every language. (The separate “Cross-Origin-Opener-Policy header ignored” message is harmless — browsers skip that header over plain HTTP; it goes away behind HTTPS.)' },
+      ],
+    },
+    {
       version: '8.20.3',
       date: '2026-07-24',
       title: 'Fix — Swarm “Stacks” tab no longer errors on a non-swarm host',

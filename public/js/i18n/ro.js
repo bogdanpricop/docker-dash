@@ -99,7 +99,16 @@ i18n.register('ro', 'RO', "Română", {
     notifications: "Notificări",
     "api-playground": "API",
     "cost-optimizer": "Cost",
-    "dependency-map": "Hartă Dependențe"
+    "dependency-map": "Hartă Dependențe",
+    posture: "Postură",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD (alpha)",
+    "proxmox-resources": "Proxmox (alpha)",
+    "migration-vm": "Migrare VM (alpha)",
+    "kubernetes-resources": "Kubernetes (alpha)",
+    "nomad-jobs": "Nomad (alpha)",
+    "vsphere-resources": "vSphere / ESXi (alpha)"
   },
   login: {
     title: "Docker Dash",
@@ -1876,7 +1885,6 @@ i18n.register('ro', 'RO', "Română", {
       updatesAvailable: "Actualizări disponibile",
       upToDate: "Deja la zi"
     },
-    // ── Punți deploy către Swarm (promovează container / stack în swarm) ──
     swarm: {
       deployToSwarm: "Deploy în Swarm",
       deployToSwarmContainerTitle: "Promovează containerul într-un serviciu Swarm",

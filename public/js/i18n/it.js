@@ -82,7 +82,16 @@ i18n.register('it', 'IT', "Italiano", {
     observability: "Osservabilità",
     "sample-feature": "Plugin di esempio",
     "registry-browse": "Registri",
-    onboarding: "Configurazione ambiente"
+    onboarding: "Configurazione ambiente",
+    posture: "Postura",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD (alpha)",
+    "proxmox-resources": "Proxmox (alpha)",
+    "migration-vm": "Migrazione VM (alpha)",
+    "kubernetes-resources": "Kubernetes (alpha)",
+    "nomad-jobs": "Nomad (alpha)",
+    "vsphere-resources": "vSphere / ESXi (alpha)"
   },
   login: {
     title: "Docker Dash",

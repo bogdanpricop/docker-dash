@@ -82,7 +82,16 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     observability: "leghlu'meH",
     "sample-feature": "nughI' Plugin",
     "registry-browse": "qachDaqmey",
-    onboarding: "yoS nIHmeH"
+    onboarding: "yoS nIHmeH",
+    posture: "Posture",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD (alpha)",
+    "proxmox-resources": "Proxmox (alpha)",
+    "migration-vm": "VM Migration (alpha)",
+    "kubernetes-resources": "Kubernetes (alpha)",
+    "nomad-jobs": "Nomad (alpha)",
+    "vsphere-resources": "vSphere / ESXi (alpha)"
   },
   login: {
     title: "Docker Dash",

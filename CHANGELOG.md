@@ -2,6 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.20.4] - 2026-07-24 — Fix: sidebar showed raw i18n keys for 9 newer pages
+
+Nine navigation items rendered their raw key (e.g. `nav.posture`, `nav.copilot`) in the sidebar and
+spammed the console with `[i18n] Missing` warnings.
+
+- **Root cause.** The sidebar sets each label via `i18n.t('nav.' + dataPage)`, but nine newer pages
+  never had a `nav.*` key: `posture`, `blueprints` (Reconciler), `copilot`, and the six alpha
+  fleet-daemon pages (`incus-instances`, `proxmox-resources`, `migration-vm`,
+  `kubernetes-resources`, `nomad-jobs`, `vsphere-resources`). `i18n.t()` returns the key verbatim on
+  a miss, so the sidebar literally displayed "nav.posture" etc. (posture/blueprints/copilot are
+  always visible; the fleet pages show only when that daemon exists — which is why the labels looked
+  fine until now).
+- **Fix.** Added all 9 keys to every locale, with proper translations. Verified all 37 `data-page`
+  slugs in `index.html` now resolve to a `nav.*` key, and all 11 locales stay at exact parity.
+- **Note:** the `Cross-Origin-Opener-Policy header has been ignored` message is not a bug — browsers
+  ignore that hardening header over plain HTTP on a LAN IP. It disappears behind HTTPS (Caddy).
+
 ## [8.20.3] - 2026-07-24 — Fix: Swarm Stacks tab no longer 503s on a non-swarm host
 
 Opening the **Stacks** tab on a host that isn't a swarm manager threw a raw

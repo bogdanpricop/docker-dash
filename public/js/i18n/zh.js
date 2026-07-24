@@ -82,7 +82,16 @@ i18n.register('zh', '中文', "中文", {
     observability: "可观测性",
     "sample-feature": "示例插件",
     "registry-browse": "镜像仓库",
-    onboarding: "环境设置"
+    onboarding: "环境设置",
+    posture: "安全态势",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD（Alpha）",
+    "proxmox-resources": "Proxmox（Alpha）",
+    "migration-vm": "虚拟机迁移（Alpha）",
+    "kubernetes-resources": "Kubernetes（Alpha）",
+    "nomad-jobs": "Nomad（Alpha）",
+    "vsphere-resources": "vSphere / ESXi（Alpha）"
   },
   login: {
     title: "Docker Dash",

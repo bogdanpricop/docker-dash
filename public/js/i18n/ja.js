@@ -82,7 +82,16 @@ i18n.register('ja', 'JP', "日本語", {
     observability: "可観測性",
     "sample-feature": "サンプルプラグイン",
     "registry-browse": "レジストリ",
-    onboarding: "環境セットアップ"
+    onboarding: "環境セットアップ",
+    posture: "セキュリティ態勢",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD（アルファ）",
+    "proxmox-resources": "Proxmox（アルファ）",
+    "migration-vm": "VM 移行（アルファ）",
+    "kubernetes-resources": "Kubernetes（アルファ）",
+    "nomad-jobs": "Nomad（アルファ）",
+    "vsphere-resources": "vSphere / ESXi（アルファ）"
   },
   login: {
     title: "Docker Dash",

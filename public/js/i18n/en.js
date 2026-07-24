@@ -41,6 +41,8 @@ i18n.register('en', 'EN', 'English', {
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare', timeline: 'Timeline',
     notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     logs: 'Log Explorer', howto: 'How-To', observability: 'Observability', 'sample-feature': 'Sample Plugin', 'registry-browse': 'Registries', onboarding: 'Environment Setup',
+    posture: 'Posture', blueprints: 'Reconciler', copilot: 'Copilot',
+    'incus-instances': 'Incus / LXD (alpha)', 'proxmox-resources': 'Proxmox (alpha)', 'migration-vm': 'VM Migration (alpha)', 'kubernetes-resources': 'Kubernetes (alpha)', 'nomad-jobs': 'Nomad (alpha)', 'vsphere-resources': 'vSphere / ESXi (alpha)',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
     sectionCompute: 'Compute', sectionStorage: 'Storage', sectionNetworking: 'Networking', sectionMonitor: 'Monitor',
   },

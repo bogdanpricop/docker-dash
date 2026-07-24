@@ -82,7 +82,16 @@ i18n.register('ko', 'KR', "한국어", {
     observability: "관측성",
     "sample-feature": "샘플 플러그인",
     "registry-browse": "레지스트리",
-    onboarding: "환경 설정"
+    onboarding: "환경 설정",
+    posture: "보안 태세",
+    blueprints: "Reconciler",
+    copilot: "Copilot",
+    "incus-instances": "Incus / LXD (알파)",
+    "proxmox-resources": "Proxmox (알파)",
+    "migration-vm": "VM 마이그레이션 (알파)",
+    "kubernetes-resources": "Kubernetes (알파)",
+    "nomad-jobs": "Nomad (알파)",
+    "vsphere-resources": "vSphere / ESXi (알파)"
   },
   login: {
     title: "Docker Dash",
