@@ -1867,7 +1867,13 @@ i18n.register('fr', 'FR', "Français", {
       exportNotesTitle: "Non exporté",
       exportNotesIntro: "Ces éléments de la stack n'ont pas pu être reconstruits en YAML — réajoutez-les à la main si vous redéployez :",
       editRedeploy: "Modifier et redéployer",
-      exportFailed: "Impossible de lire la stack : {{message}}"
+      exportFailed: "Impossible de lire la stack : {{message}}",
+      promoteExisting: "Promouvoir une stack existante",
+      promoteTitle: "Déployer une stack existante sur le Swarm",
+      promoteIntro: "Choisissez une stack Compose mono-hôte en cours d'exécution sur cet hôte pour la promouvoir en stack Swarm. Vous vérifierez le YAML généré (et les avertissements) avant le déploiement.",
+      promoteSelectLabel: "Stack Compose",
+      promoteLoadBtn: "Charger et vérifier",
+      promoteNoStacks: "Aucune stack Compose mono-hôte en cours d'exécution sur cet hôte à promouvoir."
     }
   },
   errors: {

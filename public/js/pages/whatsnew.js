@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.21.1',
+      date: '2026-07-24',
+      title: 'Swarm — promote an existing stack from the Stacks tab',
+      changes: [
+        { type: 'improvement', text: 'The Swarm → Stacks tab has a new “Promote existing stack” button next to “Deploy Stack from YAML”. It opens a dialog listing the single-host Compose stacks running on the host — pick one and its compose YAML is loaded and pre-filled into the Deploy Stack dialog (with the swarm “skipped fields” warnings) for review before deploying. Previously this was only reachable from the Stacks page by opening a stack; now you can seed the swarm straight from the Swarm page, even when it has no stacks yet.' },
+      ],
+    },
+    {
       version: '8.21.0',
       date: '2026-07-24',
       title: 'Swarm — export compose YAML from an existing stack',

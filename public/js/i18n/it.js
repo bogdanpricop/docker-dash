@@ -1867,7 +1867,13 @@ i18n.register('it', 'IT', "Italiano", {
       exportNotesTitle: "Non esportato",
       exportNotesIntro: "Queste parti dello stack non sono state ricostruite in YAML — riaggiungile a mano se ridistribuisci:",
       editRedeploy: "Modifica e ridistribuisci",
-      exportFailed: "Impossibile leggere lo stack: {{message}}"
+      exportFailed: "Impossibile leggere lo stack: {{message}}",
+      promoteExisting: "Promuovi stack esistente",
+      promoteTitle: "Distribuisci uno stack esistente nello Swarm",
+      promoteIntro: "Scegli uno stack Compose single-host in esecuzione su questo host da promuovere a stack Swarm. Rivedrai lo YAML generato (e gli avvisi) prima della distribuzione.",
+      promoteSelectLabel: "Stack Compose",
+      promoteLoadBtn: "Carica e rivedi",
+      promoteNoStacks: "Nessuno stack Compose single-host in esecuzione su questo host da promuovere."
     }
   },
   errors: {

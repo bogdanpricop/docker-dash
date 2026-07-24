@@ -1147,6 +1147,12 @@ i18n.register('en', 'EN', 'English', {
       exportNotesIntro: 'These parts of the stack couldn\'t be reconstructed into YAML — re-add them by hand if you redeploy:',
       editRedeploy: 'Edit & redeploy',
       exportFailed: 'Could not read the stack: {{message}}',
+      promoteExisting: 'Promote existing stack',
+      promoteTitle: 'Deploy an existing stack to Swarm',
+      promoteIntro: 'Pick a single-host Compose stack running on this host to promote to a Swarm stack. You\'ll review the generated YAML (and any warnings) before it\'s deployed.',
+      promoteSelectLabel: 'Compose stack',
+      promoteLoadBtn: 'Load & review',
+      promoteNoStacks: 'No single-host Compose stacks are running on this host to promote.',
     },
     // ── Onboarding & Provisioning Wizard (v8.15.0) ──
     onboarding: {

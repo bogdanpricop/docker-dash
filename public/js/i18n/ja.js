@@ -1867,7 +1867,13 @@ i18n.register('ja', 'JP', "日本語", {
       exportNotesTitle: "エクスポート対象外",
       exportNotesIntro: "スタックのこれらの部分は YAML に再構築できませんでした。再デプロイする場合は手動で追加してください:",
       editRedeploy: "編集して再デプロイ",
-      exportFailed: "スタックを読み取れませんでした: {{message}}"
+      exportFailed: "スタックを読み取れませんでした: {{message}}",
+      promoteExisting: "既存スタックを昇格",
+      promoteTitle: "既存のスタックを Swarm にデプロイ",
+      promoteIntro: "このホストで実行中の単一ホスト Compose スタックを選んで、Swarm スタックに昇格します。デプロイ前に生成された YAML（と警告）を確認できます。",
+      promoteSelectLabel: "Compose スタック",
+      promoteLoadBtn: "読み込んで確認",
+      promoteNoStacks: "このホストには昇格できる単一ホスト Compose スタックが実行されていません。"
     }
   },
   errors: {

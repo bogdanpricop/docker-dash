@@ -1867,7 +1867,13 @@ i18n.register('de', 'DE', "Deutsch", {
       exportNotesTitle: "Nicht exportiert",
       exportNotesIntro: "Diese Teile des Stacks konnten nicht in YAML rekonstruiert werden — fügen Sie sie beim erneuten Bereitstellen von Hand wieder hinzu:",
       editRedeploy: "Bearbeiten & neu bereitstellen",
-      exportFailed: "Stack konnte nicht gelesen werden: {{message}}"
+      exportFailed: "Stack konnte nicht gelesen werden: {{message}}",
+      promoteExisting: "Vorhandenen Stack übernehmen",
+      promoteTitle: "Einen vorhandenen Stack im Swarm bereitstellen",
+      promoteIntro: "Wählen Sie einen auf diesem Host laufenden Single-Host-Compose-Stack, um ihn zu einem Swarm-Stack zu befördern. Sie prüfen das generierte YAML (und etwaige Warnungen), bevor es bereitgestellt wird.",
+      promoteSelectLabel: "Compose-Stack",
+      promoteLoadBtn: "Laden & prüfen",
+      promoteNoStacks: "Auf diesem Host laufen keine Single-Host-Compose-Stacks, die befördert werden könnten."
     }
   },
   errors: {

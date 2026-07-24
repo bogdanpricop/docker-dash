@@ -1867,7 +1867,13 @@ i18n.register('es', 'ES', "Español", {
       exportNotesTitle: "No exportado",
       exportNotesIntro: "Estas partes del stack no se pudieron reconstruir en YAML — vuelve a añadirlas a mano si lo reimplementas:",
       editRedeploy: "Editar y reimplementar",
-      exportFailed: "No se pudo leer el stack: {{message}}"
+      exportFailed: "No se pudo leer el stack: {{message}}",
+      promoteExisting: "Promover stack existente",
+      promoteTitle: "Desplegar un stack existente en el Swarm",
+      promoteIntro: "Elige un stack de Compose de un solo host que se esté ejecutando en este host para promoverlo a un stack de Swarm. Revisarás el YAML generado (y las advertencias) antes de desplegarlo.",
+      promoteSelectLabel: "Stack de Compose",
+      promoteLoadBtn: "Cargar y revisar",
+      promoteNoStacks: "No hay stacks de Compose de un solo host en ejecución en este host para promover."
     }
   },
   errors: {

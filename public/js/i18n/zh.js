@@ -1867,7 +1867,13 @@ i18n.register('zh', '中文', "中文", {
       exportNotesTitle: "未导出",
       exportNotesIntro: "堆栈的这些部分无法重建为 YAML — 如需重新部署请手动添加：",
       editRedeploy: "编辑并重新部署",
-      exportFailed: "无法读取堆栈：{{message}}"
+      exportFailed: "无法读取堆栈：{{message}}",
+      promoteExisting: "提升现有堆栈",
+      promoteTitle: "将现有堆栈部署到 Swarm",
+      promoteIntro: "选择此主机上正在运行的单主机 Compose 堆栈，将其提升为 Swarm 堆栈。部署前你可以查看生成的 YAML（及警告）。",
+      promoteSelectLabel: "Compose 堆栈",
+      promoteLoadBtn: "加载并查看",
+      promoteNoStacks: "此主机上没有可提升的单主机 Compose 堆栈在运行。"
     }
   },
   errors: {

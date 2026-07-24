@@ -1904,7 +1904,13 @@ i18n.register('ro', 'RO', "Română", {
       exportNotesTitle: "Neexportat",
       exportNotesIntro: "Aceste părți ale stack-ului nu au putut fi reconstruite în YAML — adaugă-le manual dacă redeployezi:",
       editRedeploy: "Editează și redeployează",
-      exportFailed: "Nu s-a putut citi stack-ul: {{message}}"
+      exportFailed: "Nu s-a putut citi stack-ul: {{message}}",
+      promoteExisting: "Promovează stack existent",
+      promoteTitle: "Deployează un stack existent în Swarm",
+      promoteIntro: "Alege un stack Compose single-host care rulează pe acest host pentru a-l promova într-un stack Swarm. Vei revizui YAML-ul generat (și avertismentele) înainte de deploy.",
+      promoteSelectLabel: "Stack Compose",
+      promoteLoadBtn: "Încarcă și revizuiește",
+      promoteNoStacks: "Niciun stack Compose single-host nu rulează pe acest host pentru a fi promovat."
     }
   }
 });

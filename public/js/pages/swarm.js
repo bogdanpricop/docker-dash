@@ -67,14 +67,18 @@ const SwarmPage = {
     if (!status.active) { el.innerHTML = '<div class="empty-msg">Swarm is not active on this host.</div>'; return; }
     const stacks = await Api.getSwarmStacks();
     const deployBtn = `
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">
+        <button class="btn btn-sm btn-secondary" id="stack-promote-btn" title="${Utils.escapeHtml(i18n.t('pages.swarm.promoteTitle'))}">
+          <i class="fas fa-project-diagram"></i> ${i18n.t('pages.swarm.promoteExisting')}
+        </button>
         <button class="btn btn-sm btn-primary" id="stack-deploy-btn">
           <i class="fas fa-rocket"></i> Deploy Stack from YAML
         </button>
       </div>`;
     if (!stacks.length) {
-      el.innerHTML = deployBtn + `<div class="empty-msg"><i class="fas fa-layer-group" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px"></i>No stacks deployed. Click <em>Deploy Stack from YAML</em> above or use <code>docker stack deploy</code> from the host shell.</div>`;
+      el.innerHTML = deployBtn + `<div class="empty-msg"><i class="fas fa-layer-group" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px"></i>No stacks deployed. Click <em>Deploy Stack from YAML</em> above, promote an existing single-host stack, or use <code>docker stack deploy</code> from the host shell.</div>`;
       el.querySelector('#stack-deploy-btn').addEventListener('click', () => this._showDeployStackModal());
+      el.querySelector('#stack-promote-btn').addEventListener('click', () => this._showPromoteStackModal());
       return;
     }
     const rows = stacks.map(s => {
@@ -124,6 +128,7 @@ const SwarmPage = {
       </div>
     `;
     el.querySelector('#stack-deploy-btn').addEventListener('click', () => this._showDeployStackModal());
+    el.querySelector('#stack-promote-btn').addEventListener('click', () => this._showPromoteStackModal());
     el.querySelectorAll('[data-stack-yaml]').forEach(btn => {
       btn.addEventListener('click', () => this._showStackComposeModal(btn.dataset.stackYaml));
     });
@@ -216,6 +221,75 @@ const SwarmPage = {
       if (loadingEl) loadingEl.textContent = i18n.t('pages.swarm.exportFailed', { message: err.message });
       Toast.error(err.message);
     }
+  },
+
+  // v8.21.1 — Promote an existing single-host Compose stack INTO the swarm,
+  // straight from the Swarm Stacks tab (no need to hop to #/stacks and open a
+  // stack first). A picker lists the running compose stacks; the chosen one's
+  // YAML is loaded via the existing compose-config endpoint and handed to the
+  // Deploy Stack dialog (pre-filled, source=local-stack) for review — the same
+  // path as the per-stack "Deploy to Swarm" action on the Stacks page.
+  async _showPromoteStackModal() {
+    const esc = Utils.escapeHtml;
+    let stacks = [];
+    try { stacks = await Api.getStacks(); }
+    catch (err) { Toast.error(err.message); return; }
+    stacks = (stacks || []).filter(s => s && s.name);
+
+    const options = stacks.map(s => {
+      const counts = (s.running != null && s.total != null) ? ` (${s.running}/${s.total})` : '';
+      return `<option value="${esc(s.name)}">${esc(s.name)}${counts}</option>`;
+    }).join('');
+
+    const body = stacks.length ? `
+      <p class="text-sm text-muted" style="margin:0 0 12px">${i18n.t('pages.swarm.promoteIntro')}</p>
+      <div class="form-group">
+        <label>${i18n.t('pages.swarm.promoteSelectLabel')}</label>
+        <select id="promote-stack-select" class="form-control">${options}</select>
+      </div>
+    ` : `<div class="empty-msg">${i18n.t('pages.swarm.promoteNoStacks')}</div>`;
+
+    const html = `
+      <div class="modal-header">
+        <h3><i class="fas fa-project-diagram" style="margin-right:8px;color:var(--accent)"></i>${i18n.t('pages.swarm.promoteTitle')}</h3>
+        <button class="modal-close-btn" id="promote-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">${body}</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="promote-cancel">${i18n.t('common.cancel')}</button>
+        ${stacks.length ? `<button class="btn btn-primary" id="promote-go"><i class="fas fa-arrow-right"></i> ${i18n.t('pages.swarm.promoteLoadBtn')}</button>` : ''}
+      </div>
+    `;
+    Modal.open(html, { width: '520px' });
+    const close = () => Modal.close();
+    Modal._content.querySelector('#promote-x').addEventListener('click', close);
+    Modal._content.querySelector('#promote-cancel').addEventListener('click', close);
+
+    const goBtn = Modal._content.querySelector('#promote-go');
+    if (!goBtn) return;
+    const resetGo = () => { goBtn.disabled = false; goBtn.innerHTML = `<i class="fas fa-arrow-right"></i> ${i18n.t('pages.swarm.promoteLoadBtn')}`; };
+    goBtn.addEventListener('click', async () => {
+      const sel = Modal._content.querySelector('#promote-stack-select');
+      const name = sel ? sel.value : '';
+      if (!name) return;
+      goBtn.disabled = true;
+      goBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.swarm.loadingCompose')}`;
+      let cfg;
+      try { cfg = await Api.composeConfig(name); }
+      catch (err) { Toast.error(i18n.t('pages.swarm.composeLoadFailed', { message: err.message })); resetGo(); return; }
+      const compose = (cfg && cfg.config) ? cfg.config : '';
+      if (!compose.trim()) {
+        Toast.error(i18n.t('pages.swarm.composeLoadFailed', { message: i18n.t('pages.stacks.noComposeConfig') }));
+        resetGo();
+        return;
+      }
+      // Swarm stack names must match [a-zA-Z0-9][a-zA-Z0-9._-]{0,62}.
+      let swarmName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      if (!/^[a-zA-Z0-9]/.test(swarmName)) swarmName = 's_' + swarmName;
+      swarmName = swarmName.slice(0, 63);
+      close();
+      this._showDeployStackModal({ name: swarmName, compose, source: 'local-stack' });
+    });
   },
 
   // v8.8.3 — Deploy a compose YAML as a Swarm stack.

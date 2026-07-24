@@ -2,6 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.21.1] - 2026-07-24 — Swarm: promote an existing stack from the Stacks tab
+
+You can now push an existing single-host Compose stack into the swarm **without leaving the Swarm
+page**. The Swarm → Stacks tab gains a **Promote existing stack** button next to *Deploy Stack from
+YAML*.
+
+- **Picker modal.** The button opens a dialog listing the single-host Compose stacks running on the
+  host (name + running/total). Pick one → its compose YAML is loaded (via the existing
+  compose-config resolver) and handed to the *Deploy Stack* dialog **pre-filled** so you review the
+  YAML and the swarm "skipped fields" warnings before confirming.
+- Previously this promotion was only reachable from `#/stacks` → open a stack → *Deploy to Swarm*.
+  Same underlying flow (audited as `swarm_stack_from_local`), now also available where you'd expect
+  it — on the Swarm page. Available in the empty state too, so a fresh swarm can be seeded from a
+  running compose stack in two clicks.
+- Frontend-only: reuses the existing `getStacks` / `composeConfig` endpoints and the deploy dialog.
+  No backend, database, or dependency changes. 6 new strings in all 11 locales.
+
 ## [8.21.0] - 2026-07-24 — Swarm: export compose YAML from an existing stack
 
 The Stacks tab now works both ways. Alongside **Deploy Stack from YAML** (which *writes* a stack from

@@ -1867,7 +1867,13 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
       exportNotesTitle: "ngeHbe'",
       exportNotesIntro: "vam stack Dotlh YAML-Daq chenmoHlaHbe' — DaH Dalanqa'chugh pa' yIchel:",
       editRedeploy: "yIchoH 'ej yIlanqa'",
-      exportFailed: "stack laDlaHbe': {{message}}"
+      exportFailed: "stack laDlaHbe': {{message}}",
+      promoteExisting: "stack tu'lu'bogh yInob",
+      promoteTitle: "stack tu'lu'bogh Swarm-Daq lan",
+      promoteIntro: "vam host-Daq qetbogh single-host Compose stack yITIv, Swarm stack-Daq yInob. lan pa', YAML chenmoHlu'bogh ('ej ghuHmoHghachmey) yInuD.",
+      promoteSelectLabel: "Compose stack",
+      promoteLoadBtn: "yISam 'ej yInuD",
+      promoteNoStacks: "vam host-Daq single-host Compose stack qetbe', vaj noblu'laHbe'."
     }
   },
   errors: {

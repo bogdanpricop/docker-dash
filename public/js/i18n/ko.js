@@ -1867,7 +1867,13 @@ i18n.register('ko', 'KR', "한국어", {
       exportNotesTitle: "내보내지 않음",
       exportNotesIntro: "스택의 이 부분은 YAML로 재구성할 수 없습니다 — 다시 배포하려면 수동으로 추가하세요:",
       editRedeploy: "편집 후 재배포",
-      exportFailed: "스택을 읽을 수 없습니다: {{message}}"
+      exportFailed: "스택을 읽을 수 없습니다: {{message}}",
+      promoteExisting: "기존 스택 승격",
+      promoteTitle: "기존 스택을 Swarm에 배포",
+      promoteIntro: "이 호스트에서 실행 중인 단일 호스트 Compose 스택을 선택하여 Swarm 스택으로 승격합니다. 배포 전에 생성된 YAML(및 경고)을 검토합니다.",
+      promoteSelectLabel: "Compose 스택",
+      promoteLoadBtn: "불러와서 검토",
+      promoteNoStacks: "이 호스트에서 승격할 단일 호스트 Compose 스택이 실행 중이지 않습니다."
     }
   },
   errors: {
