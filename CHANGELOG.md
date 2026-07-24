@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.21.2] - 2026-07-24 — Fix: promote/redeploy dialog flashed open then closed itself
+
+Picking a stack in **Promote existing stack** (8.21.1) opened the Deploy dialog for a split second,
+then it vanished on its own — same for **Edit & redeploy** in the View YAML dialog (8.21.0).
+
+- **Root cause.** `Modal` is a singleton: `Modal.close()` schedules a 200 ms cleanup timeout that
+  hides the overlay and clears its content. Both flows called `Modal.close()` and *then* immediately
+  opened the Deploy dialog — so ~200 ms later the stale close-timeout wiped the dialog that had just
+  opened.
+- **Fix.** Don't `Modal.close()` before chaining to the Deploy dialog — since the modal is a
+  singleton, opening the next dialog already replaces the content in place. The Deploy dialog now
+  stays open for review. Frontend-only; no backend/db/deps.
+
 ## [8.21.1] - 2026-07-24 — Swarm: promote an existing stack from the Stacks tab
 
 You can now push an existing single-host Compose stack into the swarm **without leaving the Swarm

@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.21.2',
+      date: '2026-07-24',
+      title: 'Fix — promote/redeploy dialog no longer flashes and closes',
+      changes: [
+        { type: 'fix', text: 'After picking a stack in “Promote existing stack” (and in “Edit & redeploy” from View YAML), the Deploy dialog opened for a split second and then closed by itself. It was a modal timing bug — the previous dialog’s close cleanup fired after the new one opened and wiped it. The Deploy dialog now stays open so you can review and confirm.' },
+      ],
+    },
+    {
       version: '8.21.1',
       date: '2026-07-24',
       title: 'Swarm — promote an existing stack from the Stacks tab',

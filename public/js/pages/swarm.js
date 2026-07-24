@@ -211,8 +211,10 @@ const SwarmPage = {
       if (redeployBtn) {
         redeployBtn.style.display = '';
         redeployBtn.addEventListener('click', () => {
-          close();
-          // _standalone isn't a real stack name — let the operator name it.
+          // Don't Modal.close() first — the singleton's 200ms close cleanup
+          // would wipe the deploy modal we open right after. Opening replaces
+          // the content in place. (_standalone isn't a real stack name — let
+          // the operator name it.)
           this._showDeployStackModal({ name: isStandalone ? '' : name, compose });
         });
       }
@@ -287,7 +289,9 @@ const SwarmPage = {
       let swarmName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
       if (!/^[a-zA-Z0-9]/.test(swarmName)) swarmName = 's_' + swarmName;
       swarmName = swarmName.slice(0, 63);
-      close();
+      // Modal is a singleton: DON'T Modal.close() here — its 200ms cleanup
+      // timeout would fire after the deploy modal opens and wipe it (modal
+      // flashes then vanishes). Opening replaces the content in place.
       this._showDeployStackModal({ name: swarmName, compose, source: 'local-stack' });
     });
   },
