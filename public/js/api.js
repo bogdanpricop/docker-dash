@@ -443,6 +443,9 @@ const Api = {
   // 'local-stack' tags a promotion of an existing single-host compose stack
   // (bridge b) for the audit trail; omitted for a raw YAML paste.
   deploySwarmStack(name, compose, source) { return this.post(`/swarm/stacks/${encodeURIComponent(name)}`, source ? { compose, source } : { compose }); },
+  // v8.21.0 — export a compose YAML reconstructed from a running stack's
+  // services (inverse of deploy). Admin-only; returns { name, compose, serviceCount, notes }.
+  getSwarmStackCompose(name)          { return this.get(`/swarm/stacks/${encodeURIComponent(name)}/compose`); },
 
   // ─── Incus (v8.9.0-alpha.2; hostId explicit as of v8.9.23) ───
   // Each call carries the Incus/LXD host id so the page works regardless of the

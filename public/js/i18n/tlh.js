@@ -1860,7 +1860,14 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
       deriveFailed: "container laDlaHbe': {{message}}",
       composeLoadFailed: "compose file laDlaHbe': {{message}}",
       initFailedTitle: "Swarm taghmoH Qagh",
-      initFailedHint: "Dung Qagh yISampu', vaj Initialize Swarm yI'uy' latlh."
+      initFailedHint: "Dung Qagh yISampu', vaj Initialize Swarm yI'uy' latlh.",
+      viewYaml: "YAML yIlaD",
+      exportTitle: "Compose YAML",
+      exporting: "stack laD…",
+      exportNotesTitle: "ngeHbe'",
+      exportNotesIntro: "vam stack Dotlh YAML-Daq chenmoHlaHbe' — DaH Dalanqa'chugh pa' yIchel:",
+      editRedeploy: "yIchoH 'ej yIlanqa'",
+      exportFailed: "stack laDlaHbe': {{message}}"
     }
   },
   errors: {

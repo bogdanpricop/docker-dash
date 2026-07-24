@@ -215,6 +215,7 @@ const auditActionsList = [
   "swarm_service_from_container",
   "swarm_service_remove",
   "swarm_service_scale",
+  "swarm_stack_export",
   "swarm_stack_from_local",
   "system_prune",
   "template_create",

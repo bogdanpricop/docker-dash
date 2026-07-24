@@ -1860,7 +1860,14 @@ i18n.register('de', 'DE', "Deutsch", {
       deriveFailed: "Container konnte nicht gelesen werden: {{message}}",
       composeLoadFailed: "Compose-Datei konnte nicht geladen werden: {{message}}",
       initFailedTitle: "Swarm-Initialisierung fehlgeschlagen",
-      initFailedHint: "Beheben Sie das oben beschriebene Problem und klicken Sie dann erneut auf „Initialize Swarm“."
+      initFailedHint: "Beheben Sie das oben beschriebene Problem und klicken Sie dann erneut auf „Initialize Swarm“.",
+      viewYaml: "YAML anzeigen",
+      exportTitle: "Compose-YAML",
+      exporting: "Stack wird gelesen…",
+      exportNotesTitle: "Nicht exportiert",
+      exportNotesIntro: "Diese Teile des Stacks konnten nicht in YAML rekonstruiert werden — fügen Sie sie beim erneuten Bereitstellen von Hand wieder hinzu:",
+      editRedeploy: "Bearbeiten & neu bereitstellen",
+      exportFailed: "Stack konnte nicht gelesen werden: {{message}}"
     }
   },
   errors: {

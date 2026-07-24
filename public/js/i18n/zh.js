@@ -1860,7 +1860,14 @@ i18n.register('zh', '中文', "中文", {
       deriveFailed: "无法读取容器：{{message}}",
       composeLoadFailed: "无法加载 compose 文件：{{message}}",
       initFailedTitle: "Swarm 初始化失败",
-      initFailedHint: "请解决上述问题，然后再次点击 Initialize Swarm。"
+      initFailedHint: "请解决上述问题，然后再次点击 Initialize Swarm。",
+      viewYaml: "查看 YAML",
+      exportTitle: "Compose YAML",
+      exporting: "正在读取堆栈…",
+      exportNotesTitle: "未导出",
+      exportNotesIntro: "堆栈的这些部分无法重建为 YAML — 如需重新部署请手动添加：",
+      editRedeploy: "编辑并重新部署",
+      exportFailed: "无法读取堆栈：{{message}}"
     }
   },
   errors: {

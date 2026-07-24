@@ -83,9 +83,11 @@ const SwarmPage = {
       const pct = s.replicas.desired
         ? Math.round((s.replicas.running / s.replicas.desired) * 100) : 0;
       const cls = pct >= 100 ? 'green' : pct >= 50 ? 'yellow' : 'red';
-      const actions = isStandalone
-        ? '<span class="text-dim">—</span>'
+      const viewYamlBtn = `<button class="btn btn-sm btn-secondary" data-stack-yaml="${Utils.escapeHtml(s.name)}"><i class="fas fa-file-code"></i> ${i18n.t('pages.swarm.viewYaml')}</button>`;
+      const removeBtn = isStandalone
+        ? ''
         : `<button class="btn btn-sm btn-danger" data-stack="${Utils.escapeHtml(s.name)}"><i class="fas fa-trash"></i> Remove</button>`;
+      const actions = `<div style="display:flex;gap:6px;justify-content:flex-end">${viewYamlBtn}${removeBtn}</div>`;
       return `
         <tr>
           <td><strong>${displayName}</strong></td>
@@ -122,6 +124,9 @@ const SwarmPage = {
       </div>
     `;
     el.querySelector('#stack-deploy-btn').addEventListener('click', () => this._showDeployStackModal());
+    el.querySelectorAll('[data-stack-yaml]').forEach(btn => {
+      btn.addEventListener('click', () => this._showStackComposeModal(btn.dataset.stackYaml));
+    });
     el.querySelectorAll('[data-stack]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = btn.dataset.stack;
@@ -137,6 +142,80 @@ const SwarmPage = {
         } catch (err) { Toast.error(err.message); }
       });
     });
+  },
+
+  // v8.21.0 — Read/export the compose YAML of an existing stack (inverse of
+  // "Deploy Stack from YAML"). Fetches the server-reconstructed YAML, shows it
+  // read-only with the "not exported" notes, a Copy button, and an
+  // "Edit & redeploy" action that hands the YAML back to the deploy dialog.
+  async _showStackComposeModal(name) {
+    const esc = Utils.escapeHtml;
+    const isStandalone = name === '_standalone';
+    const displayName = isStandalone ? 'Standalone services' : name;
+    const html = `
+      <div class="modal-header">
+        <h3><i class="fas fa-file-code" style="margin-right:8px;color:var(--accent)"></i>${i18n.t('pages.swarm.exportTitle')} — ${esc(displayName)}</h3>
+        <button class="modal-close-btn" id="stack-yaml-x"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="modal-body">
+        <div id="stack-yaml-loading" class="text-muted text-sm" style="padding:12px 0"><i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>${i18n.t('pages.swarm.exporting')}</div>
+        <div id="stack-yaml-body" style="display:none">
+          <div id="stack-yaml-notes"></div>
+          <textarea id="stack-yaml-text" class="form-control" rows="18" readonly spellcheck="false" style="font-family:var(--mono);font-size:12px;line-height:1.5"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="stack-yaml-close">${i18n.t('common.close')}</button>
+        <button class="btn btn-secondary" id="stack-yaml-copy" style="display:none"><i class="fas fa-copy"></i> ${i18n.t('common.copy')}</button>
+        <button class="btn btn-primary" id="stack-yaml-redeploy" style="display:none"><i class="fas fa-rocket"></i> ${i18n.t('pages.swarm.editRedeploy')}</button>
+      </div>
+    `;
+    Modal.open(html, { width: '720px' });
+    const close = () => Modal.close();
+    Modal._content.querySelector('#stack-yaml-x').addEventListener('click', close);
+    Modal._content.querySelector('#stack-yaml-close').addEventListener('click', close);
+
+    try {
+      const r = await Api.getSwarmStackCompose(name);
+      const compose = r.compose || '';
+      const loadingEl = Modal._content.querySelector('#stack-yaml-loading');
+      const bodyEl = Modal._content.querySelector('#stack-yaml-body');
+      const textEl = Modal._content.querySelector('#stack-yaml-text');
+      const notesEl = Modal._content.querySelector('#stack-yaml-notes');
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (bodyEl) bodyEl.style.display = 'block';
+      if (textEl) textEl.value = compose;
+      if (notesEl && Array.isArray(r.notes) && r.notes.length) {
+        notesEl.innerHTML = `
+          <div style="background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.35);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px">
+            <div style="font-weight:600;margin-bottom:8px;color:var(--yellow)"><i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>${i18n.t('pages.swarm.exportNotesTitle')}</div>
+            <p class="text-sm text-muted" style="margin:0 0 8px">${i18n.t('pages.swarm.exportNotesIntro')}</p>
+            <ul style="margin:0;padding-left:18px" class="text-sm">
+              ${r.notes.map(n => `<li style="margin-bottom:4px">${esc(n)}</li>`).join('')}
+            </ul>
+          </div>`;
+      }
+      const copyBtn = Modal._content.querySelector('#stack-yaml-copy');
+      const redeployBtn = Modal._content.querySelector('#stack-yaml-redeploy');
+      if (copyBtn) {
+        copyBtn.style.display = '';
+        copyBtn.addEventListener('click', () => {
+          Utils.copyToClipboard(compose).then(() => Toast.success(i18n.t('common.copied')));
+        });
+      }
+      if (redeployBtn) {
+        redeployBtn.style.display = '';
+        redeployBtn.addEventListener('click', () => {
+          close();
+          // _standalone isn't a real stack name — let the operator name it.
+          this._showDeployStackModal({ name: isStandalone ? '' : name, compose });
+        });
+      }
+    } catch (err) {
+      const loadingEl = Modal._content.querySelector('#stack-yaml-loading');
+      if (loadingEl) loadingEl.textContent = i18n.t('pages.swarm.exportFailed', { message: err.message });
+      Toast.error(err.message);
+    }
   },
 
   // v8.8.3 — Deploy a compose YAML as a Swarm stack.

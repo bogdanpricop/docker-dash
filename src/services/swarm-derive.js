@@ -160,4 +160,142 @@ function deriveServiceSpecFromInspect(inspect) {
   return { spec, warnings };
 }
 
-module.exports = { deriveServiceSpecFromInspect, sanitizeName, mapRestartPolicy, derivePorts };
+// ════════════════════════════════════════════════════════════════
+// Reverse direction: swarm stack → compose YAML object
+// ════════════════════════════════════════════════════════════════
+//
+// Given the running swarm services that belong to one stack (same
+// com.docker.stack.namespace label), reconstruct a compose-style object that
+// the existing "Deploy Stack from YAML" flow could re-consume. This is the
+// inverse of the POST /stacks/:name deploy mapping and deliberately mirrors
+// exactly the fields that flow supports — nothing more — so a round-trip
+// (export → redeploy) is faithful for the supported surface. Anything that
+// doesn't round-trip (volumes, secrets, configs, custom networks,
+// healthchecks) is reported in `notes` instead of being silently dropped.
+//
+// Pure function (service list in → { services, notes } out): the route wraps
+// it with a header comment and YAML.stringify.
+
+/** Strip compose/stack bookkeeping labels; return a plain {k:v} object. */
+function cleanServiceLabels(labels) {
+  const out = {};
+  for (const [k, v] of Object.entries(labels || {})) {
+    if (INTERNAL_LABEL_PREFIXES.some(p => k.startsWith(p))) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+/** Derive "published:target[/proto]" port strings from a service's endpoint. */
+function derivePublishedPorts(svc) {
+  const spec = svc.Spec || {};
+  const list = (svc.Endpoint && Array.isArray(svc.Endpoint.Ports) && svc.Endpoint.Ports)
+    || (spec.EndpointSpec && Array.isArray(spec.EndpointSpec.Ports) && spec.EndpointSpec.Ports)
+    || [];
+  const out = [];
+  const seen = new Set();
+  for (const p of list) {
+    if (!p || !p.PublishedPort || !p.TargetPort) continue; // internal-only, skip
+    const proto = (p.Protocol && p.Protocol !== 'tcp') ? `/${p.Protocol}` : '';
+    const s = `${p.PublishedPort}:${p.TargetPort}${proto}`;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+/**
+ * @param {object[]} serviceInspects  services from listServices() in this stack
+ * @param {string}   stackName        namespace to strip from "<stack>_<svc>" names
+ *                                     (pass '' for the synthetic _standalone bucket)
+ * @returns {{ services: object, notes: string[] }}
+ */
+function deriveComposeFromStackServices(serviceInspects, stackName) {
+  if (!Array.isArray(serviceInspects)) {
+    throw new Error('deriveComposeFromStackServices: an array of services is required');
+  }
+  const notes = [];
+  const services = {};
+
+  for (const svc of serviceInspects) {
+    const spec = svc.Spec || {};
+    const fullName = spec.Name || svc.ID || 'service';
+    const key = (stackName && fullName.startsWith(stackName + '_'))
+      ? fullName.slice(stackName.length + 1)
+      : fullName;
+
+    const tt = spec.TaskTemplate || {};
+    const cs = tt.ContainerSpec || {};
+    const out = {};
+
+    // image (strip a pinned @sha256 digest so the YAML stays human-editable)
+    out.image = String(cs.Image || '').replace(/@sha256:[a-f0-9]+$/i, '');
+
+    // command: compose `command:` lands in ContainerSpec.Args on a real stack
+    // deploy; this app's own deploy path uses Command. Prefer Args, fall back
+    // to Command so both round-trip.
+    const cmd = (Array.isArray(cs.Args) && cs.Args.length) ? cs.Args
+      : (Array.isArray(cs.Command) && cs.Command.length) ? cs.Command : null;
+    if (cmd) out.command = cmd.slice();
+
+    if (Array.isArray(cs.Env) && cs.Env.length) out.environment = cs.Env.slice();
+
+    const ports = derivePublishedPorts(svc);
+    if (ports.length) out.ports = ports;
+
+    const labels = cleanServiceLabels({ ...(cs.Labels || {}), ...(spec.Labels || {}) });
+    if (Object.keys(labels).length) out.labels = labels;
+
+    // deploy: mode/replicas, restart_policy (only when non-default), placement
+    const deploy = {};
+    const mode = spec.Mode || {};
+    if (mode.Global) {
+      deploy.mode = 'global';
+    } else {
+      deploy.replicas = (mode.Replicated && typeof mode.Replicated.Replicas === 'number')
+        ? mode.Replicated.Replicas : 1;
+    }
+    const rp = tt.RestartPolicy;
+    if (rp) {
+      const cond = rp.Condition || 'any';
+      const delaySec = (typeof rp.Delay === 'number') ? Math.round(rp.Delay / 1e9) : undefined;
+      const maxAtt = rp.MaxAttempts || 0;
+      // The deploy default is { any, 5s, 0 } — only emit when it differs.
+      if (cond !== 'any' || maxAtt !== 0 || (delaySec !== undefined && delaySec !== 5)) {
+        deploy.restart_policy = { condition: cond };
+        if (delaySec !== undefined) deploy.restart_policy.delay = `${delaySec}s`;
+        if (maxAtt) deploy.restart_policy.max_attempts = maxAtt;
+      }
+    }
+    const constraints = tt.Placement && Array.isArray(tt.Placement.Constraints)
+      ? tt.Placement.Constraints : [];
+    if (constraints.length) deploy.placement = { constraints: constraints.slice() };
+    if (Object.keys(deploy).length) out.deploy = deploy;
+
+    // Notes for things the deploy flow can't round-trip.
+    if (Array.isArray(cs.Mounts) && cs.Mounts.length) {
+      notes.push(`${key}: has ${cs.Mounts.length} mount(s) (volumes/binds) — not included in the exported YAML; re-add them by hand if needed.`);
+    }
+    if (Array.isArray(tt.Networks) && tt.Networks.length) {
+      notes.push(`${key}: attached to custom network(s) — not exported (redeployed services join the default network).`);
+    }
+    if (Array.isArray(cs.Secrets) && cs.Secrets.length) notes.push(`${key}: uses secrets — not exported.`);
+    if (Array.isArray(cs.Configs) && cs.Configs.length) notes.push(`${key}: uses configs — not exported.`);
+    if (cs.Healthcheck) notes.push(`${key}: has a healthcheck — not exported.`);
+
+    services[key] = out;
+  }
+
+  return { services, notes };
+}
+
+module.exports = {
+  deriveServiceSpecFromInspect,
+  sanitizeName,
+  mapRestartPolicy,
+  derivePorts,
+  deriveComposeFromStackServices,
+  derivePublishedPorts,
+  cleanServiceLabels,
+};

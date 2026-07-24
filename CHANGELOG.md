@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.21.0] - 2026-07-24 — Swarm: export compose YAML from an existing stack
+
+The Stacks tab now works both ways. Alongside **Deploy Stack from YAML** (which *writes* a stack from
+YAML), each stack row gets a **View YAML** button that *reads* — it reconstructs an editable compose
+YAML from the running services and shows it in a dialog.
+
+- **View YAML per stack.** Reconstructs a compose from the stack's services — image (digest stripped),
+  command, environment, published ports, user labels (compose/stack bookkeeping stripped), and
+  `deploy` (replicas / global mode / non-default restart_policy / placement constraints). It's the
+  faithful inverse of the deploy mapping, so an export → redeploy round-trips for the supported
+  surface.
+- **Copy + Edit & redeploy.** Copy the YAML to the clipboard, or hand it straight to the
+  *Deploy Stack from YAML* dialog (pre-filled) to tweak and redeploy.
+- **Honest about gaps.** Anything the deploy flow can't round-trip — volumes/mounts, secrets,
+  configs, custom networks, healthchecks — is listed as a note in the dialog rather than silently
+  dropped.
+- **Admin-only + audited** (`swarm_stack_export`): the export embeds each service's environment,
+  which can carry sensitive values. New endpoint `GET /api/swarm/stacks/:name/compose`. Reverse
+  derivation is a pure, unit-tested function (`deriveComposeFromStackServices`). No new dependencies
+  (reuses the `yaml` package already used by deploy). 11 new tests; strings in all 11 locales.
+
 ## [8.20.4] - 2026-07-24 — Fix: sidebar showed raw i18n keys for 9 newer pages
 
 Nine navigation items rendered their raw key (e.g. `nav.posture`, `nav.copilot`) in the sidebar and

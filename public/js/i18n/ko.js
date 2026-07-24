@@ -1860,7 +1860,14 @@ i18n.register('ko', 'KR', "한국어", {
       deriveFailed: "컨테이너를 읽을 수 없습니다: {{message}}",
       composeLoadFailed: "compose 파일을 로드할 수 없습니다: {{message}}",
       initFailedTitle: "Swarm 초기화 실패",
-      initFailedHint: "위에 설명된 문제를 해결한 후 Initialize Swarm을 다시 클릭하세요."
+      initFailedHint: "위에 설명된 문제를 해결한 후 Initialize Swarm을 다시 클릭하세요.",
+      viewYaml: "YAML 보기",
+      exportTitle: "Compose YAML",
+      exporting: "스택 읽는 중…",
+      exportNotesTitle: "내보내지 않음",
+      exportNotesIntro: "스택의 이 부분은 YAML로 재구성할 수 없습니다 — 다시 배포하려면 수동으로 추가하세요:",
+      editRedeploy: "편집 후 재배포",
+      exportFailed: "스택을 읽을 수 없습니다: {{message}}"
     }
   },
   errors: {

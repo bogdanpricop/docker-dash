@@ -23,7 +23,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 
 const dockerService = require('../services/docker');
-const { deriveServiceSpecFromInspect, sanitizeName, mapRestartPolicy } = require('../services/swarm-derive');
+const { deriveServiceSpecFromInspect, sanitizeName, mapRestartPolicy, deriveComposeFromStackServices } = require('../services/swarm-derive');
 
 // ── Shared inspect fixture ──────────────────────────────────────
 function mockInspect(overrides = {}) {
@@ -271,5 +271,140 @@ describe('GET /api/swarm/services/from-container', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/swarm manager/i);
     expect(res.body.error).not.toMatch(/HTTP code/i);
+  });
+
+  // ── Stack → compose export (v8.21.0) ──
+  it('GET /stacks/:name/compose exports a compose YAML for the stack', async () => {
+    dockerService.getDocker.mockReturnValue({
+      listServices: async () => [{
+        ID: 'a',
+        Spec: {
+          Name: 'demo_web',
+          Labels: { 'com.docker.stack.namespace': 'demo' },
+          TaskTemplate: { ContainerSpec: { Image: 'nginx:1.25', Env: ['K=V'] } },
+          Mode: { Replicated: { Replicas: 2 } },
+        },
+        Endpoint: { Ports: [{ Protocol: 'tcp', PublishedPort: 8080, TargetPort: 80 }] },
+      }],
+    });
+    const res = await request(app).get('/api/swarm/stacks/demo/compose').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('demo');
+    expect(res.body.serviceCount).toBe(1);
+    expect(res.body.compose).toMatch(/services:/);
+    expect(res.body.compose).toMatch(/\bweb:/);      // stack prefix stripped
+    expect(res.body.compose).toMatch(/nginx:1\.25/);
+    expect(Array.isArray(res.body.notes)).toBe(true);
+  });
+
+  it('GET /stacks/:name/compose 404s when no services match the stack', async () => {
+    dockerService.getDocker.mockReturnValue({ listServices: async () => [] });
+    const res = await request(app).get('/api/swarm/stacks/ghost/compose').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /stacks/:name/compose humanizes daemon errors (not a raw 503)', async () => {
+    const e = new Error('This node is not a swarm manager.'); e.statusCode = 503;
+    dockerService.getDocker.mockReturnValue({ listServices: async () => { throw e; } });
+    const res = await request(app).get('/api/swarm/stacks/demo/compose').set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/swarm manager/i);
+  });
+
+  it('GET /stacks/:name/compose rejects unauthenticated callers (401)', async () => {
+    await request(app).get('/api/swarm/stacks/demo/compose').expect(401);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════
+// 3. Pure reverse derivation: swarm stack → compose object
+// ════════════════════════════════════════════════════════════════
+describe('deriveComposeFromStackServices', () => {
+  function mockSwarmService(over = {}) {
+    return Object.assign({
+      ID: 'svc1',
+      Spec: {
+        Name: 'demo_web',
+        Labels: { 'com.docker.stack.namespace': 'demo', 'com.example.team': 'payments' },
+        TaskTemplate: {
+          ContainerSpec: {
+            Image: 'nginx:1.25@sha256:' + 'a'.repeat(64),
+            Args: ['nginx', '-g', 'daemon off;'],
+            Env: ['FOO=bar'],
+            Labels: { 'com.docker.stack.namespace': 'demo' },
+          },
+          RestartPolicy: { Condition: 'on-failure', Delay: 10e9, MaxAttempts: 3 },
+          Placement: { Constraints: ['node.role==worker'] },
+        },
+        Mode: { Replicated: { Replicas: 3 } },
+      },
+      Endpoint: { Ports: [{ Protocol: 'tcp', PublishedPort: 8080, TargetPort: 80 }] },
+    }, over);
+  }
+
+  it('reconstructs a compose object, stripping the stack prefix + image digest', () => {
+    const { services, notes } = deriveComposeFromStackServices([mockSwarmService()], 'demo');
+    expect(Object.keys(services)).toEqual(['web']);
+    const web = services.web;
+    expect(web.image).toBe('nginx:1.25');
+    expect(web.command).toEqual(['nginx', '-g', 'daemon off;']);
+    expect(web.environment).toEqual(['FOO=bar']);
+    expect(web.ports).toEqual(['8080:80']);
+    expect(web.labels).toEqual({ 'com.example.team': 'payments' });
+    expect(web.deploy.replicas).toBe(3);
+    expect(web.deploy.restart_policy).toEqual({ condition: 'on-failure', delay: '10s', max_attempts: 3 });
+    expect(web.deploy.placement).toEqual({ constraints: ['node.role==worker'] });
+    expect(notes).toEqual([]);
+  });
+
+  it('emits global mode without replicas', () => {
+    const svc = mockSwarmService();
+    svc.Spec.Mode = { Global: {} };
+    const { services } = deriveComposeFromStackServices([svc], 'demo');
+    expect(services.web.deploy.mode).toBe('global');
+    expect(services.web.deploy.replicas).toBeUndefined();
+  });
+
+  it('omits restart_policy when it matches the deploy default (any / 5s / 0)', () => {
+    const svc = mockSwarmService();
+    svc.Spec.TaskTemplate.RestartPolicy = { Condition: 'any', Delay: 5e9, MaxAttempts: 0 };
+    const { services } = deriveComposeFromStackServices([svc], 'demo');
+    expect(services.web.deploy.restart_policy).toBeUndefined();
+  });
+
+  it('notes mounts / networks / secrets / configs / healthcheck (not round-tripped)', () => {
+    const svc = mockSwarmService();
+    svc.Spec.TaskTemplate.ContainerSpec.Mounts = [{ Type: 'volume', Source: 'data', Target: '/data' }];
+    svc.Spec.TaskTemplate.Networks = [{ Target: 'netid' }];
+    svc.Spec.TaskTemplate.ContainerSpec.Secrets = [{ SecretName: 's' }];
+    svc.Spec.TaskTemplate.ContainerSpec.Configs = [{ ConfigName: 'c' }];
+    svc.Spec.TaskTemplate.ContainerSpec.Healthcheck = { Test: ['CMD', 'x'] };
+    const { notes } = deriveComposeFromStackServices([svc], 'demo');
+    expect(notes.some(n => /mount/i.test(n))).toBe(true);
+    expect(notes.some(n => /network/i.test(n))).toBe(true);
+    expect(notes.some(n => /secret/i.test(n))).toBe(true);
+    expect(notes.some(n => /config/i.test(n))).toBe(true);
+    expect(notes.some(n => /healthcheck/i.test(n))).toBe(true);
+  });
+
+  it('falls back to Command when Args is absent; keeps full name when no stack prefix', () => {
+    const svc = mockSwarmService();
+    delete svc.Spec.TaskTemplate.ContainerSpec.Args;
+    svc.Spec.TaskTemplate.ContainerSpec.Command = ['/entry.sh'];
+    svc.Spec.Name = 'loner';
+    const { services } = deriveComposeFromStackServices([svc], 'demo');
+    expect(services.loner.command).toEqual(['/entry.sh']);
+  });
+
+  it('produces YAML-serializable output with a services map', () => {
+    const YAML = require('yaml');
+    const { services } = deriveComposeFromStackServices([mockSwarmService()], 'demo');
+    const parsed = YAML.parse(YAML.stringify({ services }));
+    expect(parsed.services.web.image).toBe('nginx:1.25');
+    expect(parsed.services.web.ports).toEqual(['8080:80']);
+  });
+
+  it('throws on non-array input', () => {
+    expect(() => deriveComposeFromStackServices(null, 'x')).toThrow();
   });
 });

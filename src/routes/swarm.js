@@ -8,7 +8,7 @@ const { getClientIp } = require('../utils/helpers');
 const { extractHostId } = require('../middleware/hostId');
 const asyncHandler = require('../utils/asyncHandler');
 const { humanizeDockerError } = require('../utils/docker-errors');
-const { deriveServiceSpecFromInspect } = require('../services/swarm-derive');
+const { deriveServiceSpecFromInspect, deriveComposeFromStackServices } = require('../services/swarm-derive');
 
 const router = Router();
 router.use(extractHostId);
@@ -331,6 +331,46 @@ router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
     if (svc.CreatedAt && svc.CreatedAt < entry.createdAt) entry.createdAt = svc.CreatedAt;
   }
   res.json(Array.from(byStack.values()).sort((a, b) => a.name.localeCompare(b.name)));
+}));
+
+// GET /api/swarm/stacks/:name/compose — export a compose YAML reconstructed
+// from the running services in the stack. Inverse of the stack-deploy flow:
+// the operator picks an existing stack and gets back editable YAML they can
+// review, copy, or load into the "Deploy Stack from YAML" form to redeploy.
+//
+// Admin-only + audited: the export embeds each service's environment, which
+// can carry sensitive values (an admin already has full daemon access, but we
+// don't hand env to lower-privileged roles and we record who exported what).
+router.get('/stacks/:name/compose', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const stackName = req.params.name;
+  const docker = dockerService.getDocker(req.hostId);
+  let services;
+  try {
+    services = await docker.listServices({ status: false });
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
+  const inStack = (services || []).filter(s => {
+    const label = (s.Spec && s.Spec.Labels) || {};
+    return (label['com.docker.stack.namespace'] || '_standalone') === stackName;
+  });
+  if (!inStack.length) {
+    return res.status(404).json({ error: `No services found for stack "${stackName}".` });
+  }
+  const { services: composeServices, notes } =
+    deriveComposeFromStackServices(inStack, stackName === '_standalone' ? '' : stackName);
+  const YAML = require('yaml');
+  const header =
+    `# Compose exported from swarm stack "${stackName}" by Docker Dash.\n` +
+    `# Review before redeploying — volumes, secrets, configs, custom networks\n` +
+    `# and healthchecks are NOT exported (see the notes shown in the dialog).\n`;
+  const compose = header + YAML.stringify({ services: composeServices });
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: 'swarm_stack_export', targetType: 'swarm_stack', targetId: stackName,
+    details: { hostId: req.hostId, services: inStack.length }, ip: getClientIp(req),
+  });
+  res.json({ name: stackName, compose, serviceCount: inStack.length, notes });
 }));
 
 // POST /api/swarm/stacks/:name — deploy a compose YAML as a Swarm stack.

@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.21.0',
+      date: '2026-07-24',
+      title: 'Swarm — export compose YAML from an existing stack',
+      changes: [
+        { type: 'feature', text: 'The Stacks tab now goes both ways. Next to “Deploy Stack from YAML”, every stack row has a new “View YAML” button that reconstructs an editable compose file from the running services — image, command, environment, published ports, labels, and deploy settings (replicas / global / restart policy / placement). You can copy it, or send it straight to the deploy dialog pre-filled to tweak and redeploy. Parts that can’t be reconstructed (volumes, secrets, configs, custom networks, healthchecks) are listed as notes instead of being silently dropped. Admin-only and audited.' },
+      ],
+    },
+    {
       version: '8.20.4',
       date: '2026-07-24',
       title: 'Fix — sidebar labels for 9 newer pages',

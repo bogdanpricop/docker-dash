@@ -1140,6 +1140,13 @@ i18n.register('en', 'EN', 'English', {
       composeLoadFailed: 'Could not load the compose file: {{message}}',
       initFailedTitle: 'Swarm initialization failed',
       initFailedHint: 'Fix the issue described above, then click Initialize Swarm to try again.',
+      viewYaml: 'View YAML',
+      exportTitle: 'Compose YAML',
+      exporting: 'Reading stack…',
+      exportNotesTitle: 'Not exported',
+      exportNotesIntro: 'These parts of the stack couldn\'t be reconstructed into YAML — re-add them by hand if you redeploy:',
+      editRedeploy: 'Edit & redeploy',
+      exportFailed: 'Could not read the stack: {{message}}',
     },
     // ── Onboarding & Provisioning Wizard (v8.15.0) ──
     onboarding: {

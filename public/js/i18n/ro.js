@@ -1897,7 +1897,14 @@ i18n.register('ro', 'RO', "Română", {
       deriveFailed: "Nu s-a putut citi containerul: {{message}}",
       composeLoadFailed: "Nu s-a putut încărca fișierul compose: {{message}}",
       initFailedTitle: "Inițializarea Swarm a eșuat",
-      initFailedHint: "Rezolvă problema descrisă mai sus, apoi apasă din nou Initialize Swarm."
+      initFailedHint: "Rezolvă problema descrisă mai sus, apoi apasă din nou Initialize Swarm.",
+      viewYaml: "Vezi YAML",
+      exportTitle: "Compose YAML",
+      exporting: "Se citește stack-ul…",
+      exportNotesTitle: "Neexportat",
+      exportNotesIntro: "Aceste părți ale stack-ului nu au putut fi reconstruite în YAML — adaugă-le manual dacă redeployezi:",
+      editRedeploy: "Editează și redeployează",
+      exportFailed: "Nu s-a putut citi stack-ul: {{message}}"
     }
   }
 });

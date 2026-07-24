@@ -1860,7 +1860,14 @@ i18n.register('pt', 'PT', "Português", {
       deriveFailed: "Não foi possível ler o contentor: {{message}}",
       composeLoadFailed: "Não foi possível carregar o ficheiro compose: {{message}}",
       initFailedTitle: "Falha ao inicializar o Swarm",
-      initFailedHint: "Corrija o problema descrito acima e clique novamente em Initialize Swarm."
+      initFailedHint: "Corrija o problema descrito acima e clique novamente em Initialize Swarm.",
+      viewYaml: "Ver YAML",
+      exportTitle: "Compose YAML",
+      exporting: "A ler o stack…",
+      exportNotesTitle: "Não exportado",
+      exportNotesIntro: "Estas partes do stack não puderam ser reconstruídas em YAML — volte a adicioná-las manualmente se reimplementar:",
+      editRedeploy: "Editar e reimplementar",
+      exportFailed: "Não foi possível ler o stack: {{message}}"
     }
   },
   errors: {

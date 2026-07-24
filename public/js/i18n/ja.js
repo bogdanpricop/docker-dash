@@ -1860,7 +1860,14 @@ i18n.register('ja', 'JP', "日本語", {
       deriveFailed: "コンテナを読み取れませんでした: {{message}}",
       composeLoadFailed: "compose ファイルを読み込めませんでした: {{message}}",
       initFailedTitle: "Swarm の初期化に失敗しました",
-      initFailedHint: "上記の問題を解決してから、もう一度 Initialize Swarm をクリックしてください。"
+      initFailedHint: "上記の問題を解決してから、もう一度 Initialize Swarm をクリックしてください。",
+      viewYaml: "YAML を表示",
+      exportTitle: "Compose YAML",
+      exporting: "スタックを読み込み中…",
+      exportNotesTitle: "エクスポート対象外",
+      exportNotesIntro: "スタックのこれらの部分は YAML に再構築できませんでした。再デプロイする場合は手動で追加してください:",
+      editRedeploy: "編集して再デプロイ",
+      exportFailed: "スタックを読み取れませんでした: {{message}}"
     }
   },
   errors: {
