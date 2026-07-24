@@ -60,6 +60,11 @@ const SwarmPage = {
   // CLI semantics).
 
   async _renderStacks(el) {
+    // Guard on swarm being active first — same as the Nodes/Services/Tasks
+    // tabs. Without this, listing stacks on a host that isn't a swarm manager
+    // hit the daemon's "not a swarm manager" error and surfaced as a raw 503.
+    const status = await Api.getSwarmStatus();
+    if (!status.active) { el.innerHTML = '<div class="empty-msg">Swarm is not active on this host.</div>'; return; }
     const stacks = await Api.getSwarmStacks();
     const deployBtn = `
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px">

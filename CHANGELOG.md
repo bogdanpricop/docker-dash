@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.20.3] - 2026-07-24 — Fix: Swarm Stacks tab no longer 503s on a non-swarm host
+
+Opening the **Stacks** tab on a host that isn't a swarm manager threw a raw
+`503 Service Unavailable` / "Internal server error" in the console.
+
+- **Root cause.** Unlike the Nodes/Services/Tasks tabs, the Stacks tab called `GET /api/swarm/stacks`
+  without first checking whether swarm is active. On a non-manager host the Docker daemon answers
+  `listServices` with "This node is not a swarm manager" (HTTP 503), and the route had no
+  `try/catch`, so it bubbled up as a generic 503.
+- **Frontend fix.** The Stacks tab now guards on swarm status first (like its sibling tabs) and
+  shows *"Swarm is not active on this host."* instead of erroring.
+- **Backend fix (defense in depth).** The `GET /nodes`, `/services`, `/tasks` and `/stacks` list
+  routes now catch daemon errors and return a **humanized 400** (e.g. *"This host isn't a swarm
+  manager yet. Initialize a swarm here first…"*) instead of leaking a raw 503 "Internal server
+  error". 4 new regression tests.
+
 ## [8.20.2] - 2026-07-24 — Swarm init failures stay put in a visible card
 
 When **Initialize Swarm** fails, the reason no longer vanishes with a transient toast.

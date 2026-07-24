@@ -236,4 +236,40 @@ describe('GET /api/swarm/services/from-container', () => {
     expect(res.status).toBe(404);
     expect(res.body.error).toBeTruthy();
   });
+
+  // ── List routes must humanize daemon errors, not leak a raw 503 ──
+  // Regression: the Stacks tab hit GET /stacks on a host that isn't a swarm
+  // manager; listServices threw the daemon's "not a swarm manager" (HTTP 503)
+  // and, with no try/catch, it bubbled up as a generic 503 "Internal server
+  // error". The list routes now catch and return a humanized 400.
+  it('GET /stacks returns a humanized 400 (not a raw 503) when host is not a swarm manager', async () => {
+    const notManager = new Error('(HTTP code 503) service unavailable - This node is not a swarm manager. Use "docker swarm init" or "docker swarm join" to connect this node to swarm and try again. ');
+    notManager.statusCode = 503;
+    dockerService.getDocker.mockReturnValue({
+      listServices: async () => { throw notManager; },
+      listTasks: async () => [],
+    });
+    const res = await request(app)
+      .get('/api/swarm/stacks')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/swarm manager/i);
+    expect(res.body.error).not.toMatch(/HTTP code/i);
+  });
+
+  it.each([
+    ['/api/swarm/services', 'listServices'],
+    ['/api/swarm/nodes', 'listNodes'],
+    ['/api/swarm/tasks', 'listTasks'],
+  ])('GET %s humanizes daemon errors instead of leaking a 503', async (path, method) => {
+    const notManager = new Error('This node is not a swarm manager.');
+    notManager.statusCode = 503;
+    dockerService.getDocker.mockReturnValue({
+      [method]: async () => { throw notManager; },
+    });
+    const res = await request(app).get(path).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/swarm manager/i);
+    expect(res.body.error).not.toMatch(/HTTP code/i);
+  });
 });

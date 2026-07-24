@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.20.3',
+      date: '2026-07-24',
+      title: 'Fix — Swarm “Stacks” tab no longer errors on a non-swarm host',
+      changes: [
+        { type: 'fix', text: 'Opening the Stacks tab on a host that isn’t a swarm manager failed with a 503 “Internal server error” in the console. The tab now checks whether swarm is active first (like the Nodes/Services/Tasks tabs) and simply shows “Swarm is not active on this host.” The underlying swarm list endpoints also now return a clear, human message (“This host isn’t a swarm manager yet…”) instead of a raw 503 if the daemon rejects the request.' },
+      ],
+    },
+    {
       version: '8.20.2',
       date: '2026-07-24',
       title: 'Swarm init errors now stay on screen',

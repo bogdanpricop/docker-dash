@@ -85,8 +85,12 @@ router.get('/join-token', requireAuth, requireRole('admin'), asyncHandler(async 
 // GET /api/swarm/nodes
 router.get('/nodes', requireAuth, asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
-  const nodes = await docker.listNodes();
-  res.json(nodes);
+  try {
+    const nodes = await docker.listNodes();
+    res.json(nodes);
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
 }));
 
 // PATCH /api/swarm/nodes/:id — update node availability/role
@@ -126,8 +130,12 @@ router.delete('/nodes/:id', requireAuth, requireRole('admin'), writeable, asyncH
 // GET /api/swarm/services
 router.get('/services', requireAuth, asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
-  const services = await docker.listServices({ status: true });
-  res.json(services);
+  try {
+    const services = await docker.listServices({ status: true });
+    res.json(services);
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
 }));
 
 // GET /api/swarm/services/from-container — DERIVE (do not create) a proposed
@@ -275,8 +283,12 @@ router.delete('/services/:id', requireAuth, requireRole('admin', 'operator'), wr
 router.get('/tasks', requireAuth, asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
   const filters = req.query.service ? { service: [req.query.service] } : {};
-  const tasks = await docker.listTasks({ filters: JSON.stringify(filters) });
-  res.json(tasks);
+  try {
+    const tasks = await docker.listTasks({ filters: JSON.stringify(filters) });
+    res.json(tasks);
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
 }));
 
 // ── Stacks (v8.8.0, Sprint 2) ──────────────────────────────────
@@ -289,8 +301,13 @@ router.get('/tasks', requireAuth, asyncHandler(async (req, res) => {
 
 router.get('/stacks', requireAuth, asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
-  const services = await docker.listServices({ status: true });
-  const tasks = await docker.listTasks();
+  let services, tasks;
+  try {
+    services = await docker.listServices({ status: true });
+    tasks = await docker.listTasks();
+  } catch (err) {
+    return res.status(400).json(swarmError(err));
+  }
   const byStack = new Map();
   for (const svc of services) {
     const label = (svc.Spec && svc.Spec.Labels) || {};
