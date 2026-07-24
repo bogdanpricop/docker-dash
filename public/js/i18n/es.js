@@ -1849,7 +1849,9 @@ i18n.register('es', 'ES', "Español", {
       reviewWarningsTitle: "Revisar antes de promover",
       reviewWarningsIntro: "Algunos ajustes de este contenedor no se traducen limpiamente a un servicio de Swarm. Revísalos antes de crearlo:",
       deriveFailed: "No se pudo leer el contenedor: {{message}}",
-      composeLoadFailed: "No se pudo cargar el archivo compose: {{message}}"
+      composeLoadFailed: "No se pudo cargar el archivo compose: {{message}}",
+      initFailedTitle: "Error al inicializar el Swarm",
+      initFailedHint: "Corrige el problema descrito arriba y vuelve a pulsar Initialize Swarm."
     }
   },
   errors: {

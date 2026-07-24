@@ -1849,7 +1849,9 @@ i18n.register('zh', '中文', "中文", {
       reviewWarningsTitle: "提升前请检查",
       reviewWarningsIntro: "此容器的部分设置无法完全映射到 Swarm 服务。创建前请检查以下内容：",
       deriveFailed: "无法读取容器：{{message}}",
-      composeLoadFailed: "无法加载 compose 文件：{{message}}"
+      composeLoadFailed: "无法加载 compose 文件：{{message}}",
+      initFailedTitle: "Swarm 初始化失败",
+      initFailedHint: "请解决上述问题，然后再次点击 Initialize Swarm。"
     }
   },
   errors: {

@@ -1849,7 +1849,9 @@ i18n.register('de', 'DE', "Deutsch", {
       reviewWarningsTitle: "Vor dem Befördern prüfen",
       reviewWarningsIntro: "Einige Einstellungen dieses Containers lassen sich nicht sauber auf einen Swarm-Service übertragen. Prüfen Sie diese, bevor Sie ihn erstellen:",
       deriveFailed: "Container konnte nicht gelesen werden: {{message}}",
-      composeLoadFailed: "Compose-Datei konnte nicht geladen werden: {{message}}"
+      composeLoadFailed: "Compose-Datei konnte nicht geladen werden: {{message}}",
+      initFailedTitle: "Swarm-Initialisierung fehlgeschlagen",
+      initFailedHint: "Beheben Sie das oben beschriebene Problem und klicken Sie dann erneut auf „Initialize Swarm“."
     }
   },
   errors: {

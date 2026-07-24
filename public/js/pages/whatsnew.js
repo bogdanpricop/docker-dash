@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.20.2',
+      date: '2026-07-24',
+      title: 'Swarm init errors now stay on screen',
+      changes: [
+        { type: 'fix', text: 'When “Initialize Swarm” fails, the reason no longer disappears with the toast. It now stays pinned in a dismissible red card right under the button — so if you look away, you don’t lose an actionable message like “live-restore is turned on, which can’t be used with swarm mode; set live-restore: false and restart Docker, then try again.” The card clears on your next attempt and can be dismissed manually.' },
+      ],
+    },
+    {
       version: '8.20.0',
       date: '2026-07-24',
       title: 'Deploy to Swarm — promote a container or an existing stack',

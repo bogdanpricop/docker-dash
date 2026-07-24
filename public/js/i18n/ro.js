@@ -374,7 +374,6 @@ i18n.register('ro', 'RO', "Română", {
       templatesCatMon: "Monitorizare",
       templatesCatMsg: "Mesagerie",
       healthCheckLogs: "Loguri Health Check",
-      healthCheckStatus: "Stare Sanatate",
       healthFailStreak: "Serie Esecuri",
       healthLogTime: "Timp",
       healthLogExit: "Cod Iesire",
@@ -1888,7 +1887,9 @@ i18n.register('ro', 'RO', "Română", {
       reviewWarningsTitle: "Verifică înainte de promovare",
       reviewWarningsIntro: "Unele setări ale acestui container nu se traduc curat într-un serviciu Swarm. Verifică-le înainte de a-l crea:",
       deriveFailed: "Nu s-a putut citi containerul: {{message}}",
-      composeLoadFailed: "Nu s-a putut încărca fișierul compose: {{message}}"
+      composeLoadFailed: "Nu s-a putut încărca fișierul compose: {{message}}",
+      initFailedTitle: "Inițializarea Swarm a eșuat",
+      initFailedHint: "Rezolvă problema descrisă mai sus, apoi apasă din nou Initialize Swarm."
     }
   }
 });

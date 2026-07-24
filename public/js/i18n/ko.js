@@ -1849,7 +1849,9 @@ i18n.register('ko', 'KR', "한국어", {
       reviewWarningsTitle: "승격 전 검토",
       reviewWarningsIntro: "이 컨테이너의 일부 설정은 Swarm 서비스로 깔끔하게 변환되지 않습니다. 생성하기 전에 검토하세요:",
       deriveFailed: "컨테이너를 읽을 수 없습니다: {{message}}",
-      composeLoadFailed: "compose 파일을 로드할 수 없습니다: {{message}}"
+      composeLoadFailed: "compose 파일을 로드할 수 없습니다: {{message}}",
+      initFailedTitle: "Swarm 초기화 실패",
+      initFailedHint: "위에 설명된 문제를 해결한 후 Initialize Swarm을 다시 클릭하세요."
     }
   },
   errors: {

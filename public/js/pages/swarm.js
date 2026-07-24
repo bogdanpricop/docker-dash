@@ -242,6 +242,7 @@ const SwarmPage = {
               <small class="text-muted">The IP that other nodes use to reach this manager. Auto-detected if blank.</small>
             </div>
             <button class="btn btn-primary" id="swarm-init-btn"><i class="fas fa-play" style="margin-right:6px"></i>Initialize Swarm</button>
+            <div id="swarm-init-error" style="display:none;margin-top:16px"></div>
           </div>
         </div>
       `;
@@ -251,6 +252,7 @@ const SwarmPage = {
       el.querySelector('#swarm-init-btn').addEventListener('click', async () => {
         const advertiseAddr = el.querySelector('#swarm-advertise').value.trim() || undefined;
         const btn = el.querySelector('#swarm-init-btn');
+        this._clearInitError(el);
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px"></i>Initializing...';
         try {
@@ -261,7 +263,13 @@ const SwarmPage = {
           document.querySelector('[data-tab="overview"]')?.classList.remove('active');
           await this._renderTab();
         } catch (err) {
+          // The message is already humanized server-side (humanizeDockerError).
+          // Keep the transient toast for immediate attention AND pin it into a
+          // persistent, dismissible card so the operator doesn't lose the reason
+          // (e.g. "--live-restore is incompatible with swarm mode") the moment
+          // they look away.
           Toast.error(err.message);
+          this._showInitError(el, err.message);
           btn.disabled = false;
           btn.innerHTML = '<i class="fas fa-play" style="margin-right:6px"></i>Initialize Swarm';
         }
@@ -359,6 +367,33 @@ const SwarmPage = {
         await this._renderTab();
       } catch (err) { Toast.error(err.message); }
     });
+  },
+
+  _clearInitError(el) {
+    const box = el.querySelector('#swarm-init-error');
+    if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+  },
+
+  // Render an Initialize-Swarm failure into a persistent, dismissible card
+  // right under the button. Previously the reason surfaced only as a transient
+  // Toast, so an operator who glanced away lost an often-actionable message.
+  _showInitError(el, message) {
+    const box = el.querySelector('#swarm-init-error');
+    if (!box) return;
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div class="card" style="border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.06)">
+        <div class="card-body" style="display:flex;gap:12px;align-items:flex-start">
+          <i class="fas fa-exclamation-triangle" style="color:var(--red);font-size:18px;margin-top:2px"></i>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;color:var(--red);margin-bottom:4px">${i18n.t('pages.swarm.initFailedTitle')}</div>
+            <div class="text-sm" style="white-space:pre-wrap;word-break:break-word">${Utils.escapeHtml(message)}</div>
+            <div class="text-sm text-muted" style="margin-top:8px">${i18n.t('pages.swarm.initFailedHint')}</div>
+          </div>
+          <button class="btn btn-sm btn-secondary" id="swarm-init-error-dismiss" title="${Utils.escapeHtml(i18n.t('common.dismiss'))}"><i class="fas fa-times"></i></button>
+        </div>
+      </div>`;
+    box.querySelector('#swarm-init-error-dismiss').addEventListener('click', () => this._clearInitError(el));
   },
 
   _learnCards() {

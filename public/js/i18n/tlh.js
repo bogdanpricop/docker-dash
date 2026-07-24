@@ -1849,7 +1849,9 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
       reviewWarningsTitle: "nobHa'pa' yIlaD",
       reviewWarningsIntro: "vam container Dotlh puS Swarm service-Daq luchoHlaHbe'. yIchenmoH pa' yIlaD:",
       deriveFailed: "container laDlaHbe': {{message}}",
-      composeLoadFailed: "compose file laDlaHbe': {{message}}"
+      composeLoadFailed: "compose file laDlaHbe': {{message}}",
+      initFailedTitle: "Swarm taghmoH Qagh",
+      initFailedHint: "Dung Qagh yISampu', vaj Initialize Swarm yI'uy' latlh."
     }
   },
   errors: {

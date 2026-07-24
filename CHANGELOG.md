@@ -2,6 +2,23 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.20.2] - 2026-07-24 — Swarm init failures stay put in a visible card
+
+When **Initialize Swarm** fails, the reason no longer vanishes with a transient toast.
+
+- **Persistent error card.** The (already humanized) failure reason is now pinned into a
+  dismissible red card directly under the *Initialize Swarm* button — so an operator who glances
+  away doesn't lose an actionable message like *"This host's Docker has live-restore turned on,
+  which can't be used together with swarm mode — set `live-restore: false` in
+  `/etc/docker/daemon.json` and restart Docker, then try again."* The toast still fires for
+  immediate attention; the card is the durable record. It clears automatically on the next attempt
+  and can be dismissed manually. Two new strings (`pages.swarm.initFailedTitle`,
+  `initFailedHint`) added to all 11 locales.
+- **i18n parity fix.** Removed an orphaned `pages.containers.healthCheckStatus` key that existed
+  only in Romanian (unreferenced in code), restoring exact key parity across all 11 locales.
+
+Frontend-only + i18n. No backend, database, or dependency changes.
+
 ## [8.20.1] - 2026-07-24 — i18n: the new Deploy-to-Swarm strings translated everywhere
 
 The `pages.swarm.*` strings added in 8.20.0 shipped in English + Romanian only. They're now

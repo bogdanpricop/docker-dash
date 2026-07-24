@@ -1849,7 +1849,9 @@ i18n.register('fr', 'FR', "Français", {
       reviewWarningsTitle: "Vérifier avant de promouvoir",
       reviewWarningsIntro: "Certains paramètres de ce conteneur ne se traduisent pas proprement en service Swarm. Vérifiez-les avant de le créer :",
       deriveFailed: "Impossible de lire le conteneur : {{message}}",
-      composeLoadFailed: "Impossible de charger le fichier compose : {{message}}"
+      composeLoadFailed: "Impossible de charger le fichier compose : {{message}}",
+      initFailedTitle: "Échec de l'initialisation du Swarm",
+      initFailedHint: "Corrigez le problème décrit ci-dessus, puis cliquez à nouveau sur Initialize Swarm."
     }
   },
   errors: {

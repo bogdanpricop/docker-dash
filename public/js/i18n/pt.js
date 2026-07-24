@@ -1849,7 +1849,9 @@ i18n.register('pt', 'PT', "Português", {
       reviewWarningsTitle: "Rever antes de promover",
       reviewWarningsIntro: "Algumas definições deste contentor não se traduzem de forma limpa num serviço de Swarm. Reveja-as antes de o criar:",
       deriveFailed: "Não foi possível ler o contentor: {{message}}",
-      composeLoadFailed: "Não foi possível carregar o ficheiro compose: {{message}}"
+      composeLoadFailed: "Não foi possível carregar o ficheiro compose: {{message}}",
+      initFailedTitle: "Falha ao inicializar o Swarm",
+      initFailedHint: "Corrija o problema descrito acima e clique novamente em Initialize Swarm."
     }
   },
   errors: {

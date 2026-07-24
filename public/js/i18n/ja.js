@@ -1849,7 +1849,9 @@ i18n.register('ja', 'JP', "日本語", {
       reviewWarningsTitle: "昇格前に確認",
       reviewWarningsIntro: "このコンテナの一部の設定は Swarm サービスにきれいに変換されません。作成する前に確認してください:",
       deriveFailed: "コンテナを読み取れませんでした: {{message}}",
-      composeLoadFailed: "compose ファイルを読み込めませんでした: {{message}}"
+      composeLoadFailed: "compose ファイルを読み込めませんでした: {{message}}",
+      initFailedTitle: "Swarm の初期化に失敗しました",
+      initFailedHint: "上記の問題を解決してから、もう一度 Initialize Swarm をクリックしてください。"
     }
   },
   errors: {

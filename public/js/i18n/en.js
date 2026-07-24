@@ -1136,6 +1136,8 @@ i18n.register('en', 'EN', 'English', {
       reviewWarningsIntro: 'Some settings on this container don\'t map cleanly to a Swarm service. Review these before you create it:',
       deriveFailed: 'Could not read the container: {{message}}',
       composeLoadFailed: 'Could not load the compose file: {{message}}',
+      initFailedTitle: 'Swarm initialization failed',
+      initFailedHint: 'Fix the issue described above, then click Initialize Swarm to try again.',
     },
     // ── Onboarding & Provisioning Wizard (v8.15.0) ──
     onboarding: {
