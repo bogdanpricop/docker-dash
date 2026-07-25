@@ -7,10 +7,13 @@ const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+router.use(requireAuth);
 router.use(extractHostId);
+router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
   res.json(await dockerService.listVolumes(req.hostId));

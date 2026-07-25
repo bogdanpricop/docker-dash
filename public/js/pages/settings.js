@@ -21,6 +21,7 @@ const SettingsPage = {
       <div class="tabs" id="settings-tabs">
         <button class="tab active" data-tab="profile">${i18n.t('pages.settings.tabProfile')}</button>
         ${isAdmin ? `<button class="tab" data-tab="users">${i18n.t('pages.settings.tabUsers')}</button>` : ''}
+        ${isAdmin ? `<button class="tab" data-tab="access"><i class="fas fa-user-shield" style="margin-right:4px"></i> ${i18n.t('pages.settings.access.tab')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="webhooks">${i18n.t('pages.settings.tabWebhooks')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="registries">${i18n.t('pages.settings.registriesTitle')}</button>` : ''}
         ${isAdmin ? `<button class="tab" data-tab="git-credentials"><i class="fab fa-git-alt" style="margin-right:4px"></i> Git</button>` : ''}
@@ -56,6 +57,7 @@ const SettingsPage = {
     try {
       if (this._tab === 'profile') this._renderProfile(el);
       else if (this._tab === 'users') await this._renderUsers(el);
+      else if (this._tab === 'access') await this._renderAccess(el);
       else if (this._tab === 'webhooks') await this._renderWebhooks(el);
       else if (this._tab === 'registries') await this._renderRegistries(el);
       else if (this._tab === 'git-credentials') await this._renderGitCredentials(el);
@@ -571,6 +573,7 @@ const SettingsPage = {
 
 // v8.2.x further-split: merge 7 extracted tab modules. settings.js dropped
 // from 2037 → 572 LOC. Order alphabetical for readability.
+if (typeof SettingsPageAccess !== 'undefined') Object.assign(SettingsPage, SettingsPageAccess);
 if (typeof SettingsPageAi !== 'undefined') Object.assign(SettingsPage, SettingsPageAi);
 if (typeof SettingsPageGit !== 'undefined') Object.assign(SettingsPage, SettingsPageGit);
 if (typeof SettingsPageLdap !== 'undefined') Object.assign(SettingsPage, SettingsPageLdap);

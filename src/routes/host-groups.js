@@ -11,11 +11,11 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 
-router.get('/', requireAuth, asyncHandler(async (_req, res) => {
+router.get('/', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
   res.json(svc.list());
 }));
 
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const row = svc.get(parseInt(req.params.id, 10));
   if (!row) return res.status(404).json({ error: 'Host group not found' });
   res.json(row);

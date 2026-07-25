@@ -12,10 +12,12 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = Router();
 
 // GET /api/host-permissions?hostId=X — all grants for a host
-router.get('/', requireAuth, asyncHandler(async (req, res) => {
-  const hostId = parseInt(req.query.hostId, 10);
-  if (!hostId) return res.status(400).json({ error: 'hostId query param required' });
-  res.json(svc.grantsForHost(hostId));
+router.get('/', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const hostId = Number.parseInt(req.query.hostId, 10);
+  const hostGroupId = Number.parseInt(req.query.hostGroupId, 10);
+  if (Number.isInteger(hostId) && hostId >= 0) return res.json(svc.grantsForHost(hostId));
+  if (Number.isInteger(hostGroupId) && hostGroupId > 0) return res.json(svc.grantsForGroup(hostGroupId));
+  return res.status(400).json({ error: 'hostId or hostGroupId query param required' });
 }));
 
 router.post('/', requireAuth, requireRole('admin'), writeable,
@@ -49,8 +51,10 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable,
 
 // GET /api/host-permissions/effective?hostId=X — inspect what the caller has.
 router.get('/effective', requireAuth, asyncHandler(async (req, res) => {
-  const hostId = parseInt(req.query.hostId, 10);
-  if (!hostId) return res.status(400).json({ error: 'hostId query param required' });
+  const hostId = Number.parseInt(req.query.hostId, 10);
+  if (!Number.isInteger(hostId) || hostId < 0) {
+    return res.status(400).json({ error: 'hostId query param required' });
+  }
   const isAdmin = req.user.role === 'admin' || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
   const permission = svc.resolveEffectivePermission(req.user.id, hostId, isAdmin);
   res.json({ hostId, userId: req.user.id, permission });
@@ -59,7 +63,7 @@ router.get('/effective', requireAuth, asyncHandler(async (req, res) => {
 // Legacy default toggle — admin only. When false, users with no grants
 // are locked out; when true (default post-migration), they get 'operate'
 // on every host to preserve pre-upgrade behavior.
-router.get('/legacy-default', requireAuth, asyncHandler(async (_req, res) => {
+router.get('/legacy-default', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
   res.json({ enabled: svc.isLegacyDefaultEnabled() });
 }));
 

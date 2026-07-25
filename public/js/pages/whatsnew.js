@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.21.3',
+      date: '2026-07-25',
+      title: 'Teams UI and enforced per-host access control',
+      changes: [
+        { type: 'feature', text: 'Administrators now have a complete Settings → Teams & Access screen: create teams and host groups, manage their members, and grant or revoke view, operate, or admin access for a user or team on one host or an entire host group.' },
+        { type: 'security', text: 'Per-host grants are now enforced on the main Docker resource APIs. Non-admin users only see hosts they can access; reads require view permission, while container, image, and volume mutations require operate permission before Docker is contacted. Access-control configuration itself is admin-only.' },
+        { type: 'improvement', text: 'Upgrades remain safe: compatibility mode stays enabled until an administrator deliberately turns it off. Default-host grants now handle the hostId=0 alias correctly, repeated grants update in place, and the UI automatically leaves a host that becomes hidden after an ACL change. All new text is available in all 11 languages.' },
+      ],
+    },
+    {
       version: '8.21.2',
       date: '2026-07-24',
       title: 'Fix — promote/redeploy dialog no longer flashes and closes',

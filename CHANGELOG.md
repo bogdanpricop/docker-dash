@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.21.3] - 2026-07-25 — Teams UI and enforced per-host access control
+
+The Teams, host-groups and host-permissions primitives introduced earlier are now usable end to
+end. Administrators get a new **Settings → Teams & Access** tab for managing teams, memberships,
+host groups and explicit `view` / `operate` / `admin` grants.
+
+- **Per-host enforcement.** Host visibility is filtered for non-admins, direct host details fail
+  closed, and container/image/volume APIs now require `view` for reads and `operate` for mutations
+  before contacting the daemon. Global administrators retain their existing bypass.
+- **Safe rollout.** The compatibility default remains enabled after upgrade, so existing users keep
+  their previous `operate` access until an administrator reviews grants and deliberately disables
+  compatibility mode. The UI warns before that switch can lock ungranted users out.
+- **Teams & Access UI.** Create/edit/delete teams and host groups, manage members, grant or revoke
+  permissions for users or teams against a host or host group, and inspect existing grants from one
+  screen. Access-control configuration endpoints are admin-only.
+- **Default-host correctness.** The API alias `hostId=0` now resolves consistently to the persisted
+  default-host row for grants, effective permission checks and listings. Re-granting the same
+  subject/target updates the existing row instead of creating a duplicate.
+- **Frontend resilience.** If a saved host becomes invisible after an ACL change, the selector falls
+  back to the first visible host. New interface text is translated in all 11 locales.
+
 ## [8.21.2] - 2026-07-24 — Fix: promote/redeploy dialog flashed open then closed itself
 
 Picking a stack in **Promote existing stack** (8.21.1) opened the Deploy dialog for a split second,

@@ -10,6 +10,8 @@ const log = require('../utils/logger')('hosts');
 const { encryptSshConfig, decryptSshConfig } = require('../services/host-config-crypto');
 const asyncHandler = require('../utils/asyncHandler');
 const connectionHealth = require('../services/connection-health');
+const hostPermissions = require('../services/host-permissions');
+const { requireHostAccess } = require('../middleware/hostAccess');
 
 // Validate docker socket path — must be an absolute path with safe characters only
 const SOCKET_RE = /^\/[a-zA-Z0-9_./-]+$/;
@@ -19,7 +21,13 @@ const router = Router();
 // List all hosts with status
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
   const db = getDb();
-  const hosts = db.prepare('SELECT * FROM docker_hosts ORDER BY is_default DESC, name ASC').all();
+  let hosts = db.prepare('SELECT * FROM docker_hosts ORDER BY is_default DESC, name ASC').all();
+  const isAdmin = req.user.role === 'admin'
+    || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+  const visibleIds = new Set(hostPermissions.filterVisibleHosts(
+    req.user.id, isAdmin, hosts.map(h => h.id)
+  ));
+  hosts = hosts.filter(h => visibleIds.has(h.id));
 
   const result = hosts.map(h => {
     const status = dockerService.getHostStatus(h.id);
@@ -87,7 +95,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Get single host details
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
   const db = getDb();
   const host = db.prepare('SELECT * FROM docker_hosts WHERE id = ?').get(req.params.id);
   if (!host) return res.status(404).json({ error: 'Host not found' });
@@ -197,7 +205,7 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Get Docker info for a specific host (enriched with platform detection)
-router.get('/:id/info', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/info', requireAuth, requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
   const hostId = parseInt(req.params.id);
   const info = await dockerService.getInfo(hostId);
   // v6.12.0: auto-detect platform (Synology DSM, Unraid, TrueNAS SCALE,
@@ -668,7 +676,7 @@ router.post('/test', requireAuth, requireRole('admin'), asyncHandler(async (req,
 }));
 
 // Test existing host connection
-router.post('/:id/test', requireAuth, asyncHandler(async (req, res) => {
+router.post('/:id/test', requireAuth, requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
   const hostId = parseInt(req.params.id);
   const hostConfig = dockerService._getHostConfig(hostId);
   const result = await dockerService.testConnection(hostConfig);

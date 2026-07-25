@@ -14,10 +14,13 @@ const { getClientIp, sanitizeShellArg, formatBytes } = require('../utils/helpers
 const { getDb } = require('../db');
 
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+router.use(requireAuth);
 router.use(extractHostId);
+router.use(requireHostAccessForMethod());
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {

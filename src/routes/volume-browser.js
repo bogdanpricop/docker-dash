@@ -7,11 +7,14 @@ const svc = require('../services/volume-browser');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+router.use(requireAuth);
 router.use(extractHostId);
+router.use(requireHostAccessForMethod());
 
 // GET /api/volumes/:name/browse?path=/  — list directory
 router.get('/:name/browse', requireAuth, asyncHandler(async (req, res) => {

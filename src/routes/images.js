@@ -9,10 +9,13 @@ const { getClientIp } = require('../utils/helpers');
 const { getDb } = require('../db');
 
 const { extractHostId } = require('../middleware/hostId');
+const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
+router.use(requireAuth);
 router.use(extractHostId);
+router.use(requireHostAccessForMethod());
 
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
   res.json(await dockerService.listImages(req.hostId));

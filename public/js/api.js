@@ -548,6 +548,7 @@ const Api = {
 
   // ─── Per-host access control (v8.9.10, Portainer G02) ───
   listHostPermissions(hostId)         { return this.get(`/host-permissions?hostId=${hostId}`); },
+  listHostGroupPermissions(groupId)   { return this.get(`/host-permissions?hostGroupId=${groupId}`); },
   grantHostPermission(data)           { return this.post('/host-permissions', data); },
   revokeHostPermission(id)            { return this.delete(`/host-permissions/${id}`); },
   getEffectiveHostPermission(hostId)  { return this.get(`/host-permissions/effective?hostId=${hostId}`); },

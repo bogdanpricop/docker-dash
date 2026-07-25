@@ -1338,6 +1338,16 @@ const App = {
       const select = document.getElementById('host-select');
       if (!selector || !select) return;
 
+      // ACL filtering may remove a host saved in localStorage. Move to the
+      // first visible host instead of leaving every subsequent API call on a
+      // host the user can no longer access.
+      const currentVisible = hosts.some(h => Api.getHostId() === h.id
+        || (Api.getHostId() === 0 && h.isDefault));
+      if (hosts.length && !currentVisible) {
+        Api.setHost(hosts[0].isDefault ? 0 : hosts[0].id);
+      }
+      this._hostSelectorHosts = hosts;
+
       if (hosts.length <= 1) {
         selector.style.display = 'none';
         return;
@@ -1347,7 +1357,6 @@ const App = {
       // v8.9.13-alpha.1 — cache the host list so the change handler can look
       // up the selected host's daemon type (it's bound once, so it must read
       // fresh state, not a stale closure).
-      this._hostSelectorHosts = hosts;
       select.innerHTML = hosts.map(h => {
         const status = h.healthy === true ? '🟢' : h.healthy === false ? '🔴' : '🟡';
         const envTag = h.environment && h.environment !== 'development' ? ` [${h.environment.substring(0, 4).toUpperCase()}]` : '';
