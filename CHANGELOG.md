@@ -2,6 +2,13 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.21.4] - 2026-07-25 — Fix Linux image startup from Windows-authored releases
+
+- **Fixed Docker restart loop.** `entrypoint.sh` was stored with CRLF line endings, so Linux read its
+  shebang as `/bin/sh\r` and released images failed at startup with `exec /app/entrypoint.sh: no such
+  file or directory`. Shell scripts are now normalized and enforced as LF through `.gitattributes`.
+- Supersedes `8.21.3`; the Teams UI and per-host access-control functionality is unchanged.
+
 ## [8.21.3] - 2026-07-25 — Teams UI and enforced per-host access control
 
 The Teams, host-groups and host-permissions primitives introduced earlier are now usable end to

@@ -1,0 +1,3 @@
+# Shell scripts execute inside Linux images and hosts. Keep their shebangs LF-only
+# even when the repository is edited from Windows.
+*.sh text eol=lf

@@ -10,6 +10,14 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.21.4',
+      date: '2026-07-25',
+      title: 'Fix — Docker image starts correctly on Linux',
+      changes: [
+        { type: 'fix', text: 'The 8.21.3 image could restart-loop on Linux with “exec /app/entrypoint.sh: no such file or directory” because the shell script had Windows CRLF line endings in the release artifact. Shell scripts are now permanently enforced as LF. This release supersedes 8.21.3; the Teams and per-host access functionality is unchanged.' },
+      ],
+    },
+    {
       version: '8.21.3',
       date: '2026-07-25',
       title: 'Teams UI and enforced per-host access control',
