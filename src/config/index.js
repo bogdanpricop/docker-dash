@@ -91,6 +91,16 @@ module.exports = {
     pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
     leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
   },
+  providerResilience: {
+    concurrency: int('DD_PROVIDER_MAX_CONCURRENCY', 2),
+    maxQueue: int('DD_PROVIDER_MAX_QUEUE', 64),
+    timeoutMs: int('DD_PROVIDER_REQUEST_TIMEOUT_MS', 30000),
+    failureThreshold: int('DD_PROVIDER_CIRCUIT_FAILURES', 3),
+    cooldownMs: int('DD_PROVIDER_CIRCUIT_COOLDOWN_MS', 30000),
+  },
+  providerConformance: {
+    retentionDays: int('DD_PROVIDER_CONFORMANCE_RETENTION_DAYS', 365),
+  },
   smtp: {
     host: env('SMTP_HOST', 'localhost'),
     port: int('SMTP_PORT', 587),

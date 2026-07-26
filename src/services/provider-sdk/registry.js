@@ -6,6 +6,7 @@ const { getDb } = require('../../db');
 const { buildEnvelope } = require('./schema');
 const { resolveResourceKind } = require('./resource-catalog');
 const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = require('./resource-schema');
+const providerResilience = require('../provider-conformance/resilience');
 
 const adapters = new Map();
 const cache = new Map();
@@ -69,7 +70,7 @@ async function _probe(host, adapter) {
   let result = null;
   try {
     declared = adapter.declared(host) || {};
-    result = await adapter.probe(host);
+    result = await providerResilience.run(Number(host.id), () => adapter.probe(host), { operation: 'probe' });
     const durationMs = Date.now() - started;
     const envelope = buildEnvelope({
       host,
@@ -152,7 +153,7 @@ async function resourcesForHost(host, kindInput, options = {}) {
 
   let rows;
   try {
-    rows = await adapter.listResources(kindInfo.kind, host);
+    rows = await providerResilience.run(Number(host.id), () => adapter.listResources(kindInfo.kind, host), { operation: `inventory.${kindInfo.kind}` });
   } catch (err) {
     log.warn('Provider inventory read failed', {
       hostId: Number(host.id), provider: adapter.type, kind: kindInfo.kind,
@@ -209,6 +210,7 @@ function invalidateHost(hostId) {
 function clear() {
   cache.clear();
   inFlight.clear();
+  providerResilience.clear();
 }
 
 for (const adapter of [

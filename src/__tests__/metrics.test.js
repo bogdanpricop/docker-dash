@@ -119,6 +119,13 @@ describe('provider capability metrics', () => {
     expect(snapshot.providerCapabilityCacheTotal).toEqual({});
     expect(snapshot.providerCapabilityUnknown).toEqual({});
   });
+
+  it('records conformance grades with bounded labels', () => {
+    metrics.recordProviderConformance('xen', 'certified');
+    metrics.recordProviderConformance('xen', 'invented');
+    metrics.recordProviderConformance('bad provider', 'failed');
+    expect(metrics.snapshot().providerConformanceTotal).toEqual({ 'xen|certified': 1 });
+  });
 });
 
 describe('renderPrometheus', () => {
@@ -172,6 +179,11 @@ describe('renderPrometheus', () => {
     expect(out).toMatch(/docker_dash_provider_probe_total\{provider="proxmox",status="reachable"\}\s+1/);
     expect(out).toMatch(/docker_dash_provider_capability_cache_total\{result="miss"\}\s+1/);
     expect(out).toMatch(/docker_dash_provider_capability_unknown\{provider="proxmox"\}\s+2/);
+  });
+
+  it('renders provider conformance counters', () => {
+    metrics.recordProviderConformance('vsphere', 'conditional');
+    expect(metrics.renderPrometheus()).toMatch(/docker_dash_provider_conformance_total\{provider="vsphere",grade="conditional"\}\s+1/);
   });
 
   it('ends with trailing newline (Prometheus convention)', () => {

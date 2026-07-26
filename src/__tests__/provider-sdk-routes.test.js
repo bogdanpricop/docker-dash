@@ -6,6 +6,11 @@ const request = require('supertest');
 const mockCapabilities = jest.fn();
 const mockResources = jest.fn();
 const mockAudit = jest.fn();
+const mockConformanceRun = jest.fn();
+const mockConformanceGet = jest.fn();
+const mockConformanceList = jest.fn();
+const mockScorecard = jest.fn();
+const mockExport = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../db', () => ({
@@ -15,12 +20,22 @@ jest.mock('../services/provider-sdk/registry', () => ({
   capabilitiesForHost: (...args) => mockCapabilities(...args),
   resourcesForHost: (...args) => mockResources(...args),
 }));
+jest.mock('../services/provider-conformance', () => ({
+  runForHost: (...args) => mockConformanceRun(...args),
+  get: (...args) => mockConformanceGet(...args),
+  listForHost: (...args) => mockConformanceList(...args),
+  scorecard: (...args) => mockScorecard(...args),
+  exportEvidence: (...args) => mockExport(...args),
+  manifests: { listManifests: () => [{ providerType: 'xen', manifestHash: 'abc' }] },
+}));
 jest.mock('../services/audit', () => ({ log: (...args) => mockAudit(...args) }));
 jest.mock('../middleware/auth', () => ({
   requireAuth: (req, _res, next) => {
     req.user = { id: 1, username: 'tester', role: req.headers['x-test-role'] || 'admin' };
     next();
   },
+  requireRole: (...roles) => (req, res, next) => roles.includes(req.user.role)
+    ? next() : res.status(403).json({ error: 'Insufficient permissions' }),
 }));
 jest.mock('../middleware/hostAccess', () => ({
   requireHostAccess: () => (_req, _res, next) => next(),
@@ -42,6 +57,15 @@ describe('Provider SDK routes', () => {
       schemaVersion: '1.0', kind: 'virtualMachine', provider: { type: 'xen', endpointId: 7 },
       count: 0, totalObserved: 0, truncated: false, items: [],
     });
+    mockConformanceList.mockReturnValue([]);
+    mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
+    mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
+    mockConformanceRun.mockResolvedValue({
+      schemaVersion: '1.0', id: `pcr_${'a'.repeat(26)}`, hostId: 7,
+      providerType: 'xen', mode: 'live_readonly', grade: 'certified', score: 100, maxScore: 100,
+      evidenceHash: 'f'.repeat(64), checks: [],
+    });
+    mockConformanceGet.mockReturnValue(null);
   });
 
   it('returns host-scoped capabilities', async () => {
@@ -93,5 +117,41 @@ describe('Provider SDK routes', () => {
     const response = await request(app).get('/api/providers/7/resources/virtual-machines');
     expect(response.status).toBe(502);
     expect(response.body).toEqual({ error: 'Provider resource inventory failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('publishes provider manifests and an evidence-backed scorecard', async () => {
+    const manifests = await request(app).get('/api/providers/manifests');
+    expect(manifests.status).toBe(200);
+    expect(manifests.body.manifests[0].providerType).toBe('xen');
+    const scorecard = await request(app).get('/api/providers/scorecard');
+    expect(scorecard.status).toBe(200);
+    expect(scorecard.body.providers[0].counts.shipped).toBe(7);
+  });
+
+  it('exports portable conformance evidence only for admins', async () => {
+    expect((await request(app).get('/api/providers/conformance/export').set('x-test-role', 'viewer')).status).toBe(403);
+    const response = await request(app).get('/api/providers/conformance/export?limit=25');
+    expect(response.status).toBe(200);
+    expect(response.body.integrityHash).toHaveLength(64);
+    expect(mockExport).toHaveBeenCalledWith(undefined, { limit: 25 });
+  });
+
+  it('requires admin and only accepts live_readonly conformance', async () => {
+    expect((await request(app).post('/api/providers/7/conformance').set('x-test-role', 'viewer')).status).toBe(403);
+    expect((await request(app).post('/api/providers/7/conformance').send({ mode: 'mutation' })).status).toBe(400);
+    const response = await request(app).post('/api/providers/7/conformance').send({ mode: 'live_readonly' });
+    expect(response.status).toBe(201);
+    expect(mockConformanceRun).toHaveBeenCalledWith(mockHost, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_conformance_run', targetId: '7',
+    }));
+  });
+
+  it('keeps conformance results host scoped', async () => {
+    const run = { id: `pcr_${'b'.repeat(26)}`, hostId: 7, checks: [] };
+    mockConformanceGet.mockReturnValue(run);
+    expect((await request(app).get(`/api/providers/7/conformance/${run.id}`)).status).toBe(200);
+    mockConformanceGet.mockReturnValue({ ...run, hostId: 8 });
+    expect((await request(app).get(`/api/providers/7/conformance/${run.id}`)).status).toBe(404);
   });
 });

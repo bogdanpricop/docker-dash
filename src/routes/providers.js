@@ -4,17 +4,88 @@ const { Router } = require('express');
 const config = require('../config');
 const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
+const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const { requireHostAccess } = require('../middleware/hostAccess');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 
+router.use((req, res, next) => config.features.providerSdkV2
+  ? next() : res.status(404).json({ error: 'Provider SDK v2 is disabled' }));
+
 function _isAdmin(user) {
   return user?.role === 'admin' || (Array.isArray(user?.roles) && user.roles.includes('admin'));
 }
+
+function _host(hostId) {
+  const id = Number.parseInt(hostId, 10);
+  if (!Number.isInteger(id) || id <= 0) return { error: { status: 400, message: 'Invalid provider host ID' } };
+  const host = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(id);
+  if (!host) return { error: { status: 404, message: 'Provider host not found' } };
+  if (!host.is_active) return { error: { status: 400, message: `Provider host "${host.name}" is not active` } };
+  return { host };
+}
+
+function _conformanceError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider conformance request failed' : err.message,
+    code: err?.code || 'PROVIDER_CONFORMANCE_ERROR',
+  });
+}
+
+router.get('/manifests', requireAuth, (_req, res) => {
+  res.json({ schemaVersion: '1.0', manifests: conformance.manifests.listManifests() });
+});
+
+router.get('/scorecard', requireAuth, (_req, res) => {
+  res.json({ schemaVersion: '1.0', providers: conformance.scorecard() });
+});
+
+router.get('/conformance/export', requireAuth, requireRole('admin'), (req, res) => {
+  const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+  try { res.json(conformance.exportEvidence(undefined, { limit })); }
+  catch (err) { _conformanceError(res, err); }
+});
+
+router.get('/:hostId/conformance', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+  try {
+    const items = conformance.listForHost(resolved.host.id, { limit });
+    res.json({ schemaVersion: '1.0', count: items.length, items });
+  } catch (err) { _conformanceError(res, err); }
+});
+
+router.get('/:hostId/conformance/:runId', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  const run = conformance.get(req.params.runId);
+  if (!run || run.hostId !== resolved.host.id) return res.status(404).json({ error: 'Provider conformance run not found' });
+  res.json(run);
+});
+
+router.post('/:hostId/conformance', requireAuth, requireRole('admin'), requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (req.body?.mode !== undefined && req.body.mode !== 'live_readonly') {
+    return res.status(400).json({ error: 'Only live_readonly conformance is available', code: 'INVALID_CONFORMANCE_MODE' });
+  }
+  try {
+    const run = await conformance.runForHost(resolved.host, { createdBy: req.user.id });
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'provider_conformance_run', targetType: 'host', targetId: String(resolved.host.id),
+      details: { runId: run.id, provider: run.providerType, mode: run.mode, grade: run.grade, score: run.score, maxScore: run.maxScore, evidenceHash: run.evidenceHash },
+      ip: getClientIp(req),
+    });
+    res.status(201).json(run);
+  } catch (err) { _conformanceError(res, err); }
+}));
 
 router.get('/:hostId/capabilities', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
   if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });

@@ -42,6 +42,7 @@ const _providerProbeTotal = new Map();
 const _providerProbeDurationMs = new Map();
 const _providerCapabilityCacheTotal = new Map();
 const _providerCapabilityUnknown = new Map();
+const _providerConformanceTotal = new Map();
 
 /** Record an HTTP request after it has finished. */
 function recordRequest(method, statusCode, durationMs) {
@@ -98,6 +99,13 @@ function setProviderCapabilityUnknown(provider, count) {
   _providerCapabilityUnknown.set(provider, Math.floor(count));
 }
 
+function recordProviderConformance(provider, grade) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(provider || '')) return;
+  if (!['certified', 'conditional', 'failed'].includes(grade)) return;
+  const key = `${provider}|${grade}`;
+  _providerConformanceTotal.set(key, (_providerConformanceTotal.get(key) || 0) + 1);
+}
+
 function getUptimeSeconds() {
   return Math.floor((Date.now() - _startTime) / 1000);
 }
@@ -117,6 +125,7 @@ function snapshot() {
     providerProbeDurationMs: Object.fromEntries(_providerProbeDurationMs),
     providerCapabilityCacheTotal: Object.fromEntries(_providerCapabilityCacheTotal),
     providerCapabilityUnknown: Object.fromEntries(_providerCapabilityUnknown),
+    providerConformanceTotal: Object.fromEntries(_providerConformanceTotal),
   };
 }
 
@@ -133,6 +142,7 @@ function _reset() {
   _providerProbeDurationMs.clear();
   _providerCapabilityCacheTotal.clear();
   _providerCapabilityUnknown.clear();
+  _providerConformanceTotal.clear();
 }
 
 /** Render accumulated metrics as Prometheus text format. */
@@ -209,6 +219,13 @@ function renderPrometheus() {
     lines.push(`docker_dash_provider_capability_unknown{provider="${provider}"} ${count}`);
   }
 
+  lines.push('# HELP docker_dash_provider_conformance_total Provider conformance runs by provider and grade');
+  lines.push('# TYPE docker_dash_provider_conformance_total counter');
+  for (const [key, count] of _providerConformanceTotal) {
+    const [provider, grade] = key.split('|');
+    lines.push(`docker_dash_provider_conformance_total{provider="${provider}",grade="${grade}"} ${count}`);
+  }
+
   return lines.join('\n') + '\n';
 }
 
@@ -219,6 +236,7 @@ module.exports = {
   recordProviderProbe,
   recordProviderCapabilityCache,
   setProviderCapabilityUnknown,
+  recordProviderConformance,
   getUptimeSeconds,
   snapshot,
   renderPrometheus,
