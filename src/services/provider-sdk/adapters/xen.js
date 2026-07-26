@@ -51,12 +51,27 @@ function _fromCapabilities(capabilities = {}) {
     'vm.console', 'vm.migrate', 'host.maintenance',
     'storage.mutate', 'network.mutate', 'task.cancel',
   ]) features[key] = adapterNotImplemented('Xen');
+  const xoProvisioning = capabilities.provider === 'xo';
   features['vm.clone'] = capabilities.provisioning
-    ? conditional('XAPI template clone/copy is followed by durable VM.provision reconciliation', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true })
+    ? conditional(xoProvisioning
+      ? 'Xen Orchestra template creation uses the discovered task-backed pool create endpoint'
+      : 'XAPI template clone/copy is followed by durable VM.provision reconciliation',
+    { fromTemplate: true, modes: xoProvisioning ? ['full'] : ['full', 'linked'], durableTask: true, confirmation: true })
     : unsupported('Template provisioning is unavailable for this Xen management provider');
   features['vm.create'] = capabilities.provisioning
-    ? conditional('Create-from-template requires a managed XAPI task workflow', { fromTemplate: true, durableTask: true, confirmation: true })
+    ? conditional(xoProvisioning
+      ? 'Create-from-template requires the discovered Xen Orchestra pool task workflow'
+      : 'Create-from-template requires a managed XAPI task workflow',
+    { fromTemplate: true, durableTask: true, confirmation: true })
     : unsupported('Template provisioning is unavailable for this Xen management provider');
+  features['vm.guestCustomize'] = capabilities.guestCustomization
+    ? conditional('Xen Orchestra creates a NoCloud/ConfigDrive payload through its task-backed pool create endpoint', {
+      duringProvisioning: true, osFamilies: ['linux'], methods: ['cloud-init'],
+      fields: ['hostname', 'domain', 'timezone', 'user', 'sshAuthorizedKeys', 'ipv4', 'dns', 'searchDomains'],
+    })
+    : unsupported(capabilities.provider === 'xapi'
+      ? 'Direct XAPI has no portable config-drive upload method; use a compatible Xen Orchestra endpoint'
+      : 'Guest customization is unavailable for this Xen management provider');
   return features;
 }
 

@@ -42,6 +42,9 @@ const VirtualizationCatalogPage = {
         <div><strong>New VM:</strong> ${Utils.escapeHtml(plan.name)}</div>
         <div><strong>Clone:</strong> ${Utils.escapeHtml(plan.mode.effective)}${plan.mode.requested === 'auto' ? ' (provider default)' : ''}</div>
         <div><strong>Storage:</strong> ${Utils.escapeHtml((plan.placement.candidates || []).find(item => item.id === plan.placement.selected.storageId)?.displayName || 'Provider/source default')}</div>
+        <div><strong>Guest customization:</strong> ${plan.customization?.enabled
+    ? `${Utils.escapeHtml(plan.customization.hostname)} · ${Utils.escapeHtml(plan.customization.network?.mode || 'network default')} · ${Number(plan.customization.sshKeyCount || 0)} SSH key(s)`
+    : 'Off'}</div>
         <div><strong>Power after create:</strong> Off</div>
       </div>
       ${plan.warnings?.length ? `<ul style="margin:12px 0 0 18px">${plan.warnings.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul>` : ''}
@@ -49,18 +52,69 @@ const VirtualizationCatalogPage = {
   },
 
   async _provision(item) {
+    const providerType = item.provider?.type;
+    const vSphere = providerType === 'vsphere';
+    const proxmox = providerType === 'proxmox';
     const input = await Modal.form(`<label class="form-label" for="provision-name">New VM name</label>
       <input id="provision-name" class="form-control" maxlength="80" autocomplete="off" placeholder="app-01">
       <label class="form-label" for="provision-mode" style="margin-top:12px">Clone mode</label>
       <select id="provision-mode" class="form-control"><option value="auto">Automatic (recommended)</option><option value="full">Full independent copy</option><option value="linked">Linked/thin clone</option></select>
-      <div class="alert alert-info text-sm" style="margin-top:14px">The VM is created powered off. Provider placement and name conflicts are revalidated before submit.</div>`, {
-      title: `Create from ${item.displayName}`, submitLabel: 'Check placement', width: '560px',
+      <label style="display:flex;gap:8px;align-items:center;margin-top:14px"><input id="provision-customize" type="checkbox"> Configure Linux guest identity and network</label>
+      <div id="provision-customization" style="display:none;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:8px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label class="form-label">Hostname<input id="guest-hostname" class="form-control" maxlength="63" placeholder="Defaults to VM name"></label>
+          <label class="form-label">DNS domain${vSphere ? ' (required)' : ''}<input id="guest-domain" class="form-control" maxlength="253" placeholder="example.internal"></label>
+          ${proxmox ? '' : '<label class="form-label">Timezone<input id="guest-timezone" class="form-control" maxlength="64" placeholder="Europe/Bucharest"></label>'}
+          ${vSphere ? '' : '<label class="form-label">Linux user<input id="guest-user" class="form-control" maxlength="32" placeholder="deploy"></label>'}
+          <label class="form-label">IPv4 mode<select id="guest-network-mode" class="form-control"><option value="dhcp">DHCP</option><option value="static">Static</option></select></label>
+          <label class="form-label">Interface<input id="guest-interface" class="form-control" maxlength="32" value="eth0"></label>
+          <label class="form-label guest-static" style="display:none">IPv4/CIDR<input id="guest-address" class="form-control" placeholder="192.0.2.10/24"></label>
+          <label class="form-label guest-static" style="display:none">Gateway<input id="guest-gateway" class="form-control" placeholder="192.0.2.1"></label>
+        </div>
+        <label class="form-label" style="margin-top:10px">DNS servers<input id="guest-dns" class="form-control" placeholder="1.1.1.1, 9.9.9.9"></label>
+        <label class="form-label" style="margin-top:10px">DNS search domains<input id="guest-search" class="form-control" placeholder="example.internal"></label>
+        ${vSphere ? '' : '<label class="form-label" style="margin-top:10px">SSH authorized keys<textarea id="guest-ssh-keys" class="form-control" rows="3" placeholder="One public key per line; no private keys"></textarea></label>'}
+        <div class="text-muted text-sm" style="margin-top:8px">Password authentication is disabled; arbitrary scripts and private keys are never accepted.</div>
+      </div>
+      <div class="alert alert-info text-sm" style="margin-top:14px">The VM is created powered off. Provider placement, customization support and name conflicts are revalidated before submit.</div>`, {
+      title: `Create from ${item.displayName}`, submitLabel: 'Check placement', width: '700px',
+      onMount: root => {
+        const toggle = () => { root.querySelector('#provision-customization').style.display = root.querySelector('#provision-customize').checked ? 'block' : 'none'; };
+        const network = () => root.querySelectorAll('.guest-static').forEach(row => { row.style.display = root.querySelector('#guest-network-mode').value === 'static' ? 'block' : 'none'; });
+        root.querySelector('#provision-customize').addEventListener('change', toggle);
+        root.querySelector('#guest-network-mode').addEventListener('change', network);
+        toggle(); network();
+      },
       onSubmit: root => {
         const name = root.querySelector('#provision-name').value.trim();
         if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) {
           Toast.error('Use 1-80 letters, numbers, dot, underscore or hyphen'); return false;
         }
-        return { name, mode: root.querySelector('#provision-mode').value };
+        const output = { name, mode: root.querySelector('#provision-mode').value };
+        if (!root.querySelector('#provision-customize').checked) return output;
+        const hostname = root.querySelector('#guest-hostname').value.trim() || name;
+        const domain = root.querySelector('#guest-domain').value.trim();
+        if (!/^(?=.{1,63}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(hostname)) {
+          Toast.error('Guest hostname must be a valid DNS label'); return false;
+        }
+        if (vSphere && !domain) { Toast.error('vSphere Linux customization requires a DNS domain'); return false; }
+        const mode = root.querySelector('#guest-network-mode').value;
+        const address = root.querySelector('#guest-address').value.trim();
+        const gateway = root.querySelector('#guest-gateway').value.trim();
+        if (mode === 'static' && (!address || !gateway)) { Toast.error('Static IPv4 requires address/CIDR and gateway'); return false; }
+        const list = selector => root.querySelector(selector).value.split(/[\r\n,]+/).map(value => value.trim()).filter(Boolean);
+        output.customization = {
+          osFamily: 'linux', hostname, domain: domain || null,
+          timezone: root.querySelector('#guest-timezone')?.value.trim() || null,
+          user: root.querySelector('#guest-user')?.value.trim() || null,
+          sshAuthorizedKeys: root.querySelector('#guest-ssh-keys') ? list('#guest-ssh-keys') : [],
+          network: {
+            mode, interfaceName: root.querySelector('#guest-interface').value.trim() || 'eth0',
+            address: mode === 'static' ? address : null, gateway: mode === 'static' ? gateway : null,
+            dnsServers: list('#guest-dns'), searchDomains: list('#guest-search'),
+          },
+        };
+        return output;
       },
     });
     if (!input) return;

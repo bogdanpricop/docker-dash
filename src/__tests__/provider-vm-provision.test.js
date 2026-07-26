@@ -1,6 +1,6 @@
 'use strict';
 
-jest.mock('../config', () => ({ features: { providerVmProvisioning: false } }));
+jest.mock('../config', () => ({ features: { providerVmProvisioning: false, providerVmGuestCustomization: false } }));
 jest.mock('../db', () => ({ getDb: jest.fn(() => { throw new Error('test must inject database'); }) }));
 jest.mock('../services/provider-operations/index', () => ({ list: jest.fn(() => []), create: jest.fn() }));
 jest.mock('../services/provider-sdk/registry', () => ({}));
@@ -27,7 +27,8 @@ function dependencies(overrides = {}) {
     create: jest.fn(input => ({ id: `op_${'c'.repeat(26)}`, ...input })),
   };
   return {
-    enabled: overrides.enabled ?? true, canOperate: overrides.canOperate ?? true,
+    enabled: overrides.enabled ?? true, guestCustomizationEnabled: overrides.guestCustomizationEnabled ?? true,
+    canOperate: overrides.canOperate ?? true,
     database: {}, operations, createdBy: 9,
     policy: { evaluate: jest.fn(() => overrides.policy || { allowed: true, code: null, mode: 'active', reason: null }) },
     registry: {
@@ -36,7 +37,10 @@ function dependencies(overrides = {}) {
         ? { items: overrides.vms || [] } : { items: [storage] }),
       capabilitiesForHost: jest.fn(async () => ({
         provider: { variant: overrides.variant || 'xapi' },
-        features: { 'vm.create': overrides.capability || { state: 'conditional', reason: 'live validation' } },
+        features: {
+          'vm.create': overrides.capability || { state: 'conditional', reason: 'live validation' },
+          'vm.guestCustomize': overrides.customizationCapability || { state: 'unsupported', reason: 'not available' },
+        },
       })),
     },
   };
@@ -57,7 +61,7 @@ describe('common create-from-template plans and submission', () => {
     expect(plan.warnings).toContainEqual(expect.objectContaining({ type: 'LINKED_CLONE_DEPENDENCY' }));
   });
 
-  it('fails closed on release, permission, policy, capability, conflicts and XO REST', async () => {
+  it('fails closed on release, permission, policy, capability and conflicts', async () => {
     const deps = dependencies({
       enabled: false, canOperate: false, variant: 'xo', capability: { state: 'unsupported', reason: 'not exposed' },
       vms: [{ displayName: 'app-01' }],
@@ -68,7 +72,7 @@ describe('common create-from-template plans and submission', () => {
     expect(plan.allowed).toBe(false);
     expect(plan.blockers.map(item => item.type)).toEqual(expect.arrayContaining([
       'RELEASE_DISABLED', 'PERMISSION_BLOCKED', 'POLICY_BLOCKED', 'CAPABILITY_UNSUPPORTED',
-      'OPERATION_CONFLICT', 'VM_NAME_CONFLICT', 'PROVIDER_VARIANT_UNAVAILABLE',
+      'OPERATION_CONFLICT', 'VM_NAME_CONFLICT',
     ]));
   });
 
@@ -89,5 +93,29 @@ describe('common create-from-template plans and submission', () => {
       request: expect.objectContaining({ name: 'app-01', mode: 'linked', startAfterCreate: false }),
       lockScopes: expect.arrayContaining([`resource:${ARTIFACT_ID}`, expect.stringMatching(/^provider-name:[a-f0-9]{32}$/)]),
     }));
+  });
+
+  it('plans and submits supported Xen Orchestra cloud-init without exposing raw fields in the plan', async () => {
+    const deps = dependencies({
+      variant: 'xo', customizationCapability: { state: 'conditional', reason: 'XO create_vm cloud config' },
+    });
+    const request = {
+      name: 'app-01', mode: 'full', customization: {
+        hostname: 'app-01', domain: 'example.internal', timezone: 'Europe/Bucharest', user: 'deploy',
+        network: { mode: 'static', address: '192.0.2.10/24', gateway: '192.0.2.1', dnsServers: ['1.1.1.1'] },
+      },
+    };
+    const plan = await service.preflightForHost(host, ARTIFACT_ID, request, deps);
+    expect(plan.allowed).toBe(true);
+    expect(plan.customization).toMatchObject({
+      enabled: true, hostname: 'app-01', user: 'deploy', network: { mode: 'static' },
+      capability: { key: 'vm.guestCustomize', state: 'conditional' },
+    });
+    expect(plan).not.toHaveProperty('customization.sshAuthorizedKeys');
+    const result = await service.submitForHost(host, ARTIFACT_ID, {
+      ...request, planHash: plan.planHash, confirm: true, confirmName: 'app-01', idempotencyKey: 'xo-cloud-init-app-01',
+    }, deps);
+    expect(result.operation.request.customization).toMatchObject({ hostname: 'app-01', user: 'deploy' });
+    expect(result.operation.request.customization.network).toMatchObject({ address: '192.0.2.10/24' });
   });
 });

@@ -91,6 +91,7 @@ module.exports = {
     providerVmSnapshots: bool('DD_PROVIDER_VM_SNAPSHOTS', false),
     providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
     providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
+    providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

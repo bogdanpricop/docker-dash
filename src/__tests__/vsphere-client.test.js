@@ -382,7 +382,40 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(body).toContain('<CloneVM_Task xmlns="urn:vim25">');
       expect(body).toContain('<folder type="Folder">group-v3</folder>');
       expect(body).toContain('<datastore type="Datastore">datastore-4</datastore>');
-      expect(body).toContain('<powerOn>false</powerOn><template>false</template>');
+      expect(body).toContain('<template>false</template><powerOn>false</powerOn>');
+      expect(body.indexOf('<location>')).toBeLessThan(body.indexOf('<template>false</template>'));
+    });
+
+    it('prechecks and embeds LinuxPrep customization in official CloneSpec order', async () => {
+      const bodies = [];
+      mockHttps._mockNext((_opts, cb, req) => {
+        bodies.push(req._writtenBody.toString('utf8'));
+        const res = fakeResponse({ status: 200, body: '<CheckCustomizationSpecResponse/>' }); cb(res); res._fire();
+      });
+      mockHttps._mockNext((_opts, cb, req) => {
+        bodies.push(req._writtenBody.toString('utf8'));
+        const res = fakeResponse({ status: 200, body: '<CloneVM_TaskResponse><returnval type="Task">haTask-custom-clone</returnval></CloneVM_TaskResponse>' }); cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      const customization = {
+        osFamily: 'linux', hostname: 'app-01', domain: 'example.internal', timezone: 'Europe/Bucharest',
+        user: null, sshAuthorizedKeys: [],
+        network: {
+          mode: 'static', address: '192.0.2.10/25', gateway: '192.0.2.1',
+          dnsServers: ['1.1.1.1'], searchDomains: ['apps.example.internal'],
+        },
+      };
+      await expect(client.cloneTemplate('vm-9000', {
+        name: 'app-01', mode: 'full', folderRef: 'group-v3', poolRef: 'resgroup-1', datastoreRef: 'datastore-4', customization,
+      })).resolves.toEqual({ taskRef: 'haTask-custom-clone', provider: 'vsphere' });
+      expect(bodies[0]).toContain('<CheckCustomizationSpec xmlns="urn:vim25">');
+      expect(bodies[0]).toContain('<spec>');
+      expect(bodies[1]).toContain('<identity xsi:type="CustomizationLinuxPrep">');
+      expect(bodies[1]).toContain('<subnetMask>255.255.255.128</subnetMask>');
+      expect(bodies[1]).toContain('<dnsSuffixList>apps.example.internal</dnsSuffixList>');
+      expect(bodies[1].indexOf('<template>false</template>')).toBeLessThan(bodies[1].indexOf('<customization>'));
+      expect(bodies[1].indexOf('</customization>')).toBeLessThan(bodies[1].indexOf('<powerOn>false</powerOn>'));
     });
   });
 });

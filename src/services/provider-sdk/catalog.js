@@ -25,6 +25,7 @@ const FEATURE_CATALOG = Object.freeze({
   'vm.console': 'Interactive virtual machine console',
   'vm.clone': 'Clone virtual machine',
   'vm.create': 'Provision virtual machine',
+  'vm.guestCustomize': 'Customize guest operating system during provisioning',
   'vm.migrate': 'Migrate virtual machine',
   'host.maintenance': 'Host maintenance orchestration',
   'cluster.ha.read': 'High-availability state and readiness',

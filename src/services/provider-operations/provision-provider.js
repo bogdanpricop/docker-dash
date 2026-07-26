@@ -6,6 +6,7 @@ const { normalizeResource } = require('../provider-sdk/resource-schema');
 const proxmox = require('../proxmox');
 const vsphere = require('../vsphere');
 const xen = require('../xen');
+const guestCustomization = require('./guest-customization');
 
 function _nativeRef(raw) {
   return String(raw?.nativeRef ?? raw?.ref ?? raw?.moref ?? raw?.id ?? raw?.uuid ?? '');
@@ -97,11 +98,28 @@ async function submit(target, request, database) {
     }
     return target.client.cloneTemplate(target.resolved.nativeRef, {
       name: request.name, mode: request.mode, folderRef: placement.folderRef,
-      poolRef: placement.poolRef, datastoreRef,
+      poolRef: placement.poolRef, datastoreRef, customization: request.customization || null,
+    });
+  }
+  if (target.client.provider === 'xo') {
+    const poolId = String(target.template.pool || target.artifact.provenance?.pool || '');
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(poolId)) {
+      throw Object.assign(new Error('Xen Orchestra template pool is unavailable'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE', status: 409 });
+    }
+    const customization = request.customization || null;
+    return target.client.cloneTemplate(target.resolved.nativeRef, request.name, {
+      mode: request.mode, poolId,
+      ...(customization ? {
+        cloudConfig: guestCustomization.renderCloudConfig(customization),
+        networkConfig: guestCustomization.renderNetworkConfig(customization),
+      } : {}),
     });
   }
   if (target.client.provider !== 'xapi') {
-    throw Object.assign(new Error('Xen Orchestra REST template instantiation is not available'), { code: 'PROVIDER_ACTION_UNAVAILABLE', status: 409 });
+    throw Object.assign(new Error('Xen management provider has no task-safe template instantiation workflow'), { code: 'PROVIDER_ACTION_UNAVAILABLE', status: 409 });
+  }
+  if (request.customization) {
+    throw Object.assign(new Error('Direct XAPI guest customization is unavailable'), { code: 'GUEST_CUSTOMIZATION_UNSUPPORTED', status: 409 });
   }
   const storageRef = request.mode === 'full'
     ? (storage?.nativeRef || await target.client.defaultStorageRef()) : null;
@@ -138,6 +156,29 @@ async function provisionState(target, vmRef) {
     : { state: 'complete', taskRef: null };
 }
 
+function _proxmoxVmTarget(found) {
+  const vmid = String(found?.raw?.vmid || /^qemu\/(\d{1,20})$/.exec(String(found?.nativeRef || ''))?.[1] || '');
+  const node = String(found?.raw?.node || '');
+  if (!/^\d{1,20}$/.test(vmid) || !/^[A-Za-z0-9._-]{1,160}$/.test(node)) {
+    throw Object.assign(new Error('Created Proxmox VM placement is unavailable'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE', status: 409 });
+  }
+  return { node, vmid };
+}
+
+async function customize(target, found, customization) {
+  if (target.host.daemon_type !== 'proxmox') {
+    throw Object.assign(new Error('Provider has no separate guest customization stage'), { code: 'PROVIDER_ACTION_UNAVAILABLE' });
+  }
+  const vm = _proxmoxVmTarget(found);
+  return target.client.configureCloudInit(vm.node, vm.vmid, customization);
+}
+
+async function customizationStatus(target, found, customization) {
+  if (target.host.daemon_type !== 'proxmox') return { configured: true, provider: target.client.provider };
+  const vm = _proxmoxVmTarget(found);
+  return target.client.cloudInitStatus(vm.node, vm.vmid, customization);
+}
+
 async function findByName(target, name, database, options = {}) {
   const rows = await target.client.listVMs();
   let selected = rows.filter(row => Number(row?.template) !== 1
@@ -163,6 +204,7 @@ async function cancelTask(target, task) {
 }
 
 module.exports = {
-  open, close, submit, taskStatus, taskResultRef, provision, provisionState, findByName, cancelTask,
-  _internals: { _nativeRef, _matches, _resolveStorage },
+  open, close, submit, taskStatus, taskResultRef, provision, provisionState,
+  customize, customizationStatus, findByName, cancelTask,
+  _internals: { _nativeRef, _matches, _resolveStorage, _proxmoxVmTarget },
 };

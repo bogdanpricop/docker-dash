@@ -19,6 +19,10 @@ function declared() {
     'vm.read': supported(),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template is revalidated against node and storage placement', { fromTemplate: true, durableTask: true, confirmation: true }),
+    'vm.guestCustomize': conditional('Cloud-Init settings require a compatible QEMU template and are verified on the cloned VM config', {
+      duringProvisioning: true, osFamilies: ['linux'], methods: ['cloud-init'],
+      fields: ['hostname', 'user', 'sshAuthorizedKeys', 'ipv4', 'dns', 'searchDomains'],
+    }),
     'backup.read': supported(),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),

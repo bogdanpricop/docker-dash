@@ -20,6 +20,10 @@ function declared() {
     'vm.read': supported(),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template uses CloneVM_Task with live placement revalidation', { fromTemplate: true, durableTask: true, confirmation: true }),
+    'vm.guestCustomize': conditional('LinuxPrep is checked against the source template before CloneVM_Task and applies on first boot', {
+      duringProvisioning: true, osFamilies: ['linux'], methods: ['linuxPrep'], requiresGuestTools: true,
+      fields: ['hostname', 'domain', 'timezone', 'ipv4', 'dns', 'searchDomains'],
+    }),
     'vm.power.start': conditional('Availability is checked from current VM state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Clean shutdown requires running VMware Tools', { perResource: true, requiresGuestTools: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),

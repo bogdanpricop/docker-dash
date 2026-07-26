@@ -21,6 +21,7 @@
 
 const https = require('https');
 const log = require('../utils/logger')('vsphere');
+const { prefixToNetmask } = require('./provider-operations/guest-customization');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -346,6 +347,52 @@ class VSphereClient {
     };
   }
 
+  _linuxCustomizationSpec(customization, tag = 'customization') {
+    if (!customization || customization.osFamily !== 'linux' || !customization.network
+      || !/^(?=.{1,63}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(String(customization.hostname || ''))
+      || !customization.domain || customization.user || customization.sshAuthorizedKeys?.length) {
+      throw Object.assign(new Error('Invalid or unsupported vSphere Linux guest customization'), {
+        code: 'INVALID_GUEST_CUSTOMIZATION', status: 400,
+      });
+    }
+    const network = customization.network;
+    let ip;
+    if (network.mode === 'static') {
+      const [address, prefix] = String(network.address || '').split('/');
+      ip = `<ip xsi:type="CustomizationFixedIp"><ipAddress>${this._xesc(address)}</ipAddress></ip>`
+        + `<subnetMask>${prefixToNetmask(prefix)}</subnetMask><gateway>${this._xesc(network.gateway)}</gateway>`;
+    } else {
+      ip = '<ip xsi:type="CustomizationDhcpIpGenerator"/>';
+    }
+    const dnsServers = (network.dnsServers || []).map(value => `<dnsServerList>${this._xesc(value)}</dnsServerList>`).join('');
+    const dnsSuffixes = [...new Set([customization.domain, ...(network.searchDomains || [])].filter(Boolean))]
+      .map(value => `<dnsSuffixList>${this._xesc(value)}</dnsSuffixList>`).join('');
+    const timeZone = customization.timezone ? `<timeZone>${this._xesc(customization.timezone)}</timeZone>` : '';
+    return `<${tag}>
+      <identity xsi:type="CustomizationLinuxPrep">
+        <hostName xsi:type="CustomizationFixedName"><name>${this._xesc(customization.hostname)}</name></hostName>
+        <domain>${this._xesc(customization.domain)}</domain>${timeZone}<hwClockUTC>true</hwClockUTC>
+      </identity>
+      <globalIPSettings>${dnsSuffixes}${dnsServers}</globalIPSettings>
+      <nicSettingMap><adapter>${ip}<dnsDomain>${this._xesc(customization.domain)}</dnsDomain></adapter></nicSettingMap>
+    </${tag}>`;
+  }
+
+  async checkCustomizationSpec(templateMoref, customization) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(templateMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere template reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const spec = this._linuxCustomizationSpec(customization, 'spec');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CheckCustomizationSpec xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(templateMoref)}</_this>${spec}
+  </CheckCustomizationSpec></soap:Body>
+</soap:Envelope>`;
+    await this._soapPost(body);
+    return { compatible: true };
+  }
+
   async cloneTemplate(templateMoref, options = {}) {
     await this._ensureLoggedIn();
     const refs = [templateMoref, options.folderRef, options.poolRef, options.datastoreRef];
@@ -354,8 +401,11 @@ class VSphereClient {
       || options.mode !== 'full') {
       throw Object.assign(new Error('Invalid vSphere template clone request'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
     }
+    const customization = options.customization
+      ? this._linuxCustomizationSpec(options.customization) : '';
+    if (options.customization) await this.checkCustomizationSpec(templateMoref, options.customization);
     const body = `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body><CloneVM_Task xmlns="urn:vim25">
     <_this type="VirtualMachine">${this._xesc(templateMoref)}</_this>
     <folder type="Folder">${this._xesc(options.folderRef)}</folder>
@@ -363,7 +413,7 @@ class VSphereClient {
     <spec><location>
       <datastore type="Datastore">${this._xesc(options.datastoreRef)}</datastore>
       <pool type="ResourcePool">${this._xesc(options.poolRef)}</pool>
-    </location><powerOn>false</powerOn><template>false</template></spec>
+    </location><template>false</template>${customization}<powerOn>false</powerOn></spec>
   </CloneVM_Task></soap:Body>
 </soap:Envelope>`;
     const response = await this._soapPost(body);

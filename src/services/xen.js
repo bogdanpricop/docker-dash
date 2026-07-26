@@ -125,6 +125,32 @@ function _idFrom(value) {
   return parts[parts.length - 1] || str;
 }
 
+function _openApiOperationHasFields(spec, operation, requiredFields) {
+  if (!spec || typeof spec !== 'object' || !operation || typeof operation !== 'object') return false;
+  const fields = new Set();
+  const seen = new Set();
+  const stack = [operation];
+  const resolveRef = ref => {
+    if (typeof ref !== 'string' || !ref.startsWith('#/')) return null;
+    return ref.slice(2).split('/').reduce((value, part) => value?.[part.replace(/~1/g, '/').replace(/~0/g, '~')], spec);
+  };
+  while (stack.length && seen.size < 1024) {
+    const value = stack.pop();
+    if (!value || typeof value !== 'object' || seen.has(value)) continue;
+    seen.add(value);
+    if (value.properties && typeof value.properties === 'object') {
+      Object.keys(value.properties).forEach(field => fields.add(field));
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key === '$ref') {
+        const resolved = resolveRef(child);
+        if (resolved) stack.push(resolved);
+      } else if (child && typeof child === 'object') stack.push(child);
+    }
+  }
+  return requiredFields.every(field => fields.has(field));
+}
+
 function _num(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -151,6 +177,7 @@ class XenOrchestraClient {
   constructor(config) {
     this._config = { ...config, provider: 'xo' };
     this._config._endpoint = _endpoint(config.endpoint);
+    this._restFeatures = { provisioning: false, guestCustomization: false };
     if (!config.token && !(config.username && config.password)) {
       throw new Error('Xen Orchestra requires an authentication token or username + password');
     }
@@ -196,7 +223,10 @@ class XenOrchestraClient {
   }
 
   async info() {
-    const me = await this._request('GET', '/rest/v0/users/me');
+    const [me] = await Promise.all([
+      this._request('GET', '/rest/v0/users/me'),
+      this._discoverRestFeatures(),
+    ]);
     return {
       provider: 'xo', product: 'Xen Orchestra', apiVersion: 'v0',
       username: me?.email || me?.name || me?.id || null,
@@ -208,10 +238,29 @@ class XenOrchestraClient {
     return {
       provider: 'xo', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
+      snapshots: true, snapshotQuiesce: false, backups: false, console: false,
+      provisioning: this._restFeatures.provisioning,
+      guestCustomization: this._restFeatures.guestCustomization,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
+  }
+
+  async _discoverRestFeatures() {
+    try {
+      const spec = await this._request('GET', '/rest/v0/docs/swagger.json');
+      const paths = spec && typeof spec === 'object' ? spec.paths || {} : {};
+      const route = Object.entries(paths).find(([path]) => /\/pools\/\{id\}\/actions\/create_vm$/.test(path));
+      const provisioning = !!route?.[1]?.post;
+      this._restFeatures = {
+        provisioning,
+        guestCustomization: provisioning
+          && _openApiOperationHasFields(spec, route[1].post, ['cloud_config', 'network_config']),
+      };
+    } catch {
+      this._restFeatures = { provisioning: false, guestCustomization: false };
+    }
+    return this._restFeatures;
   }
 
   async listVMs() {
@@ -310,6 +359,35 @@ class XenOrchestraClient {
 
   async getTask(id) {
     return this._request('GET', `/rest/v0/tasks/${encodeURIComponent(id)}`);
+  }
+
+  async cloneTemplate(templateId, name, options = {}) {
+    const safeId = value => /^[A-Za-z0-9._:-]{1,160}$/.test(String(value || ''));
+    if (!safeId(templateId) || !safeId(options.poolId)
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(name || ''))
+      || options.mode !== 'full') {
+      throw new XenError('Invalid Xen Orchestra template provisioning request', { status: 400, provider: 'xo' });
+    }
+    for (const value of [options.cloudConfig, options.networkConfig]) {
+      if (value !== undefined && (typeof value !== 'string' || value.length > 65536 || /\u0000/.test(value))) {
+        throw new XenError('Xen Orchestra cloud-init payload is invalid', {
+          status: 400, code: 'INVALID_GUEST_CUSTOMIZATION', provider: 'xo',
+        });
+      }
+    }
+    const result = await this._request('POST',
+      `/rest/v0/pools/${encodeURIComponent(options.poolId)}/actions/create_vm?sync=false`, {
+        name_label: name, template: String(templateId), boot: false,
+        ...(options.cloudConfig ? { cloud_config: options.cloudConfig } : {}),
+        ...(options.networkConfig ? { network_config: options.networkConfig } : {}),
+      });
+    const taskRef = String(result?.taskId || result?.task || '');
+    if (!safeId(taskRef)) {
+      throw new XenError('Xen Orchestra create operation returned no durable task', {
+        status: 502, code: 'INVALID_PROVIDER_TASK_RESPONSE', provider: 'xo',
+      });
+    }
+    return { taskRef, provider: 'xo', stage: 'clone' };
   }
 
   async listSnapshots(vmId) {
@@ -1110,6 +1188,6 @@ module.exports = {
   _internals: {
     DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES, _xmlValue, _parseXmlRpcResponse,
     _parseXmlRpcValue, _xmlTokens, _shellQuote, _idFrom, _hostKeySha256Hex,
-    _normalizedAllowedActions,
+    _normalizedAllowedActions, _openApiOperationHasFields,
   },
 };

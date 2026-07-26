@@ -4,6 +4,7 @@ jest.mock('../db', () => ({ getDb: jest.fn(() => { throw new Error('test must in
 jest.mock('../services/provider-operations/provision-provider', () => ({
   open: jest.fn(), close: jest.fn(), submit: jest.fn(), taskStatus: jest.fn(),
   taskResultRef: jest.fn(), provision: jest.fn(), provisionState: jest.fn(),
+  customize: jest.fn(), customizationStatus: jest.fn(),
   findByName: jest.fn(), cancelTask: jest.fn(),
 }));
 
@@ -95,5 +96,51 @@ describe('durable create-from-template handler', () => {
       state: 'succeeded', phase: 'verified',
       result: expect.objectContaining({ vm: expect.objectContaining({ displayName: 'app-01' }), verified: true }),
     }));
+  });
+
+  it('checkpoints, applies and verifies Proxmox Cloud-Init after clone completion', async () => {
+    const proxHost = { id: 8, daemon_type: 'proxmox', is_active: 1 };
+    const proxTarget = { host: proxHost, artifactId: ARTIFACT_ID, client: { provider: 'proxmox' } };
+    const proxOperation = {
+      ...operation(), provider: { type: 'proxmox', endpointId: 8 },
+    };
+    const customization = {
+      schemaVersion: '1.0', osFamily: 'linux', hostname: 'app-01', domain: 'example.internal',
+      timezone: null, user: 'deploy', sshAuthorizedKeys: ['ssh-ed25519 PUBLIC-MATERIAL deploy@example'],
+      network: { mode: 'dhcp', interfaceName: 'eth0', address: null, gateway: null, dnsServers: [], searchDomains: [] },
+    };
+    const found = {
+      nativeRef: 'qemu/240', raw: { id: 'qemu/240', vmid: 240, node: 'pve-a', name: 'app-01' },
+      resource: { id: `ddr_vm_${'e'.repeat(26)}`, displayName: 'app-01', status: { powerState: 'poweredOff' } },
+    };
+    const db = { prepare: () => ({ get: () => proxHost }) };
+    const makeContext = nativeTaskRef => ({
+      operation: proxOperation, request: { name: 'app-01', mode: 'full', customization },
+      nativeTaskRef, reportProgress: jest.fn(), bindNativeTask: jest.fn(),
+    });
+    bridge.open.mockResolvedValue(proxTarget);
+    bridge.findByName.mockResolvedValue(found);
+    bridge.taskStatus.mockResolvedValue({ status: 'stopped', exitstatus: 'OK' });
+
+    const clone = handler._internals._taskRef('proxmox', { taskRef: 'UPID:pve-a:clone', node: 'pve-a' }, 'clone');
+    const cloneContext = makeContext(clone);
+    const afterClone = await handler.reconcile(cloneContext, { database: db });
+    expect(afterClone).toMatchObject({ state: 'reconciling', phase: 'customize-ready' });
+    const readyRef = cloneContext.bindNativeTask.mock.calls[0][0];
+    expect(handler._internals._parseTask(readyRef, 'proxmox')).toMatchObject({ stage: 'customize-ready', ref: 'qemu/240' });
+
+    const readyContext = makeContext(readyRef);
+    const afterSubmit = await handler.reconcile(readyContext, { database: db });
+    expect(bridge.customize).toHaveBeenCalledWith(proxTarget, found, customization);
+    expect(afterSubmit).toMatchObject({ state: 'reconciling', phase: 'customize-verify' });
+    const verifyRef = readyContext.bindNativeTask.mock.calls[1][0];
+
+    bridge.customizationStatus.mockResolvedValue({ configured: true, provider: 'proxmox' });
+    const verified = await handler.reconcile(makeContext(verifyRef), { database: db });
+    expect(verified).toMatchObject({
+      state: 'succeeded', phase: 'verified',
+      result: { guestCustomization: { enabled: true, hostname: 'app-01', sshKeyCount: 1 } },
+    });
+    expect(JSON.stringify(verified.result)).not.toContain('PUBLIC-MATERIAL');
   });
 });

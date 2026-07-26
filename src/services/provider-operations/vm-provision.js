@@ -7,6 +7,7 @@ const registrySingleton = require('../provider-sdk/registry');
 const operationsSingleton = require('./index');
 const policySingleton = require('./policy');
 const { TYPE } = require('./handlers/vm-provision');
+const guestCustomization = require('./guest-customization');
 
 const SAFE_ARTIFACT_ID = /^dda_art_[a-f0-9]{26}$/;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
@@ -49,6 +50,7 @@ function _semanticPlan(plan) {
     artifact: { id: plan.artifact.id, kind: plan.artifact.kind, displayName: plan.artifact.displayName },
     name: plan.name, mode: plan.mode, placement: plan.placement.selected,
     capability: { key: plan.capability.key, state: plan.capability.state },
+    customization: plan.customization,
     blockers: plan.blockers.map(item => `${item.type}:${item.evidence?.code || item.evidence?.state || ''}`).sort(),
     validUntil: plan.validUntil,
   };
@@ -81,6 +83,8 @@ async function _context(host, artifactId, input, options = {}) {
   return {
     host, database, catalog, artifact, inventory, storages, capabilities, activeOperations, policy, xenVariant,
     enabled: options.enabled === undefined ? config.features.providerVmProvisioning : options.enabled === true,
+    guestCustomizationEnabled: options.guestCustomizationEnabled === undefined
+      ? config.features.providerVmGuestCustomization : options.guestCustomizationEnabled === true,
     canOperate: options.canOperate === true, input,
   };
 }
@@ -92,6 +96,10 @@ function _plan(context, input = {}) {
   const mode = _mode(input.mode, context.host.daemon_type, context.xenVariant);
   const capability = context.capabilities.features['vm.create']
     || { state: 'unknown', reason: 'Create-from-template capability evidence is unavailable', constraints: {} };
+  const customizationCapability = context.capabilities.features['vm.guestCustomize']
+    || { state: 'unknown', reason: 'Guest customization capability evidence is unavailable', constraints: {} };
+  const customization = guestCustomization.normalize(input.customization, { vmName: name });
+  const customizationSummary = guestCustomization.summary(customization);
   const storageId = input.storageId ? String(input.storageId) : null;
   const targetNode = input.targetNode ? String(input.targetNode) : null;
   if (!context.enabled) blockers.push(_blocker('RELEASE_DISABLED', 'VM provisioning is disabled by release policy', { code: 'DD_PROVIDER_VM_PROVISIONING' }));
@@ -110,8 +118,11 @@ function _plan(context, input = {}) {
   if (mode.effective === 'linked' && context.host.daemon_type === 'vsphere') {
     blockers.push(_blocker('CLONE_MODE_UNAVAILABLE', 'Linked clone is not enabled for vSphere templates in this release'));
   }
-  if (context.host.daemon_type === 'xen' && context.xenVariant !== 'xapi') {
-    blockers.push(_blocker('PROVIDER_VARIANT_UNAVAILABLE', 'Direct XAPI is required because the current Xen Orchestra REST API does not expose template instantiation', { state: context.xenVariant }));
+  if (context.host.daemon_type === 'xen' && !['xapi', 'xo'].includes(context.xenVariant)) {
+    blockers.push(_blocker('PROVIDER_VARIANT_UNAVAILABLE', 'This Xen management variant has no task-safe template provisioning workflow', { state: context.xenVariant }));
+  }
+  if (context.host.daemon_type === 'xen' && context.xenVariant === 'xo' && mode.effective !== 'full') {
+    blockers.push(_blocker('CLONE_MODE_UNAVAILABLE', 'Xen Orchestra REST provisioning uses its provider-managed full create workflow'));
   }
   if (storageId && (!SAFE_STORAGE_ID.test(storageId) || !context.storages.items.some(item => item.id === storageId))) {
     blockers.push(_blocker('PROVIDER_PLACEMENT_UNAVAILABLE', 'Selected storage is not available on this endpoint'));
@@ -119,9 +130,39 @@ function _plan(context, input = {}) {
   if (targetNode && (!SAFE_NODE.test(targetNode) || context.host.daemon_type !== 'proxmox')) {
     blockers.push(_blocker('PROVIDER_PLACEMENT_UNAVAILABLE', 'Target node is invalid or unsupported by this provider'));
   }
+  if (storageId && context.host.daemon_type === 'xen' && context.xenVariant === 'xo') {
+    blockers.push(_blocker('PROVIDER_PLACEMENT_UNAVAILABLE', 'This Xen Orchestra REST slice uses the template/pool default storage'));
+  }
+  if (customization) {
+    if (!context.guestCustomizationEnabled) blockers.push(_blocker(
+      'GUEST_CUSTOMIZATION_RELEASE_DISABLED', 'Guest customization is disabled by release policy',
+      { code: 'DD_PROVIDER_VM_GUEST_CUSTOMIZATION' }
+    ));
+    if (!['supported', 'conditional'].includes(customizationCapability.state)) blockers.push(_blocker(
+      customizationCapability.state === 'unknown' ? 'GUEST_CUSTOMIZATION_CAPABILITY_UNKNOWN' : 'GUEST_CUSTOMIZATION_UNSUPPORTED',
+      customizationCapability.reason || 'Guest customization is unavailable', { state: customizationCapability.state }
+    ));
+    if (context.host.daemon_type === 'proxmox') {
+      if (customization.hostname !== name.toLowerCase()) blockers.push(_blocker(
+        'GUEST_CUSTOMIZATION_FIELD_UNSUPPORTED', 'Proxmox Cloud-Init hostname must match the target VM name in this release', { field: 'hostname' }
+      ));
+      if (customization.timezone) blockers.push(_blocker(
+        'GUEST_CUSTOMIZATION_FIELD_UNSUPPORTED', 'Proxmox native Cloud-Init options do not provide a portable guest timezone field', { field: 'timezone' }
+      ));
+    }
+    if (context.host.daemon_type === 'vsphere') {
+      if (!customization.domain) blockers.push(_blocker(
+        'GUEST_CUSTOMIZATION_FIELD_REQUIRED', 'vSphere LinuxPrep requires a DNS domain', { field: 'domain' }
+      ));
+      if (customization.user || customization.sshAuthorizedKeys.length) blockers.push(_blocker(
+        'GUEST_CUSTOMIZATION_FIELD_UNSUPPORTED', 'vSphere LinuxPrep does not safely map Linux user or SSH key creation; use a prepared guest or a later encrypted profile', { field: 'user/sshAuthorizedKeys' }
+      ));
+    }
+    warnings.push({ type: 'GUEST_CUSTOMIZATION_FIRST_BOOT', reason: 'Guest customization is prepared during provisioning and completes when the VM is first powered on' });
+  }
   if (mode.effective === 'linked') warnings.push({ type: 'LINKED_CLONE_DEPENDENCY', reason: 'A linked clone depends on the source storage chain and is not an independent copy' });
   warnings.push({ type: 'CREATES_COMPUTE_RESOURCE', reason: 'This operation allocates a new provider VM and storage resources' });
-  const candidates = context.storages.items.map(item => ({
+  const candidates = (context.host.daemon_type === 'xen' && context.xenVariant === 'xo' ? [] : context.storages.items).map(item => ({
     id: item.id, displayName: item.displayName, type: item.spec?.type || null,
     freeBytes: item.status?.freeBytes ?? null, accessible: item.status?.accessible ?? null,
   }));
@@ -133,6 +174,10 @@ function _plan(context, input = {}) {
     },
     name, mode, placement: { selected: { storageId, targetNode }, candidates },
     capability: { key: 'vm.create', state: capability.state, reason: capability.reason || null },
+    customization: {
+      ...customizationSummary,
+      capability: { key: 'vm.guestCustomize', state: customizationCapability.state, reason: customizationCapability.reason || null },
+    },
     allowed: blockers.length === 0, blockers, warnings,
     confirmation: { required: true, mode: 'typed_name', expected: name },
     validUntil: new Date((Math.floor(Date.now() / PLAN_TTL_MS) + 1) * PLAN_TTL_MS).toISOString(),
@@ -170,6 +215,7 @@ async function submitForHost(host, artifactId, input = {}, options = {}) {
     request: {
       planHash: plan.planHash, artifactId, name: plan.name, mode: plan.mode.effective,
       storageId: plan.placement.selected.storageId, targetNode: plan.placement.selected.targetNode,
+      customization: guestCustomization.normalize(input.customization, { vmName: plan.name }),
       startAfterCreate: false,
     },
     lockScopes: [

@@ -269,6 +269,47 @@ class ProxmoxClient {
     return { taskRef, node, targetVmid: String(options.newid), provider: 'proxmox' };
   }
 
+  async getVMConfig(node, vmid) {
+    if (!/^[A-Za-z0-9._-]{1,160}$/.test(String(node || '')) || !/^\d{1,20}$/.test(String(vmid || ''))) {
+      throw Object.assign(new Error('Invalid Proxmox VM config target'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/config`);
+  }
+
+  _cloudInitConfig(customization) {
+    if (!customization || customization.osFamily !== 'linux' || !customization.network) {
+      throw Object.assign(new Error('Invalid Proxmox Cloud-Init customization'), { code: 'INVALID_GUEST_CUSTOMIZATION', status: 400 });
+    }
+    const network = customization.network;
+    const searchDomains = [...new Set([customization.domain, ...(network.searchDomains || [])].filter(Boolean))];
+    return {
+      ...(customization.user ? { ciuser: customization.user } : {}),
+      ...(customization.sshAuthorizedKeys?.length ? { sshkeys: customization.sshAuthorizedKeys.join('\n') } : {}),
+      ipconfig0: network.mode === 'static' ? `ip=${network.address},gw=${network.gateway}` : 'ip=dhcp',
+      ...(network.dnsServers?.length ? { nameserver: network.dnsServers.join(' ') } : {}),
+      ...(searchDomains.length ? { searchdomain: searchDomains.join(' ') } : {}),
+    };
+  }
+
+  async configureCloudInit(node, vmid, customization) {
+    if (!/^[A-Za-z0-9._-]{1,160}$/.test(String(node || '')) || !/^\d{1,20}$/.test(String(vmid || ''))) {
+      throw Object.assign(new Error('Invalid Proxmox VM config target'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    const body = this._cloudInitConfig(customization);
+    await this._request('PUT', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/config`, body);
+    return { configured: true, provider: 'proxmox' };
+  }
+
+  async cloudInitStatus(node, vmid, customization) {
+    const expected = this._cloudInitConfig(customization);
+    const actual = await this.getVMConfig(node, vmid);
+    const normalizedKeys = value => String(value || '').replace(/%0A/gi, '\n').split(/\r?\n/).map(item => item.trim()).filter(Boolean).sort();
+    const matches = Object.entries(expected).every(([key, value]) => key === 'sshkeys'
+      ? JSON.stringify(normalizedKeys(actual?.[key])) === JSON.stringify(normalizedKeys(value))
+      : String(actual?.[key] || '') === String(value));
+    return { configured: matches, provider: 'proxmox' };
+  }
+
   /** Inspect a single VM (state, config). */
   async getVM(node, vmid) {
     return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/status/current`);

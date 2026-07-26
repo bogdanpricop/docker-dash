@@ -2,6 +2,7 @@
 
 const { getDb } = require('../../../db');
 const bridge = require('../provision-provider');
+const guestCustomization = require('../guest-customization');
 
 const TYPE = 'vm.provision';
 const VERIFY_TIMEOUT_MS = 60 * 60 * 1000;
@@ -22,7 +23,8 @@ function _parseTask(value, provider) {
   try {
     const task = JSON.parse(value);
     if (task?.provider !== provider || typeof task.ref !== 'string' || !task.ref || task.ref.length > 1600
-      || !['clone', 'provision-ready', 'provision-submit', 'provision'].includes(task.stage)) return null;
+      || !['clone', 'provision-ready', 'provision-submit', 'provision',
+        'customize-ready', 'customize-submit', 'customize-verify'].includes(task.stage)) return null;
     if (task.node !== undefined && !/^[A-Za-z0-9._-]{1,160}$/.test(task.node)) return null;
     return task;
   } catch { return null; }
@@ -68,6 +70,7 @@ async function _verify(context, target, database) {
       id: found.resource.id, displayName: found.resource.displayName,
       powerState: found.resource.status?.powerState || 'unknown',
     }, artifactId: context.operation.resource.id, mode: context.request.mode,
+    guestCustomization: guestCustomization.summary(context.request.customization),
     verified: true, startAfterCreate: false,
   } };
   if (Date.now() < _deadline(context.operation)) {
@@ -104,6 +107,11 @@ async function reconcile(context, options = {}) {
         context.bindNativeTask(nativeTaskRef, 'ready');
         return { state: 'reconciling', phase: 'provision-ready', delayMs: 500 };
       }
+      if (found && target.host.daemon_type === 'proxmox' && context.request.customization) {
+        const nativeTaskRef = _taskRef(target.host.daemon_type, { taskRef: found.nativeRef }, 'customize-ready');
+        context.bindNativeTask(nativeTaskRef, 'ready');
+        return { state: 'reconciling', phase: 'customize-ready', delayMs: 500 };
+      }
       if (found) return _verify(context, target, database);
       if (Date.now() < _deadline(context.operation)) {
         context.reportProgress(40, 'submit-recovery', 'Looking for a provider-side clone after an interrupted response');
@@ -133,6 +141,42 @@ async function reconcile(context, options = {}) {
       }
       return { state: 'unknown', result: { provisionSubmitOutcomeUnconfirmed: true } };
     }
+    if (target.host.daemon_type === 'proxmox' && task.stage === 'customize-ready') {
+      const found = await bridge.findByName(target, context.request.name, database, { targetVmid: context.request.targetVmid });
+      if (!found) return Date.now() < _deadline(context.operation)
+        ? { state: 'reconciling', phase: 'customize-target', delayMs: 1500 }
+        : { state: 'unknown', result: { customizationTargetUnconfirmed: true } };
+      const checkpoint = _taskRef(target.host.daemon_type, { taskRef: found.nativeRef }, 'customize-submit');
+      context.bindNativeTask(checkpoint, 'submitting');
+      await bridge.customize(target, found, context.request.customization);
+      const verifyRef = _taskRef(target.host.daemon_type, { taskRef: found.nativeRef }, 'customize-verify');
+      context.bindNativeTask(verifyRef, 'verifying');
+      return { state: 'reconciling', phase: 'customize-verify', delayMs: 500 };
+    }
+    if (target.host.daemon_type === 'proxmox' && task.stage === 'customize-submit') {
+      const found = await bridge.findByName(target, context.request.name, database, { targetVmid: context.request.targetVmid });
+      if (!found) return Date.now() < _deadline(context.operation)
+        ? { state: 'reconciling', phase: 'customize-submit-recovery', delayMs: 1500 }
+        : { state: 'unknown', result: { customizationSubmitOutcomeUnconfirmed: true } };
+      const state = await bridge.customizationStatus(target, found, context.request.customization);
+      if (!state.configured) await bridge.customize(target, found, context.request.customization);
+      const verifyRef = _taskRef(target.host.daemon_type, { taskRef: found.nativeRef }, 'customize-verify');
+      context.bindNativeTask(verifyRef, 'verifying');
+      return { state: 'reconciling', phase: 'customize-verify', delayMs: 500 };
+    }
+    if (target.host.daemon_type === 'proxmox' && task.stage === 'customize-verify') {
+      const found = await bridge.findByName(target, context.request.name, database, { targetVmid: context.request.targetVmid });
+      if (!found) return Date.now() < _deadline(context.operation)
+        ? { state: 'reconciling', phase: 'customize-verify', delayMs: 1500 }
+        : { state: 'unknown', result: { customizationVerificationTargetUnconfirmed: true } };
+      const state = await bridge.customizationStatus(target, found, context.request.customization);
+      if (state.configured) return _verify(context, target, database);
+      if (Date.now() >= _deadline(context.operation)) {
+        return { state: 'unknown', result: { customizationOutcomeUnconfirmed: true } };
+      }
+      context.reportProgress(92, 'customize-verify', 'Waiting for Proxmox Cloud-Init configuration verification');
+      return { state: 'reconciling', phase: 'customize-verify', delayMs: 1500 };
+    }
     const status = await bridge.taskStatus(target, task);
     const outcome = _taskOutcome(target.host.daemon_type, status);
     if (outcome.failed) throw Object.assign(new Error(outcome.message), { code: 'PROVIDER_TASK_FAILED' });
@@ -150,13 +194,20 @@ async function reconcile(context, options = {}) {
       context.bindNativeTask(nativeTaskRef, 'ready');
       return { state: 'reconciling', phase: 'provision-ready', delayMs: 500 };
     }
+    if (target.host.daemon_type === 'proxmox' && task.stage === 'clone' && context.request.customization) {
+      const found = await bridge.findByName(target, context.request.name, database, { targetVmid: context.request.targetVmid });
+      if (!found) return { state: 'reconciling', phase: 'clone-result', delayMs: 1500 };
+      const nativeTaskRef = _taskRef(target.host.daemon_type, { taskRef: found.nativeRef }, 'customize-ready');
+      context.bindNativeTask(nativeTaskRef, 'ready');
+      return { state: 'reconciling', phase: 'customize-ready', delayMs: 500 };
+    }
     return _verify(context, target, database);
   } finally { await bridge.close(target); }
 }
 
 async function cancel(context, options = {}) {
   const task = _parseTask(context.nativeTaskRef, context.operation.provider.type);
-  if (!task?.ref || context.operation.provider.type !== 'proxmox') return { confirmed: false };
+  if (!task?.ref || task.stage !== 'clone' || context.operation.provider.type !== 'proxmox') return { confirmed: false };
   const database = options.database || getDb();
   let target;
   try {

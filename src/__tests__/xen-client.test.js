@@ -130,6 +130,34 @@ describe('unified Xen client', () => {
     ]);
   });
 
+  it('discovers and uses the task-backed Xen Orchestra pool create workflow', async () => {
+    queueJson({ id: 'user-1', email: 'ops@example.test' }, 200,
+      opts => expect(opts.path).toBe('/rest/v0/users/me'));
+    queueJson({
+      paths: {
+        '/rest/v0/pools/{id}/actions/create_vm': {
+          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateVmBody' } } } } },
+        },
+      },
+      components: { schemas: { CreateVmBody: { properties: { cloud_config: {}, network_config: {} } } } },
+    }, 200, opts => expect(opts.path).toBe('/rest/v0/docs/swagger.json'));
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    const info = await client.info();
+    expect(info.capabilities).toMatchObject({ provisioning: true, guestCustomization: true });
+
+    queueJson({ taskId: 'task-create-1' }, 200, (opts, req) => {
+      expect(opts).toMatchObject({ method: 'POST', path: '/rest/v0/pools/pool-1/actions/create_vm?sync=false' });
+      expect(JSON.parse(req.body)).toEqual({
+        name_label: 'app-01', template: 'template-1', boot: false,
+        cloud_config: '#cloud-config\nhostname: app-01\n',
+        network_config: 'version: 2\n',
+      });
+    });
+    await expect(client.cloneTemplate('template-1', 'app-01', {
+      mode: 'full', poolId: 'pool-1', cloudConfig: '#cloud-config\nhostname: app-01\n', networkConfig: 'version: 2\n',
+    })).resolves.toEqual({ taskRef: 'task-create-1', provider: 'xo', stage: 'clone' });
+  });
+
   it('submits Xen Orchestra VM actions only through the action map', async () => {
     let request;
     queueJson({ task: 'task-1' }, 200, (opts, req) => { request = { opts, body: JSON.parse(req.body) }; });

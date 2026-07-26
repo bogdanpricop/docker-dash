@@ -245,6 +245,36 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
         body: { newid: 240, name: 'app-01', full: 1, target: 'pve-b', storage: 'fast-zfs' },
       }));
     });
+
+    it('writes and verifies passwordless Cloud-Init fields on the cloned VM', async () => {
+      const seen = [];
+      const customization = {
+        osFamily: 'linux', hostname: 'app-01', domain: 'example.internal', user: 'deploy',
+        sshAuthorizedKeys: ['ssh-ed25519 AAAATEST deploy@example'],
+        network: {
+          mode: 'static', address: '192.0.2.10/24', gateway: '192.0.2.1',
+          dnsServers: ['1.1.1.1', '9.9.9.9'], searchDomains: ['apps.example.internal'],
+        },
+      };
+      const expected = {
+        ciuser: 'deploy', sshkeys: 'ssh-ed25519 AAAATEST deploy@example',
+        ipconfig0: 'ip=192.0.2.10/24,gw=192.0.2.1', nameserver: '1.1.1.1 9.9.9.9',
+        searchdomain: 'example.internal apps.example.internal',
+      };
+      mockHttps._mockNext((opts, cb, req) => {
+        seen.push({ method: opts.method, path: opts.path, body: JSON.parse(req._writtenBody.toString()) });
+        const res = fakeResponse({ status: 200, body: { data: null } }); cb(res); res._fire();
+      });
+      mockHttps._mockNext((opts, cb) => {
+        seen.push({ method: opts.method, path: opts.path });
+        const res = fakeResponse({ status: 200, body: { data: expected } }); cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.configureCloudInit('pve-a', '240', customization)).resolves.toEqual({ configured: true, provider: 'proxmox' });
+      await expect(client.cloudInitStatus('pve-a', '240', customization)).resolves.toEqual({ configured: true, provider: 'proxmox' });
+      expect(seen[0]).toEqual({ method: 'PUT', path: '/api2/json/nodes/pve-a/qemu/240/config', body: expected });
+      expect(seen[1]).toEqual({ method: 'GET', path: '/api2/json/nodes/pve-a/qemu/240/config' });
+    });
   });
 
   describe('daemon_config encryption', () => {
