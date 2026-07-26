@@ -16,6 +16,8 @@ List accepts `state`, `hostId`, and `limit` (1–500). Responses never expose th
 
 The operation schema is version `1.0`. States are `queued`, `running`, `waiting_retry`, `reconciling`, `cancel_requested`, `succeeded`, `failed`, `cancelled`, and `unknown`. Database state is authoritative; WebSocket channel `provider:operations` provides best-effort live refresh.
 
+Activity Center also projects the operation owner, native-task presence/state, timing and server-derived `canCancel`/`canResolve` permissions. Native provider references remain encrypted and hidden. Cancellation is exposed only while it can still be requested; an admin can resolve `unknown` only after recording evidence, and the UI requires the exact operation ID before releasing the retained lock.
+
 ## Safety behavior
 
 - every mutation requires a caller-generated idempotency key;
@@ -53,3 +55,5 @@ The worker timer is unreferenced and is stopped explicitly during graceful shutd
 ## Current boundary
 
 There is deliberately no public generic create-operation endpoint. Only registered server-side handlers can enqueue work. Legacy ACME, remediation, migration and procedure jobs keep their existing contracts; their later convergence will use explicit adapters rather than a destructive data migration.
+
+Provider task semantics follow the official [vSphere Task model](https://developer.broadcom.com/xapis/vsphere-web-services-api/latest/vim.Task.html), [XAPI task contract](https://xapi-project.github.io/xen-api/classes/task.html) and [Proxmox task/UPID guidance](https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf). A cancellation request is never treated as proof of cancellation.

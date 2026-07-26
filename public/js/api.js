@@ -623,6 +623,12 @@ const Api = {
   getProviderOperationEvents(id, limit = 200) {
     return this.get(`/operations/${encodeURIComponent(id)}/events?limit=${limit}`);
   },
+  cancelProviderOperation(id) {
+    return this.post(`/operations/${encodeURIComponent(id)}/cancel`, {});
+  },
+  resolveProviderOperation(id, resolution, evidence) {
+    return this.post(`/operations/${encodeURIComponent(id)}/resolve`, { resolution, evidence });
+  },
   getProxmoxVM(node, vmid)            { return this.get(`/proxmox/vms/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
   getProxmoxLXC()                     { return this.get('/proxmox/lxc'); },
   getProxmoxLXCInstance(node, vmid)   { return this.get(`/proxmox/lxc/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },

@@ -10,6 +10,7 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
 const ACCESS_RANK = { view: 1, operate: 2, admin: 3 };
+const CANCEL_REQUESTABLE_STATES = new Set(['queued', 'running', 'waiting_retry', 'reconciling']);
 
 function _isAdmin(user) {
   return user?.role === 'admin' || (Array.isArray(user?.roles) && user.roles.includes('admin'));
@@ -30,6 +31,20 @@ function _operation(req, res, required = 'view') {
     res.status(403).json({ error: 'Insufficient host access', code: 'HOST_ACCESS_DENIED' }); return null;
   }
   return operation;
+}
+
+function _decorate(req, operation) {
+  if (!operation) return operation;
+  const role = req.user?.role;
+  const operator = role === 'admin' || role === 'operator';
+  return {
+    ...operation,
+    permissions: {
+      canCancel: operator && CANCEL_REQUESTABLE_STATES.has(operation.state)
+        && _canAccess(req, operation, 'operate'),
+      canResolve: role === 'admin' && operation.state === 'unknown',
+    },
+  };
 }
 
 function _audit(req, action, targetId, details) {
@@ -75,7 +90,8 @@ router.get('/', requireAuth, (req, res) => {
     }
     const hostId = req.query.hostId === undefined ? undefined : Number(req.query.hostId);
     const items = operations.list({ limit: 500, state: req.query.state, hostId })
-      .filter(operation => _canAccess(req, operation, 'view')).slice(0, Number(limitText));
+      .filter(operation => _canAccess(req, operation, 'view'))
+      .slice(0, Number(limitText)).map(operation => _decorate(req, operation));
     res.json({ schemaVersion: '1.0', count: items.length, items });
   } catch (err) { _sendError(res, err); }
 });
@@ -99,7 +115,7 @@ router.post('/:id/cancel', requireAuth, requireRole('admin', 'operator'), asyncH
       providerType: operation.provider.type, hostId: operation.provider.endpointId,
       resourceId: operation.resource.id, previousState: operation.state,
     });
-    res.status(202).json(updated);
+    res.status(202).json(_decorate(req, updated));
   } catch (err) { _sendError(res, err); }
 }));
 
@@ -112,13 +128,13 @@ router.post('/:id/resolve', requireAuth, requireRole('admin'), asyncHandler((req
       resourceId: operation.resource.id, resolution: updated.state,
       evidence: updated.resolution?.evidence,
     });
-    res.json(updated);
+    res.json(_decorate(req, updated));
   } catch (err) { _sendError(res, err); }
 }));
 
 router.get('/:id', requireAuth, (req, res) => {
-  const operation = _operation(req, res, 'view'); if (operation) res.json(operation);
+  const operation = _operation(req, res, 'view'); if (operation) res.json(_decorate(req, operation));
 });
 
 module.exports = router;
-module.exports._internals = { _canAccess };
+module.exports._internals = { _canAccess, _decorate };

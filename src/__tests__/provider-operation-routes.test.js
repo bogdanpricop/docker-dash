@@ -57,7 +57,9 @@ describe('Provider operation Activity Center routes', () => {
   });
 
   it('filters activity by host access and returns bounded events', async () => {
-    expect((await request(app).get('/api/operations')).body.items).toHaveLength(1);
+    const listed = await request(app).get('/api/operations');
+    expect(listed.body.items).toHaveLength(1);
+    expect(listed.body.items[0].permissions).toEqual({ canCancel: true, canResolve: false });
     const events = await request(app).get(`/api/operations/${operation.id}/events?limit=50`);
     expect(events.status).toBe(200);
     expect(mockEvents).toHaveBeenCalledWith(operation.id, 50);
@@ -71,6 +73,20 @@ describe('Provider operation Activity Center routes', () => {
     expect(response.status).toBe(202);
     expect(mockCancel).toHaveBeenCalledWith(operation.id);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_operation_cancel_request' }));
+  });
+
+  it('publishes action permissions without exposing operations outside the role and host grant', async () => {
+    mockGet.mockReturnValueOnce({ ...operation, state: 'unknown' });
+    const admin = await request(app).get(`/api/operations/${operation.id}`).set('x-test-role', 'admin');
+    expect(admin.body.permissions).toEqual({ canCancel: false, canResolve: true });
+
+    mockGet.mockReturnValueOnce({ ...operation, state: 'unknown' });
+    const operator = await request(app).get(`/api/operations/${operation.id}`);
+    expect(operator.body.permissions).toEqual({ canCancel: false, canResolve: false });
+
+    mockPermission.mockReturnValue('view');
+    const viewer = await request(app).get('/api/operations').set('x-test-role', 'viewer');
+    expect(viewer.body.items[0].permissions.canCancel).toBe(false);
   });
 
   it('requires admin for manual resolution and control policies', async () => {

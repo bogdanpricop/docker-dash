@@ -105,6 +105,9 @@ function _operationFromRow(row) {
       state: row.resolution, evidence: row.resolution_evidence,
       resolvedBy: row.resolved_by,
     } : null,
+    owner: row.created_by ? {
+      type: 'user', id: row.created_by, username: row.created_by_username || null,
+    } : { type: 'system', id: null, username: null },
     cancelRequestedAt: row.cancel_requested_at || null,
     createdBy: row.created_by, createdAt: row.created_at, startedAt: row.started_at,
     completedAt: row.completed_at, updatedAt: row.updated_at,
@@ -244,7 +247,8 @@ class ProviderOperationEngine {
 
   get(id) {
     if (!SAFE_OPERATION_ID.test(String(id || ''))) return null;
-    return _operationFromRow(this._db().prepare('SELECT * FROM provider_operations WHERE id = ?').get(id));
+    return _operationFromRow(this._db().prepare(`SELECT o.*, u.username AS created_by_username
+      FROM provider_operations o LEFT JOIN users u ON u.id = o.created_by WHERE o.id = ?`).get(id));
   }
 
   list(options = {}) {
@@ -253,16 +257,17 @@ class ProviderOperationEngine {
     const params = [];
     if (options.state) {
       if (!STATES.includes(options.state)) throw new ProviderOperationError('Unknown operation state', 'INVALID_OPERATION_STATE');
-      where.push('state = ?'); params.push(options.state);
+      where.push('o.state = ?'); params.push(options.state);
     }
     if (options.hostId !== undefined && options.hostId !== null) {
       const hostId = Number(options.hostId);
       if (!Number.isInteger(hostId) || hostId <= 0) throw new ProviderOperationError('Invalid operation host filter', 'INVALID_OPERATION_HOST');
-      where.push('host_id = ?'); params.push(hostId);
+      where.push('o.host_id = ?'); params.push(hostId);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    return this._db().prepare(`SELECT * FROM provider_operations ${clause}
-      ORDER BY created_at DESC, id DESC LIMIT ?`).all(...params, limit).map(_operationFromRow);
+    return this._db().prepare(`SELECT o.*, u.username AS created_by_username
+      FROM provider_operations o LEFT JOIN users u ON u.id = o.created_by ${clause}
+      ORDER BY o.created_at DESC, o.id DESC LIMIT ?`).all(...params, limit).map(_operationFromRow);
   }
 
   events(id, limit = 200) {

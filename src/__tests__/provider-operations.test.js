@@ -70,12 +70,16 @@ describe('Durable provider operation engine', () => {
     expect(storedBefore.idempotency_key_hash).not.toContain('same-request-key');
     await engine.tick();
     const completed = engine.get(first.id);
-    expect(completed).toEqual(expect.objectContaining({ state: 'succeeded', progress: 100, hasNativeTask: true }));
+    expect(completed).toEqual(expect.objectContaining({
+      state: 'succeeded', progress: 100, hasNativeTask: true,
+      owner: { type: 'user', id: 1, username: 'admin' },
+    }));
     expect(completed.result).toEqual({ ok: true });
     expect(JSON.stringify(completed)).not.toContain('OpaqueRef:');
     const storedAfter = db.prepare('SELECT native_task_ref_enc FROM provider_operations WHERE id = ?').get(first.id);
     expect(storedAfter.native_task_ref_enc).not.toContain('native-secret');
     expect(JSON.stringify(engine.events(first.id))).not.toContain('must-drop');
+    expect(engine.list({ hostId: 7 })[0].owner).toEqual({ type: 'user', id: 1, username: 'admin' });
     expect(() => engine.create({ ...input, request: { confirmation: false } }))
       .toThrow(expect.objectContaining({ code: 'IDEMPOTENCY_KEY_CONFLICT', status: 409 }));
   });
@@ -109,6 +113,13 @@ describe('Durable provider operation engine', () => {
     db.prepare("UPDATE provider_operations SET available_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(second.id);
     await waiter.tick();
     expect(engine.get(second.id).state).toBe('succeeded');
+  });
+
+  it('projects unowned background work as an explicit system owner', () => {
+    const engine = createEngine(db);
+    engine.registerHandler({ type: 'vm.power.test', idempotent: true, execute: async () => ({}) });
+    const operation = engine.create(spec({ idempotencyKey: 'system-owner', createdBy: null }));
+    expect(engine.get(operation.id).owner).toEqual({ type: 'system', id: null, username: null });
   });
 
   it('retries only transient failures for idempotent handlers', async () => {
