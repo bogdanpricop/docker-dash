@@ -1,23 +1,26 @@
 'use strict';
 
 process.env.ENCRYPTION_KEY = 'provider-sdk-registry-test-key-32-chars';
+process.env.DD_PROVIDER_RECOVERY_POINT_INVENTORY = 'true';
 
 const Database = require('better-sqlite3');
 const identityMigration = require('../db/migrations/106_provider_resource_identities');
 const snapshotMigration = require('../db/migrations/109_provider_resource_snapshots');
 const artifactMigration = require('../db/migrations/112_provider_artifact_catalog');
+const recoveryPointMigration = require('../db/migrations/117_provider_recovery_points');
 
 const mockVersion = jest.fn();
 const mockDestroy = jest.fn();
 const mockListVMs = jest.fn();
 const mockListArtifacts = jest.fn();
+const mockListRecoveryPoints = jest.fn();
 const mockVSphereLogin = jest.fn();
 const mockVSphereInfo = jest.fn();
 const mockXenInfo = jest.fn();
 const mockXenCaps = jest.fn();
 
 jest.mock('../services/proxmox', () => ({
-  fromHostRow: () => ({ version: mockVersion, listVMs: mockListVMs, listArtifacts: mockListArtifacts, _agent: { destroy: mockDestroy } }),
+  fromHostRow: () => ({ version: mockVersion, listVMs: mockListVMs, listArtifacts: mockListArtifacts, listRecoveryPoints: mockListRecoveryPoints, _agent: { destroy: mockDestroy } }),
 }));
 jest.mock('../services/vsphere', () => ({
   fromHostRow: () => ({
@@ -44,6 +47,7 @@ describe('Provider SDK registry', () => {
     mockVersion.mockResolvedValue({ version: '9.0', repoid: 'pve-manager' });
     mockListVMs.mockResolvedValue([]);
     mockListArtifacts.mockResolvedValue([]);
+    mockListRecoveryPoints.mockResolvedValue({ repositories: [], points: [], limitations: [] });
     mockVSphereLogin.mockResolvedValue({});
     mockVSphereInfo.mockResolvedValue({ productFullName: 'VMware vCenter Server 9.0', version: '9.0', apiVersion: '9.0' });
     mockXenCaps.mockReturnValue({
@@ -57,6 +61,7 @@ describe('Provider SDK registry', () => {
     identityMigration.up(database);
     snapshotMigration.up(database);
     artifactMigration.up(database);
+    recoveryPointMigration.up(database);
   });
 
   afterEach(() => database.close());
@@ -163,6 +168,32 @@ describe('Provider SDK registry', () => {
     expect(envelope.items[0].id).toMatch(/^dda_art_/);
     expect(JSON.stringify(envelope)).not.toContain('local:iso');
     expect(database.prepare('SELECT COUNT(*) AS count FROM provider_artifact_catalog').get().count).toBe(2);
+  });
+
+  it('returns a filtered recovery-point inventory with encrypted native identities', async () => {
+    mockListVMs.mockResolvedValue([{ vmid: 101, id: 'qemu/101', name: 'database', status: 'stopped' }]);
+    await registry.resourcesForHost(pveHost, 'virtual-machines', { database });
+    mockListRecoveryPoints.mockResolvedValue({
+      repositories: [{ nativeRef: 'pbs-prod', name: 'PBS Production', type: 'pbs', enabled: true, accessible: true, supportsVerification: true }],
+      points: [{ nativeRef: 'pbs-prod:vm/101/2026-07-26', repositoryRef: 'pbs-prod', workloadRef: 'qemu/101', workloadName: 'database', guestType: 'qemu', createdAt: '2026-07-26T10:00:00Z', sizeBytes: 4096, mode: 'incremental', verification: { state: 'verified', checkedAt: '2026-07-26T11:00:00Z' }, protected: true }],
+      limitations: ['explicit evidence only'],
+    });
+    const envelope = await registry.recoveryPointsForHost(pveHost, { verification: 'verified', limit: 25, database });
+    expect(envelope).toEqual(expect.objectContaining({ count: 1, totalObserved: 1, truncated: false }));
+    expect(envelope.coverage).toEqual(expect.objectContaining({ repositoryCount: 1, mappedWorkloadCount: 1, protectedCount: 1 }));
+    expect(envelope.items[0].id).toMatch(/^ddr_rp_/);
+    expect(envelope.items[0].repository.id).toMatch(/^ddr_repo_/);
+    expect(envelope.items[0].workload.id).toMatch(/^ddr_vm_/);
+    expect(JSON.stringify(envelope)).not.toContain('pbs-prod:vm/101');
+    const row = database.prepare('SELECT native_ref_enc, workload_ref_enc FROM provider_recovery_points').get();
+    expect(row.native_ref_enc).not.toContain('pbs-prod');
+    expect(row.workload_ref_enc).not.toContain('qemu/101');
+  });
+
+  it('fails closed when a provider has no recovery-point adapter', async () => {
+    mockVSphereInfo.mockResolvedValueOnce({ productFullName: 'VMware ESXi 9.0', version: '9.0', apiVersion: '9.0' });
+    await expect(registry.recoveryPointsForHost(esxiHost, { database }))
+      .rejects.toMatchObject({ code: 'PROVIDER_RECOVERY_POINT_UNAVAILABLE', status: 400 });
   });
 
   it('sanitizes provider read failures', async () => {

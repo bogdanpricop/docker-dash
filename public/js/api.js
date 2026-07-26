@@ -564,6 +564,16 @@ const Api = {
     if (filters.query) qs.set('q', filters.query);
     return this.get(`/providers/${hostId}/artifacts?${qs}`);
   },
+  getProviderRecoveryPoints(hostId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 500 });
+    if (filters.query) qs.set('q', filters.query);
+    if (filters.repositoryId) qs.set('repository', filters.repositoryId);
+    if (filters.workloadId) qs.set('workload', filters.workloadId);
+    if (filters.verification) qs.set('verification', filters.verification);
+    if (filters.from) qs.set('from', filters.from);
+    if (filters.to) qs.set('to', filters.to);
+    return this.get(`/providers/${hostId}/recovery-points?${qs}`);
+  },
   preflightProviderVMProvision(hostId, artifactId, body) {
     return this.post(`/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone/preflight`, body);
   },

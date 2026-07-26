@@ -145,6 +145,48 @@ describe('unified Xen client', () => {
     expect(vms).toEqual([expect.objectContaining({ id: 'vm-1', uuid: 'u-1', name: 'web', cpus: 4, memoryBytes: 2147483648, haRestartPriority: '', allowedActions: ['shutdown', 'snapshot'] })]);
   });
 
+  it('discovers and reads only modern Xen Orchestra backup inventory routes', async () => {
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    const paths = [];
+    client._request = jest.fn(async (_method, path) => {
+      paths.push(path);
+      if (path === '/rest/v0/docs/swagger.json') return { paths: {
+        '/rest/v0/backup-archives': { get: {} },
+        '/rest/v0/backup-repositories': { get: {} },
+      } };
+      if (path.startsWith('/rest/v0/backup-repositories?')) return [{
+        id: 'remote-a', name: 'Off-site', enabled: true,
+        url: 's3://ACCESS:SECRET@bucket',
+      }];
+      if (path.startsWith('/rest/v0/backup-archives?')) return [{
+        id: 'remote-a/xo-vm-backups/vm-uuid/20260726T100000Z.json',
+        backupRepository: 'remote-a', mode: 'delta', size: 2048,
+        timestamp: 1785060000000, vm: { uuid: 'vm-uuid', name_label: 'database' },
+        withMemory: false,
+      }];
+      throw new Error(path);
+    });
+    await client._discoverRestFeatures();
+    expect(client.capabilities().backups).toBe(true);
+    const result = await client.listRecoveryPoints();
+    expect(result.repositories).toEqual([expect.objectContaining({ nativeRef: 'remote-a', name: 'Off-site' })]);
+    expect(result.points).toEqual([expect.objectContaining({
+      repositoryRef: 'remote-a', workloadUuid: 'vm-uuid', mode: 'delta',
+    })]);
+    expect(paths.some(path => path.includes('/backup-archives?backup-repository=*'))).toBe(true);
+    expect(paths.join(' ')).not.toMatch(/(?:^|[?&,])url(?:=|,|&|$)/);
+    expect(JSON.stringify(result)).not.toContain('ACCESS');
+  });
+
+  it('fails closed when Xen Orchestra does not publish recovery-point routes', async () => {
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    client._request = jest.fn(async path => path === '/rest/v0/docs/swagger.json' ? { paths: {} } : []);
+    await expect(client.listRecoveryPoints()).rejects.toMatchObject({
+      code: 'PROVIDER_BACKUP_INVENTORY_UNAVAILABLE', status: 400,
+    });
+    expect(client.capabilities().backups).toBe(false);
+  });
+
   it('preserves Xen home affinity and reads advisory VM groups', async () => {
     queueJson([{ id: 'vm-1', uuid: 'u-1', name_label: 'web', power_state: 'Running',
       $affinity: 'host-1', $groups: ['group-1'] }]);

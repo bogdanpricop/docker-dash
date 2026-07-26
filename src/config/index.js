@@ -100,6 +100,9 @@ module.exports = {
     providerHaPolicyMutation: bool('DD_PROVIDER_HA_POLICY_MUTATION', false),
     providerAffinityMutation: bool('DD_PROVIDER_AFFINITY_MUTATION', false),
     providerRebalanceApply: bool('DD_PROVIDER_REBALANCE_APPLY', false),
+    // Read-only common inventory for provider-native backup repositories and
+    // recovery points. Restore and backup execution remain separately gated.
+    providerRecoveryPointInventory: bool('DD_PROVIDER_RECOVERY_POINT_INVENTORY', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

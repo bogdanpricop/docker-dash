@@ -82,6 +82,12 @@ async function listArtifacts(host) {
   finally { client._agent?.destroy?.(); }
 }
 
+async function listRecoveryPoints(host) {
+  const client = fromHostRow(host);
+  try { return await client.listRecoveryPoints(); }
+  finally { client._agent?.destroy?.(); }
+}
+
 async function probe(host) {
   const client = fromHostRow(host);
   try {
@@ -275,4 +281,4 @@ function _allowedSnapshotActions(row) {
     ? ['snapshot'] : [];
 }
 
-module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _allowedVmActions, _allowedSnapshotActions, _splitRefs } };
+module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, listRecoveryPoints, readVmHardware, migrationCompatibility, placementInventory, _internals: { _allowedVmActions, _allowedSnapshotActions, _splitRefs } };

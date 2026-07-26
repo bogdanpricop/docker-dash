@@ -686,28 +686,88 @@ class ProxmoxClient {
    * with content=backup. This lists the union across all storages.
    */
   async listBackups() {
+    const inventory = await this.listRecoveryPoints();
+    return inventory.points.map(point => ({
+      ...point, node: point.node, storage: point.repositoryRef,
+    }));
+  }
+
+  /**
+   * Read a cluster-wide recovery-point inventory. Shared storage content is
+   * de-duplicated because PVE exposes the same volume through every node.
+   * Repository URLs and authentication material are deliberately never read.
+   */
+  async listRecoveryPoints() {
     const nodes = await this.listNodes();
-    const all = [];
+    const repositories = new Map();
+    const points = new Map();
+    let readableNodes = 0;
+    let failedStorageReads = 0;
     for (const n of nodes) {
+      if (!n?.node) continue;
       try {
         const storages = await this._request('GET', `/api2/json/nodes/${encodeURIComponent(n.node)}/storage`);
+        readableNodes++;
         for (const s of (storages || [])) {
           if (!s.storage) continue;
+          const shared = Number(s.shared) === 1 || s.shared === true;
+          const repositoryRef = shared ? String(s.storage) : `${s.storage}@${n.node}`;
+          if (!repositories.has(repositoryRef)) repositories.set(repositoryRef, {
+            nativeRef: repositoryRef,
+            name: shared ? String(s.storage) : `${s.storage} (${n.node})`,
+            type: s.type || 'unknown', enabled: Number(s.enabled) !== 0,
+            accessible: Number(s.active) === 1,
+            capacityBytes: s.total, usedBytes: s.used,
+            supportsVerification: String(s.type || '').toLowerCase() === 'pbs',
+            supportsClientSideEncryption: String(s.type || '').toLowerCase() === 'pbs',
+            supportsImmutableRetention: String(s.type || '').toLowerCase() === 'pbs',
+          });
+          if (s.enabled === 0 || s.active === 0 || (s.content && !String(s.content).split(',').includes('backup'))) continue;
           try {
             const contents = await this._request(
               'GET',
               `/api2/json/nodes/${encodeURIComponent(n.node)}/storage/${encodeURIComponent(s.storage)}/content?content=backup`
             );
             for (const c of (contents || [])) {
-              all.push({ ...c, node: n.node, storage: s.storage });
+              const nativeRef = String(c.volid || `${repositoryRef}:${c.vmid || 'unknown'}:${c.ctime || 'unknown'}`);
+              const key = shared ? nativeRef : `${repositoryRef}|${nativeRef}`;
+              if (points.has(key)) continue;
+              const subtype = String(c.subtype || '').toLowerCase();
+              const volid = String(c.volid || '').toLowerCase();
+              const guestType = subtype.includes('ct') || /(?:vzdump-|backup\/)(?:lxc|ct)-/.test(volid) ? 'lxc' : 'qemu';
+              const vmid = c.vmid == null ? null : String(c.vmid);
+              const formatMatch = String(c.volid || '').match(/\.([a-z0-9]+(?:\.[a-z0-9]+)?)$/i);
+              points.set(key, {
+                nativeRef: key, repositoryRef, node: n.node,
+                workloadRef: vmid ? `${guestType}/${vmid}` : null,
+                workloadRefs: vmid ? [vmid, `${guestType}/${vmid}`] : [],
+                workloadName: c.notes || (vmid ? `${guestType === 'lxc' ? 'Container' : 'VM'} ${vmid}` : 'Unknown workload'),
+                guestType, createdAt: Number(c.ctime) > 0 ? Number(c.ctime) : null,
+                sizeBytes: c.size, format: c.format || formatMatch?.[1] || null,
+                mode: String(s.type || '').toLowerCase() === 'pbs' ? 'incremental' : 'full',
+                consistency: 'unknown', protected: typeof c.protected === 'boolean'
+                  ? c.protected : (c.protected == null ? null : Number(c.protected) === 1),
+                encrypted: typeof c.encrypted === 'boolean' ? c.encrypted : null,
+                verification: c.verification ?? c.verified ?? null,
+              });
             }
-          } catch { /* skip storages that error */ }
+          } catch { failedStorageReads++; }
         }
-      } catch { /* skip nodes that error */ }
+      } catch { /* partial cluster availability is represented below */ }
     }
-    // Sort newest first.
-    all.sort((a, b) => (b.ctime || 0) - (a.ctime || 0));
-    return all;
+    if (nodes.length && readableNodes === 0) {
+      throw Object.assign(new Error('No Proxmox node storage inventory was readable'), {
+        code: 'PROVIDER_BACKUP_INVENTORY_UNAVAILABLE', status: 502,
+      });
+    }
+    const ordered = [...points.values()].sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+    return {
+      repositories: [...repositories.values()], points: ordered,
+      limitations: [
+        ...(failedStorageReads ? [`${failedStorageReads} backup storage read(s) failed; inventory may be partial`] : []),
+        'PVE storage content does not prove application consistency, encryption, or verification unless it reports explicit evidence',
+      ],
+    };
   }
 }
 

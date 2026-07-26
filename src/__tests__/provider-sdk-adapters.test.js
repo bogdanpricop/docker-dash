@@ -92,6 +92,13 @@ describe('Provider SDK adapters', () => {
     expect(features['vm.migration.preflight'].state).toBe('conditional');
   });
 
+  it('advertises Xen Orchestra backup reads without advertising backup execution', () => {
+    const features = xen._internals._fromCapabilities({ backups: true });
+    expect(features['backup.read']).toEqual(expect.objectContaining({ state: 'conditional' }));
+    expect(features['backup.read'].constraints).toEqual(expect.objectContaining({ readOnly: true, provider: 'xo' }));
+    expect(features['backup.run'].state).toBe('unsupported');
+  });
+
   it('keeps raw Xen deliberately constrained', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: false, storages: false, networks: false,
@@ -120,6 +127,22 @@ describe('Provider SDK adapters', () => {
 
     xenService.clientForHost.mockReturnValue({ listTemplates: templates });
     await expect(xen.listArtifacts({})).resolves.toHaveLength(1);
+  });
+
+  it('dispatches recovery-point inventory and rejects raw Xen', async () => {
+    const destroy = jest.fn();
+    const readPve = jest.fn().mockResolvedValue({ repositories: [], points: [] });
+    proxmoxService.fromHostRow.mockReturnValue({ listRecoveryPoints: readPve, _agent: { destroy } });
+    await expect(proxmox.listRecoveryPoints({})).resolves.toEqual({ repositories: [], points: [] });
+    expect(destroy).toHaveBeenCalled();
+
+    const readXo = jest.fn().mockResolvedValue({ repositories: [], points: [] });
+    xenService.clientForHost.mockReturnValue({ provider: 'xo', listRecoveryPoints: readXo });
+    await expect(xen.listRecoveryPoints({})).resolves.toEqual({ repositories: [], points: [] });
+    xenService.clientForHost.mockReturnValue({ provider: 'raw' });
+    await expect(xen.listRecoveryPoints({})).rejects.toMatchObject({
+      code: 'PROVIDER_BACKUP_INVENTORY_UNAVAILABLE', status: 400,
+    });
   });
 
   it('normalizes provider placement policy through read-only inventory methods', async () => {

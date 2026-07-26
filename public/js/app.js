@@ -48,6 +48,7 @@ const App = {
     'virtual-machines': () => VirtualMachinesPage,
     'high-availability': () => HighAvailabilityPage,
     'placement-advisor': () => PlacementAdvisorPage,
+    'recovery-points': () => RecoveryPointsPage,
     'virtualization-catalog': () => VirtualizationCatalogPage,
     activity: () => ActivityCenterPage,
     'api-playground': () => ApiPlaygroundPage,
@@ -1534,7 +1535,7 @@ const App = {
     }[dt];
     const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
       '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm',
-      '#/virtual-machines', '#/virtualization-catalog', '#/high-availability', '#/placement-advisor', '#/activity'];
+      '#/virtual-machines', '#/virtualization-catalog', '#/high-availability', '#/placement-advisor', '#/recovery-points', '#/activity'];
     if (daemonPage) {
       if (location.hash === daemonPage) this._route();
       else location.hash = daemonPage;
@@ -2032,6 +2033,7 @@ const App = {
       { icon: 'fa-desktop', label: 'Virtual Machines', action: () => this.navigate('/virtual-machines'), section: 'nav' },
       { icon: 'fa-shield-alt', label: 'High Availability', action: () => this.navigate('/high-availability'), section: 'nav' },
       { icon: 'fa-balance-scale', label: 'Placement Advisor', action: () => this.navigate('/placement-advisor'), section: 'nav' },
+      { icon: 'fa-box-archive', label: 'Recovery Points', action: () => this.navigate('/recovery-points'), section: 'nav' },
       { icon: 'fa-images', label: 'VM Catalog', action: () => this.navigate('/virtualization-catalog'), section: 'nav' },
       { icon: 'fa-tasks', label: 'Activity Center', action: () => this.navigate('/activity'), section: 'nav' },
       // Docker tools

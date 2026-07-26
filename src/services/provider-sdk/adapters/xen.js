@@ -68,8 +68,10 @@ function _fromCapabilities(capabilities = {}) {
     'task.read': capabilities.tasks ? supported() : unsupported('Native tasks are unavailable for this Xen provider'),
     'task.cleanup': capabilities.taskCleanup ? supported() : unsupported('Task cleanup is unavailable for this Xen provider'),
     'event.stream': capabilities.events ? supported() : adapterNotImplemented('Xen'),
-    'backup.read': capabilities.backups ? supported() : adapterNotImplemented('Xen'),
-    'backup.run': capabilities.backups ? supported() : adapterNotImplemented('Xen'),
+    'backup.read': capabilities.backups
+      ? conditional('Xen Orchestra recovery archives and repositories are read through discovered public REST routes', { readOnly: true, provider: 'xo' })
+      : adapterNotImplemented('Xen'),
+    'backup.run': adapterNotImplemented('Xen'),
   };
 
   const actions = new Set(capabilities.vmActions || []);
@@ -184,6 +186,16 @@ async function listArtifacts(host) {
   return client.listTemplates();
 }
 
+async function listRecoveryPoints(host) {
+  const client = xen.clientForHost(host);
+  if (client.provider !== 'xo' || typeof client.listRecoveryPoints !== 'function') {
+    throw Object.assign(new Error('Recovery-point inventory requires Xen Orchestra public REST routes'), {
+      code: 'PROVIDER_BACKUP_INVENTORY_UNAVAILABLE', status: 400,
+    });
+  }
+  return client.listRecoveryPoints();
+}
+
 async function readVmHardware(host, context) {
   const client = xen.clientForHost(host);
   const target = client.provider === 'xapi'
@@ -243,4 +255,4 @@ async function placementInventory(host) {
   };
 }
 
-module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _fromCapabilities } };
+module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, listRecoveryPoints, readVmHardware, migrationCompatibility, placementInventory, _internals: { _fromCapabilities } };

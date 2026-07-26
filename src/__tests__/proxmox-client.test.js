@@ -335,6 +335,34 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
     });
   });
 
+  it('deduplicates shared PBS recovery points and keeps repository URLs out of the result', async () => {
+    const client = new ProxmoxClient({
+      endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x',
+    });
+    client.listNodes = jest.fn(async () => [{ node: 'pve-a' }, { node: 'pve-b' }]);
+    client._request = jest.fn(async (_method, path) => {
+      if (/\/storage$/.test(path)) return [{
+        storage: 'pbs-prod', type: 'pbs', shared: 1, enabled: 1, active: 1,
+        content: 'backup', total: 10000, used: 4000, url: 'pbs://token:secret@pbs.internal',
+      }];
+      if (/content\?content=backup$/.test(path)) return [{
+        volid: 'pbs-prod:backup/vm/101/2026-07-26T10:00:00Z', vmid: 101,
+        subtype: 'pbs-vm', ctime: 1785060000, size: 4096, protected: 1,
+        verification: { state: 'verified', timestamp: 1785063600 },
+      }];
+      throw new Error(path);
+    });
+    const result = await client.listRecoveryPoints();
+    expect(result.repositories).toEqual([expect.objectContaining({
+      nativeRef: 'pbs-prod', type: 'pbs', supportsVerification: true,
+    })]);
+    expect(result.points).toEqual([expect.objectContaining({
+      workloadRef: 'qemu/101', mode: 'incremental', protected: true,
+    })]);
+    expect(JSON.stringify(result)).not.toContain('pbs.internal');
+    expect(client._request).toHaveBeenCalledTimes(4);
+  });
+
   describe('daemon_config encryption', () => {
     it('round-trips encryptDaemonConfig / decryptDaemonConfig', () => {
       const cfg = {

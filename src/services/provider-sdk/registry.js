@@ -3,12 +3,14 @@
 const log = require('../../utils/logger')('provider-sdk');
 const metrics = require('../metrics');
 const { getDb } = require('../../db');
+const config = require('../../config');
 const { buildEnvelope } = require('./schema');
 const { resolveResourceKind } = require('./resource-catalog');
 const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = require('./resource-schema');
 const resourceSnapshots = require('./resource-snapshots');
 const providerResilience = require('../provider-conformance/resilience');
 const artifactCatalog = require('./artifact-catalog');
+const recoveryPointCatalog = require('./recovery-point-catalog');
 const identityStore = require('./identity-store');
 const { normalizeVmHardware } = require('./vm-hardware');
 
@@ -290,6 +292,137 @@ async function artifactsForHost(host, options = {}) {
   return envelope;
 }
 
+function _recoveryTimestamp(value, field) {
+  if (value === undefined || value === null || value === '') return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    throw new ProviderAdapterError(`${field} must be an ISO-8601 timestamp`, 'INVALID_RECOVERY_POINT_TIME', 400);
+  }
+  return date.toISOString();
+}
+
+async function recoveryPointsForHost(host, options = {}) {
+  if (!config.features.providerRecoveryPointInventory) {
+    throw new ProviderAdapterError('Recovery-point inventory is disabled by release policy', 'RECOVERY_POINT_INVENTORY_DISABLED', 404);
+  }
+  if (!host || !Number.isInteger(Number(host.id))) throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
+  const requestedLimit = options.limit === undefined ? 200 : Number(options.limit);
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 500) {
+    throw new ProviderAdapterError('Recovery-point limit must be an integer between 1 and 500', 'INVALID_RECOVERY_POINT_LIMIT', 400);
+  }
+  const query = String(options.query || '').trim().toLowerCase();
+  if (query.length > 120) throw new ProviderAdapterError('Recovery-point search is limited to 120 characters', 'INVALID_RECOVERY_POINT_QUERY', 400);
+  const repositoryId = options.repositoryId ? String(options.repositoryId) : null;
+  if (repositoryId && !recoveryPointCatalog._internals.SAFE_REPOSITORY_ID.test(repositoryId)) {
+    throw new ProviderAdapterError('Invalid recovery-point repository ID', 'INVALID_RECOVERY_POINT_REPOSITORY', 400);
+  }
+  const workloadId = options.workloadId ? String(options.workloadId) : null;
+  if (workloadId && !/^ddr_vm_[a-f0-9]{26}$/.test(workloadId)) {
+    throw new ProviderAdapterError('Invalid recovery-point workload ID', 'INVALID_RECOVERY_POINT_WORKLOAD', 400);
+  }
+  const verification = options.verification ? String(options.verification).toLowerCase() : null;
+  if (verification && !recoveryPointCatalog.VERIFICATION_STATES.includes(verification)) {
+    throw new ProviderAdapterError('Invalid recovery-point verification state', 'INVALID_RECOVERY_POINT_VERIFICATION', 400);
+  }
+  const from = _recoveryTimestamp(options.from, 'from');
+  const to = _recoveryTimestamp(options.to, 'to');
+  if (from && to && from > to) {
+    throw new ProviderAdapterError('Recovery-point time range is reversed', 'INVALID_RECOVERY_POINT_TIME', 400);
+  }
+
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = await capabilitiesForHost(host);
+  if (capabilities.probe.status !== 'reachable') {
+    throw new ProviderAdapterError('Provider endpoint is currently unreachable', 'PROVIDER_UNREACHABLE', 502);
+  }
+  const evidence = capabilities.features['backup.read'];
+  if (!evidence || !['supported', 'conditional'].includes(evidence.state) || typeof adapter.listRecoveryPoints !== 'function') {
+    throw new ProviderAdapterError(evidence?.reason || 'Recovery-point inventory is unavailable for this provider',
+      'PROVIDER_RECOVERY_POINT_UNAVAILABLE', 400);
+  }
+
+  let raw;
+  try {
+    raw = await providerResilience.run(Number(host.id), () => adapter.listRecoveryPoints(host), { operation: 'backup.read' });
+  } catch (err) {
+    log.warn('Provider recovery-point inventory read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider recovery-point inventory could not be read', 'PROVIDER_RECOVERY_POINT_READ_FAILED', 502);
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+    || !Array.isArray(raw.repositories) || raw.repositories.length > 500
+    || !Array.isArray(raw.points) || raw.points.length > 5000
+    || raw.repositories.some(item => !item || typeof item !== 'object' || Array.isArray(item))
+    || raw.points.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
+    throw new ProviderAdapterError('Provider returned an invalid recovery-point inventory', 'INVALID_PROVIDER_RECOVERY_POINT_RESPONSE', 502);
+  }
+
+  const observedAt = new Date().toISOString();
+  let normalized;
+  try {
+    const database = options.database || getDb();
+    const write = database.transaction(() => {
+      const repositories = raw.repositories.map(item => recoveryPointCatalog.normalizeRepositoryAndRemember({
+        host, providerType: adapter.type, raw: item, observedAt, database,
+      }));
+      const byNativeRef = new Map(repositories.map(item => [item.nativeRef, item.repository]));
+      const points = raw.points.map(item => recoveryPointCatalog.normalizeRecoveryPointAndRemember({
+        host, providerType: adapter.type, raw: item, observedAt, database,
+        repository: byNativeRef.get(String(item.repositoryRef || '')) || null,
+      }));
+      return { repositories: repositories.map(item => item.repository), points };
+    });
+    normalized = _retrySqliteBusy(write);
+  } catch (err) {
+    log.error('Provider recovery-point normalization failed', {
+      hostId: Number(host.id), provider: adapter.type, error: err?.name || 'Error',
+      code: /^SQLITE_[A-Z_]+$/.test(String(err?.code || '')) ? err.code : 'RECOVERY_POINT_WRITE_FAILED',
+    });
+    throw new ProviderAdapterError('Provider recovery-point inventory could not be normalized', 'RECOVERY_POINT_NORMALIZATION_FAILED', 500);
+  }
+
+  const filteredRepositories = repositoryId
+    ? normalized.repositories.filter(item => item.id === repositoryId) : normalized.repositories;
+  const repositoryIds = new Set(filteredRepositories.map(item => item.id));
+  const filtered = normalized.points.filter(item => (!repositoryId || repositoryIds.has(item.repository?.id))
+    && (!workloadId || item.workload?.id === workloadId)
+    && (!verification || item.verification?.state === verification)
+    && (!from || (item.createdAt && item.createdAt >= from))
+    && (!to || (item.createdAt && item.createdAt <= to))
+    && (!query || `${item.displayName} ${item.workload?.displayName || ''} ${item.repository?.displayName || ''} ${item.backup?.format || ''}`.toLowerCase().includes(query)))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || a.id.localeCompare(b.id));
+  const items = filtered.slice(0, requestedLimit);
+  const stateCounts = Object.fromEntries(recoveryPointCatalog.VERIFICATION_STATES.map(state => [
+    state, filtered.filter(item => item.verification.state === state).length,
+  ]));
+  const dated = filtered.map(item => item.createdAt).filter(Boolean).sort();
+  const envelope = {
+    schemaVersion: recoveryPointCatalog.RECOVERY_POINT_SCHEMA_VERSION,
+    provider: { type: adapter.type, endpointId: Number(host.id) }, observedAt,
+    count: items.length, totalObserved: filtered.length, truncated: filtered.length > items.length,
+    filters: { repositoryId, workloadId, verification, from, to, query: query || null },
+    coverage: {
+      repositoryCount: filteredRepositories.length,
+      workloadCount: new Set(filtered.map(item => item.workload?.id || `missing:${item.workload?.displayName || item.id}`)).size,
+      mappedWorkloadCount: new Set(filtered.map(item => item.workload?.id).filter(Boolean)).size,
+      newestAt: dated.at(-1) || null, oldestAt: dated[0] || null,
+      verification: stateCounts,
+      protectedCount: filtered.filter(item => item.backup.protected === true).length,
+      encryptedCount: filtered.filter(item => item.backup.encrypted === true).length,
+    },
+    repositories: filteredRepositories,
+    limitations: (Array.isArray(raw.limitations) ? raw.limitations : []).slice(0, 20)
+      .map(item => String(item).replace(/[\r\n\t]+/g, ' ').slice(0, 500)),
+    items,
+  };
+  if (Buffer.byteLength(JSON.stringify(envelope)) > recoveryPointCatalog.MAX_RECOVERY_INVENTORY_BYTES) {
+    throw new ProviderAdapterError('Recovery-point inventory exceeds the response size limit', 'RECOVERY_POINT_RESPONSE_TOO_LARGE', 502);
+  }
+  return envelope;
+}
+
 async function vmHardwareForHost(host, resource, options = {}) {
   if (!host || !Number.isInteger(Number(host.id)) || resource?.kind !== 'virtualMachine'
     || resource?.provider?.endpointId !== Number(host.id)) {
@@ -449,6 +582,7 @@ module.exports = {
   capabilitiesForHost,
   resourcesForHost,
   artifactsForHost,
+  recoveryPointsForHost,
   vmHardwareForHost,
   migrationCompatibilityForHost,
   placementInventoryForHost,

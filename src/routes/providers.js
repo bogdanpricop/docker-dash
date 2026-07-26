@@ -277,6 +277,40 @@ router.get('/:hostId/artifacts', requireAuth, requireHostAccess('view', { param:
   }
 }));
 
+router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (!config.features.providerRecoveryPointInventory) {
+    return res.status(404).json({ error: 'Recovery-point inventory is disabled by release policy', code: 'RECOVERY_POINT_INVENTORY_DISABLED' });
+  }
+  if (req.query.limit !== undefined && !/^\d{1,3}$/.test(String(req.query.limit))) {
+    return res.status(400).json({ error: 'Recovery-point limit must be an integer between 1 and 500', code: 'INVALID_RECOVERY_POINT_LIMIT' });
+  }
+  const limit = req.query.limit === undefined ? 200 : Number(req.query.limit);
+  const query = String(req.query.q || '');
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    return res.status(400).json({ error: 'Recovery-point limit must be an integer between 1 and 500', code: 'INVALID_RECOVERY_POINT_LIMIT' });
+  }
+  if (query.length > 120) {
+    return res.status(400).json({ error: 'Recovery-point search is limited to 120 characters', code: 'INVALID_RECOVERY_POINT_QUERY' });
+  }
+  try {
+    res.json(await providerSdk.recoveryPointsForHost(resolved.host, {
+      limit, query, repositoryId: req.query.repository,
+      workloadId: req.query.workload, verification: req.query.verification,
+      from: req.query.from, to: req.query.to,
+    }));
+  } catch (err) {
+    const trusted = err?.name === 'ProviderAdapterError'
+      && /^(?:PROVIDER_|RECOVERY_|INVALID_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+    const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+    res.status(status).json({
+      error: status >= 500 ? 'Provider recovery-point inventory failed' : err.message,
+      code: trusted ? err.code : 'PROVIDER_RECOVERY_POINT_ERROR',
+    });
+  }
+}));
+
 router.post('/:hostId/artifacts/:artifactId/clone/preflight', requireAuth,
   requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);

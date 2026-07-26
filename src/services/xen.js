@@ -208,7 +208,7 @@ class XenOrchestraClient {
   constructor(config) {
     this._config = { ...config, provider: 'xo' };
     this._config._endpoint = _endpoint(config.endpoint);
-    this._restFeatures = { provisioning: false, guestCustomization: false, migration: null };
+    this._restFeatures = { provisioning: false, guestCustomization: false, migration: null, backupInventory: false };
     if (!config.token && !(config.username && config.password)) {
       throw new Error('Xen Orchestra requires an authentication token or username + password');
     }
@@ -269,7 +269,7 @@ class XenOrchestraClient {
     return {
       provider: 'xo', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, snapshotQuiesce: false, backups: false, console: !!this._config.token,
+      snapshots: true, snapshotQuiesce: false, backups: this._restFeatures.backupInventory, console: !!this._config.token,
       provisioning: this._restFeatures.provisioning,
       guestCustomization: this._restFeatures.guestCustomization,
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
@@ -296,6 +296,7 @@ class XenOrchestraClient {
       const storageFields = migrationRoute
         ? ['targetSr', 'target_sr', 'sr', 'sr_id'].filter(field =>
           _openApiOperationHasFields(spec, migrationRoute[1].post, [field])) : [];
+      const hasGetRoute = pattern => Object.entries(paths).some(([path, value]) => pattern.test(path) && value?.get);
       this._restFeatures = {
         provisioning,
         guestCustomization: provisioning
@@ -304,11 +305,65 @@ class XenOrchestraClient {
           action: migrationRoute[0].split('/').pop(), targetField: migrationFields[0],
           storageField: storageFields[0] || null,
         } : null,
+        backupInventory: hasGetRoute(/\/backup-archives\/?$/)
+          && hasGetRoute(/\/backup-repositories\/?$/),
       };
     } catch {
-      this._restFeatures = { provisioning: false, guestCustomization: false, migration: null };
+      this._restFeatures = { provisioning: false, guestCustomization: false, migration: null, backupInventory: false };
     }
     return this._restFeatures;
+  }
+
+  async listRecoveryPoints() {
+    if (!this._restFeatures.backupInventory) await this._discoverRestFeatures();
+    if (!this._restFeatures.backupInventory) {
+      throw Object.assign(new XenError('Xen Orchestra recovery-point routes are unavailable', {
+        status: 400, provider: 'xo',
+      }), { code: 'PROVIDER_BACKUP_INVENTORY_UNAVAILABLE' });
+    }
+    const repositoryFields = ['id', 'name', 'enabled'];
+    const archiveFields = [
+      'id', 'backupRepository', 'jobId', 'mode', 'scheduleId', 'size',
+      'timestamp', 'vm', 'differencingVhds', 'dynamicVhds', 'withMemory',
+    ];
+    const [repositoryResult, archiveResult] = await Promise.all([
+      this._request('GET', `/rest/v0/backup-repositories?fields=${encodeURIComponent(repositoryFields.join(','))}&limit=500`),
+      this._request('GET', `/rest/v0/backup-archives?backup-repository=*&fields=${encodeURIComponent(archiveFields.join(','))}&limit=5000`),
+    ]);
+    const rows = value => Array.isArray(value) ? value : (Array.isArray(value?.items) ? value.items : []);
+    const repositories = rows(repositoryResult).map(repository => ({
+      nativeRef: _idFrom(repository), name: repository.name || _idFrom(repository),
+      type: 'xo', enabled: typeof repository.enabled === 'boolean' ? repository.enabled : null,
+      accessible: null, supportsVerification: true,
+      supportsClientSideEncryption: true, supportsImmutableRetention: false,
+    })).filter(repository => repository.nativeRef);
+    const repositoryIds = new Set(repositories.map(repository => repository.nativeRef));
+    const points = rows(archiveResult).map(archive => {
+      const repositoryRef = _idFrom(archive.backupRepository)
+        || String(archive.id || '').split('/xo-vm-backups/')[0] || null;
+      const vm = archive.vm && typeof archive.vm === 'object' ? archive.vm : {};
+      const timestamp = _numOrNull(archive.timestamp);
+      const date = timestamp == null ? null : new Date(timestamp);
+      const timestampLabel = date && !Number.isNaN(date.getTime()) ? date.toISOString() : 'recovery point';
+      return {
+        nativeRef: _idFrom(archive), repositoryRef,
+        workloadRef: vm.uuid || _idFrom(vm), workloadUuid: vm.uuid || null,
+        workloadRefs: [vm.uuid, _idFrom(vm)].filter(Boolean),
+        workloadName: vm.name_label || vm.name || vm.uuid || 'Unknown VM', guestType: 'xen-vm',
+        name: `${vm.name_label || vm.name || 'VM'} · ${timestampLabel}`,
+        createdAt: timestamp, sizeBytes: archive.size,
+        format: 'xo-backup', mode: archive.mode,
+        consistency: 'unknown', includesMemory: archive.withMemory,
+        protected: null, encrypted: null, verification: null,
+      };
+    }).filter(point => point.nativeRef && point.repositoryRef && repositoryIds.has(point.repositoryRef));
+    return {
+      repositories, points,
+      limitations: [
+        'Xen Orchestra archive inventory does not itself prove backup health or application consistency',
+        'Repository URLs and credentials are intentionally excluded from the inventory contract',
+      ],
+    };
   }
 
   async listVMs() {

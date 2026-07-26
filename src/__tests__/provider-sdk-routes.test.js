@@ -6,6 +6,7 @@ const request = require('supertest');
 const mockCapabilities = jest.fn();
 const mockResources = jest.fn();
 const mockArtifacts = jest.fn();
+const mockRecoveryPoints = jest.fn();
 const mockVmDetail = jest.fn();
 const mockMigrationPreflight = jest.fn();
 const mockMigrationExecutionPreflight = jest.fn();
@@ -57,7 +58,7 @@ const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
-  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true } };
+  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true, providerRecoveryPointInventory: true } };
 });
 
 jest.mock('../db', () => ({
@@ -67,6 +68,7 @@ jest.mock('../services/provider-sdk/registry', () => ({
   capabilitiesForHost: (...args) => mockCapabilities(...args),
   resourcesForHost: (...args) => mockResources(...args),
   artifactsForHost: (...args) => mockArtifacts(...args),
+  recoveryPointsForHost: (...args) => mockRecoveryPoints(...args),
 }));
 jest.mock('../services/provider-sdk/vm-detail', () => ({
   detailForHost: (...args) => mockVmDetail(...args),
@@ -174,6 +176,7 @@ describe('Provider SDK routes', () => {
       count: 0, totalObserved: 0, truncated: false, items: [],
     });
     mockArtifacts.mockResolvedValue({ schemaVersion: '1.0', count: 0, totalObserved: 0, truncated: false, items: [] });
+    mockRecoveryPoints.mockResolvedValue({ schemaVersion: '1.0', count: 0, totalObserved: 0, truncated: false, repositories: [], items: [] });
     mockVmDetail.mockResolvedValue({
       schemaVersion: '1.0',
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
@@ -693,6 +696,31 @@ describe('Provider SDK routes', () => {
     expect(mockArtifacts).toHaveBeenCalledWith(mockHost, { limit: 25, kind: 'vmTemplate', query: 'debian' });
     expect((await request(app).get('/api/providers/7/artifacts?limit=501')).status).toBe(400);
     expect((await request(app).get(`/api/providers/7/artifacts?q=${'a'.repeat(121)}`)).status).toBe(400);
+  });
+
+  it('scopes and validates read-only recovery-point inventory', async () => {
+    const repositoryId = `ddr_repo_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/recovery-points?limit=25&verification=verified&repository=${repositoryId}&q=database`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(response.status).toBe(200);
+    expect(mockRecoveryPoints).toHaveBeenCalledWith(mockHost, {
+      limit: 25, query: 'database', repositoryId, workloadId: undefined,
+      verification: 'verified', from: undefined, to: undefined,
+    });
+    expect((await request(app).get('/api/providers/7/recovery-points?limit=501')).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/recovery-points?q=${'a'.repeat(121)}`)).status).toBe(400);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes recovery-point upstream failures', async () => {
+    mockRecoveryPoints.mockRejectedValue(Object.assign(new Error('https://token@pbs.internal'), {
+      name: 'ProviderAdapterError', status: 502, code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
+    }));
+    const response = await request(app).get('/api/providers/7/recovery-points');
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({
+      error: 'Provider recovery-point inventory failed', code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
+    });
   });
 
   it('admin-gates, preflights and audits durable create-from-template submission', async () => {
