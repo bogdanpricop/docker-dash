@@ -1,9 +1,9 @@
-/* Provider-neutral, plan-only backup policy authoring and evidence. */
+/* Provider-neutral policy planning plus independently gated durable execution. */
 'use strict';
 
 const BackupPoliciesPage = {
   _container: null, _hosts: [], _hostId: null, _repositories: [], _workloads: [],
-  _policies: [], _runs: [], _editing: null,
+  _policies: [], _runs: [], _executions: [], _editing: null, _executionFeature: false,
 
   _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _escape(value) { return Utils.escapeHtml(value === null || value === undefined ? '' : String(value)); },
@@ -17,8 +17,8 @@ const BackupPoliciesPage = {
       <div style="display:flex;gap:10px;justify-content:space-between;align-items:start;flex-wrap:wrap">
         <div><h3 style="margin:0">${this._escape(policy.name)}</h3>
           <div class="text-muted text-sm">${this._escape(policy.description || 'No description')}</div></div>
-        <div><span class="badge ${policy.enabled ? 'badge-success' : 'badge-secondary'}">${policy.enabled ? 'scheduled' : 'disabled'}</span>
-          <span class="badge badge-info">plan only</span></div>
+        <div><span class="badge ${policy.enabled ? 'badge-success' : 'badge-secondary'}">${policy.enabled ? 'planning scheduled' : 'planning disabled'}</span>
+          <span class="badge ${policy.execution?.mode && policy.execution.mode !== 'disabled' ? 'badge-warning' : 'badge-info'}">execution ${this._escape(policy.execution?.mode || 'disabled')}</span></div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:12px">
         <div><span class="text-muted text-sm">Schedule</span><br>${this._escape(policy.schedule?.frequency)} · ${this._escape(policy.schedule?.timezone)}</div>
@@ -29,6 +29,10 @@ const BackupPoliciesPage = {
       ${this._isAdmin() ? `<div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap">
         <button class="btn btn-sm btn-secondary" data-policy-edit="${this._escape(policy.id)}"><i class="fas fa-pen"></i> Edit</button>
         <button class="btn btn-sm btn-primary" data-policy-plan="${this._escape(policy.id)}"><i class="fas fa-list-check"></i> Plan now</button>
+        ${this._executionFeature ? `<button class="btn btn-sm btn-warning" data-policy-authorize="manual" data-policy-id="${this._escape(policy.id)}"><i class="fas fa-key"></i> Authorize manual</button>
+        <button class="btn btn-sm btn-warning" data-policy-authorize="scheduled" data-policy-id="${this._escape(policy.id)}"><i class="fas fa-clock"></i> Authorize scheduled</button>
+        ${policy.execution?.mode !== 'disabled' ? `<button class="btn btn-sm btn-danger" data-policy-execute="${this._escape(policy.id)}"><i class="fas fa-database"></i> Run backup</button>
+          <button class="btn btn-sm btn-secondary" data-policy-authorize="disabled" data-policy-id="${this._escape(policy.id)}">Disable execution</button>` : ''}` : ''}
         <button class="btn btn-sm btn-danger" data-policy-delete="${this._escape(policy.id)}"><i class="fas fa-trash"></i> Delete</button>
       </div>` : ''}</article>`;
   },
@@ -48,13 +52,26 @@ const BackupPoliciesPage = {
     return `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Recorded</th><th>Policy</th><th>Trigger</th><th>State</th><th>Plan hash</th><th>VMs</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   },
 
+  _executionsHtml() {
+    if (!this._executionFeature) return '<div class="alert alert-info">Backup execution is disabled by the release gate. Planning remains available.</div>';
+    if (!this._executions.length) return '<div class="empty-msg">No provider backup execution has been recorded.</div>';
+    const rows = this._executions.slice(0, 20).map(execution => `<tr><td>${this._escape(execution.createdAt)}</td>
+      <td>${this._escape(this._policies.find(policy => policy.id === execution.policyId)?.name || execution.policyId)}</td>
+      <td>${this._escape(execution.trigger)}</td><td><span class="badge ${execution.state === 'succeeded' ? 'badge-success' : ['failed', 'unknown'].includes(execution.state) ? 'badge-danger' : 'badge-warning'}">${this._escape(execution.state)}</span></td>
+      <td>${Number(execution.summary?.succeeded || 0)}/${Number(execution.summary?.total || 0)}</td>
+      <td>${Number(execution.summary?.verificationPending || 0)}</td><td><strong>blocked</strong></td>
+      <td>${this._isAdmin() && ['queued', 'running', 'verification_pending'].includes(execution.state)
+        ? `<button class="btn btn-sm btn-danger" data-execution-cancel="${this._escape(execution.id)}">Cancel</button>` : ''}</td></tr>`).join('');
+    return `<div id="backup-execution-list" class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Started</th><th>Policy</th><th>Trigger</th><th>State</th><th>Succeeded</th><th>Verification pending</th><th>Retention mutation</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  },
+
   _editorHtml() {
     if (!this._isAdmin()) return '<div class="alert alert-info">Viewers can inspect policy and plan evidence. Authoring requires administrator access.</div>';
     const repositories = this._repositories.map(item => `<option value="${this._escape(item.id)}">${this._escape(item.displayName)} · ${this._escape(item.repositoryType)}</option>`).join('');
     const workloads = this._workloads.map(item => `<option value="${this._escape(item.id)}">${this._escape(item.displayName)} · ${this._escape(item.status?.powerState || 'unknown')}</option>`).join('');
     const browserZone = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
-    return `<div class="card" style="padding:16px"><div style="display:flex;justify-content:space-between"><h2 id="backup-editor-title">New plan-only policy</h2><button id="backup-reset" class="btn btn-sm btn-secondary">Reset</button></div>
-      <div class="alert alert-info"><strong>No backup will run from this screen.</strong> V3.2 validates and records deterministic plans; V3.3 will add separately gated execution.</div>
+    return `<div class="card" style="padding:16px"><div style="display:flex;justify-content:space-between"><h2 id="backup-editor-title">New backup policy</h2><button id="backup-reset" class="btn btn-sm btn-secondary">Reset</button></div>
+      <div class="alert alert-info"><strong>Saving or planning never starts a backup.</strong> Proxmox execution has a separate release gate, typed per-policy authorization, live revalidation and an idempotent durable operation. Retention deletion remains blocked.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
         <label>Name<input id="bp-name" maxlength="120" class="form-control" value="Production GFS"></label>
         <label>Repository<select id="bp-repository" class="form-control">${repositories}</select></label>
@@ -178,6 +195,40 @@ const BackupPoliciesPage = {
     catch (err) { Toast.error(err.message); }
   },
 
+  async _authorize(policyId, mode) {
+    const policy = this._policies.find(item => item.id === policyId); if (!policy) return;
+    let confirmName = '';
+    if (mode !== 'disabled') {
+      confirmName = window.prompt(`Type the exact policy name to authorize ${mode} provider backup execution:\n${policy.name}`) || '';
+      if (confirmName !== policy.name) { Toast.error('Exact policy-name confirmation is required'); return; }
+    }
+    try {
+      await Api.authorizeProviderBackupExecution(this._hostId, policy.id, { mode, confirmName });
+      Toast.success(mode === 'disabled' ? 'Backup execution disabled' : `${mode} backup execution authorized`);
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _execute(policyId) {
+    const policy = this._policies.find(item => item.id === policyId); if (!policy) return;
+    const confirmName = window.prompt(`This will submit real provider backup tasks. Type the exact policy name:\n${policy.name}`) || '';
+    if (confirmName !== policy.name) { Toast.error('Exact policy-name confirmation is required'); return; }
+    const idempotencyKey = `ui-backup-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
+    try {
+      const result = await Api.executeProviderBackupPolicy(this._hostId, policy.id, { confirmName }, idempotencyKey);
+      Toast.success(`Backup execution ${result.execution.state}`); await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _cancelExecution(executionId) {
+    const execution = this._executions.find(item => item.id === executionId); if (!execution) return;
+    const policy = this._policies.find(item => item.id === execution.policyId); if (!policy) return;
+    const confirmName = window.prompt(`Cancel queued/running backup tasks. Completed provider backups are retained. Type the exact policy name:\n${policy.name}`) || '';
+    if (confirmName !== policy.name) { Toast.error('Exact policy-name confirmation is required'); return; }
+    try { await Api.cancelProviderBackupExecution(this._hostId, execution.id, { confirmName }); Toast.success('Backup cancellation requested'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+
   async _delete(policyId) {
     const policy = this._policies.find(item => item.id === policyId);
     if (!policy || !window.confirm(`Delete backup policy "${policy.name}"? Historical plans remain auditable.`)) return;
@@ -190,8 +241,16 @@ const BackupPoliciesPage = {
     this._container.querySelector('#bp-save')?.addEventListener('click', () => this._save());
     this._container.querySelector('#backup-reset')?.addEventListener('click', () => { this._editing = null; this._load(); });
     this._container.querySelector('#backup-policy-list')?.addEventListener('click', event => {
-      const edit = event.target.closest('[data-policy-edit]'); const plan = event.target.closest('[data-policy-plan]'); const remove = event.target.closest('[data-policy-delete]');
-      if (edit) this._edit(edit.dataset.policyEdit); else if (plan) this._plan(plan.dataset.policyPlan); else if (remove) this._delete(remove.dataset.policyDelete);
+      const edit = event.target.closest('[data-policy-edit]'); const plan = event.target.closest('[data-policy-plan]');
+      const authorize = event.target.closest('[data-policy-authorize]'); const execute = event.target.closest('[data-policy-execute]');
+      const remove = event.target.closest('[data-policy-delete]');
+      if (edit) this._edit(edit.dataset.policyEdit); else if (plan) this._plan(plan.dataset.policyPlan);
+      else if (authorize) this._authorize(authorize.dataset.policyId, authorize.dataset.policyAuthorize);
+      else if (execute) this._execute(execute.dataset.policyExecute); else if (remove) this._delete(remove.dataset.policyDelete);
+    });
+    this._container.querySelector('#backup-execution-list')?.addEventListener('click', event => {
+      const cancel = event.target.closest('[data-execution-cancel]');
+      if (cancel) this._cancelExecution(cancel.dataset.executionCancel);
     });
   },
 
@@ -206,8 +265,12 @@ const BackupPoliciesPage = {
       ]);
       this._repositories = recovery.repositories || []; this._workloads = workloads.items || [];
       this._policies = policies.items || []; this._runs = runs.items || [];
+      this._executionFeature = policies.executionFeatureEnabled === true;
+      this._executions = this._executionFeature
+        ? (await Api.getProviderBackupExecutions(this._hostId, '', 50)).items || [] : [];
       content.innerHTML = `${this._editorHtml()}<section style="margin-top:20px"><h2>Policies</h2><div id="backup-policy-list">${this._policiesHtml()}</div></section>
-        <section style="margin-top:20px"><h2>Recorded plan evidence</h2>${this._runsHtml()}</section>`;
+        <section style="margin-top:20px"><h2>Recorded plan evidence</h2>${this._runsHtml()}</section>
+        <section style="margin-top:20px"><h2>Durable backup executions</h2>${this._executionsHtml()}</section>`;
       this._wire();
     } catch (err) { content.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${this._escape(err.message)}</div>`; }
   },
@@ -225,7 +288,7 @@ const BackupPoliciesPage = {
     await this._load();
   },
 
-  destroy() { this._container = null; this._repositories = []; this._workloads = []; this._policies = []; this._runs = []; },
+  destroy() { this._container = null; this._repositories = []; this._workloads = []; this._policies = []; this._runs = []; this._executions = []; },
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = BackupPoliciesPage;

@@ -596,6 +596,22 @@ const Api = {
   planProviderBackupPolicy(hostId, policyId) {
     return this.post(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/plan`, {});
   },
+  getProviderBackupExecutions(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/backup-policies/executions?${qs}`);
+  },
+  authorizeProviderBackupExecution(hostId, policyId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/execution-authorization`, body);
+  },
+  executeProviderBackupPolicy(hostId, policyId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/execute`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  cancelProviderBackupExecution(hostId, executionId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/executions/${encodeURIComponent(executionId)}/cancel`, body);
+  },
   preflightProviderVMProvision(hostId, artifactId, body) {
     return this.post(`/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone/preflight`, body);
   },

@@ -527,6 +527,16 @@ function startAll() {
     return require('../services/provider-operations/backup-policies').runDue();
   })));
 
+  // V3.3 execution is independently gated and policy-authorized. Scheduled
+  // plans are revalidated before durable child operations are dispatched;
+  // reconciliation never performs retention deletion.
+  jobs.push(cron.schedule('* * * * *', _m('provider-backup-execution', async () => {
+    const executions = require('../services/provider-operations/backup-executions');
+    const scheduled = await executions.runScheduled();
+    const reconciled = await executions.reconcile();
+    return { scheduled, reconciled };
+  })));
+
   // Host-maintenance runs are durable parent workflows. The leader-gated
   // wake-up reconciles native tasks and dispatches bounded vm.migrate waves.
   jobs.push(cron.schedule('* * * * *', _m('provider-host-maintenance', () => {

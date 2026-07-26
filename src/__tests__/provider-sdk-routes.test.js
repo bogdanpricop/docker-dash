@@ -59,6 +59,11 @@ const mockBackupPolicyUpsert = jest.fn();
 const mockBackupPolicyRemove = jest.fn();
 const mockBackupPolicyPlan = jest.fn();
 const mockBackupPolicyGet = jest.fn();
+const mockBackupExecutionList = jest.fn();
+const mockBackupExecutionAuthorize = jest.fn();
+const mockBackupExecutionCreate = jest.fn();
+const mockBackupExecutionGet = jest.fn();
+const mockBackupExecutionCancel = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -66,7 +71,7 @@ const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
-    providerRecoveryPointInventory: true, providerBackupPolicies: true } };
+    providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true } };
 });
 
 jest.mock('../db', () => ({
@@ -153,6 +158,21 @@ jest.mock('../services/provider-operations/backup-policies', () => {
     removeForHost: (...args) => mockBackupPolicyRemove(...args),
     planForHost: (...args) => mockBackupPolicyPlan(...args),
     get: (...args) => mockBackupPolicyGet(...args),
+  };
+});
+jest.mock('../services/provider-operations/backup-executions', () => {
+  class BackupExecutionError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'BackupExecutionError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    BackupExecutionError,
+    listForHost: (...args) => mockBackupExecutionList(...args),
+    getForHost: (...args) => mockBackupExecutionGet(...args),
+    authorizeForHost: (...args) => mockBackupExecutionAuthorize(...args),
+    createForHost: (...args) => mockBackupExecutionCreate(...args),
+    cancelForHost: (...args) => mockBackupExecutionCancel(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -351,6 +371,15 @@ describe('Provider SDK routes', () => {
     mockBackupPolicyPlan.mockResolvedValue({ id: `pbpr_${'b'.repeat(26)}`, policyId: backupPolicy.id,
       state: 'planned', planHash: backupPlan.planHash, plan: backupPlan });
     mockBackupPolicyGet.mockReturnValue(backupPolicy);
+    const execution = { schemaVersion: '1.0', id: `pbex_${'c'.repeat(26)}`, policyId: backupPolicy.id,
+      planRunId: `pbpr_${'b'.repeat(26)}`, planHash: 'c'.repeat(64), trigger: 'manual', state: 'running',
+      summary: { total: 1, retentionMutationAuthorized: false }, items: [] };
+    mockBackupExecutionList.mockReturnValue([execution]);
+    mockBackupExecutionAuthorize.mockReturnValue({ ...backupPolicy,
+      execution: { mode: 'manual', authorizedBy: 1, authorizedAt: '2026-07-26T12:00:00Z' } });
+    mockBackupExecutionCreate.mockResolvedValue({ execution, deduplicated: false });
+    mockBackupExecutionGet.mockReturnValue(execution);
+    mockBackupExecutionCancel.mockResolvedValue({ ...execution, state: 'running' });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -795,6 +824,34 @@ describe('Provider SDK routes', () => {
     const response = await request(app).post('/api/providers/7/backup-policies/preflight').send({});
     expect(response.status).toBe(500);
     expect(response.body).toEqual({ error: 'Provider backup policy request failed', code: 'PROVIDER_BACKUP_POLICY_ERROR' });
+  });
+
+  it('admin-gates and audits separately authorized idempotent backup execution', async () => {
+    const policyId = `pbp_${'a'.repeat(26)}`;
+    const listed = await request(app).get('/api/providers/7/backup-policies/executions?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.retentionMutationAuthorized).toBe(false);
+    expect(mockBackupExecutionList).toHaveBeenCalledWith(7, { limit: 25, policyId: null });
+    expect((await request(app).post(`/api/providers/7/backup-policies/${policyId}/execute`)
+      .set('x-test-role', 'operator').send({ confirmName: 'Production GFS' })).status).toBe(403);
+    const authorization = await request(app)
+      .post(`/api/providers/7/backup-policies/${policyId}/execution-authorization`)
+      .send({ mode: 'manual', confirmName: 'Production GFS' });
+    expect(authorization.status).toBe(200);
+    expect(mockBackupExecutionAuthorize).toHaveBeenCalledWith(mockHost, policyId,
+      { mode: 'manual', confirmName: 'Production GFS' }, { createdBy: 1 });
+    const started = await request(app).post(`/api/providers/7/backup-policies/${policyId}/execute`)
+      .set('Idempotency-Key', 'manual-backup-run-1').send({ confirmName: 'Production GFS' });
+    expect(started.status).toBe(202); expect(started.body.execution.state).toBe('running');
+    expect(mockBackupExecutionCreate).toHaveBeenCalledWith(mockHost, policyId,
+      { confirmName: 'Production GFS' }, { createdBy: 1, idempotencyKey: 'manual-backup-run-1' });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_backup_execution_started' }));
+    const cancelled = await request(app)
+      .post(`/api/providers/7/backup-policies/executions/${started.body.execution.id}/cancel`)
+      .send({ confirmName: 'Production GFS' });
+    expect(cancelled.status).toBe(202);
+    expect(mockBackupExecutionCancel).toHaveBeenCalledWith(mockHost, started.body.execution.id,
+      { confirmName: 'Production GFS' }, { createdBy: 1 });
   });
 
   it('admin-gates, preflights and audits durable create-from-template submission', async () => {

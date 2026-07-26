@@ -1,7 +1,7 @@
 'use strict';
 
 const { getDb } = require('../../db');
-const { encrypt, sha256 } = require('../../utils/crypto');
+const { encrypt, decrypt, sha256 } = require('../../utils/crypto');
 
 const RECOVERY_POINT_SCHEMA_VERSION = '1.0';
 const MAX_RECOVERY_POINT_BYTES = 64 * 1024;
@@ -214,9 +214,27 @@ function validateRecoveryPoint(item) {
   return true;
 }
 
+function resolveRepository(canonicalId, scope = {}, database) {
+  const db = database || getDb();
+  const hostId = Number(scope.hostId);
+  if (!SAFE_REPOSITORY_ID.test(String(canonicalId || '')) || !Number.isInteger(hostId) || hostId <= 0) return null;
+  const row = db.prepare(`SELECT canonical_id, provider_type, native_ref_enc, repository_json, observed_at
+    FROM provider_backup_repositories WHERE canonical_id = ? AND host_id = ?`).get(canonicalId, hostId);
+  if (!row) return null;
+  return {
+    id: row.canonical_id, providerType: row.provider_type,
+    nativeRef: decrypt(row.native_ref_enc),
+    repository: { ..._parseRepository(row.repository_json), observedAt: row.observed_at },
+  };
+}
+
+function _parseRepository(value) {
+  try { return value ? JSON.parse(value) : {}; } catch { return {}; }
+}
+
 module.exports = {
   RECOVERY_POINT_SCHEMA_VERSION, MAX_RECOVERY_INVENTORY_BYTES, VERIFICATION_STATES,
   normalizeRepositoryAndRemember, normalizeRecoveryPointAndRemember,
-  validateRepository, validateRecoveryPoint,
+  validateRepository, validateRecoveryPoint, resolveRepository,
   _internals: { SAFE_REPOSITORY_ID, SAFE_POINT_ID, _timestamp, _verification, _repositoryType },
 };

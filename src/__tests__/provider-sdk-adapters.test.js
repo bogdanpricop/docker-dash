@@ -16,6 +16,10 @@ describe('Provider SDK adapters', () => {
     const features = proxmox.declared();
     expect(features['inventory.vm'].state).toBe('supported');
     expect(features['backup.read'].state).toBe('supported');
+    expect(features['backup.run']).toEqual(expect.objectContaining({ state: 'conditional' }));
+    expect(features['backup.run'].constraints).toEqual(expect.objectContaining({
+      durableTask: true, retentionMutation: false,
+    }));
     expect(features['inventory.image'].state).toBe('supported');
     expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['vm.power.force'].constraints).toEqual(expect.objectContaining({

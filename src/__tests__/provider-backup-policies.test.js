@@ -135,6 +135,17 @@ describe('provider backup policies', () => {
     expect(result.observedCount).toBe(5);
   });
 
+  it('keeps plan hashes stable across volatile inventory observation timestamps', async () => {
+    const firstRepository = { ...REPOSITORY, observedAt: '2026-07-26T10:00:00Z' };
+    const secondRepository = { ...REPOSITORY, observedAt: '2026-07-26T10:00:05Z' };
+    const first = await policies.preflightForHost(host, draft(), { database,
+      recoveryInventory: recovery({ repositories: [firstRepository] }), resourceInventory: resources() });
+    const second = await policies.preflightForHost(host, draft(), { database,
+      recoveryInventory: recovery({ repositories: [secondRepository] }), resourceInventory: resources() });
+    expect(second.planHash).toBe(first.planHash);
+    expect(second.repository.observedAt).not.toBe(first.repository.observedAt);
+  });
+
   it('persists versioned policies and due plans once per timezone-aware slot', async () => {
     const saved = await policies.upsertForHost(host, draft({ enabled: true }), { database, createdBy: 9 });
     expect(saved.created).toBe(true); expect(saved.preflight.allowed).toBe(true);

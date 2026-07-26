@@ -106,6 +106,9 @@ module.exports = {
     // Declarative backup policy authoring and plan-only scheduling. This flag
     // never authorizes a provider backup or retention mutation.
     providerBackupPolicies: bool('DD_PROVIDER_BACKUP_POLICIES', false),
+    // Durable provider backup submission. Authorization remains per policy and
+    // retention deletion is not implied by this execution flag.
+    providerBackupExecution: bool('DD_PROVIDER_BACKUP_EXECUTION', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

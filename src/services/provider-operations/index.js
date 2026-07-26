@@ -10,6 +10,7 @@ require('./handlers/vm-snapshot').register(engine);
 require('./handlers/vm-provision').register(engine);
 require('./handlers/vm-migration').register(engine);
 require('./handlers/placement-change').register(engine);
+require('./handlers/vm-backup').register(engine);
 
 module.exports = engine;
 module.exports.policy = policy;

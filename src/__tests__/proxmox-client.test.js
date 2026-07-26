@@ -216,6 +216,27 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(paths[1]).toContain('/api2/json/nodes/pve-a/tasks/UPID%3Apve-a%3A0001%3Apower-task/status');
     });
 
+    it('submits one bounded vzdump workload as a durable UPID task', async () => {
+      let seen;
+      mockHttps._mockNext((opts, cb, req) => {
+        seen = { method: opts.method, path: opts.path, body: JSON.parse(req._writtenBody.toString()) };
+        const res = fakeResponse({ status: 200, body: { data: 'UPID:pve-a:0003:vzdump-task' } });
+        cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.startVmBackup('pve-a', 101, 'qemu', {
+        storage: 'pbs-prod', mode: 'snapshot', compress: 'zstd', bwlimitKiB: 2048,
+      })).resolves.toEqual({
+        taskRef: 'UPID:pve-a:0003:vzdump-task', node: 'pve-a', vmid: 101,
+        guestType: 'qemu', storage: 'pbs-prod', provider: 'proxmox',
+      });
+      expect(seen).toEqual({ method: 'POST', path: '/api2/json/nodes/pve-a/vzdump',
+        body: { vmid: 101, storage: 'pbs-prod', mode: 'snapshot', compress: 'zstd', bwlimit: 2048 } });
+      await expect(client.startVmBackup('../unsafe', 101, 'qemu', { storage: 'pbs-prod' }))
+        .rejects.toMatchObject({ code: 'INVALID_BACKUP_EXECUTION' });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
+
     it('rejects unsupported LXC force resets before network access', async () => {
       const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
       await expect(client.vmPowerAction('pve-a', 101, 'lxc', 'forceReboot'))

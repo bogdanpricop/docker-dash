@@ -598,6 +598,29 @@ class ProxmoxClient {
     return { ok: true };
   }
 
+  /** Submit one VM/CT vzdump job. Returns the native UPID. */
+  async startVmBackup(node, vmid, guestType, options = {}) {
+    const safeNode = String(node || '');
+    const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
+    const id = Number(vmid);
+    const storage = String(options.storage || '');
+    const mode = String(options.mode || 'snapshot');
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !type
+      || !Number.isSafeInteger(id) || id <= 0
+      || !/^[A-Za-z0-9._-]{1,128}$/.test(storage)
+      || !['snapshot', 'suspend', 'stop'].includes(mode)) {
+      throw Object.assign(new Error('Invalid Proxmox backup target'), { code: 'INVALID_BACKUP_EXECUTION', status: 400 });
+    }
+    const body = { vmid: id, storage, mode };
+    if (options.compress) body.compress = String(options.compress);
+    if (Number.isSafeInteger(options.bwlimitKiB) && options.bwlimitKiB > 0) body.bwlimit = options.bwlimitKiB;
+    const upid = await this._request('POST', `/api2/json/nodes/${encodeURIComponent(safeNode)}/vzdump`, body);
+    if (typeof upid !== 'string' || !upid.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox backup returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef: upid, node: safeNode, vmid: id, guestType: type, storage, provider: 'proxmox' };
+  }
+
   /** Submit a same-cluster QEMU/LXC migration. Returns the native UPID. */
   async migrateVm(node, vmid, guestType, options = {}) {
     const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;

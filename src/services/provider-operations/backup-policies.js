@@ -258,6 +258,11 @@ function _publicPolicy(row) {
     consistency: _parseJson(row.consistency_json, {}), retention: _parseJson(row.retention_json, {}),
     protection: _parseJson(row.protection_json, {}), controls: _parseJson(row.controls_json, {}),
     verification: _parseJson(row.verification_json, {}), policyHash: row.policy_hash,
+    execution: {
+      mode: row.execution_mode || 'disabled',
+      authorizedBy: row.execution_authorized_by || null,
+      authorizedAt: row.execution_authorized_at || null,
+    },
     lastSlotKey: row.last_slot_key || null, lastPlanAt: row.last_plan_at || null,
     lastPlanStatus: row.last_plan_status || null,
     lastPlanSummary: _parseJson(row.last_plan_summary_json, null),
@@ -503,7 +508,11 @@ async function preflightForHost(host, input = {}, options = {}) {
     findings, allowed: blockers.length === 0,
     execution: { authorized: false, reason: 'V3.2 persists plans only; provider mutation belongs to V3.3' },
   };
-  const planHash = sha256(_canonical({ ...planCore, retention: { ...retention, evaluatedAt: undefined }, nextOccurrences: undefined }));
+  const planHash = sha256(_canonical({
+    ...planCore,
+    repository: planCore.repository ? { ...planCore.repository, observedAt: undefined } : planCore.repository,
+    retention: { ...retention, evaluatedAt: undefined }, nextOccurrences: undefined,
+  }));
   return { ...planCore, planHash, summary: { blockers: blockers.length, warnings: warnings.length,
     selectedWorkloads: selection.selected.length, observedRecoveryPoints: points.length,
     retentionCandidates: retention.candidateCount } };
@@ -515,6 +524,7 @@ async function upsertForHost(host, input = {}, options = {}) {
   }
   const database = _database(options); const existing = input.id ? get(input.id, { database }) : null;
   if (input.id && (!existing || existing.hostId !== Number(host.id))) throw new BackupPolicyError('Backup policy was not found', 'BACKUP_POLICY_NOT_FOUND', 404);
+  if (existing) _assertNoActiveExecution(existing.id, database);
   const policy = validatePolicy(input, existing); const preflight = await preflightForHost(host, { ...policy, id: existing?.id }, { ...options, database, existing });
   if (policy.enabled && !preflight.allowed) {
     throw new BackupPolicyError('Enabled backup policy is blocked by preflight', 'BACKUP_POLICY_PREFLIGHT_BLOCKED', 409, { findings: preflight.findings });
@@ -550,9 +560,19 @@ function removeForHost(hostIdInput, idInput, options = {}) {
   }
   const hostId = Number(hostIdInput); const policy = get(idInput, options);
   if (!policy || policy.hostId !== hostId) throw new BackupPolicyError('Backup policy was not found', 'BACKUP_POLICY_NOT_FOUND', 404);
-  _database(options).prepare(`UPDATE provider_backup_policies SET enabled=0, deleted_at=datetime('now'),
+  const database = _database(options); _assertNoActiveExecution(policy.id, database);
+  database.prepare(`UPDATE provider_backup_policies SET enabled=0, deleted_at=datetime('now'),
     updated_at=datetime('now') WHERE id=? AND host_id=?`).run(policy.id, hostId);
   return policy;
+}
+
+function _assertNoActiveExecution(policyId, database) {
+  const table = database.prepare(`SELECT 1 FROM sqlite_master
+    WHERE type='table' AND name='provider_backup_executions'`).get();
+  if (!table) return;
+  const active = database.prepare(`SELECT id FROM provider_backup_executions
+    WHERE policy_id=? AND state IN ('queued','running','verification_pending') LIMIT 1`).get(policyId);
+  if (active) throw new BackupPolicyError('Backup policy cannot change while an execution is active', 'BACKUP_EXECUTION_ACTIVE', 409);
 }
 
 function _insertRun(policy, plan, trigger, slot, options = {}) {
@@ -652,5 +672,5 @@ module.exports = {
   selectWorkloads, slotKey, nextOccurrences, evaluateGfs, preflightForHost,
   upsertForHost, removeForHost, planForHost, runDue,
   _internals: { SAFE_POLICY_ID, SAFE_RUN_ID, _canonical, _policyHash, _publicPolicy, _publicRun,
-    _zonedParts, _weekBucket, _repository, _blockedPlan },
+    _zonedParts, _weekBucket, _repository, _blockedPlan, _assertNoActiveExecution },
 };

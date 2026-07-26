@@ -6,7 +6,7 @@ const { supported, unsupported, conditional, adapterNotImplemented } = require('
 const NOT_IMPLEMENTED = [
   'inventory.network', 'inventory.task',
   'storage.mutate', 'network.mutate', 'task.read',
-  'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
+  'task.cancel', 'task.cleanup', 'event.stream',
 ];
 
 function declared() {
@@ -63,6 +63,10 @@ function declared() {
       singleUseToken: true, credentialIsolation: 'server-side', emergencyLock: true,
     }),
     'backup.read': supported(),
+    'backup.run': conditional('Per-workload vzdump jobs use durable UPIDs and require live recovery-point proof', {
+      perResource: true, durableTask: true, cancel: true, revalidate: true,
+      providers: ['pve-vzdump'], retentionMutation: false,
+    }),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),
