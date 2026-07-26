@@ -57,6 +57,7 @@ const FEATURE_CATALOG = Object.freeze({
   'backup.restore.file': 'Restore files from a recovery point',
   'backup.restore.instant': 'Start an instant or live restore',
   'backup.restore.differential': 'Restore by reusing a provider base chain',
+  'backup.restore.drill': 'Run an isolated automated restore drill',
 });
 
 const FEATURE_KEYS = Object.freeze(Object.keys(FEATURE_CATALOG));

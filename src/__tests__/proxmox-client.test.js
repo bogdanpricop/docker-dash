@@ -273,6 +273,47 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(mockHttps._handlers).toHaveLength(0);
     });
 
+    it('isolates, asserts and destroys only through bounded restore-drill endpoints', async () => {
+      const seen = [];
+      const replies = [
+        { digest: 'a'.repeat(40), net0: 'virtio=AA:BB,bridge=vmbr0',
+          net1: 'e1000=CC:DD,bridge=vmbr1,link_down=0' },
+        null,
+        { description: `Docker Dash restore drill pdrr_${'a'.repeat(26)}`,
+          net0: 'virtio=AA:BB,bridge=vmbr0,link_down=1',
+          net1: 'e1000=CC:DD,bridge=vmbr1,link_down=1' },
+        { status: 'running' }, null, { result: { name: 'Debian', version: '13' } },
+        'UPID:pve-a:destroy-drill',
+      ];
+      for (const data of replies) mockHttps._mockNext((opts, cb, req) => {
+        seen.push({ method: opts.method, path: opts.path,
+          body: req._writtenBody ? JSON.parse(req._writtenBody.toString()) : null });
+        const res = fakeResponse({ status: 200, body: { data } }); cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      const marker = `Docker Dash restore drill pdrr_${'a'.repeat(26)}`;
+      await expect(client.configureRestoreDrillIsolation('pve-a', 9123, 'qemu', marker))
+        .resolves.toEqual(expect.objectContaining({ configured: true, networkCount: 2 }));
+      await expect(client.verifyRestoreDrillIsolation('pve-a', 9123, 'qemu', marker))
+        .resolves.toEqual(expect.objectContaining({ configured: true, isolatedCount: 2 }));
+      await expect(client.getVmStatus('pve-a', 9123, 'qemu')).resolves.toEqual({ status: 'running' });
+      await expect(client.pingGuestAgent('pve-a', 9123)).resolves.toEqual({ reachable: true, provider: 'proxmox' });
+      await expect(client.getGuestAgentOsInfo('pve-a', 9123)).resolves.toEqual({ name: 'Debian', version: '13' });
+      await expect(client.destroyRestoreDrillTarget('pve-a', 9123, 'qemu')).resolves.toEqual({
+        taskRef: 'UPID:pve-a:destroy-drill', node: 'pve-a', provider: 'proxmox',
+      });
+      expect(seen[1]).toEqual({ method: 'PUT', path: '/api2/json/nodes/pve-a/qemu/9123/config', body: {
+        description: marker, digest: 'a'.repeat(40), net0: 'virtio=AA:BB,bridge=vmbr0,link_down=1',
+        net1: 'e1000=CC:DD,bridge=vmbr1,link_down=1',
+      } });
+      expect(seen[4]).toEqual({ method: 'POST', path: '/api2/json/nodes/pve-a/qemu/9123/agent/ping', body: {} });
+      expect(seen[6]).toEqual({ method: 'DELETE', path: '/api2/json/nodes/pve-a/qemu/9123',
+        body: { purge: 0, 'destroy-unreferenced-disks': 0 } });
+      await expect(client.configureRestoreDrillIsolation('pve-a', 9123, 'qemu', 'unsafe'))
+        .rejects.toMatchObject({ code: 'INVALID_RESTORE_DRILL' });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
+
     it('rejects unsupported LXC force resets before network access', async () => {
       const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
       await expect(client.vmPowerAction('pve-a', 101, 'lxc', 'forceReboot'))

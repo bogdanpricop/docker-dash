@@ -35,4 +35,14 @@ describe('backup policies page', () => {
     expect(source).toContain('executeProviderBackupPolicy');
     expect(page._executionsHtml()).toContain('disabled by the release gate');
   });
+
+  it('keeps restore-drill authorization separate and links it only to opted-in backup policies', () => {
+    const source = `${page._load} ${page._configureDrill} ${page._deleteDrill}`;
+    expect(source).toContain('getProviderRestoreDrillPolicies');
+    expect(source).toContain('saveProviderRestoreDrillPolicy');
+    expect(source).toContain('deleteProviderRestoreDrillPolicy');
+    expect(source).toContain('AUTHORIZE DRILL');
+    expect(source).toContain('ALLOW AUTOMATIC CLEANUP');
+    expect(page._payload.toString()).toContain('bp-restore-drill');
+  });
 });

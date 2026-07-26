@@ -12,6 +12,7 @@ require('./handlers/vm-migration').register(engine);
 require('./handlers/placement-change').register(engine);
 require('./handlers/vm-backup').register(engine);
 require('./handlers/vm-restore').register(engine);
+require('./handlers/recovery-drill').register(engine);
 
 module.exports = engine;
 module.exports.policy = policy;

@@ -73,6 +73,11 @@ function declared() {
       createOnly: true, overwrite: false, startAfterRestore: false, uniqueNetworkIdentity: true,
       durableTask: true, cancel: true, revalidate: true, providers: ['pve-restore'],
     }),
+    'backup.restore.drill': conditional('A new restore target is network-isolated before bounded boot and guest-agent checks', {
+      createOnly: true, isolated: 'all_nics_link_down', durableTask: true,
+      assertions: ['boot', 'qemu-guest-agent'], cleanup: ['on_success', 'never'],
+      preserveFailures: true, arbitraryGuestCommands: false,
+    }),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),

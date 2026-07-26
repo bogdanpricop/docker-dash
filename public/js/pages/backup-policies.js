@@ -3,7 +3,8 @@
 
 const BackupPoliciesPage = {
   _container: null, _hosts: [], _hostId: null, _repositories: [], _workloads: [],
-  _policies: [], _runs: [], _executions: [], _editing: null, _executionFeature: false,
+  _policies: [], _runs: [], _executions: [], _drillPolicies: [], _nodes: [], _storages: [],
+  _editing: null, _executionFeature: false, _drillFeature: false,
 
   _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _escape(value) { return Utils.escapeHtml(value === null || value === undefined ? '' : String(value)); },
@@ -33,6 +34,8 @@ const BackupPoliciesPage = {
         <button class="btn btn-sm btn-warning" data-policy-authorize="scheduled" data-policy-id="${this._escape(policy.id)}"><i class="fas fa-clock"></i> Authorize scheduled</button>
         ${policy.execution?.mode !== 'disabled' ? `<button class="btn btn-sm btn-danger" data-policy-execute="${this._escape(policy.id)}"><i class="fas fa-database"></i> Run backup</button>
           <button class="btn btn-sm btn-secondary" data-policy-authorize="disabled" data-policy-id="${this._escape(policy.id)}">Disable execution</button>` : ''}` : ''}
+        ${this._drillFeature && policy.verification?.restoreDrillRequired === true
+          ? `<button class="btn btn-sm btn-warning" data-policy-drill="${this._escape(policy.id)}"><i class="fas fa-vial"></i> ${this._drillPolicies.some(item => item.backupPolicyId === policy.id) ? 'Edit drill' : 'Add drill'}</button>` : ''}
         <button class="btn btn-sm btn-danger" data-policy-delete="${this._escape(policy.id)}"><i class="fas fa-trash"></i> Delete</button>
       </div>` : ''}</article>`;
   },
@@ -63,6 +66,22 @@ const BackupPoliciesPage = {
       <td>${this._isAdmin() && ['queued', 'running', 'verification_pending'].includes(execution.state)
         ? `<button class="btn btn-sm btn-danger" data-execution-cancel="${this._escape(execution.id)}">Cancel</button>` : ''}</td></tr>`).join('');
     return `<div id="backup-execution-list" class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Started</th><th>Policy</th><th>Trigger</th><th>State</th><th>Succeeded</th><th>Verification pending</th><th>Retention mutation</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  _drillPoliciesHtml() {
+    if (!this._drillFeature) return '<div class="alert alert-info">Automated restore drills are unavailable for this endpoint or release gate.</div>';
+    if (!this._drillPolicies.length) return '<div class="empty-msg">No scheduled restore-drill policy is linked yet. Enable “Require restore drill” on a backup policy first.</div>';
+    const rows = this._drillPolicies.map(policy => `<tr>
+      <td><strong>${this._escape(policy.name)}</strong><div class="text-muted text-sm">${this._escape(this._policies.find(item => item.id === policy.backupPolicyId)?.name || policy.backupPolicyId)}</div></td>
+      <td><span class="badge ${policy.enabled ? 'badge-success' : 'badge-secondary'}">${policy.enabled ? 'authorized' : 'disabled'}</span></td>
+      <td>${this._escape(policy.schedule?.frequency)} · ${this._escape(policy.schedule?.timezone)}</td>
+      <td>${this._escape(policy.assertions?.guestAgent || 'auto')} · ${Number(policy.assertions?.bootTimeoutSeconds || 0)}s</td>
+      <td>${this._escape(policy.cleanupMode)} · ${policy.authorization?.automaticCleanup ? 'authorized' : 'not authorized'}</td>
+      <td>${policy.rpoTargetSeconds == null ? '—' : `${Number(policy.rpoTargetSeconds)}s`} / ${policy.rtoTargetSeconds == null ? '—' : `${Number(policy.rtoTargetSeconds)}s`}</td>
+      <td>${this._isAdmin() ? `<button class="btn btn-sm btn-secondary" data-policy-drill="${this._escape(policy.backupPolicyId)}">Edit</button>
+        <button class="btn btn-sm btn-danger" data-drill-delete="${this._escape(policy.id)}">Delete</button>` : ''}</td>
+    </tr>`).join('');
+    return `<div id="restore-drill-policy-list" class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Drill / backup policy</th><th>State</th><th>Schedule</th><th>Assertions</th><th>Cleanup</th><th>RPO / RTO</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   },
 
   _editorHtml() {
@@ -109,6 +128,7 @@ const BackupPoliciesPage = {
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px;flex-wrap:wrap">
         <label><input id="bp-enabled" type="checkbox"> Schedule plan generation</label>
         <label><input id="bp-verify" type="checkbox" checked> Verify after backup (execution intent)</label>
+        <label><input id="bp-restore-drill" type="checkbox"> Require measured restore drill</label>
         <button id="bp-preflight" class="btn btn-secondary"><i class="fas fa-clipboard-check"></i> Preflight</button>
         <button id="bp-save" class="btn btn-primary"><i class="fas fa-save"></i> Save policy</button>
       </div><div id="bp-preflight-result" style="margin-top:12px"></div></div>`;
@@ -143,7 +163,8 @@ const BackupPoliciesPage = {
       controls: { maxConcurrent: this._number('bp-concurrency'),
         bandwidthLimitMbps: bandwidth ? Number(bandwidth) : null, window: null },
       verification: { afterBackup: this._container.querySelector('#bp-verify')?.checked === true,
-        maximumUnverifiedHours: 24, restoreDrillRequired: false },
+        maximumUnverifiedHours: 24,
+        restoreDrillRequired: this._container.querySelector('#bp-restore-drill')?.checked === true },
     };
   },
 
@@ -187,6 +208,7 @@ const BackupPoliciesPage = {
     this._set('bp-immutability', policy.protection.immutability.mode); this._set('bp-lock-days', policy.protection.immutability.minimumLockDays);
     this._set('bp-concurrency', policy.controls.maxConcurrent); this._set('bp-bandwidth', policy.controls.bandwidthLimitMbps || '');
     this._check('bp-enabled', policy.enabled); this._check('bp-verify', policy.verification.afterBackup);
+    this._check('bp-restore-drill', policy.verification.restoreDrillRequired);
     this._container.querySelector('#backup-editor-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 
@@ -229,6 +251,78 @@ const BackupPoliciesPage = {
     catch (err) { Toast.error(err.message); }
   },
 
+  _pick(items, title, selectedId = null) {
+    if (!items.length) throw new Error(`No ${title.toLowerCase()} is available`);
+    const selected = Math.max(0, items.findIndex(item => item.id === selectedId));
+    const answer = window.prompt(`${title}:\n${items.map((item, index) => `${index + 1}. ${item.displayName}`).join('\n')}\n\nEnter the number:`, String(selected + 1));
+    if (answer === null) return null;
+    const index = Number(answer) - 1;
+    return Number.isInteger(index) && index >= 0 && index < items.length ? items[index] : null;
+  },
+
+  async _configureDrill(backupPolicyId) {
+    const backup = this._policies.find(item => item.id === backupPolicyId);
+    if (!backup) return;
+    const existing = this._drillPolicies.find(item => item.backupPolicyId === backup.id) || null;
+    try {
+      const name = window.prompt('Restore-drill policy name:', existing?.name || `${backup.name} recovery proof`);
+      if (name === null) return;
+      const node = this._pick(this._nodes, 'Drill target node', existing?.target?.nodeId);
+      if (!node) return;
+      const candidates = this._storages.filter(item => !item.extensions?.node
+        || item.extensions.node === node.displayName);
+      const storage = this._pick(candidates, 'Drill target storage', existing?.target?.storageId);
+      if (!storage) return;
+      const frequency = window.prompt('Frequency: hourly, daily, weekly or monthly', existing?.schedule?.frequency || 'weekly');
+      if (frequency === null) return;
+      const timezone = window.prompt('IANA timezone:', existing?.schedule?.timezone
+        || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+      if (timezone === null) return;
+      const rpoHours = window.prompt('RPO target in hours (blank for none):', existing?.rpoTargetSeconds == null
+        ? '24' : String(existing.rpoTargetSeconds / 3600));
+      if (rpoHours === null) return;
+      const rtoMinutes = window.prompt('RTO target in minutes (blank for none):', existing?.rtoTargetSeconds == null
+        ? '15' : String(existing.rtoTargetSeconds / 60));
+      if (rtoMinutes === null) return;
+      const cleanup = window.confirm('Authorize automatic deletion only after a fully successful isolated drill? Cancel retains every drill target.');
+      const enabled = window.confirm('Enable scheduled execution now? Cancel saves the policy disabled.');
+      let authorizationText = ''; let cleanupAuthorizationText = '';
+      if (enabled) {
+        authorizationText = window.prompt(`Type exactly: AUTHORIZE DRILL ${name}`) || '';
+        if (authorizationText !== `AUTHORIZE DRILL ${name}`) throw new Error('Scheduled drill authorization did not match');
+        if (cleanup) {
+          cleanupAuthorizationText = window.prompt(`Type exactly: ALLOW AUTOMATIC CLEANUP ${name}`) || '';
+          if (cleanupAuthorizationText !== `ALLOW AUTOMATIC CLEANUP ${name}`) throw new Error('Automatic cleanup authorization did not match');
+        }
+      }
+      const browser = new Date();
+      const body = {
+        ...(existing ? { id: existing.id } : {}), name, backupPolicyId: backup.id, enabled,
+        target: { nodeId: node.id, storageId: storage.id },
+        schedule: { frequency, minute: existing?.schedule?.minute ?? 15,
+          hour: existing?.schedule?.hour ?? 3, weekday: existing?.schedule?.weekday ?? browser.getDay(),
+          dayOfMonth: existing?.schedule?.dayOfMonth ?? Math.min(28, browser.getDate()), timezone },
+        assertions: { guestAgent: existing?.assertions?.guestAgent || 'auto',
+          bootTimeoutSeconds: existing?.assertions?.bootTimeoutSeconds || 300, osInfo: true },
+        cleanupMode: cleanup ? 'on_success' : 'never',
+        shutdownTimeoutSeconds: existing?.assertions?.shutdownTimeoutSeconds || 120,
+        rpoTargetSeconds: rpoHours.trim() ? Math.round(Number(rpoHours) * 3600) : null,
+        rtoTargetSeconds: rtoMinutes.trim() ? Math.round(Number(rtoMinutes) * 60) : null,
+        authorizationText, cleanupAuthorizationText,
+      };
+      const result = await Api.saveProviderRestoreDrillPolicy(this._hostId, body);
+      Toast.success(result.created ? 'Restore-drill policy created' : 'Restore-drill policy updated');
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _deleteDrill(policyId) {
+    const policy = this._drillPolicies.find(item => item.id === policyId);
+    if (!policy || !window.confirm(`Delete restore-drill policy "${policy.name}"? Historical evidence remains.`)) return;
+    try { await Api.deleteProviderRestoreDrillPolicy(this._hostId, policy.id); Toast.success('Restore-drill policy deleted'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+
   async _delete(policyId) {
     const policy = this._policies.find(item => item.id === policyId);
     if (!policy || !window.confirm(`Delete backup policy "${policy.name}"? Historical plans remain auditable.`)) return;
@@ -243,14 +337,21 @@ const BackupPoliciesPage = {
     this._container.querySelector('#backup-policy-list')?.addEventListener('click', event => {
       const edit = event.target.closest('[data-policy-edit]'); const plan = event.target.closest('[data-policy-plan]');
       const authorize = event.target.closest('[data-policy-authorize]'); const execute = event.target.closest('[data-policy-execute]');
-      const remove = event.target.closest('[data-policy-delete]');
+      const drill = event.target.closest('[data-policy-drill]'); const remove = event.target.closest('[data-policy-delete]');
       if (edit) this._edit(edit.dataset.policyEdit); else if (plan) this._plan(plan.dataset.policyPlan);
       else if (authorize) this._authorize(authorize.dataset.policyId, authorize.dataset.policyAuthorize);
-      else if (execute) this._execute(execute.dataset.policyExecute); else if (remove) this._delete(remove.dataset.policyDelete);
+      else if (execute) this._execute(execute.dataset.policyExecute);
+      else if (drill) this._configureDrill(drill.dataset.policyDrill);
+      else if (remove) this._delete(remove.dataset.policyDelete);
     });
     this._container.querySelector('#backup-execution-list')?.addEventListener('click', event => {
       const cancel = event.target.closest('[data-execution-cancel]');
       if (cancel) this._cancelExecution(cancel.dataset.executionCancel);
+    });
+    this._container.querySelector('#restore-drill-policy-list')?.addEventListener('click', event => {
+      const edit = event.target.closest('[data-policy-drill]'); const remove = event.target.closest('[data-drill-delete]');
+      if (edit) this._configureDrill(edit.dataset.policyDrill);
+      else if (remove) this._deleteDrill(remove.dataset.drillDelete);
     });
   },
 
@@ -268,9 +369,19 @@ const BackupPoliciesPage = {
       this._executionFeature = policies.executionFeatureEnabled === true;
       this._executions = this._executionFeature
         ? (await Api.getProviderBackupExecutions(this._hostId, '', 50)).items || [] : [];
+      const currentHost = this._hosts.find(item => Number(item.id) === Number(this._hostId));
+      this._drillFeature = recovery.restoreDrillFeatureEnabled === true && currentHost?.daemonType === 'proxmox';
+      if (this._drillFeature) {
+        const [drills, nodes, storages] = await Promise.all([
+          Api.getProviderRestoreDrillPolicies(this._hostId, 100),
+          Api.getProviderHosts(this._hostId, 64), Api.getProviderStorages(this._hostId, 500),
+        ]);
+        this._drillPolicies = drills.items || []; this._nodes = nodes.items || []; this._storages = storages.items || [];
+      } else { this._drillPolicies = []; this._nodes = []; this._storages = []; }
       content.innerHTML = `${this._editorHtml()}<section style="margin-top:20px"><h2>Policies</h2><div id="backup-policy-list">${this._policiesHtml()}</div></section>
         <section style="margin-top:20px"><h2>Recorded plan evidence</h2>${this._runsHtml()}</section>
-        <section style="margin-top:20px"><h2>Durable backup executions</h2>${this._executionsHtml()}</section>`;
+        <section style="margin-top:20px"><h2>Durable backup executions</h2>${this._executionsHtml()}</section>
+        <section style="margin-top:20px"><h2>Scheduled restore drills</h2>${this._drillPoliciesHtml()}</section>`;
       this._wire();
     } catch (err) { content.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${this._escape(err.message)}</div>`; }
   },
@@ -288,7 +399,8 @@ const BackupPoliciesPage = {
     await this._load();
   },
 
-  destroy() { this._container = null; this._repositories = []; this._workloads = []; this._policies = []; this._runs = []; this._executions = []; },
+  destroy() { this._container = null; this._repositories = []; this._workloads = []; this._policies = [];
+    this._runs = []; this._executions = []; this._drillPolicies = []; this._nodes = []; this._storages = []; },
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = BackupPoliciesPage;

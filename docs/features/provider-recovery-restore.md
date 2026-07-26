@@ -54,7 +54,7 @@ Inspect Proxmox VE before deleting anything or retrying with another VMID. Docke
 - not executable: overwrite, power-on, instant/live restore, file restore, disk restore, or differential restore;
 - Xen Orchestra product restore features remain visible in research evidence, but Docker Dash does not use its undiscovered JSON-RPC mutation transport yet;
 - XAPI, raw Xen, vSphere, and ESXi remain fail-closed;
-- boot, guest-agent, and application assertions belong to the automated restore-drill batch.
+- boot and bounded guest-agent assertions are available through the separately gated automated restore-drill workflow; arbitrary application scripts remain unsupported.
 
 ## API
 

@@ -487,7 +487,14 @@ async function preflightForHost(host, input = {}, options = {}) {
   if (policy.consistency.requested !== 'crash') findings.push(_finding('warning', 'CONSISTENCY_EXECUTION_EVIDENCE_PENDING', 'Guest-consistency support will be revalidated per workload before execution'));
   if (policy.controls.bandwidthLimitMbps !== null || policy.controls.window) findings.push(_finding('warning', 'EXECUTION_CONTROLS_PENDING', 'Bandwidth and window controls require provider-native translation during execution'));
   if (policy.protection.encryption.mode === 'preferred' && !policy.protection.encryption.keyReference) findings.push(_finding('warning', 'ENCRYPTION_KEY_REFERENCE_MISSING', 'Preferred encryption has no key reference'));
-  if (policy.verification.restoreDrillRequired) findings.push(_finding('warning', 'RESTORE_DRILL_EXECUTION_PENDING', 'Restore-drill enforcement is planned for the restore orchestration batch'));
+  if (policy.verification.restoreDrillRequired) {
+    const drillTable = database.prepare(`SELECT 1 FROM sqlite_master
+      WHERE type='table' AND name='provider_restore_drill_policies'`).get();
+    const linked = existing?.id && drillTable ? database.prepare(`SELECT id FROM provider_restore_drill_policies
+      WHERE backup_policy_id=? AND enabled=1 AND deleted_at IS NULL LIMIT 1`).get(existing.id) : null;
+    if (!linked) findings.push(_finding('warning', 'RESTORE_DRILL_POLICY_REQUIRED',
+      'Link and explicitly authorize an enabled restore-drill policy to enforce this requirement'));
+  }
   const selectedIds = new Set(selection.selected.map(item => item.id));
   const points = (recovery.items || []).filter(point => point.repository?.id === policy.repositoryId
     && point.workload?.id && selectedIds.has(point.workload.id));

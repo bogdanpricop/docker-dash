@@ -66,6 +66,14 @@ const mockBackupExecutionGet = jest.fn();
 const mockBackupExecutionCancel = jest.fn();
 const mockRecoveryRestorePreflight = jest.fn();
 const mockRecoveryRestoreSubmit = jest.fn();
+const mockRestoreDrillPreflight = jest.fn();
+const mockRestoreDrillSubmit = jest.fn();
+const mockRestoreDrillReconcile = jest.fn();
+const mockRestoreDrillList = jest.fn();
+const mockRestoreDrillGet = jest.fn();
+const mockRestoreDrillPolicyList = jest.fn();
+const mockRestoreDrillPolicyUpsert = jest.fn();
+const mockRestoreDrillPolicyRemove = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -74,7 +82,7 @@ jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
-    providerRecoveryRestore: true } };
+    providerRecoveryRestore: true, providerRestoreDrills: true } };
 });
 
 jest.mock('../db', () => ({
@@ -188,6 +196,24 @@ jest.mock('../services/provider-operations/recovery-restore', () => {
     RecoveryRestoreError,
     preflightForHost: (...args) => mockRecoveryRestorePreflight(...args),
     submitForHost: (...args) => mockRecoveryRestoreSubmit(...args),
+  };
+});
+jest.mock('../services/provider-operations/restore-drills', () => {
+  class RestoreDrillError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RestoreDrillError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    RestoreDrillError,
+    preflightForHost: (...args) => mockRestoreDrillPreflight(...args),
+    submitForHost: (...args) => mockRestoreDrillSubmit(...args),
+    reconcile: (...args) => mockRestoreDrillReconcile(...args),
+    listRuns: (...args) => mockRestoreDrillList(...args),
+    getRun: (...args) => mockRestoreDrillGet(...args),
+    listPolicies: (...args) => mockRestoreDrillPolicyList(...args),
+    upsertPolicyForHost: (...args) => mockRestoreDrillPolicyUpsert(...args),
+    removePolicyForHost: (...args) => mockRestoreDrillPolicyRemove(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -404,6 +430,24 @@ describe('Provider SDK routes', () => {
     mockRecoveryRestorePreflight.mockResolvedValue(restorePlan);
     mockRecoveryRestoreSubmit.mockResolvedValue({ plan: restorePlan,
       operation: { id: `op_${'4'.repeat(26)}`, state: 'queued', deduplicated: false } });
+    const drillPlan = {
+      schemaVersion: '1.0', kind: 'providerRestoreDrillPlan', allowed: true,
+      planHash: '5'.repeat(64), source: restorePlan.source, target: restorePlan.target,
+      cleanup: { mode: 'on_success', automaticCleanupAuthorized: true }, blockers: [],
+    };
+    const drillRun = { id: `pdrr_${'6'.repeat(26)}`, state: 'queued',
+      operationId: `op_${'6'.repeat(26)}`, target: { vmid: 9123 }, compliance: 'unknown' };
+    mockRestoreDrillPreflight.mockResolvedValue(drillPlan);
+    mockRestoreDrillSubmit.mockResolvedValue({ plan: drillPlan, run: drillRun,
+      operation: { id: drillRun.operationId, state: 'queued' }, deduplicated: false });
+    mockRestoreDrillReconcile.mockResolvedValue({ updated: [] });
+    mockRestoreDrillList.mockReturnValue([drillRun]);
+    mockRestoreDrillGet.mockReturnValue(drillRun);
+    const drillPolicy = { id: `pdrp_${'7'.repeat(26)}`, backupPolicyId: backupPolicy.id,
+      enabled: true, authorization: { automaticCleanup: true } };
+    mockRestoreDrillPolicyList.mockReturnValue([drillPolicy]);
+    mockRestoreDrillPolicyUpsert.mockResolvedValue({ policy: drillPolicy, created: true });
+    mockRestoreDrillPolicyRemove.mockReturnValue(drillPolicy);
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -842,6 +886,56 @@ describe('Provider SDK routes', () => {
       action: 'provider_recovery_restore_submitted', targetType: 'recovery_point', targetId: pointId,
       details: expect.objectContaining({ targetVmid: 9123, overwrite: false,
         startAfterRestore: false, automaticCleanupAuthorized: false }),
+    }));
+  });
+
+  it('admin-gates isolated restore drills and exposes scoped run evidence', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const body = { kind: 'vm', targetNodeId: `ddr_host_${'e'.repeat(26)}`,
+      targetStorageId: `ddr_storage_${'f'.repeat(26)}`, targetVmid: 9123,
+      cleanupMode: 'on_success', allowAutomaticCleanup: true };
+    expect((await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill/preflight`)
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill/preflight`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate').send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockRestoreDrillPreflight).toHaveBeenCalledWith(mockHost, pointId, body, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'restore-drill-route-1').send({ ...body, planHash: '5'.repeat(64),
+        confirm: true, confirmText: 'DRILL 9123', cleanupConfirmText: 'DRILL DELETE 9123' });
+    expect(submit.status).toBe(202);
+    expect(mockRestoreDrillSubmit).toHaveBeenCalledWith(mockHost, pointId,
+      expect.objectContaining({ idempotencyKey: 'restore-drill-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    const listed = await request(app).get('/api/providers/7/restore-drills?limit=20')
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(listed.status).toBe(200); expect(listed.body.count).toBe(1);
+    expect(mockRestoreDrillReconcile).toHaveBeenCalledWith({ hostId: 7 });
+    expect(mockRestoreDrillList).toHaveBeenCalledWith(7, { limit: 20, policyId: null });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_drill_submitted', targetType: 'recovery_point', targetId: pointId,
+      details: expect.objectContaining({ allNicsDisconnectedBeforeBoot: true,
+        arbitraryGuestCommandsAuthorized: false, automaticCleanupAuthorized: true }),
+    }));
+  });
+
+  it('admin-gates and audits restore-drill policy lifecycle', async () => {
+    const body = { name: 'Weekly recovery proof', enabled: true,
+      backupPolicyId: `pbp_${'a'.repeat(26)}` };
+    const listed = await request(app).get('/api/providers/7/restore-drill-policies')
+      .set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.count).toBe(1);
+    expect((await request(app).post('/api/providers/7/restore-drill-policies')
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/restore-drill-policies').send(body);
+    expect(created.status).toBe(201);
+    expect(mockRestoreDrillPolicyUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    const policyId = `pdrp_${'7'.repeat(26)}`;
+    expect((await request(app).delete(`/api/providers/7/restore-drill-policies/${policyId}`)).status).toBe(200);
+    expect(mockRestoreDrillPolicyRemove).toHaveBeenCalledWith(7, policyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_drill_policy_deleted',
     }));
   });
 

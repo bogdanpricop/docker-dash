@@ -537,6 +537,13 @@ function startAll() {
     return { scheduled, reconciled };
   })));
 
+  // Restore drills are independently release-gated and policy-authorized.
+  // Due-slot dedupe is durable; every run restores to a new VMID, disconnects
+  // every NIC before boot, and only deletes a proven owned target after success.
+  jobs.push(cron.schedule('* * * * *', _m('provider-restore-drills', () => {
+    return require('../services/provider-operations/restore-drills').runDue();
+  })));
+
   // Host-maintenance runs are durable parent workflows. The leader-gated
   // wake-up reconciles native tasks and dispatches bounded vm.migrate waves.
   jobs.push(cron.schedule('* * * * *', _m('provider-host-maintenance', () => {

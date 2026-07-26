@@ -17,6 +17,7 @@ const providerVmSnapshotPolicies = require('../services/provider-operations/snap
 const providerBackupPolicies = require('../services/provider-operations/backup-policies');
 const providerBackupExecutions = require('../services/provider-operations/backup-executions');
 const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
+const providerRestoreDrills = require('../services/provider-operations/restore-drills');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -146,6 +147,30 @@ function _recoveryRestoreAudit(req, action, plan, operation) {
       targetVmid: plan.target?.vmid || null, operationId: operation?.id || null,
       allowed: plan.allowed, verificationOverride: plan.verificationOverride?.requested === true,
       overwrite: false, startAfterRestore: false, automaticCleanupAuthorized: false,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
+function _restoreDrillError(res, err) {
+  const trusted = err?.name === 'RestoreDrillError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider restore-drill request failed' : err.message,
+    code: trusted ? err.code : 'PROVIDER_RESTORE_DRILL_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _restoreDrillAudit(req, action, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_restore_drill_${action}`,
+    targetType: details.recoveryPointId ? 'recovery_point' : 'provider_host',
+    targetId: details.recoveryPointId || String(req.params.hostId),
+    details: {
+      hostId: Number(req.params.hostId), allNicsDisconnectedBeforeBoot: true,
+      arbitraryGuestCommandsAuthorized: false, ...details,
     }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
@@ -374,7 +399,8 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
       workloadId: req.query.workload, verification: req.query.verification,
       from: req.query.from, to: req.query.to,
     });
-    res.json({ ...envelope, restoreFeatureEnabled: config.features.providerRecoveryRestore });
+    res.json({ ...envelope, restoreFeatureEnabled: config.features.providerRecoveryRestore,
+      restoreDrillFeatureEnabled: config.features.providerRestoreDrills });
   } catch (err) {
     const trusted = err?.name === 'ProviderAdapterError'
       && /^(?:PROVIDER_|RECOVERY_|INVALID_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
@@ -412,6 +438,133 @@ router.post('/:hostId/recovery-points/:pointId/restore', requireAuth,
       res.status(result.operation.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', ...result });
     } catch (err) { _recoveryRestoreError(res, err); }
   }));
+
+router.post('/:hostId/recovery-points/:pointId/drill/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerRestoreDrills.preflightForHost(resolved.host,
+        req.params.pointId, req.body || {}, { canOperate: true });
+      _restoreDrillAudit(req, 'preflight', {
+        recoveryPointId: req.params.pointId, planHash: plan.planHash,
+        targetNodeId: plan.target?.nodeId || null, targetStorageId: plan.target?.storageId || null,
+        targetVmid: plan.target?.vmid || null, allowed: plan.allowed,
+        automaticCleanupAuthorized: plan.cleanup?.automaticCleanupAuthorized === true,
+      });
+      res.json(plan);
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.post('/:hostId/recovery-points/:pointId/drill', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRestoreDrills.submitForHost(resolved.host, req.params.pointId,
+        { ...(req.body || {}), idempotencyKey: req.get('Idempotency-Key') },
+        { canOperate: true, createdBy: req.user.id });
+      _restoreDrillAudit(req, result.deduplicated ? 'deduplicated' : 'submitted', {
+        recoveryPointId: req.params.pointId, runId: result.run.id,
+        operationId: result.operation?.id || result.run.operationId,
+        planHash: result.plan.planHash, targetNodeId: result.plan.target.nodeId,
+        targetStorageId: result.plan.target.storageId, targetVmid: result.plan.target.vmid,
+        automaticCleanupAuthorized: result.plan.cleanup.automaticCleanupAuthorized,
+      });
+      res.status(result.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.get('/:hostId/restore-drills', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (!config.features.providerRestoreDrills) return _restoreDrillError(res,
+      new providerRestoreDrills.RestoreDrillError('Restore drills are disabled by release policy',
+        'RESTORE_DRILLS_DISABLED', 404));
+    const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return _restoreDrillError(res,
+      new providerRestoreDrills.RestoreDrillError('Run limit must be an integer between 1 and 200',
+        'INVALID_RESTORE_DRILL_LIMIT'));
+    try {
+      await providerRestoreDrills.reconcile({ hostId: resolved.host.id });
+      const items = providerRestoreDrills.listRuns(resolved.host.id, {
+        limit, policyId: req.query.policy || null,
+      });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.get('/:hostId/restore-drills/:runId', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      await providerRestoreDrills.reconcile({ hostId: resolved.host.id });
+      const run = providerRestoreDrills.getRun(resolved.host.id, req.params.runId);
+      if (!run) return _restoreDrillError(res,
+        new providerRestoreDrills.RestoreDrillError('Restore-drill run was not found',
+          'RESTORE_DRILL_RUN_NOT_FOUND', 404));
+      res.json({ schemaVersion: '1.0', run });
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.get('/:hostId/restore-drill-policies', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return _restoreDrillError(res,
+      new providerRestoreDrills.RestoreDrillError('Policy limit must be an integer between 1 and 200',
+        'INVALID_RESTORE_DRILL_POLICY_LIMIT'));
+    try {
+      const items = providerRestoreDrills.listPolicies(resolved.host.id, { limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _restoreDrillError(res, err); }
+  });
+
+router.post('/:hostId/restore-drill-policies', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRestoreDrills.upsertPolicyForHost(
+        resolved.host, req.body || {}, { createdBy: req.user.id });
+      _restoreDrillAudit(req, result.created ? 'policy_created' : 'policy_updated', {
+        policyId: result.policy.id, backupPolicyId: result.policy.backupPolicyId,
+        enabled: result.policy.enabled,
+        automaticCleanupAuthorized: result.policy.authorization.automaticCleanup,
+      });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.put('/:hostId/restore-drill-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRestoreDrills.upsertPolicyForHost(resolved.host,
+        { ...(req.body || {}), id: req.params.policyId }, { createdBy: req.user.id });
+      _restoreDrillAudit(req, 'policy_updated', { policyId: result.policy.id,
+        backupPolicyId: result.policy.backupPolicyId, enabled: result.policy.enabled,
+        automaticCleanupAuthorized: result.policy.authorization.automaticCleanup });
+      res.json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreDrillError(res, err); }
+  }));
+
+router.delete('/:hostId/restore-drill-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const policy = providerRestoreDrills.removePolicyForHost(resolved.host.id, req.params.policyId);
+      _restoreDrillAudit(req, 'policy_deleted', { policyId: policy.id,
+        automaticCleanupAuthorized: false });
+      res.json({ ok: true, policyId: policy.id });
+    } catch (err) { _restoreDrillError(res, err); }
+  });
 
 router.get('/:hostId/backup-policies', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
   const resolved = _host(req.params.hostId);

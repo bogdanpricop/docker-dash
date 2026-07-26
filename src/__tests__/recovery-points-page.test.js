@@ -43,4 +43,14 @@ describe('recovery points page', () => {
     expect(restore).toContain('submitProviderRecoveryRestore');
     expect(restore.indexOf('preflightProviderRecoveryRestore')).toBeLessThan(restore.indexOf('submitProviderRecoveryRestore'));
   });
+
+  it('wires isolated drills through preflight and two confirmations before submit', () => {
+    const drill = page._drill.toString();
+    expect(drill).toContain('preflightProviderRestoreDrill');
+    expect(drill).toContain('submitProviderRestoreDrill');
+    expect(drill.indexOf('preflightProviderRestoreDrill')).toBeLessThan(
+      drill.indexOf('submitProviderRestoreDrill'));
+    expect(drill).toContain('cleanupConfirmText');
+    expect(drill).toContain("guestAgent: guestType === 'lxc'");
+  });
 });

@@ -80,6 +80,8 @@ function _fromCapabilities(capabilities = {}) {
     'backup.restore.instant': adapterNotImplemented('Xen'),
     'backup.restore.differential': adapterNotImplemented(capabilities.provider === 'xo'
       ? 'Xen Orchestra differential restore transport' : 'Xen'),
+    'backup.restore.drill': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra health-check mutation transport' : 'Xen'),
   };
 
   const actions = new Set(capabilities.vmActions || []);

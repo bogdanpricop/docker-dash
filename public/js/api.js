@@ -584,6 +584,34 @@ const Api = {
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       });
   },
+  preflightProviderRestoreDrill(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/drill/preflight`, body);
+  },
+  submitProviderRestoreDrill(hostId, recoveryPointId, body, idempotencyKey) {
+    return this.request('POST',
+      `/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/drill`, body, {
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      });
+  },
+  getProviderRestoreDrills(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/restore-drills?${qs}`);
+  },
+  getProviderRestoreDrill(hostId, runId) {
+    return this.get(`/providers/${hostId}/restore-drills/${encodeURIComponent(runId)}`);
+  },
+  getProviderRestoreDrillPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/restore-drill-policies?limit=${limit}`);
+  },
+  saveProviderRestoreDrillPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/restore-drill-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/restore-drill-policies`, body);
+  },
+  deleteProviderRestoreDrillPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/restore-drill-policies/${encodeURIComponent(policyId)}`);
+  },
   getProviderBackupPolicies(hostId, limit = 100) {
     return this.get(`/providers/${hostId}/backup-policies?limit=${limit}`);
   },

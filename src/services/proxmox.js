@@ -657,6 +657,72 @@ class ProxmoxClient {
       storage, provider: 'proxmox', startAfterRestore: false, overwrite: false };
   }
 
+  /** Disconnect every restored NIC and attach an exact drill ownership marker. */
+  async configureRestoreDrillIsolation(node, vmid, guestType, marker) {
+    const base = this._guestPath(node, vmid, guestType);
+    const owner = String(marker || '');
+    if (!/^Docker Dash restore drill pdrr_[a-f0-9]{26}$/.test(owner)) {
+      throw Object.assign(new Error('Invalid restore-drill ownership marker'), {
+        code: 'INVALID_RESTORE_DRILL', status: 400,
+      });
+    }
+    const config = await this._request('GET', `${base}/config`);
+    const body = { description: owner,
+      ...(typeof config?.digest === 'string' && /^[a-f0-9]{40,128}$/i.test(config.digest)
+        ? { digest: config.digest } : {}) };
+    const networkKeys = Object.keys(config || {}).filter(key => /^net\d+$/.test(key)).sort();
+    for (const key of networkKeys) {
+      const parts = String(config[key] || '').split(',')
+        .map(value => value.trim()).filter(Boolean)
+        .filter(value => !/^link_down=/i.test(value));
+      body[key] = [...parts, 'link_down=1'].join(',');
+    }
+    await this._request('PUT', `${base}/config`, body);
+    return { configured: true, marker: owner, networkCount: networkKeys.length, provider: 'proxmox' };
+  }
+
+  async verifyRestoreDrillIsolation(node, vmid, guestType, marker) {
+    const base = this._guestPath(node, vmid, guestType);
+    const config = await this._request('GET', `${base}/config`);
+    const networkKeys = Object.keys(config || {}).filter(key => /^net\d+$/.test(key)).sort();
+    const isolatedCount = networkKeys.filter(key => /(?:^|,)link_down=1(?:,|$)/i.test(String(config[key] || ''))).length;
+    return {
+      configured: String(config?.description || '') === String(marker || '')
+        && isolatedCount === networkKeys.length,
+      markerMatches: String(config?.description || '') === String(marker || ''),
+      networkCount: networkKeys.length, isolatedCount, provider: 'proxmox',
+    };
+  }
+
+  async getVmStatus(node, vmid, guestType) {
+    return this._request('GET', `${this._guestPath(node, vmid, guestType)}/status/current`);
+  }
+
+  async pingGuestAgent(node, vmid) {
+    const base = this._guestPath(node, vmid, 'qemu');
+    await this._request('POST', `${base}/agent/ping`, {});
+    return { reachable: true, provider: 'proxmox' };
+  }
+
+  async getGuestAgentOsInfo(node, vmid) {
+    const base = this._guestPath(node, vmid, 'qemu');
+    const value = await this._request('GET', `${base}/agent/get-osinfo`);
+    return value?.result || value || {};
+  }
+
+  /** Delete only a stopped target after the caller has proven drill ownership. */
+  async destroyRestoreDrillTarget(node, vmid, guestType) {
+    const upid = await this._request('DELETE', this._guestPath(node, vmid, guestType), {
+      purge: 0, 'destroy-unreferenced-disks': 0,
+    });
+    if (typeof upid !== 'string' || !upid.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox destroy returned no task'), {
+        code: 'INVALID_PROVIDER_TASK_RESPONSE', status: 502,
+      });
+    }
+    return { taskRef: upid, node: String(node), provider: 'proxmox' };
+  }
+
   /** Submit a same-cluster QEMU/LXC migration. Returns the native UPID. */
   async migrateVm(node, vmid, guestType, options = {}) {
     const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
