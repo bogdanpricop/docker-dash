@@ -103,6 +103,23 @@ function _relation(value) {
   return null;
 }
 
+const RELATION_KINDS = Object.freeze({
+  host: 'host', cluster: 'cluster', coordinator: 'host', defaultStorage: 'storage',
+});
+
+function _canonicalRelation(value, relationship, context) {
+  const text = _string(value, 2048);
+  if (!text) return null;
+  if (/^ddr_(vm|host|cluster|storage|network|task)_[a-f0-9]{26}$/.test(text)) return text;
+  const kind = RELATION_KINDS[relationship];
+  if (!kind) return null;
+  const isUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5a-f][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(text);
+  return identityStore.remember({
+    hostId: Number(context.host.id), providerType: context.providerType, kind,
+    nativeRef: text, uuid: isUuid ? text : null, stability: isUuid ? 'stable' : 'derived',
+  }, context.database).id;
+}
+
 function _extensions(kind, raw) {
   const output = {};
   const addString = (key, value, max = 160) => { const safe = _string(value, max); if (safe !== null) output[key] = safe; };
@@ -128,6 +145,8 @@ function _extensions(kind, raw) {
     addNumber('cpuThreadCount', raw.cpuThreads);
     addNumber('cpuPackageCount', raw.cpuPackages);
     addNumber('cpuMHz', raw.cpuMHz);
+    addNumber('cpuUsageMHz', raw.cpuUsageMHz);
+    addNumber('cpuTotalMHz', raw.cpuTotalMHz);
     addNumber('uptimeSeconds', raw.uptimeSeconds);
     const bootTime = _timestamp(raw.bootTime); if (bootTime) output.bootTime = bootTime;
   } else if (kind === 'storage') {
@@ -162,9 +181,13 @@ function _model(kind, raw) {
         powerState: _powerState(raw.powerState ?? raw.status),
         ipAddress: _string(raw.ipAddress, 128),
         health: _string(raw.health, 80) || 'unknown',
+        cpuUtilizationPercent: _number(raw.cpuUtilizationPercent
+          ?? raw.cpuPercent ?? (raw.cpu !== undefined ? Number(raw.cpu) * 100 : null), { min: 0, max: 100 }),
+        memoryUtilizationPercent: _number(raw.memoryUtilizationPercent
+          ?? (raw.memoryUsageBytes !== undefined && raw.memoryBytes ? Number(raw.memoryUsageBytes) / Number(raw.memoryBytes) * 100 : null), { min: 0, max: 100 }),
       },
       actions: _actions(raw.allowedActions),
-      relationships: { host: _relation(raw.hostUuid ?? raw.hostId), cluster: _relation(raw.poolUuid ?? raw.poolId) },
+      relationships: { host: raw.hostUuid ?? raw.hostId ?? raw.hostRef ?? raw.node, cluster: raw.poolUuid ?? raw.poolId ?? raw.poolRef },
     };
   }
   if (kind === 'host') {
@@ -186,16 +209,20 @@ function _model(kind, raw) {
         enabled: _bool(raw.enabled), maintenanceMode: _string(maintenance, 80),
         memoryFreeBytes: _number(raw.memoryFreeBytes ?? (raw.memoryFree !== undefined ? Number(raw.memoryFree)
           : (memoryBytes !== null && memoryUsedBytes !== null ? memoryBytes - memoryUsedBytes : null)), { min: 0 }),
+        cpuUtilizationPercent: _number(raw.cpuUtilizationPercent
+          ?? raw.cpuPercent ?? (raw.cpu !== undefined ? Number(raw.cpu) * 100 : null), { min: 0, max: 100 }),
+        memoryUtilizationPercent: _number(raw.memoryUtilizationPercent
+          ?? (memoryBytes !== null && memoryUsedBytes !== null && memoryBytes > 0 ? memoryUsedBytes / memoryBytes * 100 : null), { min: 0, max: 100 }),
         health: _string(raw.health, 80) || 'unknown',
       },
-      actions: _actions(raw.allowedActions), relationships: { cluster: _relation(raw.poolUuid ?? raw.poolId) },
+      actions: _actions(raw.allowedActions), relationships: { cluster: raw.poolUuid ?? raw.poolId ?? raw.poolRef },
     };
   }
   if (kind === 'cluster') {
     return {
       spec: { haEnabled: _bool(raw.haEnabled) },
       status: { health: _string(raw.health, 80) || 'unknown' }, actions: _actions(raw.allowedActions),
-      relationships: { coordinator: _relation(raw.masterUuid ?? raw.masterId), defaultStorage: _relation(raw.defaultStorageUuid ?? raw.defaultStorageId) },
+      relationships: { coordinator: raw.masterUuid ?? raw.masterId ?? raw.masterRef, defaultStorage: raw.defaultStorageUuid ?? raw.defaultStorageId ?? raw.defaultStorageRef },
     };
   }
   if (kind === 'storage') {
@@ -205,14 +232,14 @@ function _model(kind, raw) {
     return {
       spec: { type: _string(raw.type, 120), capacityBytes: capacity, shared: _bool(raw.shared), attached: _bool(raw.attached) },
       status: { usedBytes: used, freeBytes: free, accessible: _bool(raw.accessible), maintenanceMode: _string(raw.maintenanceMode, 80), health: _string(raw.health, 80) || 'unknown' },
-      actions: _actions(raw.allowedActions), relationships: { cluster: _relation(raw.poolUuid ?? raw.poolId) },
+      actions: _actions(raw.allowedActions), relationships: { cluster: raw.poolUuid ?? raw.poolId ?? raw.poolRef },
     };
   }
   if (kind === 'network') {
     return {
       spec: { bridge: _string(raw.bridge, 160), vlanId: _number(raw.vlanId ?? raw.vlan, { min: 0, max: 4094, integer: true }), mtu: _number(raw.mtu, { min: 576, max: 65535, integer: true }), cidr: _string(raw.cidr, 128), managed: _bool(raw.managed) },
       status: { accessible: _bool(raw.accessible), health: _string(raw.health, 80) || 'unknown' },
-      actions: _actions(raw.allowedActions), relationships: { cluster: _relation(raw.poolUuid ?? raw.poolId) },
+      actions: _actions(raw.allowedActions), relationships: { cluster: raw.poolUuid ?? raw.poolId ?? raw.poolRef },
     };
   }
   return {
@@ -235,6 +262,10 @@ function normalizeResource({ host, providerType, kind, raw, observedAt, database
     hostId: Number(host.id), providerType, ...identityInput,
   }, database);
   const specific = _model(kind, raw);
+  const relationships = Object.fromEntries(Object.entries(specific.relationships)
+    .map(([relationship, value]) => [relationship, _canonicalRelation(value, relationship, {
+      host, providerType, database,
+    })]).filter(([, value]) => value !== null));
   const item = {
     schemaVersion: RESOURCE_SCHEMA_VERSION,
     kind,
@@ -244,7 +275,7 @@ function normalizeResource({ host, providerType, kind, raw, observedAt, database
     provider: { type: _string(providerType, 40), endpointId: Number(host.id) },
     identity: { uuid: identity.uuid, stability: identity.stability },
     labels: _labels(raw),
-    relationships: Object.fromEntries(Object.entries(specific.relationships).filter(([, value]) => value !== null)),
+    relationships,
     spec: specific.spec,
     status: specific.status,
     actions: specific.actions,
@@ -269,5 +300,5 @@ function validateResource(item) {
 
 module.exports = {
   RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES, normalizeResource, validateResource,
-  _internals: { _string, _number, _timestamp, _summary, _powerState, _taskState, _labels, _identityInput },
+  _internals: { _string, _number, _timestamp, _summary, _powerState, _taskState, _labels, _identityInput, _relation, _canonicalRelation },
 };

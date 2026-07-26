@@ -44,6 +44,15 @@ function _fromCapabilities(capabilities = {}) {
     'cluster.ha.read': capabilities.pools
       ? conditional('HA evidence depends on pool configuration and shared storage', { requiresPool: true })
       : unsupported('HA is unavailable for standalone raw Xen'),
+    'placement.affinity.read': capabilities.vmGroups
+      ? conditional('Xen VM home-host affinity and VM-group placement policy are read from the management plane', { readOnly: true, advisory: true })
+      : unsupported('Affinity inventory is unavailable for standalone raw Xen'),
+    'placement.recommend': capabilities.migrationPreflight
+      ? conditional('Xen placement hints are combined with common migration and capacity evidence', { readOnly: true })
+      : unsupported('Placement recommendations require a multi-host Xen management plane'),
+    'placement.rebalance.plan': capabilities.migrationPreflight
+      ? conditional('A bounded dry-run is generated without submitting Xen migration operations', { readOnly: true, dryRunOnly: true })
+      : unsupported('Rebalance planning requires a multi-host Xen management plane'),
     'task.read': capabilities.tasks ? supported() : unsupported('Native tasks are unavailable for this Xen provider'),
     'task.cleanup': capabilities.taskCleanup ? supported() : unsupported('Task cleanup is unavailable for this Xen provider'),
     'event.stream': capabilities.events ? supported() : adapterNotImplemented('Xen'),
@@ -191,4 +200,35 @@ async function migrationCompatibility(host, context) {
   };
 }
 
-module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, _internals: { _fromCapabilities } };
+async function placementInventory(host) {
+  const client = xen.clientForHost(host);
+  if (client.provider === 'raw') return {
+    rules: [], nativeRecommendations: [], limitations: ['Standalone raw Xen exposes no portable pool placement policy'],
+  };
+  const [vms, groups] = await Promise.all([
+    client.listVMs(), typeof client.listVmGroups === 'function' ? client.listVmGroups() : Promise.resolve([]),
+  ]);
+  const rules = [];
+  for (const vm of vms.slice(0, 500)) {
+    if (!vm.affinityRef) continue;
+    rules.push({
+      nativeId: `home:${vm.ref || vm.id}`, name: `${vm.name || 'VM'} home-server affinity`,
+      kind: 'home-host-preference', enabled: true, mandatory: false,
+      vmRefs: [vm.ref, vm.uuid, vm.id].filter(Boolean), hostRefs: [vm.affinityRef], source: 'xen-home-server',
+    });
+  }
+  for (const group of groups.slice(0, 500)) {
+    if (!/anti[_-]?affinity/i.test(String(group.placement || ''))) continue;
+    rules.push({
+      nativeId: group.ref || group.uuid || group.id, name: group.name || 'Xen VM anti-affinity group',
+      kind: 'vm-anti-affinity', enabled: true, mandatory: false,
+      vmRefs: group.vmRefs || [], hostRefs: [], source: 'xen-vm-group',
+    });
+  }
+  return {
+    rules: rules.slice(0, 500), nativeRecommendations: [],
+    limitations: ['Xen affinity is advisory; WLB and availability constraints can take precedence'],
+  };
+}
+
+module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _fromCapabilities } };

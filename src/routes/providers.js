@@ -9,6 +9,7 @@ const providerVmMigrationPreflight = require('../services/provider-sdk/vm-migrat
 const providerVmMigration = require('../services/provider-operations/vm-migration');
 const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
 const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
+const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -116,6 +117,16 @@ function _haReadinessError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider HA readiness request failed' : err.message,
     code: trusted ? err.code : 'HA_READINESS_ERROR',
+  });
+}
+
+function _placementError(res, err) {
+  const trusted = ['PlacementAdvisoryError', 'MigrationPreflightError', 'ProviderAdapterError'].includes(err?.name)
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider placement advisory request failed' : err.message,
+    code: trusted ? err.code : 'PLACEMENT_ADVISORY_ERROR',
   });
 }
 
@@ -768,6 +779,42 @@ router.get('/:hostId/ha/readiness/history', requireAuth,
       res.json({ schemaVersion: '1.0', count: items.length, items });
     } catch (err) { _haReadinessError(res, err); }
   });
+
+router.get('/:hostId/placement/affinity', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerPlacementAdvisory.affinityForHost(resolved.host)); }
+    catch (err) { _placementError(res, err); }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/placement/recommendations', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerPlacementAdvisory.recommendForVm(resolved.host, req.params.resourceId)); }
+    catch (err) { _placementError(res, err); }
+  }));
+
+router.post('/:hostId/placement/rebalance/plan', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerPlacementAdvisory.rebalancePlanForHost(resolved.host, req.body || {});
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_placement_rebalance_plan', targetType: 'provider_host', targetId: String(resolved.host.id),
+        details: {
+          hostId: resolved.host.id, provider: resolved.host.daemon_type,
+          moveCount: plan.moves.length, skippedCount: plan.skipped.length,
+          planHash: plan.planHash, expiresAt: plan.expiresAt,
+        },
+        ip: getClientIp(req), userAgent: req.headers['user-agent'],
+      });
+      res.json(plan);
+    } catch (err) { _placementError(res, err); }
+  }));
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

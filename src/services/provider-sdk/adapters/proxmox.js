@@ -1,7 +1,7 @@
 'use strict';
 
 const { fromHostRow } = require('../../proxmox');
-const { supported, conditional, adapterNotImplemented } = require('./helpers');
+const { supported, unsupported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.network', 'inventory.task',
@@ -33,6 +33,11 @@ function declared() {
     'cluster.ha.read': conditional('Corosync quorum, HA manager/LRM state and protected resources are read without changing HA configuration', {
       readOnly: true, simulations: true, history: true,
     }),
+    'placement.affinity.read': conditional('Proxmox VE 9+ HA affinity rules are read without changing HA configuration', {
+      readOnly: true, minimumMajorVersion: 9,
+    }),
+    'placement.recommend': conditional('Common capacity and migration evidence is combined with Proxmox VE 9+ HA rules', { readOnly: true }),
+    'placement.rebalance.plan': conditional('A bounded advisory plan is calculated without submitting migrations', { readOnly: true, dryRunOnly: true }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
@@ -71,12 +76,17 @@ async function probe(host) {
   const client = fromHostRow(host);
   try {
     const version = await client.version();
+    const major = Number.parseInt(String(version?.version || '').split('.')[0], 10);
+    const features = declared();
+    if (!Number.isFinite(major) || major < 9) {
+      features['placement.affinity.read'] = unsupported('Native HA affinity rules require Proxmox VE 9 or newer');
+    }
     return {
       provider: {
         type: 'proxmox', variant: 'pve', product: 'Proxmox VE',
         version: version?.version || null, apiVersion: version?.repoid || null,
       },
-      features: declared(),
+      features,
     };
   } finally {
     client._agent?.destroy?.();
@@ -91,7 +101,7 @@ async function listResources(kind, host) {
       .map(row => ({
         ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
       }));
-    if (kind === 'host') return client.listNodes();
+    if (kind === 'host') return (await client.listNodes()).map(row => ({ ...row, id: row.node || row.id }));
     if (kind === 'cluster') {
       const rows = await client.getClusterStatus();
       const cluster = rows.find(row => row?.type === 'cluster');
@@ -105,6 +115,39 @@ async function listResources(kind, host) {
   } finally {
     client._agent?.destroy?.();
   }
+}
+
+function _splitRefs(value) {
+  if (Array.isArray(value)) return value.flatMap(_splitRefs);
+  if (value === null || value === undefined) return [];
+  return String(value).split(/[;,\s]+/).map(item => item.replace(/^(?:vm|ct|qemu|lxc|node):/, '').split(':')[0]).filter(Boolean).slice(0, 500);
+}
+
+async function placementInventory(host) {
+  const client = fromHostRow(host);
+  try {
+    const rows = await client.getHaRules();
+    return {
+      rules: rows.slice(0, 500).map((row, index) => {
+        const type = String(row.type || row.kind || '').toLowerCase();
+        const anti = type.includes('anti') || row.negative === 1 || row.negative === true;
+        const hostRule = type.includes('node') || type.includes('host');
+        return {
+          nativeId: row.rule || row.id || row.name || `rule-${index}`,
+          name: row.name || row.rule || `HA rule ${index + 1}`,
+          kind: hostRule ? (anti ? 'vm-host-anti-affinity' : 'vm-host-affinity')
+            : (anti ? 'vm-anti-affinity' : 'vm-affinity'),
+          enabled: row.disable === 1 || row.disable === true ? false : row.enabled !== false,
+          mandatory: row.strict === 1 || row.strict === true,
+          vmRefs: _splitRefs(row.resources ?? row.vms ?? row.guests),
+          hostRefs: _splitRefs(row.nodes ?? row.hosts),
+          source: 'proxmox-ha-rules',
+        };
+      }),
+      nativeRecommendations: [],
+      limitations: ['Proxmox HA rules are an inventory signal; Docker Dash never mutates them in this release'],
+    };
+  } finally { client._agent?.destroy?.(); }
 }
 
 async function readVmHardware(host, context) {
@@ -219,4 +262,4 @@ function _allowedSnapshotActions(row) {
     ? ['snapshot'] : [];
 }
 
-module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, _internals: { _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _allowedVmActions, _allowedSnapshotActions, _splitRefs } };

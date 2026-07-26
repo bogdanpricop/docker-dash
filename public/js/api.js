@@ -611,6 +611,15 @@ const Api = {
   getProviderHaReadinessHistory(hostId, limit = 48) {
     return this.get(`/providers/${hostId}/ha/readiness/history?limit=${limit}`);
   },
+  getProviderAffinity(hostId) {
+    return this.get(`/providers/${hostId}/placement/affinity`);
+  },
+  getProviderPlacementRecommendations(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/placement/recommendations`);
+  },
+  planProviderRebalance(hostId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/rebalance/plan`, body);
+  },
   preflightProviderVMConsole(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});
   },

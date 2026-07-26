@@ -73,4 +73,14 @@ describe('Provider common resource schema', () => {
     }));
     expect(item.spec).toEqual(expect.objectContaining({ cpuCount: 32, memoryBytes: 128 * 1024 }));
   });
+
+  it('canonicalizes native VM-to-host relationships without exposing provider references', () => {
+    const vm = normalizeResource({ host, providerType: 'xen', kind: 'virtualMachine', database: db,
+      raw: { ref: 'OpaqueRef:vm-canonical', uuid: 'vm-canonical', name: 'app', hostRef: 'OpaqueRef:host-canonical' } });
+    expect(vm.relationships.host).toMatch(/^ddr_host_[a-f0-9]{26}$/);
+    const hostResource = normalizeResource({ host, providerType: 'xen', kind: 'host', database: db,
+      raw: { ref: 'OpaqueRef:host-canonical', uuid: 'host-canonical', name: 'xen-a' } });
+    expect(hostResource.id).toBe(vm.relationships.host);
+    expect(JSON.stringify(vm)).not.toContain('OpaqueRef:host-canonical');
+  });
 });

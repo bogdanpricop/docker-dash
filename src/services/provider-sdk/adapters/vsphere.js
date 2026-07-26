@@ -34,6 +34,9 @@ function declared() {
     'cluster.ha.read': conditional('vSphere HA configuration, admission control and current failover summary are read from ClusterComputeResource', {
       requiresVCenter: true, readOnly: true, simulations: true, history: true,
     }),
+    'placement.affinity.read': conditional('vCenter DRS groups and affinity rules are read from ClusterComputeResource', { requiresVCenter: true, readOnly: true }),
+    'placement.recommend': conditional('DRS recommendations and common migration evidence are ranked without applying a recommendation', { requiresVCenter: true, readOnly: true }),
+    'placement.rebalance.plan': conditional('A bounded dry-run is generated from DRS policy and observed capacity', { requiresVCenter: true, readOnly: true, dryRunOnly: true }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
@@ -88,7 +91,7 @@ async function probe(host) {
     const variant = _variant(info);
     const features = declared();
     if (variant === 'esxi') {
-      for (const key of ['inventory.cluster', 'cluster.ha.read', 'vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate']) {
+      for (const key of ['inventory.cluster', 'cluster.ha.read', 'vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate', 'placement.affinity.read', 'placement.recommend', 'placement.rebalance.plan']) {
         features[key] = unsupported('Standalone ESXi exposes no alternate host inside this provider endpoint');
       }
     }
@@ -101,6 +104,22 @@ async function probe(host) {
       features,
     };
   } finally {
+    client._agent?.destroy?.();
+  }
+}
+
+async function placementInventory(host) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    const clusters = await client.listClusters({ placement: true });
+    return {
+      rules: clusters.flatMap(cluster => (cluster.rules || []).map(rule => ({ ...rule, scopeRef: cluster.moref }))).slice(0, 500),
+      nativeRecommendations: clusters.flatMap(cluster => (cluster.drsRecommendations || []).map(item => ({ ...item, scopeRef: cluster.moref }))).slice(0, 500),
+      limitations: ['Mandatory DRS rules are feasibility constraints; optional rules affect ranking only'],
+    };
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort */ }
     client._agent?.destroy?.();
   }
 }
@@ -204,4 +223,4 @@ function _allowedSnapshotActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

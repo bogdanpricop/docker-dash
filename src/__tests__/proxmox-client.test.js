@@ -167,6 +167,18 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       ]);
     });
 
+    it('reads Proxmox VE 9 affinity rules without using a mutation method', async () => {
+      let request;
+      mockHttps._mockNext((opts, cb) => {
+        request = { method: opts.method, path: opts.path };
+        const res = fakeResponse({ status: 200, body: { data: [{ rule: 'web-spread', type: 'resource-affinity' }] } });
+        cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.getHaRules()).resolves.toEqual([{ rule: 'web-spread', type: 'resource-affinity' }]);
+      expect(request).toEqual({ method: 'GET', path: '/api2/json/cluster/ha/rules' });
+    });
+
     it('aggregates VM templates, ISO images and container templates', async () => {
       const replies = [
         [{ type: 'qemu', vmid: 9000, name: 'ubuntu-gold', template: 1, node: 'pve-a' }],

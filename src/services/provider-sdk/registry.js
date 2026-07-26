@@ -386,6 +386,41 @@ async function migrationCompatibilityForHost(host, resource, targets, options = 
   return result;
 }
 
+async function placementInventoryForHost(host, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id))) {
+    throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
+  }
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = options.capabilities || await capabilitiesForHost(host);
+  if (capabilities.probe.status !== 'reachable') {
+    throw new ProviderAdapterError('Provider endpoint is currently unreachable', 'PROVIDER_UNREACHABLE', 502);
+  }
+  const evidence = capabilities.features?.['placement.affinity.read'];
+  if (!['supported', 'conditional'].includes(evidence?.state)) {
+    return { rules: [], nativeRecommendations: [], limitations: [evidence?.reason || 'Affinity policy is unavailable'] };
+  }
+  if (typeof adapter.placementInventory !== 'function') {
+    throw new ProviderAdapterError('Placement policy adapter is unavailable', 'PROVIDER_PLACEMENT_UNAVAILABLE', 400);
+  }
+  let result;
+  try {
+    result = await providerResilience.run(Number(host.id), () => adapter.placementInventory(host, {
+      capabilities,
+    }), { operation: 'inventory.placementPolicy' });
+  } catch (err) {
+    log.warn('Provider placement policy read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider placement policy could not be read', 'PROVIDER_PLACEMENT_READ_FAILED', 502);
+  }
+  if (!result || !Array.isArray(result.rules) || result.rules.length > 500
+    || !Array.isArray(result.nativeRecommendations || []) || (result.nativeRecommendations || []).length > 500) {
+    throw new ProviderAdapterError('Provider returned invalid placement policy evidence', 'INVALID_PROVIDER_PLACEMENT_RESPONSE', 502);
+  }
+  return result;
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -416,6 +451,7 @@ module.exports = {
   artifactsForHost,
   vmHardwareForHost,
   migrationCompatibilityForHost,
+  placementInventoryForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError, _retrySqliteBusy,

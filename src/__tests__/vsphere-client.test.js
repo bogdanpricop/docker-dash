@@ -149,6 +149,31 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(_internals._firstManagedRef('group-v3', 'Folder')).toBe('group-v3');
     });
 
+    it('parses DRS groups, mandatory rules and native recommendations', () => {
+      const groups = _internals._parseClusterGroups(`<ArrayOfClusterGroupInfo>
+        <ClusterGroupInfo xsi:type="ClusterVmGroup"><name>apps</name><vm type="VirtualMachine">vm-1</vm><vm type="VirtualMachine">vm-2</vm></ClusterGroupInfo>
+        <ClusterGroupInfo xsi:type="ClusterHostGroup"><name>gold</name><host type="HostSystem">host-1</host></ClusterGroupInfo>
+      </ArrayOfClusterGroupInfo>`);
+      expect(groups).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'apps', type: 'vm', refs: ['vm-1', 'vm-2'] }),
+        expect.objectContaining({ name: 'gold', type: 'host', refs: ['host-1'] }),
+      ]));
+      const rules = _internals._parseClusterRules(`<ArrayOfClusterRuleInfo>
+        <ClusterRuleInfo xsi:type="ClusterAntiAffinityRuleSpec"><key>11</key><name>spread</name><enabled>true</enabled><mandatory>true</mandatory><vm type="VirtualMachine">vm-1</vm><vm type="VirtualMachine">vm-2</vm></ClusterRuleInfo>
+        <ClusterRuleInfo xsi:type="ClusterVmHostRuleInfo"><key>12</key><name>gold-only</name><enabled>true</enabled><mandatory>false</mandatory><vmGroupName>apps</vmGroupName><affineHostGroupName>gold</affineHostGroupName></ClusterRuleInfo>
+      </ArrayOfClusterRuleInfo>`, groups);
+      expect(rules).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'vm-anti-affinity', mandatory: true, vmRefs: ['vm-1', 'vm-2'] }),
+        expect.objectContaining({ kind: 'vm-host-affinity', mandatory: false, hostRefs: ['host-1'] }),
+      ]));
+      expect(_internals._parseDrsRecommendations(`<ArrayOfClusterRecommendation><ClusterRecommendation>
+        <key>r-1</key><rating>4</rating><reason>&lt;balance&gt;</reason><time>2026-07-26T12:00:00Z</time>
+        <vm type="VirtualMachine">vm-1</vm><target type="HostSystem">host-1</target>
+      </ClusterRecommendation></ArrayOfClusterRecommendation>`)).toEqual([
+        expect.objectContaining({ nativeId: 'r-1', rating: 4, reason: '<balance>', vmRefs: ['vm-1'], hostRefs: ['host-1'] }),
+      ]);
+    });
+
     it('parseSearchResults splits folders and files, folders first', () => {
       const xml = `<returnval>
         <folderPath>[datastore1]</folderPath>

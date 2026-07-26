@@ -96,6 +96,7 @@ module.exports = {
     providerVmMigration: bool('DD_PROVIDER_VM_MIGRATION', false),
     providerHostMaintenance: bool('DD_PROVIDER_HOST_MAINTENANCE', false),
     providerHaReadiness: bool('DD_PROVIDER_HA_READINESS', false),
+    providerPlacementAdvisory: bool('DD_PROVIDER_PLACEMENT_ADVISORY', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
@@ -111,6 +112,12 @@ module.exports = {
     freshnessMs: Math.min(15 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HA_FRESHNESS_MS', 60_000))),
     historyLimit: Math.min(500, Math.max(12, int('DD_PROVIDER_HA_HISTORY_LIMIT', 96))),
     endpointConcurrency: Math.min(4, Math.max(1, int('DD_PROVIDER_HA_ENDPOINT_CONCURRENCY', 2))),
+  },
+  providerPlacementAdvisory: {
+    freshnessMs: Math.min(15 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_PLACEMENT_FRESHNESS_MS', 60_000))),
+    maxRebalanceVms: Math.min(20, Math.max(1, int('DD_PROVIDER_PLACEMENT_MAX_REBALANCE_VMS', 20))),
+    endpointConcurrency: Math.min(2, Math.max(1, int('DD_PROVIDER_PLACEMENT_ENDPOINT_CONCURRENCY', 2))),
+    planTtlMs: Math.min(30 * 60 * 1000, Math.max(60_000, int('DD_PROVIDER_PLACEMENT_PLAN_TTL_MS', 5 * 60_000))),
   },
   providerSnapshots: {
     maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),

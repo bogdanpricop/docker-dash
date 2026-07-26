@@ -275,6 +275,7 @@ class XenOrchestraClient {
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
       migrationExecute: !!this._restFeatures.migration,
+      vmGroups: true,
       taskCancel: false,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -316,6 +317,7 @@ class XenOrchestraClient {
       'mainIpAddress', '$container', '$pool', '$snapshot_of', 'is_a_snapshot',
       'is_a_template', 'type', 'tags', 'current_operations',
       'allowed_operations', 'ha_restart_priority', 'ha_always_run',
+      'affinity', '$affinity', 'groups', '$groups',
     ]);
     return rows.filter(v => !v.is_a_template && !v.is_a_snapshot && v.type !== 'VM-snapshot' && !v.$snapshot_of)
       .map(v => ({
@@ -326,8 +328,25 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
         haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
+        affinityRef: _idFrom(v.affinity || v.$affinity),
+        groupRefs: (v.groups || v.$groups || []).map(_idFrom).filter(Boolean),
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
+  }
+
+  async listVmGroups() {
+    try {
+      const rows = await this._collection('vm-groups', ['id', 'uuid', 'name_label', 'placement', 'VMs', 'vms', '$pool']);
+      return rows.map((group, index) => ({
+        id: _idFrom(group) || `group-${index}`, name: group.name_label || group.name || `VM group ${index + 1}`,
+        placement: group.placement || null,
+        vmRefs: (group.VMs || group.vms || []).map(_idFrom).filter(Boolean),
+        poolRef: _idFrom(group.$pool), provider: 'xo',
+      }));
+    } catch (err) {
+      if (err?.status === 404) return [];
+      throw err;
+    }
   }
 
   async migrateVm(vmId, targetRef, options = {}) {
@@ -906,6 +925,7 @@ class XapiClient {
       migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
       migrationExecute: true,
       hostMaintenance: true,
+      vmGroups: true,
       taskCancel: true,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -938,10 +958,22 @@ class XapiClient {
       cpus: _num(v.VCPUs_at_startup || v.VCPUs_max),
       memoryBytes: _num(v.memory_dynamic_max || v.memory_static_max),
       hostRef: _refId(v.resident_on), tags: v.tags || [],
+      affinityRef: _refId(v.affinity), groupRefs: (v.groups || []).map(_refId).filter(Boolean),
       currentOperations: v.current_operations || {}, provider: 'xapi',
       haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
       haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
+    }));
+  }
+
+  async listVmGroups() {
+    const records = await this._call('VM_group.get_all_records');
+    return Object.entries(records || {}).map(([ref, group], index) => ({
+      id: group.uuid || ref, uuid: group.uuid || null, ref,
+      name: group.name_label || group.uuid || `VM group ${index + 1}`,
+      placement: group.placement || null,
+      vmRefs: (group.VMs || []).map(_refId).filter(Boolean),
+      provider: 'xapi',
     }));
   }
 
@@ -1350,6 +1382,7 @@ class XenRawClient {
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
       hardwareDetails: true, diskHotplug: false, nicHotplug: false,
       migrationPreflight: false, migrationLive: false, migrationCold: false, migrationStorage: false,
+      vmGroups: false,
       legacyXend: this._toolstack === 'xm',
       vmActions: this._toolstack === 'xm'
         ? ['shutdown', 'forceShutdown', 'reboot', 'pause', 'unpause']

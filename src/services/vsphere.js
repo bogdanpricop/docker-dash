@@ -787,7 +787,7 @@ class VSphereClient {
     });
   }
 
-  async listClusters() {
+  async listClusters(options = {}) {
     await this._ensureLoggedIn();
     const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -805,9 +805,12 @@ class VSphereClient {
       'summary.totalMemory', 'summary.effectiveMemory', 'summary.currentFailoverLevel',
       'host', 'datastore',
     ];
+    if (options.placement === true) properties.push('configurationEx.group', 'configurationEx.rule', 'drsRecommendation');
     const objects = _extractObjects(await this._retrieveProperties(viewId, 'ClusterComputeResource', properties));
     return objects.map(object => {
       const das = object.props['configurationEx.dasConfig'] || '';
+      const groups = options.placement === true
+        ? _parseClusterGroups(object.props['configurationEx.group'] || '') : [];
       return {
         moref: object.obj, id: object.obj, name: object.props.name || object.obj,
         haEnabled: _tagBool(das, 'enabled'),
@@ -820,6 +823,11 @@ class VSphereClient {
         isolationResponse: _extractTag(das, 'isolationResponse'),
         heartbeatDatastoreRefs: _managedRefs(das, 'Datastore'),
         vmPriorities: _parseDasVmConfig(object.props['configurationEx.dasVmConfig'] || ''),
+        ...(options.placement === true ? {
+          groups,
+          rules: _parseClusterRules(object.props['configurationEx.rule'] || '', groups),
+          drsRecommendations: _parseDrsRecommendations(object.props.drsRecommendation || ''),
+        } : {}),
         overallStatus: object.props['summary.overallStatus'] || null,
         hostCount: Number(object.props['summary.numHosts']) || 0,
         effectiveHostCount: Number(object.props['summary.numEffectiveHosts']) || 0,
@@ -1356,6 +1364,85 @@ function _parseDasVmConfig(xml) {
   return priorities;
 }
 
+function _elementBlocks(xml, localNames) {
+  const output = [];
+  const input = String(xml || '');
+  for (const name of localNames) {
+    const re = new RegExp(`<(?:\\w+:)?${name}\\b([^>]*)>([\\s\\S]*?)<\\/(?:\\w+:)?${name}>`, 'g');
+    let match;
+    while ((match = re.exec(input))) {
+      const type = /(?:xsi:)?type="([^"]+)"/.exec(match[1])?.[1]?.split(':').pop() || name;
+      output.push({ type, body: match[2], attrs: match[1] });
+    }
+  }
+  return output;
+}
+
+function _typedRefs(xml, tagName, expectedType) {
+  const values = [];
+  const re = new RegExp(`<(?:\\w+:)?${tagName}\\b([^>]*)>([^<]+)<\\/(?:\\w+:)?${tagName}>`, 'g');
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const type = /(?:xsi:)?type="([^"]+)"/.exec(match[1])?.[1]?.split(':').pop();
+    if (!expectedType || !type || type === expectedType) values.push(_decodeEntities(match[2].trim()));
+  }
+  return [...new Set(values.filter(Boolean))];
+}
+
+function _parseClusterGroups(xml) {
+  const blocks = _elementBlocks(xml, ['ClusterGroupInfo', 'ClusterVmGroup', 'ClusterHostGroup']);
+  return blocks.slice(0, 500).map((item, index) => ({
+    nativeId: _extractTag(item.body, 'name') || `group-${index}`,
+    name: _extractTag(item.body, 'name') || `Group ${index + 1}`,
+    type: item.type === 'ClusterHostGroup' ? 'host' : 'vm',
+    refs: item.type === 'ClusterHostGroup'
+      ? _typedRefs(item.body, 'host', 'HostSystem') : _typedRefs(item.body, 'vm', 'VirtualMachine'),
+  }));
+}
+
+function _parseClusterRules(xml, groups = []) {
+  const groupByName = new Map(groups.map(group => [group.name, group]));
+  const blocks = _elementBlocks(xml, [
+    'ClusterRuleInfo', 'ClusterAffinityRuleSpec', 'ClusterAntiAffinityRuleSpec', 'ClusterVmHostRuleInfo',
+  ]);
+  const output = [];
+  for (const [index, item] of blocks.slice(0, 500).entries()) {
+    const base = {
+      nativeId: _extractTag(item.body, 'key') || _extractTag(item.body, 'name') || `rule-${index}`,
+      name: _extractTag(item.body, 'name') || `DRS rule ${index + 1}`,
+      enabled: _tagBool(item.body, 'enabled') !== false,
+      mandatory: _tagBool(item.body, 'mandatory') === true,
+      source: 'vsphere-drs',
+    };
+    if (item.type === 'ClusterAffinityRuleSpec' || item.type === 'ClusterAntiAffinityRuleSpec') {
+      output.push({
+        ...base,
+        kind: item.type === 'ClusterAntiAffinityRuleSpec' ? 'vm-anti-affinity' : 'vm-affinity',
+        vmRefs: _typedRefs(item.body, 'vm', 'VirtualMachine'), hostRefs: [],
+      });
+      continue;
+    }
+    const vmGroup = groupByName.get(_extractTag(item.body, 'vmGroupName'));
+    const affine = groupByName.get(_extractTag(item.body, 'affineHostGroupName'));
+    const anti = groupByName.get(_extractTag(item.body, 'antiAffineHostGroupName'));
+    if (affine) output.push({ ...base, nativeId: `${base.nativeId}:affine`, kind: 'vm-host-affinity', vmRefs: vmGroup?.refs || [], hostRefs: affine.refs || [] });
+    if (anti) output.push({ ...base, nativeId: `${base.nativeId}:anti`, kind: 'vm-host-anti-affinity', vmRefs: vmGroup?.refs || [], hostRefs: anti.refs || [] });
+  }
+  return output.slice(0, 500);
+}
+
+function _parseDrsRecommendations(xml) {
+  return _elementBlocks(xml, ['ClusterRecommendation', 'Recommendation']).slice(0, 500).map((item, index) => ({
+    nativeId: _extractTag(item.body, 'key') || `recommendation-${index}`,
+    rating: _tagNumber(item.body, 'rating'),
+    reason: _extractTag(item.body, 'reason') || 'vCenter DRS recommendation',
+    createdAt: _extractTag(item.body, 'time'),
+    vmRefs: _typedRefs(item.body, 'vm', 'VirtualMachine'),
+    hostRefs: [..._typedRefs(item.body, 'target', 'HostSystem'), ..._typedRefs(item.body, 'host', 'HostSystem')],
+    source: 'vsphere-drs',
+  }));
+}
+
 // v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent
 // reply: <sessionManager type="SessionManager">ha-sessionmgr</sessionManager>
 // -> { type: 'SessionManager', value: 'ha-sessionmgr' }. Namespace-tolerant.
@@ -1599,7 +1686,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _parseClusterGroups, _parseClusterRules, _parseDrsRecommendations, _elementBlocks, _typedRefs, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
 };
 
 if (false) log.info();

@@ -21,6 +21,9 @@ const mockMaintenanceExit = jest.fn();
 const mockMaintenanceReconcile = jest.fn();
 const mockHaGet = jest.fn();
 const mockHaHistory = jest.fn();
+const mockPlacementAffinity = jest.fn();
+const mockPlacementRecommend = jest.fn();
+const mockPlacementPlan = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -81,6 +84,11 @@ jest.mock('../services/provider-operations/host-maintenance', () => ({
 jest.mock('../services/provider-sdk/ha-readiness', () => ({
   getForHost: (...args) => mockHaGet(...args),
   historyForHost: (...args) => mockHaHistory(...args),
+}));
+jest.mock('../services/provider-sdk/placement-advisory', () => ({
+  affinityForHost: (...args) => mockPlacementAffinity(...args),
+  recommendForVm: (...args) => mockPlacementRecommend(...args),
+  rebalancePlanForHost: (...args) => mockPlacementPlan(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -191,6 +199,16 @@ describe('Provider SDK routes', () => {
       state: 'ready', score: 90, domains: [], snapshotHash: '4'.repeat(64),
     });
     mockHaHistory.mockReturnValue([{ id: 1, state: 'ready', score: 90 }]);
+    mockPlacementAffinity.mockResolvedValue({
+      schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      capability: { state: 'conditional' }, rules: [], nativeRecommendations: [], limitations: [],
+    });
+    mockPlacementRecommend.mockResolvedValue({
+      schemaVersion: '1.0', vm: { id: `ddr_vm_${'a'.repeat(26)}` }, candidates: [], planHash: '3'.repeat(64),
+    });
+    mockPlacementPlan.mockResolvedValue({
+      schemaVersion: '1.0', moves: [], skipped: [], planHash: '2'.repeat(64), expiresAt: '2026-07-26T12:05:00.000Z',
+    });
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
@@ -450,6 +468,34 @@ describe('Provider SDK routes', () => {
     expect(history.status).toBe(200);
     expect(history.body.count).toBe(1);
     expect(mockHaHistory).toHaveBeenCalledWith(7, { limit: 12 });
+  });
+
+  it('serves placement evidence and admin-gates an audited read-only rebalance plan', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).get('/api/providers/7/placement/affinity')).status).toBe(200);
+    expect(mockPlacementAffinity).toHaveBeenCalledWith(mockHost);
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${vmId}/placement/recommendations`)).status).toBe(200);
+    expect(mockPlacementRecommend).toHaveBeenCalledWith(mockHost, vmId);
+    expect((await request(app).post('/api/providers/7/placement/rebalance/plan')
+      .set('x-test-role', 'operator').send({})).status).toBe(403);
+    const response = await request(app).post('/api/providers/7/placement/rebalance/plan')
+      .send({ sourceThresholdPercent: 85, targetThresholdPercent: 75 });
+    expect(response.status).toBe(200);
+    expect(mockPlacementPlan).toHaveBeenCalledWith(mockHost, { sourceThresholdPercent: 85, targetThresholdPercent: 75 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_placement_rebalance_plan', targetId: '7',
+      details: expect.objectContaining({ moveCount: 0, planHash: '2'.repeat(64) }),
+    }));
+  });
+
+  it('redacts unexpected placement failures at the route boundary', async () => {
+    mockPlacementAffinity.mockRejectedValueOnce(new Error('https://admin:secret@xapi.test token=leak'));
+    const response = await request(app).get('/api/providers/7/placement/affinity');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Provider placement advisory request failed', code: 'PLACEMENT_ADVISORY_ERROR',
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(/secret|token=leak/);
   });
 
   it('redacts untrusted HA provider errors at the route boundary', async () => {

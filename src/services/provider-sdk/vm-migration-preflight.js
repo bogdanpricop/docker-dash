@@ -191,7 +191,10 @@ async function preflightForHost(host, vmId, options = {}) {
     const unknown = MODES.filter(mode => modes[mode].state === 'unknown');
     const warningCount = MODES.reduce((sum, mode) => sum + modes[mode].warnings.length, 0);
     return {
-      target: { id: target.id, displayName: target.displayName, status: stateSummary(target), capacity: common.capacity },
+      target: {
+        id: target.id, displayName: target.displayName, status: stateSummary(target), capacity: common.capacity,
+        telemetry: telemetrySummary(target),
+      },
       eligible: ready.length > 0, score: Math.max(0, Math.min(100, 100 - common.blockers.length * 40 - unknown.length * 10 - warningCount * 2)),
       readyModes: ready, unknownModes: unknown, modes,
       checks: [...common.checks, ...providerChecks].slice(0, 64),
@@ -199,7 +202,7 @@ async function preflightForHost(host, vmId, options = {}) {
   }).sort((a, b) => Number(b.eligible) - Number(a.eligible) || b.score - a.score || a.target.displayName.localeCompare(b.target.displayName));
   const output = {
     schemaVersion: SCHEMA_VERSION, generatedAt: new Date().toISOString(),
-    vm: { id: vm.id, displayName: vm.displayName, powerState: vm.status?.powerState || 'unknown', memoryBytes: vm.spec?.memoryBytes || null },
+    vm: { id: vm.id, displayName: vm.displayName, powerState: vm.status?.powerState || 'unknown', memoryBytes: vm.spec?.memoryBytes || null, cpuCount: vm.spec?.cpuCount || null },
     provider: { type: host.daemon_type, endpointId: Number(host.id), endpointName: _text(host.name, 160) },
     scope: {
       sameEndpointOnly: true, crossProvider: false,
@@ -228,7 +231,18 @@ function stateSummary(target) {
   };
 }
 
+function telemetrySummary(target) {
+  return {
+    observedAt: target.observedAt || null,
+    cpuCount: target.spec?.cpuCount || null,
+    memoryBytes: target.spec?.memoryBytes || null,
+    memoryFreeBytes: target.status?.memoryFreeBytes ?? null,
+    cpuUtilizationPercent: target.status?.cpuUtilizationPercent ?? null,
+    memoryUtilizationPercent: target.status?.memoryUtilizationPercent ?? null,
+  };
+}
+
 module.exports = {
   preflightForHost, MigrationPreflightError, SCHEMA_VERSION, MAX_RESPONSE_BYTES, MAX_TARGETS,
-  _internals: { _text, _finding, _check, _estimate, _mode, _commonTargetEvidence, _maintenanceReservations, stateSummary },
+  _internals: { _text, _finding, _check, _estimate, _mode, _commonTargetEvidence, _maintenanceReservations, stateSummary, telemetrySummary },
 };

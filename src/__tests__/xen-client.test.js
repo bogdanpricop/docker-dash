@@ -145,6 +145,19 @@ describe('unified Xen client', () => {
     expect(vms).toEqual([expect.objectContaining({ id: 'vm-1', uuid: 'u-1', name: 'web', cpus: 4, memoryBytes: 2147483648, haRestartPriority: '', allowedActions: ['shutdown', 'snapshot'] })]);
   });
 
+  it('preserves Xen home affinity and reads advisory VM groups', async () => {
+    queueJson([{ id: 'vm-1', uuid: 'u-1', name_label: 'web', power_state: 'Running',
+      $affinity: 'host-1', $groups: ['group-1'] }]);
+    queueJson([{ id: 'group-1', uuid: 'g-1', name_label: 'spread', placement: 'anti-affinity', VMs: ['vm-1'] }]);
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    await expect(client.listVMs()).resolves.toEqual([expect.objectContaining({
+      affinityRef: 'host-1', groupRefs: ['group-1'],
+    })]);
+    await expect(client.listVmGroups()).resolves.toEqual([expect.objectContaining({
+      id: 'group-1', placement: 'anti-affinity', vmRefs: ['vm-1'],
+    })]);
+  });
+
   it('preserves Xen Orchestra HA pool depth and keeps absent values unknown', async () => {
     queueJson([
       { id: 'pool-a', uuid: 'pool-uuid-a', name_label: 'A', HA_enabled: true, ha_host_failures_to_tolerate: 2, ha_plan_exists_for: 1, ha_statefiles: ['sr-a'], ha_cluster_stack: 'xhad' },
@@ -176,6 +189,26 @@ describe('unified Xen client', () => {
     })]);
     await expect(client.listVMs()).resolves.toEqual([expect.objectContaining({
       ref: 'OpaqueRef:vm', haRestartPriority: 'restart', hostRef: 'OpaqueRef:host',
+    })]);
+  });
+
+  it('reads XAPI VM-group placement records and VM affinity references', async () => {
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    client._call = jest.fn(async method => {
+      if (method === 'VM.get_all_records') return {
+        'OpaqueRef:vm': { uuid: 'vm-uuid', name_label: 'db', power_state: 'Running', resident_on: 'OpaqueRef:host-a',
+          affinity: 'OpaqueRef:host-b', groups: ['OpaqueRef:group'], snapshot_of: 'OpaqueRef:NULL' },
+      };
+      if (method === 'VM_group.get_all_records') return {
+        'OpaqueRef:group': { uuid: 'group-uuid', name_label: 'databases', placement: 'anti_affinity', VMs: ['OpaqueRef:vm'] },
+      };
+      throw new Error(method);
+    });
+    await expect(client.listVMs()).resolves.toEqual([expect.objectContaining({
+      affinityRef: 'OpaqueRef:host-b', groupRefs: ['OpaqueRef:group'],
+    })]);
+    await expect(client.listVmGroups()).resolves.toEqual([expect.objectContaining({
+      ref: 'OpaqueRef:group', placement: 'anti_affinity', vmRefs: ['OpaqueRef:vm'],
     })]);
   });
 

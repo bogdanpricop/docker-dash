@@ -52,6 +52,29 @@ describe('Provider SDK adapters', () => {
     expect(vsphere._internals._variant({ productFullName: 'VMware platform' })).toBe('unknown');
   });
 
+  it('version-gates Proxmox affinity and refuses cluster placement on standalone ESXi', async () => {
+    proxmoxService.fromHostRow.mockReturnValue({
+      version: jest.fn(async () => ({ version: '8.4.1' })), _agent: { destroy: jest.fn() },
+    });
+    await expect(proxmox.probe({})).resolves.toEqual(expect.objectContaining({
+      features: expect.objectContaining({ 'placement.affinity.read': expect.objectContaining({ state: 'unsupported' }) }),
+    }));
+    proxmoxService.fromHostRow.mockReturnValue({
+      version: jest.fn(async () => ({ version: '9.0.0' })), _agent: { destroy: jest.fn() },
+    });
+    await expect(proxmox.probe({})).resolves.toEqual(expect.objectContaining({
+      features: expect.objectContaining({ 'placement.affinity.read': expect.objectContaining({ state: 'conditional' }) }),
+    }));
+    vsphereService.fromHostRow.mockReturnValue({
+      login: jest.fn(), retrieveServiceContent: jest.fn(async () => ({ productFullName: 'VMware ESXi 9.0' })),
+      _agent: { destroy: jest.fn() },
+    });
+    const result = await vsphere.probe({});
+    expect(result.features['placement.affinity.read'].state).toBe('unsupported');
+    expect(result.features['placement.recommend'].state).toBe('unsupported');
+    expect(result.features['placement.rebalance.plan'].state).toBe('unsupported');
+  });
+
   it('maps XAPI features with per-resource constraints', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: true, storages: true, networks: true,
@@ -97,6 +120,41 @@ describe('Provider SDK adapters', () => {
 
     xenService.clientForHost.mockReturnValue({ listTemplates: templates });
     await expect(xen.listArtifacts({})).resolves.toHaveLength(1);
+  });
+
+  it('normalizes provider placement policy through read-only inventory methods', async () => {
+    const destroy = jest.fn();
+    proxmoxService.fromHostRow.mockReturnValue({
+      getHaRules: jest.fn(async () => [{ rule: 'spread', type: 'resource-anti-affinity', resources: 'vm:101,ct:102', strict: 1 }]),
+      _agent: { destroy },
+    });
+    await expect(proxmox.placementInventory({})).resolves.toEqual(expect.objectContaining({
+      rules: [expect.objectContaining({ kind: 'vm-anti-affinity', mandatory: true, vmRefs: ['101', '102'] })],
+    }));
+    expect(destroy).toHaveBeenCalled();
+
+    const logout = jest.fn();
+    vsphereService.fromHostRow.mockReturnValue({
+      login: jest.fn(), logout, listClusters: jest.fn(async options => {
+        expect(options).toEqual({ placement: true });
+        return [{ moref: 'domain-c1', rules: [{ nativeId: '1', kind: 'vm-affinity' }], drsRecommendations: [] }];
+      }), _agent: { destroy: jest.fn() },
+    });
+    await expect(vsphere.placementInventory({})).resolves.toEqual(expect.objectContaining({
+      rules: [expect.objectContaining({ scopeRef: 'domain-c1' })],
+    }));
+    expect(logout).toHaveBeenCalled();
+
+    xenService.clientForHost.mockReturnValue({
+      provider: 'xapi', listVMs: jest.fn(async () => [{ id: 'vm-1', name: 'db', ref: 'OpaqueRef:vm', affinityRef: 'OpaqueRef:host' }]),
+      listVmGroups: jest.fn(async () => [{ id: 'group-1', name: 'spread', placement: 'anti_affinity', vmRefs: ['OpaqueRef:vm'] }]),
+    });
+    await expect(xen.placementInventory({})).resolves.toEqual(expect.objectContaining({
+      rules: expect.arrayContaining([
+        expect.objectContaining({ kind: 'home-host-preference', mandatory: false }),
+        expect.objectContaining({ kind: 'vm-anti-affinity', mandatory: false }),
+      ]),
+    }));
   });
 
   it('dispatches resource inventory to provider-native read methods and cleans up one-shot clients', async () => {

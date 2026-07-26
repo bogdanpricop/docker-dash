@@ -280,6 +280,11 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/cluster/ha/resources')) || [];
   }
 
+  /** Proxmox VE 9+ HA affinity rules (read-only). */
+  async getHaRules() {
+    return (await this._request('GET', '/api2/json/cluster/ha/rules')) || [];
+  }
+
   // v8.9.33 — pve-firewall state (read-only).
   async getClusterFirewallOptions() { return this._request('GET', '/api2/json/cluster/firewall/options'); }
   async getClusterFirewallRules() { return (await this._request('GET', '/api2/json/cluster/firewall/rules')) || []; }
