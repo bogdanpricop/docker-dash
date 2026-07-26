@@ -1126,7 +1126,7 @@ router.get('/docker-versions', requireAuth, async (req, res) => {
 // ─── Multi-Host Overview ────────────────────────────────────
 
 // v8.9.11-alpha.4 — non-Docker enrichment helper. For hosts with
-// daemon_type ∈ {vsphere, incus, lxd, proxmox, kubernetes, nomad}, do
+// daemon_type ∈ {vsphere, xen, incus, lxd, proxmox, kubernetes, nomad}, do
 // a best-effort read to populate a small summary the multi-host tab
 // can render. Returns { daemonType, daemonName, resources: {...},
 // version } or { daemonType, error }.
@@ -1164,6 +1164,38 @@ async function _nonDockerOverview(row) {
             },
           };
         } finally { await client.logout().catch(() => {}); }
+      }
+      case 'xen': {
+        const { clientForHost } = require('../services/xen');
+        const client = clientForHost(row);
+        const [info, vms, xenHosts, pools, storages] = await Promise.all([
+          client.info(),
+          client.listVMs().catch(() => []),
+          client.listHosts().catch(() => []),
+          client.listPools().catch(() => []),
+          client.listStorages().catch(() => []),
+        ]);
+        const running = vms.filter(vm => /running|poweredon/i.test(vm.powerState || '')).length;
+        const totalBytes = storages.reduce((sum, storage) => sum + (storage.totalBytes || 0), 0);
+        const usedBytes = storages.reduce((sum, storage) => sum + (storage.usedBytes || 0), 0);
+        return {
+          daemonType: 'xen', daemonName: info.product || 'Xen',
+          version: info.version || null,
+          apiVersion: info.apiVersion || info.protocol || null,
+          productFullName: `${info.product || 'Xen'} · ${client.provider}`,
+          capabilities: info.capabilities || client.capabilities(),
+          resources: {
+            vms: vms.length, vmsRunning: running, vmsStopped: vms.length - running,
+            xenHosts: xenHosts.length, pools: pools.length, storages: storages.length,
+            capacityGiB: totalBytes ? Math.round(totalBytes / (1024 ** 3)) : 0,
+            usedGiB: usedBytes ? Math.round(usedBytes / (1024 ** 3)) : 0,
+            topVMs: vms.slice(0, 8).map(vm => ({
+              id: vm.id, name: vm.name, powerState: vm.powerState,
+              cpu: vm.cpus, memoryGiB: vm.memoryBytes ? Math.round(vm.memoryBytes / (1024 ** 3)) : 0,
+              ipAddress: vm.ipAddress || null,
+            })),
+          },
+        };
       }
       case 'incus':
       case 'lxd': {

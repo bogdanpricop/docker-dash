@@ -230,6 +230,9 @@ app.use('/api/teams', apiLimiter, require('./routes/teams'));
 app.use('/api/host-permissions', apiLimiter, require('./routes/host-permissions'));
 // v8.9.11-alpha.1 — VMware vSphere / ESXi read-only alpha
 app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
+// Unified Xen integration: Xen Orchestra, XenAPI (XCP-ng/XenServer/Citrix
+// Hypervisor) and standalone Xen Project libxl hosts.
+app.use('/api/xen', apiLimiter, require('./routes/xen'));
 // v8.9.16-alpha.1 — SSH Key Deployer (System → Tools)
 app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
 app.use('/api/firewall', apiLimiter, require('./routes/firewall'));

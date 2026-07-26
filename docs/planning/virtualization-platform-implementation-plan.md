@@ -1,0 +1,298 @@
+# Plan de implementare: control plane unificat pentru virtualizare
+
+**Statut:** activ  
+**Data inițială:** 26 iulie 2026  
+**Sursa backlog:** [Market research 2026](../research/virtualization-market-research-2026.md)  
+**Inventar sursă:** 225 capabilități comparative (`C001–C225`) și 450 feature-uri candidate (`B001–B450`)  
+**Principiu:** fiecare batch este vertical, testabil, publicat în Git și instalat într-un mediu real înainte de următorul batch.
+
+## 1. Obiectiv
+
+Docker Dash va evolua dintr-un dashboard centrat pe Docker într-un control plane vendor-neutral pentru containere, VM-uri și infrastructură hibridă. Produsul nu va ascunde diferențele importante dintre provideri. Va oferi un contract comun pentru inventar, capabilități, operații, task-uri și evenimente, plus extensii explicite pentru funcțiile vendor-specific.
+
+Rezultatul urmărit este:
+
+1. aceeași experiență de bază pentru Proxmox, vSphere și Xen;
+2. integrarea progresivă Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și KubeVirt/Harvester;
+3. operații mutabile sigure: plan, confirmare, lock, audit, task persistent, reconciliere și post-validare;
+4. provisioning, console, migrare, mentenanță, HA, backup/DR și policy;
+5. self-service, cost, capacity, edge și convergență VM–container după stabilizarea fundației.
+
+## 2. Reguli de produs și arhitectură
+
+- Capability discovery se face per endpoint, versiune, ediție și backend; nu se presupune paritate pe baza numelui vendorului.
+- UUID-ul canonic este expus public; referințele native opace rămân interne.
+- Orice mutation primește `operationId`, idempotency key, resource lock, audit correlation și rezultat reconciliabil.
+- Snapshot-ul nu este prezentat ca backup.
+- `raw xl/xm` rămâne o integrare deliberat limitată; nu extindem legacy cu operații fragile.
+- Funcțiile noi pornesc admin-only și capability-gated; delegated operations vin după conformance și audit.
+- API-ul comun este versionat și aditiv. Extensiile vendor nu modifică semantic câmpurile comune.
+- O eroare de transport după trimiterea comenzii produce `unknown`, nu `failed`, până la reconciliere.
+- Nicio operație bulk nu rulează fără blast-radius preview, limită de concurență și stop condition.
+- Feature flags separă `internal`, `canary`, `beta` și `GA`.
+
+## 3. Definition of Ready
+
+Un batch poate intra în implementare doar dacă are:
+
+- scope și anti-scope explicite;
+- API/schema și schimbări de DB definite;
+- matrice RBAC și audit events;
+- failure modes și stări intermediare;
+- compatibilitate/upgrade/rollback descrise;
+- teste unitare, route și contract planificate;
+- endpoint real sau fixture reprezentativ pentru providerii afectați;
+- feature flag și strategie de observabilitate;
+- checklist de deploy și smoke-test.
+
+## 4. Definition of Done pentru fiecare batch
+
+1. codul, migrarea și documentația sunt complete;
+2. lint, syntax checks, testele țintite și suita completă sunt verzi;
+3. `git diff --check` este curat;
+4. feature-ul este dezactivabil sau backward-compatible;
+5. commit-ul conține numai scope-ul batch-ului;
+6. branch-ul este împins pe GitHub și PR-ul curent este actualizat;
+7. imaginea este construită pe mediul țintă cu tag bazat pe commit;
+8. deploy-ul păstrează volumele și configurația;
+9. health, login, pagina afectată și endpoint-urile batch-ului trec smoke-testul;
+10. commitul/imaginea anterioară rămâne disponibilă pentru rollback;
+11. rezultatul deploy-ului este înregistrat în jurnalul de progres al planului.
+
+## 5. Release loop obligatoriu
+
+Pentru fiecare batch:
+
+```text
+feature/deep spec
+  → implementation + migration
+  → targeted tests
+  → full tests + lint
+  → commit
+  → push branch / update PR
+  → remote build tagged <version>-<short-sha>
+  → compose up --no-deps app
+  → health + API + UI smoke
+  → keep or rollback
+```
+
+Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint blochează acel mediu până la verificare out-of-band.
+
+## 6. Ordinea de implementare
+
+### Valul 0 — baseline și publicarea cercetării
+
+| Batch | Scope | Backlog | Criteriu principal |
+|---|---|---|---|
+| V0.0 | Integrarea Xen XO/XAPI/raw, research, acest plan | baseline | Xen inventory/actions/snapshots/tasks + documentație și teste |
+| V0.1 | Provider SDK v2 și capability contract | B001–B003, B024–B025, B426–B435 | Proxmox, vSphere și Xen emit același envelope versionat |
+| V0.2 | Resource identity și modele comune | B004–B010 | VM/host/cluster/storage/network/task au ID și schema stabile |
+| V0.3 | Operation/job core persistent | B226–B229, B355, B428–B434 | operațiile supraviețuiesc restartului și se reconciliază |
+| V0.4 | Provider conformance kit | B018, B022–B025, B436–B450 | fixtures, fault injection și scorecard automat per provider |
+
+**Exit:** niciun provider nou și nicio mutation nouă nu mai introduc contracte ad-hoc.
+
+### Valul 1 — paritate VM utilă pe providerii existenți
+
+| Batch | Scope | Backlog | Provideri inițiali |
+|---|---|---|---|
+| V1.1 | VM detail shell comun | B005, B026, B351–B356 | Proxmox, vSphere, Xen |
+| V1.2 | Power operations sigure | B027–B031, B436–B444 | Proxmox, vSphere, Xen |
+| V1.3 | Snapshot lifecycle comun | B126–B127, B132, B138 | Proxmox, vSphere, Xen |
+| V1.4 | Activity center și native task bridge | B010, B226–B229, B355 | toate operațiile asincrone |
+| V1.5 | Template/image inventory | B034–B039 | Proxmox, vSphere, XO |
+| V1.6 | Clone și create-from-template | B032–B043 | Proxmox, vSphere, XO/XAPI |
+| V1.7 | Cloud-init/guest customization | B040–B047 | Proxmox, vSphere, Xen |
+| V1.8 | Console gateway | B048–B050, B162–B164 | noVNC/SPICE/WebMKS/serial, token scurt și audit |
+| V1.9 | Disk și NIC inventory uniform | B076–B086, B101–B108 | detail, hotplug capability și topology |
+
+**Exit:** cel puțin trei ecosisteme permit inspectare, power, snapshot, clone și provisioning controlat.
+
+### Valul 2 — migration, maintenance, placement și HA
+
+| Batch | Scope | Backlog | Rezultat |
+|---|---|---|---|
+| V2.1 | Migration compatibility/preflight | B051–B056 | target candidates, blockers, estimated downtime |
+| V2.2 | Live/cold/storage migration | B057–B065 | job persistent, progress, cancel și reconcile |
+| V2.3 | Host maintenance orchestration | B066–B070 | drain/evacuate în waves, resume și post-check |
+| V2.4 | HA inventory și readiness | B071–B075 | quorum, protected VMs, shared storage, admission warnings |
+| V2.5 | Affinity și placement recommendations | B051–B075, B201–B225 | read/recommend înainte de mutation |
+| V2.6 | Placement/HA mutation | B067–B075 | approval, diff și rollback semantic |
+
+**Exit:** mentenanța unui host este repetabilă, observabilă și poate fi reluată fără pierderea stării.
+
+### Valul 3 — backup și disaster recovery verificabil
+
+| Batch | Scope | Backlog | Rezultat |
+|---|---|---|---|
+| V3.1 | Recovery point inventory | B128–B138 | XO și Proxmox PBS mai întâi |
+| V3.2 | Backup policy și retention | B126–B142 | schedule, scope, GFS, encryption, immutability metadata |
+| V3.3 | Backup execution și verification | B129–B145 | progress, checksum/health, alerting |
+| V3.4 | File/disk/VM restore | B133–B147 | plan, target selection, conflict handling |
+| V3.5 | Automated restore drill | B141–B150 | isolated restore, assertions și evidence |
+| V3.6 | Replication/DR runbooks | B146–B150 | RPO/RTO, failover/failback și dependency order |
+
+**Exit:** fiecare policy critică are recovery point verificat și restore drill măsurabil.
+
+### Valul 4 — storage, network și security fabric
+
+| Batch | Scope | Backlog | Rezultat |
+|---|---|---|---|
+| V4.1 | Volume lifecycle | B076–B090 | create/resize/attach/detach/move cu safety gates |
+| V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity |
+| V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental |
+| V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
+| V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
+| V4.6 | Projects, quotas și approvals | B176–B200 | tenant scopes, delegated admin și four-eyes |
+
+**Exit:** orice schimbare de fabric are plan, blast radius, approval și post-validation.
+
+### Valul 5 — provideri noi și convergență
+
+| Batch | Scope | Backlog | Ordine |
+|---|---|---|---|
+| V5.1 | Hyper-V read-only | B001–B010, B401–B425 | WinRM/PowerShell + cluster inventory |
+| V5.2 | Hyper-V/Azure Local lifecycle | B026–B075 | local și ARM/Arc capability-separated |
+| V5.3 | Nutanix Prism Central | B001–B075 | tasks, categories și AHV lifecycle |
+| V5.4 | OpenStack provider | B001–B150, B176–B200 | Keystone catalog + Nova/Cinder/Neutron/Glance |
+| V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
+| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | VM CRDs, DataVolumes, migration și consoles |
+| V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
+| V5.8 | Provider plugin SDK | B401–B425 | signed manifest, permissions, sandbox și test kit |
+
+**Exit:** providerii se adaugă prin contract și conformance, fără schimbări structurale în nucleu.
+
+### Valul 6 — self-service, edge și economie operațională
+
+| Batch | Scope | Backlog | Rezultat |
+|---|---|---|---|
+| V6.1 | Unified application view | B301–B325, B351–B375 | VM+container+Kubernetes într-o singură aplicație |
+| V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
+| V6.3 | FinOps/showback/capacity | B276–B300 | allocation, forecast, owner și confidence |
+| V6.4 | Observability/events/AIOps advisory | B201–B225 | normalized telemetry și explainable recommendations |
+| V6.5 | Edge/disconnected/sovereign | B326–B350 | local cache, queued ops și reconciliation |
+| V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
+| V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
+
+**Exit:** control plane-ul poate opera coerent workload-uri mixte în datacenter, edge și cloud hibrid.
+
+## 7. Prioritatea concretă pentru primele 12 batch-uri
+
+1. V0.0 — publicarea baseline-ului Xen și research.
+2. V0.1 — Provider SDK/capability contract.
+3. V0.2 — resource model și IDs.
+4. V0.3 — durable operation engine.
+5. V0.4 — conformance kit.
+6. V1.1 — common VM detail.
+7. V1.2 — Proxmox/vSphere/Xen safe power.
+8. V1.3 — common snapshots.
+9. V1.4 — activity center.
+10. V1.5 — templates/images.
+11. V1.6 — clone/create.
+12. V1.8 — console gateway; V1.7 rulează înainte dacă guest customization devine dependență.
+
+Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-uri reale. ID-urile backlog nu se renumerotează.
+
+## 8. Strategie de testare
+
+### Unit și contract
+
+- schema validation pentru capability/resource/operation envelopes;
+- contract fixtures pentru fiecare versiune de provider;
+- state-machine tests pentru task-uri și stări `unknown`;
+- permission/audit matrix pentru fiecare mutation;
+- serialization compatibility între versiuni de schema.
+
+### Integration
+
+- mock HTTP/SSH/SOAP/XML-RPC cu timeout, răspuns mare, auth expiry și redirect master;
+- DB migration pe snapshot de schemă veche;
+- route tests cu host scope și read-only mode;
+- provider sandbox cu operații idempotente și cleanup.
+
+### Endpoint real
+
+- read-only inventory înainte de mutation;
+- resursă disposable cu nume prefixat `dd-preflight-*`;
+- snapshot/clone/migrate/restore numai în pool-ul de test;
+- host maintenance doar după verificarea capacity/HA;
+- cleanup explicit și evidence în preflight results.
+
+### UI și accessibility
+
+- empty/loading/error/partial-capability/unknown-state;
+- keyboard/focus/ARIA pentru dialogs și destructive confirmations;
+- browser smoke pentru route, resource switch și action progress;
+- screenshot comparison pentru paginile comune.
+
+## 9. Deploy, smoke și rollback
+
+### Pre-deploy
+
+- confirmarea host key SSH;
+- disk space și Docker daemon health;
+- backup DB/config și inspectarea migrărilor pending;
+- capturarea imaginii și commitului curent;
+- verificarea health endpoint înainte de schimbare.
+
+### Deploy
+
+- fetch branch-ul publicat;
+- build imagine cu tag bazat pe versiune și short SHA;
+- `docker compose up -d --no-deps app` pentru a păstra serviciile auxiliare;
+- așteptare healthcheck, fără sleep fix lung;
+- verificare loguri pentru migration errors și restart loop.
+
+### Smoke minim
+
+- `/api/health` și versiunea/commitul;
+- login și CSRF;
+- host inventory;
+- pagina/endpoint-ul modificat de batch;
+- un read operation real;
+- mutation doar dacă preflight-ul definește resursă disposable;
+- audit record și operation result.
+
+### Rollback
+
+- redeploy imaginea precedentă;
+- nu restaura DB automat dacă migrarea este forward-compatible;
+- pentru migrare incompatibilă, deploy-ul cere backup verificat și procedură dedicată;
+- reconcilierea operațiilor `running/unknown` înainte de rollback;
+- documentarea motivului și păstrarea logurilor.
+
+## 10. Riscuri majore
+
+| Risc | Control |
+|---|---|
+| False feature parity | capability reasons și conformance per endpoint |
+| Task nativ pierdut după restart | operation store + provider reconciliation |
+| Dublă executare | idempotency key + resource lock |
+| Host/network lockout | plan, connectivity guard și staged apply |
+| DB schema înaintea codului vechi | migrare aditivă și backward-readable |
+| Secret leakage | encrypted config, redaction și bounded error payload |
+| API/vendor drift | version probes, fixtures și compatibility matrix |
+| Bulk blast radius | preview, cohort, concurrency cap și stop condition |
+| Snapshot confundat cu backup | modele și UI separate |
+| Deploy pe host neconfirmat | strict host-key checking; blocare la mismatch |
+
+## 11. Metrici de progres
+
+- provideri care trec Provider SDK conformance;
+- procent capabilități cu evidence live și reason;
+- mutations cu idempotency/lock/audit/post-validation;
+- operații rămase `unknown` și timpul de reconciliere;
+- acoperire teste contract per provider/version;
+- succes deploy și rollback time per batch;
+- VM-uri cu owner/service/environment/cost metadata;
+- recovery points verificate și restore drills reușite;
+- timpul pentru maintenance/migration workflows;
+- findings security remediate cu evidence.
+
+## 12. Jurnal de execuție
+
+| Batch | Commit | Git/PR | Staging | VPS | Rezultat |
+|---|---|---|---|---|---|
+| V0.0 | pending | pending | pending | blocat până la reverificarea host key | Xen + research + plan |
+
+Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.

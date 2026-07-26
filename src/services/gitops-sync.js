@@ -300,7 +300,7 @@ class GitOpsSyncService {
   _normalizeHost(item, index) {
     const name = this._name(item?.name, `Host ${index + 1} name`);
     const daemonType = String(item.daemonType || 'docker');
-    const allowedDaemons = ['docker', 'podman', 'incus', 'lxd', 'proxmox', 'kubernetes', 'nomad', 'vsphere'];
+    const allowedDaemons = ['docker', 'podman', 'incus', 'lxd', 'proxmox', 'kubernetes', 'nomad', 'vsphere', 'xen'];
     if (!allowedDaemons.includes(daemonType)) throw new Error(`Host "${name}": unsupported daemonType`);
     const connectionType = String(item.connectionType || 'socket');
     if (!['socket', 'tcp', 'ssh'].includes(connectionType)) throw new Error(`Host "${name}": unsupported connectionType`);

@@ -44,6 +44,7 @@ const App = {
     'kubernetes-resources': () => KubernetesResourcesPage,
     'nomad-jobs': () => NomadJobsPage,
     'vsphere-resources': () => VSphereResourcesPage,
+    'xen-resources': () => XenResourcesPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
@@ -1524,9 +1525,10 @@ const App = {
     const daemonPage = {
       vsphere: '#/vsphere-resources', incus: '#/incus-instances', lxd: '#/incus-instances',
       proxmox: '#/proxmox-resources', kubernetes: '#/kubernetes-resources', nomad: '#/nomad-jobs',
+      xen: '#/xen-resources',
     }[dt];
     const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
-      '#/kubernetes-resources', '#/nomad-jobs', '#/migration-vm'];
+      '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm'];
     if (daemonPage) {
       if (location.hash === daemonPage) this._route();
       else location.hash = daemonPage;

@@ -85,6 +85,7 @@ class DockerService {
       port: row.port,
       tlsConfig,
       sshConfig,
+      daemonType: row.daemon_type || 'docker',
       isActive: row.is_active,
       isDefault: row.is_default,
     };
@@ -218,6 +219,10 @@ class DockerService {
   dropConnection(hostId) {
     this.connections.delete(hostId);
     this._hostCache.delete(hostId);
+    // Non-Docker providers may maintain their own authenticated session cache.
+    // Keep Xen credentials/sessions in sync when a host is edited, removed, or
+    // explicitly reconnected through the common host lifecycle.
+    try { require('./xen').invalidateHost(hostId); } catch { /* Xen module optional during bootstrap */ }
   }
 
   /** Get all active hosts from DB */
@@ -278,6 +283,12 @@ class DockerService {
       // the connection-health service already has fresher state for it.
       if (require('./connection-health').isPaused(host.id)) continue;
       try {
+        if (host.daemonType !== 'docker' && host.daemonType !== 'podman') {
+          const info = await this._getNonDockerInfo(host.id, host.daemonType);
+          if (info._connectError) throw new Error(info._connectError);
+          this._updateHostStatus(host.id, true);
+          continue;
+        }
         const docker = this.getDocker(host.id);
         await Promise.race([
           docker.ping(),
@@ -775,6 +786,35 @@ class DockerService {
       } catch (err) {
         return { ...base, daemonType, daemonName: 'VMware vSphere / ESXi', capabilities,
           _connectError: err.message };
+      }
+    }
+    if (daemonType === 'xen') {
+      const baseCapabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        xen: true,
+      };
+      try {
+        const { clientForHost } = require('./xen');
+        const client = clientForHost(row);
+        const info = await client.info();
+        return {
+          ...base,
+          hostname: info.hostname || row.name,
+          os: info.product || 'Xen',
+          kernelVersion: info.xenCaps || null,
+          dockerVersion: info.version || null,
+          apiVersion: info.apiVersion || info.protocol || null,
+          cpus: info.cpus || 0,
+          memTotal: info.memoryMiB ? info.memoryMiB * 1024 * 1024 : 0,
+          daemonType, daemonName: info.product || 'Xen',
+          capabilities: { ...baseCapabilities, ...(info.capabilities || client.capabilities()) },
+        };
+      } catch (err) {
+        return {
+          ...base, daemonType, daemonName: 'Xen', capabilities: baseCapabilities,
+          _connectError: err.message,
+        };
       }
     }
     if (daemonType === 'nomad') {

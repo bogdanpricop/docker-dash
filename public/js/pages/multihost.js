@@ -283,6 +283,7 @@ const MultiHostPage = {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting…';
         if (btn.dataset.daemon === 'vsphere') { try { await Api.reconnectVSphere(hostId); } catch { /* reload surfaces errors */ } }
+        if (btn.dataset.daemon === 'xen') { try { await Api.reconnectXen(hostId); } catch { /* reload surfaces errors */ } }
         await this._load();
       });
     });
@@ -512,6 +513,7 @@ const MultiHostPage = {
       if (h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman' && h.nonDocker && h.nonDocker.resources) {
         const res = h.nonDocker.resources;
         if (h.daemonType === 'vsphere') countLabel = `${res.vmsRunning || 0}/${res.vms || 0} VMs`;
+        else if (h.daemonType === 'xen') countLabel = `${res.vmsRunning || 0}/${res.vms || 0} VMs`;
         else if (h.daemonType === 'incus' || h.daemonType === 'lxd') countLabel = `${res.instancesRunning || 0}/${res.instances || 0} inst`;
         else if (h.daemonType === 'proxmox') countLabel = `${res.vms || 0} VM · ${res.lxc || 0} LXC`;
         else if (h.daemonType === 'kubernetes') countLabel = `${res.podsRunning || 0}/${res.pods || 0} pods`;
@@ -557,6 +559,7 @@ const MultiHostPage = {
 
     const pageMap = {
       vsphere: { route: '#/vsphere-resources', icon: 'fa-server', label: 'Open vSphere page' },
+      xen: { route: '#/xen-resources', icon: 'fa-cloud', label: 'Open Xen page' },
       incus: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open Incus page' },
       lxd: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open LXD page' },
       proxmox: { route: '#/proxmox-resources', icon: 'fa-server', label: 'Open Proxmox page' },
@@ -580,6 +583,21 @@ const MultiHostPage = {
     let preview = '';
 
     switch (daemonType) {
+      case 'xen':
+        stats = [
+          stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running · ${r.vmsStopped || 0} off`),
+          stat('fa-server', 'Xen hosts', r.xenHosts || 0, `${r.pools || 0} pool(s)`),
+          stat('fa-hdd', 'Storage repositories', r.storages || 0,
+            r.capacityGiB ? `${r.usedGiB || 0} / ${r.capacityGiB} GiB used` : null),
+        ].join('');
+        if ((r.topVMs || []).length) {
+          preview = `<table class="table"><thead><tr><th>VM</th><th>Power</th><th>IP</th><th>vCPU</th><th>Memory</th></tr></thead><tbody>${r.topVMs.map(vm => {
+            const color = /running|poweredon/i.test(vm.powerState || '') ? 'var(--green)' : 'var(--text-dim)';
+            return `<tr><td><strong>${Utils.escapeHtml(vm.name || '')}</strong></td><td style="color:${color}">${Utils.escapeHtml(vm.powerState || '—')}</td>
+              <td>${Utils.escapeHtml(vm.ipAddress || '—')}</td><td>${vm.cpu || '—'}</td><td>${vm.memoryGiB ? `${vm.memoryGiB} GiB` : '—'}</td></tr>`;
+          }).join('')}</tbody></table>`;
+        }
+        break;
       case 'vsphere':
         stats = [
           stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running · ${r.vmsStopped || 0} off`),
@@ -714,6 +732,7 @@ const MultiHostPage = {
 
     if (!host.healthy) {
       const isVsphere = host.daemonType === 'vsphere';
+      const isXen = host.daemonType === 'xen';
       el.innerHTML = `<div class="card" style="border:1px solid var(--red);border-left:4px solid var(--red);padding:20px;text-align:center">
         <i class="fas fa-exclamation-triangle" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
         <h3 style="color:var(--red)">Host Offline</h3>
@@ -728,6 +747,7 @@ const MultiHostPage = {
         // For vSphere, force-drop the (likely dead) cached client first so the
         // overview re-login lands on a fresh connection; then refresh the page.
         if (isVsphere) { try { await Api.reconnectVSphere(host.id); } catch { /* the reload will surface any error */ } }
+        if (isXen) { try { await Api.reconnectXen(host.id); } catch { /* the reload will surface any error */ } }
         await this._load();
       });
       return;

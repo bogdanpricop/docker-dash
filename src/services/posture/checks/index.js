@@ -14,6 +14,7 @@ const ALL = [
   require('./vsphere'),
   require('./proxmox'),
   require('./k8s'),
+  require('./xen'),
 ];
 
 module.exports = { ALL };

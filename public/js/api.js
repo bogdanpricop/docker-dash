@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -692,6 +692,32 @@ const Api = {
   },
   getVSphereSshTelemetry(hostId)      { return this.get(`/vsphere/ssh/telemetry?hostId=${hostId}`); },
   testVSphereSsh(hostId)              { return this.post(`/vsphere/ssh/test?hostId=${hostId}`, {}); },
+
+  // ─── Xen / XCP-ng / XenServer ──────────────────────────────
+  reconnectXen(hostId)                { return this.post(`/xen/reconnect?hostId=${hostId}`, {}); },
+  getXenInfo(hostId)                  { return this.get(`/xen/info?hostId=${hostId}`); },
+  getXenCapabilities(hostId)          { return this.get(`/xen/capabilities?hostId=${hostId}`); },
+  getXenPools(hostId)                 { return this.get(`/xen/pools?hostId=${hostId}`); },
+  getXenHosts(hostId)                 { return this.get(`/xen/hosts?hostId=${hostId}`); },
+  getXenVMs(hostId)                   { return this.get(`/xen/vms?hostId=${hostId}`); },
+  getXenStorages(hostId)              { return this.get(`/xen/storages?hostId=${hostId}`); },
+  getXenNetworks(hostId)              { return this.get(`/xen/networks?hostId=${hostId}`); },
+  getXenTasks(hostId)                 { return this.get(`/xen/tasks?hostId=${hostId}`); },
+  getXenTask(hostId, taskId)          { return this.get(`/xen/tasks/${encodeURIComponent(taskId)}?hostId=${hostId}`); },
+  deleteXenTask(hostId, taskId)       { return this.delete(`/xen/tasks/${encodeURIComponent(taskId)}?hostId=${hostId}`); },
+  getXenSnapshots(hostId, vmId)       { return this.get(`/xen/vms/${encodeURIComponent(vmId)}/snapshots?hostId=${hostId}`); },
+  xenVMAction(hostId, vmId, action, confirm = false) {
+    return this.post(`/xen/vms/${encodeURIComponent(vmId)}/actions/${encodeURIComponent(action)}?hostId=${hostId}`, { confirm });
+  },
+  createXenSnapshot(hostId, vmId, name) {
+    return this.post(`/xen/vms/${encodeURIComponent(vmId)}/snapshots?hostId=${hostId}`, { name });
+  },
+  revertXenSnapshot(hostId, snapshotId) {
+    return this.post(`/xen/snapshots/${encodeURIComponent(snapshotId)}/revert?hostId=${hostId}`, { confirm: true });
+  },
+  deleteXenSnapshot(hostId, snapshotId) {
+    return this.delete(`/xen/snapshots/${encodeURIComponent(snapshotId)}?hostId=${hostId}&confirm=true`);
+  },
 
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
