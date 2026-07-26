@@ -299,5 +299,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V0.3 | `3a327d1` | push + PR #13 | `8.21.4-3a327d1`, healthy; durable-operation smoke | blocat: host key mismatch | operation schema 1.0, leases, locks, reconcile și policies |
 | V0.4 | `b795b9a` | push + PR #13; CI/build verde | `8.21.4-b795b9a`, healthy; ESXi conformance 187/187 | blocat: host key mismatch | manifests, fixtures/faults, circuit budget, persistent certification și scorecard |
 | V1.1 | `549ba98` | push + PR #13; CI/build verde | `8.21.4-549ba98`, healthy; ESXi 5 VM common detail/cache/search | blocat: host key mismatch | unified VM inventory/detail, action blockers, command search și Activity Center |
+| V1.2 | `b593c59` | push + PR #13; CI/build verde | `8.21.4-b593c59`, healthy; ESXi 5 VM live read-only preflight | blocat: host key mismatch | safe single/bulk power, typed force, native tasks, no-replay reconciliation și post-state verification |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
