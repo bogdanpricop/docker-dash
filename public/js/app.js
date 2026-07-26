@@ -45,6 +45,8 @@ const App = {
     'nomad-jobs': () => NomadJobsPage,
     'vsphere-resources': () => VSphereResourcesPage,
     'xen-resources': () => XenResourcesPage,
+    'virtual-machines': () => VirtualMachinesPage,
+    activity: () => ActivityCenterPage,
     'api-playground': () => ApiPlaygroundPage,
     'multi-host':     () => MultiHostPage,
     'logs':           () => LogsPage,
@@ -1528,7 +1530,8 @@ const App = {
       xen: '#/xen-resources',
     }[dt];
     const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
-      '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm'];
+      '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm',
+      '#/virtual-machines', '#/activity'];
     if (daemonPage) {
       if (location.hash === daemonPage) this._route();
       else location.hash = daemonPage;
@@ -2023,6 +2026,8 @@ const App = {
       { icon: 'fa-history', label: 'Event Timeline', action: () => this.navigate('/timeline'), section: 'nav' },
       { icon: 'fa-file-alt', label: 'Log Explorer', action: () => this.navigate('/logs'), section: 'nav' },
       { icon: 'fa-globe', label: 'Multi-Host Overview', action: () => this.navigate('/multi-host'), section: 'nav' },
+      { icon: 'fa-desktop', label: 'Virtual Machines', action: () => this.navigate('/virtual-machines'), section: 'nav' },
+      { icon: 'fa-tasks', label: 'Activity Center', action: () => this.navigate('/activity'), section: 'nav' },
       // Docker tools
       { icon: 'fa-terminal', label: 'docker run → Compose', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
       { icon: 'fa-tags', label: 'Reverse Proxy Labels (Traefik/Caddy)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
@@ -2290,8 +2295,8 @@ const App = {
             return;
           }
 
-          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
-          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
+          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'virtual-machine': 'fa-desktop', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
+          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'virtual-machine': 'var(--cyan, #06b6d4)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
 
           // Group by type
           const grouped = {};

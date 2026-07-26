@@ -4,6 +4,7 @@ process.env.ENCRYPTION_KEY = 'provider-sdk-registry-test-key-32-chars';
 
 const Database = require('better-sqlite3');
 const identityMigration = require('../db/migrations/106_provider_resource_identities');
+const snapshotMigration = require('../db/migrations/109_provider_resource_snapshots');
 
 const mockVersion = jest.fn();
 const mockDestroy = jest.fn();
@@ -50,6 +51,7 @@ describe('Provider SDK registry', () => {
     database.exec(`CREATE TABLE docker_hosts (id INTEGER PRIMARY KEY, name TEXT);
       INSERT INTO docker_hosts (id, name) VALUES (3, 'pve-a')`);
     identityMigration.up(database);
+    snapshotMigration.up(database);
   });
 
   afterEach(() => database.close());
@@ -108,6 +110,7 @@ describe('Provider SDK registry', () => {
     }));
     expect(envelope.items[0].id).toMatch(/^ddr_vm_/);
     expect(JSON.stringify(envelope)).not.toContain('qemu/101');
+    expect(database.prepare('SELECT COUNT(*) AS count FROM provider_resource_snapshots').get().count).toBe(1);
     expect(mockListVMs).toHaveBeenCalledTimes(1);
   });
 

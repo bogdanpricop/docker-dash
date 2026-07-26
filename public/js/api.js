@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -555,6 +555,21 @@ const Api = {
   getProxmoxInfo()                    { return this.get('/proxmox/info'); },
   getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
+  getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
+  getProviderVMDetail(hostId, resourceId, refresh = false) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
+  },
+  getProviderOperations(filters = {}) {
+    const qs = new URLSearchParams();
+    if (filters.limit) qs.set('limit', filters.limit);
+    if (filters.hostId) qs.set('hostId', filters.hostId);
+    if (filters.state) qs.set('state', filters.state);
+    return this.get(`/operations${qs.toString() ? `?${qs}` : ''}`);
+  },
+  getProviderOperation(id) { return this.get(`/operations/${encodeURIComponent(id)}`); },
+  getProviderOperationEvents(id, limit = 200) {
+    return this.get(`/operations/${encodeURIComponent(id)}/events?limit=${limit}`);
+  },
   getProxmoxVM(node, vmid)            { return this.get(`/proxmox/vms/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
   getProxmoxLXC()                     { return this.get('/proxmox/lxc'); },
   getProxmoxLXCInstance(node, vmid)   { return this.get(`/proxmox/lxc/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },

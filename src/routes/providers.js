@@ -4,6 +4,7 @@ const { Router } = require('express');
 const config = require('../config');
 const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
+const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole } = require('../middleware/auth');
@@ -120,6 +121,41 @@ router.get('/:hostId/capabilities', requireAuth, requireHostAccess('view', { par
     });
   }
 }));
+
+router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (req.query.refresh !== undefined && !['true', 'false', '1', '0'].includes(String(req.query.refresh))) {
+      return res.status(400).json({ error: 'refresh must be true or false', code: 'INVALID_REFRESH' });
+    }
+    const refresh = req.query.refresh === 'true' || req.query.refresh === '1';
+    if (refresh && !_isAdmin(req.user)) {
+      return res.status(403).json({ error: 'VM detail refresh requires admin role' });
+    }
+    try {
+      const canOperate = _isAdmin(req.user) || ['operate', 'admin'].includes(req.hostAccess);
+      const detail = await providerVmDetail.detailForHost(resolved.host, req.params.resourceId, {
+        refresh, canOperate,
+      });
+      if (refresh) {
+        auditService.log({
+          userId: req.user.id, username: req.user.username,
+          action: 'provider_vm_detail_refresh', targetType: 'virtualMachine',
+          targetId: detail.resource.id,
+          details: { hostId: resolved.host.id, provider: resolved.host.daemon_type, freshness: detail.freshness.state },
+          ip: getClientIp(req),
+        });
+      }
+      res.json(detail);
+    } catch (err) {
+      const status = Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 ? 'Provider VM detail failed' : err.message,
+        code: err?.code || 'PROVIDER_VM_DETAIL_ERROR',
+      });
+    }
+  }));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
   if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });

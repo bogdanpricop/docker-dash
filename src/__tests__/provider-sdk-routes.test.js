@@ -5,6 +5,7 @@ const request = require('supertest');
 
 const mockCapabilities = jest.fn();
 const mockResources = jest.fn();
+const mockVmDetail = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -19,6 +20,9 @@ jest.mock('../db', () => ({
 jest.mock('../services/provider-sdk/registry', () => ({
   capabilitiesForHost: (...args) => mockCapabilities(...args),
   resourcesForHost: (...args) => mockResources(...args),
+}));
+jest.mock('../services/provider-sdk/vm-detail', () => ({
+  detailForHost: (...args) => mockVmDetail(...args),
 }));
 jest.mock('../services/provider-conformance', () => ({
   runForHost: (...args) => mockConformanceRun(...args),
@@ -38,7 +42,10 @@ jest.mock('../middleware/auth', () => ({
     ? next() : res.status(403).json({ error: 'Insufficient permissions' }),
 }));
 jest.mock('../middleware/hostAccess', () => ({
-  requireHostAccess: () => (_req, _res, next) => next(),
+  requireHostAccess: () => (req, _res, next) => {
+    req.hostAccess = req.headers['x-test-host-access'] || 'admin';
+    next();
+  },
 }));
 
 const routes = require('../routes/providers');
@@ -56,6 +63,11 @@ describe('Provider SDK routes', () => {
     mockResources.mockResolvedValue({
       schemaVersion: '1.0', kind: 'virtualMachine', provider: { type: 'xen', endpointId: 7 },
       count: 0, totalObserved: 0, truncated: false, items: [],
+    });
+    mockVmDetail.mockResolvedValue({
+      schemaVersion: '1.0',
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      freshness: { state: 'fresh' }, actions: [], sections: {}, activity: [],
     });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
@@ -117,6 +129,37 @@ describe('Provider SDK routes', () => {
     const response = await request(app).get('/api/providers/7/resources/virtual-machines');
     expect(response.status).toBe(502);
     expect(response.body).toEqual({ error: 'Provider resource inventory failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('returns canonical common VM detail and passes effective operate access', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'operate');
+    expect(response.status).toBe(200);
+    expect(response.body.resource.id).toBe(id);
+    expect(mockVmDetail).toHaveBeenCalledWith(mockHost, id, { refresh: false, canOperate: true });
+  });
+
+  it('requires admin for VM detail refresh and validates refresh values', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=yes`)).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=true`)
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=true`);
+    expect(refreshed.status).toBe(200);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_vm_detail_refresh', targetId: id,
+    }));
+  });
+
+  it('returns safe common VM detail errors', async () => {
+    const id = `ddr_vm_${'b'.repeat(26)}`;
+    mockVmDetail.mockRejectedValue(Object.assign(new Error('upstream secret'), {
+      status: 502, code: 'PROVIDER_RESOURCE_READ_FAILED',
+    }));
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`);
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Provider VM detail failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
   });
 
   it('publishes provider manifests and an evidence-backed scorecard', async () => {

@@ -6,6 +6,7 @@ const { getDb } = require('../../db');
 const { buildEnvelope } = require('./schema');
 const { resolveResourceKind } = require('./resource-catalog');
 const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = require('./resource-schema');
+const resourceSnapshots = require('./resource-snapshots');
 const providerResilience = require('../provider-conformance/resilience');
 
 const adapters = new Map();
@@ -171,9 +172,13 @@ async function resourcesForHost(host, kindInput, options = {}) {
   let items;
   try {
     const database = options.database || getDb();
-    items = database.transaction(() => selected.map(raw => normalizeResource({
-      host, providerType: adapter.type, kind: kindInfo.kind, raw, observedAt, database,
-    })))();
+    items = database.transaction(() => {
+      const normalized = selected.map(raw => normalizeResource({
+        host, providerType: adapter.type, kind: kindInfo.kind, raw, observedAt, database,
+      }));
+      resourceSnapshots.rememberMany(normalized, database);
+      return normalized;
+    })();
   } catch (err) {
     log.error('Provider resource normalization failed', {
       hostId: Number(host.id), provider: adapter.type, kind: kindInfo.kind,

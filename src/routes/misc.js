@@ -13,6 +13,7 @@ const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const dockerService = require('../services/docker');
 const hostPermissions = require('../services/host-permissions');
+const providerResourceSnapshots = require('../services/provider-sdk/resource-snapshots');
 const hostGroups = require('../services/host-groups');
 const log = require('../utils/logger')('misc');
 
@@ -365,6 +366,27 @@ router.get('/search', requireAuth, async (req, res) => {
       }
     } catch (err) { /* search section failed, skip */ }
 
+    // Search normalized VM snapshots only. This intentionally avoids provider
+    // network fan-out while the command palette is open.
+    try {
+      const db = getDb();
+      const providerHosts = db.prepare(`SELECT id FROM docker_hosts
+        WHERE is_active = 1 AND daemon_type IN ('proxmox', 'vsphere', 'xen')
+        ORDER BY id LIMIT 500`).all().map(row => row.id);
+      const isAdmin = req.user.role === 'admin'
+        || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+      const visibleHostIds = hostPermissions.filterVisibleHosts(req.user.id, isAdmin, providerHosts);
+      for (const vm of providerResourceSnapshots.search(query, visibleHostIds, 20, db)) {
+        results.push({
+          type: 'virtual-machine', id: vm.id, name: vm.displayName,
+          host_id: vm.hostId,
+          detail: `${vm.providerType} · ${vm.powerState}`,
+          url: `#/virtual-machines/${vm.hostId}/${vm.id}`,
+          icon: 'fas fa-desktop',
+        });
+      }
+    } catch (err) { /* search section failed, skip */ }
+
     // Search Git stacks
     try {
       const db = getDb();
@@ -419,7 +441,11 @@ router.get('/search', requireAuth, async (req, res) => {
       }
     } catch (err) { /* search section failed, skip */ }
 
-    res.json({ results: results.slice(0, 30), query: q, total: results.length });
+    const prioritized = [
+      ...results.filter(item => item.type === 'virtual-machine'),
+      ...results.filter(item => item.type !== 'virtual-machine'),
+    ];
+    res.json({ results: prioritized.slice(0, 30), query: q, total: results.length });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
