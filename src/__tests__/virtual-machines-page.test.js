@@ -58,4 +58,27 @@ describe('common virtual machines page routing', () => {
     expect(page._runMigration.toString()).toContain('submitProviderVMMigration');
     expect(source).not.toContain('nativeRef');
   });
+
+  it('renders safe host-maintenance plan/run evidence and wires persistent controls', () => {
+    global.Utils = {
+      escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+      statusBadgeClass: () => 'badge-secondary',
+    };
+    const html = page._maintenancePlanHtml({
+      sourceHost: { displayName: '<source>' }, goal: 'drain', waveSize: 2,
+      itemCount: 1, readyCount: 0, deferredCount: 1,
+      blockers: [{ reason: '<blocked>' }], warnings: [],
+      items: [{ vm: { displayName: '<vm>', powerState: 'running' }, target: null, mode: null, state: 'deferred', blockers: [{ reason: '<unsafe>' }] }],
+    });
+    expect(html).toContain('&lt;source&gt;');
+    expect(html).toContain('&lt;unsafe&gt;');
+    expect(html).not.toContain('<source>');
+    expect(page._planHostMaintenance.toString()).toContain('preflightProviderHostMaintenance');
+    expect(page._planHostMaintenance.toString()).toContain('startProviderHostMaintenance');
+    const controls = page._manageHostMaintenance.toString();
+    expect(controls).toContain('getProviderHostMaintenanceRuns');
+    expect(controls).toContain('controlProviderHostMaintenance');
+    expect(controls).toContain('Completed migrations stay on their targets');
+    delete global.Utils;
+  });
 });

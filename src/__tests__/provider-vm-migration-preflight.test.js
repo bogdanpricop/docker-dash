@@ -86,4 +86,16 @@ describe('read-only VM migration preflight contract', () => {
       .rejects.toEqual(expect.objectContaining({ code: 'PROVIDER_VM_NOT_FOUND', status: 404 }));
     expect(options.registry.capabilitiesForHost).not.toHaveBeenCalled();
   });
+
+  it('blocks targets reserved by an active host maintenance run', async () => {
+    const options = fixture();
+    const database = {
+      prepare: jest.fn(() => ({ all: jest.fn(() => [{ source_host_id: TARGET_A }]) })),
+    };
+    const result = await migration.preflightForHost(host, VM_ID, { database, ...options });
+    const candidate = result.candidates.find(item => item.target.id === TARGET_A);
+    expect(candidate.modes.live.state).toBe('blocked');
+    expect(candidate.modes.live.blockers.map(item => item.type)).toContain('TARGET_MAINTENANCE_RESERVED');
+    expect(candidate.checks).toContainEqual(expect.objectContaining({ key: 'target.maintenanceReservation', state: 'fail' }));
+  });
 });

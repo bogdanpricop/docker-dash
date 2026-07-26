@@ -94,11 +94,17 @@ module.exports = {
     providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
     providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
     providerVmMigration: bool('DD_PROVIDER_VM_MIGRATION', false),
+    providerHostMaintenance: bool('DD_PROVIDER_HOST_MAINTENANCE', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
     pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
     leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
+  },
+  providerHostMaintenance: {
+    pollLimit: Math.min(100, Math.max(1, int('DD_PROVIDER_HOST_MAINTENANCE_POLL_LIMIT', 20))),
+    leaseMs: Math.min(5 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HOST_MAINTENANCE_LEASE_MS', 90_000))),
+    nativeTimeoutSeconds: Math.min(86400, Math.max(60, int('DD_PROVIDER_HOST_MAINTENANCE_NATIVE_TIMEOUT_SECONDS', 3600))),
   },
   providerSnapshots: {
     maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),

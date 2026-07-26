@@ -126,6 +126,14 @@ function _commonTargetEvidence(target, vm) {
   return { blockers, checks, capacity: { vmMemoryBytes: required || null, targetFreeMemoryBytes: free || null, reserveBytes: required ? reserve : null } };
 }
 
+function _maintenanceReservations(database) {
+  try {
+    return new Set(database.prepare(`SELECT source_host_id FROM provider_host_maintenance_runs
+      WHERE state IN ('queued', 'preparing', 'draining', 'paused', 'entering',
+        'drained', 'maintenance', 'exiting', 'unknown')`).all().map(row => row.source_host_id));
+  } catch { return new Set(); }
+}
+
 async function preflightForHost(host, vmId, options = {}) {
   if (!host || !Number.isInteger(Number(host.id)) || !SAFE_VM_ID.test(String(vmId || ''))) {
     throw new MigrationPreflightError('Virtual machine was not found', 'PROVIDER_VM_NOT_FOUND', 404);
@@ -154,6 +162,7 @@ async function preflightForHost(host, vmId, options = {}) {
       ? null : 'Live provider compatibility checks could not be completed';
   }
   const byTarget = new Map((provider?.candidates || []).map(item => [item.targetId, item]));
+  const maintenanceReservations = _maintenanceReservations(database);
   const capabilityMatrix = Object.fromEntries([
     ['live', 'vm.migration.live'], ['cold', 'vm.migration.cold'],
     ['storage', 'vm.migration.storage'], ['crossCluster', 'vm.migration.crossCluster'],
@@ -161,6 +170,13 @@ async function preflightForHost(host, vmId, options = {}) {
   const candidates = targets.map(target => {
     const providerTarget = byTarget.get(target.id) || null;
     const common = _commonTargetEvidence(target, vm);
+    if (maintenanceReservations.has(target.id)) {
+      common.blockers.push(_finding({
+        type: 'TARGET_MAINTENANCE_RESERVED',
+        reason: 'Target host is reserved by an active Docker Dash maintenance run', modes: MODES,
+      }, 'TARGET_MAINTENANCE_RESERVED'));
+      common.checks.push(_check('target.maintenanceReservation', 'fail', 'Target is reserved by an active maintenance run'));
+    }
     if (target.id === provider?.sourceTargetId || providerTarget?.current === true) {
       common.blockers.push(_finding({ type: 'CURRENT_HOST', reason: 'Target is the VM current host', modes: MODES }, 'CURRENT_HOST'));
       common.checks.push(_check('target.current', 'fail', 'Target is the current host'));
@@ -214,5 +230,5 @@ function stateSummary(target) {
 
 module.exports = {
   preflightForHost, MigrationPreflightError, SCHEMA_VERSION, MAX_RESPONSE_BYTES, MAX_TARGETS,
-  _internals: { _text, _finding, _check, _estimate, _mode, _commonTargetEvidence, stateSummary },
+  _internals: { _text, _finding, _check, _estimate, _mode, _commonTargetEvidence, _maintenanceReservations, stateSummary },
 };

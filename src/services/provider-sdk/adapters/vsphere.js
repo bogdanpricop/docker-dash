@@ -5,7 +5,6 @@ const { supported, unsupported, conditional, adapterNotImplemented } = require('
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
-  'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
 ];
@@ -26,6 +25,10 @@ function declared() {
     'vm.migrate': conditional('RelocateVM_Task is reconciled through its durable vCenter Task and verified from VM runtime placement', {
       perResource: true, modes: ['live', 'cold', 'storage'], durableTask: true,
       cancel: 'when_task_cancelable', confirmation: 'typed_name', revalidate: true,
+    }),
+    'host.maintenance': conditional('HostSystem maintenance tasks are durable and activation follows controlled evacuation and an empty-host post-check', {
+      goals: ['drain', 'enter'], pause: true, resume: true, waves: true,
+      nativeEnterExit: true, durableTask: true, confirmation: 'typed_name',
     }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),

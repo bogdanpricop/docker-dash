@@ -92,7 +92,13 @@ function _fromCapabilities(capabilities = {}) {
     : unsupported(capabilities.provider === 'xo'
       ? 'Xen Orchestra migration execution requires a recognized task-backed OpenAPI action'
       : 'Migration execution requires a managed XAPI task boundary');
-  for (const key of ['host.maintenance', 'storage.mutate', 'network.mutate']) {
+  features['host.maintenance'] = capabilities.hostMaintenance
+    ? conditional('XAPI host disable/enable tasks bracket controlled per-VM evacuation and live post-checks', {
+      goals: ['drain', 'enter'], pause: true, resume: true, waves: true,
+      nativeEnterExit: true, durableTask: true, confirmation: 'typed_name',
+    })
+    : adapterNotImplemented('Xen');
+  for (const key of ['storage.mutate', 'network.mutate']) {
     features[key] = adapterNotImplemented('Xen');
   }
   features['task.cancel'] = capabilities.taskCancel

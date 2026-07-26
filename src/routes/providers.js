@@ -7,6 +7,7 @@ const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmMigrationPreflight = require('../services/provider-sdk/vm-migration-preflight');
 const providerVmMigration = require('../services/provider-operations/vm-migration');
+const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -95,6 +96,28 @@ function _migrationError(res, err) {
     error: status >= 500 ? 'Provider VM migration request failed' : err.message,
     code: err?.code || 'VM_MIGRATION_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _maintenanceError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider host maintenance request failed' : err.message,
+    code: err?.code || 'HOST_MAINTENANCE_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _maintenanceAudit(req, action, run, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_host_maintenance_${action}`, targetType: 'provider_host',
+    targetId: run?.sourceHost?.id || String(req.params.hostId),
+    details: {
+      hostId: Number(req.params.hostId), runId: run?.id || null,
+      provider: run?.provider?.type || null, goal: run?.goal || req.body?.goal || null,
+      state: run?.state || null, ...details,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
 
@@ -615,6 +638,85 @@ router.post('/:hostId/virtual-machines/:resourceId/migration', requireAuth,
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _migrationError(res, err); }
   }));
+
+router.post('/:hostId/host-maintenance/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }),
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerHostMaintenance.preflightForHost(
+        resolved.host, req.body || {}, { canOperate: true }
+      );
+      _maintenanceAudit(req, 'preflight', null, {
+        sourceHostId: plan.sourceHost.id, goal: plan.goal, waveSize: plan.waveSize,
+        itemCount: plan.itemCount, deferredCount: plan.deferredCount, allowed: plan.allowed,
+      });
+      res.json(plan);
+    } catch (err) { _maintenanceError(res, err); }
+  }));
+
+router.post('/:hostId/host-maintenance/runs', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerHostMaintenance.submitForHost(resolved.host, {
+        ...(req.body || {}), idempotencyKey: req.get('Idempotency-Key'),
+      }, { canOperate: true, createdBy: req.user.id });
+      _maintenanceAudit(req, result.deduplicated ? 'deduplicated' : 'start', result.run, {
+        waveSize: result.run.waveSize, itemCount: result.run.items.length,
+        deferredCount: result.run.counts.deferred,
+      });
+      res.status(result.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', run: result.run, plan: result.plan });
+    } catch (err) { _maintenanceError(res, err); }
+  }));
+
+router.get('/:hostId/host-maintenance/runs', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+      return res.status(400).json({ error: 'Limit must be an integer between 1 and 200', code: 'INVALID_RUN_LIMIT' });
+    }
+    try {
+      const items = providerHostMaintenance.listForHost(resolved.host.id, { limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _maintenanceError(res, err); }
+  });
+
+router.get('/:hostId/host-maintenance/runs/:runId', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    const run = providerHostMaintenance.get(req.params.runId);
+    if (!run || run.provider.endpointId !== resolved.host.id) {
+      return res.status(404).json({ error: 'Host maintenance run not found', code: 'HOST_MAINTENANCE_RUN_NOT_FOUND' });
+    }
+    res.json(run);
+  });
+
+for (const action of ['pause', 'resume', 'cancel', 'exit', 'reconcile']) {
+  router.post(`/:hostId/host-maintenance/runs/:runId/${action}`, requireAuth,
+    requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+    asyncHandler(async (req, res) => {
+      const resolved = _host(req.params.hostId);
+      if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+      const current = providerHostMaintenance.get(req.params.runId);
+      if (!current || current.provider.endpointId !== resolved.host.id) {
+        return res.status(404).json({ error: 'Host maintenance run not found', code: 'HOST_MAINTENANCE_RUN_NOT_FOUND' });
+      }
+      try {
+        const method = action === 'reconcile' ? 'reconcileUnknown' : action;
+        const run = await providerHostMaintenance[method](current.id, { createdBy: req.user.id });
+        _maintenanceAudit(req, action, run, { previousState: current.state });
+        res.status(['cancel', 'exit'].includes(action) && !['cancelled', 'completed'].includes(run.state) ? 202 : 200)
+          .json({ schemaVersion: '1.0', run });
+      } catch (err) { _maintenanceError(res, err); }
+    }));
+}
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

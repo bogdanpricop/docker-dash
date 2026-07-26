@@ -104,6 +104,29 @@ describe('unified Xen client', () => {
     expect(fromHostRow({ daemon_type: 'xen', daemon_config: encrypted })).toBeInstanceOf(XapiClient);
   });
 
+  it('uses durable XAPI tasks for host disable/enable and reads live host state', async () => {
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    client._call = jest.fn(async (method) => {
+      if (method === 'Async.host.disable') return 'OpaqueRef:task-disable';
+      if (method === 'Async.host.enable') return 'OpaqueRef:task-enable';
+      if (method === 'host.get_record') return {
+        uuid: 'host-uuid', name_label: 'xcp-a', enabled: false,
+        resident_VMs: ['OpaqueRef:vm-a', 'OpaqueRef:NULL'],
+      };
+      throw new Error(method);
+    });
+    await expect(client.disableHost('OpaqueRef:host-a')).resolves.toEqual({
+      taskRef: 'OpaqueRef:task-disable', provider: 'xapi', action: 'disable',
+    });
+    await expect(client.enableHost('OpaqueRef:host-a')).resolves.toEqual({
+      taskRef: 'OpaqueRef:task-enable', provider: 'xapi', action: 'enable',
+    });
+    await expect(client.getHost('OpaqueRef:host-a')).resolves.toEqual(expect.objectContaining({
+      ref: 'OpaqueRef:host-a', enabled: false, residentVmRefs: ['OpaqueRef:vm-a'],
+    }));
+    await expect(client.disableHost('unsafe/ref')).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
+  });
+
   it('encodes and parses nested XML-RPC values and faults', () => {
     const value = { Status: 'Success', Value: ['one', true, 2] };
     const xml = `<methodResponse><params><param>${_internals._xmlValue(value)}</param></params></methodResponse>`;

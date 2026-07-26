@@ -10,6 +10,15 @@ const mockVmDetail = jest.fn();
 const mockMigrationPreflight = jest.fn();
 const mockMigrationExecutionPreflight = jest.fn();
 const mockMigrationSubmit = jest.fn();
+const mockMaintenancePreflight = jest.fn();
+const mockMaintenanceSubmit = jest.fn();
+const mockMaintenanceList = jest.fn();
+const mockMaintenanceGet = jest.fn();
+const mockMaintenancePause = jest.fn();
+const mockMaintenanceResume = jest.fn();
+const mockMaintenanceCancel = jest.fn();
+const mockMaintenanceExit = jest.fn();
+const mockMaintenanceReconcile = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -50,6 +59,17 @@ jest.mock('../services/provider-sdk/vm-migration-preflight', () => ({
 jest.mock('../services/provider-operations/vm-migration', () => ({
   preflightForHost: (...args) => mockMigrationExecutionPreflight(...args),
   submitForHost: (...args) => mockMigrationSubmit(...args),
+}));
+jest.mock('../services/provider-operations/host-maintenance', () => ({
+  preflightForHost: (...args) => mockMaintenancePreflight(...args),
+  submitForHost: (...args) => mockMaintenanceSubmit(...args),
+  listForHost: (...args) => mockMaintenanceList(...args),
+  get: (...args) => mockMaintenanceGet(...args),
+  pause: (...args) => mockMaintenancePause(...args),
+  resume: (...args) => mockMaintenanceResume(...args),
+  cancel: (...args) => mockMaintenanceCancel(...args),
+  exit: (...args) => mockMaintenanceExit(...args),
+  reconcileUnknown: (...args) => mockMaintenanceReconcile(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -140,6 +160,21 @@ describe('Provider SDK routes', () => {
       },
       operation: { id: `op_${'7'.repeat(26)}` },
     });
+    const maintenanceRun = {
+      id: `hmr_${'6'.repeat(26)}`, provider: { type: 'xen', endpointId: 7 },
+      sourceHost: { id: `ddr_host_${'b'.repeat(26)}`, displayName: 'xcp-a' },
+      goal: 'enter', state: 'draining', waveSize: 2, counts: { deferred: 0 }, items: [],
+    };
+    mockMaintenancePreflight.mockResolvedValue({
+      schemaVersion: '1.0', sourceHost: maintenanceRun.sourceHost, goal: 'enter',
+      waveSize: 2, itemCount: 1, deferredCount: 0, allowed: true, planHash: '6'.repeat(64),
+    });
+    mockMaintenanceSubmit.mockResolvedValue({ plan: { planHash: '6'.repeat(64) }, run: maintenanceRun, deduplicated: false });
+    mockMaintenanceList.mockReturnValue([maintenanceRun]);
+    mockMaintenanceGet.mockReturnValue(maintenanceRun);
+    for (const action of [mockMaintenancePause, mockMaintenanceResume, mockMaintenanceCancel, mockMaintenanceExit, mockMaintenanceReconcile]) {
+      action.mockResolvedValue(maintenanceRun);
+    }
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
@@ -352,6 +387,34 @@ describe('Provider SDK routes', () => {
       action: 'start', idempotencyKey: 'power-request-123',
     }), { canOperate: true, createdBy: 1 });
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_power_submit' }));
+  });
+
+  it('admin-gates, audits and controls durable host maintenance runs', async () => {
+    const sourceHostId = `ddr_host_${'b'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/host-maintenance/preflight')
+      .set('x-test-role', 'operator').send({ sourceHostId, goal: 'enter', waveSize: 2 })).status).toBe(403);
+    const preflight = await request(app).post('/api/providers/7/host-maintenance/preflight')
+      .send({ sourceHostId, goal: 'enter', waveSize: 2 });
+    expect(preflight.status).toBe(200);
+    expect(mockMaintenancePreflight).toHaveBeenCalledWith(mockHost,
+      { sourceHostId, goal: 'enter', waveSize: 2 }, { canOperate: true });
+
+    const submit = await request(app).post('/api/providers/7/host-maintenance/runs')
+      .set('Idempotency-Key', 'host-maintenance-one')
+      .send({ sourceHostId, goal: 'enter', waveSize: 2, planHash: '6'.repeat(64), confirm: true, confirmName: 'xcp-a' });
+    expect(submit.status).toBe(202);
+    expect(mockMaintenanceSubmit).toHaveBeenCalledWith(mockHost, expect.objectContaining({
+      idempotencyKey: 'host-maintenance-one', sourceHostId,
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_host_maintenance_start' }));
+
+    expect((await request(app).get('/api/providers/7/host-maintenance/runs')).status).toBe(200);
+    const runId = `hmr_${'6'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/host-maintenance/runs/${runId}`)).status).toBe(200);
+    const pause = await request(app).post(`/api/providers/7/host-maintenance/runs/${runId}/pause`);
+    expect(pause.status).toBe(200);
+    expect(mockMaintenancePause).toHaveBeenCalledWith(runId, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_host_maintenance_pause' }));
   });
 
   it('preflights and submits an atomic bulk VM power request', async () => {

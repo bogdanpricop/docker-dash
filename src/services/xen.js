@@ -887,6 +887,7 @@ class XapiClient {
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
       migrationExecute: true,
+      hostMaintenance: true,
       taskCancel: true,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -1161,6 +1162,31 @@ class XapiClient {
       live: options.live === true ? 'true' : 'false',
     }]);
     return { taskRef, provider: 'xapi' };
+  }
+
+  async disableHost(hostRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(hostRef || ''))) {
+      throw new XenError('Invalid XAPI host reference', { code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xapi' });
+    }
+    return { taskRef: await this._call('Async.host.disable', [String(hostRef)]), provider: 'xapi', action: 'disable' };
+  }
+
+  async enableHost(hostRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(hostRef || ''))) {
+      throw new XenError('Invalid XAPI host reference', { code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xapi' });
+    }
+    return { taskRef: await this._call('Async.host.enable', [String(hostRef)]), provider: 'xapi', action: 'enable' };
+  }
+
+  async getHost(hostRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(hostRef || ''))) {
+      throw new XenError('Invalid XAPI host reference', { code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xapi' });
+    }
+    const value = await this._call('host.get_record', [String(hostRef)]);
+    return {
+      ref: String(hostRef), uuid: value.uuid || null, name: value.name_label || value.hostname || value.uuid,
+      enabled: value.enabled !== false, residentVmRefs: (value.resident_VMs || []).filter(_refId),
+    };
   }
 
   async listSnapshots(vmId) {

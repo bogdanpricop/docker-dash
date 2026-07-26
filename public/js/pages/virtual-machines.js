@@ -352,6 +352,109 @@ const VirtualMachinesPage = {
     this._loadSnapshotPolicy(panel.querySelector('#common-snapshot-policy'), host, vm);
   },
 
+  _maintenanceRunHtml(run) {
+    const counts = run.counts || {};
+    const items = (run.items || []).map(item => `<tr>
+      <td>${Utils.escapeHtml(item.vm.displayName)}</td><td>${Utils.escapeHtml(item.target?.displayName || 'Deferred')}</td>
+      <td>${Utils.escapeHtml(item.mode || '—')}</td><td><span class="badge ${Utils.statusBadgeClass(item.state)}">${Utils.escapeHtml(item.state)}</span></td>
+      <td>${item.operationId ? `<a href="#/activity/${Utils.escapeHtml(item.operationId)}"><code>${Utils.escapeHtml(item.operationId)}</code></a>` : '—'}</td>
+    </tr>`).join('');
+    return `<div class="text-sm"><div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px">
+      <div><strong>Host</strong><br>${Utils.escapeHtml(run.sourceHost.displayName)}</div>
+      <div><strong>Goal / state</strong><br>${Utils.escapeHtml(run.goal)} · <span class="badge ${Utils.statusBadgeClass(run.state)}">${Utils.escapeHtml(run.state)}</span></div>
+      <div><strong>Wave size</strong><br>${Utils.escapeHtml(run.waveSize)}</div>
+      <div><strong>Succeeded</strong><br>${Utils.escapeHtml(counts.succeeded || 0)}</div>
+      <div><strong>Active</strong><br>${Utils.escapeHtml(counts.submitted || 0)}</div>
+      <div><strong>Attention</strong><br>${Utils.escapeHtml((counts.deferred || 0) + (counts.failed || 0) + (counts.unknown || 0))}</div></div>
+      ${run.error ? `<div class="alert alert-warning" style="margin-top:12px">${Utils.escapeHtml(run.error.message || run.error.code)}</div>` : ''}
+      ${items ? `<div class="card" style="overflow:auto;margin-top:12px;max-height:360px"><table class="data-table"><thead><tr><th>VM</th><th>Target</th><th>Mode</th><th>State</th><th>Operation</th></tr></thead><tbody>${items}</tbody></table></div>` : ''}
+      <div class="text-muted" style="margin-top:10px">Pause, cancel and exit never move completed migrations back.</div></div>`;
+  },
+
+  _maintenancePlanHtml(plan) {
+    const items = (plan.items || []).map(item => `<tr>
+      <td>${Utils.escapeHtml(item.vm.displayName)}<div class="text-muted text-sm">${Utils.escapeHtml(item.vm.powerState)}</div></td>
+      <td>${Utils.escapeHtml(item.target?.displayName || 'No safe target')}</td><td>${Utils.escapeHtml(item.mode || '—')}</td>
+      <td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-warning'}">${Utils.escapeHtml(item.state)}</span></td>
+      <td>${Utils.escapeHtml(item.blockers?.[0]?.reason || 'Ready')}</td></tr>`).join('');
+    return `<div class="text-sm">
+      ${plan.blockers?.length ? `<div class="alert alert-danger"><strong>Plan blocked</strong><ul style="margin:8px 0 0 18px">${plan.blockers.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      ${plan.warnings?.length ? `<div class="alert alert-warning">${plan.warnings.map(item => `<div>${Utils.escapeHtml(item.reason)}</div>`).join('')}</div>` : ''}
+      <div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px">
+        <div><strong>Source</strong><br>${Utils.escapeHtml(plan.sourceHost.displayName)}</div><div><strong>Goal</strong><br>${Utils.escapeHtml(plan.goal)}</div>
+        <div><strong>Wave size</strong><br>${Utils.escapeHtml(plan.waveSize)}</div><div><strong>Workloads</strong><br>${Utils.escapeHtml(plan.itemCount)}</div>
+        <div><strong>Ready</strong><br>${Utils.escapeHtml(plan.readyCount)}</div><div><strong>Deferred</strong><br>${Utils.escapeHtml(plan.deferredCount)}</div></div>
+      ${items ? `<div class="card" style="overflow:auto;margin-top:12px;max-height:390px"><table class="data-table"><thead><tr><th>VM</th><th>Target</th><th>Mode</th><th>State</th><th>Evidence</th></tr></thead><tbody>${items}</tbody></table></div>` : '<div class="empty-msg"><i class="fas fa-check-circle"></i>The host is already empty.</div>'}
+      <div class="alert alert-info" style="margin-top:12px">Preview does not reserve capacity. Every migration is revalidated and live inventory must prove the source is empty.</div></div>`;
+  },
+
+  async _planHostMaintenance(host) {
+    try {
+      const envelope = await Api.getProviderHosts(host.id, 64);
+      if (!envelope.items?.length) return Toast.error('No provider hosts are visible');
+      const input = await Modal.form(`<label class="form-label" for="maintenance-source">Source host</label>
+        <select id="maintenance-source" class="form-control">${envelope.items.map(item => `<option value="${Utils.escapeHtml(item.id)}">${Utils.escapeHtml(item.displayName)} · ${Utils.escapeHtml(item.status?.powerState || 'unknown')}</option>`).join('')}</select>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px">
+          <label class="form-label">Goal<select id="maintenance-goal" class="form-control"><option value="drain">Drain and reserve</option><option value="enter">Enter native maintenance</option></select></label>
+          <label class="form-label">Wave size<input id="maintenance-wave" class="form-control" type="number" min="1" max="10" value="2"></label>
+          <label class="form-label">Blocked workloads<select id="maintenance-policy" class="form-control"><option value="block">Block submission</option><option value="defer">Migrate ready, then pause</option></select></label></div>
+        <div class="alert alert-warning text-sm" style="margin-top:14px">Submission can live-migrate production workloads and requires the exact host name.</div>`, {
+        title: `Plan host maintenance · ${host.name}`, submitLabel: 'Generate plan', width: '720px',
+        onSubmit: root => ({ sourceHostId: root.querySelector('#maintenance-source').value,
+          goal: root.querySelector('#maintenance-goal').value, waveSize: Number(root.querySelector('#maintenance-wave').value),
+          nonMigratablePolicy: root.querySelector('#maintenance-policy').value }),
+      });
+      if (!input) return;
+      const plan = await Api.preflightProviderHostMaintenance(host.id, input);
+      if (!plan.allowed) {
+        await Modal.confirm(this._maintenancePlanHtml(plan), { title: 'Host maintenance preflight', confirmText: 'Close', html: true, width: '860px' }); return;
+      }
+      const confirmed = await Modal.confirm(this._maintenancePlanHtml(plan), {
+        title: `Authorize ${plan.goal} · ${plan.sourceHost.displayName}`, confirmText: 'Start maintenance run',
+        danger: true, typeToConfirm: plan.confirmation.expected, html: true, width: '860px',
+      });
+      if (!confirmed) return;
+      const result = await Api.startProviderHostMaintenance(host.id, { ...input, planHash: plan.planHash,
+        confirm: true, confirmName: plan.confirmation.expected }, this._idempotencyKey('host-maintenance'));
+      Toast.success(`Maintenance run ${result.run.id} started`);
+      await Modal.confirm(this._maintenanceRunHtml(result.run), { title: 'Host maintenance run', confirmText: 'Close', html: true, width: '860px' });
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _manageHostMaintenance(host) {
+    try {
+      const envelope = await Api.getProviderHostMaintenanceRuns(host.id, 50);
+      if (!envelope.items?.length) {
+        await Modal.confirm('<div class="empty-msg"><i class="fas fa-tools"></i>No host maintenance runs are recorded for this endpoint.</div>', { title: 'Host maintenance runs', confirmText: 'Close', html: true }); return;
+      }
+      const admin = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
+      const actionOptions = admin
+        ? '<option value="view">View / refresh</option><option value="pause">Pause</option><option value="resume">Resume</option><option value="reconcile">Reconcile unknown native task</option><option value="cancel">Cancel remaining work</option><option value="exit">Exit and release reservation</option>'
+        : '<option value="view">View / refresh</option>';
+      const selected = await Modal.form(`<label class="form-label" for="maintenance-run">Run</label>
+        <select id="maintenance-run" class="form-control">${envelope.items.map(run => `<option value="${Utils.escapeHtml(run.id)}">${Utils.escapeHtml(run.sourceHost.displayName)} · ${Utils.escapeHtml(run.goal)} · ${Utils.escapeHtml(run.state)} · ${Utils.escapeHtml(run.id)}</option>`).join('')}</select>
+        <label class="form-label" style="margin-top:12px" for="maintenance-action">Action</label>
+        <select id="maintenance-action" class="form-control">${actionOptions}</select>
+        <div class="text-muted text-sm" style="margin-top:12px">Invalid transitions are rejected server-side. Cancel does not roll migrations back.</div>`, {
+        title: `Host maintenance runs · ${host.name}`, submitLabel: 'Continue', width: '720px',
+        onSubmit: root => ({ runId: root.querySelector('#maintenance-run').value, action: root.querySelector('#maintenance-action').value }),
+      });
+      if (!selected) return;
+      let run;
+      if (selected.action === 'view') run = await Api.getProviderHostMaintenanceRun(host.id, selected.runId);
+      else {
+        const ok = await Modal.confirm(selected.action === 'cancel' ? 'Cancel remaining migrations? Completed migrations stay on their targets.'
+          : selected.action === 'exit' ? 'Exit maintenance and release the host reservation?'
+            : `${selected.action[0].toUpperCase()}${selected.action.slice(1)} this run?`, {
+          title: `${selected.action} maintenance run`, confirmText: selected.action, danger: ['cancel', 'exit'].includes(selected.action),
+        });
+        if (!ok) return;
+        run = (await Api.controlProviderHostMaintenance(host.id, selected.runId, selected.action)).run;
+      }
+      await Modal.confirm(this._maintenanceRunHtml(run), { title: 'Host maintenance run', confirmText: 'Close', html: true, width: '860px' });
+    } catch (err) { Toast.error(err.message); }
+  },
+
   async render(container, params = {}) {
     this.destroy();
     try {
@@ -384,6 +487,8 @@ const VirtualMachinesPage = {
             ${this._hosts.map(item => `<option value="${item.id}"${item.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(item.name)} · ${Utils.escapeHtml(this._providerLabel(item.daemonType))}</option>`).join('')}
           </select>
           <a class="btn btn-sm btn-secondary" href="${this._providerRoute(host.daemonType)}"><i class="fas fa-external-link-alt"></i> Provider view</a>
+          <button class="btn btn-sm btn-secondary" id="common-host-maintenance-runs"><i class="fas fa-tools"></i> Maintenance runs</button>
+          ${App.user?.role === 'admin' || (App.user?.roles || []).includes('admin') ? '<button class="btn btn-sm btn-secondary" id="common-host-maintenance-plan"><i class="fas fa-server"></i> Plan maintenance</button>' : ''}
           <a class="btn btn-sm btn-secondary" href="#/activity"><i class="fas fa-tasks"></i> Activity</a>
           <button class="btn btn-sm btn-secondary" id="common-vm-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
@@ -407,6 +512,8 @@ const VirtualMachinesPage = {
       this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._renderHome(container);
     });
     container.querySelector('#common-vm-refresh').addEventListener('click', () => this._loadInventory());
+    container.querySelector('#common-host-maintenance-plan')?.addEventListener('click', () => this._planHostMaintenance(host));
+    container.querySelector('#common-host-maintenance-runs')?.addEventListener('click', () => this._manageHostMaintenance(host));
     container.querySelector('#common-vm-search').addEventListener('input', () => this._renderInventory());
     container.querySelector('#common-vm-state').addEventListener('change', () => this._renderInventory());
     container.querySelectorAll('[data-vm-bulk-action]').forEach(button => button.addEventListener('click', () => this._runBulkPower(button.dataset.vmBulkAction)));

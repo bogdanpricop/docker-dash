@@ -606,6 +606,43 @@ class VSphereClient {
     return { taskRef, provider: 'vsphere' };
   }
 
+  /** Enter native host maintenance and return the durable vSphere Task MoRef. */
+  async enterHostMaintenance(hostMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(hostMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere host reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const timeout = Math.min(86400, Math.max(60, Math.round(Number(options.timeoutSeconds) || 3600)));
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><EnterMaintenanceMode_Task xmlns="urn:vim25">
+    <_this type="HostSystem">${this._xesc(hostMoref)}</_this>
+    <timeout>${timeout}</timeout><evacuatePoweredOffVms>false</evacuatePoweredOffVms>
+  </EnterMaintenanceMode_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere maintenance operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere', action: 'enter' };
+  }
+
+  /** Exit native host maintenance and return the durable vSphere Task MoRef. */
+  async exitHostMaintenance(hostMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(hostMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere host reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const timeout = Math.min(86400, Math.max(60, Math.round(Number(options.timeoutSeconds) || 3600)));
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ExitMaintenanceMode_Task xmlns="urn:vim25">
+    <_this type="HostSystem">${this._xesc(hostMoref)}</_this><timeout>${timeout}</timeout>
+  </ExitMaintenanceMode_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere maintenance exit returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere', action: 'exit' };
+  }
+
   async cancelTask(taskMoref) {
     if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(taskMoref || ''))) {
       throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });

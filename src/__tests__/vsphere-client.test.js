@@ -94,6 +94,23 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
     });
   });
 
+  describe('host maintenance tasks', () => {
+    it('submits bounded Enter/ExitMaintenanceMode tasks with safe host references', async () => {
+      const client = new VSphereClient({ endpoint: 'https://vc', username: 'svc', password: 'secret' });
+      client._sessionCookie = 'vmware_soap_session=test';
+      client._soapPost = jest.fn(async () => '<returnval type="Task">task-42</returnval>');
+      await expect(client.enterHostMaintenance('host-12', { timeoutSeconds: 7200 }))
+        .resolves.toEqual({ taskRef: 'task-42', provider: 'vsphere', action: 'enter' });
+      expect(client._soapPost.mock.calls[0][0]).toContain('<EnterMaintenanceMode_Task');
+      expect(client._soapPost.mock.calls[0][0]).toContain('<timeout>7200</timeout>');
+      expect(client._soapPost.mock.calls[0][0]).toContain('<evacuatePoweredOffVms>false</evacuatePoweredOffVms>');
+      await expect(client.exitHostMaintenance('host-12', { timeoutSeconds: 60 }))
+        .resolves.toEqual({ taskRef: 'task-42', provider: 'vsphere', action: 'exit' });
+      expect(client._soapPost.mock.calls[1][0]).toContain('<ExitMaintenanceMode_Task');
+      await expect(client.enterHostMaintenance('host/<unsafe>')).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
+    });
+  });
+
   describe('XML parsing helpers', () => {
     it('extractTag pulls simple text values', () => {
       const xml = '<envelope><foo>bar</foo><nested><baz>qux</baz></nested></envelope>';

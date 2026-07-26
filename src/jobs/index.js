@@ -521,6 +521,12 @@ function startAll() {
     return require('../services/provider-operations/snapshot-policies').runDue();
   })));
 
+  // Host-maintenance runs are durable parent workflows. The leader-gated
+  // wake-up reconciles native tasks and dispatches bounded vm.migrate waves.
+  jobs.push(cron.schedule('* * * * *', _m('provider-host-maintenance', () => {
+    return require('../services/provider-operations/host-maintenance').runDue();
+  })));
+
   // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each
   // running git-managed stack's actual container state against the git-checked-
   // out compose. Detection only — never starts/stops/deploys. Leader-gated.

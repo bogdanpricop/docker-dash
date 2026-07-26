@@ -556,6 +556,7 @@ const Api = {
   getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
   getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
+  getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);
@@ -583,6 +584,23 @@ const Api = {
     return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration`, body, {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     });
+  },
+  preflightProviderHostMaintenance(hostId, body) {
+    return this.post(`/providers/${hostId}/host-maintenance/preflight`, body);
+  },
+  startProviderHostMaintenance(hostId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/host-maintenance/runs`, body, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderHostMaintenanceRuns(hostId, limit = 50) {
+    return this.get(`/providers/${hostId}/host-maintenance/runs?limit=${limit}`);
+  },
+  getProviderHostMaintenanceRun(hostId, runId) {
+    return this.get(`/providers/${hostId}/host-maintenance/runs/${encodeURIComponent(runId)}`);
+  },
+  controlProviderHostMaintenance(hostId, runId, action) {
+    return this.post(`/providers/${hostId}/host-maintenance/runs/${encodeURIComponent(runId)}/${action}`, {});
   },
   preflightProviderVMConsole(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});

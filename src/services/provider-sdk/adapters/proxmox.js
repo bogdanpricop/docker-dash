@@ -5,7 +5,6 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.network', 'inventory.task',
-  'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
 ];
@@ -25,6 +24,10 @@ function declared() {
     'vm.migrate': conditional('Same-cluster migration uses a durable Proxmox UPID and execution-time compatibility checks', {
       perResource: true, modes: ['live', 'cold', 'storage'], durableTask: true,
       cancel: true, confirmation: 'typed_name', revalidate: true,
+    }),
+    'host.maintenance': conditional('Controlled drain uses durable per-VM migrations and a Docker Dash placement reservation; native activation is not advertised without a conformance-tested API', {
+      goals: ['drain'], pause: true, resume: true, waves: true,
+      nativeEnterExit: false, confirmation: 'typed_name',
     }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
