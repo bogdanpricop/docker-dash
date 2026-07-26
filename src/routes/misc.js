@@ -12,6 +12,8 @@ const { requireAuth, optionalAuth, requireRole, writeable } = require('../middle
 const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const dockerService = require('../services/docker');
+const hostPermissions = require('../services/host-permissions');
+const hostGroups = require('../services/host-groups');
 const log = require('../utils/logger')('misc');
 
 const router = Router();
@@ -374,6 +376,30 @@ router.get('/search', requireAuth, async (req, res) => {
           type: 'git-stack', id: s.id, name: s.stack_name,
           detail: `${s.repo_url} (${s.status})`,
           url: `#/git-stacks/${s.id}`, icon: 'fab fa-git-alt',
+        });
+      }
+    } catch (err) { /* search section failed, skip */ }
+
+    // Search visible hosts. Returning host_id lets the command palette switch
+    // context directly instead of merely opening the Hosts administration page.
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT id, name, environment, daemon_type, conn_state
+        FROM docker_hosts
+        WHERE name LIKE ? OR environment LIKE ? OR daemon_type LIKE ?
+        ORDER BY is_default DESC, name LIMIT 20
+      `).all(`%${query}%`, `%${query}%`, `%${query}%`);
+      const isAdmin = req.user.role === 'admin'
+        || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+      const visibleIds = new Set(hostPermissions.filterVisibleHosts(
+        req.user.id, isAdmin, rows.map(row => row.id)
+      ));
+      for (const host of rows.filter(row => visibleIds.has(row.id))) {
+        results.push({
+          type: 'host', id: host.id, host_id: host.id, name: host.name,
+          detail: `${host.environment || 'development'} · ${host.daemon_type || 'docker'} · ${host.conn_state || 'unknown'}`,
+          url: '#/dashboard', icon: 'fas fa-server',
         });
       }
     } catch (err) { /* search section failed, skip */ }
@@ -1248,18 +1274,25 @@ async function _nonDockerOverview(row) {
 router.get('/multi-host/overview', requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const configuredHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const isAdmin = req.user.role === 'admin'
+      || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+    const visibleIds = new Set(hostPermissions.filterVisibleHosts(
+      req.user.id, isAdmin, configuredHosts.map(host => host.id)
+    ));
+    const dbHosts = configuredHosts.filter(host => visibleIds.has(host.id));
 
     // If no hosts configured, use the default local connection (id=0)
     // Otherwise, use only what's in the DB to avoid duplicates
-    const hostList = dbHosts.length > 0
+    const hostList = configuredHosts.length > 0
       ? dbHosts.map(h => ({
           id: h.id, name: h.name, connectionType: h.connection_type,
           environment: h.environment || 'production',
           daemonType: h.daemon_type || 'docker',
+          groups: hostGroups.groupsForHost(h.id),
           _row: h,
         }))
-      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production', daemonType: 'docker' }];
+      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production', daemonType: 'docker', groups: [] }];
 
     // Fetch data from all hosts in parallel
     const results = await Promise.allSettled(hostList.map(async (host) => {
@@ -1271,6 +1304,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
           id: host.id, name: host.name, environment: host.environment,
           connectionType: host.connectionType,
           daemonType: host.daemonType,
+          groups: host.groups,
           healthy: !summary.error,
           nonDocker: summary,
           info: { hostname: host.name, os: summary.productFullName || '',
@@ -1283,8 +1317,8 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
       const docker = dockerService.getDocker(host.id);
 
       const [containers, info, statsOverview] = await Promise.all([
-        dockerService.listContainers(host.id).catch(() => []),
-        docker.info().catch(() => ({})),
+        dockerService.listContainers(host.id),
+        docker.info(),
         statsService.getOverview(host.id),
       ]);
 
@@ -1294,6 +1328,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
         environment: host.environment,
         connectionType: host.connectionType,
         daemonType: host.daemonType || 'docker',
+        groups: host.groups,
         healthy: true,
         info: {
           hostname: info.Name || host.name,

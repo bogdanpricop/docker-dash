@@ -11,6 +11,7 @@ const { encryptSshConfig, decryptSshConfig } = require('../services/host-config-
 const asyncHandler = require('../utils/asyncHandler');
 const connectionHealth = require('../services/connection-health');
 const hostPermissions = require('../services/host-permissions');
+const hostGroups = require('../services/host-groups');
 const { requireHostAccess } = require('../middleware/hostAccess');
 
 // Validate docker socket path — must be an absolute path with safe characters only
@@ -88,6 +89,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
         if (!h.ssh_config) return null;
         try { return (decryptSshConfig(h.ssh_config) || {}).host || null; } catch { return null; }
       })(),
+      groups: hostGroups.groupsForHost(h.id),
     };
   });
 
@@ -118,6 +120,7 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
     hasSsh: !!(host.ssh_config && host.ssh_config !== '{}'),
     // v8.10.x — Connection Health circuit breaker fields (see GET / above).
     connState: host.conn_state || 'unknown',
+    groups: hostGroups.groupsForHost(host.id),
     connPaused: !!host.conn_paused,
     connPausedReason: host.conn_paused_reason || null,
     connLastError: host.conn_last_error || null,

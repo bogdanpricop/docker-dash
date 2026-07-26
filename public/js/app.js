@@ -8,6 +8,7 @@ const App = {
   _currentPage: null,
   _currentPageName: null,
   _uiMode: 'standard',
+  _composeSimpleMode: false,
 
   // Page registry
   _pages: {
@@ -20,6 +21,7 @@ const App = {
     security:   () => SecurityPage,
     posture:    () => PosturePage,
     blueprints: () => BlueprintsPage,
+    procedures: () => ProceduresPage,
     copilot:    () => CopilotPage,
     system:     () => SystemPage,
     firewall:   () => FirewallPage,
@@ -524,6 +526,10 @@ const App = {
     // Update static UI labels
     this._updateStaticUI();
 
+    // `?mode=simple` is a Compose-first layout preference. It is independent
+    // of density and survives future sessions in a small same-site cookie.
+    this._initComposeSimpleMode();
+
     // Start router
     this._initRouter();
 
@@ -788,6 +794,10 @@ const App = {
     this._updateUiModeIcon(icon);
 
     btn.addEventListener('click', () => {
+      if (this._composeSimpleMode) {
+        this._setComposeSimpleMode(false);
+        return;
+      }
       const next = this._uiMode === 'standard' ? 'enterprise' : 'standard';
       this._uiMode = next;
       if (next === 'enterprise') {
@@ -805,6 +815,11 @@ const App = {
 
   _updateUiModeIcon(icon) {
     if (!icon) return;
+    if (this._composeSimpleMode) {
+      icon.className = 'fas fa-expand-alt';
+      icon.title = i18n.t('nav.showAll');
+      return;
+    }
     icon.className = this._uiMode === 'enterprise' ? 'fas fa-building' : 'fas fa-rocket';
     icon.title = this._uiMode === 'enterprise' ? 'Switch to Standard mode' : 'Switch to Enterprise mode';
   },
@@ -923,12 +938,29 @@ const App = {
     const nav = document.querySelector('.sidebar-nav');
     if (!nav) return;
 
-    if (mode === 'enterprise') {
-      // Save the original HTML so we can restore it perfectly
-      if (!this._standardNavHTML) {
-        this._standardNavHTML = nav.innerHTML;
-      }
+    // Always derive alternate layouts from the original standard navigation,
+    // never from a previously grouped layout.
+    if (!this._standardNavHTML) this._standardNavHTML = nav.innerHTML;
+    nav.innerHTML = this._standardNavHTML;
 
+    const navItems = {};
+    nav.querySelectorAll('.nav-item').forEach(item => {
+      const page = item.getAttribute('data-page');
+      if (page) navItems[page] = item.outerHTML;
+    });
+
+    if (this._composeSimpleMode) {
+      const essentials = ['dashboard', 'stacks', 'containers', 'images'];
+      const essentialSet = new Set(essentials);
+      const moreItems = Object.keys(navItems).filter(page => !essentialSet.has(page));
+      nav.innerHTML = essentials.map(page => navItems[page] || '').join('') + `
+        <details class="nav-simple-more">
+          <summary><i class="fas fa-ellipsis-h"></i><span>${i18n.t('nav.more')}</span></summary>
+          <div>${moreItems.map(page => navItems[page]).join('')}</div>
+        </details>
+        <button type="button" class="nav-simple-show-all" id="simple-show-all"><i class="fas fa-expand-alt"></i><span>${i18n.t('nav.showAll')}</span></button>`;
+      nav.querySelector('#simple-show-all')?.addEventListener('click', () => this._setComposeSimpleMode(false));
+    } else if (mode === 'enterprise') {
       // Enterprise grouping (ESXi-inspired)
       const enterpriseGroups = [
         { label: null,          items: ['dashboard'] },
@@ -936,16 +968,9 @@ const App = {
         { label: 'Storage',     items: ['images', 'volumes'] },
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
-        { label: 'Operations',  items: ['system', 'workflows'] },
+        { label: 'Operations',  items: ['system', 'procedures', 'workflows'] },
         { label: 'Admin',       items: ['hosts', 'onboarding', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
-
-      // Collect all existing nav items by data-page
-      const navItems = {};
-      nav.querySelectorAll('.nav-item').forEach(item => {
-        const page = item.getAttribute('data-page');
-        if (page) navItems[page] = item.outerHTML;
-      });
 
       // Build enterprise nav HTML
       let html = '';
@@ -962,11 +987,6 @@ const App = {
       });
 
       nav.innerHTML = html;
-    } else {
-      // Restore standard sidebar
-      if (this._standardNavHTML) {
-        nav.innerHTML = this._standardNavHTML;
-      }
     }
 
     // Re-apply active state and re-translate nav item labels
@@ -979,6 +999,8 @@ const App = {
       const span = item.querySelector('span');
       if (span && page) span.textContent = i18n.t('nav.' + page);
     });
+    const simpleMore = nav.querySelector('.nav-simple-more');
+    if (simpleMore?.querySelector('.nav-item.active')) simpleMore.open = true;
     // Re-translate section labels in the current mode
     nav.querySelectorAll('.nav-section-label span').forEach(span => {
       const section = span.closest('[data-enterprise-section]');
@@ -989,6 +1011,35 @@ const App = {
         span.textContent = (raw === 'nav.' + key) ? label : raw;
       }
     });
+  },
+
+  _initComposeSimpleMode() {
+    const requested = new URLSearchParams(location.search).get('mode');
+    const saved = document.cookie.split(';').map(part => part.trim())
+      .find(part => part.startsWith('dd_simple_mode='))?.split('=')[1];
+    this._composeSimpleMode = requested === 'simple'
+      ? true
+      : requested === 'full' ? false : saved === '1';
+    if (requested === 'simple' || requested === 'full') {
+      document.cookie = `dd_simple_mode=${this._composeSimpleMode ? '1' : '0'}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    }
+    this._updateUiModeIcon(document.getElementById('uimode-icon'));
+  },
+
+  _setComposeSimpleMode(enabled) {
+    this._composeSimpleMode = !!enabled;
+    document.cookie = `dd_simple_mode=${enabled ? '1' : '0'}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    if (!enabled) {
+      const url = new URL(location.href);
+      if (url.searchParams.get('mode') === 'simple') {
+        url.searchParams.delete('mode');
+        history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
+    }
+    this._updateUiModeIcon(document.getElementById('uimode-icon'));
+    this._renderSidebarForMode(this._uiMode);
+    this._refreshCapabilities();
+    TaskBar._updateVisibility();
   },
 
   async _syncUserPreferences() {
@@ -1333,10 +1384,16 @@ const App = {
 
   async _initHostSelector() {
     try {
-      const hosts = await Api.getHosts();
+      const [hosts, groups] = await Promise.all([
+        Api.getHosts(), Api.listHostGroups().catch(() => []),
+      ]);
       const selector = document.getElementById('host-selector');
       const select = document.getElementById('host-select');
-      if (!selector || !select) return;
+      const toggle = document.getElementById('host-tree-toggle');
+      const panel = document.getElementById('host-tree-panel');
+      const search = document.getElementById('host-tree-search');
+      const tree = document.getElementById('host-tree');
+      if (!selector || !select || !toggle || !panel || !search || !tree) return;
 
       // ACL filtering may remove a host saved in localStorage. Move to the
       // first visible host instead of leaving every subsequent API call on a
@@ -1347,6 +1404,7 @@ const App = {
         Api.setHost(hosts[0].isDefault ? 0 : hosts[0].id);
       }
       this._hostSelectorHosts = hosts;
+      this._hostSelectorGroups = groups;
 
       if (hosts.length <= 1) {
         selector.style.display = 'none';
@@ -1363,46 +1421,119 @@ const App = {
         return `<option value="${h.id}" ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}>${status} ${Utils.escapeHtml(h.name)}${envTag}</option>`;
       }).join('');
 
+      const current = hosts.find(h => Api.getHostId() === h.id
+        || (Api.getHostId() === 0 && h.isDefault)) || hosts[0];
+      document.getElementById('host-tree-current-name').textContent = current?.name || 'Host';
+      const statusEl = document.getElementById('host-tree-current-status');
+      statusEl.className = `host-tree-status ${current?.healthy === true ? 'online' : current?.healthy === false ? 'offline' : 'pending'}`;
+      this._renderHostTree('');
+
       if (!select._bound) {
         select._bound = true;
         select.addEventListener('change', () => {
-          const id = parseInt(select.value) || 0;
-          Api.setHost(id);
-          if (this._currentPage?.destroy) this._currentPage.destroy();
-          // v8.9.13-alpha.1 — selecting a host opens the page that host type
-          // belongs to. A Docker page can't render an ESXi/Incus/etc. host,
-          // so jump to that daemon's dedicated page; and a non-Docker page
-          // can't render a Docker host, so jump back to the dashboard.
-          const host = (this._hostSelectorHosts || []).find(h => h.id === id);
-          const dt = (host && host.daemonType) || 'docker';
-          const daemonPage = {
-            vsphere: '#/vsphere-resources',
-            incus: '#/incus-instances', lxd: '#/incus-instances',
-            proxmox: '#/proxmox-resources',
-            kubernetes: '#/kubernetes-resources',
-            nomad: '#/nomad-jobs',
-          }[dt];
-          const nonDockerPages = ['#/vsphere-resources', '#/incus-instances',
-            '#/proxmox-resources', '#/kubernetes-resources', '#/nomad-jobs', '#/migration-vm'];
-          if (daemonPage) {
-            if (location.hash === daemonPage) this._route();
-            else location.hash = daemonPage;   // hashchange -> _route()
-          } else if (nonDockerPages.includes(location.hash)) {
-            location.hash = '#/dashboard';      // Docker host but on a non-Docker page
-          } else {
-            this._route();                      // Docker host, Docker page -> refresh
+          this._activateHost(Number(select.value));
+        });
+      }
+
+      if (!toggle._bound) {
+        toggle._bound = true;
+        toggle.addEventListener('click', () => {
+          const willOpen = panel.classList.contains('hidden');
+          panel.classList.toggle('hidden', !willOpen);
+          toggle.setAttribute('aria-expanded', String(willOpen));
+          if (willOpen) setTimeout(() => search.focus(), 0);
+        });
+        search.addEventListener('input', () => this._renderHostTree(search.value));
+        tree.addEventListener('click', event => {
+          const item = event.target.closest('[data-host-tree-id]');
+          if (!item) return;
+          panel.classList.add('hidden');
+          toggle.setAttribute('aria-expanded', 'false');
+          this._activateHost(Number(item.dataset.hostTreeId));
+        });
+        document.addEventListener('click', event => {
+          if (!selector.contains(event.target)) {
+            panel.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+          }
+        });
+        selector.addEventListener('keydown', event => {
+          if (event.key === 'Escape') {
+            panel.classList.add('hidden');
+            toggle.setAttribute('aria-expanded', 'false');
+            toggle.focus();
           }
         });
       }
 
       // Listen for external host changes
-      window.addEventListener('hostChanged', () => {
-        this._initHostSelector();
-      });
+      if (!this._hostChangedSelectorBound) {
+        this._hostChangedSelectorBound = true;
+        window.addEventListener('hostChanged', () => this._initHostSelector());
+      }
     } catch {
       // Multi-host not available or error — hide selector
       const selector = document.getElementById('host-selector');
       if (selector) selector.style.display = 'none';
+    }
+  },
+
+  _renderHostTree(query = '') {
+    const tree = document.getElementById('host-tree');
+    if (!tree) return;
+    const hosts = this._hostSelectorHosts || [];
+    const groups = this._hostSelectorGroups || [];
+    const q = String(query || '').trim().toLowerCase();
+    const matches = host => !q || Number.isFinite(this._fuzzyScore(
+      `${host.name} ${host.environment || ''} ${host.daemonType || ''}`, q
+    ));
+    const item = host => {
+      const selected = Api.getHostId() === host.id || (Api.getHostId() === 0 && host.isDefault);
+      const status = host.healthy === true ? 'online' : host.healthy === false ? 'offline' : 'pending';
+      return `<button type="button" class="host-tree-item" role="treeitem" data-host-tree-id="${host.id}" aria-current="${selected}">
+        <span class="host-tree-status ${status}" aria-label="${status}"></span>
+        <span class="host-tree-item-name">${Utils.escapeHtml(host.name)}</span>
+        <span class="host-tree-env">${Utils.escapeHtml(host.environment || '')}</span>
+      </button>`;
+    };
+    const visibleIds = new Set(hosts.map(host => host.id));
+    const assigned = new Set();
+    const sections = [];
+    for (const group of groups) {
+      const members = (group.member_host_ids || [])
+        .filter(id => visibleIds.has(id))
+        .map(id => hosts.find(host => host.id === id))
+        .filter(host => host && matches(host));
+      if (!members.length) continue;
+      (group.member_host_ids || []).forEach(id => assigned.add(id));
+      const color = /^#[0-9a-f]{3,8}$/i.test(group.color || '') ? group.color : 'var(--accent)';
+      sections.push(`<details class="host-tree-group" open><summary><i class="fas ${Utils.escapeHtml(group.icon || 'fa-server')}" style="color:${color};margin-right:5px"></i>${Utils.escapeHtml(group.name)} (${members.length})</summary><div class="host-tree-items" role="group">${members.map(item).join('')}</div></details>`);
+    }
+    const ungrouped = hosts.filter(host => !assigned.has(host.id) && matches(host));
+    if (ungrouped.length) sections.push(`<details class="host-tree-group" open><summary>Ungrouped (${ungrouped.length})</summary><div class="host-tree-items" role="group">${ungrouped.map(item).join('')}</div></details>`);
+    tree.innerHTML = sections.join('') || '<div class="text-muted text-sm" style="padding:8px">No matching hosts</div>';
+  },
+
+  _activateHost(id) {
+    const host = (this._hostSelectorHosts || []).find(item => item.id === id);
+    if (!host) return;
+    Api.setHost(host.isDefault ? 0 : id);
+    window.dispatchEvent(new CustomEvent('hostChanged', { detail: { hostId: id } }));
+    if (this._currentPage?.destroy) this._currentPage.destroy();
+    const dt = host.daemonType || 'docker';
+    const daemonPage = {
+      vsphere: '#/vsphere-resources', incus: '#/incus-instances', lxd: '#/incus-instances',
+      proxmox: '#/proxmox-resources', kubernetes: '#/kubernetes-resources', nomad: '#/nomad-jobs',
+    }[dt];
+    const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
+      '#/kubernetes-resources', '#/nomad-jobs', '#/migration-vm'];
+    if (daemonPage) {
+      if (location.hash === daemonPage) this._route();
+      else location.hash = daemonPage;
+    } else if (nonDockerPages.includes(location.hash)) {
+      location.hash = '#/dashboard';
+    } else {
+      this._route();
     }
   },
 
@@ -1665,6 +1796,18 @@ const App = {
       sidebar.classList.add('collapsed');
     }
 
+    // Delegation keeps working when standard/simple/enterprise layouts replace
+    // the navigation markup after initialization.
+    if (!sidebar._mobileNavBound) {
+      sidebar._mobileNavBound = true;
+      sidebar.addEventListener('click', event => {
+        if (!event.target.closest('.nav-item') || window.innerWidth > 768) return;
+        sidebar.classList.remove('mobile-open');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (overlay) overlay.style.display = 'none';
+      });
+    }
+
     // Mobile: add hamburger header + overlay
     if (window.innerWidth <= 768) {
       if (!document.querySelector('.mobile-header')) {
@@ -1685,13 +1828,6 @@ const App = {
         overlay.addEventListener('click', () => {
           sidebar.classList.remove('mobile-open');
           overlay.style.display = 'none';
-        });
-        // Close sidebar on nav click
-        sidebar.querySelectorAll('.nav-item').forEach(item => {
-          item.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            overlay.style.display = 'none';
-          });
         });
       }
     }
@@ -1916,6 +2052,13 @@ const App = {
       { icon: 'fa-download', label: i18n.t('pages.system.checkUpdates'), action: () => { this.navigate('/system'); }, section: 'action' },
       { icon: 'fa-sign-out-alt', label: 'Logout', action: () => this._logout(), section: 'action' },
     ];
+    for (const host of (this._hostSelectorHosts || [])) {
+      cmds.push({
+        icon: 'fa-server', label: `Host: ${host.name}`,
+        searchText: `${host.name} ${host.environment || ''} ${host.daemonType || ''}`,
+        action: () => this._activateHost(host.id), section: 'host',
+      });
+    }
     return cmds;
   },
 
@@ -2078,7 +2221,11 @@ const App = {
     let commands = this._getCommands();
     if (query) {
       const q = query.toLowerCase();
-      commands = commands.filter(c => c.label.toLowerCase().includes(q));
+      commands = commands
+        .map(command => ({ command, score: this._fuzzyScore(command.searchText || command.label, q) }))
+        .filter(result => Number.isFinite(result.score))
+        .sort((a, b) => a.score - b.score)
+        .map(result => result.command);
     }
 
     // Build static commands section HTML
@@ -2141,8 +2288,8 @@ const App = {
             return;
           }
 
-          const typeIcons = { container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
-          const typeColors = { container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
+          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
+          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
 
           // Group by type
           const grouped = {};
@@ -2153,7 +2300,9 @@ const App = {
             icon: typeIcons[r.type] || 'fa-circle',
             label: r.name || r.id,
             action: () => {
-              if (r.url) {
+              if (r.type === 'host') {
+                this._activateHost(Number(r.host_id || r.id));
+              } else if (r.url) {
                 if (r.url.startsWith('#')) location.hash = r.url;
                 else App.navigate(r.url);
               }
@@ -2209,6 +2358,23 @@ const App = {
   _highlightCmd(items) {
     items.forEach((el, i) => el.classList.toggle('selected', i === this._cmdSelectedIdx));
     items[this._cmdSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+  },
+
+  _fuzzyScore(value, query) {
+    const text = String(value || '').toLowerCase();
+    const q = String(query || '').toLowerCase().trim();
+    if (!q) return 0;
+    const direct = text.indexOf(q);
+    if (direct >= 0) return direct;
+    let cursor = 0;
+    let gapPenalty = 0;
+    for (const char of q) {
+      const found = text.indexOf(char, cursor);
+      if (found < 0) return Infinity;
+      gapPenalty += found - cursor;
+      cursor = found + 1;
+    }
+    return 100 + gapPenalty + (text.length - q.length) / 100;
   },
 
   _closeCommandPalette() {

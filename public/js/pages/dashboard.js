@@ -42,6 +42,7 @@ const DashboardPage = {
         </div>
       </div>
 
+      <div id="compose-first-banner" style="display:none;margin-bottom:16px"></div>
       <div id="dash-error" style="display:none;margin-bottom:12px"></div>
 
       <!-- Summary Cards -->
@@ -89,6 +90,14 @@ const DashboardPage = {
             <div id="health-detail-text" style="font-size:9px;color:var(--text-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
           </div>
         </div>
+        <a href="#/multi-host" class="stat-card" id="fleet-health-card" style="display:none;min-width:250px;text-decoration:none;color:inherit">
+          <div class="stat-icon blue"><i class="fas fa-network-wired"></i></div>
+          <div class="stat-body" style="min-width:0;flex:1">
+            <div class="stat-value" id="fleet-health-value" style="font-size:16px">—</div>
+            <div class="stat-label">Fleet health · 24h</div>
+            <div style="height:34px;margin-top:3px"><canvas id="chart-fleet-health" role="img" aria-label="Connected, degraded, and disconnected hosts over 24 hours"></canvas></div>
+          </div>
+        </a>
       </div>
 
       <!-- Host Info -->
@@ -162,6 +171,7 @@ const DashboardPage = {
     // Restore saved widget order
     this._restoreWidgetOrder();
 
+    this._loadComposeFirstBanner();
     await this._load();
     this._loadPosturePill();
     this._refreshTimer = setInterval(() => this._load(), 30000);
@@ -180,15 +190,50 @@ const DashboardPage = {
     });
   },
 
+  async _loadComposeFirstBanner() {
+    const banner = document.getElementById('compose-first-banner');
+    if (!banner) return;
+    const localKey = `dd-compose-first-dismissed-${App.user?.id || 'user'}`;
+    if (localStorage.getItem(localKey) === '1') return;
+
+    try {
+      const prefs = await Api.getUserPreferences();
+      if (prefs.composeFirstBannerDismissed === 'true') {
+        localStorage.setItem(localKey, '1');
+        return;
+      }
+    } catch { /* local dismissal still prevents repeated display offline */ }
+
+    if (!document.getElementById('compose-first-banner')) return;
+    banner.style.display = '';
+    banner.innerHTML = `
+      <div class="compose-first-card">
+        <div class="compose-first-icon"><i class="fas fa-layer-group"></i></div>
+        <div style="min-width:0;flex:1">
+          <strong>${i18n.t('pages.dashboard.composeFirstTitle')}</strong>
+          <div class="text-sm text-muted">${i18n.t('pages.dashboard.composeFirstSubtitle')}</div>
+        </div>
+        <a class="btn btn-sm btn-primary" href="#/stacks"><i class="fas fa-arrow-right"></i> ${i18n.t('pages.dashboard.manageStacks')}</a>
+        <a class="btn btn-sm btn-secondary" href="?mode=simple#/stacks"><i class="fas fa-compress-alt"></i> ${i18n.t('pages.dashboard.simpleMode')}</a>
+        <button class="btn-icon" id="compose-first-dismiss" title="${i18n.t('common.close')}" aria-label="${i18n.t('common.close')}"><i class="fas fa-times"></i></button>
+      </div>`;
+    banner.querySelector('#compose-first-dismiss')?.addEventListener('click', () => {
+      localStorage.setItem(localKey, '1');
+      banner.remove();
+      Api.saveUserPreference('composeFirstBannerDismissed', 'true').catch(() => {});
+    });
+  },
+
   async _load() {
     try {
-      const [containers, images, volumes, overview, sysInfo, health] = await Promise.all([
+      const [containers, images, volumes, overview, sysInfo, health, fleetHealth] = await Promise.all([
         Api.getContainers(true),
         Api.getImages(),
         Api.getVolumes(),
         Api.getStatsOverview().catch(() => null),
         Api.getSystemInfo().catch(() => null),
         Api.getClusterHealth().catch(() => null),
+        App.user?.role === 'admin' ? Api.getFleetHealth(24).catch(() => null) : Promise.resolve(null),
       ]);
 
       // Backend returns lowercase keys: state, not State
@@ -208,6 +253,7 @@ const DashboardPage = {
       this._renderEvents();
       this._renderHostInfo(sysInfo);
       this._renderClusterHealth(health);
+      this._renderFleetHealth(fleetHealth);
 
       // Update "last updated" indicator
       const updEl = document.getElementById('dash-last-updated');
@@ -270,6 +316,44 @@ const DashboardPage = {
     });
 
     this._renderDoughnut('chart-states', labels, data, colors);
+  },
+
+  _renderFleetHealth(data) {
+    const card = document.getElementById('fleet-health-card');
+    if (!card) return;
+    if (!data?.current || data.current.total_hosts < 3) {
+      card.style.display = 'none';
+      if (this._charts['chart-fleet-health']) {
+        this._charts['chart-fleet-health'].destroy();
+        delete this._charts['chart-fleet-health'];
+      }
+      return;
+    }
+    card.style.display = 'flex';
+    const current = data.current;
+    document.getElementById('fleet-health-value').textContent =
+      `${current.connected} connected · ${current.degraded} degraded · ${current.disconnected} down`;
+    const canvas = document.getElementById('chart-fleet-health');
+    if (!canvas) return;
+    if (this._charts['chart-fleet-health']) this._charts['chart-fleet-health'].destroy();
+    const points = data.history || [];
+    this._charts['chart-fleet-health'] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: points.map(point => point.bucket),
+        datasets: [
+          { label: 'Connected', data: points.map(point => point.connected), borderColor: '#3fb950', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+          { label: 'Degraded', data: points.map(point => point.degraded), borderColor: '#d29922', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+          { label: 'Disconnected', data: points.map(point => point.disconnected), borderColor: '#f85149', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { display: false }, y: { display: false, beginAtZero: true, suggestedMax: current.total_hosts } },
+        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        interaction: { intersect: false, mode: 'index' },
+      },
+    });
   },
 
   _renderCpuChart(overview) {

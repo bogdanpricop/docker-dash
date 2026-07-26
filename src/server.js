@@ -169,6 +169,12 @@ app.use('/api/notification-channels', apiLimiter, require('./routes/notification
 app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/workflows', apiLimiter, require('./routes/workflows'));
+app.use('/api/procedures', apiLimiter, require('./routes/procedures'));
+app.use('/api/fleet', apiLimiter, require('./routes/fleet'));
+app.use('/api/gitops', apiLimiter, require('./routes/gitops'));
+app.use('/api/previews', apiLimiter, require('./routes/previews'));
+app.use('/api/oci-compose', apiLimiter, require('./routes/oci-compose'));
+app.use('/api/disk-pressure', apiLimiter, require('./routes/disk-pressure'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
 const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint

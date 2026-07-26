@@ -84,6 +84,7 @@ i18n.register('ko', 'KR', "한국어", {
     "registry-browse": "레지스트리",
     onboarding: "환경 설정",
     posture: "보안 태세",
+    procedures: "절차",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (알파)",

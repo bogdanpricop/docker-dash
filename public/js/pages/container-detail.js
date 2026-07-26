@@ -1588,14 +1588,16 @@ const ContainersPageDetail = {
   },
 
   _startLogFollow() {
+    if (this._logFollowing) this._stopLogFollow();
     this._logFollowing = true;
     WS.send('logs:subscribe', { containerId: this._detailId, tail: 50, hostId: Api.getHostId() });
 
     this._logDataHandler = WS.on('logs:data', (msg) => {
-      if (msg.data?.containerId !== this._detailId) return;
+      const data = msg.data || msg;
+      if (data.containerId !== this._detailId) return;
       const el = document.getElementById('log-output');
       if (!el) return;
-      const lines = msg.data.lines || [];
+      const lines = data.lines || [];
       for (const line of lines) {
         let cls = '';
         if (/\b(error|fatal|panic|exception|fail)\b/i.test(line)) cls = 'log-error';
@@ -1616,10 +1618,17 @@ const ContainersPageDetail = {
     });
 
     this._logEndHandler = WS.on('logs:end', (msg) => {
-      if (msg.data?.containerId !== this._detailId) return;
+      const data = msg.data || msg;
+      if (data.containerId !== this._detailId) return;
       const el = document.getElementById('log-output');
       if (el) el.innerHTML += '\n<span class="log-line log-warn">[Stream ended — container may have stopped]</span>';
       this._logFollowing = false;
+    });
+    this._logErrorHandler = WS.on('logs:error', (msg) => {
+      const data = msg.data || msg;
+      if (data.containerId && data.containerId !== this._detailId) return;
+      const el = document.getElementById('log-output');
+      if (el) el.innerHTML += `\n<span class="log-line log-error">${Utils.escapeHtml(data.error || 'Log stream failed')}</span>`;
     });
   },
 
@@ -1628,6 +1637,7 @@ const ContainersPageDetail = {
     WS.send('logs:unsubscribe', {});
     if (this._logDataHandler) { this._logDataHandler(); this._logDataHandler = null; }
     if (this._logEndHandler) { this._logEndHandler(); this._logEndHandler = null; }
+    if (this._logErrorHandler) { this._logErrorHandler(); this._logErrorHandler = null; }
   },
 
   // ─── Terminal Tab (exec) ────────────────────

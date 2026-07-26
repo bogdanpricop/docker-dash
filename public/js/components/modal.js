@@ -114,7 +114,7 @@ const Modal = {
   },
 
   // Convenience: confirmation dialog
-  confirm(message, { title, confirmText, danger = false, typeToConfirm, html = false } = {}) {
+  confirm(message, { title, confirmText, danger = false, typeToConfirm, html = false, width = '420px' } = {}) {
     title = title || i18n.t('common.confirm');
     confirmText = confirmText || i18n.t('common.confirm');
     return new Promise((resolve) => {
@@ -139,7 +139,7 @@ const Modal = {
           </button>
         </div>
       `;
-      this.open(markup, { width: '420px' });
+      this.open(markup, { width });
 
       const ok = () => { this.close(); resolve(true); };
       const cancel = () => { this.close(); resolve(false); };
@@ -160,7 +160,8 @@ const Modal = {
   },
 
   // Form dialog: opens with HTML, returns promise resolved with form data or null
-  form(html, { title = '', width = '560px', onSubmit, onMount } = {}) {
+  form(html, { title = '', width = '560px', onSubmit, onMount, submitLabel, confirmText } = {}) {
+    const submitText = submitLabel || confirmText || i18n.t('common.save');
     const wrapper = `
       <div class="modal-header">
         <h3>${Utils.escapeHtml(title)}</h3>
@@ -171,7 +172,7 @@ const Modal = {
       <div class="modal-body">${html}</div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
-        <button class="btn btn-primary" id="modal-submit">${i18n.t('common.save')}</button>
+        <button class="btn btn-primary" id="modal-submit">${Utils.escapeHtml(submitText)}</button>
       </div>
     `;
     return new Promise((resolve) => {
@@ -195,6 +196,7 @@ const Modal = {
   // ─── Stacked Sub-Modal (opens on top of current modal) ───
   _subOverlay: null,
   _subContent: null,
+  _subOnClose: null,
 
   openSub(html, { width } = {}) {
     // Create sub-overlay if not exists
@@ -234,6 +236,47 @@ const Modal = {
     return this._subContent;
   },
 
+  // Confirmation displayed above an existing form/dialog. Using the primary
+  // confirm() here would replace the parent modal and discard its state.
+  confirmSub(message, { title, confirmText, danger = false, typeToConfirm, html = false, width = '420px' } = {}) {
+    title = title || i18n.t('common.confirm');
+    confirmText = confirmText || i18n.t('common.confirm');
+    return new Promise((resolve) => {
+      const typeBlock = typeToConfirm
+        ? `<div style="margin-top:12px"><p class="text-sm" style="color:var(--yellow)">Type <strong>${Utils.escapeHtml(typeToConfirm)}</strong> to confirm:</p><input type="text" class="form-control" id="modal-sub-type-confirm" autocomplete="off" style="margin-top:6px"></div>`
+        : '';
+      const content = this.openSub(`
+        <div class="modal-header">
+          <h3>${Utils.escapeHtml(title)}</h3>
+          <button class="modal-close-btn" id="modal-sub-x" aria-label="Close dialog"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <div>${html ? message : `<p>${Utils.escapeHtml(message)}</p>`}</div>
+          ${typeBlock}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="modal-sub-cancel">${i18n.t('common.cancel')}</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-sub-ok" ${typeToConfirm ? 'disabled' : ''}>${Utils.escapeHtml(confirmText)}</button>
+        </div>
+      `, { width });
+
+      const finish = (answer) => {
+        this._subOnClose = null;
+        this.closeSub();
+        resolve(answer);
+      };
+      const okBtn = content.querySelector('#modal-sub-ok');
+      if (typeToConfirm) {
+        const input = content.querySelector('#modal-sub-type-confirm');
+        input.addEventListener('input', () => { okBtn.disabled = input.value !== typeToConfirm; });
+      }
+      okBtn.addEventListener('click', () => finish(true));
+      content.querySelector('#modal-sub-cancel').addEventListener('click', () => finish(false));
+      content.querySelector('#modal-sub-x').addEventListener('click', () => finish(false));
+      this._subOnClose = () => resolve(false);
+    });
+  },
+
   closeSub() {
     if (!this._subOverlay) return;
     this._subOverlay.classList.remove('modal-visible');
@@ -244,6 +287,9 @@ const Modal = {
     setTimeout(() => {
       this._subOverlay.classList.add('hidden');
       if (this._subContent) this._subContent.innerHTML = '';
+      const onClose = this._subOnClose;
+      this._subOnClose = null;
+      if (onClose) onClose();
     }, 200);
   },
 };

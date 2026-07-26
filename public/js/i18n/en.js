@@ -41,10 +41,11 @@ i18n.register('en', 'EN', 'English', {
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare', timeline: 'Timeline',
     notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     logs: 'Log Explorer', howto: 'How-To', observability: 'Observability', 'sample-feature': 'Sample Plugin', 'registry-browse': 'Registries', onboarding: 'Environment Setup',
-    posture: 'Posture', blueprints: 'Reconciler', copilot: 'Copilot',
+    posture: 'Posture', blueprints: 'Reconciler', copilot: 'Copilot', procedures: 'Procedures',
     'incus-instances': 'Incus / LXD (alpha)', 'proxmox-resources': 'Proxmox (alpha)', 'migration-vm': 'VM Migration (alpha)', 'kubernetes-resources': 'Kubernetes (alpha)', 'nomad-jobs': 'Nomad (alpha)', 'vsphere-resources': 'vSphere / ESXi (alpha)',
     sectionResources: 'Resources', sectionOperations: 'Operations', sectionAdmin: 'Admin',
     sectionCompute: 'Compute', sectionStorage: 'Storage', sectionNetworking: 'Networking', sectionMonitor: 'Monitor',
+    more: 'More', showAll: 'Show all',
   },
   login: {
     title: 'Docker Dash', username: 'Username', password: 'Password',
@@ -124,6 +125,9 @@ i18n.register('en', 'EN', 'English', {
       noDataYet: 'No data yet', noRecentEvents: 'No recent events', uptime: 'Uptime',
       eventsNotAvailable: 'Events not available', justNow: 'just now',
       live: 'Live', offline: 'Offline',
+      composeFirstTitle: 'Manage your stacks',
+      composeFirstSubtitle: 'Compose-first? Start here to create, edit, deploy, and troubleshoot a stack.',
+      manageStacks: 'Open Stacks', simpleMode: 'Simple mode',
       help: {
         title: 'Dashboard Guide',
         intro: 'The Dashboard provides a <strong>real-time overview</strong> of your Docker environment: container states, resource consumption, and recent events.',

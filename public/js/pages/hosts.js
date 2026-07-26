@@ -5,12 +5,15 @@
 
 const HostsPage = {
   _hosts: [],
+  _compactMode: null,
 
   async render(container) {
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-server"></i> ${i18n.t('pages.hosts.title')}</h2>
         <div class="page-actions">
+          ${App.user?.role === 'admin' ? '<button class="btn btn-sm btn-secondary" id="host-manage-groups"><i class="fas fa-layer-group"></i> Manage groups</button>' : ''}
+          <button class="btn btn-sm btn-secondary" id="host-compact" aria-pressed="false"><i class="fas fa-compress"></i> Compact</button>
           <button class="btn btn-sm btn-primary" id="host-add"><i class="fas fa-plus"></i> ${i18n.t('pages.hosts.addHost')}</button>
           <button class="btn btn-sm btn-secondary" id="host-add-non-docker"><i class="fas fa-cubes"></i> Non-Docker host <span class="badge badge-warning" style="font-size:9px">alpha</span></button>
           <button class="btn btn-sm btn-secondary" id="host-refresh"><i class="fas fa-sync-alt"></i></button>
@@ -36,6 +39,17 @@ const HostsPage = {
     container.querySelector('#host-add').addEventListener('click', () => this._addHostDialog());
     container.querySelector('#host-add-non-docker').addEventListener('click', () => this._addNonDockerHostDialog());
     container.querySelector('#host-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#host-manage-groups')?.addEventListener('click', () => {
+      App.navigate('/settings');
+      setTimeout(() => document.querySelector('#settings-tabs [data-tab="access"]')?.click(), 250);
+    });
+    container.querySelector('#host-compact').addEventListener('click', event => {
+      this._compactMode = !this._compactMode;
+      localStorage.setItem('dd-hosts-compact', String(this._compactMode));
+      event.currentTarget.setAttribute('aria-pressed', String(this._compactMode));
+      event.currentTarget.classList.toggle('btn-primary', this._compactMode);
+      this._renderGrid();
+    });
 
     // v8.9.11-alpha.1 — Wire the 3-tab switcher for the docs section.
     // Selected tab persists to localStorage so the user's last view survives
@@ -65,6 +79,15 @@ const HostsPage = {
 
     try {
       this._hosts = await Api.getHosts();
+      if (this._compactMode === null) {
+        const stored = localStorage.getItem('dd-hosts-compact');
+        this._compactMode = stored === null ? this._hosts.length > 10 : stored === 'true';
+      }
+      const compactBtn = document.getElementById('host-compact');
+      if (compactBtn) {
+        compactBtn.setAttribute('aria-pressed', String(this._compactMode));
+        compactBtn.classList.toggle('btn-primary', this._compactMode);
+      }
       this._renderGrid();
     } catch (err) {
       grid.innerHTML = `<div class="empty-msg">${i18n.t('common.error')}: ${err.message}</div>`;
@@ -80,7 +103,17 @@ const HostsPage = {
       return;
     }
 
-    grid.innerHTML = this._hosts.map(h => {
+    grid.classList.toggle('compact', !!this._compactMode);
+    grid.innerHTML = this._compactMode ? this._hosts.map(h => {
+      const status = h.connPaused ? 'needs-attention' : h.healthy === true ? 'online' : h.healthy === false ? 'offline' : 'pending';
+      const dot = h.healthy === true ? 'online' : h.healthy === false ? 'offline' : 'pending';
+      const groups = (h.groups || []).map(group => `<span class="badge" style="font-size:9px">${Utils.escapeHtml(group.name)}</span>`).join('');
+      return `<div class="host-card ${status} ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}" data-host-id="${h.id}">
+        <div class="host-compact-main"><span class="host-tree-status ${dot}" aria-label="${dot}"></span><strong>${Utils.escapeHtml(h.name)}</strong><span class="text-xs text-muted">${Utils.escapeHtml(h.daemonType || 'docker')} · ${Utils.escapeHtml(h.environment || 'development')}</span></div>
+        <div class="host-compact-groups">${groups}</div>
+        <div class="host-card-actions"><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
+      </div>`;
+    }).join('') : this._hosts.map(h => {
       const isOnline = h.healthy === true;
       const isOffline = h.healthy === false;
       const isPending = h.healthy === null;
@@ -121,6 +154,7 @@ const HostsPage = {
             <div class="host-status"><i class="fas ${statusIcon}"></i> ${statusText}</div>
             <div style="display:flex;gap:6px;align-items:center">
               <span class="badge" style="font-size:9px;background:${envColor};color:#fff;padding:2px 6px;border-radius:3px">${envLabel}</span>
+              ${(h.groups || []).map(group => `<span class="badge" style="font-size:9px">${Utils.escapeHtml(group.name)}</span>`).join('')}
               ${h.isDefault ? `<span class="badge badge-info">${i18n.t('pages.hosts.default')}</span>` : ''}
             </div>
           </div>

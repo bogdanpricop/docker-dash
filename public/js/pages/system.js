@@ -373,7 +373,15 @@ const SystemPage = {
   },
 
   async _renderDisk(el) {
-    const du = await Api.getDiskUsage();
+    const [du, hosts] = await Promise.all([Api.getDiskUsage(), Api.getHosts()]);
+    const selectedHostId = Api.getHostId();
+    const selectedHost = hosts.find(host => host.id === selectedHostId)
+      || hosts.find(host => host.isDefault)
+      || hosts.find(host => host.isActive && ['docker', 'podman'].includes(host.daemonType || 'docker'));
+    let pressurePolicy = null;
+    if (selectedHost && (App.user?.role === 'admin' || App.user?.roles?.includes('admin'))) {
+      try { pressurePolicy = await Api.getDiskPressurePolicy(selectedHost.id); } catch { /* optional policy */ }
+    }
     const images = (du.Images || []).reduce((sum, i) => sum + (i.Size || 0), 0);
     const containers = (du.Containers || []).reduce((sum, c) => sum + (c.SizeRw || 0), 0);
     const volumes = (du.Volumes || []).reduce((sum, v) => sum + (v.UsageData?.Size || 0), 0);
@@ -399,8 +407,25 @@ const SystemPage = {
             </table>
           </div>
         </div>
+        ${selectedHost && pressurePolicy ? `<div class="card">
+          <div class="card-header"><h3><i class="fas fa-gauge-high" style="margin-right:8px"></i>Disk-pressure Guardrail</h3><button class="btn btn-sm btn-secondary" id="disk-pressure-config"><i class="fas fa-cog"></i></button></div>
+          <div class="card-body">
+            <table class="info-table">
+              <tr><td>Host</td><td>${Utils.escapeHtml(selectedHost.name)}</td></tr>
+              <tr><td>Automation</td><td>${pressurePolicy.enabled ? '<span class="badge badge-running">Enabled</span>' : '<span class="badge badge-stopped">Disabled</span>'}</td></tr>
+              <tr><td>Execution</td><td>${pressurePolicy.dry_run_only !== false ? '<span class="badge badge-info">Dry-run only</span>' : '<span class="badge badge-warning">Live cleanup</span>'}</td></tr>
+              <tr><td>Threshold</td><td>${pressurePolicy.threshold_percent || 85}%${pressurePolicy.max_docker_bytes ? ` or ${Utils.formatBytes(pressurePolicy.max_docker_bytes)}` : ''}</td></tr>
+              <tr><td>Minimum age</td><td>${pressurePolicy.min_age_hours || 168} hours</td></tr>
+              <tr><td>Volumes</td><td><span class="text-green">Always preserved</span></td></tr>
+            </table>
+            <button class="btn btn-sm btn-primary" id="disk-pressure-preview" style="margin-top:12px"><i class="fas fa-list-check"></i> Preview candidates</button>
+          </div>
+        </div>` : ''}
       </div>
     `;
+
+    el.querySelector('#disk-pressure-config')?.addEventListener('click', () => this._configureDiskPressure(selectedHost, pressurePolicy));
+    el.querySelector('#disk-pressure-preview')?.addEventListener('click', () => this._previewDiskPressure(selectedHost, pressurePolicy));
 
     // Render pie chart
     if (this._charts.disk) this._charts.disk.destroy();
@@ -421,6 +446,68 @@ const SystemPage = {
         },
       });
     }
+  },
+
+  async _configureDiskPressure(host, policy = {}) {
+    const result = await Modal.form(`
+      <div class="alert alert-warning"><i class="fas fa-shield-alt"></i> New policies start in dry-run mode. Volumes are never candidates. Resources labelled <code>${Utils.escapeHtml(policy.protected_label || 'docker-dash.protect')}=true</code> are excluded.</div>
+      <div class="form-group"><label><input type="checkbox" id="dp-enabled" ${policy.enabled ? 'checked' : ''}> Evaluate automatically every five minutes</label></div>
+      <div class="form-group"><label><input type="checkbox" id="dp-dry" ${policy.dry_run_only !== false ? 'checked' : ''}> Dry-run only (recommended until plans are reviewed)</label></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label>Filesystem threshold %</label><input id="dp-threshold" class="form-control" type="number" min="50" max="99" value="${policy.threshold_percent || 85}"></div>
+        <div class="form-group"><label>Docker bytes threshold (GiB, optional)</label><input id="dp-bytes" class="form-control" type="number" min="1" value="${policy.max_docker_bytes ? Math.round(policy.max_docker_bytes / 1073741824) : ''}"></div>
+        <div class="form-group"><label>Minimum resource age (hours)</label><input id="dp-age" class="form-control" type="number" min="1" max="8760" value="${policy.min_age_hours || 168}"></div>
+        <div class="form-group"><label>Cooldown (minutes)</label><input id="dp-cooldown" class="form-control" type="number" min="15" max="10080" value="${policy.cooldown_minutes || 360}"></div>
+      </div>
+      <div class="form-group"><label>Protected label</label><input id="dp-label" class="form-control mono" value="${Utils.escapeHtml(policy.protected_label || 'docker-dash.protect')}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label><input type="checkbox" id="dp-containers" ${policy.prune_containers !== false ? 'checked' : ''}> Old stopped containers</label>
+        <label><input type="checkbox" id="dp-images" ${policy.prune_images !== false ? 'checked' : ''}> Old unused images</label>
+        <label><input type="checkbox" id="dp-networks" ${policy.prune_networks ? 'checked' : ''}> Old unused networks</label>
+        <label><input type="checkbox" id="dp-cache" ${policy.prune_build_cache ? 'checked' : ''}> Old BuildKit cache</label>
+      </div>
+    `, {
+      title: `Disk-pressure Policy · ${Utils.escapeHtml(host.name)}`, width: '650px', confirmText: 'Save Policy',
+      onSubmit: content => ({
+        enabled: content.querySelector('#dp-enabled').checked,
+        dry_run_only: content.querySelector('#dp-dry').checked,
+        threshold_percent: Number(content.querySelector('#dp-threshold').value),
+        max_docker_bytes: content.querySelector('#dp-bytes').value ? Number(content.querySelector('#dp-bytes').value) * 1073741824 : null,
+        min_age_hours: Number(content.querySelector('#dp-age').value),
+        cooldown_minutes: Number(content.querySelector('#dp-cooldown').value),
+        protected_label: content.querySelector('#dp-label').value.trim(),
+        prune_containers: content.querySelector('#dp-containers').checked,
+        prune_images: content.querySelector('#dp-images').checked,
+        prune_networks: content.querySelector('#dp-networks').checked,
+        prune_build_cache: content.querySelector('#dp-cache').checked,
+      }),
+    });
+    if (!result) return;
+    if (!result.dry_run_only) {
+      const confirmed = await Modal.confirmSub('Enable live automatic cleanup for exact, old, unprotected candidates? Volumes remain preserved.', { danger: true, confirmText: 'Enable live cleanup' });
+      if (!confirmed) return;
+    }
+    try { await Api.updateDiskPressurePolicy(host.id, result); Toast.success('Disk-pressure policy saved'); await this._renderTab(); }
+    catch (err) { Toast.error(err.message); }
+  },
+
+  async _previewDiskPressure(host, policy = {}) {
+    try {
+      const plan = await Api.previewDiskPressure(host.id);
+      const candidates = plan.candidates || {};
+      const counts = Object.fromEntries(Object.entries(candidates).map(([key, values]) => [key, values.length]));
+      const confirmed = await Modal.confirm(`
+        <div style="text-align:left"><p><strong>${plan.threshold_met ? 'Threshold is met.' : 'Threshold is not currently met.'}</strong> Docker accounts for ${Utils.formatBytes(plan.docker_bytes)}.</p>
+        <ul><li>${counts.containers || 0} stopped container(s)</li><li>${counts.images || 0} unused image(s)</li><li>${counts.networks || 0} unused network(s)</li><li>${counts.buildCache || 0} build-cache record(s)</li><li><strong>0 volumes</strong></li></ul>
+        <p class="text-muted">Estimated reclaimable image/cache bytes: ${Utils.formatBytes(plan.candidate_bytes || 0)}</p></div>`,
+        { confirmText: policy.dry_run_only !== false ? 'Record dry-run' : 'Run exact cleanup', danger: policy.dry_run_only === false, html: true }
+      );
+      if (!confirmed) return;
+      const result = await Api.runDiskPressure(host.id, true);
+      if (result.dry_run) Toast.success('Dry-run plan recorded; no resources were deleted');
+      else Toast.success(`Cleanup ${result.status}; reclaimed approximately ${Utils.formatBytes(result.reclaimed_bytes || 0)}`);
+      await this._renderTab();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _renderEvents(el) {

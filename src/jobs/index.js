@@ -522,6 +522,26 @@ function startAll() {
     return gitDrift.scanAll(dockerService);
   })));
 
+  // Fleet health history for the dashboard sparkline. Sampling runs in the
+  // background so the 24-hour chart remains useful even when no admin keeps
+  // the dashboard open. The service upserts the current five-minute bucket.
+  jobs.push(cron.schedule('*/5 * * * *', _m('fleet-health-snapshot', () => {
+    return require('../services/fleet-operations').recordHealthSnapshot();
+  })));
+
+  // Guarded disk-pressure automation. Policies are disabled and dry-run-only
+  // by default; the service also enforces per-host cooldowns and never deletes
+  // volumes. Leader-only so HA replicas cannot race cleanup operations.
+  jobs.push(cron.schedule('*/5 * * * *', _m('disk-pressure-sweep', () => {
+    return require('../services/disk-pressure').runAllPolicies();
+  })));
+
+  // Pull-request preview TTL reaper. Closing webhooks perform immediate
+  // cleanup; this sweep covers missed deliveries and abandoned previews.
+  jobs.push(cron.schedule('*/5 * * * *', _m('preview-ttl-reaper', () => {
+    return require('../services/preview-environments').reapExpired();
+  })));
+
   // v7.4.0 — Sample feature cron tick (CONTRIBUTOR DEMO). Auto-increments
   // the demo counter every minute so contributors see the cron pattern fire
   // without external triggers. Leader-only via _m() default; skipped entirely

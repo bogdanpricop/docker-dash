@@ -84,6 +84,7 @@ i18n.register('it', 'IT', "Italiano", {
     "registry-browse": "Registri",
     onboarding: "Configurazione ambiente",
     posture: "Postura",
+    procedures: "Procedure",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alpha)",

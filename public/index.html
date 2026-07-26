@@ -17,6 +17,8 @@
      JetBrains Mono and Inter degrade to system monospace and sans-serif. -->
 <link rel="stylesheet" href="/lib/fontawesome.min.css?v=__VERSION__">
 <link rel="stylesheet" href="/lib/xterm.min.css?v=__VERSION__">
+<link rel="stylesheet" href="/vendor/codemirror/lib/codemirror.css?v=__VERSION__">
+<link rel="stylesheet" href="/vendor/codemirror/addon/lint/lint.css?v=__VERSION__">
 <link rel="stylesheet" href="/css/app.css?v=__VERSION__">
 </head>
 <body>
@@ -88,13 +90,33 @@
         </button>
       </div>
       <div class="host-selector" id="host-selector" style="display:none">
-        <select id="host-select" class="form-control form-control-sm" title="Docker Host">
+        <select id="host-select" class="form-control form-control-sm" title="Docker Host" hidden aria-hidden="true">
           <option value="0">Local</option>
         </select>
+        <button type="button" class="host-tree-toggle" id="host-tree-toggle" aria-haspopup="tree" aria-expanded="false">
+          <span class="host-tree-status pending" id="host-tree-current-status"></span>
+          <span id="host-tree-current-name">Local</span>
+          <i class="fas fa-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div class="host-tree-panel hidden" id="host-tree-panel">
+          <label class="sr-only" for="host-tree-search">Search hosts</label>
+          <div class="host-tree-search"><i class="fas fa-search" aria-hidden="true"></i><input id="host-tree-search" type="search" placeholder="Search hosts…" autocomplete="off"></div>
+          <div id="host-tree" role="tree" aria-label="Hosts by group"></div>
+        </div>
       </div>
       <nav class="sidebar-nav" id="sidebar-nav" role="navigation" aria-label="Main navigation">
         <a href="#/" class="nav-item" data-page="dashboard">
           <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+        </a>
+        <a href="#/stacks" class="nav-item" data-page="stacks">
+          <i class="fas fa-layer-group"></i><span>Stacks</span>
+        </a>
+        <a href="#/containers" class="nav-item" data-page="containers">
+          <i class="fas fa-cube"></i><span>Containers</span>
+          <span class="nav-badge-count hidden" id="container-count"></span>
+        </a>
+        <a href="#/images" class="nav-item" data-page="images">
+          <i class="fas fa-layer-group"></i><span>Images</span>
         </a>
         <a href="#/insights" class="nav-item" data-page="insights">
           <i class="fas fa-brain"></i><span>Insights</span>
@@ -111,13 +133,6 @@
         <div class="nav-section-label"><span>Resources</span></div>
         <a href="#/multi-host" class="nav-item" data-page="multi-host">
           <i class="fas fa-network-wired"></i><span>Multi-Host</span>
-        </a>
-        <a href="#/containers" class="nav-item" data-page="containers">
-          <i class="fas fa-cube"></i><span>Containers</span>
-          <span class="nav-badge-count hidden" id="container-count"></span>
-        </a>
-        <a href="#/images" class="nav-item" data-page="images">
-          <i class="fas fa-layer-group"></i><span>Images</span>
         </a>
         <a href="#/volumes" class="nav-item" data-page="volumes">
           <i class="fas fa-database"></i><span>Volumes</span>
@@ -148,14 +163,14 @@
         <a href="#/system" class="nav-item" data-page="system">
           <i class="fas fa-server"></i><span>System</span>
         </a>
+        <a href="#/procedures" class="nav-item" data-page="procedures" data-fleet-daemon="docker,podman">
+          <i class="fas fa-list-check"></i><span>Procedures</span>
+        </a>
         <a href="#/observability" class="nav-item admin-only" data-page="observability">
           <i class="fas fa-chart-line"></i><span>Observability</span>
         </a>
         <a href="#/registry-browse" class="nav-item admin-only" data-page="registry-browse">
           <i class="fas fa-warehouse"></i><span>Registries</span>
-        </a>
-        <a href="#/stacks" class="nav-item" data-page="stacks">
-          <i class="fas fa-layer-group"></i><span>Stacks</span>
         </a>
         <a href="#/swarm" class="nav-item" data-page="swarm" data-capability="swarm">
           <i class="fas fa-project-diagram"></i><span>Swarm</span>
@@ -282,6 +297,13 @@
   <script src="/lib/chart.umd.min.js?v=__VERSION__"></script>
   <script src="/lib/xterm.min.js?v=__VERSION__"></script>
   <script src="/lib/xterm-addon-fit.min.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/lib/codemirror.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/mode/yaml/yaml.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/edit/matchbrackets.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/edit/closebrackets.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/lint/lint.js?v=__VERSION__"></script>
+  <script src="/vendor/js-yaml/js-yaml.min.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/lint/yaml-lint.js?v=__VERSION__"></script>
   <script src="/js/i18n.js?v=__VERSION__"></script>
   <!-- Language files: add new languages here (order doesn't matter) -->
   <script src="/js/i18n/en.js?v=__VERSION__"></script>
@@ -298,6 +320,8 @@
   <script src="/js/klingon.js?v=__VERSION__"></script>
   <script src="/js/qr.js?v=__VERSION__"></script>
   <script src="/js/utils.js?v=__VERSION__"></script>
+  <script src="/js/utils/yaml-editor.js?v=__VERSION__"></script>
+  <script src="/js/components/compose-service-form.js?v=__VERSION__"></script>
   <script src="/js/api.js?v=__VERSION__"></script>
   <script src="/js/ws.js?v=__VERSION__"></script>
   <!-- Theme toggle on login page (before app loads) -->
@@ -352,6 +376,7 @@
   <script src="/js/pages/whatsnew.js?v=__VERSION__"></script>
   <script src="/js/pages/profile.js?v=__VERSION__"></script>
   <script src="/js/pages/git-stacks.js?v=__VERSION__"></script>
+  <script src="/js/pages/procedures.js?v=__VERSION__"></script>
   <script src="/js/pages/compare.js?v=__VERSION__"></script>
   <script src="/js/pages/insights.js?v=__VERSION__"></script>
   <script src="/js/pages/timeline.js?v=__VERSION__"></script>

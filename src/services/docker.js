@@ -867,6 +867,14 @@ class DockerService {
     return results;
   }
 
+  async pruneBuildCacheBefore(unixTimestamp, hostId = 0) {
+    const PRUNE_TIMEOUT_MS = 15 * 60_000;
+    const docker = this._createConnection(this._getHostConfig(hostId), PRUNE_TIMEOUT_MS);
+    return docker.pruneBuilder({
+      filters: JSON.stringify({ until: [String(Math.floor(Number(unixTimestamp)))] }),
+    });
+  }
+
   // ─── Events Stream ────────────────────────────────────────
 
   async getEventStream(hostId = 0) {

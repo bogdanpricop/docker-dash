@@ -2,14 +2,29 @@
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 // child_process used via _execFile method (execFileSync)
 const simpleGit = require('simple-git');
 const { getDb } = require('../db');
 const { encrypt, decrypt, generateToken } = require('../utils/crypto');
 const { now } = require('../utils/helpers');
 const log = require('../utils/logger')('git');
+const dockerService = require('./docker');
+const gitTargets = require('./git-multi-host');
 
 const REPOS_BASE = path.join(process.env.DATA_DIR || '/data', 'repos');
+const PREVIEWS_BASE = path.join(process.env.DATA_DIR || '/data', 'previews');
+const DEFAULT_ROLLOUT_POLICY = Object.freeze({
+  enabled: false,
+  strategy: 'fixed',
+  initialWave: 1,
+  multiplier: 2,
+  maxParallel: 3,
+  delaySeconds: 0,
+  healthGate: true,
+  healthTimeoutSeconds: 120,
+  onFailure: 'pause',
+});
 
 // v8.7.10 — Per-operation timeouts for simple-git. Without these, a slow or
 // hung git remote (dead TLS handshake, rate-limited, broken DNS) blocks the
@@ -28,6 +43,7 @@ const _gitOpts = (ms = GIT_FETCH_TIMEOUT_MS) => ({ timeout: { block: ms } });
 class GitService {
   constructor() {
     fs.mkdirSync(REPOS_BASE, { recursive: true });
+    fs.mkdirSync(PREVIEWS_BASE, { recursive: true });
     // Cleanup stale SSH keys on startup (H9 fix)
     this._cleanupSshKeys();
   }
@@ -148,6 +164,28 @@ class GitService {
 
   // ─── Stack Operations ──────────────────────────────────
 
+  _decorateStackRow(row) {
+    if (!row) return null;
+    const targets = gitTargets.listTargets(row.id);
+    let rolloutPolicy;
+    try {
+      rolloutPolicy = this._validateRolloutPolicy(row.rollout_policy, { allowDisabled: true });
+    } catch (err) {
+      log.warn('Ignoring invalid stored rollout policy', { stackId: row.id, error: err.message });
+      rolloutPolicy = { ...DEFAULT_ROLLOUT_POLICY, enabled: false };
+    }
+    return {
+      ...row,
+      env_overrides: row.env_overrides ? JSON.parse(row.env_overrides) : null,
+      force_redeploy: !!row.force_redeploy,
+      re_pull_images: !!row.re_pull_images,
+      tls_skip_verify: !!row.tls_skip_verify,
+      rollout_policy: rolloutPolicy,
+      targets,
+      target_host_ids: targets.map(target => target.host_id),
+    };
+  }
+
   listStacks(hostId) {
     const db = getDb();
     let sql = `
@@ -157,18 +195,18 @@ class GitService {
     `;
     const params = [];
     if (hostId !== undefined && hostId !== null) {
-      sql += ' WHERE gs.host_id = ?';
-      params.push(hostId);
+      const normalizedHostId = require('./host-permissions').normalizeHostId(hostId);
+      sql += ` WHERE EXISTS (
+        SELECT 1 FROM git_stack_targets target
+        WHERE target.stack_id = gs.id AND target.host_id = ?
+      ) OR (NOT EXISTS (
+        SELECT 1 FROM git_stack_targets target WHERE target.stack_id = gs.id
+      ) AND gs.host_id = ?)`;
+      params.push(normalizedHostId, normalizedHostId);
     }
     sql += ' ORDER BY gs.stack_name';
 
-    return db.prepare(sql).all(...params).map(r => ({
-      ...r,
-      env_overrides: r.env_overrides ? JSON.parse(r.env_overrides) : null,
-      force_redeploy: !!r.force_redeploy,
-      re_pull_images: !!r.re_pull_images,
-      tls_skip_verify: !!r.tls_skip_verify,
-    }));
+    return db.prepare(sql).all(...params).map(row => this._decorateStackRow(row));
   }
 
   getStack(id) {
@@ -180,13 +218,7 @@ class GitService {
       WHERE gs.id = ?
     `).get(id);
     if (!r) return null;
-    return {
-      ...r,
-      env_overrides: r.env_overrides ? JSON.parse(r.env_overrides) : null,
-      force_redeploy: !!r.force_redeploy,
-      re_pull_images: !!r.re_pull_images,
-      tls_skip_verify: !!r.tls_skip_verify,
-    };
+    return this._decorateStackRow(r);
   }
 
   createStack(data) {
@@ -208,14 +240,23 @@ class GitService {
       if (!cred) throw Object.assign(new Error('Credential not found'), { status: 400 });
     }
 
+    const targetHostIds = gitTargets.normalizeTargetHostIds(
+      data.target_host_ids || data.hostIds || [data.host_id ?? 0]
+    );
+    const rolloutPolicy = this._validateRolloutPolicy(
+      data.rollout_policy || data.rolloutPolicy,
+      { allowDisabled: true }
+    );
+    const deployImmediately = data.deploy_immediately !== false;
+
     const r = db.prepare(`
       INSERT INTO git_stacks (stack_name, host_id, repo_url, branch, compose_path,
         credential_id, env_overrides, force_redeploy, re_pull_images, tls_skip_verify,
-        status, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cloning', ?)
+        rollout_policy, status, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.stack_name,
-      data.host_id || 0,
+      targetHostIds[0],
       data.repo_url,
       data.branch || 'main',
       data.compose_path || 'docker-compose.yml',
@@ -224,36 +265,54 @@ class GitService {
       data.force_redeploy !== false ? 1 : 0,
       data.re_pull_images ? 1 : 0,
       data.tls_skip_verify ? 1 : 0,
+      JSON.stringify(rolloutPolicy),
+      deployImmediately ? 'cloning' : 'pending',
       data.created_by,
     );
 
     const id = Number(r.lastInsertRowid);
+    gitTargets.setTargets(id, targetHostIds);
     log.info('Git stack created', { id, stack_name: data.stack_name, repo_url: data.repo_url });
 
-    // Trigger clone + deploy in background
-    this._cloneAndDeploy(id).catch(err => {
-      log.error('Initial clone+deploy failed', { stackId: id, error: err.message });
-    });
+    // Declarative GitOps apply creates desired configuration without an
+    // implicit production mutation. Interactive creation keeps the original
+    // clone-and-deploy behavior.
+    if (deployImmediately) {
+      this._cloneAndDeploy(id).catch(err => {
+        log.error('Initial clone+deploy failed', { stackId: id, error: err.message });
+      });
+    }
 
-    return { id, stack_name: data.stack_name, status: 'cloning' };
+    return { id, stack_name: data.stack_name, status: deployImmediately ? 'cloning' : 'pending' };
   }
 
   updateStack(id, data) {
     const db = getDb();
     const existing = this.getStack(id);
     if (!existing) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+    const changesTargets = data.target_host_ids !== undefined || data.hostIds !== undefined;
+    if (changesTargets && (existing.status === 'deploying' || existing.status === 'cloning')) {
+      throw Object.assign(new Error('Deployment targets cannot be changed while the stack is deploying'), { status: 409 });
+    }
 
     if (data.compose_path) this._validateComposePath(data.compose_path);
+
+    if (data.rolloutPolicy !== undefined && data.rollout_policy === undefined) {
+      data.rollout_policy = data.rolloutPolicy;
+    }
 
     const sets = [];
     const params = [];
     const allowed = ['branch', 'compose_path', 'credential_id', 'env_overrides',
-      'force_redeploy', 're_pull_images', 'tls_skip_verify', 'additional_files', 'custom_ca_cert'];
+      'force_redeploy', 're_pull_images', 'tls_skip_verify', 'additional_files', 'custom_ca_cert',
+      'rollout_policy'];
 
     for (const key of allowed) {
       if (data[key] !== undefined) {
         sets.push(`${key} = ?`);
-        if (key === 'env_overrides' || key === 'additional_files')
+        if (key === 'rollout_policy')
+          params.push(JSON.stringify(this._validateRolloutPolicy(data[key], { allowDisabled: true })));
+        else if (key === 'env_overrides' || key === 'additional_files')
           params.push(typeof data[key] === 'string' ? data[key] : JSON.stringify(data[key]));
         else if (['force_redeploy', 're_pull_images', 'tls_skip_verify'].includes(key))
           params.push(data[key] ? 1 : 0);
@@ -268,11 +327,16 @@ class GitService {
       if (files.length > 10) throw new Error('Maximum 10 compose files allowed');
     }
 
-    if (sets.length === 0) return;
-    sets.push('updated_at = ?');
-    params.push(now());
-    params.push(id);
-    db.prepare(`UPDATE git_stacks SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    if (sets.length > 0) {
+      sets.push('updated_at = ?');
+      params.push(now());
+      params.push(id);
+      db.prepare(`UPDATE git_stacks SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    }
+    if (changesTargets) {
+      gitTargets.setTargets(id, data.target_host_ids || data.hostIds);
+    }
+    if (sets.length === 0 && data.target_host_ids === undefined && data.hostIds === undefined) return;
     log.info('Git stack updated', { id });
   }
 
@@ -283,13 +347,14 @@ class GitService {
     const repoDir = path.join(REPOS_BASE, String(id));
 
     if (removeContainers && fs.existsSync(repoDir)) {
-      try {
-        const composePath = path.join(repoDir, stack.compose_path);
-        const args = ['compose', '-f', composePath, '-p', stack.stack_name, 'down'];
-        if (removeVolumes) args.push('--volumes');
-        require('child_process').execFileSync('docker', args, { timeout: 60000, encoding: 'utf8', stdio: 'pipe' });
-      } catch (err) {
-        log.warn('compose down failed during delete', { stackId: id, error: err.message });
+      for (const target of this._deploymentTargets(stack)) {
+        try {
+          await this._composeDown(id, stack, target.host_id, { removeVolumes });
+        } catch (err) {
+          log.warn('compose down failed during delete', {
+            stackId: id, hostId: target.host_id, error: err.message,
+          });
+        }
       }
     }
 
@@ -309,7 +374,7 @@ class GitService {
 
   // ─── Deploy & Check ──────────────────────────────────
 
-  async deployStack(id, { force = false } = {}) {
+  async deployStack(id, { force = false, actor = null } = {}) {
     const db = getDb();
     const stack = this.getStack(id);
     if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
@@ -320,9 +385,17 @@ class GitService {
     db.prepare('UPDATE git_stacks SET status = ?, error_message = NULL, updated_at = ? WHERE id = ?')
       .run('deploying', now(), id);
 
-    this._pullAndDeploy(id, { force }).catch(err => {
+    const deploymentId = this._recordDeployment(
+      id, { hash: 'pending', message: '', author: '' }, 'manual', actor?.userId || null
+    );
+    this._broadcast('git:deploy:start', {
+      stack_id: id, stack_name: stack.stack_name, deployment_id: deploymentId,
+    });
+
+    this._pullAndDeploy(id, { force, deploymentId, triggerType: 'manual', actor }).catch(err => {
       log.error('Deploy failed', { stackId: id, error: err.message });
     });
+    return deploymentId;
   }
 
   async checkForUpdates(id) {
@@ -411,7 +484,11 @@ class GitService {
 
     sql += ' ORDER BY started_at DESC LIMIT ? OFFSET ?';
     params.push(Math.min(limit, 100), (page - 1) * limit);
-    const rows = db.prepare(sql).all(...params);
+    const rows = db.prepare(sql).all(...params).map(row => ({
+      ...row,
+      rollout_policy: this._parseJson(row.rollout_policy_json, null),
+      target_results: this._parseJson(row.target_results_json, []),
+    }));
     return { rows, total, page, limit };
   }
 
@@ -433,6 +510,13 @@ class GitService {
       UPDATE git_deployments SET status = ?, error_message = ?, finished_at = datetime('now'), duration_ms = ?
       WHERE id = ?
     `).run(status, errorMessage, durationMs, deploymentId);
+  }
+
+  _storeDeploymentRollout(deploymentId, policy, results) {
+    if (!deploymentId) return;
+    getDb().prepare(`
+      UPDATE git_deployments SET rollout_policy_json = ?, target_results_json = ? WHERE id = ?
+    `).run(JSON.stringify(policy), JSON.stringify(results || []), deploymentId);
   }
 
   // ─── Webhook / Auto-Deploy ────────────────────────────
@@ -474,7 +558,7 @@ class GitService {
    * Trigger a deployment — used by webhook receiver and polling manager.
    * Returns the deployment ID.
    */
-  async triggerDeploy(stackId, triggerType, userId = null) {
+  async triggerDeploy(stackId, triggerType, userId = null, actor = null) {
     const stack = this.getStack(stackId);
     if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
     if (stack.status === 'deploying' || stack.status === 'cloning') {
@@ -490,7 +574,10 @@ class GitService {
 
     this._broadcast('git:deploy:start', { stack_id: stackId, stack_name: stack.stack_name, deployment_id: deploymentId });
 
-    this._pullAndDeploy(stackId, { force: stack.force_redeploy, deploymentId, triggerType }).catch(err => {
+    this._pullAndDeploy(stackId, {
+      force: stack.force_redeploy, deploymentId, triggerType,
+      actor: actor || (userId ? { userId } : null),
+    }).catch(err => {
       log.error('Triggered deploy failed', { stackId, error: err.message });
     });
 
@@ -532,7 +619,7 @@ class GitService {
     };
   }
 
-  async rollbackStack(stackId, deploymentId) {
+  async rollbackStack(stackId, deploymentId, actor = null) {
     const db = getDb();
     const stack = this.getStack(stackId);
     if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
@@ -555,9 +642,11 @@ class GitService {
       await git.checkout(deployment.commit_hash);
 
       this._writeEnvOverrides(stackId, stack);
-      await this._composeUp(stackId, stack);
-
       const shortHash = deployment.commit_hash.substring(0, 7);
+      const targetResults = await this._deployComposeToTargets(stackId, stack, {
+        commit: shortHash, triggerType: 'rollback', actor,
+        deploymentId: rollbackDeployId, rolloutPolicy: { enabled: false },
+      });
       db.prepare(`
         UPDATE git_stacks SET status = 'running', error_message = NULL,
           last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
@@ -569,8 +658,11 @@ class GitService {
       // Mark original deployment as rolled back
       db.prepare('UPDATE git_deployments SET status = ? WHERE id = ?').run('rolled_back', deploymentId);
 
-      this._broadcast('git:deploy:success', { stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash, rollback: true });
-      log.info('Stack rolled back', { stackId, toCommit: shortHash });
+      this._broadcast('git:deploy:success', {
+        stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
+        rollback: true, targets: targetResults,
+      });
+      log.info('Stack rolled back', { stackId, toCommit: shortHash, targets: targetResults.length });
     } catch (err) {
       this._completeDeployment(rollbackDeployId, 'failed', this._sanitizeGitError(err.message));
       db.prepare('UPDATE git_stacks SET status = ?, error_message = ?, updated_at = ? WHERE id = ?')
@@ -623,8 +715,9 @@ class GitService {
     const stack = this.getStack(stackId);
     if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
 
-    const repoDir = this._getRepoDir(stackId);
-    if (!fs.existsSync(repoDir)) throw new Error('Repository not cloned yet');
+    const repoPath = this._getRepoDir(stackId);
+    if (!fs.existsSync(repoPath)) throw new Error('Repository not cloned yet');
+    const repoDir = fs.realpathSync(repoPath);
 
     const git = this._getGit(repoDir, stack);
 
@@ -651,7 +744,7 @@ class GitService {
     const writtenFiles = [];
     for (const [filePath, content] of Object.entries(files)) {
       this._validateComposePath(filePath);
-      const fullPath = path.join(repoDir, filePath);
+      const fullPath = this._resolveRepoFile(repoDir, filePath);
       const dir = path.dirname(fullPath);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(fullPath, content, 'utf8');
@@ -680,6 +773,105 @@ class GitService {
 
     log.info('Pushed to Git', { stackId, commit: latest.hash.substring(0, 7) });
     return { ok: true, commitHash: latest.hash.substring(0, 7) };
+  }
+
+  readComposeFile(stackId, filePath) {
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+    const relativePath = filePath || stack.compose_path || 'docker-compose.yml';
+    this._validateComposePath(relativePath);
+
+    const repoPath = this._getRepoDir(stackId);
+    if (!fs.existsSync(repoPath)) {
+      throw Object.assign(new Error('Compose file not found'), { status: 404 });
+    }
+    const repoDir = fs.realpathSync(repoPath);
+    let fullPath;
+    try { fullPath = this._resolveRepoFile(repoDir, relativePath, { mustExist: true }); }
+    catch (err) {
+      if (err.code === 'ENOENT') throw Object.assign(new Error('Compose file not found'), { status: 404 });
+      throw err;
+    }
+    let stat;
+    try { stat = fs.statSync(fullPath); }
+    catch { throw Object.assign(new Error('Compose file not found'), { status: 404 }); }
+    if (!stat.isFile()) throw Object.assign(new Error('Compose path is not a file'), { status: 400 });
+    if (stat.size > 2 * 1024 * 1024) {
+      throw Object.assign(new Error('Compose file exceeds 2 MB'), { status: 413 });
+    }
+    return { path: relativePath, content: fs.readFileSync(fullPath, 'utf8') };
+  }
+
+  /**
+   * Prepare a checkout dedicated to a pull-request preview. The destination
+   * is derived from a numeric database id and can never escape PREVIEWS_BASE.
+   * Production env overrides are intentionally not copied here.
+   */
+  async preparePreviewCheckout(stackId, previewId, { ref, sha, repositoryUrl = null, useStackCredentials = true } = {}) {
+    const stack = this.getStack(stackId);
+    if (!stack) throw Object.assign(new Error('Git stack not found'), { status: 404 });
+    if (!Number.isInteger(Number(previewId)) || Number(previewId) <= 0) {
+      throw Object.assign(new Error('Invalid preview id'), { status: 400 });
+    }
+    if (!ref || !/^[A-Za-z0-9._\/-]{1,240}$/.test(ref) || ref.includes('..')) {
+      throw Object.assign(new Error('Invalid preview Git ref'), { status: 400 });
+    }
+    if (sha && !/^[a-f0-9]{7,64}$/i.test(sha)) {
+      throw Object.assign(new Error('Invalid preview commit SHA'), { status: 400 });
+    }
+
+    const previewDir = path.join(PREVIEWS_BASE, String(Number(previewId)));
+    if (fs.existsSync(previewDir)) fs.rmSync(previewDir, { recursive: true, force: true });
+    fs.mkdirSync(previewDir, { recursive: true });
+
+    const sourceUrl = repositoryUrl || stack.repo_url;
+    this._validateRepoUrl(sourceUrl);
+    const authUrl = useStackCredentials
+      ? this._buildAuthUrl(sourceUrl, { credential_id: stack.credential_id })
+      : sourceUrl;
+    const env = {};
+    let caPath = null;
+    if (stack.tls_skip_verify) env.GIT_SSL_NO_VERIFY = 'true';
+    else if (stack.custom_ca_cert) {
+      caPath = path.join(REPOS_BASE, `ca-preview-${Number(previewId)}.pem`);
+      fs.writeFileSync(caPath, stack.custom_ca_cert, { mode: 0o600 });
+      env.GIT_SSL_CAINFO = caPath;
+    }
+    if (useStackCredentials && stack.credential_id) {
+      const cred = this.getCredential(stack.credential_id);
+      if (cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted) {
+        const keyPath = this._writeTempKey(stack.id, cred);
+        env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
+      }
+    }
+
+    try {
+      await simpleGit(undefined, _gitOpts(GIT_CLONE_TIMEOUT_MS)).env(env).clone(authUrl, previewDir, [
+        '--branch', ref, '--single-branch', '--depth', '50',
+      ]);
+      const checkout = simpleGit(previewDir, _gitOpts()).env(env);
+      if (sha) await checkout.checkout(sha);
+      const resolvedSha = (await checkout.revparse(['HEAD'])).trim();
+      if (sha && !resolvedSha.toLowerCase().startsWith(sha.toLowerCase())) {
+        throw new Error('Checked-out commit does not match webhook head SHA');
+      }
+      return { directory: previewDir, commit: resolvedSha, stack };
+    } catch (err) {
+      if (fs.existsSync(previewDir)) fs.rmSync(previewDir, { recursive: true, force: true });
+      throw err;
+    } finally {
+      if (caPath && fs.existsSync(caPath)) fs.unlinkSync(caPath);
+    }
+  }
+
+  getPreviewDirectory(previewId) {
+    const id = Number(previewId);
+    if (!Number.isInteger(id) || id <= 0) throw new Error('Invalid preview id');
+    return path.join(PREVIEWS_BASE, String(id));
+  }
+
+  getDockerCliEnvironment(hostId) {
+    return this._dockerCliEnvForHost(hostId);
   }
 
   // ─── Internal Helpers ────────────────────────────────
@@ -757,7 +949,7 @@ class GitService {
     }
   }
 
-  async _cloneAndDeploy(stackId) {
+  async _cloneAndDeploy(stackId, { deploymentId = null, triggerType = 'manual', actor = null } = {}) {
     const db = getDb();
     const stack = this.getStack(stackId);
     const repoDir = this._getRepoDir(stackId);
@@ -793,32 +985,45 @@ class GitService {
 
       db.prepare('UPDATE git_stacks SET status = ? WHERE id = ?').run('deploying', stackId);
 
-      this._writeEnvOverrides(stackId, stack);
-      await this._composeUp(stackId, stack);
-
       const git = simpleGit(repoDir, _gitOpts());
       const logResult = await git.log({ n: 1 });
       const latest = logResult.latest;
+      const shortHash = latest.hash.substring(0, 7);
+
+      if (deploymentId) {
+        db.prepare('UPDATE git_deployments SET commit_hash = ?, commit_message = ?, commit_author = ? WHERE id = ?')
+          .run(latest.hash, latest.message.substring(0, 200), latest.author_name, deploymentId);
+      }
+
+      this._writeEnvOverrides(stackId, stack);
+      const targetResults = await this._deployComposeToTargets(stackId, stack, {
+        commit: shortHash, triggerType, actor, deploymentId,
+      });
 
       db.prepare(`
         UPDATE git_stacks SET status = 'running', error_message = NULL,
           last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
-          last_deployed_at = ?, updated_at = ?
+          last_deployed_at = ?, deployment_count = deployment_count + 1,
+          ${deploymentId ? 'last_deployment_id = ?,' : ''} updated_at = ?
         WHERE id = ?
       `).run(
-        latest.hash.substring(0, 7),
+        shortHash,
         latest.message.substring(0, 200),
         latest.author_name,
-        now(), now(), stackId
+        now(), ...(deploymentId ? [deploymentId] : []), now(), stackId
       );
+      if (deploymentId) this._completeDeployment(deploymentId, 'success');
 
-      log.info('Stack cloned and deployed', { stackId, commit: latest.hash.substring(0, 7) });
+      log.info('Stack cloned and deployed', { stackId, commit: shortHash, targets: targetResults.length });
       this._broadcast('git_stack_deployed', {
         stack_id: stackId, stack_name: stack.stack_name,
-        commit_hash: latest.hash.substring(0, 7),
+        commit_hash: shortHash, targets: targetResults,
       });
 
     } catch (err) {
+      if (deploymentId) {
+        this._completeDeployment(deploymentId, 'failed', this._sanitizeGitError(err.message));
+      }
       db.prepare(
         'UPDATE git_stacks SET status = ?, error_message = ?, updated_at = ? WHERE id = ?'
       ).run('error', this._sanitizeGitError(err.message), now(), stackId);
@@ -831,14 +1036,16 @@ class GitService {
     }
   }
 
-  async _pullAndDeploy(stackId, { force = false, deploymentId = null, triggerType = 'manual' } = {}) {
+  async _pullAndDeploy(stackId, {
+    force = false, deploymentId = null, triggerType = 'manual', actor = null,
+  } = {}) {
     const db = getDb();
     const stack = this.getStack(stackId);
     const repoDir = this._getRepoDir(stackId);
 
     try {
       if (!fs.existsSync(repoDir)) {
-        return this._cloneAndDeploy(stackId);
+        return this._cloneAndDeploy(stackId, { deploymentId, triggerType, actor });
       }
 
       const git = this._getGit(repoDir, stack);
@@ -855,19 +1062,20 @@ class GitService {
         throw new Error(`Compose file not found at '${stack.compose_path}' in repository`);
       }
 
-      this._writeEnvOverrides(stackId, stack);
-      await this._composeUp(stackId, stack);
-
       const logResult = await git.log({ n: 1 });
       const latest = logResult.latest;
       const shortHash = latest.hash.substring(0, 7);
 
-      // Update deployment record
       if (deploymentId) {
         db.prepare('UPDATE git_deployments SET commit_hash = ?, commit_message = ?, commit_author = ? WHERE id = ?')
           .run(latest.hash, latest.message.substring(0, 200), latest.author_name, deploymentId);
-        this._completeDeployment(deploymentId, 'success');
       }
+
+      this._writeEnvOverrides(stackId, stack);
+      const targetResults = await this._deployComposeToTargets(stackId, stack, {
+        commit: shortHash, triggerType, actor, deploymentId,
+      });
+      if (deploymentId) this._completeDeployment(deploymentId, 'success');
 
       db.prepare(`
         UPDATE git_stacks SET status = 'running', error_message = NULL,
@@ -881,9 +1089,12 @@ class GitService {
         now(), stackId
       );
 
-      log.info('Stack redeployed', { stackId, commit: shortHash, trigger: triggerType });
+      log.info('Stack redeployed', {
+        stackId, commit: shortHash, trigger: triggerType, targets: targetResults.length,
+      });
       this._broadcast('git:deploy:success', {
         stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
+        targets: targetResults,
       });
 
     } catch (err) {
@@ -925,7 +1136,295 @@ class GitService {
     fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
   }
 
-  async _composeUp(stackId, stack) {
+  _deploymentTargets(stack) {
+    if (Array.isArray(stack.targets) && stack.targets.length > 0) return stack.targets;
+    const hostIds = gitTargets.normalizeTargetHostIds([stack.host_id ?? 0]);
+    return gitTargets.setTargets(stack.id, hostIds);
+  }
+
+  _dockerCliEnvForHost(hostId) {
+    const host = dockerService._getHostConfig(hostId);
+    const env = { ...process.env, COMPOSE_ANSI: 'never' };
+    delete env.DOCKER_CONTEXT;
+    delete env.DOCKER_HOST;
+    delete env.DOCKER_TLS_VERIFY;
+    delete env.DOCKER_CERT_PATH;
+
+    let certDir = null;
+    if (host.connectionType === 'socket') {
+      const socketPath = host.socketPath || '/var/run/docker.sock';
+      env.DOCKER_HOST = socketPath.startsWith('npipe://')
+        ? socketPath
+        : `unix://${socketPath}`;
+    } else if (host.connectionType === 'ssh') {
+      const tunnel = require('./ssh-tunnel').getTunnel(host.id);
+      if (!tunnel?.localPort) {
+        throw new Error(`SSH tunnel for host "${host.name}" is not ready`);
+      }
+      env.DOCKER_HOST = `tcp://127.0.0.1:${tunnel.localPort}`;
+    } else if (host.connectionType === 'tcp') {
+      env.DOCKER_HOST = `tcp://${host.host}:${host.port || (host.tlsConfig ? 2376 : 2375)}`;
+      if (host.tlsConfig) {
+        const certFiles = [
+          ['ca.pem', host.tlsConfig.ca],
+          ['cert.pem', host.tlsConfig.cert],
+          ['key.pem', host.tlsConfig.key],
+        ];
+        for (const [filename, contents] of certFiles) {
+          if (!contents) throw new Error(`TLS ${filename} is missing for host "${host.name}"`);
+        }
+        certDir = fs.mkdtempSync(path.join(os.tmpdir(), 'docker-dash-compose-tls-'));
+        try {
+          for (const [filename, contents] of certFiles) {
+            fs.writeFileSync(path.join(certDir, filename), contents, { mode: 0o600 });
+          }
+        } catch (err) {
+          fs.rmSync(certDir, { recursive: true, force: true });
+          certDir = null;
+          throw err;
+        }
+        env.DOCKER_TLS_VERIFY = '1';
+        env.DOCKER_CERT_PATH = certDir;
+      }
+    } else {
+      throw new Error(`Unsupported connection type "${host.connectionType}" for host "${host.name}"`);
+    }
+
+    return {
+      env,
+      cleanup: () => {
+        if (certDir && fs.existsSync(certDir)) {
+          fs.rmSync(certDir, { recursive: true, force: true });
+        }
+      },
+    };
+  }
+
+  async _deployComposeToTargets(stackId, stack, {
+    commit, triggerType = 'manual', actor = null, deploymentId = null, rolloutPolicy = null,
+  } = {}) {
+    const targets = this._deploymentTargets(stack);
+    gitTargets.markTargetsPending(stackId);
+    const policy = this._validateRolloutPolicy(
+      rolloutPolicy || stack.rollout_policy,
+      { allowDisabled: true }
+    );
+
+    if (!policy.enabled || targets.length <= 1) {
+      return this._deployTargetsLegacy(stackId, stack, targets, {
+        commit, triggerType, actor, deploymentId, policy,
+      });
+    }
+
+    const results = [];
+    let cursor = 0;
+    let waveNumber = 0;
+    let waveSize = Math.min(policy.initialWave, policy.maxParallel, targets.length);
+
+    while (cursor < targets.length) {
+      waveNumber++;
+      const wave = targets.slice(cursor, cursor + waveSize);
+      const waveResults = await Promise.all(wave.map(target => this._deployOneTarget(
+        stackId, stack, target,
+        { commit, triggerType, actor, policy, wave: waveNumber }
+      )));
+      results.push(...waveResults);
+      cursor += wave.length;
+      this._storeDeploymentRollout(deploymentId, policy, results);
+
+      const failed = waveResults.filter(result => result.status === 'failed');
+      if (failed.length && policy.onFailure !== 'continue') {
+        for (const untouched of targets.slice(cursor)) {
+          results.push({
+            hostId: untouched.host_id, hostName: untouched.host_name,
+            wave: null, status: 'untouched', changed: false,
+          });
+        }
+        if (policy.onFailure === 'rollback') {
+          await this._rollbackRolloutTargets(stackId, stack, commit, results, { triggerType, actor });
+        }
+        this._storeDeploymentRollout(deploymentId, policy, results);
+        const verb = policy.onFailure === 'pause' ? 'paused' : 'rolled back';
+        const err = new Error(`Rollout ${verb} after wave ${waveNumber} failed on ${failed.length} target(s)`);
+        err.targetResults = results;
+        err.rolloutPolicy = policy;
+        err.rolloutPaused = policy.onFailure === 'pause';
+        throw err;
+      }
+
+      if (cursor < targets.length && policy.delaySeconds > 0) {
+        await this._sleep(policy.delaySeconds * 1000);
+      }
+      const remaining = targets.length - cursor;
+      if (remaining > 0) {
+        waveSize = policy.strategy === 'exponential'
+          ? Math.min(waveSize * policy.multiplier, policy.maxParallel, remaining)
+          : Math.min(policy.initialWave, policy.maxParallel, remaining);
+      }
+    }
+
+    const failed = results.filter(result => result.status === 'failed');
+    this._storeDeploymentRollout(deploymentId, policy, results);
+    if (failed.length) {
+      const err = new Error(`Deployment failed on ${failed.length} of ${results.length} target hosts`);
+      err.targetResults = results;
+      err.rolloutPolicy = policy;
+      throw err;
+    }
+    return results;
+  }
+
+  async _deployTargetsLegacy(stackId, stack, targets, {
+    commit, triggerType, actor, deploymentId, policy,
+  }) {
+    const results = [];
+    for (const target of targets) {
+      results.push(await this._deployOneTarget(stackId, stack, target, {
+        commit, triggerType, actor,
+        policy: { ...policy, healthGate: false }, wave: results.length + 1,
+      }));
+    }
+    this._storeDeploymentRollout(deploymentId, policy, results);
+    const failed = results.filter(result => result.status === 'failed');
+    if (failed.length) {
+      const err = new Error(`Deployment failed on ${failed.length} of ${results.length} target hosts`);
+      err.targetResults = results;
+      throw err;
+    }
+    return results;
+  }
+
+  async _deployOneTarget(stackId, stack, target, { commit, triggerType, actor, policy, wave }) {
+    const baseResult = {
+      hostId: target.host_id, hostName: target.host_name, wave,
+      previousCommit: target.last_deployed_commit || null, changed: true,
+    };
+    try {
+      await this._composeUp(stackId, stack, target.host_id);
+      let health = null;
+      if (policy.healthGate) {
+        health = await this._waitForTargetHealth(stack, target.host_id, policy.healthTimeoutSeconds);
+      }
+      gitTargets.updateTargetStatus(stackId, target.host_id, {
+        commit, status: 'success', error: null,
+      });
+      this._auditTargetDeploy(stackId, target, {
+        commit, triggerType, status: 'success', actor, wave,
+      });
+      return { ...baseResult, status: 'success', health };
+    } catch (err) {
+      const error = this._sanitizeGitError(err.message || String(err));
+      gitTargets.updateTargetStatus(stackId, target.host_id, {
+        commit, status: 'failed', error,
+      });
+      this._auditTargetDeploy(stackId, target, {
+        commit, triggerType, status: 'failed', error, actor, wave,
+      });
+      return { ...baseResult, status: 'failed', error };
+    }
+  }
+
+  async _waitForTargetHealth(stack, hostId, timeoutSeconds) {
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    let lastReason = 'no containers discovered';
+    do {
+      const containers = (await dockerService.listContainers(hostId))
+        .filter(container => container.stack === stack.stack_name
+          || container.labels?.['com.docker.compose.project'] === stack.stack_name);
+      if (containers.length) {
+        const inspections = await Promise.all(
+          containers.map(container => dockerService.inspectContainer(container.id, hostId))
+        );
+        const unhealthy = inspections.find(container => container.healthcheck?.Status === 'unhealthy');
+        if (unhealthy) throw new Error(`Health gate failed: ${unhealthy.name || unhealthy.id} is unhealthy`);
+        const terminal = inspections.find(container => ['dead', 'exited'].includes(container.state?.Status));
+        if (terminal) throw new Error(`Health gate failed: ${terminal.name || terminal.id} is ${terminal.state.Status}`);
+        const pending = inspections.filter(container => container.state?.Status !== 'running'
+          || container.healthcheck?.Status === 'starting');
+        if (!pending.length) return { status: 'healthy', containers: inspections.length };
+        lastReason = `${pending.length} container(s) still starting`;
+      }
+      if (Date.now() < deadline) await this._sleep(Math.min(1000, deadline - Date.now()));
+    } while (Date.now() < deadline);
+    throw new Error(`Health gate timed out after ${timeoutSeconds}s: ${lastReason}`);
+  }
+
+  async _rollbackRolloutTargets(stackId, stack, newCommit, results, { triggerType, actor }) {
+    const repoDir = this._getRepoDir(stackId);
+    const git = this._getGit(repoDir, stack);
+    const currentRef = (await git.revparse(['HEAD'])).trim();
+    const changed = results
+      .filter(result => result.changed && ['success', 'failed'].includes(result.status))
+      .reverse();
+    try {
+      for (const result of changed) {
+        const target = { host_id: result.hostId, host_name: result.hostName };
+        try {
+          if (result.previousCommit) {
+            await git.checkout(result.previousCommit);
+            this._writeEnvOverrides(stackId, stack);
+            await this._composeUp(stackId, stack, result.hostId);
+            gitTargets.restoreTargetState(stackId, result.hostId, {
+              commit: result.previousCommit, previousCommit: newCommit,
+              status: 'success', error: null,
+            });
+          } else {
+            await git.checkout(currentRef);
+            await this._composeDown(stackId, stack, result.hostId, { removeVolumes: false });
+            gitTargets.restoreTargetState(stackId, result.hostId, {
+              commit: null, previousCommit: newCommit, status: 'never', error: null,
+            });
+          }
+          result.originalStatus = result.status;
+          result.status = 'rolled_back';
+          result.rollbackCommit = result.previousCommit;
+          this._auditTargetDeploy(stackId, target, {
+            commit: result.previousCommit, triggerType: `${triggerType}_auto_rollback`,
+            status: 'rolled_back', actor, wave: result.wave,
+          });
+        } catch (err) {
+          const error = this._sanitizeGitError(err.message || String(err));
+          result.originalStatus = result.status;
+          result.status = 'rollback_failed';
+          result.rollbackError = error;
+          gitTargets.restoreTargetState(stackId, result.hostId, {
+            commit: result.previousCommit, previousCommit: newCommit,
+            status: 'failed', error,
+          });
+        }
+      }
+    } finally {
+      await git.checkout(currentRef);
+      this._writeEnvOverrides(stackId, stack);
+    }
+    return results;
+  }
+
+  _auditTargetDeploy(stackId, target, {
+    commit, triggerType, status, error = null, actor = null, wave = null,
+  }) {
+    try {
+      require('./audit').log({
+        userId: actor?.userId || null,
+        username: actor?.username || (actor?.userId ? null : 'system'),
+        action: 'git_stack_deploy_target',
+        targetType: 'git_stack_target',
+        targetId: `${stackId}:${target.host_id}`,
+        details: {
+          stack_id: stackId, target_host_id: target.host_id,
+          target_host_name: target.host_name, commit, trigger: triggerType,
+          status, error, wave,
+        },
+        ip: actor?.ip || null,
+      });
+    } catch (err) {
+      log.warn('Could not write per-target deploy audit entry', {
+        stackId, hostId: target.host_id, error: err.message,
+      });
+    }
+  }
+
+  async _composeUp(stackId, stack, hostId = stack.host_id) {
     const repoDir = this._getRepoDir(stackId);
     const envFile = path.join(repoDir, '.env.override');
     const hasEnvOverride = fs.existsSync(envFile);
@@ -954,16 +1453,46 @@ class GitService {
       return args;
     };
 
-    const opts = { cwd: repoDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe' };
+    const dockerEnv = this._dockerCliEnvForHost(hostId);
+    const opts = {
+      cwd: repoDir, timeout: 120000, encoding: 'utf8', stdio: 'pipe', env: dockerEnv.env,
+    };
 
-    if (stack.re_pull_images) {
-      this._execFile('docker', buildArgs(['pull']), opts);
+    try {
+      if (stack.re_pull_images) {
+        this._execFile('docker', buildArgs(['pull']), opts);
+      }
+
+      const upArgs = hasEnvOverride
+        ? buildArgs(['--env-file', envFile, 'up', '-d', '--remove-orphans'])
+        : buildArgs(['up', '-d', '--remove-orphans']);
+      this._execFile('docker', upArgs, opts);
+    } finally {
+      dockerEnv.cleanup();
     }
+  }
 
-    const upArgs = hasEnvOverride
-      ? buildArgs(['--env-file', envFile, 'up', '-d', '--remove-orphans'])
-      : buildArgs(['up', '-d', '--remove-orphans']);
-    this._execFile('docker', upArgs, opts);
+  async _composeDown(stackId, stack, hostId = stack.host_id, { removeVolumes = false } = {}) {
+    const repoDir = this._getRepoDir(stackId);
+    const composeFiles = stack.additional_files
+      ? (typeof stack.additional_files === 'string'
+        ? JSON.parse(stack.additional_files) : stack.additional_files)
+      : [stack.compose_path];
+    const files = Array.isArray(composeFiles) && composeFiles.length > 0
+      ? composeFiles : [stack.compose_path];
+    const args = ['compose'];
+    for (const file of files) args.push('-f', path.join(repoDir, file));
+    args.push('-p', stack.stack_name, 'down');
+    if (removeVolumes) args.push('--volumes');
+
+    const dockerEnv = this._dockerCliEnvForHost(hostId);
+    try {
+      this._execFile('docker', args, {
+        cwd: repoDir, timeout: 60000, encoding: 'utf8', stdio: 'pipe', env: dockerEnv.env,
+      });
+    } finally {
+      dockerEnv.cleanup();
+    }
   }
 
   // ─── Env Var Management ──────────────────────────────
@@ -1031,6 +1560,50 @@ class GitService {
     return variables;
   }
 
+  _validateRolloutPolicy(input, { allowDisabled = false } = {}) {
+    let raw = input;
+    if (typeof raw === 'string') {
+      try { raw = JSON.parse(raw); } catch { throw new Error('Invalid rollout policy JSON'); }
+    }
+    if (!raw || raw.enabled === false) {
+      if (allowDisabled) return { ...DEFAULT_ROLLOUT_POLICY, enabled: false };
+      throw new Error('Rollout policy must be enabled');
+    }
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error('Rollout policy must be an object');
+    }
+    const policy = { ...DEFAULT_ROLLOUT_POLICY, ...raw, enabled: true };
+    if (!['fixed', 'exponential'].includes(policy.strategy)) {
+      throw new Error('Rollout strategy must be fixed or exponential');
+    }
+    if (!['pause', 'continue', 'rollback'].includes(policy.onFailure)) {
+      throw new Error('Rollout failure action must be pause, continue, or rollback');
+    }
+    const integer = (key, min, max) => {
+      const value = Number(policy[key]);
+      if (!Number.isInteger(value) || value < min || value > max) {
+        throw new Error(`Rollout ${key} must be an integer between ${min} and ${max}`);
+      }
+      policy[key] = value;
+    };
+    integer('initialWave', 1, 50);
+    integer('multiplier', 2, 10);
+    integer('maxParallel', 1, 10);
+    integer('delaySeconds', 0, 3600);
+    integer('healthTimeoutSeconds', 1, 900);
+    policy.healthGate = policy.healthGate !== false;
+    return policy;
+  }
+
+  _parseJson(value, fallback) {
+    if (!value) return fallback;
+    try { return JSON.parse(value); } catch { return fallback; }
+  }
+
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, Math.max(0, ms)));
+  }
+
   _execFile(bin, args, opts = {}) {
     const { execFileSync } = require('child_process');
     return execFileSync(bin, args, { timeout: 120000, encoding: 'utf8', stdio: 'pipe', ...opts });
@@ -1066,6 +1639,39 @@ class GitService {
     }
   }
 
+  _resolveRepoFile(repoDir, relativePath, { mustExist = false } = {}) {
+    const root = fs.realpathSync(repoDir);
+    const candidate = path.resolve(root, relativePath);
+    const isInside = target => {
+      const rel = path.relative(root, target);
+      return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+    };
+    if (!isInside(candidate)) {
+      throw Object.assign(new Error('File path escapes repository root'), { status: 400 });
+    }
+
+    if (mustExist || fs.existsSync(candidate)) {
+      const canonical = fs.realpathSync(candidate);
+      if (!isInside(canonical)) {
+        throw Object.assign(new Error('File path escapes repository root through a symbolic link'), { status: 400 });
+      }
+      return canonical;
+    }
+
+    // For a new file, canonicalize the nearest existing parent so an
+    // intermediate directory symlink cannot redirect the write outside.
+    let existingParent = path.dirname(candidate);
+    while (!fs.existsSync(existingParent) && existingParent !== root) {
+      existingParent = path.dirname(existingParent);
+    }
+    const canonicalParent = fs.realpathSync(existingParent);
+    const canonicalTarget = path.resolve(canonicalParent, path.relative(existingParent, candidate));
+    if (!isInside(canonicalTarget)) {
+      throw Object.assign(new Error('File path escapes repository root through a symbolic link'), { status: 400 });
+    }
+    return canonicalTarget;
+  }
+
   _sanitizeGitError(message) {
     return message
       .replace(/https?:\/\/[^@\s]+@/g, 'https://***@')
@@ -1089,3 +1695,4 @@ module.exports._gitTimeouts = {
   remoteProbe: GIT_REMOTE_PROBE_TIMEOUT_MS,
   build: _gitOpts,
 };
+module.exports.DEFAULT_ROLLOUT_POLICY = DEFAULT_ROLLOUT_POLICY;

@@ -84,6 +84,7 @@ i18n.register('ja', 'JP', "日本語", {
     "registry-browse": "レジストリ",
     onboarding: "環境セットアップ",
     posture: "セキュリティ態勢",
+    procedures: "プロシージャ",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD（アルファ）",

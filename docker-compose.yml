@@ -19,6 +19,8 @@ services:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
       # Persistent data (SQLite DB, stats)
       - docker-dash-data:/data
+      # Compose projects discovered on disk (read/write for editor + deploy).
+      - ${DD_STACKS_HOST_DIR:-/opt/stacks}:/opt/stacks
       # Shared certs dir — Caddyfile written here by the app, read by Caddy
       - caddy-certs:/data/certs
       # Shared policy.json dir for the v6.7 egress filter sidecar (if running)

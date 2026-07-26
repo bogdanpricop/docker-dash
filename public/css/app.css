@@ -241,6 +241,24 @@ textarea { resize: vertical; min-height: 80px; }
   width: 3px; border-radius: 0 2px 2px 0; background: var(--accent);
 }
 .nav-item i { width: 20px; text-align: center; flex-shrink: 0; font-size: 14px; }
+.nav-simple-more { margin-top: 4px; }
+.nav-simple-more summary,
+.nav-simple-show-all {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-dim); font: inherit;
+  cursor: pointer; list-style: none; text-align: left;
+}
+.nav-simple-more summary::-webkit-details-marker { display: none; }
+.nav-simple-more summary:hover,
+.nav-simple-show-all:hover { color: var(--text-bright); background: var(--surface2); }
+.nav-simple-more summary i,
+.nav-simple-show-all i { width: 20px; text-align: center; }
+.nav-simple-more[open] > summary { color: var(--accent); }
+.nav-simple-more > div { padding-left: 8px; border-left: 1px solid var(--border); margin-left: 12px; }
+.sidebar.collapsed .nav-simple-more summary span,
+.sidebar.collapsed .nav-simple-show-all span,
+.sidebar.collapsed .nav-simple-more > div { display: none; }
 .nav-badge {
   position: absolute; right: 10px; background: var(--red); color: #fff;
   font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
@@ -678,6 +696,53 @@ tr.row-risk td { background: rgba(248, 81, 73, 0.08); }
 /* ── Toggle Label ────────────────────────────────── */
 .toggle-label { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; cursor: pointer; user-select: none; }
 
+/* ── YAML editor (vendored CodeMirror, theme follows Docker Dash) ── */
+.CodeMirror {
+  height: auto; min-height: 280px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface1); color: var(--text);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55;
+}
+.CodeMirror-focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.CodeMirror-gutters { background: var(--surface2); border-right: 1px solid var(--border); }
+.CodeMirror-linenumber { color: var(--text-dim); }
+.CodeMirror-cursor { border-left-color: var(--text-bright); }
+.CodeMirror-selected { background: var(--accent-dim) !important; }
+.CodeMirror-activeline-background { background: var(--surface2); }
+.cm-s-default .cm-atom,
+.cm-s-default .cm-number { color: #79c0ff; }
+.cm-s-default .cm-def,
+.cm-s-default .cm-variable-2,
+.cm-s-default .cm-property { color: #d2a8ff; }
+.cm-s-default .cm-string,
+.cm-s-default .cm-string-2 { color: #a5d6ff; }
+.cm-s-default .cm-meta { color: #ffa657; }
+.cm-s-default .cm-comment { color: #8b949e; font-style: italic; }
+.cm-s-default .cm-keyword,
+.cm-s-default .cm-tag { color: #ff7b72; }
+.CodeMirror-lint-tooltip { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.yaml-editor-status { min-height: 18px; margin-top: 6px; color: var(--text-dim); }
+.yaml-editor-status.is-error { color: var(--red); }
+.yaml-editor-status.is-valid { color: var(--green); }
+.yaml-editor-status i { margin-right: 5px; }
+
+/* ── Compose service form editor ─────────────────── */
+.compose-editor-switch { display: flex; gap: 4px; margin-bottom: 12px; }
+.compose-editor-switch .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.compose-service-list { display: grid; gap: 14px; margin: 8px 0 14px; }
+.compose-service-card { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface1); padding: 14px; }
+.compose-service-card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.compose-service-card-header strong { color: var(--text-bright); }
+.compose-service-card-header i { color: var(--accent); margin-right: 5px; }
+.compose-service-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.compose-service-grid textarea { min-height: 86px; resize: vertical; font-family: var(--mono); font-size: 12px; }
+.compose-service-card .form-group label small { color: var(--text-dim); font-weight: normal; }
+.compose-form-status { min-height: 18px; margin-bottom: 4px; }
+.compose-form-status.is-error { color: var(--red); }
+.compose-form-status.is-valid { color: var(--green); }
+.compose-form-warning { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 10%, transparent); border: 1px solid color-mix(in srgb, var(--yellow) 30%, transparent); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; }
+.compose-service-card .is-invalid { border-color: var(--red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 20%, transparent); }
+@media (max-width: 760px) { .compose-service-grid { grid-template-columns: 1fr; } }
+
 /* ── Row States ──────────────────────────────────── */
 .row-dim { opacity: 0.5; }
 .row-dim:hover { opacity: 0.8; }
@@ -710,6 +775,15 @@ tr.clickable:hover td { color: var(--text-bright); }
 
 /* ── Events ──────────────────────────────────────── */
 .events-list { max-height: 400px; overflow-y: auto; }
+.compose-first-card {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid rgba(56,139,253,0.35);
+  border-radius: var(--radius); background: linear-gradient(110deg, var(--accent-dim), var(--surface));
+}
+.compose-first-icon {
+  width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius); background: var(--accent); color: #fff; font-size: 17px;
+}
 .event-row {
   display: flex; align-items: center; gap: 12px; padding: 8px 10px;
   border-bottom: 1px solid rgba(48,54,61,0.3); font-size: 12px;
@@ -927,6 +1001,7 @@ select.form-control:focus { border-color: var(--accent); outline: none; box-shad
 .host-selector {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
+  position: relative;
 }
 .host-selector select {
   width: 100%;
@@ -939,6 +1014,31 @@ select.form-control:focus { border-color: var(--accent); outline: none; box-shad
   cursor: pointer;
 }
 .sidebar.collapsed .host-selector { display: none !important; }
+.host-tree-toggle {
+  width: 100%; display: flex; align-items: center; gap: 7px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface2); color: var(--text); cursor: pointer; font-size: 12px;
+}
+.host-tree-toggle > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; white-space: nowrap; }
+.host-tree-status { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; background: var(--yellow); }
+.host-tree-status.online { background: var(--green); }
+.host-tree-status.offline { background: var(--red); }
+.host-tree-panel {
+  position: absolute; z-index: 1200; left: 8px; right: 8px; top: calc(100% - 4px);
+  max-height: 50vh; overflow: auto; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+}
+.host-tree-search { display: flex; align-items: center; gap: 6px; padding: 5px 7px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface2); }
+.host-tree-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
+.host-tree-group { margin: 3px 0; }
+.host-tree-group > summary { cursor: pointer; padding: 4px 5px; color: var(--text-muted); font-size: 11px; font-weight: 600; list-style-position: inside; }
+.host-tree-items { padding-left: 8px; }
+.host-tree-item { width: 100%; display: flex; align-items: center; gap: 7px; padding: 6px; border: 0; border-radius: 4px; background: transparent; color: var(--text); cursor: pointer; font-size: 12px; text-align: left; }
+.host-tree-item:hover, .host-tree-item:focus-visible { background: var(--surface2); outline: 1px solid var(--accent); }
+.host-tree-item[aria-current="true"] { background: var(--accent-dim, rgba(56,139,253,.14)); color: var(--text-bright); }
+.host-tree-item .host-tree-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-tree-item .host-tree-env { color: var(--text-dim); font-size: 9px; text-transform: uppercase; }
 
 .hosts-grid {
   display: grid;
@@ -946,6 +1046,13 @@ select.form-control:focus { border-color: var(--accent); outline: none; box-shad
   gap: 16px;
   padding: 4px 0;
 }
+.hosts-grid.compact { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.hosts-grid.compact .host-card { padding: 9px 10px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 10px; align-items: center; }
+.host-compact-main { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.host-compact-main strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-compact-main .text-muted { margin-left: auto; white-space: nowrap; }
+.host-compact-groups { display: flex; gap: 4px; flex-wrap: wrap; grid-column: 1; }
+.hosts-grid.compact .host-card-actions { grid-column: 2; grid-row: 1 / span 2; }
 .host-card {
   background: var(--surface);
   border: 1px solid var(--border);

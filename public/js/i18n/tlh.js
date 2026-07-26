@@ -84,6 +84,7 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     "registry-browse": "qachDaqmey",
     onboarding: "yoS nIHmeH",
     posture: "Posture",
+    procedures: "mIwmeH",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alpha)",

@@ -52,17 +52,29 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
     const docker = dockerService.getDocker(req.hostId);
 
     // If no containers specified, get all running
-    let targetIds = containerIds ? containerIds.split(',') : [];
+    let targetIds = containerIds
+      ? [...new Set(String(containerIds).split(',')
+        .map(value => value.trim())
+        .filter(value => value && value.length <= 128 && !/[\x00-\x1f]/.test(value)))]
+      : [];
+    if (targetIds.length > 25) {
+      return res.status(400).json({ error: 'Select at most 25 containers' });
+    }
     if (targetIds.length === 0) {
       const all = await docker.listContainers();
       targetIds = all.slice(0, 20).map(c => c.Id.substring(0, 12)); // max 20
     }
+    const parsedTail = Number.parseInt(tail, 10);
+    const safeTail = Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100;
 
     const results = await Promise.allSettled(targetIds.map(async (id) => {
       const container = docker.getContainer(id);
       const inspect = await container.inspect();
+      const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+      const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+      if (!permService.hasPermission(effectiveRole, 'view')) return [];
       const name = inspect.Name.replace(/^\//, '');
-      const opts = { stdout: true, stderr: true, tail: parseInt(tail) || 100, timestamps: true };
+      const opts = { stdout: true, stderr: true, tail: safeTail, timestamps: true };
       if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
 
       const logBuffer = await container.logs(opts);
@@ -96,8 +108,9 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
       allLogs = allLogs.filter(l => l.severity === level);
     }
     if (search) {
-      const regex = new RegExp(search, 'i');
-      allLogs = allLogs.filter(l => regex.test(l.msg) || regex.test(l.container));
+      const needle = String(search).toLocaleLowerCase();
+      allLogs = allLogs.filter(l => l.msg.toLocaleLowerCase().includes(needle)
+        || l.container.toLocaleLowerCase().includes(needle));
     }
 
     // Limit output
@@ -254,6 +267,12 @@ router.get('/:id/inspect', requireAuth, async (req, res) => {
 // Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
   const { tail, since, until, search, regex, level, download } = req.query;
+    const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
+    const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+    if (!permService.hasPermission(effectiveRole, 'view')) {
+      return res.status(403).json({ error: 'Insufficient stack permissions for logs' });
+    }
     let lines = await dockerService.getContainerLogs(req.params.id, {
       tail: parseInt(tail) || 100,
       since, until,

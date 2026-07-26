@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -262,6 +262,21 @@ const Api = {
   updateWorkflow(id, data) { return this.put(`/workflows/${id}`, data); },
   deleteWorkflow(id) { return this.delete(`/workflows/${id}`); },
 
+  // ─── Procedures ───────────────────────────────────
+  getProcedures() { return this.get('/procedures'); },
+  getProcedure(id) { return this.get(`/procedures/${id}`); },
+  getProcedureTemplates() { return this.get('/procedures/templates'); },
+  createProcedure(data) { return this.post('/procedures', data); },
+  updateProcedure(id, data) { return this.put(`/procedures/${id}`, data); },
+  deleteProcedure(id) { return this.delete(`/procedures/${id}`); },
+  runProcedure(id) { return this.post(`/procedures/${id}/run`); },
+  getProcedureRun(runId) { return this.get(`/procedures/runs/${runId}`); },
+  getProcedureRuns(id, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.get(`/procedures/${id}/runs${qs ? '?' + qs : ''}`);
+  },
+  cancelProcedureRun(runId) { return this.post(`/procedures/runs/${runId}/cancel`); },
+
   // ─── Dashboard Preferences ────────────────────────
   getDashboardPrefs() { return this.get('/dashboard/preferences'); },
   saveDashboardPrefs(data) { return this.put('/dashboard/preferences', data); },
@@ -405,6 +420,74 @@ const Api = {
 
   // ─── Compose (Stacks) ─────────────────────────────
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
+  composePlan(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/plan`); },
+  async streamComposeAction(stack, action, onEvent) {
+    const path = this._appendHostId(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/stream`);
+    const headers = { 'Content-Type': 'application/json' };
+    const xsrf = this._readXsrfToken();
+    if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
+    if (this._bearerToken) headers.Authorization = `Bearer ${this._bearerToken}`;
+
+    const response = await fetch(`/api${path}`, {
+      method: 'POST', headers, credentials: 'same-origin', body: '{}',
+    });
+    if (response.status === 401) {
+      if (typeof Toast !== 'undefined') Toast.muteErrorsForMs(6000);
+      App.handleUnauthorized();
+      const err = new Error('Unauthorized');
+      err.isAuthError = true;
+      throw err;
+    }
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const body = contentType.includes('json')
+        ? await response.json().catch(() => ({}))
+        : await response.text().catch(() => '');
+      const err = new Error(body?.error || body?.message || body || `HTTP ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    if (!response.body?.getReader) throw new Error('Streaming is not supported by this browser');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let completed = null;
+
+    const dispatch = (rawEvent) => {
+      let type = 'message';
+      const dataLines = [];
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) type = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+      }
+      if (!dataLines.length) return;
+      let data;
+      try { data = JSON.parse(dataLines.join('\n')); }
+      catch { data = { data: dataLines.join('\n') }; }
+      try { onEvent?.({ type, data }); } catch { /* UI observers cannot stop the stream */ }
+      if (type === 'done') completed = data;
+      if (type === 'error') {
+        const err = new Error(data.error || 'Compose action failed');
+        err.exitCode = data.exitCode;
+        err.durationMs = data.durationMs;
+        throw err;
+      }
+    };
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+      for (const event of events) dispatch(event);
+    }
+    buffer += decoder.decode().replace(/\r\n/g, '\n');
+    if (buffer.trim()) dispatch(buffer);
+    if (!completed) throw new Error('Compose progress stream ended before completion');
+    return completed;
+  },
   composeConfig(stack) { return this.get(`/system/compose/${encodeURIComponent(stack)}/config`); },
 
   // ─── Stack Permissions (RBAC) ─────────────────────
@@ -816,8 +899,10 @@ const Api = {
   deleteGitCredential(id) { return this.delete(`/git/credentials/${id}`); },
   getGitStacks() { return this.get('/git/stacks'); },
   getGitStack(id) { return this.get(`/git/stacks/${id}`); },
+  getGitStackFile(id, path) { return this.get(`/git/stacks/${id}/file?path=${encodeURIComponent(path || '')}`); },
   createGitStack(data) { return this.post('/git/stacks', data); },
   updateGitStack(id, data) { return this.put(`/git/stacks/${id}`, data); },
+  updateGitRolloutPolicy(id, data) { return this.put(`/git/stacks/${id}/rollout`, data); },
   deleteGitStack(id, params = {}) {
     const qs = new URLSearchParams(params).toString();
     return this.delete(`/git/stacks/${id}${qs ? '?' + qs : ''}`);
@@ -843,6 +928,42 @@ const Api = {
   getRemoteStatus(id) { return this.get(`/git/stacks/${id}/remote-status`); },
   pushToGit(id, data) { return this.post(`/git/stacks/${id}/push`, data); },
 
+  // ─── Declarative Fleet GitOps ───────────────────────
+  exportGitOps() { return this.get('/gitops/export'); },
+  planGitOps(document) { return this.post('/gitops/plan', { document }); },
+  applyGitOps(document, planHash, allowDelete = false) {
+    return this.post('/gitops/apply', { document, planHash, allowDelete });
+  },
+  getManagedGitOps() { return this.get('/gitops/managed'); },
+  configureManagedGitOps(data) { return this.put('/gitops/managed', data); },
+  planManagedGitOps(id) { return this.post(`/gitops/managed/${id}/plan`); },
+  applyManagedGitOps(id, planHash, commitMessage) {
+    return this.post(`/gitops/managed/${id}/apply`, { planHash, commitMessage });
+  },
+
+  // ─── Pull-request Previews ─────────────────────────
+  getPreviewConfig(stackId) { return this.get(`/previews/stacks/${stackId}/config`); },
+  updatePreviewConfig(stackId, data) { return this.put(`/previews/stacks/${stackId}/config`, data); },
+  getPreviews(stackId) { return this.get(`/previews${stackId ? `?stackId=${stackId}` : ''}`); },
+  redeployPreview(id) { return this.post(`/previews/${id}/redeploy`); },
+  deletePreview(id) { return this.delete(`/previews/${id}`); },
+
+  // ─── OCI Compose Artifacts ─────────────────────────
+  getOciComposeArtifacts() { return this.get('/oci-compose'); },
+  createOciComposeArtifact(data) { return this.post('/oci-compose', data); },
+  refreshOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/refresh`); },
+  planOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/plan`); },
+  deployOciComposeArtifact(id, planHash) { return this.post(`/oci-compose/${id}/deploy`, { planHash }); },
+  stopOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/down`); },
+  deleteOciComposeArtifact(id) { return this.delete(`/oci-compose/${id}`); },
+
+  // ─── Disk-pressure Guardrails ──────────────────────
+  getDiskPressurePolicy(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/policy`); },
+  updateDiskPressurePolicy(hostId, data) { return this.put(`/disk-pressure/hosts/${hostId}/policy`, data); },
+  previewDiskPressure(hostId) { return this.post(`/disk-pressure/hosts/${hostId}/preview`); },
+  runDiskPressure(hostId, force = false) { return this.post(`/disk-pressure/hosts/${hostId}/run`, { force }); },
+  getDiskPressureHistory(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/history`); },
+
   // ─── Notification Channels ──────────────────────
   getNotificationProviders() { return this.get('/notification-channels/providers'); },
   getNotificationChannels() { return this.get('/notification-channels'); },
@@ -853,6 +974,9 @@ const Api = {
 
   // ─── Multi-Host ─────────────────────────────────
   getMultiHostOverview() { return this.get('/multi-host/overview'); },
+  getFleetHealth(hours = 24) { return this.get(`/fleet/health?hours=${encodeURIComponent(hours)}`); },
+  previewFleetBulk(action, hostIds) { return this.post('/fleet/bulk/preview', { action, host_ids: hostIds }); },
+  runFleetBulk(action, hostIds) { return this.post('/fleet/bulk/run', { action, host_ids: hostIds }); },
 
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },

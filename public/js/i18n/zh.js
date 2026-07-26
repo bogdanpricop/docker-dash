@@ -84,6 +84,7 @@ i18n.register('zh', '中文', "中文", {
     "registry-browse": "镜像仓库",
     onboarding: "环境设置",
     posture: "安全态势",
+    procedures: "操作流程",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD（Alpha）",
