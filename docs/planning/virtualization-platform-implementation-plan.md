@@ -295,5 +295,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 |---|---|---|---|---|---|
 | V0.0 | `2e21d3c` | push + PR #13 | `8.21.4-2e21d3c`, healthy | blocat: host key mismatch | Xen + research + plan |
 | V0.1 | `8ad9d04` | push + PR #13 | `8.21.4-8ad9d04`, healthy; ESXi live probe | blocat: host key mismatch | Provider SDK v2, schema 1.0, 29 capabilities |
+| V0.2 | `5c7f246` | push + PR #13 | `8.21.4-5c7f246`, healthy; ESXi live inventory | blocat: host key mismatch | resource schema 1.0, identity encryption, 6 common kinds |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
