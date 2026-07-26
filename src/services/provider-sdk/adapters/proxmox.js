@@ -40,5 +40,16 @@ async function probe(host) {
   }
 }
 
-module.exports = { type: 'proxmox', declared, probe };
+async function listResources(kind, host) {
+  const client = fromHostRow(host);
+  try {
+    if (kind === 'virtualMachine') return client.listVMs();
+    if (kind === 'host') return client.listNodes();
+    if (kind === 'storage') return client.listStorages();
+    throw new Error(`Proxmox resource kind is unavailable: ${kind}`);
+  } finally {
+    client._agent?.destroy?.();
+  }
+}
 
+module.exports = { type: 'proxmox', declared, probe, listResources };

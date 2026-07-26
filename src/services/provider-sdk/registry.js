@@ -2,7 +2,10 @@
 
 const log = require('../../utils/logger')('provider-sdk');
 const metrics = require('../metrics');
+const { getDb } = require('../../db');
 const { buildEnvelope } = require('./schema');
+const { resolveResourceKind } = require('./resource-catalog');
+const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = require('./resource-schema');
 
 const adapters = new Map();
 const cache = new Map();
@@ -119,6 +122,81 @@ async function capabilitiesForHost(host, options = {}) {
   finally { inFlight.delete(hostId); }
 }
 
+function _resourceSortKey(row) {
+  return String(row?.uuid ?? row?.hostUuid ?? row?.ref ?? row?.moref ?? row?.id
+    ?? row?.vmid ?? row?.node ?? row?.storage ?? row?.name ?? '');
+}
+
+async function resourcesForHost(host, kindInput, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id))) throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
+  const kindInfo = resolveResourceKind(kindInput);
+  if (!kindInfo) throw new ProviderAdapterError('Unknown provider resource kind', 'INVALID_RESOURCE_KIND', 400);
+  const requestedLimit = options.limit === undefined ? 200 : Number(options.limit);
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 500) {
+    throw new ProviderAdapterError('Resource limit must be an integer between 1 and 500', 'INVALID_RESOURCE_LIMIT', 400);
+  }
+
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = await capabilitiesForHost(host);
+  if (capabilities.probe.status !== 'reachable') {
+    throw new ProviderAdapterError('Provider endpoint is currently unreachable', 'PROVIDER_UNREACHABLE', 502);
+  }
+  const evidence = capabilities.features[kindInfo.capability];
+  if (!evidence || !['supported', 'conditional'].includes(evidence.state)) {
+    throw new ProviderAdapterError(evidence?.reason || 'Resource inventory is unavailable for this provider',
+      'PROVIDER_RESOURCE_UNAVAILABLE', 400);
+  }
+  if (typeof adapter.listResources !== 'function') {
+    throw new ProviderAdapterError('Resource inventory adapter is unavailable', 'PROVIDER_RESOURCE_UNAVAILABLE', 400);
+  }
+
+  let rows;
+  try {
+    rows = await adapter.listResources(kindInfo.kind, host);
+  } catch (err) {
+    log.warn('Provider inventory read failed', {
+      hostId: Number(host.id), provider: adapter.type, kind: kindInfo.kind,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider resource inventory could not be read', 'PROVIDER_RESOURCE_READ_FAILED', 502);
+  }
+  if (!Array.isArray(rows) || rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) {
+    throw new ProviderAdapterError('Provider returned an invalid resource inventory', 'INVALID_PROVIDER_RESOURCE_RESPONSE', 502);
+  }
+
+  const totalObserved = rows.length;
+  const selected = [...rows].sort((a, b) => _resourceSortKey(a).localeCompare(_resourceSortKey(b))).slice(0, requestedLimit);
+  const observedAt = new Date().toISOString();
+  let items;
+  try {
+    const database = options.database || getDb();
+    items = database.transaction(() => selected.map(raw => normalizeResource({
+      host, providerType: adapter.type, kind: kindInfo.kind, raw, observedAt, database,
+    })))();
+  } catch (err) {
+    log.error('Provider resource normalization failed', {
+      hostId: Number(host.id), provider: adapter.type, kind: kindInfo.kind,
+      error: err?.name || 'Error',
+    });
+    throw new ProviderAdapterError('Provider resource inventory could not be normalized', 'RESOURCE_NORMALIZATION_FAILED', 500);
+  }
+
+  const envelope = {
+    schemaVersion: RESOURCE_SCHEMA_VERSION,
+    kind: kindInfo.kind,
+    provider: { type: adapter.type, endpointId: Number(host.id) },
+    observedAt,
+    count: items.length,
+    totalObserved,
+    truncated: totalObserved > items.length,
+    items,
+  };
+  if (Buffer.byteLength(JSON.stringify(envelope)) > MAX_INVENTORY_BYTES) {
+    throw new ProviderAdapterError('Provider resource inventory exceeds the response size limit', 'RESOURCE_RESPONSE_TOO_LARGE', 502);
+  }
+  return envelope;
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -144,6 +222,7 @@ module.exports = {
   register,
   getAdapter,
   capabilitiesForHost,
+  resourcesForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError,

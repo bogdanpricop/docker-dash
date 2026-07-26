@@ -50,5 +50,29 @@ router.get('/:hostId/capabilities', requireAuth, requireHostAccess('view', { par
   }
 }));
 
-module.exports = router;
+router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });
+  const hostId = Number.parseInt(req.params.hostId, 10);
+  if (!Number.isInteger(hostId) || hostId <= 0) return res.status(400).json({ error: 'Invalid provider host ID' });
+  if (req.query.limit !== undefined && !/^\d{1,3}$/.test(String(req.query.limit))) {
+    return res.status(400).json({ error: 'Resource limit must be an integer between 1 and 500', code: 'INVALID_RESOURCE_LIMIT' });
+  }
+  const limit = req.query.limit === undefined ? 200 : Number(req.query.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    return res.status(400).json({ error: 'Resource limit must be an integer between 1 and 500', code: 'INVALID_RESOURCE_LIMIT' });
+  }
+  const host = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
+  if (!host) return res.status(404).json({ error: 'Provider host not found' });
+  if (!host.is_active) return res.status(400).json({ error: `Provider host "${host.name}" is not active` });
+  try {
+    res.json(await providerSdk.resourcesForHost(host, req.params.kind, { limit }));
+  } catch (err) {
+    const status = Number.isInteger(err?.status) ? err.status : 500;
+    res.status(status).json({
+      error: status >= 500 ? 'Provider resource inventory failed' : err.message,
+      code: err?.code || 'PROVIDER_RESOURCE_ERROR',
+    });
+  }
+}));
 
+module.exports = router;

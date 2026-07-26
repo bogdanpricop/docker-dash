@@ -48,5 +48,19 @@ async function probe(host) {
   }
 }
 
-module.exports = { type: 'vsphere', declared, probe, _internals: { _variant } };
+async function listResources(kind, host) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    if (kind === 'virtualMachine') return await client.listVMs();
+    if (kind === 'host') return await client.listHosts();
+    if (kind === 'storage') return await client.listDatastores();
+    if (kind === 'network') return await client.listNetworks();
+    throw new Error(`vSphere resource kind is unavailable: ${kind}`);
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort session cleanup */ }
+    client._agent?.destroy?.();
+  }
+}
 
+module.exports = { type: 'vsphere', declared, probe, listResources, _internals: { _variant } };

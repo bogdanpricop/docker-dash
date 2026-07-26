@@ -67,4 +67,15 @@ async function probe(host) {
   };
 }
 
-module.exports = { type: 'xen', declared, probe, _internals: { _fromCapabilities } };
+async function listResources(kind, host) {
+  const client = xen.clientForHost(host);
+  if (kind === 'virtualMachine') return client.listVMs();
+  if (kind === 'host') return client.listHosts();
+  if (kind === 'cluster') return client.listPools();
+  if (kind === 'storage') return client.listStorages();
+  if (kind === 'network') return client.listNetworks();
+  if (kind === 'task') return client.listTasks();
+  throw new Error(`Xen resource kind is unavailable: ${kind}`);
+}
+
+module.exports = { type: 'xen', declared, probe, listResources, _internals: { _fromCapabilities } };

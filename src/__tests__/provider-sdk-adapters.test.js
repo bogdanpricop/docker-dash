@@ -4,6 +4,9 @@ jest.mock('../services/proxmox', () => ({ fromHostRow: jest.fn() }));
 jest.mock('../services/vsphere', () => ({ fromHostRow: jest.fn() }));
 jest.mock('../services/xen', () => ({ clientForHost: jest.fn() }));
 
+const proxmoxService = require('../services/proxmox');
+const vsphereService = require('../services/vsphere');
+const xenService = require('../services/xen');
 const proxmox = require('../services/provider-sdk/adapters/proxmox');
 const vsphere = require('../services/provider-sdk/adapters/vsphere');
 const xen = require('../services/provider-sdk/adapters/xen');
@@ -45,5 +48,27 @@ describe('Provider SDK adapters', () => {
     expect(features['vm.snapshot.create'].state).toBe('unsupported');
     expect(features['vm.create'].state).toBe('unsupported');
   });
-});
 
+  it('dispatches resource inventory to provider-native read methods and cleans up one-shot clients', async () => {
+    const pveDestroy = jest.fn();
+    const pveList = jest.fn().mockResolvedValue([{ id: 1 }]);
+    proxmoxService.fromHostRow.mockReturnValue({ listVMs: pveList, _agent: { destroy: pveDestroy } });
+    await expect(proxmox.listResources('virtualMachine', {})).resolves.toEqual([{ id: 1 }]);
+    expect(pveDestroy).toHaveBeenCalled();
+
+    const logout = jest.fn().mockResolvedValue(undefined);
+    const esxDestroy = jest.fn();
+    const listNetworks = jest.fn().mockResolvedValue([{ moref: 'network-1' }]);
+    vsphereService.fromHostRow.mockReturnValue({
+      login: jest.fn().mockResolvedValue({}), logout, listNetworks, _agent: { destroy: esxDestroy },
+    });
+    await expect(vsphere.listResources('network', {})).resolves.toHaveLength(1);
+    expect(logout).toHaveBeenCalled();
+    expect(esxDestroy).toHaveBeenCalled();
+
+    const listTasks = jest.fn().mockResolvedValue([{ id: 'task-1' }]);
+    xenService.clientForHost.mockReturnValue({ listTasks });
+    await expect(xen.listResources('task', {})).resolves.toHaveLength(1);
+    expect(listTasks).toHaveBeenCalled();
+  });
+});
