@@ -36,6 +36,18 @@ function _fromCapabilities(capabilities = {}) {
     ? conditional('Forced power is capability-gated per VM and requires explicit confirmation', { perResource: true, confirmation: true })
     : unsupported('Forced power operations are unavailable for this Xen provider');
   features['vm.power.reboot'] = actionEvidence('reboot');
+  features['vm.console'] = capabilities.console
+    ? conditional(capabilities.provider === 'raw'
+      ? 'The standalone Xen serial console is relayed over the pinned SSH connection'
+      : 'RFB or VT100 is relayed through the same-origin gateway without exposing the management session', {
+      perResource: true,
+      protocols: capabilities.provider === 'raw' ? ['serial'] : ['rfb', 'serial'],
+      clients: capabilities.provider === 'raw' ? ['xterm'] : ['noVNC', 'xterm'],
+      singleUseToken: true, credentialIsolation: 'server-side', emergencyLock: true,
+    })
+    : unsupported(capabilities.provider === 'xo'
+      ? 'Xen Orchestra console access requires a scoped authentication token'
+      : 'Console access is unavailable for this Xen provider');
 
   for (const action of ['list', 'create', 'revert', 'delete']) {
     features[`vm.snapshot.${action}`] = capabilities.snapshots
@@ -48,7 +60,7 @@ function _fromCapabilities(capabilities = {}) {
   }
 
   for (const key of [
-    'vm.console', 'vm.migrate', 'host.maintenance',
+    'vm.migrate', 'host.maintenance',
     'storage.mutate', 'network.mutate', 'task.cancel',
   ]) features[key] = adapterNotImplemented('Xen');
   const xoProvisioning = capabilities.provider === 'xo';

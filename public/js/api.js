@@ -573,6 +573,12 @@ const Api = {
   getProviderVMDetail(hostId, resourceId, refresh = false) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
   },
+  preflightProviderVMConsole(hostId, resourceId) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});
+  },
+  launchProviderVMConsole(hostId, resourceId) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console`, {});
+  },
   preflightProviderVMPower(hostId, resourceId, action) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power/preflight`, { action });
   },

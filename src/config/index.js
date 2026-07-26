@@ -92,6 +92,7 @@ module.exports = {
     providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
     providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
     providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
+    providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
@@ -111,6 +112,14 @@ module.exports = {
   },
   providerConformance: {
     retentionDays: int('DD_PROVIDER_CONFORMANCE_RETENTION_DAYS', 365),
+  },
+  providerConsole: {
+    tokenTtlSeconds: Math.min(120, Math.max(15, int('DD_PROVIDER_VM_CONSOLE_TOKEN_TTL_SECONDS', 45))),
+    maxPendingPerUser: Math.min(20, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_PENDING_PER_USER', 5))),
+    maxActivePerUser: Math.min(20, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_ACTIVE_PER_USER', 3))),
+    maxActivePerIp: Math.min(50, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_ACTIVE_PER_IP', 5))),
+    maxSessionSeconds: Math.min(8 * 3600, Math.max(60, int('DD_PROVIDER_VM_CONSOLE_MAX_SESSION_SECONDS', 3600))),
+    accessOverride: env('DD_PROVIDER_VM_CONSOLE_ACCESS_OVERRIDE', 'managed'),
   },
   smtp: {
     host: env('SMTP_HOST', 'localhost'),

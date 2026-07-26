@@ -238,7 +238,7 @@ class XenOrchestraClient {
     return {
       provider: 'xo', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, snapshotQuiesce: false, backups: false, console: false,
+      snapshots: true, snapshotQuiesce: false, backups: false, console: !!this._config.token,
       provisioning: this._restFeatures.provisioning,
       guestCustomization: this._restFeatures.guestCustomization,
       taskCleanup: false,
@@ -279,6 +279,30 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
+  }
+
+  vmConsoleProxy(vmId) {
+    const id = String(vmId || '');
+    if (!/^[A-Za-z0-9._:-]{1,200}$/.test(id)) {
+      throw new XenError('Invalid Xen Orchestra VM console target', {
+        code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xo',
+      });
+    }
+    if (!this._config.token) {
+      throw new XenError('Xen Orchestra console proxy requires a scoped authentication token', {
+        code: 'CONSOLE_TOKEN_AUTH_REQUIRED', status: 409, provider: 'xo',
+      });
+    }
+    const url = new URL(`/api/consoles/${encodeURIComponent(id)}`, this._config._endpoint);
+    url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+    return {
+      url: url.href,
+      headers: {
+        Cookie: `token=${encodeURIComponent(this._config.token)}; authenticationToken=${encodeURIComponent(this._config.token)}`,
+      },
+      rejectUnauthorized: !this._config.skipTlsVerify,
+      ca: this._config.caCert || undefined,
+    };
   }
 
   async listTemplates() {
@@ -674,7 +698,7 @@ class XapiClient {
     return {
       provider: 'xapi', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, snapshotQuiesce: true, backups: false, console: false, provisioning: true,
+      snapshots: true, snapshotQuiesce: true, backups: false, console: true, provisioning: true,
       protocol: this._activeProtocol || this._protocol,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -710,6 +734,39 @@ class XapiClient {
       currentOperations: v.current_operations || {}, provider: 'xapi',
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
     }));
+  }
+
+  async getVmConsole(vmRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]+$/.test(String(vmRef || ''))) {
+      throw new XenError('Invalid XAPI VM console target', {
+        code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xapi',
+      });
+    }
+    const refs = await this._call('VM.get_consoles', [vmRef]);
+    const records = [];
+    for (const ref of Array.isArray(refs) ? refs.slice(0, 16) : []) {
+      try { records.push({ ref, ...(await this._call('console.get_record', [ref])) }); }
+      catch { /* a console may disappear during VM state transitions */ }
+    }
+    const record = records.find(item => String(item.protocol).toLowerCase() === 'rfb')
+      || records.find(item => String(item.protocol).toLowerCase() === 'vt100');
+    if (!record?.location) {
+      throw new XenError('XAPI reported no supported RFB or VT100 console', {
+        code: 'CONSOLE_UNAVAILABLE', status: 409, provider: 'xapi',
+      });
+    }
+    const location = new URL(record.location, this._endpoint);
+    if (location.protocol !== 'https:') {
+      throw new XenError('XAPI console location must use HTTPS', {
+        code: 'INVALID_CONSOLE_LOCATION', status: 502, provider: 'xapi',
+      });
+    }
+    return {
+      protocol: String(record.protocol).toLowerCase() === 'vt100' ? 'serial' : 'rfb',
+      location: location.href, sessionId: await this.login(),
+      rejectUnauthorized: !this._config.skipTlsVerify,
+      ca: this._config.caCert || undefined,
+    };
   }
 
   async listTemplates() {
@@ -925,7 +982,7 @@ class XenRawClient {
     return {
       provider: 'raw', pools: false, hosts: true, vms: true, templates: false, storages: false,
       networks: false, tasks: false, events: false, powerActions: true,
-      snapshots: false, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
+      snapshots: false, snapshotQuiesce: false, backups: false, console: true, provisioning: false,
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
       legacyXend: this._toolstack === 'xm',
       vmActions: this._toolstack === 'xm'
@@ -1046,7 +1103,7 @@ class XenRawClient {
       const state = entry.state || c.state || (domid === 0 ? 'running' : 'unknown');
       return {
         id: String(uuid), uuid: String(uuid), domid: _num(domid), name: String(name),
-        powerState: String(state), cpus: _num(build.max_vcpus || entry.vcpus),
+        powerState: /p|paused/i.test(String(state)) ? 'paused' : 'running', cpus: _num(build.max_vcpus || entry.vcpus),
         memoryBytes: _num(build.max_memkb || entry.mem) * (build.max_memkb ? 1024 : 1024 * 1024),
         provider: 'raw', transient: true,
       };
@@ -1065,6 +1122,34 @@ class XenRawClient {
     }
   }
 
+  async openConsole(nativeRef) {
+    const target = String(nativeRef || '');
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(target)) {
+      throw new XenError('Invalid raw Xen console target', {
+        code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'raw',
+      });
+    }
+    const tool = await this._detectToolstack();
+    const conn = await this._connect();
+    const prefix = this._config.useSudo ? 'sudo -n ' : '';
+    try {
+      const stream = await new Promise((resolve, reject) => {
+        conn.exec(`LC_ALL=C ${prefix}${tool} console ${_shellQuote(target)}`, { pty: true }, (err, channel) => {
+          if (err) reject(err); else resolve(channel);
+        });
+      });
+      return {
+        protocol: 'serial', stream,
+        close: () => { try { stream.end(); } catch {} try { conn.end(); } catch {} },
+      };
+    } catch (err) {
+      try { conn.end(); } catch {}
+      throw new XenError(`Raw Xen console failed: ${err.message}`, {
+        code: err.code || 'CONSOLE_UNAVAILABLE', status: 502, provider: 'raw',
+      });
+    }
+  }
+
   async listTemplates() { return []; }
 
   _parseTableList(stdout) {
@@ -1073,7 +1158,7 @@ class XenRawClient {
       .map(cols => ({
         id: cols[1], uuid: cols[1], domid: _num(cols[1]), name: cols[0],
         memoryBytes: _num(cols[2]) * 1024 * 1024, cpus: _num(cols[3]),
-        powerState: cols[4], cpuTimeSeconds: _num(cols[5]), provider: 'raw', transient: true,
+        powerState: /p/i.test(cols[4]) ? 'paused' : 'running', cpuTimeSeconds: _num(cols[5]), provider: 'raw', transient: true,
       }));
   }
 

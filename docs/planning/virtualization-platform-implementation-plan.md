@@ -103,7 +103,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V1.5 | Template/image inventory | B034–B039 | Proxmox, vSphere, XO |
 | V1.6 | Clone și create-from-template | B032–B043 | Proxmox, vSphere, XO/XAPI |
 | V1.7 | Cloud-init/guest customization | B035 structured subset; B036 foundation; C028/C029 | Proxmox, vSphere, Xen |
-| V1.8 | Console gateway | B048–B050, B162–B164 | noVNC/SPICE/WebMKS/serial, token scurt și audit |
+| V1.8 | Console gateway | B048–B050 | noVNC/RFB, WebMKS și serial, token scurt, credential isolation și audit |
 | V1.9 | Disk și NIC inventory uniform | B076–B086, B101–B108 | detail, hotplug capability și topology |
 
 **Exit:** cel puțin trei ecosisteme permit inspectare, power, snapshot, clone și provisioning controlat.
@@ -191,7 +191,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 11. V1.6 — clone/create.
 12. V1.7 — Linux guest customization; corectează maparea eronată B040–B047 la B035/C028/C029.
 
-V1.8 — console gateway urmează după finalizarea și deploy-ul V1.7. ID-urile B040–B047 rămân neschimbate și sunt implementate în batch-urile lor reale de image lifecycle, schedules și guest-agent.
+V1.8 — console gateway urmează după finalizarea și deploy-ul V1.7. ID-urile B040–B047 rămân neschimbate și sunt implementate în batch-urile lor reale de image lifecycle, schedules și guest-agent. B162–B164 aparțin unui batch ulterior de certificate și security posture, nu consolei.
 
 Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-uri reale. ID-urile backlog nu se renumerotează.
 

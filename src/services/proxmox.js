@@ -171,6 +171,48 @@ class ProxmoxClient {
   }
 
   /**
+   * Create Proxmox's short-lived VM console proxy ticket. The caller must keep
+   * the returned ticket server-side and use it immediately with
+   * /vncwebsocket; it is intentionally never part of a route response.
+   */
+  async createVmConsoleProxy(node, guestType, vmid) {
+    const safeNode = String(node || '');
+    const type = String(guestType || '');
+    const id = Number(vmid);
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !['qemu', 'lxc'].includes(type)
+      || !Number.isSafeInteger(id) || id <= 0) {
+      throw Object.assign(new Error('Invalid Proxmox VM console target'), {
+        code: 'INVALID_PROVIDER_RESOURCE', status: 400,
+      });
+    }
+    const data = await this._request('POST',
+      `/api2/json/nodes/${encodeURIComponent(safeNode)}/${type}/${id}/vncproxy`,
+      { websocket: 1 });
+    if (!data?.ticket || !Number.isInteger(Number(data?.port))) {
+      throw Object.assign(new Error('Proxmox did not issue a VM console ticket'), {
+        code: 'CONSOLE_TICKET_UNAVAILABLE', status: 502,
+      });
+    }
+    return { ...data, node: safeNode, guestType: type, vmid: id };
+  }
+
+  vmConsoleWebSocket(ticket) {
+    const url = new URL(this._config.endpoint);
+    url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:';
+    url.pathname = `/api2/json/nodes/${encodeURIComponent(ticket.node)}`
+      + `/${ticket.guestType}/${ticket.vmid}/vncwebsocket`;
+    url.search = '';
+    url.searchParams.set('port', String(ticket.port));
+    url.searchParams.set('vncticket', String(ticket.ticket));
+    return {
+      url: url.href,
+      password: String(ticket.ticket),
+      headers: { Authorization: `PVEAPIToken=${this._config.tokenId}=${this._config.tokenSecret}` },
+      agent: this._agent,
+    };
+  }
+
+  /**
    * List LXC containers across the cluster. Note: Proxmox's /cluster/
    * resources endpoint returns both VMs and LXCs when queried without
    * a type filter; we filter here for clarity of the caller-facing API.

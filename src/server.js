@@ -165,6 +165,7 @@ app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
 app.use('/api/providers', apiLimiter, require('./routes/providers'));
+app.use('/api/provider-console', apiLimiter, require('./routes/provider-console'));
 app.use('/api/operations', apiLimiter, require('./routes/operations'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
@@ -419,6 +420,7 @@ async function start() {
   // Attach WebSocket server
   const wsServer = require('./ws');
   wsServer.attach(server);
+  require('./services/provider-console/gateway').attach(server);
 
   // v7.4.0 — Wire the sample-feature broadcaster (contributor demo).
   // Demonstrates the standard "service emits event → ws broadcasts →

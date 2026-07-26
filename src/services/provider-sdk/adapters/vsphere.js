@@ -5,7 +5,7 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
-  'vm.console', 'vm.migrate', 'host.maintenance',
+  'vm.migrate', 'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
 ];
@@ -23,6 +23,10 @@ function declared() {
     'vm.guestCustomize': conditional('LinuxPrep is checked against the source template before CloneVM_Task and applies on first boot', {
       duringProvisioning: true, osFamilies: ['linux'], methods: ['linuxPrep'], requiresGuestTools: true,
       fields: ['hostname', 'domain', 'timezone', 'ipv4', 'dns', 'searchDomains'],
+    }),
+    'vm.console': conditional('A one-time WebMKS ticket is consumed only by the same-origin Docker Dash gateway', {
+      perResource: true, protocols: ['webmks', 'rfb'], clients: ['noVNC'],
+      singleUseToken: true, credentialIsolation: 'server-side', emergencyLock: true,
     }),
     'vm.power.start': conditional('Availability is checked from current VM state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Clean shutdown requires running VMware Tools', { perResource: true, requiresGuestTools: true }),

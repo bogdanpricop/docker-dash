@@ -28,7 +28,8 @@ jest.mock('ssh2', () => {
     static responses = [];
     static commands = [];
     connect() { setImmediate(() => this.emit('ready')); }
-    exec(command, cb) {
+    exec(command, options, cb) {
+      if (typeof options === 'function') { cb = options; options = {}; }
       MockClient.commands.push(command);
       const response = MockClient.responses.shift() || { stdout: '', stderr: '', code: 0 };
       const stream = new EventEmitter();
@@ -176,6 +177,33 @@ describe('unified Xen client', () => {
     expect(mockHttps._handlers).toHaveLength(0);
   });
 
+  it('builds an authenticated same-origin-compatible Xen Orchestra console proxy target', () => {
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'SCOPED_TOKEN' });
+    expect(client.capabilities().console).toBe(true);
+    const descriptor = client.vmConsoleProxy('vm-uuid');
+    expect(descriptor.url).toBe('wss://xo.test/api/consoles/vm-uuid');
+    expect(descriptor.headers.Cookie).toContain('token=SCOPED_TOKEN');
+    const passwordClient = new XenOrchestraClient({ endpoint: 'https://xo.test', username: 'svc', password: 'secret' });
+    expect(passwordClient.capabilities().console).toBe(false);
+    expect(() => passwordClient.vmConsoleProxy('vm-uuid')).toThrow(/scoped authentication token/i);
+  });
+
+  it('selects XAPI RFB before VT100 and retains the management session only server-side', async () => {
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 });
+    queueJson({ jsonrpc: '2.0', result: ['OpaqueRef:serial', 'OpaqueRef:rfb'], id: 2 });
+    queueJson({ jsonrpc: '2.0', result: {
+      protocol: 'vt100', location: 'https://xcp-a/console?ref=serial',
+    }, id: 3 });
+    queueJson({ jsonrpc: '2.0', result: {
+      protocol: 'rfb', location: 'https://xcp-a/console?ref=rfb',
+    }, id: 4 });
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    await expect(client.getVmConsole('OpaqueRef:vm')).resolves.toMatchObject({
+      protocol: 'rfb', location: 'https://xcp-a/console?ref=rfb', sessionId: 'OpaqueRef:session',
+    });
+    expect(client.capabilities().console).toBe(true);
+  });
+
   it('dispatches XAPI quiesced snapshots through the explicit async method', async () => {
     queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 });
     queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:vm', id: 2 });
@@ -281,6 +309,17 @@ describe('unified Xen client', () => {
     expect(await client.listVMs()).toEqual([expect.objectContaining({ id: 'uuid-web', name: 'web', domid: 2 })]);
     await expect(client.vmAction('Domain-0', 'shutdown')).rejects.toThrow(/protected/);
     await expect(client.vmAction('vm; reboot dom0', 'shutdown')).rejects.toThrow(/Invalid/);
+  });
+
+  it('opens a standalone Xen console through the pinned SSH transport', async () => {
+    const { Client } = require('ssh2');
+    Client.responses.push({ stdout: 'xl' }, { stdout: '' });
+    const client = new XenRawClient({ sshHost: 'dom0.test', sshUsername: 'svc', sshPrivateKey: 'KEY' });
+    const descriptor = await client.openConsole('uuid-web');
+    expect(descriptor.protocol).toBe('serial');
+    expect(Client.commands).toEqual(['if command -v xl >/dev/null 2>&1; then printf xl; elif command -v xm >/dev/null 2>&1; then printf xm; else exit 127; fi',
+      "LC_ALL=C xl console 'uuid-web'"]);
+    descriptor.close();
   });
 
   it('detects legacy xm only when xl is unavailable and narrows actions', async () => {

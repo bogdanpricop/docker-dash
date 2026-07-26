@@ -279,6 +279,26 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
   });
 
   describe('VM power operations', () => {
+    it('acquires a one-time WebMKS ticket and validates its WebSocket URL', async () => {
+      let requestBody = '';
+      mockHttps._mockNext((_opts, cb, req) => {
+        requestBody = req._writtenBody.toString('utf8');
+        const res = fakeResponse({ status: 200, body: `<soap:Envelope><soap:Body><AcquireTicketResponse><returnval>
+          <ticket>one-time-ticket</ticket><host>esxi-a.internal</host><port>443</port>
+          <url>wss://esxi-a.internal/ticket/one-time-ticket</url><sslThumbprint>AA:BB</sslThumbprint>
+        </returnval></AcquireTicketResponse></soap:Body></soap:Envelope>` });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://vcenter', username: 'svc', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.acquireVmConsoleTicket('vm-42')).resolves.toMatchObject({
+        url: 'wss://esxi-a.internal/ticket/one-time-ticket', ticket: 'one-time-ticket',
+        host: 'esxi-a.internal', port: 443, sslThumbprint: 'AA:BB',
+      });
+      expect(requestBody).toContain('<AcquireTicket xmlns="urn:vim25">');
+      expect(requestBody).toContain('<ticketType>webmks</ticketType>');
+    });
+
     it('submits a task-backed power action using the VM MoRef', async () => {
       let requestBody = '';
       mockHttps._mockNext((_opts, cb, req) => {

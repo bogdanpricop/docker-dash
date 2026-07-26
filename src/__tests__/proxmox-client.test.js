@@ -275,6 +275,28 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(seen[0]).toEqual({ method: 'PUT', path: '/api2/json/nodes/pve-a/qemu/240/config', body: expected });
       expect(seen[1]).toEqual({ method: 'GET', path: '/api2/json/nodes/pve-a/qemu/240/config' });
     });
+
+    it('creates a server-side VNC proxy descriptor without losing token scoping', async () => {
+      let seen;
+      mockHttps._mockNext((opts, cb, req) => {
+        seen = { method: opts.method, path: opts.path, body: JSON.parse(req._writtenBody.toString()) };
+        const res = fakeResponse({ status: 200, body: { data: { port: 5901, ticket: 'PVEVNC:short-ticket' } } });
+        cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({
+        endpoint: 'https://pve:8006', tokenId: 'svc@pve!console', tokenSecret: 'api-secret',
+      });
+      const ticket = await client.createVmConsoleProxy('pve-a', 'qemu', 101);
+      const descriptor = client.vmConsoleWebSocket(ticket);
+      expect(seen).toEqual({
+        method: 'POST', path: '/api2/json/nodes/pve-a/qemu/101/vncproxy', body: { websocket: 1 },
+      });
+      expect(new URL(descriptor.url).pathname).toBe('/api2/json/nodes/pve-a/qemu/101/vncwebsocket');
+      expect(descriptor.password).toBe('PVEVNC:short-ticket');
+      expect(descriptor.headers.Authorization).toBe('PVEAPIToken=svc@pve!console=api-secret');
+      await expect(client.createVmConsoleProxy('../unsafe', 'qemu', 101))
+        .rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
+    });
   });
 
   describe('daemon_config encryption', () => {

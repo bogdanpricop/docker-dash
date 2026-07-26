@@ -464,6 +464,45 @@ class VSphereClient {
   }
 
   /** Submit a VM power action using the vSphere Web Services API. */
+  async acquireVmConsoleTicket(vmMoref) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <AcquireTicket xmlns="urn:vim25">
+      <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+      <ticketType>webmks</ticketType>
+    </AcquireTicket>
+  </soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const ticket = _extractTag(response, 'ticket');
+    const host = _extractTag(response, 'host');
+    const port = Number(_extractTag(response, 'port')) || 443;
+    let url = _extractTag(response, 'url');
+    if (!url && host && ticket) url = `wss://${host}:${port}/ticket/${encodeURIComponent(ticket)}`;
+    if (!ticket || !url) {
+      throw Object.assign(new Error('vSphere did not issue a WebMKS console ticket'), {
+        code: 'CONSOLE_TICKET_UNAVAILABLE', status: 502,
+      });
+    }
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'wss:' || parsed.username || parsed.password) {
+      throw Object.assign(new Error('vSphere returned an invalid WebMKS URL'), {
+        code: 'INVALID_CONSOLE_TICKET', status: 502,
+      });
+    }
+    return {
+      url: parsed.href, ticket, host: host || parsed.hostname, port,
+      sslThumbprint: _extractTag(response, 'sslThumbprint'),
+      agent: this._agent,
+    };
+  }
+
+  /** Submit a VM power action using the vSphere Web Services API. */
   async vmPowerAction(vmMoref, action) {
     await this._ensureLoggedIn();
     if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {

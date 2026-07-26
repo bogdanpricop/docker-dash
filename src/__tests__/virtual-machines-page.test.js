@@ -32,4 +32,12 @@ describe('common virtual machines page routing', () => {
     expect(html).not.toContain('<script>');
     delete global.Utils;
   });
+
+  it('contains a same-origin console launcher and never constructs provider URLs', () => {
+    expect(page._openConsole).toEqual(expect.any(Function));
+    const source = page._openConsole.toString();
+    expect(source).toContain("target.origin !== location.origin");
+    expect(source).toContain("target.pathname !== '/vm-console.html'");
+    expect(source).not.toMatch(/proxmox|vcenter|xenserver|ticket/i);
+  });
 });

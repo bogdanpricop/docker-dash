@@ -5,7 +5,7 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.network', 'inventory.task',
-  'vm.console', 'vm.migrate', 'host.maintenance',
+  'vm.migrate', 'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
 ];
@@ -22,6 +22,10 @@ function declared() {
     'vm.guestCustomize': conditional('Cloud-Init settings require a compatible QEMU template and are verified on the cloned VM config', {
       duringProvisioning: true, osFamilies: ['linux'], methods: ['cloud-init'],
       fields: ['hostname', 'user', 'sshAuthorizedKeys', 'ipv4', 'dns', 'searchDomains'],
+    }),
+    'vm.console': conditional('A short-lived VNC proxy is terminated by the same-origin Docker Dash gateway', {
+      perResource: true, protocols: ['rfb'], clients: ['noVNC'],
+      singleUseToken: true, credentialIsolation: 'server-side', emergencyLock: true,
     }),
     'backup.read': supported(),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),

@@ -8,6 +8,7 @@ const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
+const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
@@ -291,6 +292,52 @@ router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _powerError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/console/preflight', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerConsole.preflightForHost(resolved.host, req.params.resourceId, { canOperate: true }));
+    } catch (err) {
+      res.status(err.status || 500).json({
+        error: err.status && err.status < 500 ? err.message : 'Provider VM console preflight failed',
+        code: err.code || 'PROVIDER_CONSOLE_PREFLIGHT_ERROR',
+      });
+    }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/console', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const launch = await providerConsole.createForHost(resolved.host, req.params.resourceId, {
+        canOperate: true, userId: req.user.id,
+      });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_console_token_issue', targetType: 'virtualMachine',
+        targetId: launch.resource.id,
+        details: {
+          sessionId: launch.id, hostId: resolved.host.id,
+          provider: resolved.host.daemon_type, expiresAt: launch.expiresAt,
+          singleUse: true, credentialIsolation: 'server-side',
+        }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+      });
+      res.status(201).json({
+        schemaVersion: '1.0', id: launch.id, expiresAt: launch.expiresAt,
+        resource: launch.resource,
+        launchUrl: `/vm-console.html#${launch.token}`,
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({
+        error: err.status && err.status < 500 ? err.message : 'Provider VM console launch failed',
+        code: err.code || 'PROVIDER_CONSOLE_LAUNCH_ERROR',
+      });
+    }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,

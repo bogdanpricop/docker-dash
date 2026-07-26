@@ -541,8 +541,10 @@ const VirtualMachinesPage = {
         statusPill: { text: vm.status?.powerState || 'unknown', cls: Utils.statusBadgeClass(vm.status?.powerState) },
         actions: target => {
           const actionButtons = detail.actions.map(action => `<button class="btn btn-sm ${action.action?.startsWith('force') ? 'btn-danger' : 'btn-secondary'}" data-vm-action="${Utils.escapeHtml(action.action || '')}" ${action.available ? '' : 'disabled'} title="${Utils.escapeHtml(action.available ? `${action.label} ${vm.displayName}` : this._blockerSummary(action))}">${Utils.escapeHtml(action.label)}</button>`).join('');
+          const consoleEvidence = detail.capabilities?.features?.['vm.console'];
+          const consoleAvailable = ['supported', 'conditional'].includes(consoleEvidence?.state);
           const canRefresh = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
-          target.innerHTML = `${actionButtons}<a class="btn btn-sm btn-secondary" href="#/activity"><i class="fas fa-tasks"></i> Activity</a>
+          target.innerHTML = `${actionButtons}${consoleAvailable ? '<button class="btn btn-sm btn-secondary" id="common-vm-console"><i class="fas fa-desktop"></i> Console</button>' : ''}<a class="btn btn-sm btn-secondary" href="#/activity"><i class="fas fa-tasks"></i> Activity</a>
             <a class="btn btn-sm btn-secondary" href="${this._providerRoute(host.daemonType)}"><i class="fas fa-external-link-alt"></i> Provider</a>
             ${canRefresh ? '<button class="btn btn-sm btn-secondary" id="common-vm-detail-refresh"><i class="fas fa-sync"></i> Refresh</button>' : ''}
             <a class="btn btn-sm btn-secondary" href="#/virtual-machines"><i class="fas fa-arrow-left"></i> Back</a>`;
@@ -552,6 +554,7 @@ const VirtualMachinesPage = {
             catch (err) { Toast.error(err.message); event.currentTarget.disabled = false; }
           });
           target.querySelectorAll('[data-vm-action]').forEach(button => button.addEventListener('click', () => this._runPower(host.id, vm, button.dataset.vmAction)));
+          target.querySelector('#common-vm-console')?.addEventListener('click', event => this._openConsole(host.id, vm, event.currentTarget));
         },
       },
       metaStrip: target => {
@@ -561,6 +564,32 @@ const VirtualMachinesPage = {
       },
     });
     this._shell.mount(container);
+  },
+
+  async _openConsole(hostId, vm, button) {
+    button.disabled = true;
+    const popup = window.open('', '_blank');
+    if (popup) {
+      popup.opener = null;
+      popup.document.title = 'Opening VM console…';
+      popup.document.body.textContent = 'Authorizing protected VM console…';
+    }
+    try {
+      const preflight = await Api.preflightProviderVMConsole(hostId, vm.id);
+      if (!preflight.ready) {
+        popup?.close();
+        Toast.warning((preflight.blockers || []).map(item => item.reason).join(' · ') || 'VM console is unavailable');
+        return;
+      }
+      const launch = await Api.launchProviderVMConsole(hostId, vm.id);
+      const target = new URL(launch.launchUrl, location.origin);
+      if (target.origin !== location.origin || target.pathname !== '/vm-console.html') throw new Error('Invalid console launch URL');
+      if (popup) popup.location.replace(target.href);
+      else window.open(target.href, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      popup?.close();
+      Toast.error(err.message);
+    } finally { button.disabled = false; }
   },
 
   destroy() {
