@@ -8,6 +8,8 @@ const mockResources = jest.fn();
 const mockArtifacts = jest.fn();
 const mockVmDetail = jest.fn();
 const mockMigrationPreflight = jest.fn();
+const mockMigrationExecutionPreflight = jest.fn();
+const mockMigrationSubmit = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -44,6 +46,10 @@ jest.mock('../services/provider-sdk/vm-detail', () => ({
 }));
 jest.mock('../services/provider-sdk/vm-migration-preflight', () => ({
   preflightForHost: (...args) => mockMigrationPreflight(...args),
+}));
+jest.mock('../services/provider-operations/vm-migration', () => ({
+  preflightForHost: (...args) => mockMigrationExecutionPreflight(...args),
+  submitForHost: (...args) => mockMigrationSubmit(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -121,6 +127,18 @@ describe('Provider SDK routes', () => {
       vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
       scope: { sameEndpointOnly: true, executionEnabled: false }, candidates: [],
       planHash: '8'.repeat(64),
+    });
+    mockMigrationExecutionPreflight.mockResolvedValue({
+      schemaVersion: '1.0', allowed: true, mode: 'live', planHash: '7'.repeat(64),
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      target: { id: `ddr_host_${'b'.repeat(26)}`, displayName: 'xcp-b' }, targetStorage: null,
+    });
+    mockMigrationSubmit.mockResolvedValue({
+      plan: {
+        mode: 'live', vm: { id: `ddr_vm_${'a'.repeat(26)}` },
+        target: { id: `ddr_host_${'b'.repeat(26)}` }, targetStorage: null,
+      },
+      operation: { id: `op_${'7'.repeat(26)}` },
     });
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
@@ -296,6 +314,27 @@ describe('Provider SDK routes', () => {
     expect(response.body).toEqual({
       error: 'Provider VM migration preflight failed', code: 'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED',
     });
+  });
+
+  it('operator-gates, preflights and audits native VM migration submission', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const targetId = `ddr_host_${'b'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${id}/migration/preflight`)
+      .set('x-test-role', 'viewer').send({ targetId, mode: 'live' })).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${id}/migration/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate').send({ targetId, mode: 'live' });
+    expect(preflight.status).toBe(200);
+    expect(mockMigrationExecutionPreflight).toHaveBeenCalledWith(mockHost, id,
+      { targetId, mode: 'live' }, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${id}/migration`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'migration-request-1')
+      .send({ targetId, mode: 'live', confirm: true, confirmName: 'vm-a', planHash: '7'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockMigrationSubmit).toHaveBeenCalledWith(mockHost, id, expect.objectContaining({
+      targetId, mode: 'live', idempotencyKey: 'migration-request-1',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_migrate' }));
   });
 
   it('preflights and submits host-scoped VM power with operate access', async () => {

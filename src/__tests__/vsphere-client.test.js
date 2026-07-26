@@ -362,6 +362,29 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       client._sessionCookie = 'vmware_soap_session="test"';
       await expect(client.getTaskStatus('haTask-42')).resolves.toEqual({ status: 'success', progress: 100, error: null });
     });
+
+    it('submits RelocateVM_Task and cancels only the selected native task', async () => {
+      const bodies = [];
+      mockHttps._mockNext((_opts, cb, req) => {
+        bodies.push(req._writtenBody.toString('utf8'));
+        const res = fakeResponse({ status: 200, body: '<returnval type="Task">task-relocate-1</returnval>' });
+        cb(res); res._fire();
+      });
+      mockHttps._mockNext((_opts, cb, req) => {
+        bodies.push(req._writtenBody.toString('utf8'));
+        const res = fakeResponse({ status: 200, body: '<CancelTaskResponse/>' });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://vcenter', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.relocateVm('vm-42', { hostRef: 'host-9', datastoreRef: 'datastore-3' }))
+        .resolves.toEqual({ taskRef: 'task-relocate-1', provider: 'vsphere' });
+      await expect(client.cancelTask('task-relocate-1')).resolves.toEqual({ ok: true });
+      expect(bodies[0]).toContain('<RelocateVM_Task xmlns="urn:vim25">');
+      expect(bodies[0]).toContain('<datastore type="Datastore">datastore-3</datastore>');
+      expect(bodies[0]).toContain('<host type="HostSystem">host-9</host>');
+      expect(bodies[1]).toContain('<CancelTask xmlns="urn:vim25">');
+    });
   });
 
   describe('VM snapshot operations', () => {

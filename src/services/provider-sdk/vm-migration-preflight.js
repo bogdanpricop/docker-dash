@@ -2,6 +2,7 @@
 
 const { getDb } = require('../../db');
 const { sha256 } = require('../../utils/crypto');
+const config = require('../../config');
 const registrySingleton = require('./registry');
 const snapshotsSingleton = require('./resource-snapshots');
 
@@ -81,6 +82,9 @@ function _mode(mode, capability, commonBlockers, provider, vm, hardware) {
   }, 'PROVIDER_MODE_UNSUPPORTED', 'provider'));
   if (mode === 'live' && vm.status?.powerState !== 'running') blockers.push(_finding({
     type: 'POWER_STATE_BLOCKED', reason: 'Live migration requires a running VM', modes: ['live'],
+  }, 'POWER_STATE_BLOCKED'));
+  if (mode === 'cold' && vm.status?.powerState !== 'stopped') blockers.push(_finding({
+    type: 'POWER_STATE_BLOCKED', reason: 'Cold migration requires the VM to be stopped before submission', modes: ['cold'],
   }, 'POWER_STATE_BLOCKED'));
   const unknown = providerState === 'unknown' || providerState === undefined;
   return {
@@ -181,7 +185,12 @@ async function preflightForHost(host, vmId, options = {}) {
     schemaVersion: SCHEMA_VERSION, generatedAt: new Date().toISOString(),
     vm: { id: vm.id, displayName: vm.displayName, powerState: vm.status?.powerState || 'unknown', memoryBytes: vm.spec?.memoryBytes || null },
     provider: { type: host.daemon_type, endpointId: Number(host.id), endpointName: _text(host.name, 160) },
-    scope: { sameEndpointOnly: true, crossProvider: false, executionEnabled: false, maxTargets: MAX_TARGETS },
+    scope: {
+      sameEndpointOnly: true, crossProvider: false,
+      executionEnabled: options.executionEnabled === undefined
+        ? config.features.providerVmMigration : options.executionEnabled === true,
+      maxTargets: MAX_TARGETS,
+    },
     capabilityMatrix, sourceTargetId: provider?.sourceTargetId || null,
     candidates, warnings: [providerWarning, ...(provider?.warnings || []).map(item => _text(item?.reason ?? item))].filter(Boolean).slice(0, 32),
     assumptions: [

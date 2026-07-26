@@ -83,4 +83,45 @@ describe('Xen VM hardware inventory', () => {
     expect(result.candidates[0].blockers).toEqual([]);
     expect(result.candidates[0].modes.live).toBe('unknown');
   });
+
+  it('submits and cancels XAPI migration as durable asynchronous tasks', async () => {
+    const client = new XapiClient({ endpoint: 'https://xapi.test', username: 'root', password: 'secret' });
+    client._call = jest.fn(async method => method === 'VM.get_by_uuid'
+      ? 'OpaqueRef:vm' : method === 'task.get_by_uuid' ? 'OpaqueRef:task' : 'OpaqueRef:new-task');
+    await expect(client.migrateVm('vm-uuid', 'OpaqueRef:host-b', { live: true }))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:new-task', provider: 'xapi' });
+    expect(client._call).toHaveBeenCalledWith('Async.VM.pool_migrate', [
+      'OpaqueRef:vm', 'OpaqueRef:host-b', { live: 'true' },
+    ]);
+    await expect(client.cancelTask('task-uuid')).resolves.toEqual({ ok: true, provider: 'xapi' });
+    expect(client._call).toHaveBeenCalledWith('task.cancel', ['OpaqueRef:task']);
+  });
+
+  it('enables Xen Orchestra migration only from a recognized runtime OpenAPI schema', async () => {
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'token' });
+    client._request = jest.fn(async (method, path, body) => {
+      if (method === 'GET') return {
+        paths: {
+          '/rest/v0/vms/{id}/actions/migrate': {
+            post: { requestBody: { content: { 'application/json': { schema: {
+              type: 'object', properties: { targetHost: { type: 'string' }, targetSr: { type: 'string' } },
+            } } } } },
+          },
+        },
+      };
+      expect(path).toBe('/rest/v0/vms/vm-1/actions/migrate');
+      expect(body).toEqual({ targetHost: 'host-2', targetSr: 'sr-3' });
+      return { task: 'task-9' };
+    });
+    await client._discoverRestFeatures();
+    expect(client.capabilities().migrationExecute).toBe(true);
+    await expect(client.migrateVm('vm-1', 'host-2', { targetStorage: 'sr-3' }))
+      .resolves.toEqual({ taskRef: 'task-9', provider: 'xo' });
+
+    client._request.mockResolvedValueOnce({ paths: {
+      '/rest/v0/vms/{id}/actions/migrate': { post: { requestBody: { properties: { destination: {} } } } },
+    } });
+    await client._discoverRestFeatures();
+    expect(client.capabilities().migrationExecute).toBe(false);
+  });
 });

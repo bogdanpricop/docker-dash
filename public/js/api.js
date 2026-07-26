@@ -576,6 +576,14 @@ const Api = {
   getProviderVMMigrationPreflight(hostId, resourceId) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration-preflight`);
   },
+  preflightProviderVMMigration(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration/preflight`, body);
+  },
+  submitProviderVMMigration(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   preflightProviderVMConsole(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});
   },

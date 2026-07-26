@@ -49,11 +49,13 @@ describe('common virtual machines page routing', () => {
     expect(source).not.toContain('nativeRef');
   });
 
-  it('exposes migration as a read-only, same-origin preflight without execution controls', () => {
+  it('exposes migration preflight with release-gated execution controls', () => {
     const source = page._mountMigrationPreflight.toString();
     expect(source).toContain('getProviderVMMigrationPreflight');
     expect(source).toContain('Read-only evidence');
-    expect(source).toContain('cannot execute a migration');
-    expect(source).not.toMatch(/submit|executeMigration|nativeRef/);
+    expect(source).toContain('executionEnabled');
+    expect(source).toContain('data-migrate-target');
+    expect(page._runMigration.toString()).toContain('submitProviderVMMigration');
+    expect(source).not.toContain('nativeRef');
   });
 });

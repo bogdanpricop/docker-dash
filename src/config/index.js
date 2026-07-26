@@ -93,6 +93,7 @@ module.exports = {
     providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
     providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
     providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
+    providerVmMigration: bool('DD_PROVIDER_VM_MIGRATION', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

@@ -185,6 +185,7 @@ const auditActionsList = [
   "procedure_run_failed",
   "procedure_run_start",
   "procedure_update",
+  "provider_vm_migrate",
   "provisioning_run_complete",
   "provisioning_run_fail",
   "provisioning_run_resume",

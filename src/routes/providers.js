@@ -6,6 +6,7 @@ const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmMigrationPreflight = require('../services/provider-sdk/vm-migration-preflight');
+const providerVmMigration = require('../services/provider-operations/vm-migration');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -85,6 +86,15 @@ function _migrationPreflightError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider VM migration preflight failed' : err.message,
     code: err?.code || 'VM_MIGRATION_PREFLIGHT_ERROR',
+  });
+}
+
+function _migrationError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM migration request failed' : err.message,
+    code: err?.code || 'VM_MIGRATION_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
   });
 }
 
@@ -567,6 +577,43 @@ router.get('/:hostId/virtual-machines/:resourceId/migration-preflight', requireA
     try {
       res.json(await providerVmMigrationPreflight.preflightForHost(resolved.host, req.params.resourceId));
     } catch (err) { _migrationPreflightError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/migration/preflight', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }),
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmMigration.preflightForHost(
+        resolved.host, req.params.resourceId, req.body, { canOperate: true }
+      ));
+    } catch (err) { _migrationError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/migration', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmMigration.submitForHost(
+        resolved.host, req.params.resourceId,
+        { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        { canOperate: true, createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_migrate', targetType: 'virtualMachine', targetId: result.plan.vm.id,
+        details: {
+          provider: resolved.host.daemon_type, hostId: resolved.host.id,
+          targetId: result.plan.target.id, targetStorageId: result.plan.targetStorage?.id || null,
+          mode: result.plan.mode, operationId: result.operation.id,
+        },
+        ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _migrationError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,

@@ -202,7 +202,7 @@ class XenOrchestraClient {
   constructor(config) {
     this._config = { ...config, provider: 'xo' };
     this._config._endpoint = _endpoint(config.endpoint);
-    this._restFeatures = { provisioning: false, guestCustomization: false };
+    this._restFeatures = { provisioning: false, guestCustomization: false, migration: null };
     if (!config.token && !(config.username && config.password)) {
       throw new Error('Xen Orchestra requires an authentication token or username + password');
     }
@@ -268,6 +268,8 @@ class XenOrchestraClient {
       guestCustomization: this._restFeatures.guestCustomization,
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
+      migrationExecute: !!this._restFeatures.migration,
+      taskCancel: false,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -279,13 +281,25 @@ class XenOrchestraClient {
       const paths = spec && typeof spec === 'object' ? spec.paths || {} : {};
       const route = Object.entries(paths).find(([path]) => /\/pools\/\{id\}\/actions\/create_vm$/.test(path));
       const provisioning = !!route?.[1]?.post;
+      const migrationRoute = Object.entries(paths).find(([path, value]) =>
+        /\/vms\/\{id\}\/actions\/(?:migrate|migrate_vm)$/.test(path) && value?.post);
+      const migrationFields = migrationRoute
+        ? ['targetHost', 'target_host', 'host', 'host_id'].filter(field =>
+          _openApiOperationHasFields(spec, migrationRoute[1].post, [field])) : [];
+      const storageFields = migrationRoute
+        ? ['targetSr', 'target_sr', 'sr', 'sr_id'].filter(field =>
+          _openApiOperationHasFields(spec, migrationRoute[1].post, [field])) : [];
       this._restFeatures = {
         provisioning,
         guestCustomization: provisioning
           && _openApiOperationHasFields(spec, route[1].post, ['cloud_config', 'network_config']),
+        migration: migrationRoute && migrationFields.length ? {
+          action: migrationRoute[0].split('/').pop(), targetField: migrationFields[0],
+          storageField: storageFields[0] || null,
+        } : null,
       };
     } catch {
-      this._restFeatures = { provisioning: false, guestCustomization: false };
+      this._restFeatures = { provisioning: false, guestCustomization: false, migration: null };
     }
     return this._restFeatures;
   }
@@ -306,6 +320,29 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
+  }
+
+  async migrateVm(vmId, targetRef, options = {}) {
+    const feature = this._restFeatures.migration;
+    if (!feature) throw new XenError('Xen Orchestra migration action was not discovered', {
+      code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400, provider: 'xo',
+    });
+    const id = String(vmId || '');
+    const target = String(targetRef || '');
+    if (!/^[A-Za-z0-9._:-]{1,200}$/.test(id) || !/^[A-Za-z0-9._:-]{1,200}$/.test(target)) {
+      throw new XenError('Invalid Xen Orchestra migration target', { code: 'INVALID_MIGRATION_CONTEXT', status: 400, provider: 'xo' });
+    }
+    const body = { [feature.targetField]: target };
+    if (options.targetStorage) {
+      if (!feature.storageField) throw new XenError('Xen Orchestra storage migration schema is unavailable', {
+        code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400, provider: 'xo',
+      });
+      body[feature.storageField] = options.targetStorage;
+    }
+    const response = await this._request('POST', `/rest/v0/vms/${encodeURIComponent(id)}/actions/${encodeURIComponent(feature.action)}`, body);
+    const taskRef = _idFrom(response?.taskId || response?.task || response?.href || response);
+    if (!taskRef) throw new XenError('Xen Orchestra migration returned no task', { code: 'INVALID_PROVIDER_TASK_RESPONSE', status: 502, provider: 'xo' });
+    return { taskRef, provider: 'xo' };
   }
 
   async _resource(collection, id, fields) {
@@ -849,6 +886,8 @@ class XapiClient {
       protocol: this._activeProtocol || this._protocol,
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
+      migrationExecute: true,
+      taskCancel: true,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -1104,6 +1143,24 @@ class XapiClient {
     const ref = String(id).startsWith('OpaqueRef:') ? id : await this._call('task.get_by_uuid', [id]);
     await this._call('task.destroy', [ref]);
     return { ok: true, id, provider: 'xapi' };
+  }
+
+  async cancelTask(id) {
+    const ref = String(id).startsWith('OpaqueRef:') ? id : await this._call('task.get_by_uuid', [id]);
+    await this._call('task.cancel', [ref]);
+    return { ok: true, provider: 'xapi' };
+  }
+
+  async migrateVm(vmId, targetRef, options = {}) {
+    const vmRef = String(vmId).startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(vmRef)
+      || !/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(targetRef || ''))) {
+      throw new XenError('Invalid XAPI migration target', { code: 'INVALID_MIGRATION_CONTEXT', status: 400, provider: 'xapi' });
+    }
+    const taskRef = await this._call('Async.VM.pool_migrate', [vmRef, String(targetRef), {
+      live: options.live === true ? 'true' : 'false',
+    }]);
+    return { taskRef, provider: 'xapi' };
   }
 
   async listSnapshots(vmId) {

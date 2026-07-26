@@ -556,6 +556,39 @@ class ProxmoxClient {
     return { ok: true };
   }
 
+  /** Submit a same-cluster QEMU/LXC migration. Returns the native UPID. */
+  async migrateVm(node, vmid, guestType, options = {}) {
+    const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
+    const target = String(options.target || '');
+    const mode = String(options.mode || '');
+    if (!type || !/^[A-Za-z0-9._-]{1,160}$/.test(String(node || ''))
+      || !/^\d{1,20}$/.test(String(vmid || ''))
+      || !/^[A-Za-z0-9._-]{1,160}$/.test(target)
+      || !['live', 'cold', 'storage'].includes(mode)
+      || target === String(node)) {
+      throw Object.assign(new Error('Invalid Proxmox migration target'), { code: 'INVALID_MIGRATION_CONTEXT', status: 400 });
+    }
+    if (type === 'lxc' && mode === 'live') {
+      throw Object.assign(new Error('Proxmox LXC live migration is unavailable'), { code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400 });
+    }
+    const body = { target };
+    if (type === 'qemu') {
+      body.online = mode === 'live' ? 1 : 0;
+      if (mode === 'storage') {
+        body['with-local-disks'] = 1;
+        body.targetstorage = options.targetStorage || '1';
+      }
+    } else {
+      body.restart = 0;
+      if (mode === 'storage') body['target-storage'] = options.targetStorage || '1';
+    }
+    const upid = await this._request('POST', `${this._guestPath(node, vmid, type)}/migrate`, body);
+    if (typeof upid !== 'string' || !upid.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox migration returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef: upid, node, provider: 'proxmox' };
+  }
+
   _guestPath(node, vmid, guestType) {
     const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
     if (!type || !/^[A-Za-z0-9._-]{1,160}$/.test(String(node || '')) || !/^\d{1,20}$/.test(String(vmid || ''))) {

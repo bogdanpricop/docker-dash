@@ -52,4 +52,21 @@ describe('Proxmox VM hardware parsing', () => {
     await expect(client.getVmMigrationPreconditions('../unsafe', 'qemu', 101))
       .rejects.toEqual(expect.objectContaining({ code: 'INVALID_PROVIDER_RESOURCE' }));
   });
+
+  it('submits QEMU and stopped LXC migration through native task endpoints', async () => {
+    const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+    client._request = jest.fn(async () => 'UPID:pve-a:0001');
+    await expect(client.migrateVm('pve-a', 101, 'qemu', {
+      target: 'pve-b', mode: 'storage', targetStorage: 'fast-zfs',
+    })).resolves.toEqual({ taskRef: 'UPID:pve-a:0001', node: 'pve-a', provider: 'proxmox' });
+    expect(client._request).toHaveBeenCalledWith('POST', '/api2/json/nodes/pve-a/qemu/101/migrate', {
+      target: 'pve-b', online: 0, 'with-local-disks': 1, targetstorage: 'fast-zfs',
+    });
+    await client.migrateVm('pve-a', 202, 'lxc', { target: 'pve-b', mode: 'cold' });
+    expect(client._request).toHaveBeenLastCalledWith('POST', '/api2/json/nodes/pve-a/lxc/202/migrate', {
+      target: 'pve-b', restart: 0,
+    });
+    await expect(client.migrateVm('pve-a', 202, 'lxc', { target: 'pve-b', mode: 'live' }))
+      .rejects.toMatchObject({ code: 'PROVIDER_ACTION_UNAVAILABLE' });
+  });
 });

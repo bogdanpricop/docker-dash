@@ -8,6 +8,7 @@ const engine = new ProviderOperationEngine({ policy, ...(config.providerOperatio
 require('./handlers/vm-power').register(engine);
 require('./handlers/vm-snapshot').register(engine);
 require('./handlers/vm-provision').register(engine);
+require('./handlers/vm-migration').register(engine);
 
 module.exports = engine;
 module.exports.policy = policy;

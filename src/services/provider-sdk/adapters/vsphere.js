@@ -5,7 +5,7 @@ const { supported, unsupported, conditional, adapterNotImplemented } = require('
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
-  'vm.migrate', 'host.maintenance',
+  'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
 ];
@@ -23,6 +23,10 @@ function declared() {
     'vm.migration.cold': conditional('Cold migration requires a compatible target host and accessible VM files', { perResource: true }),
     'vm.migration.storage': conditional('Storage relocation feasibility requires target datastore mapping', { perResource: true }),
     'vm.migration.crossCluster': conditional('Cross-cluster readiness is limited to candidates visible inside the same vCenter credential boundary', { sameEndpointOnly: true }),
+    'vm.migrate': conditional('RelocateVM_Task is reconciled through its durable vCenter Task and verified from VM runtime placement', {
+      perResource: true, modes: ['live', 'cold', 'storage'], durableTask: true,
+      cancel: 'when_task_cancelable', confirmation: 'typed_name', revalidate: true,
+    }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
@@ -77,7 +81,7 @@ async function probe(host) {
     const variant = _variant(info);
     const features = declared();
     if (variant === 'esxi') {
-      for (const key of ['vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster']) {
+      for (const key of ['vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate']) {
         features[key] = unsupported('Standalone ESXi exposes no alternate host inside this provider endpoint');
       }
     }
@@ -161,7 +165,7 @@ async function migrationCompatibility(host, context) {
           modes: {
             live: current ? 'unsupported' : (compatible ? 'conditional' : (values ? 'unsupported' : 'unknown')),
             cold: current ? 'unsupported' : (values ? 'conditional' : 'unknown'),
-            storage: current ? 'unsupported' : 'unknown',
+            storage: current ? 'unsupported' : (values ? 'conditional' : 'unknown'),
           },
         };
       }),

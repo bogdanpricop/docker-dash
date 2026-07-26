@@ -568,15 +568,55 @@ class VSphereClient {
       throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
     }
     const raw = await this._retrievePropertiesDirect('Task', taskMoref,
-      ['info.state', 'info.progress', 'info.error', 'info.result']);
+      ['info.state', 'info.progress', 'info.error', 'info.result', 'info.cancelable', 'info.cancelled']);
     const props = (_extractObjects(raw)[0] || { props: {} }).props;
     const resultRef = _firstManagedRef(props['info.result'], 'VirtualMachine');
     return {
       status: props['info.state'] || 'unknown',
       progress: parseInt(props['info.progress'], 10) || 0,
       error: props['info.error'] ? (_extractFault(props['info.error']) || 'vSphere task failed') : null,
+      ...(props['info.cancelable'] === undefined ? {} : { cancelable: props['info.cancelable'] === 'true' }),
+      ...(props['info.cancelled'] === undefined ? {} : { cancelled: props['info.cancelled'] === 'true' }),
       ...(resultRef ? { resultRef } : {}),
     };
+  }
+
+  /** Submit a vSphere relocation and return its durable Task MoRef. */
+  async relocateVm(vmMoref, options = {}) {
+    await this._ensureLoggedIn();
+    const hostRef = String(options.hostRef || '');
+    const datastoreRef = options.datastoreRef == null ? null : String(options.datastoreRef);
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))
+      || !/^[A-Za-z0-9._:-]{1,160}$/.test(hostRef)
+      || (datastoreRef && !/^[A-Za-z0-9._:-]{1,160}$/.test(datastoreRef))) {
+      throw Object.assign(new Error('Invalid vSphere relocation target'), { code: 'INVALID_MIGRATION_CONTEXT', status: 400 });
+    }
+    const datastore = datastoreRef
+      ? `<datastore type="Datastore">${this._xesc(datastoreRef)}</datastore>` : '';
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RelocateVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec>${datastore}<host type="HostSystem">${this._xesc(hostRef)}</host></spec>
+    <priority>defaultPriority</priority>
+  </RelocateVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere relocation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async cancelTask(taskMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(taskMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
+    }
+    await this._ensureLoggedIn();
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CancelTask xmlns="urn:vim25"><_this type="Task">${this._xesc(taskMoref)}</_this></CancelTask></soap:Body>
+</soap:Envelope>`;
+    await this._soapPost(body);
+    return { ok: true };
   }
 
   async listVMSnapshots(vmMoref) {

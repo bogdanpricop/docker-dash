@@ -84,10 +84,20 @@ function _fromCapabilities(capabilities = {}) {
       : unsupported('Portable snapshots are unavailable for this Xen provider');
   }
 
-  for (const key of [
-    'vm.migrate', 'host.maintenance',
-    'storage.mutate', 'network.mutate', 'task.cancel',
-  ]) features[key] = adapterNotImplemented('Xen');
+  features['vm.migrate'] = capabilities.migrationExecute
+    ? conditional('Same-pool migration uses a native task and execution-time target validation', {
+      perResource: true, modes: ['live', 'cold'], durableTask: true,
+      cancel: capabilities.taskCancel === true, confirmation: 'typed_name', revalidate: true,
+    })
+    : unsupported(capabilities.provider === 'xo'
+      ? 'Xen Orchestra migration execution requires a recognized task-backed OpenAPI action'
+      : 'Migration execution requires a managed XAPI task boundary');
+  for (const key of ['host.maintenance', 'storage.mutate', 'network.mutate']) {
+    features[key] = adapterNotImplemented('Xen');
+  }
+  features['task.cancel'] = capabilities.taskCancel
+    ? conditional('Cancellation is accepted only while the native task remains cancelable')
+    : adapterNotImplemented('Xen');
   const xoProvisioning = capabilities.provider === 'xo';
   features['vm.clone'] = capabilities.provisioning
     ? conditional(xoProvisioning

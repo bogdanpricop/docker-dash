@@ -5,7 +5,7 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.network', 'inventory.task',
-  'vm.migrate', 'host.maintenance',
+  'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
 ];
@@ -22,6 +22,10 @@ function declared() {
     'vm.migration.cold': conditional('Cold migration depends on target storage/network reachability and local resources', { perResource: true }),
     'vm.migration.storage': conditional('Local disk movement requires explicit target storage mapping in the execution batch', { perResource: true }),
     'vm.migration.crossCluster': adapterNotImplemented('Proxmox VE cross-cluster migration'),
+    'vm.migrate': conditional('Same-cluster migration uses a durable Proxmox UPID and execution-time compatibility checks', {
+      perResource: true, modes: ['live', 'cold', 'storage'], durableTask: true,
+      cancel: true, confirmation: 'typed_name', revalidate: true,
+    }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
@@ -140,6 +144,7 @@ async function migrationCompatibility(host, context) {
       const node = String(target.identity.nativeRef || target.resource.displayName || '');
       const current = node === sourceNode;
       const blockers = [];
+      const candidateWarnings = [{ type: 'CPU_COMPATIBILITY_UNKNOWN', reason: 'CPU compatibility must be revalidated immediately before execution', modes: ['live'] }];
       const checks = [];
       let inventory = null;
       if (!current) {
@@ -151,7 +156,10 @@ async function migrationCompatibility(host, context) {
         const missingStorage = [...storageIds].filter(id => !targetStorages.has(id));
         checks.push({ key: 'storage.mapping', state: missingStorage.length ? 'fail' : 'pass',
           reason: missingStorage.length ? 'Target is missing one or more source storage IDs' : 'All source storage IDs are visible on the target', confidence: 'high' });
-        if (missingStorage.length) blockers.push({ type: 'STORAGE_MAPPING_REQUIRED', reason: 'Target storage mapping is incomplete', modes: ['live', 'cold', 'storage'] });
+        if (missingStorage.length) {
+          blockers.push({ type: 'STORAGE_MAPPING_REQUIRED', reason: 'Target storage mapping is incomplete', modes: ['live', 'cold'] });
+          candidateWarnings.push({ type: 'TARGET_STORAGE_SELECTION_REQUIRED', reason: 'Storage-assisted migration requires an explicit destination mapping', modes: ['storage'] });
+        }
         const targetBridges = new Set(inventory.networks.filter(item => /bridge/i.test(String(item.type || item.iface || '')) || item.bridge_ports !== undefined)
           .map(item => String(item.iface || item.name || '')));
         const missingBridges = [...bridges].filter(name => !targetBridges.has(name));
@@ -166,7 +174,7 @@ async function migrationCompatibility(host, context) {
       checks.push({ key: 'cpu.compatibility', state: 'unknown', reason: 'Proxmox does not expose a side-effect-free per-target CPU compatibility result', confidence: 'low' });
       candidates.push({
         targetId: target.resource.id, current, blockers, checks,
-        warnings: [{ type: 'CPU_COMPATIBILITY_UNKNOWN', reason: 'CPU compatibility must be revalidated immediately before execution', modes: ['live'] }],
+        warnings: candidateWarnings,
         modes: {
           live: current ? 'unsupported' : (guestType === 'qemu' && context.resource.status?.powerState === 'running' ? 'conditional' : 'unsupported'),
           cold: current ? 'unsupported' : 'conditional',

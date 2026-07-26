@@ -620,7 +620,9 @@ const VirtualMachinesPage = {
         const value = candidate.modes?.[mode] || { state: 'unknown' };
         const reasons = [...(value.blockers || []), ...(value.warnings || [])].map(item => item.reason).filter(Boolean).join(' · ');
         return `<span class="badge ${statusClass(value.state)}" title="${Utils.escapeHtml(reasons || value.estimate?.methodology || '')}">${Utils.escapeHtml(value.state)}</span>
-          <div class="text-muted text-sm" style="margin-top:5px">${Utils.escapeHtml(duration(value.estimate))}</div>`;
+          <div class="text-muted text-sm" style="margin-top:5px">${Utils.escapeHtml(duration(value.estimate))}</div>
+          ${result.scope?.executionEnabled && value.state === 'ready'
+            ? `<button class="btn btn-xs btn-secondary" style="margin-top:6px" data-migrate-target="${Utils.escapeHtml(candidate.target.id)}" data-migrate-mode="${Utils.escapeHtml(mode)}">Review</button>` : ''}`;
       };
       const capabilities = Object.entries(result.capabilityMatrix || {}).map(([mode, evidence]) =>
         `<span class="badge ${evidence.state === 'supported' ? 'badge-success' : evidence.state === 'conditional' ? 'badge-warning' : 'badge-secondary'}" title="${Utils.escapeHtml(evidence.reason || '')}">${Utils.escapeHtml(mode)}: ${Utils.escapeHtml(evidence.state || 'unknown')}</span>`).join(' ');
@@ -635,7 +637,7 @@ const VirtualMachinesPage = {
           <td class="text-sm" title="${Utils.escapeHtml(checks)}">${Utils.escapeHtml(checks || 'No provider evidence')}</td>
         </tr>`;
       }).join('');
-      panel.innerHTML = `<div class="alert alert-info" style="margin-bottom:12px"><strong>Read-only evidence.</strong> This preflight does not reserve resources and cannot execute a migration.</div>
+      panel.innerHTML = `<div class="alert alert-info" style="margin-bottom:12px"><strong>${result.scope?.executionEnabled ? 'Execution-gated evidence.' : 'Read-only evidence.'}</strong> This preflight does not reserve resources${result.scope?.executionEnabled ? '; every migration is revalidated before submission.' : ' and native migration is disabled by the release flag.'}</div>
         ${warnings}<div class="card" style="padding:14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <strong>Provider capabilities</strong>${capabilities || '<span class="text-muted">No capability evidence</span>'}
           <span class="text-muted text-sm" style="margin-left:auto">Plan ${Utils.escapeHtml(String(result.planHash || '').slice(0, 12))}</span>
@@ -644,10 +646,65 @@ const VirtualMachinesPage = {
           <th>Target host</th><th>Score</th><th>Live</th><th>Cold</th><th>Storage</th><th>Checks</th>
         </tr></thead><tbody>${rows}</tbody></table></div>`
           : '<div class="empty-msg"><i class="fas fa-server"></i>No migration target hosts are visible in this provider endpoint.</div>'}`;
+      panel.querySelectorAll('[data-migrate-target]').forEach(button => button.addEventListener('click', () =>
+        this._runMigration(host, vm, button.dataset.migrateTarget, button.dataset.migrateMode)));
     } catch (err) {
       if (!panel.isConnected) return;
       panel.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`;
     }
+  },
+
+  _migrationPlanHtml(plan) {
+    const blockers = plan.blockers || [];
+    const warnings = plan.warnings || [];
+    const estimate = plan.selectedMode?.estimate;
+    return `<div class="text-sm">
+      ${blockers.length ? `<div class="alert alert-danger"><strong>Migration blocked</strong><ul style="margin:8px 0 0 18px">${blockers.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+        <div><strong>VM</strong><br>${Utils.escapeHtml(plan.vm.displayName)}</div>
+        <div><strong>Mode</strong><br>${Utils.escapeHtml(plan.mode)}</div>
+        <div><strong>Target</strong><br>${Utils.escapeHtml(plan.target.displayName)}</div>
+        <div><strong>Storage</strong><br>${Utils.escapeHtml(plan.targetStorage?.displayName || 'Provider/default mapping')}</div>
+        <div><strong>Duration estimate</strong><br>${estimate ? `${Utils.escapeHtml(estimate.durationSeconds.min)}-${Utils.escapeHtml(estimate.durationSeconds.max)}s` : '—'}</div>
+        <div><strong>Expected power</strong><br>${Utils.escapeHtml(plan.expectedPowerState || 'unknown')}</div>
+      </div>
+      ${warnings.length ? `<div class="alert alert-warning" style="margin-top:12px"><strong>Warnings</strong><ul style="margin:8px 0 0 18px">${warnings.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  },
+
+  async _runMigration(host, vm, targetId, mode) {
+    try {
+      let selection = { targetId, mode };
+      let plan = await Api.preflightProviderVMMigration(host.id, vm.id, selection);
+      if (mode === 'storage' && !plan.targetStorage && (plan.storageOptions || []).length
+        && (plan.blockers || []).some(item => item.type === 'TARGET_STORAGE_REQUIRED')) {
+        const selected = await Modal.form(`<label class="form-label" for="migration-storage">Target datastore</label>
+          <select id="migration-storage" class="form-control">${plan.storageOptions.map(item =>
+            `<option value="${Utils.escapeHtml(item.id)}">${Utils.escapeHtml(item.displayName)}${item.freeBytes ? ` · ${Utils.escapeHtml(Utils.formatBytes(item.freeBytes))} free` : ''}</option>`).join('')}</select>`, {
+          title: `Storage migration · ${vm.displayName}`, submitLabel: 'Review preflight',
+          onSubmit: root => root.querySelector('#migration-storage').value,
+        });
+        if (!selected) return;
+        selection = { ...selection, targetStorageId: selected };
+        plan = await Api.preflightProviderVMMigration(host.id, vm.id, selection);
+      }
+      if (!plan.allowed) {
+        await Modal.confirm(this._migrationPlanHtml(plan), {
+          title: 'Migration preflight', confirmText: 'Close', html: true, width: '680px',
+        });
+        return;
+      }
+      const confirmed = await Modal.confirm(this._migrationPlanHtml(plan), {
+        title: `Migrate ${vm.displayName}`, confirmText: 'Queue migration', danger: true,
+        typeToConfirm: plan.confirmation.expected, html: true, width: '680px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMMigration(host.id, vm.id, {
+        ...selection, planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
+      }, this._idempotencyKey('vm-migrate'));
+      Toast.success(`Migration queued for ${vm.displayName}`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); }
   },
 
   async _openConsole(hostId, vm, button) {
