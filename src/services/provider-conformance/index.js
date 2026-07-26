@@ -232,6 +232,35 @@ function _persistChecks(database, runId, checks) {
     check.weight, check.durationMs, check.message, _safeJson(check.evidence));
 }
 
+function recoverInterrupted(database, hostId) {
+  const db = database || getDb();
+  const id = hostId === undefined || hostId === null ? null : Number(hostId);
+  if (id !== null && (!Number.isInteger(id) || id <= 0)) throw new ProviderConformanceError('Valid provider host required', 'INVALID_HOST');
+  const rows = id === null
+    ? db.prepare("SELECT id, host_id, provider_type, manifest_hash FROM provider_conformance_runs WHERE state = 'running'").all()
+    : db.prepare("SELECT id, host_id, provider_type, manifest_hash FROM provider_conformance_runs WHERE state = 'running' AND host_id = ?").all(id);
+  if (!rows.length) return 0;
+  const insertCheck = db.prepare(`INSERT OR IGNORE INTO provider_conformance_checks
+    (run_id, check_key, category, state, weight, duration_ms, message, evidence_json)
+    VALUES (?, 'run.interrupted', 'resilience', 'failed', 1, 0, ?, ?)`);
+  const update = db.prepare(`UPDATE provider_conformance_runs SET state = 'failed', grade = 'failed',
+    score = 0, max_score = CASE WHEN max_score > 0 THEN max_score ELSE 1 END,
+    evidence_hash = ?, completed_at = datetime('now') WHERE id = ? AND state = 'running'`);
+  return db.transaction(() => {
+    let recovered = 0;
+    for (const row of rows) {
+      const evidence = {
+        schemaVersion: RUN_SCHEMA_VERSION, runId: row.id, hostId: row.host_id,
+        providerType: row.provider_type, manifestHash: row.manifest_hash,
+        outcome: 'interrupted', reason: 'application_restart',
+      };
+      insertCheck.run(row.id, 'Conformance run was interrupted before completion', _safeJson({ reason: 'application_restart' }));
+      recovered += update.run(sha256(_canonical(evidence)), row.id).changes;
+    }
+    return recovered;
+  })();
+}
+
 async function _runForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id)) || Number(host.id) <= 0) throw new ProviderConformanceError('Valid provider host required', 'INVALID_HOST');
   const providerType = String(host.daemon_type || '').toLowerCase();
@@ -241,6 +270,7 @@ async function _runForHost(host, options = {}) {
   const database = options.database || getDb();
   const runId = `pcr_${generateToken(13)}`;
   const manifestHash = manifests.manifestHash(manifest);
+  recoverInterrupted(database, Number(host.id));
   prune(database);
   database.prepare(`INSERT INTO provider_conformance_runs
     (id, host_id, provider_type, mode, manifest_hash, created_by) VALUES (?, ?, ?, 'live_readonly', ?, ?)`)
@@ -397,6 +427,6 @@ function exportEvidence(database, options = {}) {
 
 module.exports = {
   RUN_SCHEMA_VERSION, ProviderConformanceError, certifyAdapter, runForHost,
-  get, listForHost, scorecard, exportEvidence, prune, manifests, fixtures, resilience,
+  get, listForHost, scorecard, exportEvidence, prune, recoverInterrupted, manifests, fixtures, resilience,
   _internals: { _safeValue, _safeJson, _secretLeak, _score, _canonical, _exerciseFaultScenarios, activeRuns },
 };

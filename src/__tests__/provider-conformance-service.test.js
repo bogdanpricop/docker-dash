@@ -116,6 +116,19 @@ describe('Persistent provider conformance runs', () => {
     await expect(first).resolves.toEqual(expect.objectContaining({ hostId: 7 }));
   });
 
+  it('fails interrupted runs with explicit restart evidence', () => {
+    const manifestHash = conformance.manifests.manifestHash(conformance.manifests.getManifest('proxmox'));
+    database.prepare(`INSERT INTO provider_conformance_runs
+      (id, host_id, provider_type, mode, manifest_hash, created_by) VALUES (?, 7, 'proxmox', 'live_readonly', ?, 1)`)
+      .run(`pcr_${'c'.repeat(26)}`, manifestHash);
+    expect(conformance.recoverInterrupted(database)).toBe(1);
+    const recovered = conformance.get(`pcr_${'c'.repeat(26)}`, database);
+    expect(recovered).toEqual(expect.objectContaining({ state: 'failed', grade: 'failed', score: 0, maxScore: 1 }));
+    expect(recovered.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(recovered.checks).toEqual([expect.objectContaining({ key: 'run.interrupted', state: 'failed' })]);
+    expect(conformance.recoverInterrupted(database)).toBe(0);
+  });
+
   it('sanitizes sensitive evidence fields and detects value leaks', () => {
     expect(conformance._internals._safeValue({ token: 'hidden', nested: { password: 'hidden', ok: 'visible' } })).toEqual({ nested: { ok: 'visible' } });
     expect(conformance._internals._secretLeak({ url: 'https://root:secret@example.test/api' })).toBe(true);

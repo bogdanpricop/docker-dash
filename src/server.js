@@ -445,6 +445,12 @@ async function start() {
   });
   providerOperations.start();
 
+  // Any conformance run still marked running belongs to a process that no
+  // longer exists. Close it with explicit failure evidence before accepting
+  // new certifications; never let an interrupted probe look successful.
+  const recoveredConformanceRuns = require('./services/provider-conformance').recoverInterrupted();
+  if (recoveredConformanceRuns) log.warn('Recovered interrupted provider conformance runs', { count: recoveredConformanceRuns });
+
   // ACME watcher: transitions stuck 'running' jobs to success/failed so the
   // LE Wizard UI doesn't hang indefinitely.
   const acmeWatcher = require('./services/acme-watcher');
