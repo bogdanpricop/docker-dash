@@ -189,17 +189,19 @@ async function resourcesForHost(host, kindInput, options = {}) {
   let items;
   try {
     const database = options.database || getDb();
-    items = database.transaction(() => {
+    const write = database.transaction(() => {
       const normalized = selected.map(raw => normalizeResource({
         host, providerType: adapter.type, kind: kindInfo.kind, raw, observedAt, database,
       }));
       resourceSnapshots.rememberMany(normalized, database);
       return normalized;
-    })();
+    });
+    items = _retrySqliteBusy(write);
   } catch (err) {
     log.error('Provider resource normalization failed', {
       hostId: Number(host.id), provider: adapter.type, kind: kindInfo.kind,
       error: err?.name || 'Error',
+      code: /^SQLITE_[A-Z_]+$/.test(String(err?.code || '')) ? err.code : 'RESOURCE_WRITE_FAILED',
     });
     throw new ProviderAdapterError('Provider resource inventory could not be normalized', 'RESOURCE_NORMALIZATION_FAILED', 500);
   }

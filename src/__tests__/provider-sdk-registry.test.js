@@ -118,6 +118,32 @@ describe('Provider SDK registry', () => {
     expect(mockListVMs).toHaveBeenCalledTimes(1);
   });
 
+  it('restarts common inventory persistence after SQLITE_BUSY_SNAPSHOT', async () => {
+    mockListVMs.mockResolvedValue([
+      { vmid: 101, id: 'qemu/101', name: 'control', status: 'running', maxcpu: 4, maxmem: 4096 },
+    ]);
+    const busy = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY_SNAPSHOT' });
+    const transaction = database.transaction.bind(database);
+    let outerTransaction = true;
+    const spy = jest.spyOn(database, 'transaction').mockImplementation(fn => {
+      const write = transaction(fn);
+      if (!outerTransaction) return write;
+      outerTransaction = false;
+      let attempt = 0;
+      return (...args) => {
+        if (attempt++ === 0) throw busy;
+        return write(...args);
+      };
+    });
+    try {
+      const envelope = await registry.resourcesForHost(pveHost, 'virtual-machines', { database });
+      expect(envelope).toEqual(expect.objectContaining({ count: 1, totalObserved: 1 }));
+      expect(database.prepare('SELECT COUNT(*) AS count FROM provider_resource_snapshots').get().count).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('gates unsupported resource kinds before calling the provider', async () => {
     await expect(registry.resourcesForHost(pveHost, 'clusters', { database }))
       .rejects.toMatchObject({ code: 'PROVIDER_RESOURCE_UNAVAILABLE', status: 400 });
@@ -150,7 +176,7 @@ describe('Provider SDK registry', () => {
       .rejects.toMatchObject({ code: 'INVALID_RESOURCE_LIMIT' });
   });
 
-  it('restarts a bounded artifact transaction after SQLITE_BUSY_SNAPSHOT', () => {
+  it('retries only bounded SQLite busy failures', () => {
     const busy = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY_SNAPSHOT' });
     const write = jest.fn().mockImplementationOnce(() => { throw busy; }).mockReturnValue(['saved']);
     expect(registry._internals._retrySqliteBusy(write)).toEqual(['saved']);
