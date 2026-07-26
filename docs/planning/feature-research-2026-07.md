@@ -117,6 +117,10 @@ Implemented as deterministic, secret-free fleet export into an existing Git-stac
 
 Implemented as an admin-controlled global or per-host policy. The WebSocket gate applies to administrators as well as operators, checks twice around the asynchronous permission lookup, immediately closes matching active exec streams, propagates termination across HA replicas, and writes a hash-chained audit event with the number of sessions closed. `DD_TERMINAL_ACCESS_OVERRIDE=deny` provides an out-of-band incident kill switch; `allow` is the documented recovery path for clearing a persisted lock before returning to `managed` mode.
 
+### 10. Resilient dependency vulnerability gate
+
+Implemented after the npm Bulk Advisory service returned invalid data and its retired Quick Audit fallback rejected a valid lockfile. CI now downloads the pinned OSV-Scanner v2.3.8 binary, verifies the published SHA-256 before execution, scans the npm lockfile against OSV/GitHub Advisory data, excludes dev-only packages, and fails on production findings at CVSS 9.0 or above. Scanner and malformed-report failures remain fail-closed.
+
 ## Ideas deliberately not prioritized
 
 - **Generic AI chat:** Docker Dash already has Ops Copilot. A future AI addition should be narrowly grounded in incident timelines or propose a reviewed procedure; it must not execute mutations from free-form text.
@@ -154,6 +158,7 @@ Implemented as an admin-controlled global or per-host policy. The WebSocket gate
 
 - [x] Disk-pressure automation with protected resources and no volume deletion.
 - [x] Managed GitOps write-back with conflict detection and non-force commits.
+- [x] Checksum-pinned OSV production dependency gate with a critical-severity threshold.
 
 ## Success measures
 
@@ -163,3 +168,4 @@ Implemented as an admin-controlled global or per-host policy. The WebSocket gate
 - Procedure elapsed time reduction after safe parallel stages.
 - Declarative sync plans applied without manual correction and stale-plan rejection rate.
 - Preview environments automatically removed within their TTL and zero production-secret exposure incidents.
+- Critical production dependency findings blocked without npm Audit endpoint availability becoming a false failure.
