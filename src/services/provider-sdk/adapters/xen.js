@@ -72,6 +72,14 @@ function _fromCapabilities(capabilities = {}) {
       ? conditional('Xen Orchestra recovery archives and repositories are read through discovered public REST routes', { readOnly: true, provider: 'xo' })
       : adapterNotImplemented('Xen'),
     'backup.run': adapterNotImplemented('Xen'),
+    'backup.restore.vm': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra JSON-RPC restore transport' : 'Xen'),
+    'backup.restore.disk': adapterNotImplemented('Xen'),
+    'backup.restore.file': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra file-restore transport' : 'Xen'),
+    'backup.restore.instant': adapterNotImplemented('Xen'),
+    'backup.restore.differential': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra differential restore transport' : 'Xen'),
   };
 
   const actions = new Set(capabilities.vmActions || []);

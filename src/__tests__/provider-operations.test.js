@@ -136,6 +136,39 @@ describe('Durable provider operation engine', () => {
     }))).toThrow(expect.objectContaining({ code: 'INVALID_OPERATION_RESOURCE' }));
   });
 
+  it('accepts only the dedicated opaque recovery-point resource shape for restore handlers', () => {
+    const engine = createEngine(db);
+    engine.registerHandler({ type: 'vm.restore.test', idempotent: false, execute: async () => ({}) });
+    const recoveryPointId = `ddr_rp_${'c'.repeat(26)}`;
+    expect(engine.create(spec({
+      type: 'vm.restore.test', resourceKind: 'recoveryPoint', resourceId: recoveryPointId,
+      idempotencyKey: 'recovery-restore-key', lockScopes: [`resource:${recoveryPointId}`],
+    })).resource).toEqual({ kind: 'recoveryPoint', id: recoveryPointId });
+    expect(() => engine.create(spec({
+      type: 'vm.restore.test', resourceKind: 'recoveryPoint', resourceId: RESOURCE_ID,
+      idempotencyKey: 'invalid-recovery-point-key',
+    }))).toThrow(expect.objectContaining({ code: 'INVALID_OPERATION_RESOURCE' }));
+  });
+
+  it('persists handler-declared failure evidence without converting it to an invalid result', async () => {
+    const engine = createEngine(db);
+    engine.registerHandler({
+      type: 'vm.restore.test', idempotent: false,
+      execute: async () => ({ state: 'failed', errorCode: 'RESTORE_FAILED',
+        errorMessage: 'Inspect partial target', result: { partialTargetMayExist: true } }),
+    });
+    const recoveryPointId = `ddr_rp_${'d'.repeat(26)}`;
+    const operation = engine.create(spec({
+      type: 'vm.restore.test', resourceKind: 'recoveryPoint', resourceId: recoveryPointId,
+      idempotencyKey: 'restore-failure-result', lockScopes: [`resource:${recoveryPointId}`],
+    }));
+    await engine.tick();
+    expect(engine.get(operation.id)).toEqual(expect.objectContaining({
+      state: 'failed', result: { partialTargetMayExist: true },
+      error: { code: 'RESTORE_FAILED', message: 'Inspect partial target' },
+    }));
+  });
+
   it('retries only transient failures for idempotent handlers', async () => {
     const engine = createEngine(db);
     let calls = 0;

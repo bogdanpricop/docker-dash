@@ -16,6 +16,7 @@ const providerVmSnapshots = require('../services/provider-operations/vm-snapshot
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
 const providerBackupPolicies = require('../services/provider-operations/backup-policies');
 const providerBackupExecutions = require('../services/provider-operations/backup-executions');
+const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -119,6 +120,32 @@ function _backupExecutionAudit(req, action, policy, details = {}) {
     targetId: String(req.params.hostId), details: {
       hostId: Number(req.params.hostId), policyId: policy?.id || req.params.policyId || null,
       executionMode: policy?.execution?.mode || null, retentionMutationAuthorized: false, ...details,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
+function _recoveryRestoreError(res, err) {
+  const trusted = err?.name === 'RecoveryRestoreError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider recovery restore request failed' : err.message,
+    code: trusted ? err.code : 'PROVIDER_RECOVERY_RESTORE_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _recoveryRestoreAudit(req, action, plan, operation) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_recovery_restore_${action}`, targetType: 'recovery_point',
+    targetId: req.params.pointId, details: {
+      hostId: Number(req.params.hostId), kind: plan.kind,
+      recoveryPointId: plan.source?.recoveryPointId || req.params.pointId,
+      targetNodeId: plan.target?.nodeId || null, targetStorageId: plan.target?.storageId || null,
+      targetVmid: plan.target?.vmid || null, operationId: operation?.id || null,
+      allowed: plan.allowed, verificationOverride: plan.verificationOverride?.requested === true,
+      overwrite: false, startAfterRestore: false, automaticCleanupAuthorized: false,
     }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
@@ -342,11 +369,12 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
     return res.status(400).json({ error: 'Recovery-point search is limited to 120 characters', code: 'INVALID_RECOVERY_POINT_QUERY' });
   }
   try {
-    res.json(await providerSdk.recoveryPointsForHost(resolved.host, {
+    const envelope = await providerSdk.recoveryPointsForHost(resolved.host, {
       limit, query, repositoryId: req.query.repository,
       workloadId: req.query.workload, verification: req.query.verification,
       from: req.query.from, to: req.query.to,
-    }));
+    });
+    res.json({ ...envelope, restoreFeatureEnabled: config.features.providerRecoveryRestore });
   } catch (err) {
     const trusted = err?.name === 'ProviderAdapterError'
       && /^(?:PROVIDER_|RECOVERY_|INVALID_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
@@ -357,6 +385,33 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
     });
   }
 }));
+
+router.post('/:hostId/recovery-points/:pointId/restore/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerRecoveryRestore.preflightForHost(resolved.host,
+        req.params.pointId, req.body || {}, { canOperate: true });
+      _recoveryRestoreAudit(req, 'preflight', plan, null);
+      res.json(plan);
+    } catch (err) { _recoveryRestoreError(res, err); }
+  }));
+
+router.post('/:hostId/recovery-points/:pointId/restore', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRecoveryRestore.submitForHost(resolved.host,
+        req.params.pointId, { ...(req.body || {}), idempotencyKey: req.get('Idempotency-Key') },
+        { canOperate: true, createdBy: req.user.id });
+      _recoveryRestoreAudit(req, result.operation.deduplicated ? 'deduplicated' : 'submitted',
+        result.plan, result.operation);
+      res.status(result.operation.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _recoveryRestoreError(res, err); }
+  }));
 
 router.get('/:hostId/backup-policies', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
   const resolved = _host(req.params.hostId);

@@ -49,6 +49,13 @@ describe('Provider recovery-point catalog', () => {
     const stored = database.prepare('SELECT native_ref_enc, workload_ref_enc FROM provider_recovery_points').get();
     expect(stored.native_ref_enc).not.toContain('remote-secret-id');
     expect(stored.workload_ref_enc).not.toContain('OpaqueRef');
+    const resolved = catalog.resolveRecoveryPoint(point.id, { hostId: 7 }, database);
+    expect(resolved).toEqual(expect.objectContaining({
+      id: point.id, repositoryId: repositoryResult.repository.id,
+      nativeRef: 'remote-secret-id/xo-vm-backups/vm-uuid/archive.json',
+      workloadRef: 'OpaqueRef:vm-secret', point: expect.objectContaining({ id: point.id }),
+    }));
+    expect(catalog.resolveRecoveryPoint(point.id, { hostId: 8 }, database)).toBeNull();
   });
 
   it('uses stable opaque IDs and conservative verification states', () => {

@@ -52,6 +52,11 @@ const FEATURE_CATALOG = Object.freeze({
   'event.stream': 'Provider event stream',
   'backup.read': 'Backup and recovery-point inventory',
   'backup.run': 'Run workload backup',
+  'backup.restore.vm': 'Restore a virtual machine from a recovery point',
+  'backup.restore.disk': 'Restore a virtual disk from a recovery point',
+  'backup.restore.file': 'Restore files from a recovery point',
+  'backup.restore.instant': 'Start an instant or live restore',
+  'backup.restore.differential': 'Restore by reusing a provider base chain',
 });
 
 const FEATURE_KEYS = Object.freeze(Object.keys(FEATURE_CATALOG));

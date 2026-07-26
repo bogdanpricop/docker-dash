@@ -30,6 +30,7 @@ const SAFE_TYPE = /^[a-z][a-z0-9_.-]{2,79}$/;
 const SAFE_ACTION = /^[a-z][a-zA-Z0-9_.-]{1,79}$/;
 const SAFE_RESOURCE_ID = /^ddr_(vm|host|cluster|storage|network|task)_[a-f0-9]{26}$/;
 const SAFE_ARTIFACT_ID = /^dda_art_[a-f0-9]{26}$/;
+const SAFE_RECOVERY_POINT_ID = /^ddr_rp_[a-f0-9]{26}$/;
 const SAFE_OPERATION_ID = /^op_[a-f0-9]{26}$/;
 const SAFE_LOCK = /^[a-z][a-z0-9_.:-]{1,199}$/;
 
@@ -190,7 +191,8 @@ class ProviderOperationEngine {
     const commonResource = SAFE_RESOURCE_ID.test(resourceId) && kindInfo
       && resourceId.startsWith(`ddr_${kindInfo.prefix}_`);
     const artifactResource = resourceKindName === 'artifact' && SAFE_ARTIFACT_ID.test(resourceId);
-    if (!commonResource && !artifactResource) {
+    const recoveryPointResource = resourceKindName === 'recoveryPoint' && SAFE_RECOVERY_POINT_ID.test(resourceId);
+    if (!commonResource && !artifactResource && !recoveryPointResource) {
       throw new ProviderOperationError('Canonical provider resource is required', 'INVALID_OPERATION_RESOURCE');
     }
     const action = String(input.action || '');
@@ -575,6 +577,13 @@ class ProviderOperationEngine {
         this._finish(row.id, 'unknown', { result: result.result, errorCode: 'OPERATION_RESULT_UNKNOWN', errorMessage: 'Provider result requires manual verification' });
       } else if (outcome === 'succeeded') {
         this._finish(row.id, 'succeeded', { result: result?.result ?? result, phase: result?.phase });
+      } else if (outcome === 'failed') {
+        this._finish(row.id, 'failed', {
+          result: result?.result,
+          errorCode: _safeCode(result?.errorCode, 'PROVIDER_OPERATION_FAILED'),
+          errorMessage: _safeString(result?.errorMessage) || 'Provider operation failed',
+          phase: result?.phase,
+        });
       } else {
         throw Object.assign(new Error('Provider operation handler returned an invalid state'), { code: 'INVALID_HANDLER_RESULT' });
       }

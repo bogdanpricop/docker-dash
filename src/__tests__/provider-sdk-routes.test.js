@@ -64,6 +64,8 @@ const mockBackupExecutionAuthorize = jest.fn();
 const mockBackupExecutionCreate = jest.fn();
 const mockBackupExecutionGet = jest.fn();
 const mockBackupExecutionCancel = jest.fn();
+const mockRecoveryRestorePreflight = jest.fn();
+const mockRecoveryRestoreSubmit = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -71,7 +73,8 @@ const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
-    providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true } };
+    providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
+    providerRecoveryRestore: true } };
 });
 
 jest.mock('../db', () => ({
@@ -173,6 +176,18 @@ jest.mock('../services/provider-operations/backup-executions', () => {
     authorizeForHost: (...args) => mockBackupExecutionAuthorize(...args),
     createForHost: (...args) => mockBackupExecutionCreate(...args),
     cancelForHost: (...args) => mockBackupExecutionCancel(...args),
+  };
+});
+jest.mock('../services/provider-operations/recovery-restore', () => {
+  class RecoveryRestoreError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RecoveryRestoreError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    RecoveryRestoreError,
+    preflightForHost: (...args) => mockRecoveryRestorePreflight(...args),
+    submitForHost: (...args) => mockRecoveryRestoreSubmit(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -380,6 +395,15 @@ describe('Provider SDK routes', () => {
     mockBackupExecutionCreate.mockResolvedValue({ execution, deduplicated: false });
     mockBackupExecutionGet.mockReturnValue(execution);
     mockBackupExecutionCancel.mockResolvedValue({ ...execution, state: 'running' });
+    const restorePlan = {
+      schemaVersion: '1.0', kind: 'vm', allowed: true, planHash: '4'.repeat(64),
+      source: { recoveryPointId: `ddr_rp_${'d'.repeat(26)}` },
+      target: { nodeId: `ddr_host_${'e'.repeat(26)}`, storageId: `ddr_storage_${'f'.repeat(26)}`, vmid: 9123 },
+      verificationOverride: { requested: false }, blockers: [],
+    };
+    mockRecoveryRestorePreflight.mockResolvedValue(restorePlan);
+    mockRecoveryRestoreSubmit.mockResolvedValue({ plan: restorePlan,
+      operation: { id: `op_${'4'.repeat(26)}`, state: 'queued', deduplicated: false } });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -792,6 +816,33 @@ describe('Provider SDK routes', () => {
     expect(response.body).toEqual({
       error: 'Provider recovery-point inventory failed', code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
     });
+  });
+
+  it('admin-gates, preflights and audits create-only recovery restore submission', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const body = {
+      kind: 'vm', targetNodeId: `ddr_host_${'e'.repeat(26)}`,
+      targetStorageId: `ddr_storage_${'f'.repeat(26)}`, targetVmid: 9123,
+    };
+    expect((await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore/preflight`)
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore/preflight`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate').send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockRecoveryRestorePreflight).toHaveBeenCalledWith(mockHost, pointId, body, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'restore-route-request-1')
+      .send({ ...body, planHash: '4'.repeat(64), confirm: true, confirmText: 'RESTORE 9123' });
+    expect(submit.status).toBe(202);
+    expect(mockRecoveryRestoreSubmit).toHaveBeenCalledWith(mockHost, pointId,
+      expect.objectContaining({ idempotencyKey: 'restore-route-request-1', targetVmid: 9123 }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_recovery_restore_submitted', targetType: 'recovery_point', targetId: pointId,
+      details: expect.objectContaining({ targetVmid: 9123, overwrite: false,
+        startAfterRestore: false, automaticCleanupAuthorized: false }),
+    }));
   });
 
   it('admin-gates and audits plan-only backup policy lifecycle', async () => {

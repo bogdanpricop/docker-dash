@@ -621,6 +621,42 @@ class ProxmoxClient {
     return { taskRef: upid, node: safeNode, vmid: id, guestType: type, storage, provider: 'proxmox' };
   }
 
+  /**
+   * Restore one backup into a new, powered-off QEMU VM or LXC container.
+   * Overwrite and live/start restore are deliberately not exposed here.
+   */
+  async restoreVmBackup(node, vmid, guestType, archive, options = {}) {
+    const safeNode = String(node || '');
+    const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
+    const id = Number(vmid);
+    const source = String(archive || '');
+    const storage = String(options.storage || '');
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !type
+      || !Number.isSafeInteger(id) || id < 100 || id > 999999999
+      || !/^[A-Za-z0-9._:+/@=-]{1,255}$/.test(source) || source === '-'
+      || !/^[A-Za-z0-9._-]{1,128}$/.test(storage)
+      || options.force === true || options.start === true || options.liveRestore === true) {
+      throw Object.assign(new Error('Invalid Proxmox restore target'), {
+        code: 'INVALID_RECOVERY_RESTORE', status: 400,
+      });
+    }
+    const body = type === 'qemu'
+      ? { vmid: id, archive: source, storage, force: 0, unique: 1, start: 0, 'live-restore': 0 }
+      : { vmid: id, ostemplate: source, storage, restore: 1, force: 0, unique: 1, start: 0 };
+    if (Number.isSafeInteger(options.bwlimitKiB) && options.bwlimitKiB > 0) {
+      body.bwlimit = options.bwlimitKiB;
+    }
+    const upid = await this._request('POST',
+      `/api2/json/nodes/${encodeURIComponent(safeNode)}/${type}`, body);
+    if (typeof upid !== 'string' || !upid.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox restore returned no task'), {
+        code: 'INVALID_PROVIDER_TASK_RESPONSE', status: 502,
+      });
+    }
+    return { taskRef: upid, node: safeNode, vmid: id, guestType: type,
+      storage, provider: 'proxmox', startAfterRestore: false, overwrite: false };
+  }
+
   /** Submit a same-cluster QEMU/LXC migration. Returns the native UPID. */
   async migrateVm(node, vmid, guestType, options = {}) {
     const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;

@@ -228,6 +228,24 @@ function resolveRepository(canonicalId, scope = {}, database) {
   };
 }
 
+function resolveRecoveryPoint(canonicalId, scope = {}, database) {
+  const db = database || getDb();
+  const hostId = Number(scope.hostId);
+  if (!SAFE_POINT_ID.test(String(canonicalId || '')) || !Number.isInteger(hostId) || hostId <= 0) return null;
+  const row = db.prepare(`SELECT canonical_id, provider_type, repository_id, native_ref_enc,
+      workload_id, workload_ref_enc, recovery_point_json, observed_at
+    FROM provider_recovery_points WHERE canonical_id = ? AND host_id = ?`).get(canonicalId, hostId);
+  if (!row) return null;
+  let point;
+  try { point = JSON.parse(row.recovery_point_json || '{}'); } catch { point = {}; }
+  return {
+    id: row.canonical_id, providerType: row.provider_type, repositoryId: row.repository_id,
+    nativeRef: decrypt(row.native_ref_enc), workloadId: row.workload_id || null,
+    workloadRef: row.workload_ref_enc ? decrypt(row.workload_ref_enc) : null,
+    point: { ...point, observedAt: row.observed_at },
+  };
+}
+
 function _parseRepository(value) {
   try { return value ? JSON.parse(value) : {}; } catch { return {}; }
 }
@@ -235,6 +253,6 @@ function _parseRepository(value) {
 module.exports = {
   RECOVERY_POINT_SCHEMA_VERSION, MAX_RECOVERY_INVENTORY_BYTES, VERIFICATION_STATES,
   normalizeRepositoryAndRemember, normalizeRecoveryPointAndRemember,
-  validateRepository, validateRecoveryPoint, resolveRepository,
+  validateRepository, validateRecoveryPoint, resolveRepository, resolveRecoveryPoint,
   _internals: { SAFE_REPOSITORY_ID, SAFE_POINT_ID, _timestamp, _verification, _repositoryType },
 };

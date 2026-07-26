@@ -237,6 +237,42 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(mockHttps._handlers).toHaveLength(0);
     });
 
+    it('restores QEMU and LXC backups only as new, powered-off unique targets', async () => {
+      const seen = [];
+      for (const task of ['qemu-restore', 'lxc-restore']) {
+        mockHttps._mockNext((opts, cb, req) => {
+          seen.push({ method: opts.method, path: opts.path, body: JSON.parse(req._writtenBody.toString()) });
+          const res = fakeResponse({ status: 200, body: { data: `UPID:pve-a:0004:${task}` } });
+          cb(res); res._fire();
+        });
+      }
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.restoreVmBackup('pve-a', 9123, 'qemu',
+        'pbs-prod:backup/vm/101/2026-07-26T10:00:00Z', { storage: 'local-lvm', bwlimitKiB: 4096 }))
+        .resolves.toEqual(expect.objectContaining({ taskRef: 'UPID:pve-a:0004:qemu-restore',
+          guestType: 'qemu', startAfterRestore: false, overwrite: false }));
+      await expect(client.restoreVmBackup('pve-a', 9124, 'lxc',
+        'local:backup/vzdump-lxc-101.tar.zst', { storage: 'local-zfs' }))
+        .resolves.toEqual(expect.objectContaining({ taskRef: 'UPID:pve-a:0004:lxc-restore', guestType: 'lxc' }));
+      expect(seen).toEqual([
+        { method: 'POST', path: '/api2/json/nodes/pve-a/qemu', body: {
+          vmid: 9123, archive: 'pbs-prod:backup/vm/101/2026-07-26T10:00:00Z', storage: 'local-lvm',
+          force: 0, unique: 1, start: 0, 'live-restore': 0, bwlimit: 4096,
+        } },
+        { method: 'POST', path: '/api2/json/nodes/pve-a/lxc', body: {
+          vmid: 9124, ostemplate: 'local:backup/vzdump-lxc-101.tar.zst', storage: 'local-zfs',
+          restore: 1, force: 0, unique: 1, start: 0,
+        } },
+      ]);
+      await expect(client.restoreVmBackup('pve-a', 9125, 'qemu', 'pbs:backup/vm', {
+        storage: 'local-lvm', force: true,
+      })).rejects.toMatchObject({ code: 'INVALID_RECOVERY_RESTORE' });
+      await expect(client.restoreVmBackup('pve-a', 9125, 'qemu', 'pbs:backup/vm', {
+        storage: 'local-lvm', start: true,
+      })).rejects.toMatchObject({ code: 'INVALID_RECOVERY_RESTORE' });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
+
     it('rejects unsupported LXC force resets before network access', async () => {
       const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
       await expect(client.vmPowerAction('pve-a', 101, 'lxc', 'forceReboot'))

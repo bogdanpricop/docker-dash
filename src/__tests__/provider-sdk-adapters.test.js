@@ -20,6 +20,11 @@ describe('Provider SDK adapters', () => {
     expect(features['backup.run'].constraints).toEqual(expect.objectContaining({
       durableTask: true, retentionMutation: false,
     }));
+    expect(features['backup.restore.vm']).toEqual(expect.objectContaining({ state: 'conditional' }));
+    expect(features['backup.restore.vm'].constraints).toEqual(expect.objectContaining({
+      createOnly: true, overwrite: false, startAfterRestore: false,
+    }));
+    expect(features['backup.restore.file'].state).toBe('unsupported');
     expect(features['inventory.image'].state).toBe('supported');
     expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['vm.power.force'].constraints).toEqual(expect.objectContaining({
@@ -101,6 +106,8 @@ describe('Provider SDK adapters', () => {
     expect(features['backup.read']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['backup.read'].constraints).toEqual(expect.objectContaining({ readOnly: true, provider: 'xo' }));
     expect(features['backup.run'].state).toBe('unsupported');
+    expect(features['backup.restore.vm'].state).toBe('unsupported');
+    expect(features['backup.restore.file'].state).toBe('unsupported');
   });
 
   it('keeps raw Xen deliberately constrained', () => {

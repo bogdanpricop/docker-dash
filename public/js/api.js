@@ -558,6 +558,7 @@ const Api = {
   getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
   getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
   getProviderClusters(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/clusters?limit=${limit}`); },
+  getProviderStorages(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/storages?limit=${limit}`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);
@@ -573,6 +574,15 @@ const Api = {
     if (filters.from) qs.set('from', filters.from);
     if (filters.to) qs.set('to', filters.to);
     return this.get(`/providers/${hostId}/recovery-points?${qs}`);
+  },
+  preflightProviderRecoveryRestore(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore/preflight`, body);
+  },
+  submitProviderRecoveryRestore(hostId, recoveryPointId, body, idempotencyKey) {
+    return this.request('POST',
+      `/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore`, body, {
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      });
   },
   getProviderBackupPolicies(hostId, limit = 100) {
     return this.get(`/providers/${hostId}/backup-policies?limit=${limit}`);

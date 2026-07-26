@@ -7,6 +7,8 @@ const NOT_IMPLEMENTED = [
   'inventory.network', 'inventory.task',
   'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream',
+  'backup.restore.disk', 'backup.restore.file',
+  'backup.restore.instant', 'backup.restore.differential',
 ];
 
 function declared() {
@@ -66,6 +68,10 @@ function declared() {
     'backup.run': conditional('Per-workload vzdump jobs use durable UPIDs and require live recovery-point proof', {
       perResource: true, durableTask: true, cancel: true, revalidate: true,
       providers: ['pve-vzdump'], retentionMutation: false,
+    }),
+    'backup.restore.vm': conditional('Create-only QEMU/LXC restore uses a durable UPID and live target verification', {
+      createOnly: true, overwrite: false, startAfterRestore: false, uniqueNetworkIdentity: true,
+      durableTask: true, cancel: true, revalidate: true, providers: ['pve-restore'],
     }),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
@@ -131,7 +137,12 @@ async function listResources(kind, host) {
         haEnabled: null, health: Number(cluster.quorate) === 1 ? 'healthy' : 'degraded',
       }] : [];
     }
-    if (kind === 'storage') return client.listStorages();
+    if (kind === 'storage') return (await client.listStorages()).map(row => ({
+      ...row,
+      name: row.storage || row.name || row.id,
+      accessible: row.active === 1 || row.active === true || String(row.status || '').toLowerCase() === 'available',
+      contentType: row.content || row.contentType || null,
+    }));
     throw new Error(`Proxmox resource kind is unavailable: ${kind}`);
   } finally {
     client._agent?.destroy?.();

@@ -109,6 +109,7 @@ module.exports = {
     // Durable provider backup submission. Authorization remains per policy and
     // retention deletion is not implied by this execution flag.
     providerBackupExecution: bool('DD_PROVIDER_BACKUP_EXECUTION', false),
+    providerRecoveryRestore: bool('DD_PROVIDER_RECOVERY_RESTORE', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

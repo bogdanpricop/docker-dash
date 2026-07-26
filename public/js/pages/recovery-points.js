@@ -1,4 +1,4 @@
-/* Provider-neutral, read-only backup repository and recovery-point inventory. */
+/* Provider-neutral recovery-point inventory and guarded restore planning. */
 'use strict';
 
 const RecoveryPointsPage = {
@@ -49,8 +49,9 @@ const RecoveryPointsPage = {
       <td>${Utils.escapeHtml(item.backup?.mode || 'unknown')} · ${Utils.escapeHtml(item.backup?.format || 'format unknown')}<div class="text-muted text-sm">${this._bytes(item.backup?.sizeBytes)}</div></td>
       <td><span class="badge ${this._badge(item.verification?.state)}">${Utils.escapeHtml(item.verification?.state || 'unknown')}</span>${item.verification?.checkedAt ? `<div class="text-muted text-sm">${Utils.escapeHtml(this._date(item.verification.checkedAt))}</div>` : ''}</td>
       <td>${item.backup?.protected === true ? '<span class="badge badge-success">protected</span>' : item.backup?.protected === false ? '<span class="badge badge-warning">not protected</span>' : '<span class="badge badge-secondary">unknown</span>'}</td>
+      <td>${this._data?.restoreFeatureEnabled ? `<button class="btn btn-sm btn-primary recovery-restore" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-rotate-left"></i> Restore plan</button>` : '<span class="text-muted text-sm">release disabled</span>'}</td>
     </tr>`).join('');
-    return `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Workload</th><th>Repository</th><th>Created</th><th>Backup</th><th>Verification</th><th>Retention protection</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Workload</th><th>Repository</th><th>Created</th><th>Backup</th><th>Verification</th><th>Retention protection</th><th>Restore</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   },
 
   _renderData(data) {
@@ -61,6 +62,60 @@ const RecoveryPointsPage = {
       ${limitations ? `<div class="alert alert-info"><strong>Evidence boundaries</strong><ul style="margin:7px 0 0 18px">${limitations}</ul></div>` : ''}
       <section style="margin-top:18px"><h2>Backup repositories</h2>${this._repositoriesHtml(data.repositories)}</section>
       <section style="margin-top:18px"><h2>Recovery points</h2>${this._pointsHtml(data.items)}</section>`;
+    target.querySelectorAll('.recovery-restore').forEach(button => button.addEventListener('click', () => {
+      const point = data.items.find(item => item.id === button.dataset.pointId);
+      if (point) this._restore(point);
+    }));
+  },
+
+  _pick(items, title) {
+    if (!items.length) throw new Error(`No ${title.toLowerCase()} is available`);
+    const answer = window.prompt(`${title}:\n${items.map((item, index) => `${index + 1}. ${item.displayName}`).join('\n')}\n\nEnter the number:`);
+    const index = Number(answer) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= items.length) return null;
+    return items[index];
+  },
+
+  async _restore(point) {
+    try {
+      const [nodesResult, storagesResult] = await Promise.all([
+        Api.getProviderHosts(this._hostId, 64), Api.getProviderStorages(this._hostId, 500),
+      ]);
+      const node = this._pick(nodesResult.items || [], 'Target node');
+      if (!node) return;
+      const nodeStorages = (storagesResult.items || []).filter(item =>
+        !item.extensions?.node || item.extensions.node === node.displayName);
+      const storage = this._pick(nodeStorages, 'Target storage');
+      if (!storage) return;
+      const targetVmidText = window.prompt('New target VMID (100-999999999). Existing workloads are never overwritten:');
+      if (targetVmidText === null) return;
+      const targetVmid = Number(targetVmidText);
+      const verification = point.verification?.state || 'unknown';
+      let allowUnverified = false; let overrideReason = null;
+      if (verification !== 'verified') {
+        if (verification === 'failed') throw new Error('A recovery point with failed verification cannot be restored');
+        allowUnverified = window.confirm(`This recovery point is ${verification}. Continue to an explicit override plan?`);
+        if (!allowUnverified) return;
+        overrideReason = window.prompt('Reason for restoring unverified evidence (20-240 characters):') || '';
+      }
+      const input = {
+        kind: 'vm', targetNodeId: node.id, targetStorageId: storage.id, targetVmid,
+        allowUnverified, overrideReason,
+      };
+      const plan = await Api.preflightProviderRecoveryRestore(this._hostId, point.id, input);
+      if (!plan.allowed) {
+        const reasons = (plan.blockers || []).map(item => `${item.type}: ${item.reason}`).join('\n');
+        throw new Error(reasons || 'Restore preflight is blocked');
+      }
+      const confirmation = window.prompt(`Restore creates VMID ${targetVmid} powered off and never cleans up partial data automatically.\n\nType exactly: ${plan.confirmation.expected}`);
+      if (confirmation !== plan.confirmation.expected) return;
+      const idempotencyKey = `restore-${Date.now()}-${window.crypto?.randomUUID?.() || Math.random().toString(16).slice(2)}`;
+      const result = await Api.submitProviderRecoveryRestore(this._hostId, point.id, {
+        ...input, planHash: plan.planHash, confirm: true, confirmText: confirmation,
+      }, idempotencyKey);
+      Toast.success(`Restore queued as ${result.operation.id}; follow it in Activity Center`);
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
   },
 
   async render(container) {
@@ -69,9 +124,10 @@ const RecoveryPointsPage = {
     catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
     container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-box-archive"></i> Recovery Points</h1>
-      <div class="text-muted text-sm">Read-only backup evidence across Proxmox VE / PBS and Xen Orchestra</div></div>
+      <div class="text-muted text-sm">Backup evidence and guarded create-only restore planning</div></div>
       <select id="recovery-host" class="form-control" aria-label="Virtualization endpoint">${this._hosts.map(host => `<option value="${Number(host.id)}">${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select></div>
       <div class="alert alert-warning"><strong>Snapshots are not backups.</strong> This page lists provider-reported backup recovery points only. “Unknown” means Docker Dash received no proof; it never implies success.</div>
+      <div class="alert alert-info"><strong>Restore safety:</strong> executable restore is currently limited to new, powered-off Proxmox VM/CT targets. Overwrite, live start, and automatic cleanup are unavailable.</div>
       <div class="card" style="padding:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:end">
         <label style="flex:1;min-width:220px">Search<input id="recovery-search" class="form-control" maxlength="120" placeholder="Workload, repository, format"></label>
         <label>Verification<select id="recovery-verification" class="form-control"><option value="">All states</option><option value="verified">Verified</option><option value="failed">Failed</option><option value="stale">Stale</option><option value="unverified">Unverified</option><option value="unknown">Unknown</option></select></label>

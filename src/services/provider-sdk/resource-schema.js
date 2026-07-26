@@ -152,6 +152,7 @@ function _extensions(kind, raw) {
   } else if (kind === 'storage') {
     addNumber('virtualAllocationBytes', raw.virtualAllocationBytes);
     addString('contentType', raw.contentType);
+    addString('node', raw.node);
   }
   return output;
 }

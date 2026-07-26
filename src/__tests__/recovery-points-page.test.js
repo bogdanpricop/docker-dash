@@ -13,7 +13,7 @@ describe('recovery points page', () => {
   });
   afterEach(() => { delete global.Utils; });
 
-  it('escapes all provider evidence and renders no native references or mutation controls', () => {
+  it('escapes all provider evidence and never renders native references', () => {
     const repositories = page._repositoriesHtml([{
       id: `ddr_repo_${'a'.repeat(26)}`, displayName: '<repo>', repositoryType: 'xen-orchestra-remote',
       status: { accessible: true }, capabilities: { verification: true }, nativeRef: 'secret-remote',
@@ -29,13 +29,18 @@ describe('recovery points page', () => {
     expect(points).not.toContain('<script>');
     expect(`${repositories}${points}`).not.toContain('secret-remote');
     expect(`${repositories}${points}`).not.toContain('OpaqueRef');
-    expect(`${repositories}${points}`).not.toMatch(/restore|delete|run backup/i);
+    expect(`${repositories}${points}`).not.toMatch(/delete|run backup/i);
+    expect(points).toContain('release disabled');
   });
 
-  it('wires only the read-only recovery-point API', () => {
+  it('wires guarded restore through preflight before submit', () => {
     const source = page._load.toString();
     expect(source).toContain('getProviderRecoveryPoints');
     expect(source).not.toContain('post(');
     expect(source).not.toContain('delete(');
+    const restore = page._restore.toString();
+    expect(restore).toContain('preflightProviderRecoveryRestore');
+    expect(restore).toContain('submitProviderRecoveryRestore');
+    expect(restore.indexOf('preflightProviderRecoveryRestore')).toBeLessThan(restore.indexOf('submitProviderRecoveryRestore'));
   });
 });

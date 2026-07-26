@@ -7,6 +7,8 @@ const NOT_IMPLEMENTED = [
   'inventory.task',
   'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
+  'backup.restore.vm', 'backup.restore.disk', 'backup.restore.file',
+  'backup.restore.instant', 'backup.restore.differential',
 ];
 
 function declared() {

@@ -320,6 +320,10 @@ async function recoveryPointsForHost(host, options = {}) {
   if (workloadId && !/^ddr_vm_[a-f0-9]{26}$/.test(workloadId)) {
     throw new ProviderAdapterError('Invalid recovery-point workload ID', 'INVALID_RECOVERY_POINT_WORKLOAD', 400);
   }
+  const recoveryPointId = options.recoveryPointId ? String(options.recoveryPointId) : null;
+  if (recoveryPointId && !recoveryPointCatalog._internals.SAFE_POINT_ID.test(recoveryPointId)) {
+    throw new ProviderAdapterError('Invalid recovery-point ID', 'INVALID_RECOVERY_POINT_ID', 400);
+  }
   const verification = options.verification ? String(options.verification).toLowerCase() : null;
   if (verification && !recoveryPointCatalog.VERIFICATION_STATES.includes(verification)) {
     throw new ProviderAdapterError('Invalid recovery-point verification state', 'INVALID_RECOVERY_POINT_VERIFICATION', 400);
@@ -386,7 +390,8 @@ async function recoveryPointsForHost(host, options = {}) {
   const filteredRepositories = repositoryId
     ? normalized.repositories.filter(item => item.id === repositoryId) : normalized.repositories;
   const repositoryIds = new Set(filteredRepositories.map(item => item.id));
-  const filtered = normalized.points.filter(item => (!repositoryId || repositoryIds.has(item.repository?.id))
+  const filtered = normalized.points.filter(item => (!recoveryPointId || item.id === recoveryPointId)
+    && (!repositoryId || repositoryIds.has(item.repository?.id))
     && (!workloadId || item.workload?.id === workloadId)
     && (!verification || item.verification?.state === verification)
     && (!from || (item.createdAt && item.createdAt >= from))
@@ -402,7 +407,7 @@ async function recoveryPointsForHost(host, options = {}) {
     schemaVersion: recoveryPointCatalog.RECOVERY_POINT_SCHEMA_VERSION,
     provider: { type: adapter.type, endpointId: Number(host.id) }, observedAt,
     count: items.length, totalObserved: filtered.length, truncated: filtered.length > items.length,
-    filters: { repositoryId, workloadId, verification, from, to, query: query || null },
+    filters: { recoveryPointId, repositoryId, workloadId, verification, from, to, query: query || null },
     coverage: {
       repositoryCount: filteredRepositories.length,
       workloadCount: new Set(filtered.map(item => item.workload?.id || `missing:${item.workload?.displayName || item.id}`)).size,
