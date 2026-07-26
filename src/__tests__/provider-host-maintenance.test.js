@@ -125,6 +125,17 @@ describe('durable host maintenance orchestration', () => {
     expect(enter.blockers.map(item => item.type)).toContain('NATIVE_MAINTENANCE_UNAVAILABLE');
   });
 
+  it('does not claim an empty host when VM placement cannot be proven', async () => {
+    const deps = fixtures();
+    deps.migrationPreflight.preflightForHost.mockResolvedValue({ sourceTargetId: null, candidates: [] });
+    const plan = await maintenance.preflightForHost(host, {
+      sourceHostId: SOURCE, goal: 'drain', waveSize: 2, nonMigratablePolicy: 'block',
+    }, { database: db, canOperate: true, enabled: true, ...deps });
+    expect(plan.allowed).toBe(false);
+    expect(plan.blockers.map(item => item.type)).toContain('SOURCE_PLACEMENT_UNKNOWN');
+    expect(plan.warnings.map(item => item.type)).not.toContain('HOST_ALREADY_EMPTY');
+  });
+
   it('persists an encrypted idempotent run and rejects a second source reservation', async () => {
     const deps = fixtures(); const provider = native();
     const plan = await maintenance.preflightForHost(host, {

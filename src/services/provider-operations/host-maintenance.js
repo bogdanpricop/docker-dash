@@ -210,7 +210,9 @@ async function preflightForHost(host, value = {}, options = {}) {
   if (deferred.length && input.nonMigratablePolicy === 'defer') warnings.push({
     type: 'DEFERRED_WORKLOADS', reason: `${deferred.length} workload(s) will remain and automatically pause the run`, source: 'common',
   });
-  if (!items.length) warnings.push({ type: 'HOST_ALREADY_EMPTY', reason: 'No managed VM is currently assigned to the source host', source: 'common' });
+  if (!items.length && !placementUnknown.length) warnings.push({
+    type: 'HOST_ALREADY_EMPTY', reason: 'No managed VM is currently assigned to the source host', source: 'common',
+  });
   const validUntil = new Date((Math.floor(Date.now() / PLAN_TTL_MS) + 1) * PLAN_TTL_MS).toISOString();
   const plan = {
     schemaVersion: '1.0', generatedAt: _now(), validUntil,
