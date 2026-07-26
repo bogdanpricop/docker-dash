@@ -15,6 +15,7 @@ function declared() {
     'inventory.vm': supported(),
     'inventory.host': supported(),
     'inventory.storage': supported(),
+    'inventory.image': supported(),
     'vm.read': supported(),
     'backup.read': supported(),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
@@ -28,6 +29,12 @@ function declared() {
   };
   for (const key of NOT_IMPLEMENTED) features[key] = adapterNotImplemented('Proxmox VE');
   return features;
+}
+
+async function listArtifacts(host) {
+  const client = fromHostRow(host);
+  try { return await client.listArtifacts(); }
+  finally { client._agent?.destroy?.(); }
 }
 
 async function probe(host) {
@@ -75,4 +82,4 @@ function _allowedSnapshotActions(row) {
     ? ['snapshot'] : [];
 }
 
-module.exports = { type: 'proxmox', declared, probe, listResources, _internals: { _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, _internals: { _allowedVmActions, _allowedSnapshotActions } };

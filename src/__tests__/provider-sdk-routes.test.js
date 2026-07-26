@@ -5,6 +5,7 @@ const request = require('supertest');
 
 const mockCapabilities = jest.fn();
 const mockResources = jest.fn();
+const mockArtifacts = jest.fn();
 const mockVmDetail = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
@@ -33,6 +34,7 @@ jest.mock('../db', () => ({
 jest.mock('../services/provider-sdk/registry', () => ({
   capabilitiesForHost: (...args) => mockCapabilities(...args),
   resourcesForHost: (...args) => mockResources(...args),
+  artifactsForHost: (...args) => mockArtifacts(...args),
 }));
 jest.mock('../services/provider-sdk/vm-detail', () => ({
   detailForHost: (...args) => mockVmDetail(...args),
@@ -98,6 +100,7 @@ describe('Provider SDK routes', () => {
       schemaVersion: '1.0', kind: 'virtualMachine', provider: { type: 'xen', endpointId: 7 },
       count: 0, totalObserved: 0, truncated: false, items: [],
     });
+    mockArtifacts.mockResolvedValue({ schemaVersion: '1.0', count: 0, totalObserved: 0, truncated: false, items: [] });
     mockVmDetail.mockResolvedValue({
       schemaVersion: '1.0',
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
@@ -364,6 +367,14 @@ describe('Provider SDK routes', () => {
     const scorecard = await request(app).get('/api/providers/scorecard');
     expect(scorecard.status).toBe(200);
     expect(scorecard.body.providers[0].counts.shipped).toBe(7);
+  });
+
+  it('scopes and validates read-only artifact inventory', async () => {
+    const response = await request(app).get('/api/providers/7/artifacts?kind=vmTemplate&q=debian&limit=25');
+    expect(response.status).toBe(200);
+    expect(mockArtifacts).toHaveBeenCalledWith(mockHost, { limit: 25, kind: 'vmTemplate', query: 'debian' });
+    expect((await request(app).get('/api/providers/7/artifacts?limit=501')).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/artifacts?q=${'a'.repeat(121)}`)).status).toBe(400);
   });
 
   it('exports portable conformance evidence only for admins', async () => {

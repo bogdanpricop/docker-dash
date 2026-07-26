@@ -13,6 +13,8 @@ function _fromCapabilities(capabilities = {}) {
     'inventory.storage': capabilities.storages ? supported() : unsupported('Storage inventory is unavailable for this Xen provider'),
     'inventory.network': capabilities.networks ? supported() : unsupported('Network inventory is unavailable for this Xen provider'),
     'inventory.task': capabilities.tasks ? supported() : unsupported('Native tasks are unavailable for this Xen provider'),
+    'inventory.image': capabilities.templates
+      ? supported() : unsupported('Template inventory is unavailable for this Xen provider'),
     'vm.read': capabilities.vms ? supported() : unsupported('VM detail is unavailable for this Xen provider'),
     'cluster.ha.read': capabilities.pools
       ? conditional('HA evidence depends on pool configuration and shared storage', { requiresPool: true })
@@ -82,4 +84,9 @@ async function listResources(kind, host) {
   throw new Error(`Xen resource kind is unavailable: ${kind}`);
 }
 
-module.exports = { type: 'xen', declared, probe, listResources, _internals: { _fromCapabilities } };
+async function listArtifacts(host) {
+  const client = xen.clientForHost(host);
+  return client.listTemplates();
+}
+
+module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, _internals: { _fromCapabilities } };

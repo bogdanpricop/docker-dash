@@ -152,6 +152,31 @@ router.get('/:hostId/capabilities', requireAuth, requireHostAccess('view', { par
   }
 }));
 
+router.get('/:hostId/artifacts', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (req.query.limit !== undefined && !/^\d{1,3}$/.test(String(req.query.limit))) {
+    return res.status(400).json({ error: 'Artifact limit must be an integer between 1 and 500', code: 'INVALID_ARTIFACT_LIMIT' });
+  }
+  const limit = req.query.limit === undefined ? 200 : Number(req.query.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    return res.status(400).json({ error: 'Artifact limit must be an integer between 1 and 500', code: 'INVALID_ARTIFACT_LIMIT' });
+  }
+  const query = String(req.query.q || '');
+  if (query.length > 120) return res.status(400).json({ error: 'Artifact search is limited to 120 characters', code: 'INVALID_ARTIFACT_QUERY' });
+  try {
+    res.json(await providerSdk.artifactsForHost(resolved.host, {
+      limit, kind: req.query.kind, query,
+    }));
+  } catch (err) {
+    const status = Number.isInteger(err?.status) ? err.status : 500;
+    res.status(status).json({
+      error: status >= 500 ? 'Provider artifact inventory failed' : err.message,
+      code: err?.code || 'PROVIDER_ARTIFACT_ERROR',
+    });
+  }
+}));
+
 router.post('/:hostId/virtual-machines/power/preflight', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);

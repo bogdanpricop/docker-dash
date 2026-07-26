@@ -5,17 +5,19 @@ process.env.ENCRYPTION_KEY = 'provider-sdk-registry-test-key-32-chars';
 const Database = require('better-sqlite3');
 const identityMigration = require('../db/migrations/106_provider_resource_identities');
 const snapshotMigration = require('../db/migrations/109_provider_resource_snapshots');
+const artifactMigration = require('../db/migrations/112_provider_artifact_catalog');
 
 const mockVersion = jest.fn();
 const mockDestroy = jest.fn();
 const mockListVMs = jest.fn();
+const mockListArtifacts = jest.fn();
 const mockVSphereLogin = jest.fn();
 const mockVSphereInfo = jest.fn();
 const mockXenInfo = jest.fn();
 const mockXenCaps = jest.fn();
 
 jest.mock('../services/proxmox', () => ({
-  fromHostRow: () => ({ version: mockVersion, listVMs: mockListVMs, _agent: { destroy: mockDestroy } }),
+  fromHostRow: () => ({ version: mockVersion, listVMs: mockListVMs, listArtifacts: mockListArtifacts, _agent: { destroy: mockDestroy } }),
 }));
 jest.mock('../services/vsphere', () => ({
   fromHostRow: () => ({
@@ -40,6 +42,7 @@ describe('Provider SDK registry', () => {
     metrics._reset();
     mockVersion.mockResolvedValue({ version: '9.0', repoid: 'pve-manager' });
     mockListVMs.mockResolvedValue([]);
+    mockListArtifacts.mockResolvedValue([]);
     mockVSphereLogin.mockResolvedValue({});
     mockVSphereInfo.mockResolvedValue({ productFullName: 'VMware vCenter Server 9.0', version: '9.0', apiVersion: '9.0' });
     mockXenCaps.mockReturnValue({
@@ -52,6 +55,7 @@ describe('Provider SDK registry', () => {
       INSERT INTO docker_hosts (id, name) VALUES (3, 'pve-a')`);
     identityMigration.up(database);
     snapshotMigration.up(database);
+    artifactMigration.up(database);
   });
 
   afterEach(() => database.close());
@@ -118,6 +122,19 @@ describe('Provider SDK registry', () => {
     await expect(registry.resourcesForHost(pveHost, 'clusters', { database }))
       .rejects.toMatchObject({ code: 'PROVIDER_RESOURCE_UNAVAILABLE', status: 400 });
     expect(mockListVMs).not.toHaveBeenCalled();
+  });
+
+  it('returns a searchable artifact catalog without native references', async () => {
+    mockListArtifacts.mockResolvedValue([
+      { kind: 'iso', nativeRef: 'local:iso/debian.iso', name: 'Debian installer', storage: 'local', sizeBytes: 1024 },
+      { kind: 'vmTemplate', nativeRef: 'qemu/9000', name: 'Ubuntu gold', cpuCount: 2 },
+    ]);
+    const envelope = await registry.artifactsForHost(pveHost, { query: 'debian', limit: 10, database });
+    expect(envelope).toEqual(expect.objectContaining({ count: 1, totalObserved: 1, truncated: false }));
+    expect(envelope.items[0]).toEqual(expect.objectContaining({ kind: 'iso', displayName: 'Debian installer' }));
+    expect(envelope.items[0].id).toMatch(/^dda_art_/);
+    expect(JSON.stringify(envelope)).not.toContain('local:iso');
+    expect(database.prepare('SELECT COUNT(*) AS count FROM provider_artifact_catalog').get().count).toBe(2);
   });
 
   it('sanitizes provider read failures', async () => {

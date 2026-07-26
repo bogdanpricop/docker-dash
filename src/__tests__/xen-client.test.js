@@ -121,6 +121,15 @@ describe('unified Xen client', () => {
     expect(vms).toEqual([expect.objectContaining({ id: 'vm-1', uuid: 'u-1', name: 'web', cpus: 4, memoryBytes: 2147483648, allowedActions: ['shutdown', 'snapshot'] })]);
   });
 
+  it('reads Xen Orchestra templates from the versioned template collection', async () => {
+    queueJson([{ id: 'tpl-1', uuid: 'uuid-tpl', name_label: 'Debian gold', name_description: 'hardened', CPUs: 2, memory: 2147483648, is_default_template: true }], 200,
+      opts => expect(opts.path).toContain('/rest/v0/vm-templates'));
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    await expect(client.listTemplates()).resolves.toEqual([
+      expect.objectContaining({ kind: 'vmTemplate', nativeRef: 'tpl-1', uuid: 'uuid-tpl', name: 'Debian gold', default: true }),
+    ]);
+  });
+
   it('submits Xen Orchestra VM actions only through the action map', async () => {
     let request;
     queueJson({ task: 'task-1' }, 200, (opts, req) => { request = { opts, body: JSON.parse(req.body) }; });

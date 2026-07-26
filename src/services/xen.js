@@ -206,7 +206,7 @@ class XenOrchestraClient {
 
   capabilities() {
     return {
-      provider: 'xo', pools: true, hosts: true, vms: true, storages: true,
+      provider: 'xo', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
       snapshots: true, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
       taskCleanup: false,
@@ -230,6 +230,29 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
+  }
+
+  async listTemplates() {
+    let rows;
+    try {
+      rows = await this._collection('vm-templates', [
+        'id', 'uuid', 'name_label', 'name_description', 'CPUs', 'memory',
+        '$pool', 'tags', 'is_default_template',
+      ]);
+    } catch (err) {
+      if (err?.status !== 404) throw err;
+      rows = (await this._collection('vms', [
+        'id', 'uuid', 'name_label', 'name_description', 'CPUs', 'memory',
+        '$pool', 'tags', 'is_a_template', 'is_default_template',
+      ])).filter(row => row.is_a_template);
+    }
+    return rows.map(row => ({
+      kind: 'vmTemplate', nativeRef: _idFrom(row), id: _idFrom(row),
+      uuid: row.uuid || _idFrom(row), name: row.name_label || row.name || _idFrom(row),
+      description: row.name_description || null, cpuCount: _num(row.CPUs || row.cpus),
+      memoryBytes: _num(row.memory || row.memory_dynamic_max), pool: _idFrom(row.$pool),
+      default: !!row.is_default_template, tags: row.tags || [], source: 'xo-vm-templates',
+    }));
   }
 
   async listHosts() {
@@ -571,7 +594,7 @@ class XapiClient {
 
   capabilities() {
     return {
-      provider: 'xapi', pools: true, hosts: true, vms: true, storages: true,
+      provider: 'xapi', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
       snapshots: true, snapshotQuiesce: true, backups: false, console: false, provisioning: false,
       protocol: this._activeProtocol || this._protocol,
@@ -608,6 +631,19 @@ class XapiClient {
       hostRef: _refId(v.resident_on), tags: v.tags || [],
       currentOperations: v.current_operations || {}, provider: 'xapi',
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
+    }));
+  }
+
+  async listTemplates() {
+    const records = await this._call('VM.get_all_records');
+    return Object.entries(records || {}).filter(([, v]) =>
+      !v.is_control_domain && v.is_a_template && !v.is_a_snapshot
+    ).map(([ref, v]) => ({
+      kind: 'vmTemplate', nativeRef: ref, ref, id: v.uuid || ref, uuid: v.uuid || null,
+      name: v.name_label || v.uuid || ref, description: v.name_description || null,
+      cpuCount: _num(v.VCPUs_at_startup || v.VCPUs_max),
+      memoryBytes: _num(v.memory_dynamic_max || v.memory_static_max),
+      default: !!v.is_default_template, tags: v.tags || [], source: 'xapi-vm-records',
     }));
   }
 
@@ -766,7 +802,7 @@ class XenRawClient {
 
   capabilities() {
     return {
-      provider: 'raw', pools: false, hosts: true, vms: true, storages: false,
+      provider: 'raw', pools: false, hosts: true, vms: true, templates: false, storages: false,
       networks: false, tasks: false, events: false, powerActions: true,
       snapshots: false, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
@@ -907,6 +943,8 @@ class XenRawClient {
       return this._parseTableList((await this._tool('list')).stdout);
     }
   }
+
+  async listTemplates() { return []; }
 
   _parseTableList(stdout) {
     const lines = stdout.split(/\r?\n/).filter(Boolean).slice(1);

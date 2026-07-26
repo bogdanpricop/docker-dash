@@ -8,6 +8,7 @@ const { resolveResourceKind } = require('./resource-catalog');
 const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = require('./resource-schema');
 const resourceSnapshots = require('./resource-snapshots');
 const providerResilience = require('../provider-conformance/resilience');
+const artifactCatalog = require('./artifact-catalog');
 
 const adapters = new Map();
 const cache = new Map();
@@ -203,6 +204,70 @@ async function resourcesForHost(host, kindInput, options = {}) {
   return envelope;
 }
 
+async function artifactsForHost(host, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id))) throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
+  const requestedLimit = options.limit === undefined ? 200 : Number(options.limit);
+  if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || requestedLimit > 500) {
+    throw new ProviderAdapterError('Artifact limit must be an integer between 1 and 500', 'INVALID_ARTIFACT_LIMIT', 400);
+  }
+  const kind = options.kind === undefined || options.kind === '' ? null : String(options.kind);
+  if (kind && !artifactCatalog.ARTIFACT_KINDS.includes(kind)) {
+    throw new ProviderAdapterError('Unknown provider artifact kind', 'INVALID_ARTIFACT_KIND', 400);
+  }
+  const query = String(options.query || '').trim().toLowerCase();
+  if (query.length > 120) throw new ProviderAdapterError('Artifact search is limited to 120 characters', 'INVALID_ARTIFACT_QUERY', 400);
+
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = await capabilitiesForHost(host);
+  if (capabilities.probe.status !== 'reachable') {
+    throw new ProviderAdapterError('Provider endpoint is currently unreachable', 'PROVIDER_UNREACHABLE', 502);
+  }
+  const evidence = capabilities.features['inventory.image'];
+  if (!evidence || !['supported', 'conditional'].includes(evidence.state) || typeof adapter.listArtifacts !== 'function') {
+    throw new ProviderAdapterError(evidence?.reason || 'Artifact inventory is unavailable for this provider', 'PROVIDER_ARTIFACT_UNAVAILABLE', 400);
+  }
+
+  let rows;
+  try {
+    rows = await providerResilience.run(Number(host.id), () => adapter.listArtifacts(host), { operation: 'inventory.image' });
+  } catch (err) {
+    log.warn('Provider artifact inventory read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider artifact inventory could not be read', 'PROVIDER_ARTIFACT_READ_FAILED', 502);
+  }
+  if (!Array.isArray(rows) || rows.length > 5000 || rows.some(row => !row || typeof row !== 'object' || Array.isArray(row))) {
+    throw new ProviderAdapterError('Provider returned an invalid artifact inventory', 'INVALID_PROVIDER_ARTIFACT_RESPONSE', 502);
+  }
+
+  const observedAt = new Date().toISOString();
+  let normalized;
+  try {
+    const database = options.database || getDb();
+    normalized = database.transaction(() => rows.map(raw => artifactCatalog.normalizeAndRemember({
+      host, providerType: adapter.type, raw, observedAt, database,
+    })))();
+  } catch (err) {
+    log.error('Provider artifact normalization failed', { hostId: Number(host.id), provider: adapter.type, error: err?.name || 'Error' });
+    throw new ProviderAdapterError('Provider artifact inventory could not be normalized', 'ARTIFACT_NORMALIZATION_FAILED', 500);
+  }
+  const filtered = normalized.filter(item => (!kind || item.kind === kind)
+    && (!query || `${item.displayName} ${item.description || ''} ${item.spec?.osType || ''} ${Object.values(item.labels || {}).join(' ')}`.toLowerCase().includes(query)))
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.displayName.localeCompare(b.displayName));
+  const items = filtered.slice(0, requestedLimit);
+  const envelope = {
+    schemaVersion: artifactCatalog.ARTIFACT_SCHEMA_VERSION,
+    provider: { type: adapter.type, endpointId: Number(host.id) },
+    observedAt, count: items.length, totalObserved: filtered.length,
+    truncated: filtered.length > items.length, filters: { kind, query: query || null }, items,
+  };
+  if (Buffer.byteLength(JSON.stringify(envelope)) > artifactCatalog.MAX_CATALOG_BYTES) {
+    throw new ProviderAdapterError('Provider artifact catalog exceeds the response size limit', 'ARTIFACT_RESPONSE_TOO_LARGE', 502);
+  }
+  return envelope;
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -230,6 +295,7 @@ module.exports = {
   getAdapter,
   capabilitiesForHost,
   resourcesForHost,
+  artifactsForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError,

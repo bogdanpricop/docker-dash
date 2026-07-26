@@ -16,6 +16,7 @@ describe('Provider SDK adapters', () => {
     const features = proxmox.declared();
     expect(features['inventory.vm'].state).toBe('supported');
     expect(features['backup.read'].state).toBe('supported');
+    expect(features['inventory.image'].state).toBe('supported');
     expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['vm.power.force'].constraints).toEqual(expect.objectContaining({
       perResource: true, confirmation: true, durableTask: true,
@@ -52,9 +53,11 @@ describe('Provider SDK adapters', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: true, storages: true, networks: true,
       tasks: true, snapshots: true, snapshotQuiesce: true, taskCleanup: true,
+      templates: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot'],
     });
     expect(features['inventory.cluster'].state).toBe('supported');
+    expect(features['inventory.image'].state).toBe('supported');
     expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['vm.snapshot.create'].constraints.perResource).toBe(true);
     expect(features['vm.snapshot.create'].constraints.consistency).toEqual(['crash', 'quiesced']);
@@ -65,11 +68,30 @@ describe('Provider SDK adapters', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: false, storages: false, networks: false,
       tasks: false, snapshots: false, taskCleanup: false,
+      templates: false,
       vmActions: ['shutdown', 'forceShutdown', 'reboot'],
     });
     expect(features['inventory.cluster'].state).toBe('unsupported');
+    expect(features['inventory.image'].state).toBe('unsupported');
     expect(features['vm.snapshot.create'].state).toBe('unsupported');
     expect(features['vm.create'].state).toBe('unsupported');
+  });
+
+  it('dispatches artifact inventory through provider-native read methods', async () => {
+    const pveDestroy = jest.fn();
+    const pveArtifacts = jest.fn().mockResolvedValue([{ kind: 'iso', id: 'local:iso/a.iso' }]);
+    proxmoxService.fromHostRow.mockReturnValue({ listArtifacts: pveArtifacts, _agent: { destroy: pveDestroy } });
+    await expect(proxmox.listArtifacts({})).resolves.toHaveLength(1);
+    expect(pveDestroy).toHaveBeenCalled();
+
+    const logout = jest.fn();
+    const templates = jest.fn().mockResolvedValue([{ kind: 'vmTemplate', id: 'vm-9' }]);
+    vsphereService.fromHostRow.mockReturnValue({ login: jest.fn(), logout, listTemplates: templates, listIsoImages: jest.fn().mockResolvedValue([]), _agent: { destroy: jest.fn() } });
+    await expect(vsphere.listArtifacts({})).resolves.toHaveLength(1);
+    expect(logout).toHaveBeenCalled();
+
+    xenService.clientForHost.mockReturnValue({ listTemplates: templates });
+    await expect(xen.listArtifacts({})).resolves.toHaveLength(1);
   });
 
   it('dispatches resource inventory to provider-native read methods and cleans up one-shot clients', async () => {

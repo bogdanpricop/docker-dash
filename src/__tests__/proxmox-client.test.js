@@ -143,6 +143,23 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(lxc[0]).toMatchObject({ type: 'lxc', vmid: 101, name: 'db-lxc' });
     });
 
+    it('aggregates VM templates, ISO images and container templates', async () => {
+      const replies = [
+        [{ type: 'qemu', vmid: 9000, name: 'ubuntu-gold', template: 1, node: 'pve-a' }],
+        [{ node: 'pve-a' }],
+        [{ storage: 'local', active: 1, enabled: 1 }],
+        [{ volid: 'local:iso/debian.iso', size: 1024 }],
+        [{ volid: 'local:vztmpl/debian.tar.zst', size: 2048 }],
+      ];
+      for (const data of replies) mockHttps._mockNext((_opts, cb) => { const res = fakeResponse({ status: 200, body: { data } }); cb(res); res._fire(); });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.listArtifacts()).resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'vmTemplate', nativeRef: 'qemu/9000' }),
+        expect.objectContaining({ kind: 'iso', nativeRef: 'local:iso/debian.iso' }),
+        expect.objectContaining({ kind: 'containerTemplate', nativeRef: 'local:vztmpl/debian.tar.zst' }),
+      ]));
+    });
+
     it('submits a native power task and reads its terminal status', async () => {
       const paths = [];
       mockHttps._mockNext((opts, cb) => {

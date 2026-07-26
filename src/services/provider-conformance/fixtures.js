@@ -8,7 +8,7 @@ const REQUIRED_FAULTS = Object.freeze(['timeout', 'auth_expiry', 'partial_respon
 const CORPUS = Object.freeze([
   Object.freeze({
     id: 'proxmox-pve-json', providerType: 'proxmox', variant: 'pve', apiFamily: 'pve-api2-json',
-    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.storage', 'vm.read', 'backup.read']),
+    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.storage', 'inventory.image', 'vm.read', 'backup.read']),
     resources: Object.freeze({
       virtualMachine: Object.freeze([{ vmid: 101, id: 'qemu/101', name: 'fixture-pve-vm', status: 'running', maxcpu: 2, maxmem: 2147483648 }]),
       host: Object.freeze([{ node: 'pve-fixture', name: 'pve-fixture', status: 'online', cpuThreads: 8, memoryTotal: 17179869184 }]),
@@ -17,7 +17,7 @@ const CORPUS = Object.freeze([
   }),
   Object.freeze({
     id: 'vsphere-vcenter-soap', providerType: 'vsphere', variant: 'vcenter', apiFamily: 'vSphere SOAP',
-    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.storage', 'inventory.network']),
+    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.storage', 'inventory.network', 'inventory.image']),
     resources: Object.freeze({
       virtualMachine: Object.freeze([{ moref: 'vm-101', uuid: '42000000-0000-4000-8000-000000000101', name: 'fixture-vsphere-vm', powerState: 'poweredOn', numCPU: 4, memoryMB: 4096 }]),
       host: Object.freeze([{ moref: 'host-21', uuid: '42000000-0000-4000-8000-000000000021', name: 'esx-fixture', connectionState: 'connected' }]),
@@ -27,7 +27,7 @@ const CORPUS = Object.freeze([
   }),
   Object.freeze({
     id: 'xen-xo-rest', providerType: 'xen', variant: 'xo', apiFamily: 'Xen Orchestra REST',
-    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.cluster', 'inventory.storage', 'inventory.network', 'inventory.task', 'vm.read']),
+    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.cluster', 'inventory.storage', 'inventory.network', 'inventory.task', 'inventory.image', 'vm.read']),
     resources: Object.freeze({
       virtualMachine: Object.freeze([{ uuid: '10000000-0000-4000-8000-000000000001', name: 'fixture-xo-vm', powerState: 'Running', cpus: 2, memoryBytes: 2147483648 }]),
       task: Object.freeze([{ id: 'task-fixture-1', name: 'fixture-task', status: 'success', progress: 1 }]),
@@ -35,7 +35,7 @@ const CORPUS = Object.freeze([
   }),
   Object.freeze({
     id: 'xen-xapi-rpc', providerType: 'xen', variant: 'xapi', apiFamily: 'XAPI JSON-RPC',
-    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.cluster', 'inventory.storage', 'inventory.network', 'inventory.task', 'vm.read']),
+    supportedCapabilities: Object.freeze(['inventory.vm', 'inventory.host', 'inventory.cluster', 'inventory.storage', 'inventory.network', 'inventory.task', 'inventory.image', 'vm.read']),
     resources: Object.freeze({
       virtualMachine: Object.freeze([{ ref: 'OpaqueRef:fixture-vm', uuid: '20000000-0000-4000-8000-000000000002', name_label: 'fixture-xapi-vm', power_state: 'Halted' }]),
       cluster: Object.freeze([{ ref: 'OpaqueRef:fixture-pool', uuid: '20000000-0000-4000-8000-000000000003', name_label: 'fixture-pool' }]),

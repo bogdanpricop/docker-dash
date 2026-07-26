@@ -245,7 +245,7 @@ class VSphereClient {
    * List all VMs via CreateContainerView + RetrievePropertiesEx.
    * Returns array of { name, powerState, guestOS, memoryMB, numCPU, uuid, moref }.
    */
-  async listVMs() {
+  async _listVirtualMachineRows() {
     await this._ensureLoggedIn();
     // Step 1: create container view for VirtualMachine
     const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
@@ -269,7 +269,8 @@ class VSphereClient {
     const props = ['name', 'summary.runtime.powerState', 'summary.config.guestFullName',
       'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid',
       'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
-      'config.version', 'capability.snapshotOperationsSupported',
+      'config.version', 'config.template', 'config.annotation', 'summary.config.guestId',
+      'capability.snapshotOperationsSupported',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
       'summary.storage.committed', 'summary.storage.uncommitted',
       // v8.9.13-alpha.3 — per-datastore committed bytes, so the Datastores
@@ -290,6 +291,9 @@ class VSphereClient {
       toolsStatus: o.props['guest.toolsStatus'] || null,
       toolsVersion: o.props['guest.toolsVersion'] || null,
       hwVersion: o.props['config.version'] || null,
+      isTemplate: o.props['config.template'] === 'true',
+      description: o.props['config.annotation'] || null,
+      osType: o.props['summary.config.guestId'] || o.props['summary.config.guestFullName'] || null,
       snapshotOperationsSupported: o.props['capability.snapshotOperationsSupported'] === 'true',
       cpuUsageMHz: parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0,
       memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
@@ -299,6 +303,60 @@ class VSphereClient {
       // storage.perDatastoreUsage (best-effort; [] if absent).
       datastoreUsage: _parseDatastoreUsage(o.props['storage.perDatastoreUsage'] || ''),
     }));
+  }
+
+  async listVMs() {
+    return (await this._listVirtualMachineRows()).filter(row => !row.isTemplate);
+  }
+
+  async listTemplates() {
+    return (await this._listVirtualMachineRows()).filter(row => row.isTemplate).map(row => ({
+      kind: 'vmTemplate', nativeRef: row.moref, id: row.moref, uuid: row.uuid,
+      name: row.name, description: row.description, osType: row.osType || row.guestOS,
+      memoryMB: row.memoryMB, numCPU: row.numCPU, version: row.hwVersion,
+      sizeBytes: row.storageCommittedBytes, source: 'vsphere-inventory',
+    }));
+  }
+
+  /** Recursively discover ISO media on accessible datastores. */
+  async listIsoImages() {
+    await this._ensureLoggedIn();
+    const datastores = await this.listDatastores();
+    const artifacts = [];
+    for (const datastore of datastores.filter(item => item.accessible !== false)) {
+      try {
+        const browser = await this._getDatastoreBrowser(datastore.moref);
+        if (!browser) continue;
+        const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <SearchDatastoreSubFolders_Task xmlns="urn:vim25">
+      <_this type="HostDatastoreBrowser">${browser}</_this>
+      <datastorePath>${this._xesc(`[${datastore.name}]`)}</datastorePath>
+      <searchSpec>
+        <query xsi:type="IsoImageFileQuery"/>
+        <details><fileType>true</fileType><fileSize>true</fileSize><modification>true</modification><fileOwner>false</fileOwner></details>
+        <searchCaseInsensitive>true</searchCaseInsensitive><matchPattern>*.iso</matchPattern>
+      </searchSpec>
+    </SearchDatastoreSubFolders_Task>
+  </soap:Body>
+</soap:Envelope>`;
+        const response = await this._soapPost(body);
+        const taskMoref = _extractTag(response, 'returnval');
+        if (!taskMoref) continue;
+        const result = await this._waitForTask(taskMoref, 30_000);
+        for (const entry of _parseRecursiveSearchResults(result, datastore.name)) {
+          artifacts.push({
+            kind: 'iso', nativeRef: entry.datastorePath, id: entry.datastorePath,
+            name: entry.name, storage: datastore.name, source: 'vsphere-datastore',
+            sizeBytes: entry.fileSize, createdAt: entry.modified, format: 'iso',
+          });
+        }
+      } catch (err) {
+        log.warn('vSphere ISO inventory skipped an inaccessible datastore', { datastore: datastore.name, error: err?.name || 'Error' });
+      }
+    }
+    return artifacts;
   }
 
   /** Submit a VM power action using the vSphere Web Services API. */
@@ -911,6 +969,25 @@ function _parseSearchResults(xml, dsName, folderPath) {
   return { datastore: dsName, folderPath: folderPath || '', entries };
 }
 
+function _parseRecursiveSearchResults(xml, dsName) {
+  const blocks = [];
+  const re = /<HostDatastoreBrowserSearchResults[^>]*>([\s\S]*?)<\/HostDatastoreBrowserSearchResults>/g;
+  let match;
+  while ((match = re.exec(xml || ''))) blocks.push(match[1]);
+  if (!blocks.length) blocks.push(xml || '');
+  const output = [];
+  for (const block of blocks) {
+    const rawFolder = _extractTag(block, 'folderPath') || '';
+    const folder = rawFolder.replace(new RegExp(`^\\[${String(dsName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\s*`), '').replace(/^\/+|\/+$/g, '');
+    const result = _parseSearchResults(block, dsName, folder);
+    for (const entry of result.entries.filter(item => !item.isFolder)) {
+      const relative = [folder, entry.name].filter(Boolean).join('/');
+      output.push({ ...entry, folderPath: folder, datastorePath: `[${dsName}] ${relative}` });
+    }
+  }
+  return output;
+}
+
 // v8.9.13-alpha.3 — parse storage.perDatastoreUsage into
 // [{ datastore: moref, committed }]. Each entry is a
 // <VirtualMachineUsageOnDatastore> with <datastore> + <committed>.
@@ -1036,7 +1113,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
 };
 
 if (false) log.info();

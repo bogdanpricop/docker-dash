@@ -556,6 +556,12 @@ const Api = {
   getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
   getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
+  getProviderArtifacts(hostId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 500 });
+    if (filters.kind) qs.set('kind', filters.kind);
+    if (filters.query) qs.set('q', filters.query);
+    return this.get(`/providers/${hostId}/artifacts?${qs}`);
+  },
   getProviderVMDetail(hostId, resourceId, refresh = false) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
   },

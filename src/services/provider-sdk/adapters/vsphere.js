@@ -16,6 +16,7 @@ function declared() {
     'inventory.host': supported(),
     'inventory.storage': supported(),
     'inventory.network': supported(),
+    'inventory.image': supported(),
     'vm.read': supported(),
     'vm.power.start': conditional('Availability is checked from current VM state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Clean shutdown requires running VMware Tools', { perResource: true, requiresGuestTools: true }),
@@ -28,6 +29,18 @@ function declared() {
   };
   for (const key of NOT_IMPLEMENTED) features[key] = adapterNotImplemented('VMware vSphere');
   return features;
+}
+
+async function listArtifacts(host) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    const [templates, isoImages] = await Promise.all([client.listTemplates(), client.listIsoImages()]);
+    return [...templates, ...isoImages];
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort session cleanup */ }
+    client._agent?.destroy?.();
+  }
 }
 
 function _variant(info) {
@@ -92,4 +105,4 @@ function _allowedSnapshotActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

@@ -12,6 +12,7 @@ const FEATURE_CATALOG = Object.freeze({
   'inventory.storage': 'Datastore or storage repository inventory',
   'inventory.network': 'Virtual network inventory',
   'inventory.task': 'Native asynchronous task inventory',
+  'inventory.image': 'Template and image artifact inventory',
   'vm.read': 'Virtual machine detail',
   'vm.power.start': 'Start virtual machine',
   'vm.power.shutdown': 'Graceful virtual machine shutdown',
@@ -49,4 +50,3 @@ module.exports = {
   STATES,
   SOURCES,
 };
-

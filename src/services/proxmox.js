@@ -185,6 +185,54 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/cluster/resources?type=storage')) || [];
   }
 
+  /**
+   * List deployable artifacts without returning provider credentials or URLs.
+   * Proxmox models QEMU templates as cluster VM resources, while ISO and LXC
+   * templates are storage content and therefore have to be enumerated per node.
+   */
+  async listArtifacts() {
+    const [guests, nodes] = await Promise.all([this.listVMs(), this.listNodes()]);
+    const artifacts = guests.filter(row => Number(row?.template) === 1 && row?.type !== 'lxc')
+      .map(row => ({
+        kind: 'vmTemplate', nativeRef: `qemu/${row.vmid}`, id: `qemu/${row.vmid}`,
+        name: row.name || `VM template ${row.vmid}`, description: row.description || null,
+        node: row.node || null, source: 'cluster-vm-template',
+        cpuCount: row.maxcpu, memoryBytes: row.maxmem, sizeBytes: row.disk,
+        tags: typeof row.tags === 'string' ? row.tags.split(/[;,]/).filter(Boolean) : [],
+      }));
+    const seen = new Set(artifacts.map(item => `${item.kind}|${item.nativeRef}`));
+    for (const node of nodes || []) {
+      if (!node?.node) continue;
+      let storages;
+      try {
+        storages = await this._request('GET', `/api2/json/nodes/${encodeURIComponent(node.node)}/storage`);
+      } catch { continue; }
+      for (const storage of storages || []) {
+        if (!storage?.storage || storage.enabled === 0 || storage.active === 0) continue;
+        for (const contentType of ['iso', 'vztmpl']) {
+          let rows;
+          try {
+            rows = await this._request('GET', `/api2/json/nodes/${encodeURIComponent(node.node)}/storage/${encodeURIComponent(storage.storage)}/content?content=${contentType}`);
+          } catch { continue; }
+          for (const row of rows || []) {
+            const nativeRef = String(row.volid || row.id || '');
+            const kind = contentType === 'iso' ? 'iso' : 'containerTemplate';
+            if (!nativeRef || seen.has(`${kind}|${nativeRef}`)) continue;
+            seen.add(`${kind}|${nativeRef}`);
+            const basename = nativeRef.split('/').pop()?.split(':').pop() || nativeRef;
+            artifacts.push({
+              kind, nativeRef, id: nativeRef, name: row.name || basename,
+              description: row.notes || null, node: node.node, storage: storage.storage,
+              source: 'storage-content', sizeBytes: row.size, createdAt: row.ctime ? Number(row.ctime) * 1000 : null,
+              format: row.format || (kind === 'iso' ? 'iso' : null),
+            });
+          }
+        }
+      }
+    }
+    return artifacts;
+  }
+
   /** Inspect a single VM (state, config). */
   async getVM(node, vmid) {
     return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/status/current`);

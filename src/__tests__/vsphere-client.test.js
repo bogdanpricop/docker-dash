@@ -153,6 +153,15 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       ]);
     });
 
+    it('parses recursive datastore ISO results with stable datastore paths', () => {
+      const xml = `<HostDatastoreBrowserSearchResults><folderPath>[datastore1] media/linux</folderPath>
+        <file xsi:type="IsoImageFileInfo"><path>debian.iso</path><fileSize>1024</fileSize><modification>2026-07-01T00:00:00Z</modification></file>
+      </HostDatastoreBrowserSearchResults>`;
+      expect(_internals._parseRecursiveSearchResults(xml, 'datastore1')).toEqual([
+        expect.objectContaining({ name: 'debian.iso', folderPath: 'media/linux', datastorePath: '[datastore1] media/linux/debian.iso', fileSize: 1024 }),
+      ]);
+    });
+
     it('extractObjects parses RetrievePropertiesEx returnval blocks', () => {
       const xml = `
         <returnval>
@@ -333,6 +342,23 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(bodies[0]).toContain('<quiesce>true</quiesce>');
       expect(bodies[1]).toContain('<suppressPowerOn>true</suppressPowerOn>');
       expect(bodies[2]).toContain('<removeChildren>false</removeChildren><consolidate>true</consolidate>');
+    });
+  });
+
+  describe('template inventory', () => {
+    it('separates vSphere templates from runnable virtual machines', async () => {
+      mockHttps._mockNext((_opts, cb) => { const res = fakeResponse({ status: 200, body: '<returnval>view-1</returnval>' }); cb(res); res._fire(); });
+      mockHttps._mockNext((_opts, cb) => { const res = fakeResponse({ status: 200, body: `<returnval><objects>
+        <obj type="VirtualMachine">vm-9000</obj><propSet><name>name</name><val>Ubuntu Gold</val></propSet>
+        <propSet><name>summary.config.uuid</name><val>42000000-0000-4000-8000-000000009000</val></propSet>
+        <propSet><name>config.template</name><val>true</val></propSet><propSet><name>summary.config.numCpu</name><val>4</val></propSet>
+        <propSet><name>summary.config.memorySizeMB</name><val>8192</val></propSet>
+      </objects></returnval>` }); cb(res); res._fire(); });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.listTemplates()).resolves.toEqual([
+        expect.objectContaining({ kind: 'vmTemplate', nativeRef: 'vm-9000', name: 'Ubuntu Gold', numCPU: 4, memoryMB: 8192 }),
+      ]);
     });
   });
 });
