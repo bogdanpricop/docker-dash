@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -963,6 +963,13 @@ const Api = {
   previewDiskPressure(hostId) { return this.post(`/disk-pressure/hosts/${hostId}/preview`); },
   runDiskPressure(hostId, force = false) { return this.post(`/disk-pressure/hosts/${hostId}/run`, { force }); },
   getDiskPressureHistory(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/history`); },
+
+  // ─── Emergency Terminal Access ─────────────────────
+  getTerminalAccess(hostId = 0) { return this.get(`/system/terminal-access?targetHostId=${encodeURIComponent(hostId)}`); },
+  setGlobalTerminalAccess(locked, reason = '') { return this.put('/system/terminal-access/global', { locked, reason }); },
+  setHostTerminalAccess(hostId, locked, reason = '') {
+    return this.put(`/system/terminal-access/hosts/${encodeURIComponent(hostId)}`, { locked, reason });
+  },
 
   // ─── Notification Channels ──────────────────────
   getNotificationProviders() { return this.get('/notification-channels/providers'); },

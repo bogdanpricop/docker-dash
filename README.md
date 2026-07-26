@@ -736,6 +736,7 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `STATS_RAW_RETENTION_HOURS` | `24` | Keep raw stats for N hours |
 | `EVENT_RETENTION_DAYS` | `7` | Keep Docker events for N days |
 | `ENABLE_EXEC` | `true` | Allow terminal exec into containers |
+| `DD_TERMINAL_ACCESS_OVERRIDE` | `managed` | Out-of-band terminal policy: `managed`, force `deny`, or recovery `allow` |
 | `READ_ONLY_MODE` | `false` | Disable all write operations |
 | `DD_MODE` | *(unset — standalone)* | Set to `ha` to enable HA mode. Requires `REDIS_URL`. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL. Only consulted when `DD_MODE=ha`. |

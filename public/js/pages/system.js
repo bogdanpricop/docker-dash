@@ -30,6 +30,7 @@ const SystemPage = {
         <button class="tab" data-tab="ssl"><i class="fas fa-shield-alt" style="margin-right:4px"></i> SSL/TLS</button>
         <button class="tab" data-tab="cis"><i class="fas fa-clipboard-check" style="margin-right:4px"></i> CIS Benchmark</button>
         <button class="tab" data-tab="secrets"><i class="fas fa-user-secret" style="margin-right:4px"></i> Secrets</button>
+        <button class="tab" data-tab="terminal-access"><i class="fas fa-terminal" style="margin-right:4px"></i> Terminal Access</button>
         <button class="tab" data-tab="egress"><i class="fas fa-network-wired" style="margin-right:4px"></i> Egress</button>
         <button class="tab" data-tab="translations"><i class="fas fa-language" style="margin-right:4px"></i> Translations</button>
         <button class="tab" data-tab="prune">${i18n.t('pages.system.tabPrune')}</button>
@@ -68,6 +69,7 @@ const SystemPage = {
       else if (this._tab === 'ssl') await this._renderSsl(el);
       else if (this._tab === 'cis') await this._renderCisBenchmark(el);
       else if (this._tab === 'secrets') await this._renderSecretsAudit(el);
+      else if (this._tab === 'terminal-access') await this._renderTerminalAccess(el);
       else if (this._tab === 'egress') await this._renderEgressAudit(el);
       else if (this._tab === 'translations') await this._renderTranslations(el);
       else if (this._tab === 'prune') this._renderPrune(el);
@@ -2404,6 +2406,129 @@ DB_PASS=secret"></textarea>
       </div>`;
     }).join('');
     box.innerHTML = `<div class="prune-runs-title">${i18n.t('pages.system.pruneRunsTitle')}</div>${rows}`;
+  },
+
+  async _renderTerminalAccess(el) {
+    const [access, hosts] = await Promise.all([
+      Api.getTerminalAccess(Api.getHostId()),
+      Api.getHosts(),
+    ]);
+    const isAdmin = App.user?.role === 'admin' || App.user?.roles?.includes('admin');
+    const hostLocks = new Map((access.hosts || []).map(lock => [Number(lock.hostId), lock]));
+    const globalLocked = !!access.global?.locked;
+    const override = access.override || 'managed';
+    const forced = override !== 'managed';
+    const activeCount = Number(access.activeSessions?.count || 0);
+    const effective = access.effective || { locked: false, source: 'managed' };
+    const effectiveClass = effective.locked ? 'badge-danger' : 'badge-success';
+    const effectiveText = effective.locked ? 'LOCKED' : 'AVAILABLE';
+
+    const hostRows = (hosts || []).map(host => {
+      const lock = hostLocks.get(Number(host.id));
+      const locked = !!lock;
+      const inherited = !locked && globalLocked;
+      const status = forced
+        ? (override === 'deny' ? 'Forced closed by environment' : 'Forced open for recovery')
+        : locked
+          ? `Locked${lock.reason ? ` — ${Utils.escapeHtml(lock.reason)}` : ''}`
+          : inherited ? 'Locked by global policy' : 'Available';
+      const badgeClass = (override === 'deny' || locked || inherited) && override !== 'allow'
+        ? 'badge-danger'
+        : 'badge-success';
+      const action = locked ? 'unlock' : 'lock';
+      return `<tr>
+        <td><strong>${Utils.escapeHtml(host.name)}</strong>${host.isDefault ? ' <span class="badge badge-info">default</span>' : ''}</td>
+        <td><span class="badge ${badgeClass}">${status}</span></td>
+        <td>${Utils.escapeHtml(lock?.updatedBy || '—')}</td>
+        <td>${lock?.updatedAt ? Utils.formatDate(lock.updatedAt) : '—'}</td>
+        <td>${isAdmin ? `<button class="btn btn-sm ${locked ? 'btn-secondary' : 'btn-danger'} terminal-host-action" data-host-id="${host.id}" data-action="${action}" ${globalLocked && !locked ? 'disabled title="Global lock is active"' : ''}>
+          <i class="fas ${locked ? 'fa-unlock' : 'fa-lock'}"></i> ${locked ? 'Unlock' : 'Lock'}
+        </button>` : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3><i class="fas fa-user-shield" style="margin-right:8px;color:var(--yellow)"></i>Emergency container terminal control</h3>
+          <span class="badge ${effectiveClass}">${effectiveText}</span>
+        </div>
+        <div class="card-body">
+          <p class="text-muted text-sm" style="margin-bottom:12px">Locks apply to every user, including administrators. Enabling a lock immediately closes matching WebSocket exec sessions and blocks new ones; Docker Dash background operations are unaffected.</p>
+          ${forced ? `<div class="alert ${override === 'deny' ? 'alert-danger' : 'alert-warning'}" style="margin-bottom:12px">
+            <i class="fas fa-exclamation-triangle"></i>
+            Environment override <code>DD_TERMINAL_ACCESS_OVERRIDE=${override}</code> is active. Database policy remains editable so recovery state can be prepared before removing the override and restarting.
+          </div>` : ''}
+          ${!access.featureEnabled ? '<div class="alert alert-danger" style="margin-bottom:12px"><code>ENABLE_EXEC=false</code> disables terminals independently of these policies.</div>' : ''}
+          <div class="info-grid">
+            <div>
+              <div class="text-sm text-muted">Global policy</div>
+              <div style="margin:5px 0 12px"><span class="badge ${globalLocked ? 'badge-danger' : 'badge-success'}">${globalLocked ? 'LOCKED' : 'OPEN'}</span>
+                ${access.global?.reason ? `<span class="text-sm" style="margin-left:8px">${Utils.escapeHtml(access.global.reason)}</span>` : ''}</div>
+              ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input id="terminal-lock-reason" class="form-control" maxlength="500" placeholder="Incident/change reason (stored in audit log)" style="min-width:280px;flex:1">
+                <button class="btn ${globalLocked ? 'btn-secondary' : 'btn-danger'}" id="terminal-global-action">
+                  <i class="fas ${globalLocked ? 'fa-unlock' : 'fa-lock'}"></i> ${globalLocked ? 'Unlock globally' : 'Lock globally'}
+                </button>
+              </div>` : ''}
+            </div>
+            <div>
+              <div class="text-sm text-muted">Active terminal sessions</div>
+              <div style="font-size:28px;font-weight:700;margin-top:4px">${activeCount}</div>
+              <div class="text-sm text-muted">Current node${access.activeSessions?.sessions ? '; user and target details are admin-only' : ''}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>Per-host terminal policy</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="data-table">
+            <thead><tr><th>Host</th><th>Effective state</th><th>Changed by</th><th>Changed at</th><th>Action</th></tr></thead>
+            <tbody>${hostRows || '<tr><td colspan="5" class="text-muted">No hosts configured</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    el.querySelector('#terminal-global-action')?.addEventListener('click', async () => {
+      const nextLocked = !globalLocked;
+      const reason = el.querySelector('#terminal-lock-reason')?.value.trim() || '';
+      const ok = await Modal.confirm(
+        nextLocked
+          ? `Lock container terminals globally? ${activeCount} active session(s) will be terminated immediately.`
+          : 'Unlock container terminals globally? Per-host locks and environment overrides still apply.',
+        { danger: nextLocked, confirmText: nextLocked ? 'Lock terminals' : 'Unlock terminals' }
+      );
+      if (!ok) return;
+      try {
+        const result = await Api.setGlobalTerminalAccess(nextLocked, reason);
+        Toast.success(nextLocked
+          ? `Global terminal lock enabled; ${result.terminatedSessions || 0} session(s) terminated`
+          : 'Global terminal lock removed');
+        await this._renderTerminalAccess(el);
+      } catch (err) { Toast.error(err.message); }
+    });
+
+    el.querySelectorAll('.terminal-host-action').forEach(button => {
+      button.addEventListener('click', async () => {
+        const hostId = Number(button.dataset.hostId);
+        const nextLocked = button.dataset.action === 'lock';
+        const host = (hosts || []).find(item => Number(item.id) === hostId);
+        const reason = el.querySelector('#terminal-lock-reason')?.value.trim() || '';
+        const ok = await Modal.confirm(
+          `${nextLocked ? 'Lock' : 'Unlock'} container terminals for “${Utils.escapeHtml(host?.name || String(hostId))}”?${nextLocked ? ' Active sessions on this host will close immediately.' : ''}`,
+          { danger: nextLocked, confirmText: nextLocked ? 'Lock host' : 'Unlock host' }
+        );
+        if (!ok) return;
+        try {
+          const result = await Api.setHostTerminalAccess(hostId, nextLocked, reason);
+          Toast.success(nextLocked
+            ? `Host terminal lock enabled; ${result.terminatedSessions || 0} session(s) terminated`
+            : 'Host terminal lock removed');
+          await this._renderTerminalAccess(el);
+        } catch (err) { Toast.error(err.message); }
+      });
+    });
   },
 
   async _renderAudit(el) {

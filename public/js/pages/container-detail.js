@@ -1668,11 +1668,30 @@ const ContainersPageDetail = {
         </button>
         <span class="text-dim text-sm" id="term-status">${i18n.t('pages.containers.notConnected')}</span>
       </div>
+      <div id="term-access-warning" class="alert alert-danger" style="display:none;margin-bottom:10px"></div>
       <div id="terminal-container" class="terminal-container" style="height:calc(100vh - 300px)"></div>
     `;
 
     el.querySelector('#term-connect').addEventListener('click', () => this._startExec());
     el.querySelector('#term-disconnect').addEventListener('click', () => this._stopExec());
+
+    // Friendly preflight only; the WebSocket start gate remains authoritative
+    // and closes the race if an administrator locks access after this request.
+    Api.getTerminalAccess(Api.getHostId()).then(access => {
+      if (!access.effective?.locked) return;
+      const button = el.querySelector('#term-connect');
+      const status = el.querySelector('#term-status');
+      const warning = el.querySelector('#term-access-warning');
+      if (button) button.disabled = true;
+      if (status) {
+        status.textContent = 'Locked by administrator';
+        status.style.color = 'var(--red)';
+      }
+      if (warning) {
+        warning.style.display = '';
+        warning.innerHTML = `<i class="fas fa-lock"></i> ${Utils.escapeHtml(access.effective.reason || 'Terminal access is currently locked')}`;
+      }
+    }).catch(() => { /* WebSocket gate still fails closed when needed */ });
   },
 
   _startExec() {

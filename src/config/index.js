@@ -53,6 +53,9 @@ module.exports = {
     passwordMaxAgeDays: int('PASSWORD_MAX_AGE_DAYS', isStrict ? 90 : 0),
     disableTokenInBody: bool('DISABLE_TOKEN_IN_BODY', isStrict),
     disableWsQueryAuth: bool('DISABLE_WS_QUERY_AUTH', isStrict),
+    // Out-of-band terminal recovery/incident override:
+    // managed = database policy, deny = force closed, allow = ignore DB locks.
+    terminalAccessOverride: env('DD_TERMINAL_ACCESS_OVERRIDE', 'managed'),
   },
   stats: {
     collectIntervalMs: int('STATS_INTERVAL_MS', 10000),

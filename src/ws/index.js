@@ -9,6 +9,7 @@ const config = require('../config');
 const log = require('../utils/logger')('ws');
 const { tryParseJson } = require('../utils/helpers');
 const cluster = require('../services/cluster');
+const terminalAccess = require('../services/terminal-access');
 
 class WsServer {
   constructor() {
@@ -159,6 +160,15 @@ class WsServer {
       } else {
         this._localBroadcast(payload.type, payload.data, payload.channel || null);
       }
+    });
+
+    // Emergency terminal locks must take effect on every HA replica, not only
+    // the node that served the administrative HTTP request.
+    cluster.subscribe('terminal:lock', (payload) => {
+      this.terminateExecSessions({
+        hostId: payload?.hostId ?? null,
+        reason: payload?.reason || 'Terminal access locked by an administrator',
+      });
     });
 
     // v6.17.2 Phase 4 — Docker event streams are leader-only. Each replica
@@ -664,6 +674,23 @@ class WsServer {
       return;
     }
 
+    let access;
+    try {
+      access = terminalAccess.effective(hostId);
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'exec:error', code: 'terminal_access_invalid_host', message: err.message }));
+      return;
+    }
+    if (access.locked) {
+      ws.send(JSON.stringify({
+        type: 'exec:error',
+        code: 'terminal_access_locked',
+        message: access.reason || 'Terminal access is locked by an administrator',
+        source: access.source,
+      }));
+      return;
+    }
+
     // v8.7.18 SECURITY — per-stack permission check, matching the HTTP
     // pattern for container actions in src/routes/containers.js:329-334.
     // Without this, an operator restricted to specific stacks via the
@@ -688,11 +715,26 @@ class WsServer {
     }
 
     try {
+      // Close the inspect→exec race: a lock may have been enabled while the
+      // permission inspection was in flight.
+      access = terminalAccess.effective(hostId);
+      if (access.locked) {
+        ws.send(JSON.stringify({
+          type: 'exec:error',
+          code: 'terminal_access_locked',
+          message: access.reason || 'Terminal access is locked by an administrator',
+          source: access.source,
+        }));
+        return;
+      }
       const exec = await dockerService.createExec(containerId, shell, hostId);
       const stream = await exec.start({ hijack: true, stdin: true, Tty: true });
 
       client.exec = exec;
       client.execStream = stream;
+      client.execHostId = access.hostId;
+      client.execContainerId = containerId;
+      client.execStartedAt = new Date().toISOString();
 
       // Try to set initial terminal size
       try { await exec.resize({ w: cols, h: rows }); } catch {}
@@ -704,9 +746,13 @@ class WsServer {
       });
 
       stream.on('end', () => {
+        if (client.execStream !== stream) return;
         ws.send(JSON.stringify({ type: 'exec:end' }));
         client.exec = null;
         client.execStream = null;
+        client.execHostId = null;
+        client.execContainerId = null;
+        client.execStartedAt = null;
       });
 
       // v8.7.18 — audit exec session start. The HTTP container actions
@@ -736,9 +782,14 @@ class WsServer {
     const client = this.clients.get(ws);
     if (!client) return;
     if (client.execStream) {
-      try { client.execStream.destroy(); } catch {}
+      const stream = client.execStream;
       client.execStream = null;
+      try { stream.destroy(); } catch {}
     }
+    client.exec = null;
+    client.execHostId = null;
+    client.execContainerId = null;
+    client.execStartedAt = null;
     this._stopClientLogStreams(client);
     if (client.sshStream) { try { client.sshStream.close(); } catch {} client.sshStream = null; }
     if (client.sshConn) { try { client.sshConn.end(); } catch {} client.sshConn = null; }
@@ -757,6 +808,52 @@ class WsServer {
 
   getConnectedCount() {
     return this.clients.size;
+  }
+
+  getActiveExecSessions() {
+    const sessions = [];
+    for (const client of this.clients.values()) {
+      if (!client.execStream) continue;
+      sessions.push({
+        username: client.user?.username || 'unknown',
+        userId: client.user?.id || null,
+        hostId: client.execHostId ?? 0,
+        containerId: client.execContainerId || null,
+        startedAt: client.execStartedAt || null,
+      });
+    }
+    return { count: sessions.length, sessions };
+  }
+
+  /** Terminate active interactive container terminals globally or for one host. */
+  terminateExecSessions({ hostId = null, reason = 'Terminal access locked by an administrator' } = {}) {
+    const resolvedHostId = hostId === null ? null : terminalAccess.normalizeHostId(hostId);
+    let terminated = 0;
+    for (const [ws, client] of this.clients) {
+      if (!client.execStream) continue;
+      if (resolvedHostId !== null && client.execHostId !== resolvedHostId) continue;
+
+      const stream = client.execStream;
+      client.exec = null;
+      client.execStream = null;
+      client.execHostId = null;
+      client.execContainerId = null;
+      client.execStartedAt = null;
+      try { stream.write('\x03exit\n'); } catch { /* best effort */ }
+      try { stream.destroy(); } catch { /* best effort */ }
+      terminated++;
+
+      if (ws.readyState === 1) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'exec:error',
+            code: 'terminal_access_locked',
+            message: reason,
+          }));
+        } catch { /* disconnected */ }
+      }
+    }
+    return terminated;
   }
 }
 

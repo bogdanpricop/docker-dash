@@ -6,7 +6,7 @@
 
 ## Executive recommendation
 
-All eight recommendations in the focused implementation sequence are now delivered: Compose Deployment Plan; progressive Git-stack rollout; staged parallel procedures; declarative fleet export/plan/apply; pull-request previews; pinned OCI Compose artifacts; disk-pressure automation; and optional managed Git write-back.
+All eight recommendations in the focused implementation sequence are now delivered: Compose Deployment Plan; progressive Git-stack rollout; staged parallel procedures; declarative fleet export/plan/apply; pull-request previews; pinned OCI Compose artifacts; disk-pressure automation; and optional managed Git write-back. The subsequent P2 emergency terminal lock is also delivered.
 
 The completed developer-platform and operations sequence is:
 
@@ -35,7 +35,7 @@ The completed sequence compounds existing work: deployment planning makes one ta
 | Done | PR preview stacks | Git/webhook/deployment primitives already exist; large developer-experience gain | GitHub PR webhook, generated project name, isolated env set, URL metadata, close/TTL cleanup | L | Forks default off; enabled forks never receive base-repository credentials |
 | Done | OCI Compose artifacts | Native Compose can publish and consume versioned `oci://` definitions | Import pinned digest, show provenance, deploy with local override, optional signature policy | M | Digest-bound dry-run and explicit annotation/cosign trust modes |
 | Done | Disk-pressure automation | Docker Dash already reports storage and offers cleanup actions | Threshold policy, dry-run candidate list, minimum age, protected labels, audit, no volume deletion | M | Disabled + dry-run defaults, exact candidates, cooldown, protected labels |
-| P2 | Emergency terminal lock | Existing container terminals benefit from a central incident control | Global and per-host deny flag; admins included; terminate active WS exec sessions; audit | S | Lockout recovery needs environment/config override |
+| Done | Emergency terminal lock | Existing container terminals benefit from a central incident control | Global and per-host deny flag; admins included; terminate active WS exec sessions; audit | S | `DD_TERMINAL_ACCESS_OVERRIDE=allow` provides out-of-band recovery |
 | P3 | Curated Compose blueprint catalog | Existing sample/plugin and onboarding catalogs are not an application marketplace | Signed curated index, pinned images, healthchecks, backup hints, variables wizard | M–L | Template supply-chain ownership and update policy |
 | P3 | Signed extension API | A sample plugin exists, but a stable trust and compatibility model would unlock integrations | Read-only UI panels first; manifest/API version; signatures; explicit capabilities | L | Long-term API compatibility and privileged plugin code |
 
@@ -113,6 +113,10 @@ Implemented as per-host opt-in policies with dry-run defaults, age thresholds, e
 
 Implemented as deterministic, secret-free fleet export into an existing Git-stack checkout. Review hashes bind the document and both Git heads; apply is non-force, rejects remote conflicts, and can optionally run after successful declarative apply.
 
+### 9. Emergency terminal lock
+
+Implemented as an admin-controlled global or per-host policy. The WebSocket gate applies to administrators as well as operators, checks twice around the asynchronous permission lookup, immediately closes matching active exec streams, propagates termination across HA replicas, and writes a hash-chained audit event with the number of sessions closed. `DD_TERMINAL_ACCESS_OVERRIDE=deny` provides an out-of-band incident kill switch; `allow` is the documented recovery path for clearing a persisted lock before returning to `managed` mode.
+
 ## Ideas deliberately not prioritized
 
 - **Generic AI chat:** Docker Dash already has Ops Copilot. A future AI addition should be narrowly grounded in incident timelines or propose a reviewed procedure; it must not execute mutations from free-form text.
@@ -128,7 +132,7 @@ Implemented as deterministic, secret-free fleet export into an existing Git-stac
 
 - Compose Deployment Plan with capability detection and bounded output.
 - Literal/capped multi-container log search and split-frame-safe WebSocket decoding (already implemented during this research pass).
-- Emergency terminal lock if a small security slice is desired.
+- [x] Emergency terminal lock with active-session termination and recovery override.
 
 ### Release B — safe fleet changes
 
