@@ -165,6 +165,7 @@ app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
 app.use('/api/providers', apiLimiter, require('./routes/providers'));
+app.use('/api/operations', apiLimiter, require('./routes/operations'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
 app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
@@ -435,6 +436,15 @@ async function start() {
     (channel, data) => wsServer.broadcast('acme:job:update', data, channel)
   );
 
+  // Durable Provider SDK operation worker. Database state is authoritative;
+  // WebSocket delivery only accelerates Activity Center updates.
+  const providerOperations = require('./services/provider-operations');
+  providerOperations.setBroadcaster(data => {
+    wsServer.broadcast('provider:operation:update', data, 'provider:operations');
+    if (data?.id) wsServer.broadcast('provider:operation:update', data, `provider:operation:${data.id}`);
+  });
+  providerOperations.start();
+
   // ACME watcher: transitions stuck 'running' jobs to success/failed so the
   // LE Wizard UI doesn't hang indefinitely.
   const acmeWatcher = require('./services/acme-watcher');
@@ -598,6 +608,7 @@ async function shutdown(signal) {
   // to write to a closing DB or fire runJob against a tearing-down
   // dockerService.
   try { require('./services/remediation-scheduler').stop(); } catch {}
+  try { require('./services/provider-operations').stop(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

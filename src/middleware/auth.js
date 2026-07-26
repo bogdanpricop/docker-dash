@@ -173,6 +173,14 @@ function writeable(req, res, next) {
   if (config.features.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return res.status(403).json({ error: 'System is in read-only mode' });
   }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    try {
+      const decision = require('../services/provider-operations/policy').globalHttpGate();
+      if (!decision.allowed) {
+        return res.status(423).json({ error: decision.reason, code: decision.code });
+      }
+    } catch (err) { return next(err); }
+  }
   next();
 }
 

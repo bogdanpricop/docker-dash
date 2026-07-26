@@ -86,6 +86,11 @@ module.exports = {
     // Kept as a flag so operators can canary the new schema independently.
     providerSdkV2: bool('DD_PROVIDER_SDK_V2', true),
   },
+  providerOperations: {
+    concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
+    pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
+    leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
+  },
   smtp: {
     host: env('SMTP_HOST', 'localhost'),
     port: int('SMTP_PORT', 587),
