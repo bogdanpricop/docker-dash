@@ -103,6 +103,9 @@ module.exports = {
     // Read-only common inventory for provider-native backup repositories and
     // recovery points. Restore and backup execution remain separately gated.
     providerRecoveryPointInventory: bool('DD_PROVIDER_RECOVERY_POINT_INVENTORY', false),
+    // Declarative backup policy authoring and plan-only scheduling. This flag
+    // never authorizes a provider backup or retention mutation.
+    providerBackupPolicies: bool('DD_PROVIDER_BACKUP_POLICIES', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

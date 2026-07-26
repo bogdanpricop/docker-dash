@@ -52,13 +52,21 @@ const mockSnapshotPolicyUpsert = jest.fn();
 const mockSnapshotPolicyRemove = jest.fn();
 const mockSnapshotPolicyPreview = jest.fn();
 const mockSnapshotPolicyRun = jest.fn();
+const mockBackupPolicyList = jest.fn();
+const mockBackupPolicyRuns = jest.fn();
+const mockBackupPolicyPreflight = jest.fn();
+const mockBackupPolicyUpsert = jest.fn();
+const mockBackupPolicyRemove = jest.fn();
+const mockBackupPolicyPlan = jest.fn();
+const mockBackupPolicyGet = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
-  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true, providerRecoveryPointInventory: true } };
+  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
+    providerRecoveryPointInventory: true, providerBackupPolicies: true } };
 });
 
 jest.mock('../db', () => ({
@@ -130,6 +138,23 @@ jest.mock('../services/provider-operations/snapshot-policies', () => ({
   previewForHost: (...args) => mockSnapshotPolicyPreview(...args),
   runForHost: (...args) => mockSnapshotPolicyRun(...args),
 }));
+jest.mock('../services/provider-operations/backup-policies', () => {
+  class BackupPolicyError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'BackupPolicyError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    BackupPolicyError,
+    listForHost: (...args) => mockBackupPolicyList(...args),
+    listRuns: (...args) => mockBackupPolicyRuns(...args),
+    preflightForHost: (...args) => mockBackupPolicyPreflight(...args),
+    upsertForHost: (...args) => mockBackupPolicyUpsert(...args),
+    removeForHost: (...args) => mockBackupPolicyRemove(...args),
+    planForHost: (...args) => mockBackupPolicyPlan(...args),
+    get: (...args) => mockBackupPolicyGet(...args),
+  };
+});
 jest.mock('../services/provider-operations/vm-provision', () => ({
   preflightForHost: (...args) => mockProvisionPreflight(...args),
   submitForHost: (...args) => mockProvisionSubmit(...args),
@@ -309,6 +334,23 @@ describe('Provider SDK routes', () => {
       id: `vspr_${'a'.repeat(26)}`, policyId: `vmsp_${'a'.repeat(26)}`,
       state: 'previewed', currentOperationId: null,
     });
+    const backupPolicy = {
+      id: `pbp_${'a'.repeat(26)}`, hostId: 7, repositoryId: `ddr_repo_${'a'.repeat(26)}`,
+      name: 'Production GFS', enabled: false, mode: 'plan_only', policyHash: '1'.repeat(64),
+    };
+    const backupPlan = {
+      schemaVersion: '1.0', allowed: true, planHash: '2'.repeat(64),
+      summary: { blockers: 0, warnings: 0, selectedWorkloads: 2 },
+      execution: { authorized: false }, findings: [],
+    };
+    mockBackupPolicyList.mockReturnValue([backupPolicy]);
+    mockBackupPolicyRuns.mockReturnValue([]);
+    mockBackupPolicyPreflight.mockResolvedValue(backupPlan);
+    mockBackupPolicyUpsert.mockResolvedValue({ created: true, policy: backupPolicy, preflight: backupPlan });
+    mockBackupPolicyRemove.mockReturnValue(backupPolicy);
+    mockBackupPolicyPlan.mockResolvedValue({ id: `pbpr_${'b'.repeat(26)}`, policyId: backupPolicy.id,
+      state: 'planned', planHash: backupPlan.planHash, plan: backupPlan });
+    mockBackupPolicyGet.mockReturnValue(backupPolicy);
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -721,6 +763,38 @@ describe('Provider SDK routes', () => {
     expect(response.body).toEqual({
       error: 'Provider recovery-point inventory failed', code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
     });
+  });
+
+  it('admin-gates and audits plan-only backup policy lifecycle', async () => {
+    const policyId = `pbp_${'a'.repeat(26)}`;
+    const repositoryId = `ddr_repo_${'a'.repeat(26)}`;
+    const body = { name: 'Production GFS', repositoryId, mode: 'plan_only' };
+    const listed = await request(app).get('/api/providers/7/backup-policies').set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.executionAuthorized).toBe(false);
+    expect(mockBackupPolicyList).toHaveBeenCalledWith(7, { limit: 100 });
+    expect((await request(app).post('/api/providers/7/backup-policies/preflight')
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+
+    const preflight = await request(app).post('/api/providers/7/backup-policies/preflight').send(body);
+    expect(preflight.status).toBe(200); expect(preflight.body.execution.authorized).toBe(false);
+    expect(mockBackupPolicyPreflight).toHaveBeenCalledWith(mockHost, body);
+    const created = await request(app).post('/api/providers/7/backup-policies').send(body);
+    expect(created.status).toBe(201);
+    expect(mockBackupPolicyUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_backup_policy_created' }));
+
+    const planned = await request(app).post(`/api/providers/7/backup-policies/${policyId}/plan`).send({});
+    expect(planned.status).toBe(201); expect(planned.body.run.state).toBe('planned');
+    expect(mockBackupPolicyPlan).toHaveBeenCalledWith(mockHost, policyId, { createdBy: 1, trigger: 'manual' });
+    expect((await request(app).delete(`/api/providers/7/backup-policies/${policyId}`)).status).toBe(200);
+    expect(mockBackupPolicyRemove).toHaveBeenCalledWith(7, policyId);
+  });
+
+  it('sanitizes untrusted backup-policy failures', async () => {
+    mockBackupPolicyPreflight.mockRejectedValue(new Error('https://secret@provider.internal'));
+    const response = await request(app).post('/api/providers/7/backup-policies/preflight').send({});
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Provider backup policy request failed', code: 'PROVIDER_BACKUP_POLICY_ERROR' });
   });
 
   it('admin-gates, preflights and audits durable create-from-template submission', async () => {

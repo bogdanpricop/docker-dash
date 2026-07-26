@@ -14,6 +14,7 @@ const providerPlacementChanges = require('../services/provider-operations/placem
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
+const providerBackupPolicies = require('../services/provider-operations/backup-policies');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -73,6 +74,29 @@ function _snapshotPolicyError(res, err) {
     error: status >= 500 ? 'Provider VM snapshot policy request failed' : err.message,
     code: err?.code || 'VM_SNAPSHOT_POLICY_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _backupPolicyError(res, err) {
+  const trusted = err?.name === 'BackupPolicyError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider backup policy request failed' : err.message,
+    code: trusted ? err.code : 'PROVIDER_BACKUP_POLICY_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _backupPolicyAudit(req, action, policy, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_backup_policy_${action}`, targetType: 'provider_host',
+    targetId: String(req.params.hostId), details: {
+      hostId: Number(req.params.hostId), policyId: policy?.id || req.params.policyId || null,
+      repositoryId: policy?.repositoryId || req.body?.repositoryId || null,
+      mode: policy?.mode || 'plan_only', executionAuthorized: false, ...details,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
 
@@ -310,6 +334,102 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
     });
   }
 }));
+
+router.get('/:hostId/backup-policies', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (!config.features.providerBackupPolicies) {
+    return res.status(404).json({ error: 'Provider backup policies are disabled by release policy', code: 'BACKUP_POLICIES_DISABLED' });
+  }
+  const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    return res.status(400).json({ error: 'Policy limit must be an integer between 1 and 200', code: 'INVALID_BACKUP_POLICY_LIMIT' });
+  }
+  try {
+    const items = providerBackupPolicies.listForHost(resolved.host.id, { limit });
+    res.json({ schemaVersion: '1.0', count: items.length, executionAuthorized: false, items });
+  } catch (err) { _backupPolicyError(res, err); }
+});
+
+router.get('/:hostId/backup-policies/runs', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+  const resolved = _host(req.params.hostId);
+  if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (!config.features.providerBackupPolicies) {
+    return res.status(404).json({ error: 'Provider backup policies are disabled by release policy', code: 'BACKUP_POLICIES_DISABLED' });
+  }
+  const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+    return res.status(400).json({ error: 'Run limit must be an integer between 1 and 200', code: 'INVALID_BACKUP_POLICY_RUN_LIMIT' });
+  }
+  try {
+    const items = providerBackupPolicies.listRuns(resolved.host.id, { limit, policyId: req.query.policy || null });
+    res.json({ schemaVersion: '1.0', count: items.length, executionAuthorized: false, items });
+  } catch (err) { _backupPolicyError(res, err); }
+});
+
+router.post('/:hostId/backup-policies/preflight', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (!config.features.providerBackupPolicies) return _backupPolicyError(res,
+      new providerBackupPolicies.BackupPolicyError('Provider backup policies are disabled by release policy', 'BACKUP_POLICIES_DISABLED', 404));
+    try {
+      const plan = await providerBackupPolicies.preflightForHost(resolved.host, req.body || {});
+      _backupPolicyAudit(req, 'preflight', null, { planHash: plan.planHash, allowed: plan.allowed,
+        blockerCount: plan.summary.blockers, warningCount: plan.summary.warnings,
+        selectedWorkloads: plan.summary.selectedWorkloads });
+      res.json(plan);
+    } catch (err) { _backupPolicyError(res, err); }
+  }));
+
+router.post('/:hostId/backup-policies', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerBackupPolicies.upsertForHost(resolved.host, req.body || {}, { createdBy: req.user.id });
+      _backupPolicyAudit(req, result.created ? 'created' : 'updated', result.policy,
+        { policyHash: result.policy.policyHash, enabled: result.policy.enabled, preflightAllowed: result.preflight.allowed });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _backupPolicyError(res, err); }
+  }));
+
+router.put('/:hostId/backup-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerBackupPolicies.upsertForHost(resolved.host,
+        { ...(req.body || {}), id: req.params.policyId }, { createdBy: req.user.id });
+      _backupPolicyAudit(req, 'updated', result.policy,
+        { policyHash: result.policy.policyHash, enabled: result.policy.enabled, preflightAllowed: result.preflight.allowed });
+      res.json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _backupPolicyError(res, err); }
+  }));
+
+router.delete('/:hostId/backup-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const policy = providerBackupPolicies.removeForHost(resolved.host.id, req.params.policyId);
+      _backupPolicyAudit(req, 'deleted', policy);
+      res.json({ ok: true, policyId: policy.id });
+    } catch (err) { _backupPolicyError(res, err); }
+  });
+
+router.post('/:hostId/backup-policies/:policyId/plan', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const run = await providerBackupPolicies.planForHost(resolved.host, req.params.policyId,
+        { createdBy: req.user.id, trigger: 'manual' });
+      _backupPolicyAudit(req, 'planned', providerBackupPolicies.get(req.params.policyId),
+        { runId: run.id, planHash: run.planHash, state: run.state });
+      res.status(201).json({ schemaVersion: '1.0', run });
+    } catch (err) { _backupPolicyError(res, err); }
+  }));
 
 router.post('/:hostId/artifacts/:artifactId/clone/preflight', requireAuth,
   requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {

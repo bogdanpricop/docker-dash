@@ -574,6 +574,28 @@ const Api = {
     if (filters.to) qs.set('to', filters.to);
     return this.get(`/providers/${hostId}/recovery-points?${qs}`);
   },
+  getProviderBackupPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/backup-policies?limit=${limit}`);
+  },
+  getProviderBackupPolicyRuns(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/backup-policies/runs?${qs}`);
+  },
+  preflightProviderBackupPolicy(hostId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/preflight`, body);
+  },
+  saveProviderBackupPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/backup-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/backup-policies`, body);
+  },
+  deleteProviderBackupPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}`);
+  },
+  planProviderBackupPolicy(hostId, policyId) {
+    return this.post(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/plan`, {});
+  },
   preflightProviderVMProvision(hostId, artifactId, body) {
     return this.post(`/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone/preflight`, body);
   },

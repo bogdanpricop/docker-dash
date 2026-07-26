@@ -521,6 +521,12 @@ function startAll() {
     return require('../services/provider-operations/snapshot-policies').runDue();
   })));
 
+  // Backup policies are deliberately plan-only in V3.2. The leader-gated
+  // scheduler persists due-slot evidence and never invokes a provider mutation.
+  jobs.push(cron.schedule('* * * * *', _m('provider-backup-policy-plan', () => {
+    return require('../services/provider-operations/backup-policies').runDue();
+  })));
+
   // Host-maintenance runs are durable parent workflows. The leader-gated
   // wake-up reconciles native tasks and dispatches bounded vm.migrate waves.
   jobs.push(cron.schedule('* * * * *', _m('provider-host-maintenance', () => {
