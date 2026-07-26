@@ -92,7 +92,6 @@ class ProviderResilienceManager {
       timer = setTimeout(() => reject(new ProviderResilienceError(
         'Provider request timed out', 'PROVIDER_REQUEST_TIMEOUT', 504
       )), timeoutMs);
-      timer.unref?.();
     });
     return Promise.race([Promise.resolve().then(task), timeout]).finally(() => clearTimeout(timer));
   }
