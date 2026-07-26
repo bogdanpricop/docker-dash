@@ -40,6 +40,7 @@ const mockDockerInstance = {
   version: jest.fn(),
   ping: jest.fn(),
   df: jest.fn(),
+  getEvents: jest.fn(),
 };
 
 const dockerCtorCalls = [];
@@ -378,6 +379,27 @@ describe('DockerService (src/services/docker.js)', () => {
     // socket (default fallback path)
     dockerService._createConnection({ connectionType: 'unknown-or-missing' });
     expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(30_000);
+  });
+
+  it('_createConnection preserves an explicit zero timeout for live streams', () => {
+    dockerService._createConnection({
+      connectionType: 'socket',
+      socketPath: '/var/run/docker.sock',
+    }, 0);
+
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(0);
+  });
+
+  it('getEventStream uses a dedicated unbounded connection', async () => {
+    const eventStream = { on: jest.fn() };
+    mockDockerInstance.getEvents.mockResolvedValue(eventStream);
+
+    const result = await dockerService.getEventStream(0);
+
+    expect(result).toBe(eventStream);
+    expect(mockDockerInstance.getEvents).toHaveBeenCalledTimes(1);
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(0);
+    expect(dockerService.connections.has(0)).toBe(false);
   });
 
   it('_createConnection routes "tcp" with TLS config to https', () => {

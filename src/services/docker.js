@@ -91,7 +91,7 @@ class DockerService {
   }
 
   /** Create Dockerode instance from host config. `timeoutMs` overrides the
-   *  default 30s per-request timeout (used by prune, which can run for minutes). */
+   *  default 30s per-request timeout. Pass 0 for an unbounded live stream. */
   _createConnection(hostConfig, timeoutMs) {
     // v8.7.12 — applied consistently across all connection types. Previously
     // only the TCP path passed `timeout` to dockerode; SSH-tunneled and Unix-
@@ -99,12 +99,10 @@ class DockerService {
     // Docker daemon would freeze listContainers/inspect/pull through the
     // tunnel forever, even though the SSH tunnel's own keepalive (10s/3x)
     // kept the underlying transport alive. 30s is the dockerode `timeout`
-    // option — applies to per-request socket idle. Streaming endpoints
-    // (logs --follow, attach, exec) emit data faster than this in practice
-    // and the modem doesn't auto-close on the 'timeout' event (per node
-    // http req.setTimeout semantics), so live consumers are unaffected —
-    // same behavior TCP-connected hosts have had since their inception.
-    const DOCKER_REQUEST_TIMEOUT_MS = timeoutMs || 30_000;
+    // option — applies to per-request socket idle. Long-lived streaming
+    // endpoints must opt out explicitly: Docker's event stream can remain
+    // legitimately silent for longer than 30s and would otherwise abort.
+    const DOCKER_REQUEST_TIMEOUT_MS = timeoutMs ?? 30_000;
 
     switch (hostConfig.connectionType) {
       case 'socket':
@@ -878,7 +876,13 @@ class DockerService {
   // ─── Events Stream ────────────────────────────────────────
 
   async getEventStream(hostId = 0) {
-    const docker = this.getDocker(hostId);
+    // Keep normal API requests bounded while allowing an idle events stream
+    // to stay connected indefinitely. A dedicated client also avoids changing
+    // the timeout of the cached client shared by regular Docker operations.
+    // Seeded demo hosts retain their synthetic client and unsupported-operation
+    // behavior instead of attempting a real connection to placeholder data.
+    const docker = this._getMockDocker(hostId)
+      || this._createConnection(this._getHostConfig(hostId), 0);
     return await docker.getEvents();
   }
 
