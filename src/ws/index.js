@@ -76,7 +76,19 @@ class WsServer {
       cb(true);
     };
 
-    this.wss = new WebSocketServer({ server, path: '/ws', verifyClient });
+    // Use explicit noServer routing so this endpoint coexists with dedicated
+    // WebSocket gateways. `new WebSocketServer({ server, path })` aborts every
+    // non-matching upgrade with HTTP 400 instead of allowing another upgrade
+    // listener to handle it.
+    this.wss = new WebSocketServer({ noServer: true, verifyClient });
+    this._upgradeHandler = (req, socket, head) => {
+      let pathname;
+      try { pathname = new URL(req.url, 'http://localhost').pathname; }
+      catch { return; }
+      if (pathname !== '/ws') return;
+      this.wss.handleUpgrade(req, socket, head, ws => this.wss.emit('connection', ws, req));
+    };
+    server.on('upgrade', this._upgradeHandler);
 
     // Heartbeat: ping every 30s, terminate dead connections
     this._heartbeatInterval = setInterval(() => {
@@ -857,4 +869,6 @@ class WsServer {
   }
 }
 
-module.exports = new WsServer();
+const wsServer = new WsServer();
+wsServer.WsServer = WsServer;
+module.exports = wsServer;
