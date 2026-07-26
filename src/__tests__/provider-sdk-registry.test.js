@@ -149,4 +149,13 @@ describe('Provider SDK registry', () => {
     await expect(registry.resourcesForHost(pveHost, 'virtual-machines', { limit: 501, database }))
       .rejects.toMatchObject({ code: 'INVALID_RESOURCE_LIMIT' });
   });
+
+  it('restarts a bounded artifact transaction after SQLITE_BUSY_SNAPSHOT', () => {
+    const busy = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY_SNAPSHOT' });
+    const write = jest.fn().mockImplementationOnce(() => { throw busy; }).mockReturnValue(['saved']);
+    expect(registry._internals._retrySqliteBusy(write)).toEqual(['saved']);
+    expect(write).toHaveBeenCalledTimes(2);
+    const constraint = Object.assign(new Error('constraint'), { code: 'SQLITE_CONSTRAINT_UNIQUE' });
+    expect(() => registry._internals._retrySqliteBusy(() => { throw constraint; })).toThrow(constraint);
+  });
 });

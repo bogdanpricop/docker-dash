@@ -130,6 +130,20 @@ function _resourceSortKey(row) {
     ?? row?.vmid ?? row?.node ?? row?.storage ?? row?.name ?? '');
 }
 
+function _retrySqliteBusy(write, attempts = 5) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return write(); }
+    catch (err) {
+      lastError = err;
+      // WAL readers can lose the race to a concurrent writer while upgrading
+      // their snapshot. A fresh transaction is the correct bounded recovery.
+      if (!/^SQLITE_BUSY(?:_|$)/.test(String(err?.code || '')) || attempt === attempts) throw err;
+    }
+  }
+  throw lastError;
+}
+
 async function resourcesForHost(host, kindInput, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
   const kindInfo = resolveResourceKind(kindInput);
@@ -245,11 +259,15 @@ async function artifactsForHost(host, options = {}) {
   let normalized;
   try {
     const database = options.database || getDb();
-    normalized = database.transaction(() => rows.map(raw => artifactCatalog.normalizeAndRemember({
+    const write = database.transaction(() => rows.map(raw => artifactCatalog.normalizeAndRemember({
       host, providerType: adapter.type, raw, observedAt, database,
-    })))();
+    })));
+    normalized = _retrySqliteBusy(write);
   } catch (err) {
-    log.error('Provider artifact normalization failed', { hostId: Number(host.id), provider: adapter.type, error: err?.name || 'Error' });
+    log.error('Provider artifact normalization failed', {
+      hostId: Number(host.id), provider: adapter.type, error: err?.name || 'Error',
+      code: /^SQLITE_[A-Z_]+$/.test(String(err?.code || '')) ? err.code : 'ARTIFACT_WRITE_FAILED',
+    });
     throw new ProviderAdapterError('Provider artifact inventory could not be normalized', 'ARTIFACT_NORMALIZATION_FAILED', 500);
   }
   const filtered = normalized.filter(item => (!kind || item.kind === kind)
@@ -298,7 +316,7 @@ module.exports = {
   artifactsForHost,
   invalidateHost,
   _internals: {
-    adapters, cache, inFlight, clear, _sanitizeProbeError,
+    adapters, cache, inFlight, clear, _sanitizeProbeError, _retrySqliteBusy,
     SUCCESS_TTL_MS, ERROR_TTL_MS, MAX_CACHE_ENTRIES,
   },
 };
