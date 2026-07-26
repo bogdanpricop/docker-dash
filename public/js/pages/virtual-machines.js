@@ -203,6 +203,123 @@ const VirtualMachinesPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
+  _snapshotPolicyDraft(root) {
+    return {
+      enabled: root.querySelector('#snapshot-policy-enabled').checked,
+      mode: root.querySelector('#snapshot-policy-mode').value,
+      frequency: root.querySelector('#snapshot-policy-frequency').value,
+      minute: Number(root.querySelector('#snapshot-policy-minute').value),
+      hour: Number(root.querySelector('#snapshot-policy-hour').value),
+      weekday: Number(root.querySelector('#snapshot-policy-weekday').value),
+      consistency: root.querySelector('#snapshot-policy-consistency').value,
+      namePrefix: root.querySelector('#snapshot-policy-prefix').value.trim(),
+      description: root.querySelector('#snapshot-policy-description').value.trim(),
+      retainCount: Number(root.querySelector('#snapshot-policy-retain').value),
+      maxAgeDays: root.querySelector('#snapshot-policy-age').value === '' ? null : Number(root.querySelector('#snapshot-policy-age').value),
+      maxDeletesPerRun: Number(root.querySelector('#snapshot-policy-deletes').value),
+    };
+  },
+
+  _snapshotPolicyPlanHtml(plan) {
+    return `<div class="text-sm">
+      <div class="alert alert-warning"><strong>Retention is not backup.</strong> ${Utils.escapeHtml(plan.protection?.warning || '')}</div>
+      <div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+        <div><strong>Next snapshot</strong><br>${Utils.escapeHtml(plan.create.name)}</div>
+        <div><strong>Consistency</strong><br>${Utils.escapeHtml(plan.create.consistency)}</div>
+        <div><strong>Managed snapshots</strong><br>${plan.retention.managedCount}</div>
+        <div><strong>Delete candidates</strong><br>${plan.retention.candidates.length}</div>
+      </div>
+      ${plan.retention.candidates.length ? `<div style="margin-top:12px"><strong>Leaf snapshots eligible after create succeeds</strong><ul style="margin:6px 0 0 18px">${plan.retention.candidates.map(item => `<li>${Utils.escapeHtml(item.name)} · ${Utils.escapeHtml(item.createdAt || 'unknown')}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  },
+
+  async _loadSnapshotPolicy(root, host, vm) {
+    if (!root) return;
+    root.innerHTML = '<div class="text-muted text-sm"><i class="fas fa-spinner fa-spin"></i> Loading snapshot policy…</div>';
+    try {
+      const [envelope, history] = await Promise.all([
+        Api.getProviderVMSnapshotPolicy(host.id, vm.id),
+        Api.getProviderVMSnapshotPolicyRuns(host.id, vm.id, 10),
+      ]);
+      const policy = envelope.policy;
+      const admin = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
+      const value = policy || {
+        enabled: false, mode: 'dry_run', consistency: 'crash', namePrefix: 'dd-auto', description: '',
+        retainCount: 3, maxAgeDays: 3, maxDeletesPerRun: 2,
+        schedule: { frequency: 'daily', minute: 15, hour: 2, weekday: 0, timezone: 'UTC' },
+      };
+      const runRows = (history.items || []).slice(0, 5).map(run => `<tr><td>${Utils.escapeHtml(run.createdAt)}</td><td>${Utils.escapeHtml(run.trigger)}</td><td><span class="badge ${Utils.statusBadgeClass(run.state)}">${Utils.escapeHtml(run.state)}</span></td><td>${run.currentOperationId ? `<a href="#/activity/${run.currentOperationId}"><code>${Utils.escapeHtml(run.currentOperationId)}</code></a>` : '—'}</td></tr>`).join('');
+      root.innerHTML = `<div class="card" style="padding:16px;margin-top:16px">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><strong><i class="fas fa-calendar-alt"></i> Snapshot policy</strong><div class="text-muted text-sm">Portable UTC schedule · managed-prefix retention · durable child operations</div></div>
+        <span class="badge ${value.enabled ? 'badge-success' : 'badge-secondary'}">${value.enabled ? Utils.escapeHtml(value.mode) : 'disabled'}</span></div>
+        ${!envelope.automation.executeEnabled ? '<div class="alert alert-warning text-sm" style="margin-top:12px">Execute automation is disabled by release policy. Dry-run preview remains available.</div>' : ''}
+        ${admin ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-top:14px">
+          <label class="form-label">Enabled<label class="toggle" style="display:block;margin-top:7px"><input type="checkbox" id="snapshot-policy-enabled" ${value.enabled ? 'checked' : ''}><span class="toggle-slider"></span></label></label>
+          <label class="form-label">Mode<select class="form-control" id="snapshot-policy-mode"><option value="dry_run"${value.mode === 'dry_run' ? ' selected' : ''}>Dry run</option><option value="execute"${value.mode === 'execute' ? ' selected' : ''}>Execute</option></select></label>
+          <label class="form-label">Frequency<select class="form-control" id="snapshot-policy-frequency"><option value="hourly"${value.schedule.frequency === 'hourly' ? ' selected' : ''}>Hourly</option><option value="daily"${value.schedule.frequency === 'daily' ? ' selected' : ''}>Daily</option><option value="weekly"${value.schedule.frequency === 'weekly' ? ' selected' : ''}>Weekly</option></select></label>
+          <label class="form-label">Minute (UTC)<select class="form-control" id="snapshot-policy-minute">${[0, 15, 30, 45].map(item => `<option value="${item}"${value.schedule.minute === item ? ' selected' : ''}>:${String(item).padStart(2, '0')}</option>`).join('')}</select></label>
+          <label class="form-label">Hour (UTC)<input class="form-control" id="snapshot-policy-hour" type="number" min="0" max="23" value="${value.schedule.hour}"></label>
+          <label class="form-label">Weekday<select class="form-control" id="snapshot-policy-weekday">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((item, index) => `<option value="${index}"${value.schedule.weekday === index ? ' selected' : ''}>${item}</option>`).join('')}</select></label>
+          <label class="form-label">Consistency<select class="form-control" id="snapshot-policy-consistency"><option value="crash"${value.consistency === 'crash' ? ' selected' : ''}>Crash</option><option value="quiesced"${value.consistency === 'quiesced' ? ' selected' : ''}>Quiesced</option></select></label>
+          <label class="form-label">Managed prefix<input class="form-control" id="snapshot-policy-prefix" maxlength="48" value="${Utils.escapeHtml(value.namePrefix)}"></label>
+          <label class="form-label">Retain newest<input class="form-control" id="snapshot-policy-retain" type="number" min="1" max="32" value="${value.retainCount}"></label>
+          <label class="form-label">Max age days<input class="form-control" id="snapshot-policy-age" type="number" min="1" max="3650" value="${value.maxAgeDays ?? ''}" placeholder="disabled"></label>
+          <label class="form-label">Max deletes/run<input class="form-control" id="snapshot-policy-deletes" type="number" min="1" max="20" value="${value.maxDeletesPerRun}"></label>
+          <label class="form-label" style="grid-column:1/-1">Description<input class="form-control" id="snapshot-policy-description" maxlength="500" value="${Utils.escapeHtml(value.description || '')}"></label>
+        </div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-sm btn-primary" id="snapshot-policy-save"><i class="fas fa-save"></i> Save policy</button><button class="btn btn-sm btn-secondary" id="snapshot-policy-preview"><i class="fas fa-eye"></i> Preview</button>${policy ? '<button class="btn btn-sm btn-secondary" id="snapshot-policy-run"><i class="fas fa-play"></i> Run now</button><button class="btn btn-sm btn-danger" id="snapshot-policy-delete"><i class="fas fa-trash"></i> Delete</button>' : ''}</div>` : `<div class="text-sm" style="margin-top:12px">${policy ? `${Utils.escapeHtml(value.schedule.cron)} UTC · keep ${value.retainCount} · prefix ${Utils.escapeHtml(value.namePrefix)}` : 'No policy configured.'}</div>`}
+        ${runRows ? `<div style="overflow:auto;margin-top:14px"><table class="data-table"><thead><tr><th>Created</th><th>Trigger</th><th>State</th><th>Operation</th></tr></thead><tbody>${runRows}</tbody></table></div>` : ''}
+      </div>`;
+      if (!admin) return;
+      const draft = () => this._snapshotPolicyDraft(root);
+      root.querySelector('#snapshot-policy-preview').addEventListener('click', async () => {
+        try {
+          const plan = await Api.previewProviderVMSnapshotPolicy(host.id, vm.id, draft());
+          await Modal.confirm(this._snapshotPolicyPlanHtml(plan), { title: 'Snapshot policy preview', confirmText: 'Close', html: true, width: '680px' });
+        } catch (err) { Toast.error(err.message); }
+      });
+      root.querySelector('#snapshot-policy-save').addEventListener('click', async () => {
+        try {
+          const body = draft();
+          if (body.enabled && body.mode === 'execute') {
+            const confirmed = await Modal.confirm('Enable automatic snapshot create and managed-prefix leaf deletion?', {
+              title: 'Authorize snapshot automation', confirmText: 'Enable automation', danger: true, typeToConfirm: vm.displayName,
+            });
+            if (!confirmed) return;
+            body.confirm = true; body.confirmName = vm.displayName;
+          }
+          await Api.saveProviderVMSnapshotPolicy(host.id, vm.id, body);
+          Toast.success('Snapshot policy saved'); await this._loadSnapshotPolicy(root, host, vm);
+        } catch (err) { Toast.error(err.message); }
+      });
+      root.querySelector('#snapshot-policy-run')?.addEventListener('click', async () => {
+        try {
+          const execute = value.mode === 'execute';
+          const confirmed = await Modal.confirm(execute ? 'Run the snapshot policy now?' : 'Record a live dry-run preview now?', {
+            title: 'Run snapshot policy', confirmText: execute ? 'Run policy' : 'Run dry-run', danger: execute,
+            typeToConfirm: execute ? vm.displayName : null,
+          });
+          if (!confirmed) return;
+          const result = await Api.runProviderVMSnapshotPolicy(host.id, vm.id, {
+            confirm: execute, ...(execute ? { confirmName: vm.displayName } : {}),
+          });
+          Toast.success(`Policy run ${result.run.state}`);
+          if (result.run.currentOperationId) location.hash = `#/activity/${result.run.currentOperationId}`;
+          else await this._loadSnapshotPolicy(root, host, vm);
+        } catch (err) { Toast.error(err.message); }
+      });
+      root.querySelector('#snapshot-policy-delete')?.addEventListener('click', async () => {
+        const confirmed = await Modal.confirm('Delete this policy? Existing snapshots and operation history are not modified.', {
+          title: 'Delete snapshot policy', confirmText: 'Delete policy', danger: true,
+        });
+        if (!confirmed) return;
+        try { await Api.deleteProviderVMSnapshotPolicy(host.id, vm.id); Toast.success('Snapshot policy deleted'); await this._loadSnapshotPolicy(root, host, vm); }
+        catch (err) { Toast.error(err.message); }
+      });
+    } catch (err) {
+      root.innerHTML = `<div class="alert alert-danger text-sm">${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
   _mountSnapshots(panel, section, host, vm) {
     if (!section.available) {
       panel.innerHTML = `<div class="empty-msg"><i class="fas fa-ban"></i>${Utils.escapeHtml(section.reason || 'Snapshots unavailable')}</div>`;
@@ -218,7 +335,8 @@ const VirtualMachinesPage = {
       <td><strong>${Utils.escapeHtml(item.name)}</strong>${item.isCurrent ? ' <span class="badge badge-info">current</span>' : ''}</td>
       <td>${Utils.escapeHtml(item.createdAt ? Utils.formatDate(item.createdAt) : '—')}</td><td>${Utils.escapeHtml(item.consistency)}</td>
       <td><span class="badge ${item.integrity?.state === 'valid' ? 'badge-success' : 'badge-warning'}">${Utils.escapeHtml(item.integrity?.state || 'unknown')}</span></td>
-      <td>${item.childCount || 0}</td><td style="display:flex;gap:6px"><button class="btn btn-sm btn-secondary" data-snapshot-action="revert" data-snapshot-id="${item.id}">Revert</button><button class="btn btn-sm btn-danger" data-snapshot-action="delete" data-snapshot-id="${item.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-msg"><i class="fas fa-camera"></i>No snapshots are currently visible.</div>'}`;
+      <td>${item.childCount || 0}</td><td style="display:flex;gap:6px"><button class="btn btn-sm btn-secondary" data-snapshot-action="revert" data-snapshot-id="${item.id}">Revert</button><button class="btn btn-sm btn-danger" data-snapshot-action="delete" data-snapshot-id="${item.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-msg"><i class="fas fa-camera"></i>No snapshots are currently visible.</div>'}
+    <div id="common-snapshot-policy"></div>`;
     panel.querySelector('#common-snapshot-create').addEventListener('click', () => this._runSnapshotCreate(host, vm));
     panel.querySelector('#common-snapshot-refresh').addEventListener('click', async event => {
       event.currentTarget.disabled = true;
@@ -231,6 +349,7 @@ const VirtualMachinesPage = {
       const snapshot = items.find(item => item.id === button.dataset.snapshotId);
       if (snapshot) this._runSnapshotAction(host, vm, snapshot, button.dataset.snapshotAction);
     }));
+    this._loadSnapshotPolicy(panel.querySelector('#common-snapshot-policy'), host, vm);
   },
 
   async render(container, params = {}) {

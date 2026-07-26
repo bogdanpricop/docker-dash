@@ -514,6 +514,13 @@ function startAll() {
     return require('../services/retention-cron').runAllPolicies();
   })));
 
+  // Common VM snapshot policies use cron only as a leader-gated wake-up.
+  // Due-slot dedupe and create/retention orchestration are persisted in
+  // SQLite, while every provider mutation remains a durable vm.snapshot job.
+  jobs.push(cron.schedule('* * * * *', _m('provider-snapshot-policy', () => {
+    return require('../services/provider-operations/snapshot-policies').runDue();
+  })));
+
   // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each
   // running git-managed stack's actual container state against the git-checked-
   // out compose. Detection only — never starts/stops/deploys. Leader-gated.

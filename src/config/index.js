@@ -89,6 +89,7 @@ module.exports = {
     // UI actions stay closed unless an operator explicitly enables this.
     providerVmPower: bool('DD_PROVIDER_VM_POWER', false),
     providerVmSnapshots: bool('DD_PROVIDER_VM_SNAPSHOTS', false),
+    providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

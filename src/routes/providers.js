@@ -7,6 +7,7 @@ const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
+const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -54,6 +55,15 @@ function _snapshotError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider VM snapshot request failed' : err.message,
     code: err?.code || 'VM_SNAPSHOT_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _snapshotPolicyError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM snapshot policy request failed' : err.message,
+    code: err?.code || 'VM_SNAPSHOT_POLICY_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
   });
 }
@@ -209,6 +219,122 @@ router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _powerError(res, err); }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json({
+        schemaVersion: '1.0',
+        automation: {
+          executeEnabled: config.features.providerVmSnapshots === true
+            && config.features.providerVmSnapshotAutomation === true,
+          timezone: 'UTC',
+        },
+        policy: providerVmSnapshotPolicies.getForVm(resolved.host.id, req.params.resourceId),
+      });
+    } catch (err) { _snapshotPolicyError(res, err); }
+  });
+
+router.get('/:hostId/virtual-machines/:resourceId/snapshot-policy/runs', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (req.query.limit !== undefined && !/^\d{1,3}$/.test(String(req.query.limit))) {
+      return res.status(400).json({ error: 'Run limit must be an integer between 1 and 200', code: 'INVALID_RUN_LIMIT' });
+    }
+    const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
+      return res.status(400).json({ error: 'Run limit must be an integer between 1 and 200', code: 'INVALID_RUN_LIMIT' });
+    }
+    try {
+      const items = providerVmSnapshotPolicies.listRuns(resolved.host.id, req.params.resourceId, { limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _snapshotPolicyError(res, err); }
+  });
+
+router.put('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmSnapshotPolicies.upsertForHost(
+        resolved.host, req.params.resourceId, req.body || {}, { createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: result.created ? 'provider_vm_snapshot_policy_create' : 'provider_vm_snapshot_policy_update',
+        targetType: 'virtualMachine', targetId: req.params.resourceId,
+        details: {
+          hostId: resolved.host.id, policyId: result.policy.id,
+          enabled: result.policy.enabled, mode: result.policy.mode,
+          frequency: result.policy.schedule.frequency,
+          retainCount: result.policy.retainCount, maxAgeDays: result.policy.maxAgeDays,
+        }, ip: getClientIp(req),
+      });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', policy: result.policy });
+    } catch (err) { _snapshotPolicyError(res, err); }
+  }));
+
+router.delete('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const policy = providerVmSnapshotPolicies.removeForVm(resolved.host.id, req.params.resourceId);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_policy_delete', targetType: 'virtualMachine', targetId: req.params.resourceId,
+        details: { hostId: resolved.host.id, policyId: policy.id }, ip: getClientIp(req),
+      });
+      res.json({ ok: true, policyId: policy.id });
+    } catch (err) { _snapshotPolicyError(res, err); }
+  });
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshot-policy/preview', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerVmSnapshotPolicies.previewForHost(
+        resolved.host, req.params.resourceId, req.body?.draft || null
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_policy_preview', targetType: 'virtualMachine', targetId: req.params.resourceId,
+        details: {
+          hostId: resolved.host.id, policyId: plan.policyId,
+          managedCount: plan.retention.managedCount, candidateCount: plan.retention.candidates.length,
+          isBackup: false,
+        }, ip: getClientIp(req),
+      });
+      res.json(plan);
+    } catch (err) { _snapshotPolicyError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshot-policy/run', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const run = await providerVmSnapshotPolicies.runForHost(resolved.host, req.params.resourceId, {
+        trigger: 'manual', confirm: req.body?.confirm === true,
+        confirmName: req.body?.confirmName, createdBy: req.user.id,
+      });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_policy_run', targetType: 'virtualMachine', targetId: req.params.resourceId,
+        details: {
+          hostId: resolved.host.id, policyId: run.policyId, runId: run.id,
+          state: run.state, currentOperationId: run.currentOperationId, isBackup: false,
+        }, ip: getClientIp(req),
+      });
+      res.status(run.state === 'previewed' ? 200 : 202).json({ schemaVersion: '1.0', run });
+    } catch (err) { _snapshotPolicyError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId/snapshots', requireAuth,

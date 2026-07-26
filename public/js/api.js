@@ -594,6 +594,24 @@ const Api = {
       `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}${action === 'delete' ? '' : '/revert'}`,
       body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey } });
   },
+  getProviderVMSnapshotPolicy(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`);
+  },
+  saveProviderVMSnapshotPolicy(hostId, resourceId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`, body);
+  },
+  deleteProviderVMSnapshotPolicy(hostId, resourceId) {
+    return this.delete(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`);
+  },
+  previewProviderVMSnapshotPolicy(hostId, resourceId, draft = null) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/preview`, draft ? { draft } : {});
+  },
+  runProviderVMSnapshotPolicy(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/run`, body);
+  },
+  getProviderVMSnapshotPolicyRuns(hostId, resourceId, limit = 20) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/runs?limit=${limit}`);
+  },
   getProviderOperations(filters = {}) {
     const qs = new URLSearchParams();
     if (filters.limit) qs.set('limit', filters.limit);

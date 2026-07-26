@@ -19,6 +19,12 @@ const mockPowerSubmitBulk = jest.fn();
 const mockSnapshotInventory = jest.fn();
 const mockSnapshotPreflight = jest.fn();
 const mockSnapshotSubmit = jest.fn();
+const mockSnapshotPolicyGet = jest.fn();
+const mockSnapshotPolicyRuns = jest.fn();
+const mockSnapshotPolicyUpsert = jest.fn();
+const mockSnapshotPolicyRemove = jest.fn();
+const mockSnapshotPolicyPreview = jest.fn();
+const mockSnapshotPolicyRun = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../db', () => ({
@@ -42,6 +48,14 @@ jest.mock('../services/provider-operations/vm-snapshots', () => ({
   inventoryForHost: (...args) => mockSnapshotInventory(...args),
   preflightForHost: (...args) => mockSnapshotPreflight(...args),
   submitForHost: (...args) => mockSnapshotSubmit(...args),
+}));
+jest.mock('../services/provider-operations/snapshot-policies', () => ({
+  getForVm: (...args) => mockSnapshotPolicyGet(...args),
+  listRuns: (...args) => mockSnapshotPolicyRuns(...args),
+  upsertForHost: (...args) => mockSnapshotPolicyUpsert(...args),
+  removeForVm: (...args) => mockSnapshotPolicyRemove(...args),
+  previewForHost: (...args) => mockSnapshotPolicyPreview(...args),
+  runForHost: (...args) => mockSnapshotPolicyRun(...args),
 }));
 jest.mock('../services/provider-conformance', () => ({
   runForHost: (...args) => mockConformanceRun(...args),
@@ -116,6 +130,25 @@ describe('Provider SDK routes', () => {
         vm: { id: `ddr_vm_${'a'.repeat(26)}` }, snapshot: { id: `dds_snap_${'b'.repeat(26)}` },
       },
       operation: { id: `op_${'f'.repeat(26)}` },
+    });
+    mockSnapshotPolicyGet.mockReturnValue(null);
+    mockSnapshotPolicyRuns.mockReturnValue([]);
+    mockSnapshotPolicyUpsert.mockResolvedValue({
+      created: true,
+      policy: {
+        id: `vmsp_${'a'.repeat(26)}`, enabled: false, mode: 'dry_run', retainCount: 3,
+        maxAgeDays: 3, schedule: { frequency: 'daily' },
+      },
+    });
+    mockSnapshotPolicyRemove.mockReturnValue({ id: `vmsp_${'a'.repeat(26)}` });
+    mockSnapshotPolicyPreview.mockResolvedValue({
+      policyId: `vmsp_${'a'.repeat(26)}`,
+      retention: { managedCount: 2, candidates: [{ id: `dds_snap_${'b'.repeat(26)}` }] },
+      protection: { isBackup: false },
+    });
+    mockSnapshotPolicyRun.mockResolvedValue({
+      id: `vspr_${'a'.repeat(26)}`, policyId: `vmsp_${'a'.repeat(26)}`,
+      state: 'previewed', currentOperationId: null,
     });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
@@ -294,6 +327,34 @@ describe('Provider SDK routes', () => {
       .send({ confirm: true, confirmName: 'before-upgrade', planHash: 'd'.repeat(64) });
     expect(deletion.status).toBe(202);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_delete' }));
+  });
+
+  it('manages and previews persistent VM snapshot policies with admin authorization', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const base = `/api/providers/7/virtual-machines/${vmId}/snapshot-policy`;
+
+    expect((await request(app).put(base).set('x-test-role', 'operator').send({})).status).toBe(403);
+    const created = await request(app).put(base).send({ enabled: false, mode: 'dry_run' });
+    expect(created.status).toBe(201);
+    expect(mockSnapshotPolicyUpsert).toHaveBeenCalledWith(mockHost, vmId,
+      { enabled: false, mode: 'dry_run' }, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_policy_create' }));
+
+    const preview = await request(app).post(`${base}/preview`).send({ draft: { retainCount: 3 } });
+    expect(preview.status).toBe(200);
+    expect(preview.body.protection.isBackup).toBe(false);
+    expect(mockSnapshotPolicyPreview).toHaveBeenCalledWith(mockHost, vmId, { retainCount: 3 });
+
+    const run = await request(app).post(`${base}/run`).send({ confirm: false });
+    expect(run.status).toBe(200);
+    expect(mockSnapshotPolicyRun).toHaveBeenCalledWith(mockHost, vmId, expect.objectContaining({
+      trigger: 'manual', confirm: false, createdBy: 1,
+    }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_policy_run' }));
+
+    expect((await request(app).get(`${base}/runs?limit=201`)).status).toBe(400);
+    expect((await request(app).delete(base)).status).toBe(200);
+    expect(mockSnapshotPolicyRemove).toHaveBeenCalledWith(7, vmId);
   });
 
   it('publishes provider manifests and an evidence-backed scorecard', async () => {
