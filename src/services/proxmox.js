@@ -285,6 +285,30 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/cluster/ha/rules')) || [];
   }
 
+  async createHaResource(resource) {
+    return this._request('POST', '/api2/json/cluster/ha/resources', resource);
+  }
+
+  async updateHaResource(sid, resource) {
+    return this._request('PUT', `/api2/json/cluster/ha/resources/${encodeURIComponent(sid)}`, resource);
+  }
+
+  async deleteHaResource(sid) {
+    return this._request('DELETE', `/api2/json/cluster/ha/resources/${encodeURIComponent(sid)}`);
+  }
+
+  async createHaRule(rule) {
+    return this._request('POST', '/api2/json/cluster/ha/rules', rule);
+  }
+
+  async updateHaRule(ruleId, rule) {
+    return this._request('PUT', `/api2/json/cluster/ha/rules/${encodeURIComponent(ruleId)}`, rule);
+  }
+
+  async deleteHaRule(ruleId) {
+    return this._request('DELETE', `/api2/json/cluster/ha/rules/${encodeURIComponent(ruleId)}`);
+  }
+
   // v8.9.33 — pve-firewall state (read-only).
   async getClusterFirewallOptions() { return this._request('GET', '/api2/json/cluster/firewall/options'); }
   async getClusterFirewallRules() { return (await this._request('GET', '/api2/json/cluster/firewall/rules')) || []; }

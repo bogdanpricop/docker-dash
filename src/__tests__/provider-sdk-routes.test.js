@@ -24,6 +24,14 @@ const mockHaHistory = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
+const mockChangePreflight = jest.fn();
+const mockChangeCreate = jest.fn();
+const mockChangeList = jest.fn();
+const mockChangeGet = jest.fn();
+const mockChangeApprove = jest.fn();
+const mockChangeReject = jest.fn();
+const mockChangeControl = jest.fn();
+const mockChangeRollback = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -89,6 +97,16 @@ jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
   recommendForVm: (...args) => mockPlacementRecommend(...args),
   rebalancePlanForHost: (...args) => mockPlacementPlan(...args),
+}));
+jest.mock('../services/provider-operations/placement-changes', () => ({
+  preflightForHost: (...args) => mockChangePreflight(...args),
+  createForHost: (...args) => mockChangeCreate(...args),
+  listForHost: (...args) => mockChangeList(...args),
+  get: (...args) => mockChangeGet(...args),
+  approveForHost: (...args) => mockChangeApprove(...args),
+  rejectForHost: (...args) => mockChangeReject(...args),
+  controlForHost: (...args) => mockChangeControl(...args),
+  planRollbackForHost: (...args) => mockChangeRollback(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -209,6 +227,24 @@ describe('Provider SDK routes', () => {
     mockPlacementPlan.mockResolvedValue({
       schemaVersion: '1.0', moves: [], skipped: [], planHash: '2'.repeat(64), expiresAt: '2026-07-26T12:05:00.000Z',
     });
+    const placementChange = {
+      id: `pcr_${'5'.repeat(26)}`, provider: { type: 'xen', endpointId: 7 },
+      changeKind: 'rebalance_apply', action: 'apply', state: 'pending_approval',
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      planHash: '5'.repeat(64), operationId: null, items: [], counts: {},
+    };
+    mockChangePreflight.mockResolvedValue({ schemaVersion: '1.0', changeKind: 'rebalance_apply',
+      allowed: true, diff: [], moves: [], planHash: '5'.repeat(64) });
+    mockChangeCreate.mockResolvedValue({ change: placementChange, deduplicated: false });
+    mockChangeList.mockReturnValue([placementChange]);
+    mockChangeGet.mockReturnValue(placementChange);
+    mockChangeApprove.mockResolvedValue({ change: { ...placementChange, state: 'approved', operationId: `op_${'5'.repeat(26)}` },
+      operation: { id: `op_${'5'.repeat(26)}` }, deduplicated: false });
+    mockChangeReject.mockReturnValue({ ...placementChange, state: 'rejected' });
+    mockChangeControl.mockReturnValue({ ...placementChange, state: 'paused' });
+    mockChangeRollback.mockResolvedValue({ rollbackOf: placementChange.id,
+      request: { changeKind: 'rebalance_apply', rollbackOf: placementChange.id },
+      plan: { planHash: '6'.repeat(64), allowed: true } });
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
@@ -486,6 +522,40 @@ describe('Provider SDK routes', () => {
       action: 'provider_placement_rebalance_plan', targetId: '7',
       details: expect.objectContaining({ moveCount: 0, planHash: '2'.repeat(64) }),
     }));
+  });
+
+  it('admin-gates placement change request, approval, controls and semantic rollback planning', async () => {
+    const changeId = `pcr_${'5'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/placement/changes/preflight')
+      .set('x-test-role', 'viewer').send({ changeKind: 'rebalance_apply' })).status).toBe(403);
+    const preflight = await request(app).post('/api/providers/7/placement/changes/preflight')
+      .send({ changeKind: 'rebalance_apply' });
+    expect(preflight.status).toBe(200);
+    expect(mockChangePreflight).toHaveBeenCalledWith(mockHost, { changeKind: 'rebalance_apply' }, { canOperate: true });
+
+    const created = await request(app).post('/api/providers/7/placement/changes')
+      .set('Idempotency-Key', 'placement-change-route').send({ changeKind: 'rebalance_apply' });
+    expect(created.status).toBe(202);
+    expect(mockChangeCreate).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ changeKind: 'rebalance_apply', idempotencyKey: 'placement-change-route' }),
+      { canOperate: true, createdBy: 1 });
+    expect((await request(app).get('/api/providers/7/placement/changes')).body.count).toBe(1);
+    expect((await request(app).get(`/api/providers/7/placement/changes/${changeId}`)).status).toBe(200);
+
+    const approved = await request(app).post(`/api/providers/7/placement/changes/${changeId}/approve`)
+      .send({ comment: 'reviewed' });
+    expect(approved.status).toBe(202);
+    expect(mockChangeApprove).toHaveBeenCalledWith(mockHost, changeId,
+      { actorId: 1, comment: 'reviewed', canOperate: true });
+    const paused = await request(app).post(`/api/providers/7/placement/changes/${changeId}/pause`).send({});
+    expect(paused.status).toBe(200);
+    expect(mockChangeControl).toHaveBeenCalledWith(mockHost, changeId, 'pause', { actorId: 1 });
+
+    const rollback = await request(app).post(`/api/providers/7/placement/changes/${changeId}/rollback/plan`).send({ waveSize: 1 });
+    expect(rollback.status).toBe(200);
+    expect(mockChangeRollback).toHaveBeenCalledWith(mockHost, changeId,
+      { waveSize: 1, windowEndsAt: undefined, canOperate: true });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_placement_change_rollback_requested' }));
   });
 
   it('redacts unexpected placement failures at the route boundary', async () => {

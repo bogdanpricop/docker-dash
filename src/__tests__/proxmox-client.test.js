@@ -370,3 +370,20 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
     });
   });
 });
+
+describe('Proxmox HA mutation wrappers', () => {
+  it('uses scoped resource/rule endpoints without exposing transport details to callers', async () => {
+    const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'root@pam!dd', tokenSecret: 'secret' });
+    client._request = jest.fn(async () => null);
+    await client.updateHaResource('vm:100', { max_restart: 3 });
+    await client.createHaRule({ type: 'resource-affinity', rule: 'db-web', affinity: 'separate' });
+    await client.updateHaRule('db-web', { disable: 1 });
+    await client.deleteHaRule('db-web');
+    expect(client._request.mock.calls).toEqual([
+      ['PUT', '/api2/json/cluster/ha/resources/vm%3A100', { max_restart: 3 }],
+      ['POST', '/api2/json/cluster/ha/rules', { type: 'resource-affinity', rule: 'db-web', affinity: 'separate' }],
+      ['PUT', '/api2/json/cluster/ha/rules/db-web', { disable: 1 }],
+      ['DELETE', '/api2/json/cluster/ha/rules/db-web'],
+    ]);
+  });
+});

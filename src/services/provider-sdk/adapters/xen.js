@@ -53,6 +53,18 @@ function _fromCapabilities(capabilities = {}) {
     'placement.rebalance.plan': capabilities.migrationPreflight
       ? conditional('A bounded dry-run is generated without submitting Xen migration operations', { readOnly: true, dryRunOnly: true })
       : unsupported('Rebalance planning requires a multi-host Xen management plane'),
+    'cluster.ha.policy.mutate': capabilities.provider === 'xapi'
+      ? conditional('XAPI workload restart policy and ordering fields are changed independently and post-read verified', {
+        fields: ['restartPolicy', 'startOrder', 'startDelaySeconds'], approval: 'four_eyes', postVerify: true,
+      }) : unsupported('HA policy mutation requires a conformance-tested XAPI endpoint'),
+    'placement.affinity.mutate': capabilities.provider === 'xapi' && capabilities.vmGroups
+      ? conditional('XAPI anti-affinity VM groups and home-server affinity are changed with documented methods', {
+        kinds: ['vm_vm_anti_affinity', 'home_host_preference'], approval: 'four_eyes', postVerify: true,
+      }) : unsupported('Affinity mutation requires a conformance-tested XAPI endpoint with VM groups'),
+    'placement.rebalance.apply': capabilities.provider === 'xapi' && capabilities.migrationExecute
+      ? conditional('Approved plans execute through bounded durable XAPI migration child operations', {
+        waves: true, pauseResume: true, rollbackPlan: true, approval: 'four_eyes',
+      }) : unsupported('Rebalance apply requires a conformance-tested XAPI migration endpoint'),
     'task.read': capabilities.tasks ? supported() : unsupported('Native tasks are unavailable for this Xen provider'),
     'task.cleanup': capabilities.taskCleanup ? supported() : unsupported('Task cleanup is unavailable for this Xen provider'),
     'event.stream': capabilities.events ? supported() : adapterNotImplemented('Xen'),

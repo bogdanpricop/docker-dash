@@ -97,6 +97,9 @@ module.exports = {
     providerHostMaintenance: bool('DD_PROVIDER_HOST_MAINTENANCE', false),
     providerHaReadiness: bool('DD_PROVIDER_HA_READINESS', false),
     providerPlacementAdvisory: bool('DD_PROVIDER_PLACEMENT_ADVISORY', false),
+    providerHaPolicyMutation: bool('DD_PROVIDER_HA_POLICY_MUTATION', false),
+    providerAffinityMutation: bool('DD_PROVIDER_AFFINITY_MUTATION', false),
+    providerRebalanceApply: bool('DD_PROVIDER_REBALANCE_APPLY', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
@@ -118,6 +121,12 @@ module.exports = {
     maxRebalanceVms: Math.min(20, Math.max(1, int('DD_PROVIDER_PLACEMENT_MAX_REBALANCE_VMS', 20))),
     endpointConcurrency: Math.min(2, Math.max(1, int('DD_PROVIDER_PLACEMENT_ENDPOINT_CONCURRENCY', 2))),
     planTtlMs: Math.min(30 * 60 * 1000, Math.max(60_000, int('DD_PROVIDER_PLACEMENT_PLAN_TTL_MS', 5 * 60_000))),
+  },
+  providerPlacementChanges: {
+    concurrency: Math.min(5, Math.max(1, int('DD_PROVIDER_PLACEMENT_CHANGE_CONCURRENCY', 2))),
+    maxMoves: Math.min(20, Math.max(1, int('DD_PROVIDER_PLACEMENT_CHANGE_MAX_MOVES', 20))),
+    approvalTtlMs: Math.min(24 * 60 * 60 * 1000,
+      Math.max(60_000, int('DD_PROVIDER_PLACEMENT_CHANGE_APPROVAL_TTL_MS', 15 * 60_000))),
   },
   providerSnapshots: {
     maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),

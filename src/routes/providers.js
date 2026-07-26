@@ -10,6 +10,7 @@ const providerVmMigration = require('../services/provider-operations/vm-migratio
 const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
 const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
+const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -127,6 +128,30 @@ function _placementError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider placement advisory request failed' : err.message,
     code: trusted ? err.code : 'PLACEMENT_ADVISORY_ERROR',
+  });
+}
+
+function _placementChangeError(res, err) {
+  const trusted = err?.name === 'PlacementChangeError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider placement change request failed' : err.message,
+    code: trusted ? err.code : 'PLACEMENT_CHANGE_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _placementChangeAudit(req, action, change, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_placement_change_${action}`, targetType: 'provider_host',
+    targetId: String(req.params.hostId),
+    details: { hostId: Number(req.params.hostId), changeId: change?.id || null,
+      changeKind: change?.changeKind || req.body?.changeKind || null,
+      state: change?.state || null, planHash: change?.planHash || details.planHash || null,
+      operationId: change?.operationId || details.operationId || null, ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
 
@@ -815,6 +840,103 @@ router.post('/:hostId/placement/rebalance/plan', requireAuth,
       res.json(plan);
     } catch (err) { _placementError(res, err); }
   }));
+
+router.post('/:hostId/placement/changes/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerPlacementChanges.preflightForHost(resolved.host, req.body || {}, { canOperate: true });
+      _placementChangeAudit(req, 'preflight', null, { changeKind: plan.changeKind, planHash: plan.planHash,
+        allowed: plan.allowed, diffCount: plan.diff.length, moveCount: plan.moves?.length || 0 });
+      res.json(plan);
+    } catch (err) { _placementChangeError(res, err); }
+  }));
+
+router.post('/:hostId/placement/changes', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerPlacementChanges.createForHost(resolved.host, {
+        ...(req.body || {}), idempotencyKey: req.get('Idempotency-Key'),
+      }, { canOperate: true, createdBy: req.user.id });
+      _placementChangeAudit(req, result.deduplicated ? 'deduplicated' : 'requested', result.change);
+      res.status(result.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _placementChangeError(res, err); }
+  }));
+
+router.get('/:hostId/placement/changes', requireAuth,
+  requireRole('admin'), requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) return res.status(400).json({ error: 'Limit must be an integer between 1 and 200', code: 'INVALID_CHANGE_LIMIT' });
+    try {
+      const items = providerPlacementChanges.listForHost(resolved.host.id, { limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _placementChangeError(res, err); }
+  });
+
+router.get('/:hostId/placement/changes/:changeId', requireAuth,
+  requireRole('admin'), requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    const change = providerPlacementChanges.get(req.params.changeId);
+    if (!change || change.provider.endpointId !== resolved.host.id) return res.status(404).json({ error: 'Placement change not found', code: 'PLACEMENT_CHANGE_NOT_FOUND' });
+    res.json(change);
+  });
+
+router.post('/:hostId/placement/changes/:changeId/approve', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerPlacementChanges.approveForHost(resolved.host, req.params.changeId,
+        { actorId: req.user.id, comment: req.body?.comment, canOperate: true });
+      _placementChangeAudit(req, result.deduplicated ? 'approval_deduplicated' : 'approved', result.change,
+        { operationId: result.operation?.id || null });
+      res.status(result.deduplicated ? 200 : 202).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _placementChangeError(res, err); }
+  }));
+
+router.post('/:hostId/placement/changes/:changeId/reject', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const change = providerPlacementChanges.rejectForHost(resolved.host, req.params.changeId,
+        { actorId: req.user.id, reason: req.body?.reason });
+      _placementChangeAudit(req, 'rejected', change);
+      res.json({ schemaVersion: '1.0', change });
+    } catch (err) { _placementChangeError(res, err); }
+  });
+
+router.post('/:hostId/placement/changes/:changeId/rollback/plan', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerPlacementChanges.planRollbackForHost(resolved.host, req.params.changeId,
+        { waveSize: req.body?.waveSize, windowEndsAt: req.body?.windowEndsAt, canOperate: true });
+      _placementChangeAudit(req, 'rollback_requested', providerPlacementChanges.get(req.params.changeId),
+        { rollbackPlanHash: result.plan.planHash });
+      res.json(result);
+    } catch (err) { _placementChangeError(res, err); }
+  }));
+
+for (const action of ['pause', 'resume', 'cancel']) {
+  router.post(`/:hostId/placement/changes/:changeId/${action}`, requireAuth,
+    requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+      const resolved = _host(req.params.hostId);
+      if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+      try {
+        const change = providerPlacementChanges.controlForHost(resolved.host, req.params.changeId, action, { actorId: req.user.id });
+        _placementChangeAudit(req, action, change);
+        res.status(action === 'cancel' ? 202 : 200).json({ schemaVersion: '1.0', change });
+      } catch (err) { _placementChangeError(res, err); }
+    });
+}
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

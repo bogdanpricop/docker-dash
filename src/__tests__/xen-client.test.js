@@ -424,3 +424,22 @@ describe('unified Xen client', () => {
     await expect(client.vmAction('3', 'forceReboot')).rejects.toThrow(/unavailable/);
   });
 });
+
+describe('XAPI placement and HA mutations', () => {
+  it('uses documented VM and VM_group methods with explicit member sets', async () => {
+    const client = new XapiClient({ endpoint: 'https://xapi', username: 'root', password: 'secret', protocol: 'json' });
+    client._call = jest.fn(async method => method === 'VM_group.create' ? 'OpaqueRef:group-new' : null);
+    await client.setVmHaPolicy('OpaqueRef:vm', { haRestartPriority: 'restart', order: 2, startDelay: 30 });
+    await client.setVmAffinity('OpaqueRef:vm', 'OpaqueRef:host');
+    const group = await client.createVmGroup({ name: 'database replicas', placement: 'anti_affinity' });
+    await client.setVmGroups('OpaqueRef:vm', [group.ref]);
+    await client.destroyVmGroup(group.ref);
+    expect(client._call).toHaveBeenCalledWith('VM.set_ha_restart_priority', ['OpaqueRef:vm', 'restart']);
+    expect(client._call).toHaveBeenCalledWith('VM.set_order', ['OpaqueRef:vm', 2]);
+    expect(client._call).toHaveBeenCalledWith('VM.set_start_delay', ['OpaqueRef:vm', 30]);
+    expect(client._call).toHaveBeenCalledWith('VM.set_affinity', ['OpaqueRef:vm', 'OpaqueRef:host']);
+    expect(client._call).toHaveBeenCalledWith('VM_group.create', [expect.objectContaining({ name_label: 'database replicas', placement: 'anti_affinity' })]);
+    expect(client._call).toHaveBeenCalledWith('VM.set_groups', ['OpaqueRef:vm', ['OpaqueRef:group-new']]);
+    expect(client._call).toHaveBeenCalledWith('VM_group.destroy', ['OpaqueRef:group-new']);
+  });
+});

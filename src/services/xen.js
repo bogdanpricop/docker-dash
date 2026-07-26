@@ -977,6 +977,43 @@ class XapiClient {
     }));
   }
 
+  async getVm(vmId) {
+    const ref = String(vmId || '').startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
+    return { ref, ...(await this._call('VM.get_record', [ref])) };
+  }
+
+  async setVmHaPolicy(vmRef, values = {}) {
+    if (values.haRestartPriority !== undefined) {
+      await this._call('VM.set_ha_restart_priority', [String(vmRef), String(values.haRestartPriority)]);
+    }
+    if (values.order !== undefined) await this._call('VM.set_order', [String(vmRef), Number(values.order)]);
+    if (values.startDelay !== undefined) await this._call('VM.set_start_delay', [String(vmRef), Number(values.startDelay)]);
+    return { completed: true, provider: 'xapi' };
+  }
+
+  async setVmAffinity(vmRef, hostRef) {
+    await this._call('VM.set_affinity', [String(vmRef), hostRef ? String(hostRef) : XAPI_NULL_REF]);
+    return { completed: true, provider: 'xapi' };
+  }
+
+  async createVmGroup(values = {}) {
+    const ref = await this._call('VM_group.create', [{
+      name_label: String(values.name || ''), name_description: String(values.description || ''),
+      placement: String(values.placement || 'anti_affinity'),
+    }]);
+    return { ref, provider: 'xapi' };
+  }
+
+  async setVmGroups(vmRef, groupRefs = []) {
+    await this._call('VM.set_groups', [String(vmRef), groupRefs.map(String)]);
+    return { completed: true, provider: 'xapi' };
+  }
+
+  async destroyVmGroup(groupRef) {
+    await this._call('VM_group.destroy', [String(groupRef)]);
+    return { completed: true, provider: 'xapi' };
+  }
+
   async getVmHardware(vmId) {
     const vmRef = String(vmId || '').startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
     const vm = await this._call('VM.get_record', [vmRef]);

@@ -37,6 +37,15 @@ function declared() {
     'placement.affinity.read': conditional('vCenter DRS groups and affinity rules are read from ClusterComputeResource', { requiresVCenter: true, readOnly: true }),
     'placement.recommend': conditional('DRS recommendations and common migration evidence are ranked without applying a recommendation', { requiresVCenter: true, readOnly: true }),
     'placement.rebalance.plan': conditional('A bounded dry-run is generated from DRS policy and observed capacity', { requiresVCenter: true, readOnly: true, dryRunOnly: true }),
+    'cluster.ha.policy.mutate': conditional('Per-VM DAS settings use one incremental ClusterConfigSpecEx change and a durable task', {
+      requiresVCenter: true, fields: ['restartPolicy', 'restartPriority'], approval: 'four_eyes', durableTask: true,
+    }),
+    'placement.affinity.mutate': conditional('VM affinity and anti-affinity rules use one incremental ClusterRuleSpec change and a durable task', {
+      requiresVCenter: true, kinds: ['vm_vm_affinity', 'vm_vm_anti_affinity'], approval: 'four_eyes', durableTask: true,
+    }),
+    'placement.rebalance.apply': conditional('Approved plans execute through bounded durable RelocateVM_Task child operations', {
+      requiresVCenter: true, waves: true, pauseResume: true, rollbackPlan: true, approval: 'four_eyes',
+    }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
@@ -91,7 +100,7 @@ async function probe(host) {
     const variant = _variant(info);
     const features = declared();
     if (variant === 'esxi') {
-      for (const key of ['inventory.cluster', 'cluster.ha.read', 'vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate', 'placement.affinity.read', 'placement.recommend', 'placement.rebalance.plan']) {
+      for (const key of ['inventory.cluster', 'cluster.ha.read', 'vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate', 'placement.affinity.read', 'placement.recommend', 'placement.rebalance.plan', 'cluster.ha.policy.mutate', 'placement.affinity.mutate', 'placement.rebalance.apply']) {
         features[key] = unsupported('Standalone ESXi exposes no alternate host inside this provider endpoint');
       }
     }

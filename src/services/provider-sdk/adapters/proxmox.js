@@ -38,6 +38,16 @@ function declared() {
     }),
     'placement.recommend': conditional('Common capacity and migration evidence is combined with Proxmox VE 9+ HA rules', { readOnly: true }),
     'placement.rebalance.plan': conditional('A bounded advisory plan is calculated without submitting migrations', { readOnly: true, dryRunOnly: true }),
+    'cluster.ha.policy.mutate': conditional('Existing HA workload policy is changed through the PVE cluster HA resource API', {
+      fields: ['restartPolicy', 'maxRestarts', 'maxRelocations'], approval: 'four_eyes', postVerify: true,
+    }),
+    'placement.affinity.mutate': conditional('Proxmox VE 9+ HA resource and node affinity rules use incremental create, update, and delete calls', {
+      minimumMajorVersion: 9, kinds: ['vm_vm_affinity', 'vm_vm_anti_affinity', 'vm_host_affinity'],
+      approval: 'four_eyes', postVerify: true,
+    }),
+    'placement.rebalance.apply': conditional('Approved common plans execute through bounded durable VM migrations', {
+      waves: true, pauseResume: true, rollbackPlan: true, approval: 'four_eyes',
+    }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
@@ -80,6 +90,7 @@ async function probe(host) {
     const features = declared();
     if (!Number.isFinite(major) || major < 9) {
       features['placement.affinity.read'] = unsupported('Native HA affinity rules require Proxmox VE 9 or newer');
+      features['placement.affinity.mutate'] = unsupported('Native HA affinity rule mutation requires Proxmox VE 9 or newer');
     }
     return {
       provider: {
@@ -130,7 +141,9 @@ async function placementInventory(host) {
     return {
       rules: rows.slice(0, 500).map((row, index) => {
         const type = String(row.type || row.kind || '').toLowerCase();
-        const anti = type.includes('anti') || row.negative === 1 || row.negative === true;
+        const affinity = String(row.affinity || '').toLowerCase();
+        const anti = type.includes('anti') || affinity === 'separate'
+          || row.negative === 1 || row.negative === true;
         const hostRule = type.includes('node') || type.includes('host');
         return {
           nativeId: row.rule || row.id || row.name || `rule-${index}`,
@@ -145,7 +158,7 @@ async function placementInventory(host) {
         };
       }),
       nativeRecommendations: [],
-      limitations: ['Proxmox HA rules are an inventory signal; Docker Dash never mutates them in this release'],
+      limitations: ['Only HA-managed resources participate in Proxmox HA affinity rules'],
     };
   } finally { client._agent?.destroy?.(); }
 }

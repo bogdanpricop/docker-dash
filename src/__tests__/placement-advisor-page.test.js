@@ -33,11 +33,16 @@ describe('placement advisor page', () => {
     expect(recommendation).not.toContain('<blocked>');
   });
 
-  it('wires all three placement APIs and labels rebalance as a dry-run', () => {
+  it('wires advisory plus four-eyes mutation APIs and keeps apply behind approval', () => {
     expect(page._load.toString()).toContain('getProviderAffinity');
     expect(page._recommend.toString()).toContain('getProviderPlacementRecommendations');
     expect(page._plan.toString()).toContain('planProviderRebalance');
-    expect(page._planHtml({ moves: [], skipped: [], planHash: 'a'.repeat(64), expiresAt: 'later' })).toContain('Dry-run only');
+    expect(page._planHtml({ moves: [], skipped: [], planHash: 'a'.repeat(64), expiresAt: 'later' })).toContain('Approval boundary');
     expect(page._plan.toString()).not.toMatch(/migrate|execute|apply/i);
+    expect(page._requestChange.toString()).toContain('preflightProviderPlacementChange');
+    expect(page._requestChange.toString()).toContain('requestProviderPlacementChange');
+    expect(page._editRule.toString()).toContain("action: 'update'");
+    expect(page._changeAction.toString()).toContain('approveProviderPlacementChange');
+    expect(page._changeAction.toString()).toContain('planProviderPlacementRollback');
   });
 });

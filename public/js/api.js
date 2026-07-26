@@ -557,6 +557,7 @@ const Api = {
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
   getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
   getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
+  getProviderClusters(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/clusters?limit=${limit}`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);
@@ -619,6 +620,32 @@ const Api = {
   },
   planProviderRebalance(hostId, body = {}) {
     return this.post(`/providers/${hostId}/placement/rebalance/plan`, body);
+  },
+  preflightProviderPlacementChange(hostId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/changes/preflight`, body);
+  },
+  requestProviderPlacementChange(hostId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/placement/changes`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderPlacementChanges(hostId, limit = 50) {
+    return this.get(`/providers/${hostId}/placement/changes?limit=${limit}`);
+  },
+  getProviderPlacementChange(hostId, changeId) {
+    return this.get(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}`);
+  },
+  approveProviderPlacementChange(hostId, changeId, comment = '') {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/approve`, { comment });
+  },
+  rejectProviderPlacementChange(hostId, changeId, reason) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/reject`, { reason });
+  },
+  controlProviderPlacementChange(hostId, changeId, action) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/${action}`, {});
+  },
+  planProviderPlacementRollback(hostId, changeId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/rollback/plan`, body);
   },
   preflightProviderVMConsole(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});

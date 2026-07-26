@@ -565,3 +565,25 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
     });
   });
 });
+
+describe('vSphere incremental placement mutation', () => {
+  it('sends one escaped ClusterRuleSpec with modify=true and returns the durable task', async () => {
+    const client = new VSphereClient({ endpoint: 'https://vc', username: 'svc', password: 'secret' });
+    client._sessionCookie = 'vmware_soap_session=test';
+    client._soapPost = jest.fn(async () => '<returnval type="Task">task-44</returnval>');
+    const result = await client.reconfigureCluster('domain-c7', {
+      kind: 'affinity_rule', operation: 'add', key: null,
+      ruleKind: 'vm_vm_anti_affinity', name: 'db & web', enabled: true, mandatory: true,
+      vmRefs: ['vm-1', 'vm-2'],
+    });
+    expect(result).toEqual({ taskRef: 'task-44', provider: 'vsphere' });
+    const xml = client._soapPost.mock.calls[0][0];
+    expect(xml).toContain('<ReconfigureComputeResource_Task');
+    expect(xml).toContain('<spec xsi:type="ClusterConfigSpecEx"><rulesSpec><operation>add</operation>');
+    expect(xml).toContain('xsi:type="ClusterAntiAffinityRuleSpec"');
+    expect(xml).toContain('<name>db &amp; web</name>');
+    expect(xml).toContain('<mandatory>true</mandatory>');
+    expect(xml).toContain('<modify>true</modify>');
+    expect(xml.match(/<rulesSpec>/g)).toHaveLength(1);
+  });
+});

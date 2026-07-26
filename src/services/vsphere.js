@@ -841,6 +841,42 @@ class VSphereClient {
     });
   }
 
+  async reconfigureCluster(clusterMoref, change) {
+    await this._ensureLoggedIn();
+    const cluster = this._xesc(clusterMoref);
+    let delta = '';
+    if (change.kind === 'ha_policy') {
+      const operation = change.remove === true ? 'remove' : String(change.operation || 'edit');
+      const info = change.remove === true ? `<removeKey type="VirtualMachine">${this._xesc(change.vmRef)}</removeKey>`
+        : `<info><key type="VirtualMachine">${this._xesc(change.vmRef)}</key>`
+          + (change.restartPriority ? `<restartPriority>${this._xesc(change.restartPriority)}</restartPriority>` : '')
+          + '</info>';
+      delta = `<dasVmConfigSpec><operation>${operation}</operation>${info}</dasVmConfigSpec>`;
+    } else if (change.kind === 'affinity_rule') {
+      const operation = String(change.operation || 'add');
+      if (operation === 'remove') {
+        delta = `<rulesSpec><operation>remove</operation><removeKey>${this._xesc(change.key)}</removeKey></rulesSpec>`;
+      } else {
+        const type = change.ruleKind === 'vm_vm_anti_affinity'
+          ? 'ClusterAntiAffinityRuleSpec' : 'ClusterAffinityRuleSpec';
+        const key = change.key === null || change.key === undefined ? '' : `<key>${this._xesc(change.key)}</key>`;
+        const refs = (change.vmRefs || []).map(ref => `<vm type="VirtualMachine">${this._xesc(ref)}</vm>`).join('');
+        delta = `<rulesSpec><operation>${this._xesc(operation)}</operation><info xsi:type="${type}">${key}`
+          + `<enabled>${change.enabled === false ? 'false' : 'true'}</enabled><mandatory>${change.mandatory === true ? 'true' : 'false'}</mandatory>`
+          + `<name>${this._xesc(change.name)}</name>${refs}</info></rulesSpec>`;
+      }
+    } else throw new Error('vSphere cluster reconfiguration kind is invalid');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ReconfigureComputeResource_Task xmlns="urn:vim25">
+    <_this type="ClusterComputeResource">${cluster}</_this><spec xsi:type="ClusterConfigSpecEx">${delta}</spec><modify>true</modify>
+  </ReconfigureComputeResource_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere cluster reconfigure returned no Task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
   async listDatastores() {
     await this._ensureLoggedIn();
     const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
