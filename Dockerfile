@@ -4,8 +4,10 @@ FROM node:20-alpine AS base
 # SECURITY: Upgrade all Alpine packages to get latest security patches
 RUN apk update && apk upgrade --no-cache
 
-# System tools + Docker CLI + gcompat (glibc compat for Docker Scout)
-RUN apk add --no-cache tini wget curl docker-cli gcompat git openssh-client openssl
+# System tools + Docker CLI/Compose plugin + gcompat (glibc compat for Docker Scout)
+# Compose is executed from inside Docker Dash for stack plans, Git deploys,
+# pull-request previews, and OCI Compose artifacts.
+RUN apk add --no-cache tini wget curl docker-cli docker-cli-compose gcompat git openssh-client openssl
 
 # Install Trivy vulnerability scanner
 # Pin version for reproducible builds. Update ARG to upgrade.
