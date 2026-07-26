@@ -314,5 +314,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V2.2 | `da93c09` | push + PR #13; CI/build verde | `8.21.4-da93c09`, healthy; migrare activată, fără mutation smoke | blocat: host key mismatch | migrare VM nativă durabilă pentru Proxmox, vSphere și XAPI, XO discovery-gated |
 | V2.3 | `547ae12` | push + PR #13; CI/build verde | `8.21.4-547ae12`, healthy; ESXi maintenance preflight fail-closed | blocat: host key mismatch | drain/maintenance orchestration, waves, reservations, pause/resume/cancel/exit și native vSphere/XAPI |
 | V2.4 | `e3da04b` | push + PR #13; CI/build verde | `8.21.4-e3da04b`, healthy; 2 endpoint-uri ESXi HA `unsupported` fail-closed | blocat: host key mismatch | HA readiness, encrypted history, host-loss simulation și recovery-priority evidence pentru Proxmox/vSphere/Xen |
+| V2.5 | `ea1a203` | push + PR #13; CI/build verde | `8.21.4-ea1a203`, healthy; ESXi affinity `unsupported`, recommendation și dry-run fail-closed | blocat: host key mismatch | affinity/anti-affinity Proxmox 9+/vCenter/Xen, telemetry bounded, scoring explicabil și rebalance strict non-executable |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
