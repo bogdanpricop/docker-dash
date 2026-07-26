@@ -113,11 +113,11 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
 | V2.1 | Migration compatibility/preflight | B051–B056 | target candidates, blockers, estimated downtime |
-| V2.2 | Live/cold/storage migration | B057–B065 | job persistent, progress, cancel și reconcile |
-| V2.3 | Host maintenance orchestration | B066–B070 | drain/evacuate în waves, resume și post-check |
-| V2.4 | HA inventory și readiness | B071–B075 | quorum, protected VMs, shared storage, admission warnings |
-| V2.5 | Affinity și placement recommendations | B051–B075, B201–B225 | read/recommend înainte de mutation |
-| V2.6 | Placement/HA mutation | B067–B075 | approval, diff și rollback semantic |
+| V2.2 | Live/cold/storage migration | B053–B061 | job persistent, progress, cancel și reconcile |
+| V2.3 | Host maintenance orchestration | B062–B065 | drain/evacuate în waves, resume și post-check |
+| V2.4 | HA inventory și readiness | B066–B067, B074–B075 | quorum, protected VMs, shared storage, admission warnings |
+| V2.5 | Affinity și placement recommendations | B069, B071–B072, B201–B225 | read/recommend înainte de mutation |
+| V2.6 | Placement/HA mutation | B068, B070, B073 | approval, diff și rollback semantic |
 
 **Exit:** mentenanța unui host este repetabilă, observabilă și poate fi reluată fără pierderea stării.
 
@@ -308,5 +308,10 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V1.5 | `0d88227` | push + PR #13; CI/build verde | `8.21.4-0d88227`, healthy; ESXi 11-artifact catalog, repeatability 12/12 | blocat: host key mismatch | opaque/encrypted template+image catalog, Proxmox/vSphere/XO/XAPI adapters, VM Catalog UI și WAL-safe persistence |
 | V1.6 | `140494f` | push + PR #13; CI/build verde | `8.21.4-140494f`, healthy; mutation-disabled smoke | blocat: host key mismatch | clone/create-from-template durabil pentru Proxmox, vSphere și XAPI, XO/raw Xen capability-blocked, wizard VM Catalog |
 | V1.7 | `8215774` | push + PR #13; CI/build verde | `8.21.4-8215774`, healthy; flags OFF, customization smoke | blocat: host key mismatch | Linux guest customization structurat pentru Proxmox/vSphere/XO, XAPI/raw fail-closed, recovery și UI |
+| V1.8 | `f7fde38` | push + PR #13; CI/build verde | `8.21.4-f7fde38`, healthy; WebSocket/noVNC smoke | blocat: host key mismatch | gateway de consolă VM protejat, ticket unic, broker RFB și rutare WebSocket dedicată |
+| V1.9 | `d6e0192` | push + PR #13; CI/build verde | `8.21.4-d6e0192`, healthy; ESXi device inventory live | blocat: host key mismatch | inventar uniform disk/NIC pentru Proxmox, vSphere și Xen, cu capabilități tri-state |
+| V2.1 | `6e132e9` | push + PR #13; CI/build verde | `8.21.4-6e132e9`, healthy; ESXi preflight read-only | blocat: host key mismatch | preflight de migrare multi-target, moduri live/cold/storage, capacity și compatibility evidence |
+| V2.2 | `da93c09` | push + PR #13; CI/build verde | `8.21.4-da93c09`, healthy; migrare activată, fără mutation smoke | blocat: host key mismatch | migrare VM nativă durabilă pentru Proxmox, vSphere și XAPI, XO discovery-gated |
+| V2.3 | `547ae12` | push + PR #13; CI/build verde | `8.21.4-547ae12`, healthy; ESXi maintenance preflight fail-closed | blocat: host key mismatch | drain/maintenance orchestration, waves, reservations, pause/resume/cancel/exit și native vSphere/XAPI |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
