@@ -58,6 +58,7 @@ function _powerState(value) {
     running: 'running', poweredon: 'running', started: 'running', up: 'running',
     halted: 'stopped', stopped: 'stopped', poweredoff: 'stopped', shutdown: 'stopped', down: 'stopped',
     paused: 'paused', suspended: 'suspended', disabled: 'disabled', offline: 'offline',
+    online: 'running', connected: 'running', disconnected: 'offline', notresponding: 'offline',
   };
   return states[normalized] || 'unknown';
 }
@@ -112,6 +113,7 @@ function _extensions(kind, raw) {
     addString('toolsVersion', raw.toolsVersion);
     addString('hardwareVersion', raw.hwVersion);
     addString('node', raw.node);
+    addString('guestType', raw.type);
     addNumber('cpuUsageMHz', raw.cpuUsageMHz);
     addNumber('memoryUsageBytes', raw.memoryUsageBytes ?? (_number(raw.memoryUsageMB, { min: 0 }) !== null ? Number(raw.memoryUsageMB) * 1024 * 1024 : null));
     addNumber('storageCommittedBytes', raw.storageCommittedBytes);
@@ -166,19 +168,24 @@ function _model(kind, raw) {
     };
   }
   if (kind === 'host') {
-    const memoryBytes = _number(raw.memoryBytes ?? raw.memoryTotal, { min: 0 });
+    const memoryBytes = _number(raw.memoryBytes ?? raw.memoryTotal ?? raw.maxmem, { min: 0 });
+    const memoryUsedBytes = _number(raw.memoryUsedBytes
+      ?? (raw.memoryUsageMB !== undefined ? Number(raw.memoryUsageMB) * 1024 * 1024 : raw.mem), { min: 0 });
+    const maintenance = typeof raw.maintenanceMode === 'boolean'
+      ? (raw.maintenanceMode ? 'maintenance' : 'normal') : raw.maintenanceMode;
     return {
       spec: {
         address: _string(raw.address ?? raw.node, 240),
-        cpuCount: _number(raw.cpus ?? raw.cpuThreads, { min: 0, integer: true }),
+        cpuCount: _number(raw.cpus ?? raw.cpuThreads ?? raw.maxcpu, { min: 0, integer: true }),
         cpuCoreCount: _number(raw.cpuCores, { min: 0, integer: true }),
         memoryBytes,
         product: _string(raw.product, 160), version: _string(raw.version ?? raw.productVersion, 120),
       },
       status: {
         powerState: _powerState(raw.powerState ?? raw.status ?? raw.connectionState),
-        enabled: _bool(raw.enabled), maintenanceMode: _string(raw.maintenanceMode, 80),
-        memoryFreeBytes: _number(raw.memoryFreeBytes ?? (raw.memoryFree !== undefined ? Number(raw.memoryFree) : null), { min: 0 }),
+        enabled: _bool(raw.enabled), maintenanceMode: _string(maintenance, 80),
+        memoryFreeBytes: _number(raw.memoryFreeBytes ?? (raw.memoryFree !== undefined ? Number(raw.memoryFree)
+          : (memoryBytes !== null && memoryUsedBytes !== null ? memoryBytes - memoryUsedBytes : null)), { min: 0 }),
         health: _string(raw.health, 80) || 'unknown',
       },
       actions: _actions(raw.allowedActions), relationships: { cluster: _relation(raw.poolUuid ?? raw.poolId) },

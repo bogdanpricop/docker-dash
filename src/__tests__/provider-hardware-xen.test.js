@@ -51,4 +51,36 @@ describe('Xen VM hardware inventory', () => {
     expect(result.diskWarnings.join(' ')).toMatch(/runtime/i);
     expect(result.disks[0].capabilities.hotPlug).toBe(false);
   });
+
+  it('uses XAPI possible-host and assert-can-boot evidence without mutating the VM', async () => {
+    const client = new XapiClient({ endpoint: 'https://xapi.test', username: 'root', password: 'secret' });
+    client._call = jest.fn(async (method, params) => {
+      if (method === 'VM.get_record') return {
+        resident_on: 'OpaqueRef:host-a', allowed_operations: ['pool_migrate'],
+      };
+      if (method === 'VM.get_possible_hosts') return ['OpaqueRef:host-a', 'OpaqueRef:host-b'];
+      if (method === 'VM.assert_can_boot_here' && params[1] === 'OpaqueRef:host-b') return undefined;
+      if (method === 'VM.assert_can_boot_here') throw Object.assign(new Error('cannot boot'), { code: 'VM_BAD_POWER_STATE' });
+      throw new Error(`Unexpected ${method}`);
+    });
+    const result = await client.getVmMigrationCompatibility('OpaqueRef:vm', ['OpaqueRef:host-a', 'OpaqueRef:host-b']);
+    expect(result.sourceRef).toBe('OpaqueRef:host-a');
+    expect(result.candidates[1]).toEqual(expect.objectContaining({
+      targetRef: 'OpaqueRef:host-b', modes: expect.objectContaining({ live: 'conditional', cold: 'conditional' }),
+    }));
+    expect(client._call.mock.calls.map(call => call[0])).not.toEqual(expect.arrayContaining(['VM.pool_migrate', 'VM.migrate_send']));
+  });
+
+  it('keeps XAPI compatibility unknown when an older host lacks the assertion method', async () => {
+    const client = new XapiClient({ endpoint: 'https://xapi.test', username: 'root', password: 'secret' });
+    client._call = jest.fn(async method => {
+      if (method === 'VM.get_record') return { resident_on: 'OpaqueRef:host-a', allowed_operations: [] };
+      if (method === 'VM.get_possible_hosts') throw Object.assign(new Error('missing'), { code: 'MESSAGE_METHOD_UNKNOWN' });
+      throw Object.assign(new Error('missing'), { code: 'MESSAGE_METHOD_UNKNOWN' });
+    });
+    const result = await client.getVmMigrationCompatibility('OpaqueRef:vm', ['OpaqueRef:host-b']);
+    expect(result.candidates[0].checks.map(check => check.state)).toEqual(['unknown', 'unknown']);
+    expect(result.candidates[0].blockers).toEqual([]);
+    expect(result.candidates[0].modes.live).toBe('unknown');
+  });
 });

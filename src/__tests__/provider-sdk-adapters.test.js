@@ -25,6 +25,9 @@ describe('Provider SDK adapters', () => {
     expect(features['vm.snapshot.create'].constraints).toEqual(expect.objectContaining({
       durableTask: true, consistency: ['crash'],
     }));
+    expect(features['vm.migration.preflight']).toEqual(expect.objectContaining({
+      state: 'conditional', constraints: expect.objectContaining({ readOnly: true }),
+    }));
   });
 
   it('derives provider-native power actions from current guest state', () => {
@@ -53,7 +56,8 @@ describe('Provider SDK adapters', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: true, storages: true, networks: true,
       tasks: true, snapshots: true, snapshotQuiesce: true, taskCleanup: true,
-      templates: true,
+      templates: true, migrationPreflight: true, migrationLive: true,
+      migrationCold: true, migrationStorage: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot'],
     });
     expect(features['inventory.cluster'].state).toBe('supported');
@@ -62,6 +66,7 @@ describe('Provider SDK adapters', () => {
     expect(features['vm.snapshot.create'].constraints.perResource).toBe(true);
     expect(features['vm.snapshot.create'].constraints.consistency).toEqual(['crash', 'quiesced']);
     expect(features['task.cleanup'].state).toBe('supported');
+    expect(features['vm.migration.preflight'].state).toBe('conditional');
   });
 
   it('keeps raw Xen deliberately constrained', () => {
@@ -117,5 +122,72 @@ describe('Provider SDK adapters', () => {
     xenService.clientForHost.mockReturnValue({ listTasks });
     await expect(xen.listResources('task', {})).resolves.toHaveLength(1);
     expect(listTasks).toHaveBeenCalled();
+  });
+
+  it('uses Proxmox read-only migration preconditions and target fabric evidence', async () => {
+    const destroy = jest.fn();
+    proxmoxService.fromHostRow.mockReturnValue({
+      getVmConfig: jest.fn().mockResolvedValue({
+        scsi0: 'shared:vm-101-disk-0,size=20G', net0: 'virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0',
+      }),
+      getVmMigrationPreconditions: jest.fn().mockResolvedValue({ local_resources: [] }),
+      getNodeMigrationInventory: jest.fn().mockResolvedValue({
+        storages: [{ storage: 'shared', active: 1, enabled: 1 }],
+        networks: [{ iface: 'vmbr0', type: 'bridge' }],
+      }),
+      _agent: { destroy },
+    });
+    const source = { kind: 'virtualMachine', displayName: 'app', status: { powerState: 'running' }, extensions: { node: 'pve-a' } };
+    const targets = ['pve-a', 'pve-b'].map((node, index) => ({
+      identity: { nativeRef: node }, resource: { id: `ddr_host_${String(index + 1).repeat(26)}`, displayName: node },
+    }));
+    const result = await proxmox.migrationCompatibility({}, {
+      identity: { nativeRef: 'qemu/101' }, resource: source, targets,
+    });
+    expect(result.candidates[1]).toEqual(expect.objectContaining({
+      current: false, modes: expect.objectContaining({ live: 'conditional', cold: 'conditional' }),
+    }));
+    expect(result.candidates[1].checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'storage.mapping', state: 'pass' }),
+      expect.objectContaining({ key: 'network.mapping', state: 'pass' }),
+    ]));
+    expect(destroy).toHaveBeenCalled();
+  });
+
+  it('preserves the Proxmox LXC guest type when the canonical identity is numeric', async () => {
+    const getVmConfig = jest.fn().mockResolvedValue({ rootfs: 'shared:subvol-202-disk-0,size=8G' });
+    const getVmMigrationPreconditions = jest.fn().mockResolvedValue({ local_resources: [] });
+    proxmoxService.fromHostRow.mockReturnValue({
+      getVmConfig, getVmMigrationPreconditions,
+      getNodeMigrationInventory: jest.fn().mockResolvedValue({ storages: [{ storage: 'shared', active: 1, enabled: 1 }], networks: [] }),
+      _agent: { destroy: jest.fn() },
+    });
+    await proxmox.migrationCompatibility({}, {
+      identity: { nativeRef: '202' },
+      resource: { status: { powerState: 'stopped' }, extensions: { node: 'pve-a', guestType: 'lxc' } },
+      targets: [{ identity: { nativeRef: 'pve-b' }, resource: { id: `ddr_host_${'8'.repeat(26)}`, displayName: 'pve-b' } }],
+    });
+    expect(getVmConfig).toHaveBeenCalledWith('pve-a', 'lxc', 202);
+    expect(getVmMigrationPreconditions).toHaveBeenCalledWith('pve-a', 'lxc', 202);
+  });
+
+  it('maps vCenter VMotion evidence onto canonical candidate IDs', async () => {
+    const logout = jest.fn();
+    vsphereService.fromHostRow.mockReturnValue({
+      login: jest.fn(), logout, _agent: { destroy: jest.fn() },
+      getVmMigrationCompatibility: jest.fn().mockResolvedValue({
+        sourceRef: 'host-1', candidates: [{ hostRef: 'host-2', compatibility: ['cpu', 'software'] }],
+      }),
+    });
+    const targets = ['host-1', 'host-2'].map((ref, index) => ({
+      identity: { nativeRef: ref }, resource: { id: `ddr_host_${String(index + 3).repeat(26)}`, displayName: ref },
+    }));
+    const result = await vsphere.migrationCompatibility({}, {
+      identity: { nativeRef: 'vm-8' }, resource: { status: { powerState: 'running' } }, targets,
+    });
+    expect(result.sourceTargetId).toBe(targets[0].resource.id);
+    expect(result.candidates[1].modes.live).toBe('conditional');
+    expect(result.candidates[1].checks[0]).toEqual(expect.objectContaining({ state: 'pass', confidence: 'high' }));
+    expect(logout).toHaveBeenCalled();
   });
 });

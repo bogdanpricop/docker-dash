@@ -5,6 +5,7 @@ const config = require('../config');
 const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
+const providerVmMigrationPreflight = require('../services/provider-sdk/vm-migration-preflight');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -76,6 +77,14 @@ function _provisionError(res, err) {
     error: status >= 500 ? 'Provider VM provisioning request failed' : err.message,
     code: err?.code || 'VM_PROVISION_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _migrationPreflightError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM migration preflight failed' : err.message,
+    code: err?.code || 'VM_MIGRATION_PREFLIGHT_ERROR',
   });
 }
 
@@ -549,6 +558,15 @@ router.delete('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId', req
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _snapshotError(res, err); }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/migration-preflight', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmMigrationPreflight.preflightForHost(resolved.host, req.params.resourceId));
+    } catch (err) { _migrationPreflightError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,

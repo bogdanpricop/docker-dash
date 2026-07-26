@@ -16,6 +16,19 @@ function _fromCapabilities(capabilities = {}) {
     'inventory.image': capabilities.templates
       ? supported() : unsupported('Template inventory is unavailable for this Xen provider'),
     'vm.read': capabilities.vms ? supported() : unsupported('VM detail is unavailable for this Xen provider'),
+    'vm.migration.preflight': capabilities.migrationPreflight
+      ? conditional('Migration targets are evaluated inside the active Xen pool management boundary', { perResource: true, readOnly: true })
+      : unsupported('Migration preflight is unavailable without a multi-host Xen management plane'),
+    'vm.migration.live': capabilities.migrationLive
+      ? conditional('Live migration depends on per-VM XAPI/XO operations and target compatibility', { perResource: true })
+      : unsupported('Live migration readiness is unavailable for this Xen provider'),
+    'vm.migration.cold': capabilities.migrationCold
+      ? conditional('Cold migration depends on target boot, SR and network compatibility', { perResource: true })
+      : unsupported('Cold migration readiness is unavailable for this Xen provider'),
+    'vm.migration.storage': capabilities.migrationStorage
+      ? conditional('Storage movement requires SR mapping and execution-time revalidation', { perResource: true })
+      : unsupported('Storage migration readiness is unavailable for this Xen provider'),
+    'vm.migration.crossCluster': unsupported('Cross-pool and cross-endpoint migration mapping is deferred to the dedicated workflow'),
     'vm.disk.read': capabilities.hardwareDetails
       ? conditional('Disk topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('Disk topology is unavailable for this Xen provider'),
@@ -141,4 +154,25 @@ async function readVmHardware(host, context) {
   return client.getVmHardware(target);
 }
 
-module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, _internals: { _fromCapabilities } };
+async function migrationCompatibility(host, context) {
+  const client = xen.clientForHost(host);
+  const vmTarget = client.provider === 'xapi'
+    ? (context.identity.uuid || context.identity.nativeRef) : context.identity.nativeRef;
+  const targetRefs = context.targets.map(target => String(target.identity.nativeRef));
+  const result = await client.getVmMigrationCompatibility(vmTarget, targetRefs);
+  const byRef = new Map((result.candidates || []).map(item => [String(item.targetRef), item]));
+  return {
+    sourceTargetId: context.targets.find(target => String(target.identity.nativeRef) === String(result.sourceRef))?.resource.id || null,
+    warnings: result.warnings || [],
+    candidates: context.targets.map(target => ({
+      targetId: target.resource.id,
+      ...(byRef.get(String(target.identity.nativeRef)) || {
+        current: false, checks: [{ key: 'xen.compatibility', state: 'unknown', reason: 'Xen returned no target compatibility evidence', confidence: 'low' }],
+        blockers: [], warnings: [], modes: { live: 'unknown', cold: 'unknown', storage: 'unknown' },
+      }),
+      targetRef: undefined,
+    })),
+  };
+}
+
+module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, _internals: { _fromCapabilities } };

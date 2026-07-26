@@ -1,6 +1,6 @@
 'use strict';
 
-const { _internals } = require('../services/proxmox');
+const { ProxmoxClient, _internals } = require('../services/proxmox');
 
 describe('Proxmox VM hardware parsing', () => {
   it('parses QEMU disks, NICs, storage backing, VLAN, and guest-agent addresses', () => {
@@ -35,5 +35,21 @@ describe('Proxmox VM hardware parsing', () => {
       device: 'eth0', addresses: [{ address: '192.0.2.4', prefixLength: '24', source: 'configuration' }],
       status: 'disconnected',
     }));
+  });
+
+  it('reads only Proxmox migration preconditions, config and target fabric endpoints', async () => {
+    const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+    client._request = jest.fn(async (_method, path) => path.endsWith('/storage') || path.endsWith('/network') ? [] : {});
+    await client.getVmMigrationPreconditions('pve-a', 'qemu', 101);
+    await client.getVmConfig('pve-a', 'qemu', 101);
+    await client.getNodeMigrationInventory('pve-b');
+    expect(client._request.mock.calls).toEqual([
+      ['GET', '/api2/json/nodes/pve-a/qemu/101/migrate'],
+      ['GET', '/api2/json/nodes/pve-a/qemu/101/config'],
+      ['GET', '/api2/json/nodes/pve-b/storage'],
+      ['GET', '/api2/json/nodes/pve-b/network'],
+    ]);
+    await expect(client.getVmMigrationPreconditions('../unsafe', 'qemu', 101))
+      .rejects.toEqual(expect.objectContaining({ code: 'INVALID_PROVIDER_RESOURCE' }));
   });
 });

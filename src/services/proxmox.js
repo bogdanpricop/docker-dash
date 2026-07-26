@@ -311,6 +311,38 @@ class ProxmoxClient {
     return _parseProxmoxHardware(config || {}, type, interfaces);
   }
 
+  async getVmMigrationPreconditions(node, guestType, vmid) {
+    const safeNode = String(node || '');
+    const type = String(guestType || '');
+    const id = Number(vmid);
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !['qemu', 'lxc'].includes(type)
+      || !Number.isSafeInteger(id) || id <= 0) {
+      throw Object.assign(new Error('Invalid Proxmox VM migration target'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    return this._request('GET', `/api2/json/nodes/${encodeURIComponent(safeNode)}/${type}/${id}/migrate`);
+  }
+
+  async getVmConfig(node, guestType, vmid) {
+    const safeNode = String(node || '');
+    const type = String(guestType || '');
+    const id = Number(vmid);
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !['qemu', 'lxc'].includes(type)
+      || !Number.isSafeInteger(id) || id <= 0) throw Object.assign(new Error('Invalid Proxmox VM target'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    return this._request('GET', `/api2/json/nodes/${encodeURIComponent(safeNode)}/${type}/${id}/config`);
+  }
+
+  async getNodeMigrationInventory(node) {
+    const safeNode = String(node || '');
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode)) {
+      throw Object.assign(new Error('Invalid Proxmox migration node'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const [storages, networks] = await Promise.all([
+      this._request('GET', `/api2/json/nodes/${encodeURIComponent(safeNode)}/storage`),
+      this._request('GET', `/api2/json/nodes/${encodeURIComponent(safeNode)}/network`),
+    ]);
+    return { storages: storages || [], networks: networks || [] };
+  }
+
   /**
    * Create Proxmox's short-lived VM console proxy ticket. The caller must keep
    * the returned ticket server-side and use it immediately with

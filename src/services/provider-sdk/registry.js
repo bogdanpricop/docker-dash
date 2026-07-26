@@ -329,6 +329,61 @@ async function vmHardwareForHost(host, resource, options = {}) {
   }
 }
 
+async function migrationCompatibilityForHost(host, resource, targets, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id)) || resource?.kind !== 'virtualMachine'
+    || resource?.provider?.endpointId !== Number(host.id) || !Array.isArray(targets)
+    || targets.length > 64 || targets.some(target => target?.kind !== 'host'
+      || target?.provider?.endpointId !== Number(host.id))) {
+    throw new ProviderAdapterError('Valid host-scoped migration context required', 'INVALID_MIGRATION_CONTEXT', 400);
+  }
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = options.capabilities || await capabilitiesForHost(host);
+  const evidence = capabilities.features?.['vm.migration.preflight'];
+  if (!['supported', 'conditional'].includes(evidence?.state) || typeof adapter.migrationCompatibility !== 'function') {
+    throw new ProviderAdapterError(evidence?.reason || 'Migration preflight is unavailable for this provider',
+      'PROVIDER_MIGRATION_PREFLIGHT_UNAVAILABLE', 400);
+  }
+  const database = options.database || getDb();
+  const identity = identityStore.resolveCanonical(resource.id, {
+    hostId: Number(host.id), kind: 'virtualMachine',
+  }, database);
+  if (!identity || identity.providerType !== host.daemon_type) {
+    throw new ProviderAdapterError('Virtual machine identity was not found', 'PROVIDER_VM_NOT_FOUND', 404);
+  }
+  const resolvedTargets = targets.map(target => ({
+    resource: target,
+    identity: identityStore.resolveCanonical(target.id, {
+      hostId: Number(host.id), kind: 'host',
+    }, database),
+  }));
+  if (resolvedTargets.some(target => !target.identity || target.identity.providerType !== host.daemon_type)) {
+    throw new ProviderAdapterError('Migration target identity was not found', 'PROVIDER_MIGRATION_TARGET_NOT_FOUND', 404);
+  }
+  let result;
+  try {
+    result = await providerResilience.run(Number(host.id), () => adapter.migrationCompatibility(host, {
+      identity, resource, targets: resolvedTargets, capabilities,
+    }), { operation: 'preflight.vmMigration' });
+  } catch (err) {
+    log.warn('Provider migration compatibility read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider migration compatibility could not be read',
+      'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED', 502);
+  }
+  const validTargetIds = new Set(targets.map(target => target.id));
+  if (!result || typeof result !== 'object' || Array.isArray(result)
+    || !Array.isArray(result.candidates) || result.candidates.length > targets.length
+    || result.candidates.some(candidate => !candidate || typeof candidate !== 'object' || Array.isArray(candidate)
+      || !validTargetIds.has(candidate.targetId))
+    || new Set(result.candidates.map(candidate => candidate.targetId)).size !== result.candidates.length) {
+    throw new ProviderAdapterError('Provider returned invalid migration compatibility evidence',
+      'INVALID_PROVIDER_MIGRATION_RESPONSE', 502);
+  }
+  return result;
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -358,6 +413,7 @@ module.exports = {
   resourcesForHost,
   artifactsForHost,
   vmHardwareForHost,
+  migrationCompatibilityForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError, _retrySqliteBusy,

@@ -267,6 +267,7 @@ class XenOrchestraClient {
       provisioning: this._restFeatures.provisioning,
       guestCustomization: this._restFeatures.guestCustomization,
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
+      migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -389,6 +390,41 @@ class XenOrchestraClient {
       diskReason: vbdIds.length && !disks.length ? 'Xen Orchestra VBD relations could not be read' : null,
       nicReason: vifIds.length && !nics.length ? 'Xen Orchestra VIF relations could not be read' : null,
       diskWarnings, nicWarnings,
+    };
+  }
+
+  async getVmMigrationCompatibility(vmId, targetIds) {
+    const id = String(vmId || '');
+    if (!/^[A-Za-z0-9._:-]{1,200}$/.test(id) || !Array.isArray(targetIds) || targetIds.length > 64) {
+      throw new XenError('Invalid Xen Orchestra migration context', { code: 'INVALID_MIGRATION_CONTEXT', status: 400, provider: 'xo' });
+    }
+    const [vms, hosts] = await Promise.all([this.listVMs(), this.listHosts()]);
+    const vm = vms.find(item => String(item.id) === id || String(item.uuid) === id);
+    if (!vm) throw new XenError('Xen Orchestra VM was not found', { code: 'PROVIDER_VM_NOT_FOUND', status: 404, provider: 'xo' });
+    const hostById = new Map(hosts.map(item => [String(item.id), item]));
+    return {
+      sourceRef: vm.hostId || null,
+      warnings: ['Xen Orchestra exposes no portable side-effect-free per-target migration dry run; pool and capacity evidence is heuristic'],
+      candidates: targetIds.map(targetRef => {
+        const target = hostById.get(String(targetRef));
+        const samePool = !!target && !!vm.poolId && target.poolId === vm.poolId;
+        return {
+          targetRef: String(targetRef), current: String(targetRef) === String(vm.hostId),
+          checks: [{
+            key: 'xo.poolBoundary', state: vm.poolId && target?.poolId ? (samePool ? 'pass' : 'fail') : 'unknown',
+            reason: samePool ? 'VM and target host are in the same Xen Orchestra pool'
+              : (vm.poolId && target?.poolId ? 'VM and target host are in different pools' : 'Pool relation was not reported'),
+            confidence: vm.poolId && target?.poolId ? 'high' : 'low',
+          }],
+          blockers: samePool || !vm.poolId || !target?.poolId ? []
+            : [{ type: 'CROSS_POOL_MAPPING_REQUIRED', reason: 'Cross-pool migration requires storage and network mapping', modes: ['live', 'cold', 'storage'] }],
+          warnings: [{ type: 'XO_HEURISTIC_ONLY', reason: 'Execution must revalidate compatibility through the supported XO migration action', modes: ['live', 'cold', 'storage'] }],
+          modes: {
+            live: samePool && String(vm.powerState).toLowerCase() === 'running' ? 'conditional' : (samePool ? 'unsupported' : 'unknown'),
+            cold: samePool ? 'conditional' : 'unknown', storage: samePool ? 'unknown' : 'unsupported',
+          },
+        };
+      }),
     };
   }
 
@@ -812,6 +848,7 @@ class XapiClient {
       snapshots: true, snapshotQuiesce: true, backups: false, console: true, provisioning: true,
       protocol: this._activeProtocol || this._protocol,
       hardwareDetails: true, diskHotplug: true, nicHotplug: true,
+      migrationPreflight: true, migrationLive: true, migrationCold: true, migrationStorage: true,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -906,6 +943,51 @@ class XapiClient {
       };
     })).filter(Boolean);
     return { disks, nics, diskAvailable: true, nicAvailable: true };
+  }
+
+  async getVmMigrationCompatibility(vmId, targetRefs) {
+    if (!Array.isArray(targetRefs) || targetRefs.length > 64
+      || targetRefs.some(ref => !/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(ref || '')))) {
+      throw new XenError('Invalid XAPI migration context', { code: 'INVALID_MIGRATION_CONTEXT', status: 400, provider: 'xapi' });
+    }
+    const vmRef = String(vmId || '').startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
+    const vm = await this._call('VM.get_record', [vmRef]);
+    let possible = null;
+    try { possible = new Set(await this._call('VM.get_possible_hosts', [vmRef])); }
+    catch { /* older XAPI may not expose this helper */ }
+    const candidates = await _mapLimit(targetRefs, 8, async targetRef => {
+      let bootCheck = 'unknown';
+      try { await this._call('VM.assert_can_boot_here', [vmRef, targetRef]); bootCheck = 'pass'; }
+      catch (err) {
+        const unavailable = /METHOD_UNKNOWN|MESSAGE_METHOD_UNKNOWN|NOT_IMPLEMENTED/i.test(String(err?.code || ''));
+        bootCheck = unavailable ? 'unknown' : 'fail';
+      }
+      const possibleState = possible ? (possible.has(targetRef) ? 'pass' : 'fail') : 'unknown';
+      const compatible = bootCheck === 'pass' && possibleState !== 'fail';
+      const compatibilityUnknown = bootCheck === 'unknown' || possibleState === 'unknown';
+      const allowed = new Set(vm.allowed_operations || []);
+      const current = targetRef === _refId(vm.resident_on);
+      return {
+        targetRef, current,
+        checks: [
+          { key: 'xapi.possibleHost', state: possibleState, reason: possibleState === 'pass'
+            ? 'XAPI includes the target in VM.get_possible_hosts'
+            : (possibleState === 'fail' ? 'XAPI excludes the target from VM.get_possible_hosts' : 'Possible-host evidence is unavailable'), confidence: possible ? 'high' : 'low' },
+          { key: 'xapi.assertCanBootHere', state: bootCheck, reason: bootCheck === 'pass'
+            ? 'XAPI assert_can_boot_here passed for this target' : (bootCheck === 'fail' ? 'XAPI assert_can_boot_here rejected this target' : 'Boot compatibility is unknown'), confidence: 'high' },
+        ],
+        blockers: compatible || current || bootCheck === 'unknown' ? []
+          : [{ type: 'XAPI_HOST_INCOMPATIBLE', reason: 'XAPI rejected this VM/host compatibility', modes: ['live', 'cold', 'storage'] }],
+        warnings: [{ type: 'FABRIC_REVALIDATION_REQUIRED', reason: 'SR and network mappings must be revalidated immediately before migration', modes: ['live', 'cold', 'storage'] }],
+        modes: {
+          live: current ? 'unsupported' : (compatible && (allowed.has('pool_migrate') || allowed.has('migrate_send'))
+            ? 'conditional' : (compatible || compatibilityUnknown ? 'unknown' : 'unsupported')),
+          cold: current ? 'unsupported' : (compatible ? 'conditional' : (compatibilityUnknown ? 'unknown' : 'unsupported')),
+          storage: current ? 'unsupported' : (compatible || compatibilityUnknown ? 'unknown' : 'unsupported'),
+        },
+      };
+    });
+    return { sourceRef: _refId(vm.resident_on), candidates, warnings: [] };
   }
 
   async getVmConsole(vmRef) {
@@ -1157,6 +1239,7 @@ class XenRawClient {
       snapshots: false, snapshotQuiesce: false, backups: false, console: true, provisioning: false,
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
       hardwareDetails: true, diskHotplug: false, nicHotplug: false,
+      migrationPreflight: false, migrationLive: false, migrationCold: false, migrationStorage: false,
       legacyXend: this._toolstack === 'xm',
       vmActions: this._toolstack === 'xm'
         ? ['shutdown', 'forceShutdown', 'reboot', 'pause', 'unpause']
@@ -1325,6 +1408,13 @@ class XenRawClient {
       disks, nics, diskAvailable: !!diskOutput, nicAvailable: !!nicOutput,
       diskReason: diskOutput ? null : 'Runtime block topology is unavailable',
       nicReason: nicOutput ? null : 'Runtime network topology is unavailable', diskWarnings, nicWarnings,
+    };
+  }
+
+  async getVmMigrationCompatibility() {
+    return {
+      sourceRef: null, candidates: [],
+      warnings: ['Standalone Xen has no multi-host management plane for migration candidate discovery'],
     };
   }
 

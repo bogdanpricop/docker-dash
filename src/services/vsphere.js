@@ -270,6 +270,7 @@ class VSphereClient {
     const props = ['name', 'summary.runtime.powerState', 'summary.config.guestFullName',
       'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid',
       'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
+      'runtime.host',
       'config.version', 'config.template', 'config.annotation', 'summary.config.guestId',
       'capability.snapshotOperationsSupported',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
@@ -292,6 +293,7 @@ class VSphereClient {
       toolsStatus: o.props['guest.toolsStatus'] || null,
       toolsVersion: o.props['guest.toolsVersion'] || null,
       hwVersion: o.props['config.version'] || null,
+      hostRef: _firstManagedRef(o.props['runtime.host'], 'HostSystem'),
       isTemplate: o.props['config.template'] === 'true',
       description: o.props['config.annotation'] || null,
       osType: o.props['summary.config.guestId'] || o.props['summary.config.guestFullName'] || null,
@@ -319,6 +321,27 @@ class VSphereClient {
       ['config.hardware.device', 'guest.net']);
     const props = (_extractObjects(raw)[0] || { props: {} }).props;
     return _parseVmHardware(props['config.hardware.device'] || '', props['guest.net'] || '');
+  }
+
+  async getVmMigrationCompatibility(vmMoref, hostMorefs) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || '')) || !Array.isArray(hostMorefs)
+      || hostMorefs.length > 64 || hostMorefs.some(ref => !/^[A-Za-z0-9._:-]{1,160}$/.test(String(ref || '')))) {
+      throw Object.assign(new Error('Invalid vSphere migration compatibility target'), { code: 'INVALID_MIGRATION_CONTEXT' });
+    }
+    await this._ensureLoggedIn();
+    const vmRaw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref, ['runtime.host']);
+    const sourceRef = _firstManagedRef((_extractObjects(vmRaw)[0] || { props: {} }).props['runtime.host'], 'HostSystem');
+    if (!hostMorefs.length) return { sourceRef, candidates: [] };
+    const hosts = hostMorefs.map(ref => `<host type="HostSystem">${this._xesc(ref)}</host>`).join('');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><QueryVMotionCompatibility xmlns="urn:vim25">
+    <_this type="ServiceInstance">${MO_SERVICE_INSTANCE}</_this>
+    <vm type="VirtualMachine">${this._xesc(vmMoref)}</vm>${hosts}
+    <compatibility>cpu</compatibility><compatibility>software</compatibility>
+  </QueryVMotionCompatibility></soap:Body>
+</soap:Envelope>`;
+    return { sourceRef, candidates: _parseVmotionCompatibility(await this._soapPost(body)) };
   }
 
   async listTemplates() {
@@ -643,7 +666,7 @@ class VSphereClient {
       'summary.hardware.numCpuThreads', 'summary.hardware.numCpuPkgs', 'summary.hardware.cpuModel',
       'summary.hardware.uuid',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.overallMemoryUsage',
-      'summary.quickStats.uptime', 'runtime.bootTime',
+      'summary.quickStats.uptime', 'runtime.bootTime', 'runtime.inMaintenanceMode',
       'summary.config.product.fullName', 'summary.config.product.version',
       'summary.config.product.build', 'summary.config.product.apiVersion'];
     const rawResp = await this._retrieveProperties(viewId, 'HostSystem', props);
@@ -677,10 +700,12 @@ class VSphereClient {
         cpuTotalMHz,
         cpuPercent: cpuTotalMHz ? Math.round((cpuUsedMHz / cpuTotalMHz) * 100) : null,
         memoryUsageMB: memUsedMB,
+        memoryFreeBytes: memBytes ? Math.max(0, memBytes - memUsedMB * 1024 * 1024) : null,
         memoryTotalMB: memTotalMB,
         memoryPercent: memTotalMB ? Math.round((memUsedMB / memTotalMB) * 100) : null,
         uptimeSeconds: parseInt(o.props['summary.quickStats.uptime'], 10) || null,
         bootTime: o.props['runtime.bootTime'] || null,
+        maintenanceMode: o.props['runtime.inMaintenanceMode'] === 'true',
       };
     });
   }
@@ -1373,6 +1398,19 @@ function _parseVmHardware(deviceXml, guestNetXml) {
   };
 }
 
+function _parseVmotionCompatibility(xml) {
+  const output = [];
+  const re = /<(?:\w+:)?returnval\b[^>]*>([\s\S]*?)<\/(?:\w+:)?returnval>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const block = match[1];
+    const hostRef = _typedTagRef(block, 'host', 'HostSystem');
+    if (!hostRef) continue;
+    output.push({ hostRef, compatibility: _allTags(block, 'compatibility').map(value => value.toLowerCase()) });
+  }
+  return output;
+}
+
 function _managedRefs(value, expectedType) {
   const input = String(value || '');
   const output = [];
@@ -1418,7 +1456,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
 };
 
 if (false) log.info();

@@ -59,4 +59,18 @@ describe('Provider common resource schema', () => {
     expect(_internals._timestamp('not-a-time')).toBeNull();
     expect(_internals._number('NaN')).toBeNull();
   });
+
+  it('normalizes provider host availability, maintenance and derived free memory', () => {
+    const item = normalizeResource({
+      host, providerType: 'xen', kind: 'host', database: db,
+      raw: {
+        ref: 'OpaqueRef:host-capacity', name: 'xen-a', status: 'online', enabled: true,
+        maxcpu: 32, maxmem: 128 * 1024, mem: 48 * 1024, maintenanceMode: false,
+      },
+    });
+    expect(item.status).toEqual(expect.objectContaining({
+      powerState: 'running', enabled: true, maintenanceMode: 'normal', memoryFreeBytes: 80 * 1024,
+    }));
+    expect(item.spec).toEqual(expect.objectContaining({ cpuCount: 32, memoryBytes: 128 * 1024 }));
+  });
 });

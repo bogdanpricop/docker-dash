@@ -21,4 +21,15 @@ describe('vSphere VM hardware parsing', () => {
       addresses: [{ address: '192.0.2.10', source: 'vmware-tools' }],
     }));
   });
+
+  it('parses host-scoped VMotion CPU and software compatibility evidence', () => {
+    const result = _internals._parseVmotionCompatibility(`<QueryVMotionCompatibilityResponse xmlns="urn:vim25">
+      <returnval><host type="HostSystem">host-21</host><compatibility>cpu</compatibility><compatibility>software</compatibility></returnval>
+      <returnval><host type="HostSystem">host-22</host><compatibility>cpu</compatibility></returnval>
+    </QueryVMotionCompatibilityResponse>`);
+    expect(result).toEqual([
+      { hostRef: 'host-21', compatibility: ['cpu', 'software'] },
+      { hostRef: 'host-22', compatibility: ['cpu'] },
+    ]);
+  });
 });

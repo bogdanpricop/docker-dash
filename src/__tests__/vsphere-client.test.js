@@ -279,6 +279,24 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
   });
 
   describe('VM power operations', () => {
+    it('queries ServiceInstance VMotion compatibility without submitting a task', async () => {
+      const client = new VSphereClient({ endpoint: 'https://vcenter', username: 'svc', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      client._retrievePropertiesDirect = jest.fn().mockResolvedValue(`<returnval><objects>
+        <obj type="VirtualMachine">vm-42</obj><propSet><name>runtime.host</name><val type="HostSystem">host-1</val></propSet>
+      </objects></returnval>`);
+      client._soapPost = jest.fn().mockResolvedValue(`<QueryVMotionCompatibilityResponse>
+        <returnval><host type="HostSystem">host-2</host><compatibility>cpu</compatibility><compatibility>software</compatibility></returnval>
+      </QueryVMotionCompatibilityResponse>`);
+      await expect(client.getVmMigrationCompatibility('vm-42', ['host-1', 'host-2'])).resolves.toEqual({
+        sourceRef: 'host-1', candidates: [{ hostRef: 'host-2', compatibility: ['cpu', 'software'] }],
+      });
+      const body = client._soapPost.mock.calls[0][0];
+      expect(body).toContain('<QueryVMotionCompatibility xmlns="urn:vim25">');
+      expect(body).toContain('<compatibility>cpu</compatibility><compatibility>software</compatibility>');
+      expect(body).not.toMatch(/_Task|RelocateVM|MigrateVM/);
+    });
+
     it('acquires a one-time WebMKS ticket and validates its WebSocket URL', async () => {
       let requestBody = '';
       mockHttps._mockNext((_opts, cb, req) => {

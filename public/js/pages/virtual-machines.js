@@ -567,6 +567,7 @@ const VirtualMachinesPage = {
       } },
       { key: 'disks', label: 'Disks', icon: 'fa-hdd', render: panel => { panel.innerHTML = disksSection(detail.sections.disks); } },
       { key: 'network', label: 'Network', icon: 'fa-network-wired', render: panel => { panel.innerHTML = networkSection(detail.sections.network); } },
+      { key: 'migration', label: 'Migration', icon: 'fa-exchange-alt', render: panel => { this._mountMigrationPreflight(panel, host, vm); } },
       { key: 'events', label: 'Events', icon: 'fa-stream', render: panel => { panel.innerHTML = unavailable(detail.sections.events); } },
       { key: 'snapshots', label: 'Snapshots', icon: 'fa-camera', render: panel => { this._mountSnapshots(panel, detail.sections.snapshots, host, vm); } },
       { key: 'tasks', label: 'Tasks', icon: 'fa-tasks', render: panel => { panel.innerHTML = listSection(detail.sections.tasks); } },
@@ -603,6 +604,50 @@ const VirtualMachinesPage = {
       },
     });
     this._shell.mount(container);
+  },
+
+  async _mountMigrationPreflight(panel, host, vm) {
+    panel.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Evaluating migration targets…</div>';
+    try {
+      const result = await Api.getProviderVMMigrationPreflight(host.id, vm.id);
+      if (!panel.isConnected) return;
+      const statusClass = state => ({ ready: 'badge-success', blocked: 'badge-danger', unknown: 'badge-warning' }[state] || 'badge-secondary');
+      const duration = estimate => {
+        const value = estimate?.durationSeconds;
+        return value ? `${value.min}-${value.max}s` : '—';
+      };
+      const modeCell = (candidate, mode) => {
+        const value = candidate.modes?.[mode] || { state: 'unknown' };
+        const reasons = [...(value.blockers || []), ...(value.warnings || [])].map(item => item.reason).filter(Boolean).join(' · ');
+        return `<span class="badge ${statusClass(value.state)}" title="${Utils.escapeHtml(reasons || value.estimate?.methodology || '')}">${Utils.escapeHtml(value.state)}</span>
+          <div class="text-muted text-sm" style="margin-top:5px">${Utils.escapeHtml(duration(value.estimate))}</div>`;
+      };
+      const capabilities = Object.entries(result.capabilityMatrix || {}).map(([mode, evidence]) =>
+        `<span class="badge ${evidence.state === 'supported' ? 'badge-success' : evidence.state === 'conditional' ? 'badge-warning' : 'badge-secondary'}" title="${Utils.escapeHtml(evidence.reason || '')}">${Utils.escapeHtml(mode)}: ${Utils.escapeHtml(evidence.state || 'unknown')}</span>`).join(' ');
+      const warnings = (result.warnings || []).length
+        ? `<div class="alert alert-warning" style="margin-bottom:12px">${result.warnings.map(item => `<div>${Utils.escapeHtml(item)}</div>`).join('')}</div>` : '';
+      const rows = (result.candidates || []).map(candidate => {
+        const checks = (candidate.checks || []).map(check => `${check.key}: ${check.state}`).join(' · ');
+        return `<tr>
+          <td><strong>${Utils.escapeHtml(candidate.target.displayName)}</strong><div class="text-muted text-sm">${Utils.escapeHtml(candidate.target.status?.powerState || 'unknown')}</div></td>
+          <td><strong>${Utils.escapeHtml(candidate.score)}</strong><div class="text-muted text-sm">${candidate.eligible ? 'eligible' : 'not eligible'}</div></td>
+          <td>${modeCell(candidate, 'live')}</td><td>${modeCell(candidate, 'cold')}</td><td>${modeCell(candidate, 'storage')}</td>
+          <td class="text-sm" title="${Utils.escapeHtml(checks)}">${Utils.escapeHtml(checks || 'No provider evidence')}</td>
+        </tr>`;
+      }).join('');
+      panel.innerHTML = `<div class="alert alert-info" style="margin-bottom:12px"><strong>Read-only evidence.</strong> This preflight does not reserve resources and cannot execute a migration.</div>
+        ${warnings}<div class="card" style="padding:14px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <strong>Provider capabilities</strong>${capabilities || '<span class="text-muted">No capability evidence</span>'}
+          <span class="text-muted text-sm" style="margin-left:auto">Plan ${Utils.escapeHtml(String(result.planHash || '').slice(0, 12))}</span>
+        </div>
+        ${(result.candidates || []).length ? `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr>
+          <th>Target host</th><th>Score</th><th>Live</th><th>Cold</th><th>Storage</th><th>Checks</th>
+        </tr></thead><tbody>${rows}</tbody></table></div>`
+          : '<div class="empty-msg"><i class="fas fa-server"></i>No migration target hosts are visible in this provider endpoint.</div>'}`;
+    } catch (err) {
+      if (!panel.isConnected) return;
+      panel.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`;
+    }
   },
 
   async _openConsole(hostId, vm, button) {

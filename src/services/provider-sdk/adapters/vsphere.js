@@ -1,7 +1,7 @@
 'use strict';
 
 const { fromHostRow } = require('../../vsphere');
-const { supported, conditional, adapterNotImplemented } = require('./helpers');
+const { supported, unsupported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
@@ -18,6 +18,11 @@ function declared() {
     'inventory.network': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
+    'vm.migration.preflight': conditional('vCenter VMotion compatibility and target host state are queried read-only', { perResource: true, requiresVCenterForMultipleHosts: true }),
+    'vm.migration.live': conditional('Live migration requires vCenter, VMotion compatibility, shared fabric and a running VM', { perResource: true }),
+    'vm.migration.cold': conditional('Cold migration requires a compatible target host and accessible VM files', { perResource: true }),
+    'vm.migration.storage': conditional('Storage relocation feasibility requires target datastore mapping', { perResource: true }),
+    'vm.migration.crossCluster': conditional('Cross-cluster readiness is limited to candidates visible inside the same vCenter credential boundary', { sameEndpointOnly: true }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
@@ -69,13 +74,20 @@ async function probe(host) {
   try {
     await client.login();
     const info = await client.retrieveServiceContent();
+    const variant = _variant(info);
+    const features = declared();
+    if (variant === 'esxi') {
+      for (const key of ['vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster']) {
+        features[key] = unsupported('Standalone ESXi exposes no alternate host inside this provider endpoint');
+      }
+    }
     return {
       provider: {
-        type: 'vsphere', variant: _variant(info),
+        type: 'vsphere', variant,
         product: info?.productFullName || 'VMware vSphere / ESXi',
         version: info?.version || null, apiVersion: info?.apiVersion || null,
       },
-      features: declared(),
+      features,
     };
   } finally {
     client._agent?.destroy?.();
@@ -110,6 +122,56 @@ async function readVmHardware(host, context) {
   }
 }
 
+async function migrationCompatibility(host, context) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    const refs = context.targets.map(target => String(target.identity.nativeRef));
+    let result;
+    const warnings = [];
+    try { result = await client.getVmMigrationCompatibility(context.identity.nativeRef, refs); }
+    catch {
+      result = { sourceRef: null, candidates: [] };
+      warnings.push('vSphere VMotion compatibility could not be queried; candidates remain unknown');
+    }
+    const compatibility = new Map(result.candidates.map(item => [item.hostRef, new Set(item.compatibility)]));
+    return {
+      sourceTargetId: context.targets.find(target => String(target.identity.nativeRef) === result.sourceRef)?.resource.id || null,
+      warnings,
+      candidates: context.targets.map(target => {
+        const ref = String(target.identity.nativeRef);
+        const current = ref === result.sourceRef;
+        const values = compatibility.get(ref);
+        const compatible = values?.has('cpu') && values?.has('software');
+        const checks = [{
+          key: 'vmotion.cpuSoftware', state: values ? (compatible ? 'pass' : 'fail') : 'unknown',
+          reason: values ? (compatible ? 'vCenter reports CPU and software VMotion compatibility'
+            : 'vCenter did not report both CPU and software VMotion compatibility')
+            : 'vCenter returned no VMotion compatibility result for this host',
+          confidence: values ? 'high' : 'low',
+        }, {
+          key: 'fabric.storageNetwork', state: 'unknown',
+          reason: 'Storage and network reachability require relocation-specific validation before execution', confidence: 'low',
+        }];
+        const blockers = values && !compatible
+          ? [{ type: 'VMOTION_INCOMPATIBLE', reason: 'vCenter reports CPU/software VMotion incompatibility', modes: ['live'] }] : [];
+        return {
+          targetId: target.resource.id, current, checks, blockers,
+          warnings: [{ type: 'FABRIC_VALIDATION_REQUIRED', reason: 'Datastore and network mappings must be revalidated before execution', modes: ['live', 'cold', 'storage'] }],
+          modes: {
+            live: current ? 'unsupported' : (compatible ? 'conditional' : (values ? 'unsupported' : 'unknown')),
+            cold: current ? 'unsupported' : (values ? 'conditional' : 'unknown'),
+            storage: current ? 'unsupported' : 'unknown',
+          },
+        };
+      }),
+    };
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort */ }
+    client._agent?.destroy?.();
+  }
+}
+
 function _allowedVmActions(row) {
   const state = String(row?.powerState || '').toLowerCase();
   if (state === 'poweredoff') return ['start'];
@@ -130,4 +192,4 @@ function _allowedSnapshotActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

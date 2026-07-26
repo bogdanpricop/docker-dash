@@ -7,6 +7,7 @@ const mockCapabilities = jest.fn();
 const mockResources = jest.fn();
 const mockArtifacts = jest.fn();
 const mockVmDetail = jest.fn();
+const mockMigrationPreflight = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -40,6 +41,9 @@ jest.mock('../services/provider-sdk/registry', () => ({
 }));
 jest.mock('../services/provider-sdk/vm-detail', () => ({
   detailForHost: (...args) => mockVmDetail(...args),
+}));
+jest.mock('../services/provider-sdk/vm-migration-preflight', () => ({
+  preflightForHost: (...args) => mockMigrationPreflight(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -111,6 +115,12 @@ describe('Provider SDK routes', () => {
       schemaVersion: '1.0',
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
       freshness: { state: 'fresh' }, actions: [], sections: {}, activity: [],
+    });
+    mockMigrationPreflight.mockResolvedValue({
+      schemaVersion: '1.0', generatedAt: '2026-07-26T12:00:00.000Z',
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      scope: { sameEndpointOnly: true, executionEnabled: false }, candidates: [],
+      planHash: '8'.repeat(64),
     });
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
@@ -264,6 +274,28 @@ describe('Provider SDK routes', () => {
     const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`);
     expect(response.status).toBe(502);
     expect(response.body).toEqual({ error: 'Provider VM detail failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('returns a read-only VM migration preflight to viewers', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}/migration-preflight`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(response.status).toBe(200);
+    expect(response.body.scope).toEqual(expect.objectContaining({ sameEndpointOnly: true, executionEnabled: false }));
+    expect(mockMigrationPreflight).toHaveBeenCalledWith(mockHost, id);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes VM migration preflight provider failures', async () => {
+    const id = `ddr_vm_${'b'.repeat(26)}`;
+    mockMigrationPreflight.mockRejectedValue(Object.assign(new Error('upstream secret'), {
+      status: 502, code: 'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED',
+    }));
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}/migration-preflight`);
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({
+      error: 'Provider VM migration preflight failed', code: 'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED',
+    });
   });
 
   it('preflights and submits host-scoped VM power with operate access', async () => {
