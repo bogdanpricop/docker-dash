@@ -142,6 +142,33 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(lxc).toHaveLength(1);
       expect(lxc[0]).toMatchObject({ type: 'lxc', vmid: 101, name: 'db-lxc' });
     });
+
+    it('submits a native power task and reads its terminal status', async () => {
+      const paths = [];
+      mockHttps._mockNext((opts, cb) => {
+        paths.push(opts.path);
+        const res = fakeResponse({ status: 200, body: { data: 'UPID:pve-a:0001:power-task' } });
+        cb(res); res._fire();
+      });
+      mockHttps._mockNext((opts, cb) => {
+        paths.push(opts.path);
+        const res = fakeResponse({ status: 200, body: { data: { status: 'stopped', exitstatus: 'OK' } } });
+        cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      const task = await client.vmPowerAction('pve-a', 101, 'qemu', 'start');
+      expect(task).toEqual({ taskRef: 'UPID:pve-a:0001:power-task', node: 'pve-a', provider: 'proxmox' });
+      await expect(client.getTaskStatus('pve-a', task.taskRef)).resolves.toEqual({ status: 'stopped', exitstatus: 'OK' });
+      expect(paths[0]).toBe('/api2/json/nodes/pve-a/qemu/101/status/start');
+      expect(paths[1]).toContain('/api2/json/nodes/pve-a/tasks/UPID%3Apve-a%3A0001%3Apower-task/status');
+    });
+
+    it('rejects unsupported LXC force resets before network access', async () => {
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.vmPowerAction('pve-a', 101, 'lxc', 'forceReboot'))
+        .rejects.toMatchObject({ code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400 });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
   });
 
   describe('daemon_config encryption', () => {

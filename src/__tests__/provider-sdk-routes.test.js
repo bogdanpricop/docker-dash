@@ -12,6 +12,10 @@ const mockConformanceGet = jest.fn();
 const mockConformanceList = jest.fn();
 const mockScorecard = jest.fn();
 const mockExport = jest.fn();
+const mockPowerPreflight = jest.fn();
+const mockPowerPreflightBulk = jest.fn();
+const mockPowerSubmit = jest.fn();
+const mockPowerSubmitBulk = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../db', () => ({
@@ -23,6 +27,13 @@ jest.mock('../services/provider-sdk/registry', () => ({
 }));
 jest.mock('../services/provider-sdk/vm-detail', () => ({
   detailForHost: (...args) => mockVmDetail(...args),
+}));
+jest.mock('../services/provider-operations/vm-power', () => ({
+  ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
+  preflightForHost: (...args) => mockPowerPreflight(...args),
+  preflightManyForHost: (...args) => mockPowerPreflightBulk(...args),
+  submitForHost: (...args) => mockPowerSubmit(...args),
+  submitManyForHost: (...args) => mockPowerSubmitBulk(...args),
 }));
 jest.mock('../services/provider-conformance', () => ({
   runForHost: (...args) => mockConformanceRun(...args),
@@ -40,6 +51,7 @@ jest.mock('../middleware/auth', () => ({
   },
   requireRole: (...roles) => (req, res, next) => roles.includes(req.user.role)
     ? next() : res.status(403).json({ error: 'Insufficient permissions' }),
+  writeable: (req, _res, next) => next(),
 }));
 jest.mock('../middleware/hostAccess', () => ({
   requireHostAccess: () => (req, _res, next) => {
@@ -68,6 +80,20 @@ describe('Provider SDK routes', () => {
       schemaVersion: '1.0',
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
       freshness: { state: 'fresh' }, actions: [], sections: {}, activity: [],
+    });
+    mockPowerPreflight.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
+    });
+    mockPowerPreflightBulk.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, action: 'start', count: 1, allowed: true, plans: [],
+    });
+    mockPowerSubmit.mockResolvedValue({
+      plan: { action: 'start', planHash: 'a'.repeat(64), resource: { id: `ddr_vm_${'a'.repeat(26)}` } },
+      operation: { id: `op_${'d'.repeat(26)}` },
+    });
+    mockPowerSubmitBulk.mockResolvedValue({
+      preflight: { action: 'start', plans: [] }, operations: [{ id: `op_${'e'.repeat(26)}` }],
     });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
@@ -160,6 +186,37 @@ describe('Provider SDK routes', () => {
     const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`);
     expect(response.status).toBe(502);
     expect(response.body).toEqual({ error: 'Provider VM detail failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('preflights and submits host-scoped VM power with operate access', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${id}/power/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate').send({ action: 'start' });
+    expect(preflight.status).toBe(200);
+    expect(mockPowerPreflight).toHaveBeenCalledWith(mockHost, id, 'start', { canOperate: true });
+
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'power-request-123').send({ action: 'start', confirm: true, planHash: 'a'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockPowerSubmit).toHaveBeenCalledWith(mockHost, id, expect.objectContaining({
+      action: 'start', idempotencyKey: 'power-request-123',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_power_submit' }));
+  });
+
+  it('preflights and submits an atomic bulk VM power request', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/virtual-machines/power/preflight')
+      .set('x-test-role', 'viewer').send({ action: 'start', resourceIds: [id] })).status).toBe(403);
+    const submit = await request(app).post('/api/providers/7/virtual-machines/power')
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'bulk-power-request').send({ action: 'start', resourceIds: [id], confirm: true });
+    expect(submit.status).toBe(202);
+    expect(submit.body.count).toBe(1);
+    expect(mockPowerSubmitBulk).toHaveBeenCalledWith(mockHost, [id], expect.objectContaining({
+      idempotencyKey: 'bulk-power-request',
+    }), { canOperate: true, createdBy: 1 });
   });
 
   it('publishes provider manifests and an evidence-backed scorecard', async () => {

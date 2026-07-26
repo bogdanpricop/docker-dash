@@ -5,6 +5,7 @@ const policy = require('./policy');
 const config = require('../../config');
 
 const engine = new ProviderOperationEngine({ policy, ...(config.providerOperations || {}) });
+require('./handlers/vm-power').register(engine);
 
 module.exports = engine;
 module.exports.policy = policy;

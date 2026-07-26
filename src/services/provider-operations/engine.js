@@ -571,7 +571,12 @@ class ProviderOperationEngine {
       }
     } catch (err) {
       const current = this._db().prepare('SELECT * FROM provider_operations WHERE id = ?').get(row.id);
-      if (current && handler.idempotent && this._isTransient(err) && current.attempt < current.max_attempts) {
+      if (current && !handler.idempotent && typeof handler.reconcile === 'function' && this._isTransient(err)) {
+        this._schedule(row.id, 'reconciling', 1000, {
+          errorCode: String(err.code || 'TRANSIENT_PROVIDER_ERROR').toUpperCase(),
+          errorMessage: 'Provider response was interrupted; reconciliation is scheduled without retrying the mutation',
+        });
+      } else if (current && handler.idempotent && this._isTransient(err) && current.attempt < current.max_attempts) {
         this._schedule(row.id, 'waiting_retry', this._retryDelay(current.retry_policy, current.attempt), {
           errorCode: String(err.code || 'TRANSIENT_PROVIDER_ERROR').toUpperCase(),
           errorMessage: 'Transient provider error; retry is scheduled',

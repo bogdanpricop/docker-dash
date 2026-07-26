@@ -5,6 +5,15 @@ const VirtualMachinesPage = {
   _hosts: [],
   _hostId: null,
   _shell: null,
+  _selected: new Set(),
+
+  _powerActions: Object.freeze([
+    { action: 'start', label: 'Start', icon: 'fa-play' },
+    { action: 'shutdown', label: 'Shut down', icon: 'fa-power-off' },
+    { action: 'reboot', label: 'Reboot', icon: 'fa-redo' },
+    { action: 'forceShutdown', label: 'Force off', icon: 'fa-stop', force: true },
+    { action: 'forceReboot', label: 'Force reboot', icon: 'fa-sync', force: true },
+  ]),
 
   _parseRoute(value) {
     const parts = String(value || '').split('/').filter(Boolean);
@@ -27,6 +36,99 @@ const VirtualMachinesPage = {
     return { proxmox: '#/proxmox-resources', vsphere: '#/vsphere-resources', xen: '#/xen-resources' }[type] || '#/hosts';
   },
 
+  _idempotencyKey(prefix = 'vm-power') {
+    const random = globalThis.crypto?.randomUUID?.()
+      || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    return `${prefix}-${random}`;
+  },
+
+  _powerLabel(action) {
+    return this._powerActions.find(item => item.action === action)?.label || action;
+  },
+
+  _preflightHtml(plans) {
+    const blockers = plans.flatMap(plan => (plan.blockers || []).map(item => ({ ...item, vm: plan.resource?.displayName })));
+    const warnings = plans.flatMap(plan => (plan.warnings || []).map(item => ({ ...item, vm: plan.resource?.displayName })));
+    return `<div class="text-sm">
+      ${blockers.length ? `<div class="alert alert-danger" style="margin-bottom:12px"><strong>Operation blocked</strong><ul style="margin:8px 0 0 18px">${blockers.map(item => `<li>${Utils.escapeHtml(item.vm || 'VM')}: ${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="card" style="padding:12px;margin-bottom:${warnings.length ? '12px' : '0'}">
+        ${plans.map(plan => `<div style="display:flex;justify-content:space-between;gap:12px;margin:4px 0"><strong>${Utils.escapeHtml(plan.resource.displayName)}</strong><span>${Utils.escapeHtml(plan.currentPowerState)} → ${Utils.escapeHtml(plan.expectedPowerState)}</span></div>`).join('')}
+      </div>
+      ${warnings.length ? `<div class="alert alert-warning"><strong>Warnings</strong><ul style="margin:8px 0 0 18px">${warnings.map(item => `<li>${Utils.escapeHtml(item.vm || 'VM')}: ${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  },
+
+  async _showBlockedPreflight(plans, action) {
+    await Modal.confirm(this._preflightHtml(plans), {
+      title: `${this._powerLabel(action)} preflight`, confirmText: 'Close', html: true, width: '620px',
+    });
+  },
+
+  async _confirmBulkForce(plans, action) {
+    const fields = plans.map((plan, index) => `<label class="form-label" for="bulk-force-${index}">${Utils.escapeHtml(plan.resource.displayName)}</label>
+      <input class="form-control bulk-force-name" id="bulk-force-${index}" data-expected="${Utils.escapeHtml(plan.resource.displayName)}" autocomplete="off" placeholder="Type the exact VM name" style="margin-bottom:10px">`).join('');
+    const result = await Modal.form(`${this._preflightHtml(plans)}<div style="margin-top:14px"><p class="text-sm" style="color:var(--yellow)">Type every exact VM name to authorize this forced operation.</p>${fields}</div>`, {
+      title: `${this._powerLabel(action)} ${plans.length} VM(s)`, submitLabel: 'Authorize forced operation', width: '680px',
+      onSubmit: root => {
+        const inputs = [...root.querySelectorAll('.bulk-force-name')];
+        if (inputs.some(input => input.value !== input.dataset.expected)) {
+          Toast.error('Every VM name must match exactly');
+          return false;
+        }
+        return Object.fromEntries(inputs.map((input, index) => [plans[index].resource.id, input.value]));
+      },
+    });
+    return result;
+  },
+
+  async _runPower(hostId, vm, action) {
+    try {
+      const plan = await Api.preflightProviderVMPower(hostId, vm.id, action);
+      if (!plan.allowed) return this._showBlockedPreflight([plan], action);
+      const confirmed = await Modal.confirm(this._preflightHtml([plan]), {
+        title: `${this._powerLabel(action)} ${vm.displayName}`,
+        confirmText: this._powerLabel(action), danger: plan.confirmation?.mode === 'typed_name',
+        typeToConfirm: plan.confirmation?.mode === 'typed_name' ? plan.confirmation.expected : null,
+        html: true, width: '620px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMPower(hostId, vm.id, {
+        action, planHash: plan.planHash, confirm: true,
+        ...(plan.confirmation?.mode === 'typed_name' ? { confirmName: plan.confirmation.expected } : {}),
+      }, this._idempotencyKey());
+      Toast.success(`${this._powerLabel(action)} queued for ${vm.displayName}`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _runBulkPower(action) {
+    const resourceIds = [...this._selected];
+    if (!resourceIds.length) return;
+    try {
+      const preflight = await Api.preflightProviderVMPowerBulk(this._hostId, resourceIds, action);
+      if (!preflight.allowed) return this._showBlockedPreflight(preflight.plans, action);
+      const force = preflight.plans.some(plan => plan.confirmation?.mode === 'typed_name');
+      let confirmNames = null;
+      if (force) confirmNames = await this._confirmBulkForce(preflight.plans, action);
+      else {
+        const confirmed = await Modal.confirm(this._preflightHtml(preflight.plans), {
+          title: `${this._powerLabel(action)} ${preflight.count} VM(s)`, confirmText: this._powerLabel(action),
+          html: true, width: '680px',
+        });
+        if (!confirmed) return;
+      }
+      if (force && !confirmNames) return;
+      const result = await Api.submitProviderVMPowerBulk(this._hostId, {
+        resourceIds, action, confirm: true,
+        plans: Object.fromEntries(preflight.plans.map(plan => [plan.resource.id, plan.planHash])),
+        ...(confirmNames ? { confirmNames } : {}),
+      }, this._idempotencyKey('vm-power-bulk'));
+      this._selected.clear();
+      Toast.success(`${result.count} VM power operation(s) queued`);
+      location.hash = '#/activity';
+    } catch (err) { Toast.error(err.message); }
+  },
+
   async render(container, params = {}) {
     this.destroy();
     try {
@@ -45,6 +147,7 @@ const VirtualMachinesPage = {
         Add Proxmox, vSphere, or Xen from <a href="#/hosts">Hosts</a>.</div>`;
       return;
     }
+    this._selected.clear();
     const selected = Api.getHostId();
     if (this._hosts.some(host => host.id === selected)) this._hostId = selected;
     if (!this._hosts.some(host => host.id === this._hostId)) this._hostId = this._hosts[0].id;
@@ -71,6 +174,11 @@ const VirtualMachinesPage = {
         </select>
         <span class="text-muted text-sm" id="common-vm-count"></span>
       </div>
+      <div class="card hidden" id="common-vm-bulk" style="padding:12px;margin-bottom:16px;gap:8px;align-items:center;flex-wrap:wrap">
+        <strong id="common-vm-selected-count"></strong>
+        ${this._powerActions.map(item => `<button class="btn btn-sm ${item.force ? 'btn-danger' : 'btn-secondary'}" data-vm-bulk-action="${item.action}"><i class="fas ${item.icon}"></i> ${Utils.escapeHtml(item.label)}</button>`).join('')}
+        <button class="btn btn-sm btn-secondary" id="common-vm-clear-selection">Clear selection</button>
+      </div>
       <div id="common-vm-content"><div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Loading inventory…</div></div>`;
     container.querySelector('#common-vm-host').addEventListener('change', event => {
       this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._renderHome(container);
@@ -78,6 +186,8 @@ const VirtualMachinesPage = {
     container.querySelector('#common-vm-refresh').addEventListener('click', () => this._loadInventory());
     container.querySelector('#common-vm-search').addEventListener('input', () => this._renderInventory());
     container.querySelector('#common-vm-state').addEventListener('change', () => this._renderInventory());
+    container.querySelectorAll('[data-vm-bulk-action]').forEach(button => button.addEventListener('click', () => this._runBulkPower(button.dataset.vmBulkAction)));
+    container.querySelector('#common-vm-clear-selection').addEventListener('click', () => { this._selected.clear(); this._renderInventory(); });
     await this._loadInventory();
   },
 
@@ -113,9 +223,10 @@ const VirtualMachinesPage = {
     }
     target.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px">${items.map(vm => {
       const state = vm.status?.powerState || 'unknown';
-      return `<a class="card" href="#/virtual-machines/${this._hostId}/${vm.id}" style="padding:16px;text-decoration:none;color:inherit">
+      return `<div class="card" style="padding:16px;position:relative">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
-          <strong style="overflow-wrap:anywhere"><i class="fas fa-desktop" style="color:var(--accent);margin-right:7px"></i>${Utils.escapeHtml(vm.displayName)}</strong>
+          <label style="display:flex;gap:9px;align-items:flex-start;min-width:0"><input type="checkbox" data-vm-select="${vm.id}" ${this._selected.has(vm.id) ? 'checked' : ''} aria-label="Select ${Utils.escapeHtml(vm.displayName)}">
+            <a href="#/virtual-machines/${this._hostId}/${vm.id}" style="text-decoration:none;color:inherit;overflow-wrap:anywhere"><strong><i class="fas fa-desktop" style="color:var(--accent);margin-right:7px"></i>${Utils.escapeHtml(vm.displayName)}</strong></a></label>
           <span class="badge ${Utils.statusBadgeClass(state)}">${Utils.escapeHtml(state)}</span>
         </div>
         <div class="text-muted text-sm" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px">
@@ -124,8 +235,23 @@ const VirtualMachinesPage = {
           <span><i class="fas fa-network-wired"></i> ${Utils.escapeHtml(vm.status?.ipAddress || 'No IP')}</span>
           <span><i class="fas fa-clock"></i> ${Utils.escapeHtml(Utils.timeAgo(vm.observedAt))}</span>
         </div>
-      </a>`;
+        <div style="margin-top:12px"><a class="btn btn-sm btn-secondary" href="#/virtual-machines/${this._hostId}/${vm.id}">Open details</a></div>
+      </div>`;
     }).join('')}</div>`;
+    target.querySelectorAll('[data-vm-select]').forEach(input => input.addEventListener('change', () => {
+      if (input.checked) this._selected.add(input.dataset.vmSelect); else this._selected.delete(input.dataset.vmSelect);
+      this._updateBulkToolbar();
+    }));
+    this._updateBulkToolbar();
+  },
+
+  _updateBulkToolbar() {
+    const toolbar = document.getElementById('common-vm-bulk');
+    const count = document.getElementById('common-vm-selected-count');
+    if (!toolbar || !count) return;
+    count.textContent = `${this._selected.size} selected`;
+    toolbar.classList.toggle('hidden', this._selected.size === 0);
+    toolbar.style.display = this._selected.size ? 'flex' : '';
   },
 
   async _renderDetail(container, route) {
@@ -190,7 +316,7 @@ const VirtualMachinesPage = {
         subtitle: `${this._providerLabel(host.daemonType)} · ${host.name} · ${vm.id}`,
         statusPill: { text: vm.status?.powerState || 'unknown', cls: Utils.statusBadgeClass(vm.status?.powerState) },
         actions: target => {
-          const actionButtons = detail.actions.map(action => `<button class="btn btn-sm btn-secondary" disabled title="${Utils.escapeHtml(this._blockerSummary(action))}">${Utils.escapeHtml(action.label)}</button>`).join('');
+          const actionButtons = detail.actions.map(action => `<button class="btn btn-sm ${action.action?.startsWith('force') ? 'btn-danger' : 'btn-secondary'}" data-vm-action="${Utils.escapeHtml(action.action || '')}" ${action.available ? '' : 'disabled'} title="${Utils.escapeHtml(action.available ? `${action.label} ${vm.displayName}` : this._blockerSummary(action))}">${Utils.escapeHtml(action.label)}</button>`).join('');
           const canRefresh = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
           target.innerHTML = `${actionButtons}<a class="btn btn-sm btn-secondary" href="#/activity"><i class="fas fa-tasks"></i> Activity</a>
             <a class="btn btn-sm btn-secondary" href="${this._providerRoute(host.daemonType)}"><i class="fas fa-external-link-alt"></i> Provider</a>
@@ -201,6 +327,7 @@ const VirtualMachinesPage = {
             try { this._mountDetail(container, await Api.getProviderVMDetail(host.id, vm.id, true), host); }
             catch (err) { Toast.error(err.message); event.currentTarget.disabled = false; }
           });
+          target.querySelectorAll('[data-vm-action]').forEach(button => button.addEventListener('click', () => this._runPower(host.id, vm, button.dataset.vmAction)));
         },
       },
       metaStrip: target => {
@@ -216,6 +343,7 @@ const VirtualMachinesPage = {
     if (this._shell) this._shell.destroy();
     this._shell = null;
     this._inventory = [];
+    this._selected.clear();
   },
 };
 

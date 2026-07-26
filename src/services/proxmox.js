@@ -98,7 +98,9 @@ class ProxmoxClient {
       };
       const timer = setTimeout(() => {
         try { req.destroy(); } catch { /* ignore */ }
-        finish(null, new Error(`Proxmox request timeout after ${timeoutMs / 1000}s: ${method} ${path}`));
+        finish(null, Object.assign(new Error(`Proxmox request timeout after ${timeoutMs / 1000}s: ${method} ${path}`), {
+          code: 'ETIMEDOUT', transient: true,
+        }));
       }, timeoutMs);
       const req = https.request(reqOpts, (res) => {
         res.on('data', (chunk) => {
@@ -186,6 +188,32 @@ class ProxmoxClient {
   /** Inspect a single VM (state, config). */
   async getVM(node, vmid) {
     return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/status/current`);
+  }
+
+  /** Submit a QEMU/LXC power operation. Returns the native UPID. */
+  async vmPowerAction(node, vmid, guestType, action) {
+    const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
+    const endpointAction = {
+      start: 'start', shutdown: 'shutdown', reboot: 'reboot',
+      forceShutdown: 'stop', forceReboot: 'reset',
+    }[action];
+    if (!type || !endpointAction || (type === 'lxc' && action === 'forceReboot')) {
+      throw Object.assign(new Error('Proxmox VM power action is unavailable'), { code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400 });
+    }
+    const upid = await this._request('POST', `/api2/json/nodes/${encodeURIComponent(node)}/${type}/${encodeURIComponent(vmid)}/status/${endpointAction}`, {});
+    if (typeof upid !== 'string' || !upid.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox power operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef: upid, node, provider: 'proxmox' };
+  }
+
+  async getTaskStatus(node, upid) {
+    return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/tasks/${encodeURIComponent(upid)}/status`);
+  }
+
+  async stopTask(node, upid) {
+    await this._request('DELETE', `/api2/json/nodes/${encodeURIComponent(node)}/tasks/${encodeURIComponent(upid)}`);
+    return { ok: true };
   }
 
   /** Inspect a single LXC (state, config). */

@@ -1,6 +1,7 @@
 'use strict';
 
 const { getDb } = require('../../db');
+const config = require('../../config');
 const registrySingleton = require('./registry');
 const snapshotsSingleton = require('./resource-snapshots');
 const operationsSingleton = require('../provider-operations');
@@ -53,12 +54,13 @@ function _resourceAllows(resource, names) {
   return names.some(name => available.has(name));
 }
 
-function _actions(resource, capabilities, policy, canOperate) {
+function _actions(resource, capabilities, policy, canOperate, enabled = config.features.providerVmPower) {
   const definitions = [
-    { key: 'vm.power.start', label: 'Start', names: ['start'], stateAction: 'start' },
-    { key: 'vm.power.shutdown', label: 'Shut down', names: ['shutdown', 'cleanShutdown'], stateAction: 'shutdown' },
-    { key: 'vm.power.reboot', label: 'Reboot', names: ['reboot', 'cleanReboot'], stateAction: 'reboot' },
-    { key: 'vm.power.force', label: 'Force power', names: ['forceShutdown', 'forceReboot', 'stop'], stateAction: 'force' },
+    { key: 'vm.power.start', action: 'start', label: 'Start', names: ['start'], stateAction: 'start' },
+    { key: 'vm.power.shutdown', action: 'shutdown', label: 'Shut down', names: ['shutdown', 'cleanShutdown'], stateAction: 'shutdown' },
+    { key: 'vm.power.reboot', action: 'reboot', label: 'Reboot', names: ['reboot', 'cleanReboot'], stateAction: 'reboot' },
+    { key: 'vm.power.force', action: 'forceShutdown', label: 'Force off', names: ['forceShutdown', 'stop'], stateAction: 'force' },
+    { key: 'vm.power.force', action: 'forceReboot', label: 'Force reboot', names: ['forceReboot', 'reset'], stateAction: 'force' },
   ];
   return definitions.map(definition => {
     const blockers = [];
@@ -71,12 +73,17 @@ function _actions(resource, capabilities, policy, canOperate) {
     if (!_resourceAllows(resource, definition.names)) {
       blockers.push(_blocker('RESOURCE_ACTION_BLOCKED', 'The provider did not advertise this action for the VM'));
     }
+    if (resource.identity?.stability === 'transient') {
+      blockers.push(_blocker('UNSTABLE_RESOURCE_IDENTITY',
+        'Durable power operations require a VM identity that survives provider and worker restarts',
+        { stability: 'transient' }));
+    }
     if (!policy.allowed) {
       blockers.push(_blocker('POLICY_BLOCKED', policy.reason, { code: policy.code, mode: policy.mode }));
     }
     if (!canOperate) blockers.push(_blocker('PERMISSION_BLOCKED', 'Operate permission is required for this endpoint'));
-    blockers.push(_blocker('ACTION_NOT_ENABLED', 'Common VM actions are intentionally read-only in V1.1'));
-    return { key: definition.key, label: definition.label, available: false, blockers };
+    if (!enabled) blockers.push(_blocker('ACTION_NOT_ENABLED', 'Common VM power actions are disabled by release policy'));
+    return { key: definition.key, action: definition.action, label: definition.label, available: blockers.length === 0, blockers };
   });
 }
 
@@ -191,7 +198,7 @@ async function detailForHost(host, canonicalId, options = {}) {
   const envelope = {
     schemaVersion: DETAIL_SCHEMA_VERSION,
     resource, capabilities, freshness: _freshness(resource, refreshError),
-    actions: _actions(resource, capabilities, policy, options.canOperate === true),
+    actions: _actions(resource, capabilities, policy, options.canOperate === true, options.powerEnabled),
     sections: _sections(resource, capabilities, activity),
     activity,
   };

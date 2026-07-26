@@ -5,9 +5,10 @@ const config = require('../config');
 const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
+const providerVmPower = require('../services/provider-operations/vm-power');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { requireHostAccess } = require('../middleware/hostAccess');
 const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
@@ -35,6 +36,15 @@ function _conformanceError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider conformance request failed' : err.message,
     code: err?.code || 'PROVIDER_CONFORMANCE_ERROR',
+  });
+}
+
+function _powerError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM power request failed' : err.message,
+    code: err?.code || 'VM_POWER_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
   });
 }
 
@@ -121,6 +131,75 @@ router.get('/:hostId/capabilities', requireAuth, requireHostAccess('view', { par
     });
   }
 }));
+
+router.post('/:hostId/virtual-machines/power/preflight', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmPower.preflightManyForHost(
+        resolved.host, req.body?.resourceIds, req.body?.action, { canOperate: true }
+      ));
+    } catch (err) { _powerError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/power', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmPower.submitManyForHost(resolved.host, req.body?.resourceIds, {
+        ...req.body, idempotencyKey: req.get('Idempotency-Key'),
+      }, { canOperate: true, createdBy: req.user.id });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_power_bulk_submit', targetType: 'host', targetId: String(resolved.host.id),
+        details: {
+          provider: resolved.host.daemon_type, action: result.preflight.action,
+          count: result.operations.length, operationIds: result.operations.map(operation => operation.id),
+          forced: providerVmPower.ACTIONS[result.preflight.action].force,
+        }, ip: getClientIp(req),
+      });
+      res.status(202).json({
+        schemaVersion: '1.0', count: result.operations.length,
+        operations: result.operations, planHashes: result.preflight.plans.map(plan => plan.planHash),
+      });
+    } catch (err) { _powerError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/power/preflight', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmPower.preflightForHost(
+        resolved.host, req.params.resourceId, req.body?.action, { canOperate: true }
+      ));
+    } catch (err) { _powerError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmPower.submitForHost(resolved.host, req.params.resourceId, {
+        ...req.body, idempotencyKey: req.get('Idempotency-Key'),
+      }, { canOperate: true, createdBy: req.user.id });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_power_submit', targetType: 'virtualMachine', targetId: result.plan.resource.id,
+        details: {
+          provider: resolved.host.daemon_type, hostId: resolved.host.id,
+          action: result.plan.action, operationId: result.operation.id,
+          planHash: result.plan.planHash, forced: providerVmPower.ACTIONS[result.plan.action].force,
+        }, ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _powerError(res, err); }
+  }));
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

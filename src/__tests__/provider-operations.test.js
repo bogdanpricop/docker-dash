@@ -131,6 +131,25 @@ describe('Durable provider operation engine', () => {
     expect(engine.get(operation.id)).toEqual(expect.objectContaining({ state: 'succeeded', attempt: 2 }));
   });
 
+  it('reconciles a transient non-idempotent failure without resubmitting the mutation', async () => {
+    const engine = createEngine(db);
+    const execute = jest.fn().mockRejectedValue(Object.assign(new Error('socket dropped after submit'), {
+      code: 'ECONNRESET', transient: true,
+    }));
+    const reconcile = jest.fn().mockResolvedValue({ state: 'succeeded', result: { observed: true } });
+    engine.registerHandler({
+      type: 'vm.power.test', idempotent: false, retryPolicy: 'none', execute, reconcile,
+    });
+    const operation = engine.create(spec({ idempotencyKey: 'non-idempotent-reconcile' }));
+    await engine.tick();
+    expect(engine.get(operation.id).state).toBe('reconciling');
+    db.prepare("UPDATE provider_operations SET available_at = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(operation.id);
+    await engine.tick();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(engine.get(operation.id).state).toBe('succeeded');
+  });
+
   it('recovers expired running work through reconciliation instead of execute', async () => {
     const creator = createEngine(db, { owner: 'worker-old' });
     creator.registerHandler({ type: 'vm.power.test', idempotent: true, execute: async () => ({ result: { old: true } }) });

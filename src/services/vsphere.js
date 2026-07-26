@@ -106,7 +106,9 @@ class VSphereClient {
       };
       const timer = setTimeout(() => {
         try { req.destroy(); } catch { /* ignore */ }
-        finish(null, new Error(`vSphere SOAP timeout after ${timeoutMs / 1000}s`));
+        finish(null, Object.assign(new Error(`vSphere SOAP timeout after ${timeoutMs / 1000}s`), {
+          code: 'ETIMEDOUT', transient: true,
+        }));
       }, timeoutMs);
       const req = https.request(reqOpts, (res) => {
         // Capture Set-Cookie for session
@@ -296,6 +298,47 @@ class VSphereClient {
       // storage.perDatastoreUsage (best-effort; [] if absent).
       datastoreUsage: _parseDatastoreUsage(o.props['storage.perDatastoreUsage'] || ''),
     }));
+  }
+
+  /** Submit a VM power action using the vSphere Web Services API. */
+  async vmPowerAction(vmMoref, action) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const operation = {
+      start: 'PowerOnVM_Task', shutdown: 'ShutdownGuest', reboot: 'RebootGuest',
+      forceShutdown: 'PowerOffVM_Task', forceReboot: 'ResetVM_Task',
+    }[action];
+    if (!operation) throw Object.assign(new Error('Unsupported vSphere VM power action'), { code: 'PROVIDER_ACTION_UNAVAILABLE' });
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${operation} xmlns="urn:vim25">
+      <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    </${operation}>
+  </soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const taskRef = operation.endsWith('_Task') ? _extractTag(response, 'returnval') : null;
+    if (operation.endsWith('_Task') && !taskRef) {
+      throw Object.assign(new Error('vSphere power operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async getTaskStatus(taskMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(taskMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
+    }
+    const raw = await this._retrievePropertiesDirect('Task', taskMoref,
+      ['info.state', 'info.progress', 'info.error']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    return {
+      status: props['info.state'] || 'unknown',
+      progress: parseInt(props['info.progress'], 10) || 0,
+      error: props['info.error'] ? (_extractFault(props['info.error']) || 'vSphere task failed') : null,
+    };
   }
 
   async listHosts() {

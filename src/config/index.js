@@ -85,6 +85,9 @@ module.exports = {
     // Additive, read-only endpoint for the versioned multi-provider contract.
     // Kept as a flag so operators can canary the new schema independently.
     providerSdkV2: bool('DD_PROVIDER_SDK_V2', true),
+    // Mutation canary. Preflight remains inspectable while submit routes and
+    // UI actions stay closed unless an operator explicitly enables this.
+    providerVmPower: bool('DD_PROVIDER_VM_POWER', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

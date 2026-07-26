@@ -16,8 +16,20 @@ describe('Provider SDK adapters', () => {
     const features = proxmox.declared();
     expect(features['inventory.vm'].state).toBe('supported');
     expect(features['backup.read'].state).toBe('supported');
-    expect(features['vm.power.start'].state).toBe('unsupported');
-    expect(features['vm.power.start'].reason).toMatch(/adapter does not implement/);
+    expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
+    expect(features['vm.power.force'].constraints).toEqual(expect.objectContaining({
+      perResource: true, confirmation: true, durableTask: true,
+    }));
+  });
+
+  it('derives provider-native power actions from current guest state', () => {
+    expect(proxmox._internals._allowedVmActions({ status: 'stopped', type: 'qemu' })).toEqual(['start']);
+    expect(proxmox._internals._allowedVmActions({ status: 'running', type: 'lxc' }))
+      .toEqual(['shutdown', 'reboot', 'forceShutdown']);
+    expect(vsphere._internals._allowedVmActions({ powerState: 'poweredOn', toolsStatus: 'toolsOk' }))
+      .toEqual(expect.arrayContaining(['shutdown', 'reboot', 'forceShutdown', 'forceReboot']));
+    expect(vsphere._internals._allowedVmActions({ powerState: 'poweredOn', toolsStatus: 'toolsNotRunning' }))
+      .toEqual(['forceShutdown', 'forceReboot']);
   });
 
   it('distinguishes vCenter, ESXi and unknown products', () => {
@@ -53,7 +65,9 @@ describe('Provider SDK adapters', () => {
     const pveDestroy = jest.fn();
     const pveList = jest.fn().mockResolvedValue([{ id: 1 }]);
     proxmoxService.fromHostRow.mockReturnValue({ listVMs: pveList, _agent: { destroy: pveDestroy } });
-    await expect(proxmox.listResources('virtualMachine', {})).resolves.toEqual([{ id: 1 }]);
+    await expect(proxmox.listResources('virtualMachine', {})).resolves.toEqual([
+      { id: 1, allowedActions: [] },
+    ]);
     expect(pveDestroy).toHaveBeenCalled();
 
     const logout = jest.fn().mockResolvedValue(undefined);

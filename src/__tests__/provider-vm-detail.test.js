@@ -68,6 +68,16 @@ describe('common provider VM detail', () => {
     ]));
   });
 
+  it('enables only state-valid power actions after the release gate is enabled', async () => {
+    const deps = dependencies();
+    deps.powerEnabled = true;
+    const result = await vmDetail.detailForHost(host, VM_ID, deps);
+    expect(result.actions.find(action => action.action === 'shutdown').available).toBe(true);
+    expect(result.actions.find(action => action.action === 'reboot').available).toBe(true);
+    expect(result.actions.find(action => action.action === 'start').available).toBe(false);
+    expect(result.actions.find(action => action.action === 'forceShutdown').available).toBe(false);
+  });
+
   it('keeps a cached resource when an explicit refresh fails', async () => {
     const cached = resource({ observedAt: new Date(Date.now() - 300_000).toISOString() });
     const deps = dependencies(cached);

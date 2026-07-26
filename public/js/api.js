@@ -559,6 +559,22 @@ const Api = {
   getProviderVMDetail(hostId, resourceId, refresh = false) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
   },
+  preflightProviderVMPower(hostId, resourceId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power/preflight`, { action });
+  },
+  submitProviderVMPower(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  preflightProviderVMPowerBulk(hostId, resourceIds, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/power/preflight`, { resourceIds, action });
+  },
+  submitProviderVMPowerBulk(hostId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/power`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   getProviderOperations(filters = {}) {
     const qs = new URLSearchParams();
     if (filters.limit) qs.set('limit', filters.limit);

@@ -247,4 +247,52 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       await expect(c.login()).rejects.toThrow(/incorrect user name or password/i);
     });
   });
+
+  describe('VM power operations', () => {
+    it('submits a task-backed power action using the VM MoRef', async () => {
+      let requestBody = '';
+      mockHttps._mockNext((_opts, cb, req) => {
+        requestBody = req._writtenBody.toString('utf8');
+        const res = fakeResponse({
+          status: 200,
+          body: '<soap:Envelope><soap:Body><PowerOnVM_TaskResponse><returnval type="Task">haTask-42</returnval></PowerOnVM_TaskResponse></soap:Body></soap:Envelope>',
+        });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.vmPowerAction('42-vm', 'start')).resolves.toEqual({
+        taskRef: 'haTask-42', provider: 'vsphere',
+      });
+      expect(requestBody).toContain('<PowerOnVM_Task xmlns="urn:vim25">');
+      expect(requestBody).toContain('<_this type="VirtualMachine">42-vm</_this>');
+    });
+
+    it('uses synchronous guest operations without inventing a task', async () => {
+      let requestBody = '';
+      mockHttps._mockNext((_opts, cb, req) => {
+        requestBody = req._writtenBody.toString('utf8');
+        const res = fakeResponse({ status: 200, body: '<soap:Envelope><soap:Body><ShutdownGuestResponse/></soap:Body></soap:Envelope>' });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.vmPowerAction('vm-9', 'shutdown')).resolves.toEqual({ taskRef: null, provider: 'vsphere' });
+      expect(requestBody).toContain('<ShutdownGuest xmlns="urn:vim25">');
+    });
+
+    it('reads native task state and progress through the property collector', async () => {
+      mockHttps._mockNext((_opts, cb, _req) => {
+        const res = fakeResponse({ status: 200, body: `<soap:Envelope><soap:Body><RetrievePropertiesExResponse><returnval><objects>
+          <obj type="Task">haTask-42</obj>
+          <propSet><name>info.state</name><val>success</val></propSet>
+          <propSet><name>info.progress</name><val>100</val></propSet>
+        </objects></returnval></RetrievePropertiesExResponse></soap:Body></soap:Envelope>` });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.getTaskStatus('haTask-42')).resolves.toEqual({ status: 'success', progress: 100, error: null });
+    });
+  });
 });
