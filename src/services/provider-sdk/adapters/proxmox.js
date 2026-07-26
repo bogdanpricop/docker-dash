@@ -17,6 +17,10 @@ function declared() {
     'inventory.storage': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
+    'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
+    'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
+    'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
+    'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template is revalidated against node and storage placement', { fromTemplate: true, durableTask: true, confirmation: true }),
     'vm.guestCustomize': conditional('Cloud-Init settings require a compatible QEMU template and are verified on the cloned VM config', {
@@ -79,6 +83,22 @@ async function listResources(kind, host) {
   }
 }
 
+async function readVmHardware(host, context) {
+  const client = fromHostRow(host);
+  try {
+    const match = /^(qemu|lxc)\/(\d+)$/.exec(String(context.identity.nativeRef || ''));
+    const vmid = match ? Number(match[2]) : Number(context.identity.nativeRef);
+    const guestType = match?.[1] || 'qemu';
+    let node = context.resource?.extensions?.node || null;
+    if (!node) {
+      const row = (await client.listVMs()).find(item => Number(item.vmid) === vmid
+        && String(item.type || 'qemu') === guestType);
+      node = row?.node || null;
+    }
+    return await client.getVmHardware(node, guestType, vmid);
+  } finally { client._agent?.destroy?.(); }
+}
+
 function _allowedVmActions(row) {
   const state = String(row?.status || row?.powerState || '').toLowerCase();
   if (['stopped', 'halted', 'poweredoff'].includes(state)) return ['start'];
@@ -94,4 +114,4 @@ function _allowedSnapshotActions(row) {
     ? ['snapshot'] : [];
 }
 
-module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, _internals: { _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'proxmox', declared, probe, listResources, listArtifacts, readVmHardware, _internals: { _allowedVmActions, _allowedSnapshotActions } };

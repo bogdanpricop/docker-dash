@@ -9,6 +9,8 @@ const { normalizeResource, RESOURCE_SCHEMA_VERSION, MAX_INVENTORY_BYTES } = requ
 const resourceSnapshots = require('./resource-snapshots');
 const providerResilience = require('../provider-conformance/resilience');
 const artifactCatalog = require('./artifact-catalog');
+const identityStore = require('./identity-store');
+const { normalizeVmHardware } = require('./vm-hardware');
 
 const adapters = new Map();
 const cache = new Map();
@@ -286,6 +288,47 @@ async function artifactsForHost(host, options = {}) {
   return envelope;
 }
 
+async function vmHardwareForHost(host, resource, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id)) || resource?.kind !== 'virtualMachine'
+    || resource?.provider?.endpointId !== Number(host.id)) {
+    throw new ProviderAdapterError('Valid host-scoped virtual machine required', 'INVALID_PROVIDER_RESOURCE', 400);
+  }
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = options.capabilities || await capabilitiesForHost(host);
+  const readable = ['vm.disk.read', 'vm.nic.read'].some(key =>
+    ['supported', 'conditional'].includes(capabilities.features?.[key]?.state));
+  if (!readable || typeof adapter.readVmHardware !== 'function') {
+    throw new ProviderAdapterError('VM device inventory is unavailable for this provider', 'PROVIDER_VM_HARDWARE_UNAVAILABLE', 400);
+  }
+  const database = options.database || getDb();
+  const identity = identityStore.resolveCanonical(resource.id, {
+    hostId: Number(host.id), kind: 'virtualMachine',
+  }, database);
+  if (!identity || identity.providerType !== host.daemon_type) {
+    throw new ProviderAdapterError('Virtual machine identity was not found', 'PROVIDER_VM_NOT_FOUND', 404);
+  }
+  let raw;
+  try {
+    raw = await providerResilience.run(Number(host.id), () => adapter.readVmHardware(host, {
+      identity, resource, capabilities,
+    }), { operation: 'inventory.vmHardware' });
+  } catch (err) {
+    log.warn('Provider VM hardware read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider VM hardware inventory could not be read', 'PROVIDER_VM_HARDWARE_READ_FAILED', 502);
+  }
+  try {
+    return normalizeVmHardware({ host, providerType: adapter.type, resource, raw });
+  } catch (err) {
+    log.error('Provider VM hardware normalization failed', {
+      hostId: Number(host.id), provider: adapter.type, error: err?.name || 'Error',
+    });
+    throw new ProviderAdapterError('Provider VM hardware inventory could not be normalized', 'VM_HARDWARE_NORMALIZATION_FAILED', 500);
+  }
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -314,6 +357,7 @@ module.exports = {
   capabilitiesForHost,
   resourcesForHost,
   artifactsForHost,
+  vmHardwareForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError, _retrySqliteBusy,

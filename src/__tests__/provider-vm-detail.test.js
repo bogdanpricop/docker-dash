@@ -68,6 +68,32 @@ describe('common provider VM detail', () => {
     ]));
   });
 
+  it('mounts live disk and NIC inventory without exposing provider references', async () => {
+    const deps = dependencies();
+    deps.registry.vmHardwareForHost = jest.fn(async () => ({
+      summary: { diskCount: 1, nicCount: 1, totalDiskCapacityBytes: 1024 },
+      disks: [{ id: `ddh_disk_${'a'.repeat(26)}`, label: 'root' }],
+      nics: [{ id: `ddh_nic_${'b'.repeat(26)}`, label: 'LAN' }],
+      sections: {
+        disks: { available: true, warnings: [], truncated: false },
+        network: { available: true, warnings: [], truncated: false },
+      },
+    }));
+    const result = await vmDetail.detailForHost(host, VM_ID, deps);
+    expect(result.sections.disks).toEqual(expect.objectContaining({ available: true, items: [expect.objectContaining({ label: 'root' })] }));
+    expect(result.sections.network).toEqual(expect.objectContaining({ available: true, items: [expect.objectContaining({ label: 'LAN' })] }));
+    expect(deps.registry.vmHardwareForHost).toHaveBeenCalledWith(host, expect.objectContaining({ id: VM_ID }), expect.objectContaining({ database: {} }));
+  });
+
+  it('keeps the rest of VM detail available when live hardware inventory fails', async () => {
+    const deps = dependencies();
+    deps.registry.vmHardwareForHost = jest.fn(async () => { throw Object.assign(new Error('provider secret'), { code: 'PROVIDER_VM_HARDWARE_READ_FAILED' }); });
+    const result = await vmDetail.detailForHost(host, VM_ID, deps);
+    expect(result.sections.overview.available).toBe(true);
+    expect(result.sections.disks).toEqual(expect.objectContaining({ available: false, reason: expect.stringContaining('could not be read') }));
+    expect(JSON.stringify(result)).not.toContain('provider secret');
+  });
+
   it('enables only state-valid power actions after the release gate is enabled', async () => {
     const deps = dependencies();
     deps.powerEnabled = true;

@@ -18,6 +18,10 @@ function declared() {
     'inventory.network': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
+    'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
+    'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
+    'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
+    'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template uses CloneVM_Task with live placement revalidation', { fromTemplate: true, durableTask: true, confirmation: true }),
     'vm.guestCustomize': conditional('LinuxPrep is checked against the source template before CloneVM_Task and applies on first boot', {
@@ -95,6 +99,17 @@ async function listResources(kind, host) {
   }
 }
 
+async function readVmHardware(host, context) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    return await client.getVmHardware(context.identity.nativeRef);
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort session cleanup */ }
+    client._agent?.destroy?.();
+  }
+}
+
 function _allowedVmActions(row) {
   const state = String(row?.powerState || '').toLowerCase();
   if (state === 'poweredoff') return ['start'];
@@ -115,4 +130,4 @@ function _allowedSnapshotActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

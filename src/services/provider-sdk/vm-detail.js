@@ -99,7 +99,7 @@ function _section(available, options = {}) {
   return section;
 }
 
-function _sections(resource, capabilities, activity, vmSnapshots = []) {
+function _sections(resource, capabilities, activity, vmSnapshots = [], vmHardware = null, hardwareError = null) {
   const labels = resource.labels || {};
   const snapshotEvidence = capabilities?.features?.['vm.snapshot.list'];
   const eventEvidence = capabilities?.features?.['event.stream'];
@@ -127,8 +127,24 @@ function _sections(resource, capabilities, activity, vmSnapshots = []) {
       toolsStatus: resource.extensions?.toolsStatus || null,
       toolsVersion: resource.extensions?.toolsVersion || null,
     } }),
-    disks: _section(false, { reason: 'Portable disk detail is not implemented by the common provider adapter', items: [] }),
-    network: _section(false, { reason: 'Portable NIC detail is not implemented by the common provider adapter', items: [] }),
+    disks: _section(vmHardware?.sections?.disks?.available === true, {
+      capability: 'vm.disk.read',
+      reason: hardwareError || vmHardware?.sections?.disks?.reason
+        || capabilities?.features?.['vm.disk.read']?.reason || 'Portable disk detail is unavailable',
+      items: vmHardware?.disks || [], data: vmHardware ? {
+        ...vmHardware.summary, warnings: vmHardware.sections?.disks?.warnings || [],
+        truncated: vmHardware.sections?.disks?.truncated === true,
+      } : null,
+    }),
+    network: _section(vmHardware?.sections?.network?.available === true, {
+      capability: 'vm.nic.read',
+      reason: hardwareError || vmHardware?.sections?.network?.reason
+        || capabilities?.features?.['vm.nic.read']?.reason || 'Portable NIC detail is unavailable',
+      items: vmHardware?.nics || [], data: vmHardware ? {
+        ...vmHardware.summary, warnings: vmHardware.sections?.network?.warnings || [],
+        truncated: vmHardware.sections?.network?.truncated === true,
+      } : null,
+    }),
     snapshots: _section(snapshotEvidence && ['supported', 'conditional'].includes(snapshotEvidence.state), {
       capability: 'vm.snapshot.list',
       reason: snapshotEvidence?.reason || 'Portable snapshot detail is not implemented by the common provider adapter',
@@ -198,12 +214,20 @@ async function detailForHost(host, canonicalId, options = {}) {
   let vmSnapshots = [];
   try { vmSnapshots = vmSnapshotStore.list(Number(host.id), id, database).slice(0, 128); }
   catch { /* migration-safe empty snapshot section */ }
+  let vmHardware = null;
+  let hardwareError = null;
+  try {
+    vmHardware = await registry.vmHardwareForHost(host, resource, { database, capabilities });
+  } catch (err) {
+    hardwareError = ['PROVIDER_VM_HARDWARE_UNAVAILABLE'].includes(err?.code)
+      ? null : 'Live device inventory could not be read; other VM detail remains available';
+  }
 
   const envelope = {
     schemaVersion: DETAIL_SCHEMA_VERSION,
     resource, capabilities, freshness: _freshness(resource, refreshError),
     actions: _actions(resource, capabilities, policy, options.canOperate === true, options.powerEnabled),
-    sections: _sections(resource, capabilities, activity, vmSnapshots),
+    sections: _sections(resource, capabilities, activity, vmSnapshots, vmHardware, hardwareError),
     activity,
   };
   if (Buffer.byteLength(JSON.stringify(envelope)) > MAX_DETAIL_BYTES) {

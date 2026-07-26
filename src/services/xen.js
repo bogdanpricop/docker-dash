@@ -161,6 +161,31 @@ function _refId(value) {
   return String(value);
 }
 
+function _relationIds(value) {
+  const rows = Array.isArray(value) ? value : (value && typeof value === 'object' ? Object.values(value) : (value ? [value] : []));
+  return [...new Set(rows.map(_idFrom).filter(Boolean))];
+}
+
+function _hasOperation(value, names) {
+  if (!Array.isArray(value) && (!value || typeof value !== 'object')) return null;
+  const operations = new Set(Array.isArray(value) ? value : Object.keys(value || {}));
+  return names.some(name => operations.has(name));
+}
+
+async function _mapLimit(values, limit, mapper) {
+  const input = Array.isArray(values) ? values : [];
+  const output = new Array(input.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < input.length) {
+      const index = cursor++;
+      output[index] = await mapper(input[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), input.length) }, worker));
+  return output;
+}
+
 const VM_ACTION_ALIASES = {
   start: 'start', clean_shutdown: 'shutdown', hard_shutdown: 'forceShutdown',
   clean_reboot: 'reboot', hard_reboot: 'forceReboot', suspend: 'suspend',
@@ -241,6 +266,7 @@ class XenOrchestraClient {
       snapshots: true, snapshotQuiesce: false, backups: false, console: !!this._config.token,
       provisioning: this._restFeatures.provisioning,
       guestCustomization: this._restFeatures.guestCustomization,
+      hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -279,6 +305,91 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
+  }
+
+  async _resource(collection, id, fields) {
+    const query = fields?.length ? `?fields=${encodeURIComponent(fields.join(','))}` : '';
+    return this._request('GET', `/rest/v0/${collection}/${encodeURIComponent(id)}${query}`);
+  }
+
+  async getVmHardware(vmId) {
+    const id = String(vmId || '');
+    if (!/^[A-Za-z0-9._:-]{1,200}$/.test(id)) {
+      throw new XenError('Invalid Xen Orchestra VM hardware target', { code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'xo' });
+    }
+    const vm = await this._resource('vms', id, ['$VBDs', '$VIFs', 'VBDs', 'VIFs']);
+    const vbdIds = _relationIds(vm?.$VBDs || vm?.VBDs).slice(0, 128);
+    const vifIds = _relationIds(vm?.$VIFs || vm?.VIFs).slice(0, 64);
+    const diskWarnings = [];
+    const nicWarnings = [];
+    const disks = (await _mapLimit(vbdIds, 8, async vbdId => {
+      try {
+        const vbd = await this._resource('vbds', vbdId, [
+          'id', 'uuid', 'userdevice', 'device', 'type', 'mode', 'currently_attached', 'bootable',
+          'unpluggable', 'empty', 'allowed_operations', '$VDI', 'VDI',
+        ]);
+        const vdiId = _idFrom(vbd?.$VDI || vbd?.VDI);
+        const vdi = vdiId ? await this._resource('vdis', vdiId, [
+          'id', 'uuid', 'name_label', 'virtual_size', 'physical_utilisation', 'type',
+          'read_only', 'sharable', 'allowed_operations', '$SR', 'SR', 'sm_config',
+        ]).catch(() => null) : null;
+        const srId = _idFrom(vdi?.$SR || vdi?.SR);
+        const sr = srId ? await this._resource('srs', srId, ['id', 'uuid', 'name_label', 'type', 'shared']).catch(() => null) : null;
+        const allowed = vbd?.allowed_operations;
+        return {
+          nativeRef: vbdId, label: vdi?.name_label || vbd?.device || `Disk ${vbd?.userdevice || ''}`.trim(),
+          type: String(vbd?.type || '').toLowerCase() === 'cd' ? 'cdrom' : 'disk',
+          device: vbd?.device || null, bus: 'xen-vbd', unit: vbd?.userdevice,
+          capacityBytes: vdi?.virtual_size, allocatedBytes: vdi?.physical_utilisation,
+          provisioning: vdi?.sm_config?.allocation === 'thin' ? 'thin' : 'unknown',
+          backing: { type: vdi?.type || sr?.type || null, storageId: srId, storageName: sr?.name_label || null, path: null },
+          attachment: {
+            connected: vbd?.currently_attached, startConnected: vbd?.empty === false,
+            bootable: vbd?.bootable, readOnly: vbd?.mode === 'RO' || vdi?.read_only, shared: vdi?.sharable,
+          },
+          capabilities: {
+            hotPlug: _hasOperation(allowed, ['plug']),
+            hotUnplug: vbd?.unpluggable === false ? false : (vbd?.unpluggable === true ? _hasOperation(allowed, ['unplug']) : null),
+            onlineResize: _hasOperation(vdi?.allowed_operations, ['resize_online']),
+          }, status: vbd?.currently_attached === false ? 'disconnected' : 'configured',
+        };
+      } catch { diskWarnings.push(`VBD ${vbdId} could not be read`); return null; }
+    })).filter(Boolean);
+    const nics = (await _mapLimit(vifIds, 8, async vifId => {
+      try {
+        const vif = await this._resource('vifs', vifId, [
+          'id', 'uuid', 'device', 'MAC', 'MTU', 'currently_attached', 'allowed_operations',
+          'locking_mode', 'ipv4_addresses', 'ipv6_addresses', 'ipv4_allowed', 'ipv6_allowed',
+          'qos_algorithm_params', '$network', 'network',
+        ]);
+        const networkId = _idFrom(vif?.$network || vif?.network);
+        const network = networkId ? await this._resource('networks', networkId,
+          ['id', 'uuid', 'name_label', 'bridge', 'MTU']).catch(() => null) : null;
+        const addresses = [...(vif?.ipv4_addresses || []), ...(vif?.ipv6_addresses || [])]
+          .map(address => ({ address, source: 'provider' }));
+        return {
+          nativeRef: vifId, label: `NIC ${vif?.device ?? ''}`.trim(), device: vif?.device,
+          model: 'Xen paravirtualized', macAddress: vif?.MAC,
+          network: { id: networkId, name: network?.name_label || null, bridge: network?.bridge || null },
+          addresses, mtu: vif?.MTU || network?.MTU,
+          attachment: { connected: vif?.currently_attached, startConnected: true },
+          security: { lockingMode: vif?.locking_mode || null },
+          qos: { rateLimitMbps: vif?.qos_algorithm_params?.kbps ? Number(vif.qos_algorithm_params.kbps) / 1000 : null },
+          capabilities: {
+            hotPlug: _hasOperation(vif?.allowed_operations, ['plug']),
+            hotUnplug: _hasOperation(vif?.allowed_operations, ['unplug']),
+            connectDisconnect: _hasOperation(vif?.allowed_operations, ['plug', 'unplug']),
+          }, status: vif?.currently_attached === false ? 'disconnected' : 'configured',
+        };
+      } catch { nicWarnings.push(`VIF ${vifId} could not be read`); return null; }
+    })).filter(Boolean);
+    return {
+      disks, nics, diskAvailable: vbdIds.length === 0 || disks.length > 0,
+      nicAvailable: vifIds.length === 0 || nics.length > 0,
+      diskReason: vbdIds.length && !disks.length ? 'Xen Orchestra VBD relations could not be read' : null,
+      nicReason: vifIds.length && !nics.length ? 'Xen Orchestra VIF relations could not be read' : null,
+      diskWarnings, nicWarnings,
+    };
   }
 
   vmConsoleProxy(vmId) {
@@ -700,6 +811,7 @@ class XapiClient {
       networks: true, tasks: true, events: false, powerActions: true,
       snapshots: true, snapshotQuiesce: true, backups: false, console: true, provisioning: true,
       protocol: this._activeProtocol || this._protocol,
+      hardwareDetails: true, diskHotplug: true, nicHotplug: true,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -734,6 +846,66 @@ class XapiClient {
       currentOperations: v.current_operations || {}, provider: 'xapi',
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
     }));
+  }
+
+  async getVmHardware(vmId) {
+    const vmRef = String(vmId || '').startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
+    const vm = await this._call('VM.get_record', [vmRef]);
+    let guestNetworks = {};
+    if (_refId(vm.guest_metrics)) {
+      try { guestNetworks = (await this._call('VM_guest_metrics.get_record', [vm.guest_metrics]))?.networks || {}; }
+      catch { /* guest metrics are optional */ }
+    }
+    const disks = (await _mapLimit((vm.VBDs || []).slice(0, 128), 8, async vbdRef => {
+      const vbd = await this._call('VBD.get_record', [vbdRef]);
+      let vdi = null; let sr = null;
+      if (_refId(vbd.VDI)) {
+        vdi = await this._call('VDI.get_record', [vbd.VDI]).catch(() => null);
+        if (_refId(vdi?.SR)) sr = await this._call('SR.get_record', [vdi.SR]).catch(() => null);
+      }
+      const allowed = vbd.allowed_operations;
+      const vdiAllowed = vdi?.allowed_operations;
+      return {
+        nativeRef: vbdRef, label: vdi?.name_label || vbd.device || `Disk ${vbd.userdevice || ''}`.trim(),
+        type: String(vbd.type || '').toLowerCase() === 'cd' ? 'cdrom' : 'disk',
+        device: vbd.device || null, bus: 'xen-vbd', unit: vbd.userdevice,
+        capacityBytes: vdi?.virtual_size, allocatedBytes: vdi?.physical_utilisation,
+        provisioning: vdi?.sm_config?.allocation === 'thin' || vdi?.sm_config?.['vhd-parent'] ? 'thin' : 'unknown',
+        backing: { type: vdi?.type || sr?.type || null, storageId: sr?.uuid || null, storageName: sr?.name_label || null },
+        attachment: {
+          connected: vbd.currently_attached, startConnected: vbd.empty === false,
+          bootable: vbd.bootable, readOnly: vbd.mode === 'RO' || vdi?.read_only, shared: vdi?.sharable,
+        },
+        capabilities: {
+          hotPlug: _hasOperation(allowed, ['plug']),
+          hotUnplug: vbd.unpluggable === false ? false : (vbd.unpluggable === true ? _hasOperation(allowed, ['unplug']) : null),
+          onlineResize: _hasOperation(vdiAllowed, ['resize_online']),
+        }, status: vbd.currently_attached === false ? 'disconnected' : 'configured',
+      };
+    })).filter(Boolean);
+    const nics = (await _mapLimit((vm.VIFs || []).slice(0, 64), 8, async vifRef => {
+      const vif = await this._call('VIF.get_record', [vifRef]);
+      const network = _refId(vif.network) ? await this._call('network.get_record', [vif.network]).catch(() => null) : null;
+      const prefix = `${vif.device}/`;
+      const addresses = Object.entries(guestNetworks).filter(([key]) => key.startsWith(prefix) && /ip/i.test(key))
+        .flatMap(([, value]) => Array.isArray(value) ? value : [value])
+        .map(address => ({ address, source: 'xapi-guest-metrics' }));
+      return {
+        nativeRef: vifRef, label: `NIC ${vif.device ?? ''}`.trim(), device: vif.device,
+        model: 'Xen paravirtualized', macAddress: vif.MAC,
+        network: { id: network?.uuid || null, name: network?.name_label || null, bridge: network?.bridge || null },
+        addresses, mtu: vif.MTU || network?.MTU,
+        attachment: { connected: vif.currently_attached, startConnected: true },
+        security: { lockingMode: vif.locking_mode || null },
+        qos: { rateLimitMbps: vif.qos_algorithm_params?.kbps ? Number(vif.qos_algorithm_params.kbps) / 1000 : null },
+        capabilities: {
+          hotPlug: _hasOperation(vif.allowed_operations, ['plug']),
+          hotUnplug: _hasOperation(vif.allowed_operations, ['unplug']),
+          connectDisconnect: _hasOperation(vif.allowed_operations, ['plug', 'unplug']),
+        }, status: vif.currently_attached === false ? 'disconnected' : 'configured',
+      };
+    })).filter(Boolean);
+    return { disks, nics, diskAvailable: true, nicAvailable: true };
   }
 
   async getVmConsole(vmRef) {
@@ -984,6 +1156,7 @@ class XenRawClient {
       networks: false, tasks: false, events: false, powerActions: true,
       snapshots: false, snapshotQuiesce: false, backups: false, console: true, provisioning: false,
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
+      hardwareDetails: true, diskHotplug: false, nicHotplug: false,
       legacyXend: this._toolstack === 'xm',
       vmActions: this._toolstack === 'xm'
         ? ['shutdown', 'forceShutdown', 'reboot', 'pause', 'unpause']
@@ -1120,6 +1293,39 @@ class XenRawClient {
       if (err.code !== 'XL_COMMAND_FAILED' && !(err instanceof SyntaxError)) throw err;
       return this._parseTableList((await this._tool('list')).stdout);
     }
+  }
+
+  async getVmHardware(nativeRef) {
+    const target = String(nativeRef || '');
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(target) || target === '0' || /^Domain-0$/i.test(target)) {
+      throw new XenError('Invalid raw Xen VM hardware target', { code: 'INVALID_PROVIDER_RESOURCE', status: 400, provider: 'raw' });
+    }
+    const diskWarnings = ['Standalone Xen reports runtime block topology only; capacity and persistent backing may be unavailable'];
+    const nicWarnings = ['Standalone Xen reports runtime network topology only; persistent network policy is unavailable'];
+    let diskOutput = ''; let nicOutput = '';
+    try { diskOutput = (await this._tool(`block-list ${_shellQuote(target)}`)).stdout; }
+    catch { diskWarnings.push('Runtime block-list could not be read'); }
+    try { nicOutput = (await this._tool(`network-list ${_shellQuote(target)}`)).stdout; }
+    catch { nicWarnings.push('Runtime network-list could not be read'); }
+    const diskLines = diskOutput.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(1, 129);
+    const nicLines = nicOutput.split(/\r?\n/).map(line => line.trim()).filter(Boolean).slice(1, 65);
+    const disks = diskLines.map(line => line.split(/\s+/)).filter(cols => cols.length >= 2).map(cols => ({
+      nativeRef: cols[0], label: cols[0], type: 'disk', device: cols[0], bus: 'xen-vbd',
+      backing: { type: 'xen-backend', path: cols[cols.length - 1] },
+      attachment: { connected: true, startConnected: null },
+      capabilities: { hotPlug: false, hotUnplug: false, onlineResize: false },
+      status: cols[3] || 'attached',
+    }));
+    const nics = nicLines.map(line => line.split(/\s+/)).filter(cols => cols.length >= 3).map(cols => ({
+      nativeRef: cols[0], label: `NIC ${cols[0]}`, device: cols[0], model: 'Xen virtual interface', macAddress: cols[2],
+      network: { bridge: null }, attachment: { connected: true, startConnected: null },
+      capabilities: { hotPlug: false, hotUnplug: false, connectDisconnect: false }, status: cols[5] || 'attached',
+    }));
+    return {
+      disks, nics, diskAvailable: !!diskOutput, nicAvailable: !!nicOutput,
+      diskReason: diskOutput ? null : 'Runtime block topology is unavailable',
+      nicReason: nicOutput ? null : 'Runtime network topology is unavailable', diskWarnings, nicWarnings,
+    };
   }
 
   async openConsole(nativeRef) {

@@ -40,6 +40,126 @@ const log = require('../utils/logger')('proxmox');
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
+function _parseSizeBytes(value) {
+  const match = /^([0-9]+(?:\.[0-9]+)?)([KMGTPE]?)$/i.exec(String(value || '').trim());
+  if (!match) return null;
+  const power = ['', 'K', 'M', 'G', 'T', 'P', 'E'].indexOf(match[2].toUpperCase());
+  const bytes = Number(match[1]) * (power < 0 ? 1 : 1024 ** power);
+  return Number.isSafeInteger(Math.round(bytes)) ? Math.round(bytes) : null;
+}
+
+function _configParts(value) {
+  const parts = String(value || '').split(',');
+  const options = {};
+  for (const part of parts.slice(1)) {
+    const at = part.indexOf('=');
+    if (at > 0) options[part.slice(0, at)] = part.slice(at + 1);
+  }
+  return { source: parts[0] || '', options };
+}
+
+function _flag(value) {
+  if (value === undefined || value === null || value === '') return null;
+  return !['0', 'false', 'off', 'no'].includes(String(value).toLowerCase());
+}
+
+function _proxmoxHotplug(config, device) {
+  if (config.hotplug === undefined) return null;
+  return String(config.hotplug).split(/[;,]/).includes(device);
+}
+
+function _storageBacking(source) {
+  const match = /^([^:]+):(.+)$/.exec(String(source || ''));
+  return {
+    type: match ? 'storage-volume' : 'host-path',
+    storageId: match?.[1] || null, storageName: match?.[1] || null,
+    path: match?.[2] || source || null,
+  };
+}
+
+function _parseProxmoxHardware(config = {}, guestType = 'qemu', agentInterfaces = []) {
+  const disks = [];
+  const nics = [];
+  const agentByMac = new Map((Array.isArray(agentInterfaces) ? agentInterfaces : []).map(item => [
+    String(item?.['hardware-address'] || item?.hardwareAddress || '').toUpperCase(), item,
+  ]));
+  if (guestType === 'qemu') {
+    for (const [device, value] of Object.entries(config)) {
+      const diskMatch = /^(ide|sata|scsi|virtio)(\d+)$/.exec(device);
+      if (diskMatch && typeof value === 'string') {
+        const { source, options } = _configParts(value);
+        const cdrom = options.media === 'cdrom' || source === 'cdrom';
+        disks.push({
+          nativeRef: device, label: device, type: cdrom ? 'cdrom' : 'disk', device,
+          bus: diskMatch[1], unit: Number(diskMatch[2]), capacityBytes: _parseSizeBytes(options.size),
+          provisioning: options.preallocation === 'full' ? 'thick' : (options.preallocation ? 'unknown' : 'thin'),
+          format: options.format || null, backing: _storageBacking(source),
+          attachment: { connected: source !== 'none', startConnected: true, bootable: null, readOnly: cdrom, shared: _flag(options.shared) },
+          capabilities: {
+            hotPlug: _proxmoxHotplug(config, 'disk'), hotUnplug: _proxmoxHotplug(config, 'disk'),
+            onlineResize: cdrom ? false : null,
+          }, status: source === 'none' ? 'disconnected' : 'configured',
+        });
+      }
+      const nicMatch = /^net(\d+)$/.exec(device);
+      if (nicMatch && typeof value === 'string') {
+        const { source, options } = _configParts(value);
+        const modelMatch = /^([^=]+)=([0-9A-Fa-f:.-]+)$/.exec(source);
+        const macAddress = modelMatch?.[2] || options.hwaddr || null;
+        const agent = agentByMac.get(String(macAddress || '').toUpperCase());
+        nics.push({
+          nativeRef: device, label: device, device, model: modelMatch?.[1] || null, macAddress,
+          network: { id: options.bridge || null, name: options.bridge || null, bridge: options.bridge || null, vlanId: options.tag },
+          addresses: (agent?.['ip-addresses'] || []).map(address => ({
+            address: address?.['ip-address'], prefixLength: address?.prefix, source: 'guest-agent',
+          })),
+          mtu: options.mtu, attachment: { connected: !_flag(options.link_down), startConnected: !_flag(options.link_down) },
+          security: { firewall: _flag(options.firewall) }, qos: { rateLimitMbps: options.rate },
+          capabilities: {
+            hotPlug: _proxmoxHotplug(config, 'network'), hotUnplug: _proxmoxHotplug(config, 'network'), connectDisconnect: true,
+          }, status: _flag(options.link_down) ? 'disconnected' : 'configured',
+        });
+      }
+    }
+  } else {
+    for (const [device, value] of Object.entries(config)) {
+      const diskMatch = /^(rootfs|mp(\d+))$/.exec(device);
+      if (diskMatch && typeof value === 'string') {
+        const { source, options } = _configParts(value);
+        disks.push({
+          nativeRef: device, label: device, type: device === 'rootfs' ? 'rootfs' : 'mount', device,
+          bus: 'lxc-mount', unit: diskMatch[2] === undefined ? 0 : Number(diskMatch[2]) + 1,
+          capacityBytes: _parseSizeBytes(options.size), provisioning: 'unknown', backing: _storageBacking(source),
+          attachment: { connected: true, startConnected: true, bootable: device === 'rootfs', readOnly: _flag(options.ro) },
+          capabilities: { hotPlug: null, hotUnplug: null, onlineResize: null }, status: 'configured',
+        });
+      }
+      const nicMatch = /^net(\d+)$/.exec(device);
+      if (nicMatch && typeof value === 'string') {
+        const { source, options } = _configParts(value);
+        const firstAt = source.indexOf('=');
+        if (firstAt > 0) options[source.slice(0, firstAt)] = source.slice(firstAt + 1);
+        const addresses = [];
+        for (const ip of [options.ip, options.ip6]) {
+          if (!ip || ['dhcp', 'auto', 'manual'].includes(String(ip).toLowerCase())) continue;
+          const [address, prefixLength] = String(ip).split('/');
+          addresses.push({ address, prefixLength, source: 'configuration' });
+        }
+        nics.push({
+          nativeRef: device, label: options.name || device, device: options.name || device,
+          model: options.type || 'veth', macAddress: options.hwaddr,
+          network: { id: options.bridge || null, name: options.bridge || null, bridge: options.bridge || null, vlanId: options.tag },
+          addresses, mtu: options.mtu, attachment: { connected: !_flag(options.link_down), startConnected: !_flag(options.link_down) },
+          security: { firewall: _flag(options.firewall) }, qos: { rateLimitMbps: options.rate },
+          capabilities: { hotPlug: null, hotUnplug: null, connectDisconnect: null },
+          status: _flag(options.link_down) ? 'disconnected' : 'configured',
+        });
+      }
+    }
+  }
+  return { disks, nics, diskAvailable: true, nicAvailable: true };
+}
+
 class ProxmoxClient {
   constructor(config) {
     if (!config || typeof config !== 'object') {
@@ -168,6 +288,27 @@ class ProxmoxClient {
   /** List all VMs across the cluster (via /cluster/resources?type=vm). */
   async listVMs() {
     return (await this._request('GET', '/api2/json/cluster/resources?type=vm')) || [];
+  }
+
+  async getVmHardware(node, guestType, vmid) {
+    const safeNode = String(node || '');
+    const type = String(guestType || '');
+    const id = Number(vmid);
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode) || !['qemu', 'lxc'].includes(type)
+      || !Number.isSafeInteger(id) || id <= 0) {
+      throw Object.assign(new Error('Invalid Proxmox VM hardware target'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const config = await this._request('GET',
+      `/api2/json/nodes/${encodeURIComponent(safeNode)}/${type}/${id}/config`);
+    let interfaces = [];
+    if (type === 'qemu' && config?.agent && !/^0(?:,|$)/.test(String(config.agent))) {
+      try {
+        const result = await this._request('GET',
+          `/api2/json/nodes/${encodeURIComponent(safeNode)}/qemu/${id}/agent/network-get-interfaces`);
+        interfaces = result?.result || result || [];
+      } catch { /* guest-agent networking is optional */ }
+    }
+    return _parseProxmoxHardware(config || {}, type, interfaces);
   }
 
   /**
@@ -509,7 +650,7 @@ module.exports = {
   fromHostRow,
   decryptDaemonConfig,
   encryptDaemonConfig,
-  _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
+  _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES, _parseSizeBytes, _configParts, _parseProxmoxHardware },
 };
 
 // Silence unused-log warning; log is retained for the write-path

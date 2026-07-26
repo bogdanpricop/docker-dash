@@ -507,6 +507,44 @@ const VirtualMachinesPage = {
         <td><a href="#/activity/${item.id}"><code>${Utils.escapeHtml(item.id)}</code></a></td><td>${Utils.escapeHtml(item.action || item.type || '—')}</td>
         <td><span class="badge ${Utils.statusBadgeClass(item.state)}">${Utils.escapeHtml(item.state)}</span></td><td>${item.progress ?? 0}%</td><td>${Utils.escapeHtml(Utils.timeAgo(item.updatedAt))}</td></tr>`).join('')}</tbody></table></div>`
       : (section.available ? '<div class="empty-msg"><i class="fas fa-check-circle"></i>No activity recorded for this VM.</div>' : unavailable(section));
+    const evidence = value => value === true ? 'Supported' : value === false ? 'Unsupported' : 'Unknown';
+    const sectionWarnings = section => (section.data?.warnings || []).length
+      ? `<div class="alert alert-warning" style="margin-bottom:12px">${section.data.warnings.map(item => `<div>${Utils.escapeHtml(item)}</div>`).join('')}</div>` : '';
+    const disksSection = section => {
+      if (!section.available) return unavailable(section);
+      if (!section.items?.length) return '<div class="empty-msg"><i class="fas fa-hdd"></i>No disks are configured for this VM.</div>';
+      const summary = section.data || {};
+      return `${dataGrid([definition('Disks', summary.diskCount), definition('Connected', summary.connectedDiskCount),
+        definition('Total capacity', summary.totalDiskCapacityBytes == null ? null : Utils.formatBytes(summary.totalDiskCapacityBytes)),
+        definition('Allocated', summary.totalDiskAllocatedBytes == null ? null : Utils.formatBytes(summary.totalDiskAllocatedBytes))])}
+        ${sectionWarnings(section)}<div class="card" style="overflow:auto"><table class="data-table"><thead><tr>
+        <th>Device</th><th>Backing</th><th>Capacity</th><th>Allocated</th><th>Provisioning</th><th>Attachment</th><th>Hot-plug</th>
+      </tr></thead><tbody>${section.items.map(item => `<tr>
+        <td><strong>${Utils.escapeHtml(item.label || item.device || 'Disk')}</strong><div class="text-muted text-sm">${Utils.escapeHtml([item.bus, item.unit].filter(value => value != null).join(' · ') || item.type || '—')}</div></td>
+        <td>${Utils.escapeHtml(item.backing?.storageName || item.backing?.storageId || '—')}<div class="text-muted text-sm">${Utils.escapeHtml(item.backing?.path || item.backing?.type || '')}</div></td>
+        <td>${item.capacityBytes == null ? '—' : Utils.escapeHtml(Utils.formatBytes(item.capacityBytes))}</td>
+        <td>${item.allocatedBytes == null ? '—' : Utils.escapeHtml(Utils.formatBytes(item.allocatedBytes))}</td>
+        <td>${Utils.escapeHtml(item.provisioning || 'unknown')}</td>
+        <td>${Utils.escapeHtml(item.attachment?.connected === true ? 'Connected' : item.attachment?.connected === false ? 'Disconnected' : item.status || 'Unknown')}</td>
+        <td title="Hot-unplug: ${Utils.escapeHtml(evidence(item.capabilities?.hotUnplug))}">${Utils.escapeHtml(evidence(item.capabilities?.hotPlug))}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    };
+    const networkSection = section => {
+      if (!section.available) return unavailable(section);
+      if (!section.items?.length) return '<div class="empty-msg"><i class="fas fa-network-wired"></i>No network interfaces are configured for this VM.</div>';
+      const summary = section.data || {};
+      return `${dataGrid([definition('Interfaces', summary.nicCount), definition('Connected', summary.connectedNicCount)])}
+        ${sectionWarnings(section)}<div class="card" style="overflow:auto"><table class="data-table"><thead><tr>
+        <th>Interface</th><th>MAC / model</th><th>Network</th><th>Addresses</th><th>Link</th><th>Hot-plug</th>
+      </tr></thead><tbody>${section.items.map(item => `<tr>
+        <td><strong>${Utils.escapeHtml(item.label || item.device || 'NIC')}</strong><div class="text-muted text-sm">MTU ${Utils.escapeHtml(item.mtu ?? '—')}</div></td>
+        <td><code>${Utils.escapeHtml(item.macAddress || '—')}</code><div class="text-muted text-sm">${Utils.escapeHtml(item.model || '—')}</div></td>
+        <td>${Utils.escapeHtml(item.network?.name || item.network?.bridge || item.network?.id || '—')}<div class="text-muted text-sm">${item.network?.vlanId == null ? '' : `VLAN ${Utils.escapeHtml(item.network.vlanId)}`}</div></td>
+        <td>${(item.addresses || []).length ? item.addresses.map(address => `<div><code>${Utils.escapeHtml(address.address)}</code> <span class="text-muted text-sm">${Utils.escapeHtml(address.source || '')}</span></div>`).join('') : '—'}</td>
+        <td>${Utils.escapeHtml(item.attachment?.connected === true ? 'Connected' : item.attachment?.connected === false ? 'Disconnected' : item.status || 'Unknown')}</td>
+        <td title="Disconnect: ${Utils.escapeHtml(evidence(item.capabilities?.connectDisconnect))}">${Utils.escapeHtml(evidence(item.capabilities?.hotPlug))}</td>
+      </tr>`).join('')}</tbody></table></div>`;
+    };
     const tabs = [
       { key: 'overview', label: 'Overview', icon: 'fa-info-circle', render: panel => {
         const value = detail.sections.overview.data;
@@ -527,8 +565,9 @@ const VirtualMachinesPage = {
           definition('Hardware version', value.hardwareVersion), definition('Guest tools', value.toolsStatus), definition('Tools version', value.toolsVersion),
         ]);
       } },
-      ...[['disks', 'Disks', 'fa-hdd'], ['network', 'Network', 'fa-network-wired'], ['events', 'Events', 'fa-stream']]
-        .map(([key, label, icon]) => ({ key, label, icon, render: panel => { panel.innerHTML = unavailable(detail.sections[key]); } })),
+      { key: 'disks', label: 'Disks', icon: 'fa-hdd', render: panel => { panel.innerHTML = disksSection(detail.sections.disks); } },
+      { key: 'network', label: 'Network', icon: 'fa-network-wired', render: panel => { panel.innerHTML = networkSection(detail.sections.network); } },
+      { key: 'events', label: 'Events', icon: 'fa-stream', render: panel => { panel.innerHTML = unavailable(detail.sections.events); } },
       { key: 'snapshots', label: 'Snapshots', icon: 'fa-camera', render: panel => { this._mountSnapshots(panel, detail.sections.snapshots, host, vm); } },
       { key: 'tasks', label: 'Tasks', icon: 'fa-tasks', render: panel => { panel.innerHTML = listSection(detail.sections.tasks); } },
     ];

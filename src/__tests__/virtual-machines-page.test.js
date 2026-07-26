@@ -40,4 +40,12 @@ describe('common virtual machines page routing', () => {
     expect(source).toContain("target.pathname !== '/vm-console.html'");
     expect(source).not.toMatch(/proxmox|vcenter|xenserver|ticket/i);
   });
+
+  it('renders normalized disk and NIC tables with explicit unknown capability evidence', () => {
+    const source = page._mountDetail.toString();
+    expect(source).toContain('totalDiskCapacityBytes');
+    expect(source).toContain('connectDisconnect');
+    expect(source).toContain("value === false ? 'Unsupported' : 'Unknown'");
+    expect(source).not.toContain('nativeRef');
+  });
 });

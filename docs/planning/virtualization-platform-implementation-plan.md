@@ -104,7 +104,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V1.6 | Clone și create-from-template | B032–B043 | Proxmox, vSphere, XO/XAPI |
 | V1.7 | Cloud-init/guest customization | B035 structured subset; B036 foundation; C028/C029 | Proxmox, vSphere, Xen |
 | V1.8 | Console gateway | B048–B050 | noVNC/RFB, WebMKS și serial, token scurt, credential isolation și audit |
-| V1.9 | Disk și NIC inventory uniform | B076–B086, B101–B108 | detail, hotplug capability și topology |
+| V1.9 | Disk și NIC inventory uniform | B076, B085–B086 (read model), B101 | detail live, topology și hot-plug capability evidence; mutațiile rămân în V4.1/V4.3 |
 
 **Exit:** cel puțin trei ecosisteme permit inspectare, power, snapshot, clone și provisioning controlat.
 

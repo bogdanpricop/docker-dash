@@ -310,6 +310,17 @@ class VSphereClient {
     return (await this._listVirtualMachineRows()).filter(row => !row.isTemplate);
   }
 
+  async getVmHardware(vmMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM hardware target'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref,
+      ['config.hardware.device', 'guest.net']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    return _parseVmHardware(props['config.hardware.device'] || '', props['guest.net'] || '');
+  }
+
   async listTemplates() {
     return (await this._listVirtualMachineRows()).filter(row => row.isTemplate).map(row => ({
       kind: 'vmTemplate', nativeRef: row.moref, id: row.moref, uuid: row.uuid,
@@ -1225,6 +1236,143 @@ function _extractObjects(xml) {
   return result;
 }
 
+function _allTags(xml, tagName) {
+  const values = [];
+  const re = new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tagName}>`, 'g');
+  let match;
+  while ((match = re.exec(String(xml || '')))) values.push(_decodeEntities(match[1].replace(/<[^>]+>/g, '').trim()));
+  return values.filter(Boolean);
+}
+
+function _tagBool(xml, name) {
+  const value = _extractTag(String(xml || ''), name);
+  return value === 'true' ? true : value === 'false' ? false : null;
+}
+
+function _tagNumber(xml, name) {
+  const raw = _extractTag(String(xml || ''), name);
+  if (raw === null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function _typedTagRef(xml, tagName, expectedType) {
+  const match = new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*\\btype="${expectedType}"[^>]*>([^<]+)<\\/(?:\\w+:)?${tagName}>`)
+    .exec(String(xml || ''));
+  return match ? _decodeEntities(match[1].trim()) : null;
+}
+
+function _virtualDeviceBlocks(xml) {
+  const output = [];
+  const re = /<((?:[\w.-]+:)?(?:VirtualDevice|device))\b([^>]*)>([\s\S]*?)<\/\1>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const type = /(?:xsi:)?type="([^"]+)"/.exec(match[2])?.[1] || '';
+    output.push({ type: type.split(':').pop(), xml: match[3] });
+  }
+  return output;
+}
+
+function _guestNicRows(xml) {
+  const rows = [];
+  const re = /<(?:\w+:)?GuestNicInfo\b[^>]*>([\s\S]*?)<\/(?:\w+:)?GuestNicInfo>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const block = match[1];
+    const addresses = _allTags(block, 'ipAddress').filter(address => /^[0-9a-f:.]+$/i.test(address))
+      .map(address => ({ address, source: 'vmware-tools' }));
+    rows.push({
+      macAddress: _extractTag(block, 'macAddress'), network: _extractTag(block, 'network'),
+      connected: _tagBool(block, 'connected'), addresses,
+    });
+  }
+  return rows;
+}
+
+function _parseVmHardware(deviceXml, guestNetXml) {
+  const blocks = _virtualDeviceBlocks(deviceXml);
+  const controllers = new Map();
+  for (const item of blocks.filter(item => /Controller$/.test(item.type))) {
+    const key = _tagNumber(item.xml, 'key');
+    if (key !== null) controllers.set(key, {
+      bus: item.type.replace(/^Virtual/, '').replace(/Controller$/, '').toLowerCase(),
+      busNumber: _tagNumber(item.xml, 'busNumber'),
+    });
+  }
+  const guestByMac = new Map(_guestNicRows(guestNetXml).map(item => [
+    String(item.macAddress || '').replace(/[^a-f0-9]/gi, '').toUpperCase(), item,
+  ]));
+  const disks = [];
+  const nics = [];
+  for (const item of blocks) {
+    const key = _tagNumber(item.xml, 'key');
+    const controllerKey = _tagNumber(item.xml, 'controllerKey');
+    const controller = controllers.get(controllerKey) || {};
+    const unit = _tagNumber(item.xml, 'unitNumber');
+    const label = _extractTag(item.xml, 'label');
+    if (item.type === 'VirtualDisk' || item.type === 'VirtualCdrom') {
+      const capacityInBytes = _tagNumber(item.xml, 'capacityInBytes');
+      const capacityInKB = _tagNumber(item.xml, 'capacityInKB');
+      const fileName = _extractTag(item.xml, 'fileName');
+      const datastores = _managedRefs(item.xml, 'Datastore');
+      const datastoreRef = datastores[0] || _typedTagRef(item.xml, 'datastore', 'Datastore');
+      const thin = _tagBool(item.xml, 'thinProvisioned');
+      const eager = _tagBool(item.xml, 'eagerlyScrub');
+      const isCdrom = item.type === 'VirtualCdrom';
+      disks.push({
+        nativeRef: key, label, type: isCdrom ? 'cdrom' : 'disk',
+        device: label, bus: controller.bus || null, unit,
+        capacityBytes: capacityInBytes ?? (capacityInKB === null ? null : capacityInKB * 1024),
+        provisioning: isCdrom ? 'unknown' : (thin === true ? 'thin' : (eager === true ? 'eagerZeroedThick' : (thin === false ? 'thick' : 'unknown'))),
+        format: isCdrom ? 'iso' : null,
+        backing: {
+          type: fileName ? 'datastore-file' : 'device', storageId: datastoreRef,
+          storageName: /^\[([^\]]+)\]/.exec(fileName || '')?.[1] || null, path: fileName,
+        },
+        attachment: {
+          connected: _tagBool(item.xml, 'connected'), startConnected: _tagBool(item.xml, 'startConnected'),
+          bootable: null, readOnly: isCdrom,
+          shared: (() => { const sharing = _extractTag(item.xml, 'sharing'); return sharing ? /sharingMultiWriter/i.test(sharing) : null; })(),
+        },
+        capabilities: { hotPlug: null, hotUnplug: null, onlineResize: isCdrom ? false : null },
+        status: _extractTag(item.xml, 'status') || 'configured',
+      });
+    } else if (/Virtual(?:Vmxnet|E1000|PCNet|Sriov|Ethernet)/i.test(item.type)) {
+      const macAddress = _extractTag(item.xml, 'macAddress');
+      const guest = guestByMac.get(String(macAddress || '').replace(/[^a-f0-9]/gi, '').toUpperCase());
+      const networkRefs = _managedRefs(item.xml, 'Network');
+      const networkRef = networkRefs[0] || _typedTagRef(item.xml, 'network', 'Network');
+      const portgroup = _extractTag(item.xml, 'portgroupKey');
+      const switchUuid = _extractTag(item.xml, 'switchUuid');
+      const connectable = /<(?:\w+:)?connectable\b/.test(item.xml);
+      nics.push({
+        nativeRef: key, label, device: label, model: item.type.replace(/^Virtual/, ''), macAddress,
+        network: {
+          id: portgroup || networkRef,
+          name: guest?.network || _extractTag(item.xml, 'deviceName'), bridge: null,
+          distributedSwitch: switchUuid, vlanId: null,
+        },
+        addresses: guest?.addresses || [], mtu: null,
+        attachment: {
+          connected: guest?.connected ?? _tagBool(item.xml, 'connected'),
+          startConnected: _tagBool(item.xml, 'startConnected'),
+        },
+        security: {}, qos: {
+          reservationMbps: (() => { const value = _tagNumber(item.xml, 'reservation'); return value === null ? null : value / 1000; })(),
+          rateLimitMbps: (() => { const value = _tagNumber(item.xml, 'limit'); return value === null || value < 0 ? null : value / 1000; })(),
+        },
+        capabilities: { hotPlug: null, hotUnplug: null, connectDisconnect: connectable ? true : null },
+        status: guest?.connected === false ? 'disconnected' : (_extractTag(item.xml, 'status') || 'configured'),
+      });
+    }
+  }
+  return {
+    disks, nics, diskAvailable: !!deviceXml, nicAvailable: !!deviceXml,
+    diskReason: deviceXml ? null : 'vSphere returned no virtual-device configuration',
+    nicReason: deviceXml ? null : 'vSphere returned no virtual-device configuration',
+  };
+}
+
 function _managedRefs(value, expectedType) {
   const input = String(value || '');
   const output = [];
@@ -1270,7 +1418,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware },
 };
 
 if (false) log.info();

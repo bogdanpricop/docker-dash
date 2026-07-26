@@ -16,6 +16,18 @@ function _fromCapabilities(capabilities = {}) {
     'inventory.image': capabilities.templates
       ? supported() : unsupported('Template inventory is unavailable for this Xen provider'),
     'vm.read': capabilities.vms ? supported() : unsupported('VM detail is unavailable for this Xen provider'),
+    'vm.disk.read': capabilities.hardwareDetails
+      ? conditional('Disk topology is read from the active Xen management plane', { perResource: true, readOnly: true })
+      : unsupported('Disk topology is unavailable for this Xen provider'),
+    'vm.disk.hotplug': capabilities.diskHotplug
+      ? conditional('VBD allowed operations are evaluated per device', { perResource: true, evidenceOnly: true })
+      : unsupported('Disk hot-plug is not safely advertised by this Xen provider'),
+    'vm.nic.read': capabilities.hardwareDetails
+      ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
+      : unsupported('NIC topology is unavailable for this Xen provider'),
+    'vm.nic.hotplug': capabilities.nicHotplug
+      ? conditional('VIF allowed operations are evaluated per device', { perResource: true, evidenceOnly: true })
+      : unsupported('NIC hot-plug is not safely advertised by this Xen provider'),
     'cluster.ha.read': capabilities.pools
       ? conditional('HA evidence depends on pool configuration and shared storage', { requiresPool: true })
       : unsupported('HA is unavailable for standalone raw Xen'),
@@ -122,4 +134,11 @@ async function listArtifacts(host) {
   return client.listTemplates();
 }
 
-module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, _internals: { _fromCapabilities } };
+async function readVmHardware(host, context) {
+  const client = xen.clientForHost(host);
+  const target = client.provider === 'xapi'
+    ? (context.identity.uuid || context.identity.nativeRef) : context.identity.nativeRef;
+  return client.getVmHardware(target);
+}
+
+module.exports = { type: 'xen', declared, probe, listResources, listArtifacts, readVmHardware, _internals: { _fromCapabilities } };
