@@ -1,7 +1,7 @@
 'use strict';
 
 const { getDb } = require('../../db');
-const { encrypt, sha256 } = require('../../utils/crypto');
+const { encrypt, decrypt, sha256 } = require('../../utils/crypto');
 
 const ARTIFACT_SCHEMA_VERSION = '1.0';
 const ARTIFACT_KINDS = Object.freeze([
@@ -139,8 +139,28 @@ function validateArtifact(artifact) {
   return true;
 }
 
+function resolveArtifact(canonicalId, scope = {}, database) {
+  const db = database || getDb();
+  const hostId = Number(scope.hostId);
+  if (!SAFE_ID.test(String(canonicalId || '')) || !Number.isInteger(hostId) || hostId <= 0) return null;
+  const row = db.prepare(`SELECT canonical_id, host_id, provider_type, artifact_kind,
+    provider_uuid, native_ref_enc, artifact_json, observed_at, last_seen_at
+    FROM provider_artifact_catalog WHERE canonical_id = ? AND host_id = ?`)
+    .get(canonicalId, hostId);
+  if (!row) return null;
+  let artifact;
+  try { artifact = JSON.parse(row.artifact_json); } catch { return null; }
+  validateArtifact(artifact);
+  if (artifact.id !== row.canonical_id || artifact.kind !== row.artifact_kind
+    || artifact.provider?.type !== row.provider_type || artifact.provider?.endpointId !== row.host_id) return null;
+  return {
+    artifact, nativeRef: decrypt(row.native_ref_enc), providerUuid: row.provider_uuid,
+    observedAt: row.observed_at, lastSeenAt: row.last_seen_at,
+  };
+}
+
 module.exports = {
   ARTIFACT_SCHEMA_VERSION, ARTIFACT_KINDS, MAX_CATALOG_BYTES,
-  normalizeAndRemember, validateArtifact,
+  normalizeAndRemember, validateArtifact, resolveArtifact,
   _internals: { SAFE_ID, _text, _timestamp },
 };

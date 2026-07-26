@@ -223,6 +223,28 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       await expect(client.listVMSnapshots('../unsafe', 101, 'qemu')).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
       expect(mockHttps._handlers).toHaveLength(0);
     });
+
+    it('allocates an ID and submits a full template clone as a durable UPID task', async () => {
+      const seen = [];
+      mockHttps._mockNext((opts, cb) => {
+        seen.push({ method: opts.method, path: opts.path });
+        const res = fakeResponse({ status: 200, body: { data: 240 } }); cb(res); res._fire();
+      });
+      mockHttps._mockNext((opts, cb, req) => {
+        seen.push({ method: opts.method, path: opts.path, body: JSON.parse(req._writtenBody.toString()) });
+        const res = fakeResponse({ status: 200, body: { data: 'UPID:pve-a:clone-240' } }); cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      const newid = await client.nextVmId();
+      await expect(client.cloneTemplate('pve-a', '9000', {
+        newid, name: 'app-01', mode: 'full', targetNode: 'pve-b', storage: 'fast-zfs',
+      })).resolves.toEqual({ taskRef: 'UPID:pve-a:clone-240', node: 'pve-a', targetVmid: '240', provider: 'proxmox' });
+      expect(seen[0].path).toBe('/api2/json/cluster/nextid');
+      expect(seen[1]).toEqual(expect.objectContaining({
+        method: 'POST', path: '/api2/json/nodes/pve-a/qemu/9000/clone',
+        body: { newid: 240, name: 'app-01', full: 1, target: 'pve-b', storage: 'fast-zfs' },
+      }));
+    });
   });
 
   describe('daemon_config encryption', () => {

@@ -162,6 +162,30 @@ describe('unified Xen client', () => {
     expect(client.capabilities().snapshotQuiesce).toBe(true);
   });
 
+  it('uses durable XAPI clone and provision stages for linked template creation', async () => {
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 });
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:clone-task', id: 2 }, 200, (_opts, req) => {
+      const body = JSON.parse(req.body);
+      expect(body.method).toBe('Async.VM.clone');
+      expect(body.params.slice(-2)).toEqual(['OpaqueRef:template', 'app-01']);
+    });
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:provision-task', id: 3 }, 200, (_opts, req) => {
+      const body = JSON.parse(req.body);
+      expect(body.method).toBe('Async.VM.provision');
+      expect(body.params.at(-1)).toBe('OpaqueRef:cloned-vm');
+    });
+    queueJson({ jsonrpc: '2.0', result: {
+      uuid: 'vm-uuid', current_operations: { 'OpaqueRef:provision-task': 'provision' }, allowed_operations: [],
+    }, id: 4 }, 200, (_opts, req) => expect(JSON.parse(req.body).method).toBe('VM.get_record'));
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    await expect(client.cloneTemplate('OpaqueRef:template', 'app-01', { mode: 'linked' }))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:clone-task', provider: 'xapi', stage: 'clone' });
+    await expect(client.provisionClonedVm('OpaqueRef:cloned-vm'))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:provision-task', provider: 'xapi', stage: 'provision' });
+    await expect(client.getVmRecordByRef('OpaqueRef:cloned-vm')).resolves.toEqual(expect.objectContaining({ uuid: 'vm-uuid' }));
+    expect(client.capabilities().provisioning).toBe(true);
+  });
+
   it('uses one concurrent XAPI login and JSON-RPC task operations', async () => {
     let loginCount = 0;
     queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 }, 200, (_opts, req) => {

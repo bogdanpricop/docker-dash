@@ -5,7 +5,7 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
-  'vm.console', 'vm.clone', 'vm.create', 'vm.migrate', 'host.maintenance',
+  'vm.console', 'vm.migrate', 'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
 ];
@@ -18,6 +18,8 @@ function declared() {
     'inventory.network': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
+    'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),
+    'vm.create': conditional('Create-from-template uses CloneVM_Task with live placement revalidation', { fromTemplate: true, durableTask: true, confirmation: true }),
     'vm.power.start': conditional('Availability is checked from current VM state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Clean shutdown requires running VMware Tools', { perResource: true, requiresGuestTools: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),

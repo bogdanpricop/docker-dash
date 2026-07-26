@@ -5,7 +5,7 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.network', 'inventory.task',
-  'vm.console', 'vm.clone', 'vm.create', 'vm.migrate', 'host.maintenance',
+  'vm.console', 'vm.migrate', 'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
 ];
@@ -17,6 +17,8 @@ function declared() {
     'inventory.storage': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
+    'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),
+    'vm.create': conditional('Create-from-template is revalidated against node and storage placement', { fromTemplate: true, durableTask: true, confirmation: true }),
     'backup.read': supported(),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
@@ -56,9 +58,11 @@ async function probe(host) {
 async function listResources(kind, host) {
   const client = fromHostRow(host);
   try {
-    if (kind === 'virtualMachine') return (await client.listVMs()).map(row => ({
-      ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
-    }));
+    if (kind === 'virtualMachine') return (await client.listVMs())
+      .filter(row => Number(row?.template) !== 1)
+      .map(row => ({
+        ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
+      }));
     if (kind === 'host') return client.listNodes();
     if (kind === 'storage') return client.listStorages();
     throw new Error(`Proxmox resource kind is unavailable: ${kind}`);

@@ -18,4 +18,11 @@ describe('Provider operation Activity Center presentation helpers', () => {
     })).toBe('65s');
     expect(page._duration({ startedAt: 'invalid', completedAt: 'invalid' })).toBe('—');
   });
+
+  it('routes artifact-backed provisioning operations back to the VM catalog', () => {
+    expect(page._resourceHref({ resource: { kind: 'artifact', id: `dda_art_${'a'.repeat(26)}` } }))
+      .toBe('#/virtualization-catalog');
+    expect(page._resourceHref({ provider: { endpointId: 7 }, resource: { kind: 'virtualMachine', id: 'vm-1' } }))
+      .toBe('#/virtual-machines/7/vm-1');
+  });
 });

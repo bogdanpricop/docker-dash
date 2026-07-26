@@ -318,6 +318,60 @@ class VSphereClient {
     }));
   }
 
+  async getClonePlacement(templateMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(templateMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere template reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', templateMoref,
+      ['parent', 'resourcePool', 'datastore', 'config.template']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    if (props['config.template'] !== 'true') {
+      throw Object.assign(new Error('vSphere source is no longer a VM template'), { code: 'PROVIDER_ARTIFACT_NOT_FOUND' });
+    }
+    const folderRef = _firstManagedRef(props.parent, 'Folder');
+    const poolRef = _firstManagedRef(props.resourcePool, 'ResourcePool');
+    const datastoreRefs = _managedRefs(props.datastore, 'Datastore');
+    if (!folderRef || !poolRef || !datastoreRefs.length) {
+      throw Object.assign(new Error('vSphere clone placement is incomplete'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE' });
+    }
+    const datastores = (await this.listDatastores()).filter(item => item.accessible !== false && item.maintenanceMode !== 'inMaintenance');
+    const sourceDatastores = datastoreRefs.map(ref => datastores.find(item => item.moref === ref)).filter(Boolean);
+    if (!sourceDatastores.length) {
+      throw Object.assign(new Error('vSphere source template datastore is unavailable'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE' });
+    }
+    return {
+      folderRef, poolRef,
+      datastores, sourceDatastores,
+    };
+  }
+
+  async cloneTemplate(templateMoref, options = {}) {
+    await this._ensureLoggedIn();
+    const refs = [templateMoref, options.folderRef, options.poolRef, options.datastoreRef];
+    if (refs.some(value => !/^[A-Za-z0-9._:-]{1,160}$/.test(String(value || '')))
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(options.name || ''))
+      || options.mode !== 'full') {
+      throw Object.assign(new Error('Invalid vSphere template clone request'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CloneVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(templateMoref)}</_this>
+    <folder type="Folder">${this._xesc(options.folderRef)}</folder>
+    <name>${this._xesc(options.name)}</name>
+    <spec><location>
+      <datastore type="Datastore">${this._xesc(options.datastoreRef)}</datastore>
+      <pool type="ResourcePool">${this._xesc(options.poolRef)}</pool>
+    </location><powerOn>false</powerOn><template>false</template></spec>
+  </CloneVM_Task></soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const taskRef = _extractTag(response, 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere clone operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
   /** Recursively discover ISO media on accessible datastores. */
   async listIsoImages() {
     await this._ensureLoggedIn();
@@ -391,12 +445,14 @@ class VSphereClient {
       throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
     }
     const raw = await this._retrievePropertiesDirect('Task', taskMoref,
-      ['info.state', 'info.progress', 'info.error']);
+      ['info.state', 'info.progress', 'info.error', 'info.result']);
     const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    const resultRef = _firstManagedRef(props['info.result'], 'VirtualMachine');
     return {
       status: props['info.state'] || 'unknown',
       progress: parseInt(props['info.progress'], 10) || 0,
       error: props['info.error'] ? (_extractFault(props['info.error']) || 'vSphere task failed') : null,
+      ...(resultRef ? { resultRef } : {}),
     };
   }
 
@@ -1080,6 +1136,18 @@ function _extractObjects(xml) {
   return result;
 }
 
+function _managedRefs(value, expectedType) {
+  const input = String(value || '');
+  const output = [];
+  const re = /<(?:ManagedObjectReference|[^>:\s]+:ManagedObjectReference)\b[^>]*\btype="([^"]+)"[^>]*>([^<]+)<\/(?:ManagedObjectReference|[^>:\s]+:ManagedObjectReference)>/g;
+  let match;
+  while ((match = re.exec(input))) if (!expectedType || match[1] === expectedType) output.push(_decodeEntities(match[2].trim()));
+  if (!output.length && /^[A-Za-z0-9._:-]{1,160}$/.test(input)) output.push(input);
+  return [...new Set(output)];
+}
+
+function _firstManagedRef(value, expectedType) { return _managedRefs(value, expectedType)[0] || null; }
+
 // ─── daemon_config encryption + fromHostRow ────────────────────
 
 function decryptDaemonConfig(raw) {
@@ -1113,7 +1181,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
 };
 
 if (false) log.info();

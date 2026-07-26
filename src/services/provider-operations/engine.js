@@ -29,6 +29,7 @@ const SENSITIVE_KEY = /pass(word)?|secret|token|credential|private.?key|authoriz
 const SAFE_TYPE = /^[a-z][a-z0-9_.-]{2,79}$/;
 const SAFE_ACTION = /^[a-z][a-zA-Z0-9_.-]{1,79}$/;
 const SAFE_RESOURCE_ID = /^ddr_(vm|host|cluster|storage|network|task)_[a-f0-9]{26}$/;
+const SAFE_ARTIFACT_ID = /^dda_art_[a-f0-9]{26}$/;
 const SAFE_OPERATION_ID = /^op_[a-f0-9]{26}$/;
 const SAFE_LOCK = /^[a-z][a-z0-9_.:-]{1,199}$/;
 
@@ -186,7 +187,10 @@ class ProviderOperationEngine {
     const resourceId = String(input.resourceId || '');
     const resourceKindName = String(input.resourceKind || '');
     const kindInfo = resourceKind(resourceKindName);
-    if (!SAFE_RESOURCE_ID.test(resourceId) || !kindInfo || !resourceId.startsWith(`ddr_${kindInfo.prefix}_`)) {
+    const commonResource = SAFE_RESOURCE_ID.test(resourceId) && kindInfo
+      && resourceId.startsWith(`ddr_${kindInfo.prefix}_`);
+    const artifactResource = resourceKindName === 'artifact' && SAFE_ARTIFACT_ID.test(resourceId);
+    if (!commonResource && !artifactResource) {
       throw new ProviderOperationError('Canonical provider resource is required', 'INVALID_OPERATION_RESOURCE');
     }
     const action = String(input.action || '');
@@ -726,6 +730,6 @@ module.exports = {
   ProviderOperationEngine, ProviderOperationError, STATES, TERMINAL_STATES, RETRY_POLICIES,
   _internals: {
     _safeString, _safeCode, _safeValue, _safeJson, _operationFromRow,
-    SAFE_OPERATION_ID, SAFE_RESOURCE_ID, MAX_REQUEST_BYTES, MAX_SAFE_JSON_BYTES,
+    SAFE_OPERATION_ID, SAFE_RESOURCE_ID, SAFE_ARTIFACT_ID, MAX_REQUEST_BYTES, MAX_SAFE_JSON_BYTES,
   },
 };

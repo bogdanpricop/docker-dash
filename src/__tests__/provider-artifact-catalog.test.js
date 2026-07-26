@@ -32,6 +32,12 @@ describe('Provider artifact catalog', () => {
     expect(row.native_ref_enc).not.toContain('OpaqueRef');
     expect(row.native_ref_hash).toHaveLength(64);
     expect(database.prepare('SELECT COUNT(*) AS count FROM provider_artifact_catalog').get().count).toBe(1);
+    const resolved = catalog.resolveArtifact(first.id, { hostId: 7 }, database);
+    expect(resolved).toEqual(expect.objectContaining({
+      nativeRef: 'OpaqueRef:secret-template', providerUuid: 'template-uuid',
+      artifact: expect.objectContaining({ id: first.id, displayName: 'Debian 13 updated' }),
+    }));
+    expect(catalog.resolveArtifact(first.id, { hostId: 8 }, database)).toBeNull();
   });
 
   it('rejects unknown artifact kinds and invalid public envelopes', () => {

@@ -122,6 +122,20 @@ describe('Durable provider operation engine', () => {
     expect(engine.get(operation.id).owner).toEqual({ type: 'system', id: null, username: null });
   });
 
+  it('accepts only the dedicated opaque artifact resource shape for provisioning handlers', () => {
+    const engine = createEngine(db);
+    engine.registerHandler({ type: 'vm.provision.test', idempotent: false, execute: async () => ({}) });
+    const artifactId = `dda_art_${'b'.repeat(26)}`;
+    expect(engine.create(spec({
+      type: 'vm.provision.test', resourceKind: 'artifact', resourceId: artifactId,
+      idempotencyKey: 'artifact-operation-key', lockScopes: [`resource:${artifactId}`],
+    })).resource).toEqual({ kind: 'artifact', id: artifactId });
+    expect(() => engine.create(spec({
+      type: 'vm.provision.test', resourceKind: 'artifact', resourceId: RESOURCE_ID,
+      idempotencyKey: 'invalid-artifact-key',
+    }))).toThrow(expect.objectContaining({ code: 'INVALID_OPERATION_RESOURCE' }));
+  });
+
   it('retries only transient failures for idempotent handlers', async () => {
     const engine = createEngine(db);
     let calls = 0;

@@ -20,6 +20,11 @@ const ActivityCenterPage = {
     return Utils.formatDuration(Math.max(1, Math.round((end - start) / 1000)));
   },
 
+  _resourceHref(operation) {
+    if (operation.resource?.kind === 'artifact') return '#/virtualization-catalog';
+    return `#/virtual-machines/${operation.provider?.endpointId}/${operation.resource?.id}`;
+  },
+
   async render(container, params = {}) {
     this.destroy();
     this._container = container;
@@ -149,7 +154,7 @@ const ActivityCenterPage = {
           <div><span class="text-muted text-sm">State</span><br><span class="badge ${Utils.statusBadgeClass(operation.state)}">${Utils.escapeHtml(operation.state)}</span></div>
           <div><span class="text-muted text-sm">Provider</span><br>${Utils.escapeHtml(operation.provider?.type)} · #${operation.provider?.endpointId}</div>
           <div><span class="text-muted text-sm">Progress</span><br>${operation.progress}% · ${Utils.escapeHtml(operation.phase || '—')}</div>
-          <div><span class="text-muted text-sm">Resource</span><br><a href="#/virtual-machines/${operation.provider?.endpointId}/${operation.resource?.id}"><code>${Utils.escapeHtml(operation.resource?.id)}</code></a></div>
+          <div><span class="text-muted text-sm">Resource</span><br><a href="${this._resourceHref(operation)}"><code>${Utils.escapeHtml(operation.resource?.id)}</code></a></div>
           <div><span class="text-muted text-sm">Owner</span><br>${Utils.escapeHtml(this._ownerLabel(operation))}</div>
           <div><span class="text-muted text-sm">Native task</span><br>${operation.hasNativeTask ? `${Utils.escapeHtml(operation.nativeTaskState || 'bound')} <span class="text-muted text-sm">(reference hidden)</span>` : 'Not bound'}</div>
           <div><span class="text-muted text-sm">Timing</span><br>${Utils.escapeHtml(this._duration(operation))}<div class="text-muted text-sm">${Utils.escapeHtml(Utils.formatDate(operation.startedAt))} → ${Utils.escapeHtml(Utils.formatDate(operation.completedAt))}</div></div>

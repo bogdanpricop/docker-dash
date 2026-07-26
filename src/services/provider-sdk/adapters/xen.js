@@ -48,9 +48,15 @@ function _fromCapabilities(capabilities = {}) {
   }
 
   for (const key of [
-    'vm.console', 'vm.clone', 'vm.create', 'vm.migrate', 'host.maintenance',
+    'vm.console', 'vm.migrate', 'host.maintenance',
     'storage.mutate', 'network.mutate', 'task.cancel',
   ]) features[key] = adapterNotImplemented('Xen');
+  features['vm.clone'] = capabilities.provisioning
+    ? conditional('XAPI template clone/copy is followed by durable VM.provision reconciliation', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true })
+    : unsupported('Template provisioning is unavailable for this Xen management provider');
+  features['vm.create'] = capabilities.provisioning
+    ? conditional('Create-from-template requires a managed XAPI task workflow', { fromTemplate: true, durableTask: true, confirmation: true })
+    : unsupported('Template provisioning is unavailable for this Xen management provider');
   return features;
 }
 

@@ -562,6 +562,14 @@ const Api = {
     if (filters.query) qs.set('q', filters.query);
     return this.get(`/providers/${hostId}/artifacts?${qs}`);
   },
+  preflightProviderVMProvision(hostId, artifactId, body) {
+    return this.post(`/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone/preflight`, body);
+  },
+  submitProviderVMProvision(hostId, artifactId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   getProviderVMDetail(hostId, resourceId, refresh = false) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
   },

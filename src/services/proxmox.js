@@ -233,6 +233,42 @@ class ProxmoxClient {
     return artifacts;
   }
 
+  /** Allocate the next cluster-wide VM identifier immediately before submit. */
+  async nextVmId() {
+    const value = await this._request('GET', '/api2/json/cluster/nextid');
+    if (!/^\d{1,20}$/.test(String(value || ''))) {
+      throw Object.assign(new Error('Proxmox returned an invalid next VM ID'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    return String(value);
+  }
+
+  /** Clone a QEMU template. Returns the native UPID; completion is reconciled separately. */
+  async cloneTemplate(node, vmid, options = {}) {
+    if (!/^[A-Za-z0-9._-]{1,160}$/.test(String(node || '')) || !/^\d{1,20}$/.test(String(vmid || ''))
+      || !/^\d{1,20}$/.test(String(options.newid || ''))
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(options.name || ''))
+      || !['full', 'linked'].includes(options.mode)) {
+      throw Object.assign(new Error('Invalid Proxmox template clone request'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    const safePlacement = value => value === undefined || value === null || value === ''
+      ? null : (/^[A-Za-z0-9._-]{1,160}$/.test(String(value)) ? String(value) : false);
+    const target = safePlacement(options.targetNode);
+    const storage = safePlacement(options.storage);
+    const pool = safePlacement(options.pool);
+    if (target === false || storage === false || pool === false) {
+      throw Object.assign(new Error('Invalid Proxmox clone placement'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    const body = {
+      newid: Number(options.newid), name: options.name, full: options.mode === 'full' ? 1 : 0,
+      ...(target ? { target } : {}), ...(storage ? { storage } : {}), ...(pool ? { pool } : {}),
+    };
+    const taskRef = await this._request('POST', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/clone`, body);
+    if (typeof taskRef !== 'string' || !taskRef.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox clone operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef, node, targetVmid: String(options.newid), provider: 'proxmox' };
+  }
+
   /** Inspect a single VM (state, config). */
   async getVM(node, vmid) {
     return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/qemu/${encodeURIComponent(vmid)}/status/current`);

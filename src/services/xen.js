@@ -596,7 +596,7 @@ class XapiClient {
     return {
       provider: 'xapi', pools: true, hosts: true, vms: true, templates: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, snapshotQuiesce: true, backups: false, console: false, provisioning: false,
+      snapshots: true, snapshotQuiesce: true, backups: false, console: false, provisioning: true,
       protocol: this._activeProtocol || this._protocol,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -731,6 +731,49 @@ class XapiClient {
   }
 
   async _vmRef(vmId) { return this._call('VM.get_by_uuid', [vmId]); }
+
+  async cloneTemplate(templateRef, name, options = {}) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(templateRef || ''))
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(name || ''))
+      || !['full', 'linked'].includes(options.mode)) {
+      throw new XenError('Invalid XAPI template clone request', { status: 400, provider: 'xapi' });
+    }
+    let method; let params;
+    if (options.mode === 'full') {
+      if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(options.storageRef || ''))) {
+        throw new XenError('A valid XAPI storage repository is required for a full clone', {
+          status: 400, code: 'PROVIDER_PLACEMENT_UNAVAILABLE', provider: 'xapi',
+        });
+      }
+      method = 'Async.VM.copy'; params = [templateRef, name, options.storageRef];
+    } else { method = 'Async.VM.clone'; params = [templateRef, name]; }
+    return { taskRef: await this._call(method, params), provider: 'xapi', stage: 'clone' };
+  }
+
+  async provisionClonedVm(vmRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(vmRef || ''))) {
+      throw new XenError('Invalid XAPI cloned VM reference', { status: 400, provider: 'xapi' });
+    }
+    return { taskRef: await this._call('Async.VM.provision', [vmRef]), provider: 'xapi', stage: 'provision' };
+  }
+
+  async getVmRecordByRef(vmRef) {
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(String(vmRef || ''))) {
+      throw new XenError('Invalid XAPI VM reference', { status: 400, provider: 'xapi' });
+    }
+    return this._call('VM.get_record', [vmRef]);
+  }
+
+  async defaultStorageRef() {
+    const pools = await this._call('pool.get_all_records');
+    const refs = Object.values(pools || {}).map(pool => _refId(pool.default_SR)).filter(ref => ref && ref !== XAPI_NULL_REF);
+    if (refs.length !== 1) {
+      throw new XenError('XAPI pool default storage is unavailable or ambiguous', {
+        status: 409, code: 'PROVIDER_PLACEMENT_UNAVAILABLE', provider: 'xapi',
+      });
+    }
+    return refs[0];
+  }
 
   async vmAction(vmId, action) {
     const ref = await this._vmRef(vmId);

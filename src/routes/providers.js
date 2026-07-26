@@ -8,6 +8,7 @@ const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
+const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -64,6 +65,15 @@ function _snapshotPolicyError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider VM snapshot policy request failed' : err.message,
     code: err?.code || 'VM_SNAPSHOT_POLICY_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _provisionError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM provisioning request failed' : err.message,
+    code: err?.code || 'VM_PROVISION_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
   });
 }
@@ -176,6 +186,40 @@ router.get('/:hostId/artifacts', requireAuth, requireHostAccess('view', { param:
     });
   }
 }));
+
+router.post('/:hostId/artifacts/:artifactId/clone/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmProvision.preflightForHost(
+        resolved.host, req.params.artifactId, req.body || {}, { canOperate: true }
+      ));
+    } catch (err) { _provisionError(res, err); }
+  }));
+
+router.post('/:hostId/artifacts/:artifactId/clone', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmProvision.submitForHost(resolved.host, req.params.artifactId, {
+        ...req.body, idempotencyKey: req.get('Idempotency-Key'),
+      }, { canOperate: true, createdBy: req.user.id });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_provision_submit', targetType: 'provider_artifact', targetId: result.plan.artifact.id,
+        details: {
+          provider: resolved.host.daemon_type, hostId: resolved.host.id,
+          operationId: result.operation.id, targetName: result.plan.name,
+          cloneMode: result.plan.mode.effective, storageId: result.plan.placement.selected.storageId,
+          startAfterCreate: false,
+        }, ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _provisionError(res, err); }
+  }));
 
 router.post('/:hostId/virtual-machines/power/preflight', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {

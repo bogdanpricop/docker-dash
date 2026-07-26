@@ -126,6 +126,12 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(_internals._extractMoRef(xml, 'sessionManager')).toEqual({ type: 'SessionManager', value: 'SessionManager' });
     });
 
+    it('extracts managed references from property collector values', () => {
+      expect(_internals._managedRefs('<ManagedObjectReference type="Datastore">datastore-4</ManagedObjectReference>', 'Datastore'))
+        .toEqual(['datastore-4']);
+      expect(_internals._firstManagedRef('group-v3', 'Folder')).toBe('group-v3');
+    });
+
     it('parseSearchResults splits folders and files, folders first', () => {
       const xml = `<returnval>
         <folderPath>[datastore1]</folderPath>
@@ -359,6 +365,24 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       await expect(client.listTemplates()).resolves.toEqual([
         expect.objectContaining({ kind: 'vmTemplate', nativeRef: 'vm-9000', name: 'Ubuntu Gold', numCPU: 4, memoryMB: 8192 }),
       ]);
+    });
+
+    it('submits a powered-off full CloneVM task with explicit placement', async () => {
+      let body = '';
+      mockHttps._mockNext((_opts, cb, req) => {
+        body = req._writtenBody.toString('utf8');
+        const res = fakeResponse({ status: 200, body: '<CloneVM_TaskResponse><returnval type="Task">haTask-clone-1</returnval></CloneVM_TaskResponse>' });
+        cb(res); res._fire();
+      });
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.cloneTemplate('vm-9000', {
+        name: 'app-01', mode: 'full', folderRef: 'group-v3', poolRef: 'resgroup-1', datastoreRef: 'datastore-4',
+      })).resolves.toEqual({ taskRef: 'haTask-clone-1', provider: 'vsphere' });
+      expect(body).toContain('<CloneVM_Task xmlns="urn:vim25">');
+      expect(body).toContain('<folder type="Folder">group-v3</folder>');
+      expect(body).toContain('<datastore type="Datastore">datastore-4</datastore>');
+      expect(body).toContain('<powerOn>false</powerOn><template>false</template>');
     });
   });
 });

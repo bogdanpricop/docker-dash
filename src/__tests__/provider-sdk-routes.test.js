@@ -26,6 +26,8 @@ const mockSnapshotPolicyUpsert = jest.fn();
 const mockSnapshotPolicyRemove = jest.fn();
 const mockSnapshotPolicyPreview = jest.fn();
 const mockSnapshotPolicyRun = jest.fn();
+const mockProvisionPreflight = jest.fn();
+const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../db', () => ({
@@ -58,6 +60,10 @@ jest.mock('../services/provider-operations/snapshot-policies', () => ({
   removeForVm: (...args) => mockSnapshotPolicyRemove(...args),
   previewForHost: (...args) => mockSnapshotPolicyPreview(...args),
   runForHost: (...args) => mockSnapshotPolicyRun(...args),
+}));
+jest.mock('../services/provider-operations/vm-provision', () => ({
+  preflightForHost: (...args) => mockProvisionPreflight(...args),
+  submitForHost: (...args) => mockProvisionSubmit(...args),
 }));
 jest.mock('../services/provider-conformance', () => ({
   runForHost: (...args) => mockConformanceRun(...args),
@@ -133,6 +139,20 @@ describe('Provider SDK routes', () => {
         vm: { id: `ddr_vm_${'a'.repeat(26)}` }, snapshot: { id: `dds_snap_${'b'.repeat(26)}` },
       },
       operation: { id: `op_${'f'.repeat(26)}` },
+    });
+    mockProvisionPreflight.mockResolvedValue({
+      schemaVersion: '1.0', allowed: true, name: 'app-01',
+      artifact: { id: `dda_art_${'a'.repeat(26)}`, displayName: 'Debian Gold' },
+      mode: { requested: 'auto', effective: 'linked' },
+      placement: { selected: { storageId: null, targetNode: null }, candidates: [] },
+      confirmation: { expected: 'app-01' }, planHash: '9'.repeat(64),
+    });
+    mockProvisionSubmit.mockResolvedValue({
+      plan: {
+        name: 'app-01', artifact: { id: `dda_art_${'a'.repeat(26)}` },
+        mode: { effective: 'linked' }, placement: { selected: { storageId: null } },
+      },
+      operation: { id: `op_${'9'.repeat(26)}` },
     });
     mockSnapshotPolicyGet.mockReturnValue(null);
     mockSnapshotPolicyRuns.mockReturnValue([]);
@@ -375,6 +395,25 @@ describe('Provider SDK routes', () => {
     expect(mockArtifacts).toHaveBeenCalledWith(mockHost, { limit: 25, kind: 'vmTemplate', query: 'debian' });
     expect((await request(app).get('/api/providers/7/artifacts?limit=501')).status).toBe(400);
     expect((await request(app).get(`/api/providers/7/artifacts?q=${'a'.repeat(121)}`)).status).toBe(400);
+  });
+
+  it('admin-gates, preflights and audits durable create-from-template submission', async () => {
+    const artifactId = `dda_art_${'a'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone/preflight`)
+      .set('x-test-role', 'operator').send({ name: 'app-01' })).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone/preflight`)
+      .send({ name: 'app-01', mode: 'auto' });
+    expect(preflight.status).toBe(200);
+    expect(mockProvisionPreflight).toHaveBeenCalledWith(mockHost, artifactId,
+      { name: 'app-01', mode: 'auto' }, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone`)
+      .set('Idempotency-Key', 'provision-app-01')
+      .send({ name: 'app-01', mode: 'auto', confirm: true, confirmName: 'app-01', planHash: '9'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockProvisionSubmit).toHaveBeenCalledWith(mockHost, artifactId, expect.objectContaining({
+      idempotencyKey: 'provision-app-01', confirmName: 'app-01',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_provision_submit' }));
   });
 
   it('exports portable conformance evidence only for admins', async () => {
