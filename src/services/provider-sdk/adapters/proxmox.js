@@ -4,8 +4,8 @@ const { fromHostRow } = require('../../proxmox');
 const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
-  'inventory.cluster', 'inventory.network', 'inventory.task',
-  'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
+  'inventory.network', 'inventory.task',
+  'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.run',
 ];
 
@@ -13,6 +13,7 @@ function declared() {
   const features = {
     'inventory.vm': supported(),
     'inventory.host': supported(),
+    'inventory.cluster': conditional('Cluster identity and quorum are read from the Corosync cluster status API', { readOnly: true }),
     'inventory.storage': supported(),
     'inventory.image': supported(),
     'vm.read': supported(),
@@ -28,6 +29,9 @@ function declared() {
     'host.maintenance': conditional('Controlled drain uses durable per-VM migrations and a Docker Dash placement reservation; native activation is not advertised without a conformance-tested API', {
       goals: ['drain'], pause: true, resume: true, waves: true,
       nativeEnterExit: false, confirmation: 'typed_name',
+    }),
+    'cluster.ha.read': conditional('Corosync quorum, HA manager/LRM state and protected resources are read without changing HA configuration', {
+      readOnly: true, simulations: true, history: true,
     }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
@@ -88,6 +92,14 @@ async function listResources(kind, host) {
         ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
       }));
     if (kind === 'host') return client.listNodes();
+    if (kind === 'cluster') {
+      const rows = await client.getClusterStatus();
+      const cluster = rows.find(row => row?.type === 'cluster');
+      return cluster ? [{
+        id: cluster.id || cluster.name, name: cluster.name || cluster.id || 'Proxmox cluster',
+        haEnabled: null, health: Number(cluster.quorate) === 1 ? 'healthy' : 'degraded',
+      }] : [];
+    }
     if (kind === 'storage') return client.listStorages();
     throw new Error(`Proxmox resource kind is unavailable: ${kind}`);
   } finally {

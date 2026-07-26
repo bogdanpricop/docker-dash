@@ -267,6 +267,19 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/nodes')) || [];
   }
 
+  /** Read-only Corosync/HA evidence used by the common HA readiness model. */
+  async getClusterStatus() {
+    return (await this._request('GET', '/api2/json/cluster/status')) || [];
+  }
+
+  async getHaStatus() {
+    return (await this._request('GET', '/api2/json/cluster/ha/status/current')) || [];
+  }
+
+  async getHaResources() {
+    return (await this._request('GET', '/api2/json/cluster/ha/resources')) || [];
+  }
+
   // v8.9.33 — pve-firewall state (read-only).
   async getClusterFirewallOptions() { return this._request('GET', '/api2/json/cluster/firewall/options'); }
   async getClusterFirewallRules() { return (await this._request('GET', '/api2/json/cluster/firewall/rules')) || []; }

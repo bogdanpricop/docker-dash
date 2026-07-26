@@ -137,12 +137,46 @@ describe('unified Xen client', () => {
 
   it('uses Xen Orchestra token auth and normalizes VM inventory', async () => {
     let auth;
-    queueJson([{ id: 'vm-1', uuid: 'u-1', name_label: 'web', power_state: 'Running', CPUs: 4, memory: 2147483648, allowed_operations: ['clean_shutdown', 'snapshot'] },
+    queueJson([{ id: 'vm-1', uuid: 'u-1', name_label: 'web', power_state: 'Running', CPUs: 4, memory: 2147483648, ha_restart_priority: '', allowed_operations: ['clean_shutdown', 'snapshot'] },
       { id: 'tpl', name_label: 'template', is_a_template: true }], 200, (opts) => { auth = opts.headers.Cookie; expect(opts.path).toContain('/rest/v0/vms'); });
     const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
     const vms = await client.listVMs();
     expect(auth).toBe('authenticationToken=TOKEN');
-    expect(vms).toEqual([expect.objectContaining({ id: 'vm-1', uuid: 'u-1', name: 'web', cpus: 4, memoryBytes: 2147483648, allowedActions: ['shutdown', 'snapshot'] })]);
+    expect(vms).toEqual([expect.objectContaining({ id: 'vm-1', uuid: 'u-1', name: 'web', cpus: 4, memoryBytes: 2147483648, haRestartPriority: '', allowedActions: ['shutdown', 'snapshot'] })]);
+  });
+
+  it('preserves Xen Orchestra HA pool depth and keeps absent values unknown', async () => {
+    queueJson([
+      { id: 'pool-a', uuid: 'pool-uuid-a', name_label: 'A', HA_enabled: true, ha_host_failures_to_tolerate: 2, ha_plan_exists_for: 1, ha_statefiles: ['sr-a'], ha_cluster_stack: 'xhad' },
+      { id: 'pool-b', uuid: 'pool-uuid-b', name_label: 'B', HA_enabled: false },
+    ]);
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    await expect(client.listPools()).resolves.toEqual([
+      expect.objectContaining({ id: 'pool-a', haEnabled: true, haHostFailuresToTolerate: 2, haPlanExistsFor: 1, haStatefileCount: 1, haClusterStack: 'xhad' }),
+      expect.objectContaining({ id: 'pool-b', haEnabled: false, haHostFailuresToTolerate: null, haPlanExistsFor: null }),
+    ]);
+  });
+
+  it('preserves XAPI HA plan and restart-priority records', async () => {
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    client._call = jest.fn(async method => {
+      if (method === 'pool.get_all_records') return {
+        'OpaqueRef:pool': { uuid: 'pool-uuid', name_label: 'Production', ha_enabled: true,
+          ha_host_failures_to_tolerate: '2', ha_plan_exists_for: '1', ha_statefiles: ['OpaqueRef:sr'], ha_cluster_stack: 'xhad' },
+      };
+      if (method === 'VM.get_all_records') return {
+        'OpaqueRef:vm': { uuid: 'vm-uuid', name_label: 'db', power_state: 'Running',
+          resident_on: 'OpaqueRef:host', snapshot_of: 'OpaqueRef:NULL', ha_restart_priority: 'restart' },
+      };
+      throw new Error(method);
+    });
+    await expect(client.listPools()).resolves.toEqual([expect.objectContaining({
+      ref: 'OpaqueRef:pool', haEnabled: true, haHostFailuresToTolerate: 2,
+      haPlanExistsFor: 1, haStatefileCount: 1,
+    })]);
+    await expect(client.listVMs()).resolves.toEqual([expect.objectContaining({
+      ref: 'OpaqueRef:vm', haRestartPriority: 'restart', hostRef: 'OpaqueRef:host',
+    })]);
   });
 
   it('reads Xen Orchestra templates from the versioned template collection', async () => {

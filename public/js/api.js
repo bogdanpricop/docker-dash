@@ -602,6 +602,15 @@ const Api = {
   controlProviderHostMaintenance(hostId, runId, action) {
     return this.post(`/providers/${hostId}/host-maintenance/runs/${encodeURIComponent(runId)}/${action}`, {});
   },
+  getProviderHaReadiness(hostId) {
+    return this.get(`/providers/${hostId}/ha/readiness`);
+  },
+  refreshProviderHaReadiness(hostId) {
+    return this.post(`/providers/${hostId}/ha/readiness/refresh`, {});
+  },
+  getProviderHaReadinessHistory(hostId, limit = 48) {
+    return this.get(`/providers/${hostId}/ha/readiness/history?limit=${limit}`);
+  },
   preflightProviderVMConsole(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});
   },

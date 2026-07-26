@@ -224,6 +224,49 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
         expect.objectContaining({ nativeRef: 'snapshot-2', name: 'child', parentRef: 'snapshot-1', consistency: 'quiesced', isCurrent: true }),
       ]);
     });
+
+    it('parses per-VM DAS overrides and preserves missing failover depth as unknown', () => {
+      const xml = `<ClusterDasVmConfigInfo><key type="VirtualMachine">vm-41</key><dasSettings>
+        <restartPriority>highest</restartPriority><isolationResponse>shutdown</isolationResponse>
+      </dasSettings></ClusterDasVmConfigInfo>`;
+      expect(_internals._parseDasVmConfig(xml)).toEqual({
+        'vm-41': { restartPriority: 'highest', isolationResponse: 'shutdown' },
+      });
+      expect(_internals._propertyNumber(undefined)).toBeNull();
+      expect(_internals._propertyNumber('0')).toBe(0);
+      expect(_internals._propertyNumber('not-a-number')).toBeNull();
+    });
+  });
+
+  describe('HA cluster inventory', () => {
+    it('reads bounded ClusterComputeResource DAS and summary properties', async () => {
+      const client = new VSphereClient({ endpoint: 'https://vc', username: 'svc', password: 'secret' });
+      client._sessionCookie = 'vmware_soap_session=test';
+      client._moRefs = {
+        viewManager: { type: 'ViewManager', value: 'ViewManager' },
+        rootFolder: { type: 'Folder', value: 'group-d1' },
+      };
+      client._soapPost = jest.fn(async () => '<returnval type="ContainerView">view-42</returnval>');
+      client._retrieveProperties = jest.fn(async (_view, type, properties) => {
+        expect(type).toBe('ClusterComputeResource');
+        expect(properties).toEqual(expect.arrayContaining(['configurationEx.dasConfig', 'summary.currentFailoverLevel']));
+        return `<objects><obj type="ClusterComputeResource">domain-c7</obj>
+          <propSet><name>name</name><val>Production</val></propSet>
+          <propSet><name>configurationEx.dasConfig</name><val><enabled>true</enabled><admissionControlEnabled>true</admissionControlEnabled><hostMonitoring>enabled</hostMonitoring><failoverLevel>2</failoverLevel><defaultVmSettings><restartPriority>high</restartPriority><isolationResponse>shutdown</isolationResponse></defaultVmSettings></val></propSet>
+          <propSet><name>configurationEx.dasVmConfig</name><val><ClusterDasVmConfigInfo><key type="VirtualMachine">vm-41</key><dasSettings><restartPriority>highest</restartPriority></dasSettings></ClusterDasVmConfigInfo></val></propSet>
+          <propSet><name>summary.overallStatus</name><val>green</val></propSet>
+          <propSet><name>summary.numHosts</name><val>3</val></propSet>
+          <propSet><name>host</name><val><ManagedObjectReference type="HostSystem">host-1</ManagedObjectReference><ManagedObjectReference type="HostSystem">host-2</ManagedObjectReference></val></propSet>
+          <propSet><name>datastore</name><val><ManagedObjectReference type="Datastore">datastore-9</ManagedObjectReference></val></propSet>
+        </objects>`;
+      });
+      await expect(client.listClusters()).resolves.toEqual([expect.objectContaining({
+        moref: 'domain-c7', name: 'Production', haEnabled: true,
+        admissionControlEnabled: true, configuredFailoverLevel: 2,
+        currentFailoverLevel: null, hostRefs: ['host-1', 'host-2'], datastoreRefs: ['datastore-9'],
+        vmPriorities: { 'vm-41': { restartPriority: 'highest', isolationResponse: null } },
+      })]);
+    });
   });
 
   describe('login flow', () => {

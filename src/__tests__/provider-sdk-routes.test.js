@@ -19,6 +19,8 @@ const mockMaintenanceResume = jest.fn();
 const mockMaintenanceCancel = jest.fn();
 const mockMaintenanceExit = jest.fn();
 const mockMaintenanceReconcile = jest.fn();
+const mockHaGet = jest.fn();
+const mockHaHistory = jest.fn();
 const mockAudit = jest.fn();
 const mockConformanceRun = jest.fn();
 const mockConformanceGet = jest.fn();
@@ -41,6 +43,11 @@ const mockSnapshotPolicyRun = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
+
+jest.mock('../config', () => {
+  const actual = jest.requireActual('../config');
+  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true } };
+});
 
 jest.mock('../db', () => ({
   getDb: () => ({ prepare: () => ({ get: id => Number(id) === 7 ? mockHost : undefined }) }),
@@ -70,6 +77,10 @@ jest.mock('../services/provider-operations/host-maintenance', () => ({
   cancel: (...args) => mockMaintenanceCancel(...args),
   exit: (...args) => mockMaintenanceExit(...args),
   reconcileUnknown: (...args) => mockMaintenanceReconcile(...args),
+}));
+jest.mock('../services/provider-sdk/ha-readiness', () => ({
+  getForHost: (...args) => mockHaGet(...args),
+  historyForHost: (...args) => mockHaHistory(...args),
 }));
 jest.mock('../services/provider-operations/vm-power', () => ({
   ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
@@ -175,6 +186,11 @@ describe('Provider SDK routes', () => {
     for (const action of [mockMaintenancePause, mockMaintenanceResume, mockMaintenanceCancel, mockMaintenanceExit, mockMaintenanceReconcile]) {
       action.mockResolvedValue(maintenanceRun);
     }
+    mockHaGet.mockResolvedValue({
+      schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      state: 'ready', score: 90, domains: [], snapshotHash: '4'.repeat(64),
+    });
+    mockHaHistory.mockReturnValue([{ id: 1, state: 'ready', score: 90 }]);
     mockPowerPreflight.mockResolvedValue({
       schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
@@ -415,6 +431,38 @@ describe('Provider SDK routes', () => {
     expect(pause.status).toBe(200);
     expect(mockMaintenancePause).toHaveBeenCalledWith(runId, { createdBy: 1 });
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_host_maintenance_pause' }));
+  });
+
+  it('serves HA readiness/history and admin-gates audited live refresh', async () => {
+    const current = await request(app).get('/api/providers/7/ha/readiness').set('x-test-role', 'viewer');
+    expect(current.status).toBe(200);
+    expect(current.body.state).toBe('ready');
+    expect(mockHaGet).toHaveBeenCalledWith(mockHost);
+
+    expect((await request(app).post('/api/providers/7/ha/readiness/refresh')
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).post('/api/providers/7/ha/readiness/refresh');
+    expect(refreshed.status).toBe(200);
+    expect(mockHaGet).toHaveBeenCalledWith(mockHost, { refresh: true });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_ha_readiness_refresh' }));
+
+    const history = await request(app).get('/api/providers/7/ha/readiness/history?limit=12');
+    expect(history.status).toBe(200);
+    expect(history.body.count).toBe(1);
+    expect(mockHaHistory).toHaveBeenCalledWith(7, { limit: 12 });
+  });
+
+  it('redacts untrusted HA provider errors at the route boundary', async () => {
+    mockHaGet.mockRejectedValueOnce(Object.assign(
+      new Error('connect https://root:secret@provider.invalid failed'),
+      { status: 400, code: 'PROVIDER_RAW_ERROR' },
+    ));
+    const response = await request(app).get('/api/providers/7/ha/readiness');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Provider HA readiness request failed', code: 'HA_READINESS_ERROR',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('secret');
   });
 
   it('preflights and submits an atomic bulk VM power request', async () => {

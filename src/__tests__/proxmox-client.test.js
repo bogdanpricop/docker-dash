@@ -143,6 +143,30 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(lxc[0]).toMatchObject({ type: 'lxc', vmid: 101, name: 'db-lxc' });
     });
 
+    it('reads cluster and HA evidence only from the documented GET endpoints', async () => {
+      const paths = [];
+      for (const data of [
+        [{ type: 'cluster', name: 'prod', quorate: 1 }],
+        [{ type: 'master', node: 'pve-a', status: 'active' }],
+        [{ sid: 'vm:101', state: 'started' }],
+      ]) {
+        mockHttps._mockNext((opts, cb) => {
+          paths.push({ method: opts.method, path: opts.path });
+          const res = fakeResponse({ status: 200, body: { data } });
+          cb(res); res._fire();
+        });
+      }
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.getClusterStatus()).resolves.toEqual([expect.objectContaining({ name: 'prod' })]);
+      await expect(client.getHaStatus()).resolves.toEqual([expect.objectContaining({ type: 'master' })]);
+      await expect(client.getHaResources()).resolves.toEqual([expect.objectContaining({ sid: 'vm:101' })]);
+      expect(paths).toEqual([
+        { method: 'GET', path: '/api2/json/cluster/status' },
+        { method: 'GET', path: '/api2/json/cluster/ha/status/current' },
+        { method: 'GET', path: '/api2/json/cluster/ha/resources' },
+      ]);
+    });
+
     it('aggregates VM templates, ISO images and container templates', async () => {
       const replies = [
         [{ type: 'qemu', vmid: 9000, name: 'ubuntu-gold', template: 1, node: 'pve-a' }],

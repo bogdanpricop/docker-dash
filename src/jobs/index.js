@@ -527,6 +527,13 @@ function startAll() {
     return require('../services/provider-operations/host-maintenance').runDue();
   })));
 
+  // Read-only HA readiness evidence is sampled into encrypted, five-minute
+  // buckets. Leader gating and the global overlap guard prevent duplicate
+  // provider load in multi-replica deployments.
+  jobs.push(cron.schedule('*/15 * * * *', _m('provider-ha-readiness', () => {
+    return require('../services/provider-sdk/ha-readiness').captureAll();
+  })));
+
   // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each
   // running git-managed stack's actual container state against the git-checked-
   // out compose. Detection only — never starts/stops/deploys. Leader-gated.

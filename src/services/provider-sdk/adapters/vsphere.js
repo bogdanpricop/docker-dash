@@ -4,8 +4,8 @@ const { fromHostRow } = require('../../vsphere');
 const { supported, unsupported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
-  'inventory.cluster', 'inventory.task',
-  'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
+  'inventory.task',
+  'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
 ];
 
@@ -13,6 +13,7 @@ function declared() {
   const features = {
     'inventory.vm': supported(),
     'inventory.host': supported(),
+    'inventory.cluster': conditional('ClusterComputeResource inventory requires a vCenter management plane', { requiresVCenter: true, readOnly: true }),
     'inventory.storage': supported(),
     'inventory.network': supported(),
     'inventory.image': supported(),
@@ -29,6 +30,9 @@ function declared() {
     'host.maintenance': conditional('HostSystem maintenance tasks are durable and activation follows controlled evacuation and an empty-host post-check', {
       goals: ['drain', 'enter'], pause: true, resume: true, waves: true,
       nativeEnterExit: true, durableTask: true, confirmation: 'typed_name',
+    }),
+    'cluster.ha.read': conditional('vSphere HA configuration, admission control and current failover summary are read from ClusterComputeResource', {
+      requiresVCenter: true, readOnly: true, simulations: true, history: true,
     }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
@@ -84,7 +88,7 @@ async function probe(host) {
     const variant = _variant(info);
     const features = declared();
     if (variant === 'esxi') {
-      for (const key of ['vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate']) {
+      for (const key of ['inventory.cluster', 'cluster.ha.read', 'vm.migration.preflight', 'vm.migration.live', 'vm.migration.cold', 'vm.migration.storage', 'vm.migration.crossCluster', 'vm.migrate']) {
         features[key] = unsupported('Standalone ESXi exposes no alternate host inside this provider endpoint');
       }
     }
@@ -109,6 +113,7 @@ async function listResources(kind, host) {
       ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
     }));
     if (kind === 'host') return await client.listHosts();
+    if (kind === 'cluster') return await client.listClusters();
     if (kind === 'storage') return await client.listDatastores();
     if (kind === 'network') return await client.listNetworks();
     throw new Error(`vSphere resource kind is unavailable: ${kind}`);

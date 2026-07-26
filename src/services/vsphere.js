@@ -787,6 +787,52 @@ class VSphereClient {
     });
   }
 
+  async listClusters() {
+    await this._ensureLoggedIn();
+    const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CreateContainerView xmlns="urn:vim25">
+    <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+    <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
+    <type>ClusterComputeResource</type><recursive>true</recursive>
+  </CreateContainerView></soap:Body>
+</soap:Envelope>`;
+    const viewId = _extractTag(await this._soapPost(createViewBody), 'returnval');
+    if (!viewId) throw new Error('vSphere: cluster container view returned no ID');
+    const properties = [
+      'name', 'configurationEx.dasConfig', 'configurationEx.dasVmConfig',
+      'summary.overallStatus', 'summary.numHosts', 'summary.numEffectiveHosts',
+      'summary.totalMemory', 'summary.effectiveMemory', 'summary.currentFailoverLevel',
+      'host', 'datastore',
+    ];
+    const objects = _extractObjects(await this._retrieveProperties(viewId, 'ClusterComputeResource', properties));
+    return objects.map(object => {
+      const das = object.props['configurationEx.dasConfig'] || '';
+      return {
+        moref: object.obj, id: object.obj, name: object.props.name || object.obj,
+        haEnabled: _tagBool(das, 'enabled'),
+        admissionControlEnabled: _tagBool(das, 'admissionControlEnabled'),
+        hostMonitoring: _extractTag(das, 'hostMonitoring'),
+        vmMonitoring: _extractTag(das, 'vmMonitoring'),
+        vmComponentProtecting: _extractTag(das, 'vmComponentProtecting'),
+        configuredFailoverLevel: _tagNumber(das, 'failoverLevel'),
+        defaultRestartPriority: _extractTag(das, 'restartPriority') || 'medium',
+        isolationResponse: _extractTag(das, 'isolationResponse'),
+        heartbeatDatastoreRefs: _managedRefs(das, 'Datastore'),
+        vmPriorities: _parseDasVmConfig(object.props['configurationEx.dasVmConfig'] || ''),
+        overallStatus: object.props['summary.overallStatus'] || null,
+        hostCount: Number(object.props['summary.numHosts']) || 0,
+        effectiveHostCount: Number(object.props['summary.numEffectiveHosts']) || 0,
+        totalMemoryBytes: Number(object.props['summary.totalMemory']) || null,
+        effectiveMemoryMB: Number(object.props['summary.effectiveMemory']) || null,
+        currentFailoverLevel: _propertyNumber(object.props['summary.currentFailoverLevel']),
+        hostRefs: _managedRefs(object.props.host, 'HostSystem'),
+        datastoreRefs: _managedRefs(object.props.datastore, 'Datastore'),
+        provider: 'vsphere',
+      };
+    });
+  }
+
   async listDatastores() {
     await this._ensureLoggedIn();
     const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1296,6 +1342,20 @@ function _parseSnapshotTree(xml) {
   return stack.length ? [] : output;
 }
 
+function _parseDasVmConfig(xml) {
+  const priorities = {};
+  const blocks = String(xml || '').match(/<(?:\w+:)?ClusterDasVmConfigInfo\b[^>]*>[\s\S]*?<\/(?:\w+:)?ClusterDasVmConfigInfo>/g) || [];
+  for (const block of blocks.slice(0, 5000)) {
+    const vmRef = _typedTagRef(block, 'key', 'VirtualMachine');
+    if (!vmRef) continue;
+    priorities[vmRef] = {
+      restartPriority: _extractTag(block, 'restartPriority') || null,
+      isolationResponse: _extractTag(block, 'isolationResponse') || null,
+    };
+  }
+  return priorities;
+}
+
 // v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent
 // reply: <sessionManager type="SessionManager">ha-sessionmgr</sessionManager>
 // -> { type: 'SessionManager', value: 'ha-sessionmgr' }. Namespace-tolerant.
@@ -1354,6 +1414,12 @@ function _tagBool(xml, name) {
 function _tagNumber(xml, name) {
   const raw = _extractTag(String(xml || ''), name);
   if (raw === null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function _propertyNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
@@ -1533,7 +1599,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
 };
 
 if (false) log.info();

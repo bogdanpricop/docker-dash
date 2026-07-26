@@ -156,6 +156,12 @@ function _num(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function _numOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function _refId(value) {
   if (!value || value === XAPI_NULL_REF) return null;
   return String(value);
@@ -309,7 +315,7 @@ class XenOrchestraClient {
       'id', 'uuid', 'name_label', 'power_state', 'CPUs', 'memory',
       'mainIpAddress', '$container', '$pool', '$snapshot_of', 'is_a_snapshot',
       'is_a_template', 'type', 'tags', 'current_operations',
-      'allowed_operations',
+      'allowed_operations', 'ha_restart_priority', 'ha_always_run',
     ]);
     return rows.filter(v => !v.is_a_template && !v.is_a_snapshot && v.type !== 'VM-snapshot' && !v.$snapshot_of)
       .map(v => ({
@@ -318,6 +324,8 @@ class XenOrchestraClient {
         memoryBytes: _num(v.memory || v.memory_dynamic_max), ipAddress: v.mainIpAddress || null,
         hostId: _idFrom(v.$container), poolId: _idFrom(v.$pool), tags: v.tags || [],
         currentOperations: v.current_operations || {}, provider: 'xo',
+        haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
+        haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
       }));
   }
@@ -527,11 +535,21 @@ class XenOrchestraClient {
   }
 
   async listPools() {
-    const rows = await this._collection('pools', ['id', 'uuid', 'name_label', 'master', 'default_SR', 'HA_enabled']);
+    const rows = await this._collection('pools', [
+      'id', 'uuid', 'name_label', 'master', 'default_SR', 'HA_enabled', 'ha_enabled',
+      'ha_host_failures_to_tolerate', 'ha_plan_exists_for', 'ha_overcommitted',
+      'ha_allow_overcommit', 'ha_statefiles', 'ha_cluster_stack',
+    ]);
     return rows.map(p => ({
       id: _idFrom(p), uuid: p.uuid || _idFrom(p), name: p.name_label || p.name || _idFrom(p),
       masterId: _idFrom(p.master), defaultStorageId: _idFrom(p.default_SR),
-      haEnabled: !!p.HA_enabled, provider: 'xo',
+      haEnabled: typeof p.ha_enabled === 'boolean' ? p.ha_enabled : !!p.HA_enabled,
+      haHostFailuresToTolerate: _numOrNull(p.ha_host_failures_to_tolerate),
+      haPlanExistsFor: _numOrNull(p.ha_plan_exists_for),
+      haOvercommitted: typeof p.ha_overcommitted === 'boolean' ? p.ha_overcommitted : null,
+      haAllowOvercommit: typeof p.ha_allow_overcommit === 'boolean' ? p.ha_allow_overcommit : null,
+      haStatefileCount: Array.isArray(p.ha_statefiles) ? p.ha_statefiles.length : null,
+      haClusterStack: p.ha_cluster_stack || null, provider: 'xo',
     }));
   }
 
@@ -921,6 +939,8 @@ class XapiClient {
       memoryBytes: _num(v.memory_dynamic_max || v.memory_static_max),
       hostRef: _refId(v.resident_on), tags: v.tags || [],
       currentOperations: v.current_operations || {}, provider: 'xapi',
+      haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
+      haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
     }));
   }
@@ -1100,7 +1120,14 @@ class XapiClient {
     return Object.entries(records || {}).map(([ref, p]) => ({
       id: p.uuid, uuid: p.uuid, ref, name: p.name_label || p.uuid,
       masterRef: _refId(p.master), defaultStorageRef: _refId(p.default_SR),
-      haEnabled: !!p.ha_enabled, provider: 'xapi',
+      haEnabled: !!p.ha_enabled,
+      haHostFailuresToTolerate: _numOrNull(p.ha_host_failures_to_tolerate),
+      haPlanExistsFor: _numOrNull(p.ha_plan_exists_for),
+      haOvercommitted: typeof p.ha_overcommitted === 'boolean' ? p.ha_overcommitted : null,
+      haAllowOvercommit: typeof p.ha_allow_overcommit === 'boolean' ? p.ha_allow_overcommit : null,
+      haStatefileCount: Array.isArray(p.ha_statefiles) ? p.ha_statefiles.length : null,
+      haClusterStack: p.ha_cluster_stack || null,
+      haConfiguration: p.ha_configuration || {}, provider: 'xapi',
     }));
   }
 

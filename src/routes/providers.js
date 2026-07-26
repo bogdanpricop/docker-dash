@@ -8,6 +8,7 @@ const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmMigrationPreflight = require('../services/provider-sdk/vm-migration-preflight');
 const providerVmMigration = require('../services/provider-operations/vm-migration');
 const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
+const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
@@ -105,6 +106,16 @@ function _maintenanceError(res, err) {
     error: status >= 500 ? 'Provider host maintenance request failed' : err.message,
     code: err?.code || 'HOST_MAINTENANCE_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _haReadinessError(res, err) {
+  const trusted = err?.name === 'HaReadinessError'
+    && /^(?:HA_|INVALID_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider HA readiness request failed' : err.message,
+    code: trusted ? err.code : 'HA_READINESS_ERROR',
   });
 }
 
@@ -717,6 +728,46 @@ for (const action of ['pause', 'resume', 'cancel', 'exit', 'reconcile']) {
       } catch (err) { _maintenanceError(res, err); }
     }));
 }
+
+router.get('/:hostId/ha/readiness', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const snapshot = await providerHaReadiness.getForHost(resolved.host);
+      res.json(snapshot);
+    } catch (err) { _haReadinessError(res, err); }
+  }));
+
+router.post('/:hostId/ha/readiness/refresh', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }),
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const snapshot = await providerHaReadiness.getForHost(resolved.host, { refresh: true });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_ha_readiness_refresh', targetType: 'provider_host', targetId: String(resolved.host.id),
+        details: { hostId: resolved.host.id, provider: resolved.host.daemon_type, state: snapshot.state, score: snapshot.score },
+        ip: getClientIp(req), userAgent: req.headers['user-agent'],
+      });
+      res.json(snapshot);
+    } catch (err) { _haReadinessError(res, err); }
+  }));
+
+router.get('/:hostId/ha/readiness/history', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (!config.features.providerHaReadiness) {
+      return res.status(404).json({ error: 'HA readiness is disabled by release policy', code: 'HA_READINESS_DISABLED' });
+    }
+    try {
+      const items = providerHaReadiness.historyForHost(resolved.host.id, { limit: req.query.limit === undefined ? 48 : Number(req.query.limit) });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _haReadinessError(res, err); }
+  });
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

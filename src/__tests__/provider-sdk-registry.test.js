@@ -33,6 +33,7 @@ const registry = require('../services/provider-sdk/registry');
 const metrics = require('../services/metrics');
 
 const pveHost = { id: 3, name: 'pve-a', daemon_type: 'proxmox', is_active: 1 };
+const esxiHost = { id: 3, name: 'esxi-a', daemon_type: 'vsphere', is_active: 1 };
 
 describe('Provider SDK registry', () => {
   let database;
@@ -145,7 +146,8 @@ describe('Provider SDK registry', () => {
   });
 
   it('gates unsupported resource kinds before calling the provider', async () => {
-    await expect(registry.resourcesForHost(pveHost, 'clusters', { database }))
+    mockVSphereInfo.mockResolvedValueOnce({ productFullName: 'VMware ESXi 9.0', version: '9.0', apiVersion: '9.0' });
+    await expect(registry.resourcesForHost(esxiHost, 'clusters', { database }))
       .rejects.toMatchObject({ code: 'PROVIDER_RESOURCE_UNAVAILABLE', status: 400 });
     expect(mockListVMs).not.toHaveBeenCalled();
   });

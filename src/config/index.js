@@ -95,6 +95,7 @@ module.exports = {
     providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
     providerVmMigration: bool('DD_PROVIDER_VM_MIGRATION', false),
     providerHostMaintenance: bool('DD_PROVIDER_HOST_MAINTENANCE', false),
+    providerHaReadiness: bool('DD_PROVIDER_HA_READINESS', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
@@ -105,6 +106,11 @@ module.exports = {
     pollLimit: Math.min(100, Math.max(1, int('DD_PROVIDER_HOST_MAINTENANCE_POLL_LIMIT', 20))),
     leaseMs: Math.min(5 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HOST_MAINTENANCE_LEASE_MS', 90_000))),
     nativeTimeoutSeconds: Math.min(86400, Math.max(60, int('DD_PROVIDER_HOST_MAINTENANCE_NATIVE_TIMEOUT_SECONDS', 3600))),
+  },
+  providerHaReadiness: {
+    freshnessMs: Math.min(15 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HA_FRESHNESS_MS', 60_000))),
+    historyLimit: Math.min(500, Math.max(12, int('DD_PROVIDER_HA_HISTORY_LIMIT', 96))),
+    endpointConcurrency: Math.min(4, Math.max(1, int('DD_PROVIDER_HA_ENDPOINT_CONCURRENCY', 2))),
   },
   providerSnapshots: {
     maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),
