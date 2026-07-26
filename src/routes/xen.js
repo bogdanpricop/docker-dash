@@ -50,6 +50,7 @@ function _audit(req, action, targetType, targetId, details = {}) {
 router.post('/reconnect', asyncHandler(async (req, res) => {
   const row = _host(req, res); if (!row) return;
   xen.invalidateHost(row.id);
+  require('../services/provider-sdk/registry').invalidateHost(row.id);
   try {
     const info = await xen.clientForHost(row).info();
     res.json({ ok: true, info });

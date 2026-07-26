@@ -97,6 +97,30 @@ describe('recordJobRun', () => {
   });
 });
 
+describe('provider capability metrics', () => {
+  it('keeps provider labels bounded and records probe/cache state', () => {
+    metrics.recordProviderProbe('xen', 'reachable', 25);
+    metrics.recordProviderProbe('xen', 'unreachable', 10);
+    metrics.recordProviderCapabilityCache('hit');
+    metrics.setProviderCapabilityUnknown('xen', 4);
+    const snapshot = metrics.snapshot();
+    expect(snapshot.providerProbeTotal).toEqual({ 'xen|reachable': 1, 'xen|unreachable': 1 });
+    expect(snapshot.providerProbeDurationMs['xen|reachable']).toBe(25);
+    expect(snapshot.providerCapabilityCacheTotal.hit).toBe(1);
+    expect(snapshot.providerCapabilityUnknown.xen).toBe(4);
+  });
+
+  it('drops unsafe or unbounded labels', () => {
+    metrics.recordProviderProbe('bad provider', 'reachable', 1);
+    metrics.recordProviderCapabilityCache('invented');
+    metrics.setProviderCapabilityUnknown('xen', -1);
+    const snapshot = metrics.snapshot();
+    expect(snapshot.providerProbeTotal).toEqual({});
+    expect(snapshot.providerCapabilityCacheTotal).toEqual({});
+    expect(snapshot.providerCapabilityUnknown).toEqual({});
+  });
+});
+
 describe('renderPrometheus', () => {
   it('emits standard HELP/TYPE headers', () => {
     const out = metrics.renderPrometheus();
@@ -138,6 +162,16 @@ describe('renderPrometheus', () => {
     const out = metrics.renderPrometheus();
     expect(out).toMatch(/docker_dash_background_job_runs_total\{job="backup"\}\s+1/);
     expect(out).toMatch(/docker_dash_background_job_errors_total\{job="stats"\}\s+1/);
+  });
+
+  it('renders provider probe and capability metrics', () => {
+    metrics.recordProviderProbe('proxmox', 'reachable', 15);
+    metrics.recordProviderCapabilityCache('miss');
+    metrics.setProviderCapabilityUnknown('proxmox', 2);
+    const out = metrics.renderPrometheus();
+    expect(out).toMatch(/docker_dash_provider_probe_total\{provider="proxmox",status="reachable"\}\s+1/);
+    expect(out).toMatch(/docker_dash_provider_capability_cache_total\{result="miss"\}\s+1/);
+    expect(out).toMatch(/docker_dash_provider_capability_unknown\{provider="proxmox"\}\s+2/);
   });
 
   it('ends with trailing newline (Prometheus convention)', () => {

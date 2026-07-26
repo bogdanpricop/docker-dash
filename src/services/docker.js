@@ -223,6 +223,7 @@ class DockerService {
     // Keep Xen credentials/sessions in sync when a host is edited, removed, or
     // explicitly reconnected through the common host lifecycle.
     try { require('./xen').invalidateHost(hostId); } catch { /* Xen module optional during bootstrap */ }
+    try { require('./provider-sdk/registry').invalidateHost(hostId); } catch { /* SDK optional during bootstrap */ }
   }
 
   /** Get all active hosts from DB */

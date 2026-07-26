@@ -738,6 +738,7 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `ENABLE_EXEC` | `true` | Allow terminal exec into containers |
 | `DD_TERMINAL_ACCESS_OVERRIDE` | `managed` | Out-of-band terminal policy: `managed`, force `deny`, or recovery `allow` |
 | `READ_ONLY_MODE` | `false` | Disable all write operations |
+| `DD_PROVIDER_SDK_V2` | `true` | Expose the versioned, read-only provider capability contract |
 | `DD_MODE` | *(unset — standalone)* | Set to `ha` to enable HA mode. Requires `REDIS_URL`. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL. Only consulted when `DD_MODE=ha`. |
 | `TRUST_PROXY` | `loopback` (prod) / `true` (dev) | Trusted proxy range for `X-Forwarded-*` headers. Set to your load balancer's IP/CIDR in HA. |

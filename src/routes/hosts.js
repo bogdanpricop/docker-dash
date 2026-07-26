@@ -431,6 +431,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
       db.prepare(`UPDATE docker_hosts SET name = ?, daemon_config = ?, is_active = ?, environment = ?, updated_at = ? WHERE id = ?`)
         .run(nextName, enc, nextIsActive, nextEnv, new Date().toISOString(), hostId);
       if (existing.daemon_type === 'xen') require('../services/xen').invalidateHost(hostId);
+      require('../services/provider-sdk/registry').invalidateHost(hostId);
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'host_update', targetType: 'host', targetId: String(hostId),

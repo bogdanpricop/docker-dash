@@ -82,6 +82,9 @@ module.exports = {
     multiHost: bool('ENABLE_MULTI_HOST', false),
     readOnly: bool('READ_ONLY_MODE', false),
     ssoHeaders: bool('ENABLE_SSO_HEADERS', false),
+    // Additive, read-only endpoint for the versioned multi-provider contract.
+    // Kept as a flag so operators can canary the new schema independently.
+    providerSdkV2: bool('DD_PROVIDER_SDK_V2', true),
   },
   smtp: {
     host: env('SMTP_HOST', 'localhost'),

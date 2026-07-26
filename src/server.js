@@ -164,6 +164,7 @@ app.use('/api/alerts', apiLimiter, require('./routes/alerts'));
 app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
+app.use('/api/providers', apiLimiter, require('./routes/providers'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
 app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
