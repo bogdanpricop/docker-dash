@@ -216,6 +216,50 @@ class ProxmoxClient {
     return { ok: true };
   }
 
+  _guestPath(node, vmid, guestType) {
+    const type = guestType === 'lxc' ? 'lxc' : guestType === 'qemu' ? 'qemu' : null;
+    if (!type || !/^[A-Za-z0-9._-]{1,160}$/.test(String(node || '')) || !/^\d{1,20}$/.test(String(vmid || ''))) {
+      throw Object.assign(new Error('Invalid Proxmox guest target'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    return `/api2/json/nodes/${encodeURIComponent(node)}/${type}/${encodeURIComponent(vmid)}`;
+  }
+
+  async listVMSnapshots(node, vmid, guestType) {
+    const rows = (await this._request('GET', `${this._guestPath(node, vmid, guestType)}/snapshot`)) || [];
+    const currentParent = rows.find(row => row?.name === 'current')?.parent || null;
+    return rows.filter(row => row?.name && row.name !== 'current').map(row => ({
+      nativeRef: String(row.name), name: String(row.name),
+      description: row.description || null,
+      createdAt: Number(row.snaptime) > 0 ? new Date(Number(row.snaptime) * 1000).toISOString() : null,
+      parentRef: row.parent && row.parent !== 'current' ? String(row.parent) : null,
+      isCurrent: currentParent === row.name, consistency: 'unknown', provider: 'proxmox',
+    }));
+  }
+
+  async createVMSnapshot(node, vmid, guestType, options = {}) {
+    const taskRef = await this._request('POST', `${this._guestPath(node, vmid, guestType)}/snapshot`, {
+      snapname: options.name, ...(options.description ? { description: options.description } : {}),
+    });
+    return this._snapshotTask(taskRef, node);
+  }
+
+  async revertVMSnapshot(node, vmid, guestType, snapshotRef) {
+    const taskRef = await this._request('POST', `${this._guestPath(node, vmid, guestType)}/snapshot/${encodeURIComponent(snapshotRef)}/rollback`, {});
+    return this._snapshotTask(taskRef, node);
+  }
+
+  async deleteVMSnapshot(node, vmid, guestType, snapshotRef) {
+    const taskRef = await this._request('DELETE', `${this._guestPath(node, vmid, guestType)}/snapshot/${encodeURIComponent(snapshotRef)}`);
+    return this._snapshotTask(taskRef, node);
+  }
+
+  _snapshotTask(taskRef, node) {
+    if (typeof taskRef !== 'string' || !taskRef.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox snapshot operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef, node, provider: 'proxmox' };
+  }
+
   /** Inspect a single LXC (state, config). */
   async getLXC(node, vmid) {
     return this._request('GET', `/api2/json/nodes/${encodeURIComponent(node)}/lxc/${encodeURIComponent(vmid)}/status/current`);

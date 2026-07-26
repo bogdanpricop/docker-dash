@@ -37,7 +37,11 @@ function _fromCapabilities(capabilities = {}) {
 
   for (const action of ['list', 'create', 'revert', 'delete']) {
     features[`vm.snapshot.${action}`] = capabilities.snapshots
-      ? conditional('Snapshot support is checked per VM and storage backend', { perResource: true })
+      ? conditional('Snapshot support is checked per VM and storage backend', {
+        perResource: true,
+        ...(action === 'create' ? { durableTask: true, consistency: capabilities.snapshotQuiesce ? ['crash', 'quiesced'] : ['crash'] } : {}),
+        ...(['revert', 'delete'].includes(action) ? { durableTask: true, confirmation: true } : {}),
+      })
       : unsupported('Portable snapshots are unavailable for this Xen provider');
   }
 

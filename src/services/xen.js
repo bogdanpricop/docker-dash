@@ -139,6 +139,7 @@ const VM_ACTION_ALIASES = {
   start: 'start', clean_shutdown: 'shutdown', hard_shutdown: 'forceShutdown',
   clean_reboot: 'reboot', hard_reboot: 'forceReboot', suspend: 'suspend',
   resume: 'resume', pause: 'pause', unpause: 'unpause', snapshot: 'snapshot',
+  snapshot_with_quiesce: 'snapshotQuiesced',
 };
 
 function _normalizedAllowedActions(value) {
@@ -207,7 +208,7 @@ class XenOrchestraClient {
     return {
       provider: 'xo', pools: true, hosts: true, vms: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, backups: false, console: false, provisioning: false,
+      snapshots: true, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
       taskCleanup: false,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
     };
@@ -291,14 +292,15 @@ class XenOrchestraClient {
   async listSnapshots(vmId) {
     const rows = await this._collection('vms', [
       'id', 'uuid', 'name_label', 'power_state', '$snapshot_of', 'is_a_snapshot',
-      'type', 'snapshot_time',
+      'type', 'snapshot_time', 'name_description',
     ]);
     return rows.filter(v => {
       const owner = _idFrom(v.$snapshot_of);
       return (v.is_a_snapshot || v.type === 'VM-snapshot' || owner) && owner === vmId;
     }).map(v => ({
       id: _idFrom(v), uuid: v.uuid || _idFrom(v), name: v.name_label || _idFrom(v),
-      vmId, createdAt: v.snapshot_time || null, provider: 'xo',
+      vmId, createdAt: v.snapshot_time || null, description: v.name_description || null,
+      consistency: 'unknown', provider: 'xo',
     }));
   }
 
@@ -312,7 +314,10 @@ class XenOrchestraClient {
     return this._request('POST', `/rest/v0/vms/${encodeURIComponent(vmId)}/actions/${actions[action]}`, options);
   }
 
-  async createSnapshot(vmId, name) {
+  async createSnapshot(vmId, name, options = {}) {
+    if (options.quiesce === true) throw new XenError('Xen Orchestra quiesced snapshots are not advertised by this API adapter', {
+      status: 400, provider: 'xo', code: 'SNAPSHOT_QUIESCE_UNAVAILABLE',
+    });
     return this._request('POST', `/rest/v0/vms/${encodeURIComponent(vmId)}/actions/snapshot`, { name_label: name });
   }
 
@@ -568,7 +573,7 @@ class XapiClient {
     return {
       provider: 'xapi', pools: true, hosts: true, vms: true, storages: true,
       networks: true, tasks: true, events: false, powerActions: true,
-      snapshots: true, backups: false, console: false, provisioning: false,
+      snapshots: true, snapshotQuiesce: true, backups: false, console: false, provisioning: false,
       protocol: this._activeProtocol || this._protocol,
       taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot', 'forceReboot', 'suspend', 'resume', 'pause', 'unpause'],
@@ -683,6 +688,8 @@ class XapiClient {
       .map(([ref, v]) => ({
         id: v.uuid, uuid: v.uuid, ref, name: v.name_label || v.uuid,
         vmId, createdAt: v.snapshot_time || null, powerState: v.power_state,
+        description: v.name_description || null,
+        consistency: v.snapshot_info?.['snapshot-type'] === 'quiesced' ? 'quiesced' : 'unknown',
         provider: 'xapi',
       }));
   }
@@ -707,9 +714,10 @@ class XapiClient {
     return { taskRef, provider: 'xapi' };
   }
 
-  async createSnapshot(vmId, name) {
+  async createSnapshot(vmId, name, options = {}) {
     const ref = await this._vmRef(vmId);
-    return { taskRef: await this._call('Async.VM.snapshot', [ref, name]), provider: 'xapi' };
+    const method = options.quiesce === true ? 'Async.VM.snapshot_with_quiesce' : 'Async.VM.snapshot';
+    return { taskRef: await this._call(method, [ref, name]), provider: 'xapi' };
   }
 
   async revertSnapshot(snapshotId) {
@@ -760,7 +768,7 @@ class XenRawClient {
     return {
       provider: 'raw', pools: false, hosts: true, vms: true, storages: false,
       networks: false, tasks: false, events: false, powerActions: true,
-      snapshots: false, backups: false, console: false, provisioning: false,
+      snapshots: false, snapshotQuiesce: false, backups: false, console: false, provisioning: false,
       taskCleanup: false, runningDomainsOnly: true, toolstack: this._toolstack || 'auto',
       legacyXend: this._toolstack === 'xm',
       vmActions: this._toolstack === 'xm'

@@ -20,6 +20,10 @@ describe('Provider SDK adapters', () => {
     expect(features['vm.power.force'].constraints).toEqual(expect.objectContaining({
       perResource: true, confirmation: true, durableTask: true,
     }));
+    expect(features['vm.snapshot.create']).toEqual(expect.objectContaining({ state: 'conditional' }));
+    expect(features['vm.snapshot.create'].constraints).toEqual(expect.objectContaining({
+      durableTask: true, consistency: ['crash'],
+    }));
   });
 
   it('derives provider-native power actions from current guest state', () => {
@@ -30,6 +34,12 @@ describe('Provider SDK adapters', () => {
       .toEqual(expect.arrayContaining(['shutdown', 'reboot', 'forceShutdown', 'forceReboot']));
     expect(vsphere._internals._allowedVmActions({ powerState: 'poweredOn', toolsStatus: 'toolsNotRunning' }))
       .toEqual(['forceShutdown', 'forceReboot']);
+    expect(proxmox._internals._allowedSnapshotActions({ status: 'running' })).toEqual(['snapshot']);
+    expect(proxmox._internals._allowedSnapshotActions({ status: 'running', lock: 'backup' })).toEqual([]);
+    expect(vsphere._internals._allowedSnapshotActions({
+      snapshotOperationsSupported: true, powerState: 'poweredOn', toolsStatus: 'toolsOk',
+    })).toEqual(['snapshot', 'snapshotQuiesced']);
+    expect(vsphere._internals._allowedSnapshotActions({ snapshotOperationsSupported: false })).toEqual([]);
   });
 
   it('distinguishes vCenter, ESXi and unknown products', () => {
@@ -41,12 +51,13 @@ describe('Provider SDK adapters', () => {
   it('maps XAPI features with per-resource constraints', () => {
     const features = xen._internals._fromCapabilities({
       vms: true, hosts: true, pools: true, storages: true, networks: true,
-      tasks: true, snapshots: true, taskCleanup: true,
+      tasks: true, snapshots: true, snapshotQuiesce: true, taskCleanup: true,
       vmActions: ['start', 'shutdown', 'forceShutdown', 'reboot'],
     });
     expect(features['inventory.cluster'].state).toBe('supported');
     expect(features['vm.power.start']).toEqual(expect.objectContaining({ state: 'conditional' }));
     expect(features['vm.snapshot.create'].constraints.perResource).toBe(true);
+    expect(features['vm.snapshot.create'].constraints.consistency).toEqual(['crash', 'quiesced']);
     expect(features['task.cleanup'].state).toBe('supported');
   });
 

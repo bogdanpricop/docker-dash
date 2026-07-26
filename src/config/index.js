@@ -88,11 +88,16 @@ module.exports = {
     // Mutation canary. Preflight remains inspectable while submit routes and
     // UI actions stay closed unless an operator explicitly enables this.
     providerVmPower: bool('DD_PROVIDER_VM_POWER', false),
+    providerVmSnapshots: bool('DD_PROVIDER_VM_SNAPSHOTS', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
     pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
     leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
+  },
+  providerSnapshots: {
+    maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),
+    maxDepth: int('DD_PROVIDER_VM_SNAPSHOT_MAX_DEPTH', 16),
   },
   providerResilience: {
     concurrency: int('DD_PROVIDER_MAX_CONCURRENCY', 2),

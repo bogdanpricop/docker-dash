@@ -269,7 +269,7 @@ class VSphereClient {
     const props = ['name', 'summary.runtime.powerState', 'summary.config.guestFullName',
       'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid',
       'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
-      'config.version',
+      'config.version', 'capability.snapshotOperationsSupported',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
       'summary.storage.committed', 'summary.storage.uncommitted',
       // v8.9.13-alpha.3 — per-datastore committed bytes, so the Datastores
@@ -290,6 +290,7 @@ class VSphereClient {
       toolsStatus: o.props['guest.toolsStatus'] || null,
       toolsVersion: o.props['guest.toolsVersion'] || null,
       hwVersion: o.props['config.version'] || null,
+      snapshotOperationsSupported: o.props['capability.snapshotOperationsSupported'] === 'true',
       cpuUsageMHz: parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0,
       memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
       storageCommittedBytes: parseInt(o.props['summary.storage.committed'], 10) || 0,
@@ -339,6 +340,70 @@ class VSphereClient {
       progress: parseInt(props['info.progress'], 10) || 0,
       error: props['info.error'] ? (_extractFault(props['info.error']) || 'vSphere task failed') : null,
     };
+  }
+
+  async listVMSnapshots(vmMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref, ['snapshot']);
+    return _parseSnapshotTree(raw);
+  }
+
+  async createVMSnapshot(vmMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CreateSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <name>${this._xesc(options.name)}</name>
+    <description>${this._xesc(options.description || '')}</description>
+    <memory>false</memory><quiesce>${options.quiesce === true}</quiesce>
+  </CreateSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  async revertVMSnapshot(snapshotMoref) {
+    await this._ensureLoggedIn();
+    this._validateSnapshotRef(snapshotMoref);
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RevertToSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachineSnapshot">${this._xesc(snapshotMoref)}</_this>
+    <suppressPowerOn>true</suppressPowerOn>
+  </RevertToSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  async deleteVMSnapshot(snapshotMoref) {
+    await this._ensureLoggedIn();
+    this._validateSnapshotRef(snapshotMoref);
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RemoveSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachineSnapshot">${this._xesc(snapshotMoref)}</_this>
+    <removeChildren>false</removeChildren><consolidate>true</consolidate>
+  </RemoveSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  _validateSnapshotRef(value) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(value || ''))) {
+      throw Object.assign(new Error('Invalid vSphere snapshot reference'), { code: 'INVALID_PROVIDER_SNAPSHOT' });
+    }
+  }
+
+  _snapshotTask(response) {
+    const taskRef = _extractTag(response, 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere snapshot operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
   }
 
   async listHosts() {
@@ -863,6 +928,39 @@ function _parseDatastoreUsage(xml) {
   return out;
 }
 
+function _parseSnapshotTree(xml) {
+  const current = /<currentSnapshot\b[^>]*>([^<]+)<\/currentSnapshot>/.exec(xml)?.[1]?.trim() || null;
+  const output = [];
+  const stack = [];
+  const token = /<(\/)?(rootSnapshotList|childSnapshotList)\b[^>]*>/g;
+  let match;
+  while ((match = token.exec(xml))) {
+    if (!match[1]) {
+      const closing = `</${match[2]}>`;
+      const childAt = xml.indexOf('<childSnapshotList', token.lastIndex);
+      const closeAt = xml.indexOf(closing, token.lastIndex);
+      const headerEnd = childAt >= 0 && childAt < closeAt ? childAt : closeAt;
+      const header = headerEnd >= token.lastIndex ? xml.slice(token.lastIndex, headerEnd) : '';
+      const ref = /<snapshot\b[^>]*>([^<]+)<\/snapshot>/.exec(header)?.[1]?.trim() || null;
+      const parent = stack.length ? stack[stack.length - 1].ref : null;
+      const quiesced = _extractTag(header, 'quiesced');
+      const item = ref ? {
+        nativeRef: _decodeEntities(ref), name: _extractTag(header, 'name') || ref,
+        description: _extractTag(header, 'description'), createdAt: _extractTag(header, 'createTime'),
+        parentRef: parent, isCurrent: ref === current,
+        consistency: quiesced === 'true' ? 'quiesced' : quiesced === 'false' ? 'crash' : 'unknown',
+        powerState: _extractTag(header, 'state') || null, provider: 'vsphere',
+      } : null;
+      if (item) output.push(item);
+      stack.push({ tag: match[2], ref });
+    } else {
+      const opened = stack.pop();
+      if (!opened || opened.tag !== match[2]) return [];
+    }
+  }
+  return stack.length ? [] : output;
+}
+
 // v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent
 // reply: <sessionManager type="SessionManager">ha-sessionmgr</sessionManager>
 // -> { type: 'SessionManager', value: 'ha-sessionmgr' }. Namespace-tolerant.
@@ -938,7 +1036,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseDatastoreUsage },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseDatastoreUsage, _parseSnapshotTree },
 };
 
 if (false) log.info();

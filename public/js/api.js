@@ -575,6 +575,25 @@ const Api = {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     });
   },
+  getProviderVMSnapshots(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots`);
+  },
+  preflightProviderVMSnapshotCreate(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/preflight`, body);
+  },
+  submitProviderVMSnapshotCreate(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  preflightProviderVMSnapshotAction(hostId, resourceId, snapshotId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}/${action}/preflight`, {});
+  },
+  submitProviderVMSnapshotAction(hostId, resourceId, snapshotId, action, body, idempotencyKey) {
+    return this.request(action === 'delete' ? 'DELETE' : 'POST',
+      `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}${action === 'delete' ? '' : '/revert'}`,
+      body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey } });
+  },
   getProviderOperations(filters = {}) {
     const qs = new URLSearchParams();
     if (filters.limit) qs.set('limit', filters.limit);

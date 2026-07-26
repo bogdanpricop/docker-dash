@@ -16,6 +16,9 @@ const mockPowerPreflight = jest.fn();
 const mockPowerPreflightBulk = jest.fn();
 const mockPowerSubmit = jest.fn();
 const mockPowerSubmitBulk = jest.fn();
+const mockSnapshotInventory = jest.fn();
+const mockSnapshotPreflight = jest.fn();
+const mockSnapshotSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
 
 jest.mock('../db', () => ({
@@ -34,6 +37,11 @@ jest.mock('../services/provider-operations/vm-power', () => ({
   preflightManyForHost: (...args) => mockPowerPreflightBulk(...args),
   submitForHost: (...args) => mockPowerSubmit(...args),
   submitManyForHost: (...args) => mockPowerSubmitBulk(...args),
+}));
+jest.mock('../services/provider-operations/vm-snapshots', () => ({
+  inventoryForHost: (...args) => mockSnapshotInventory(...args),
+  preflightForHost: (...args) => mockSnapshotPreflight(...args),
+  submitForHost: (...args) => mockSnapshotSubmit(...args),
 }));
 jest.mock('../services/provider-conformance', () => ({
   runForHost: (...args) => mockConformanceRun(...args),
@@ -94,6 +102,20 @@ describe('Provider SDK routes', () => {
     });
     mockPowerSubmitBulk.mockResolvedValue({
       preflight: { action: 'start', plans: [] }, operations: [{ id: `op_${'e'.repeat(26)}` }],
+    });
+    mockSnapshotInventory.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, count: 0, items: [], protection: { isBackup: false },
+    });
+    mockSnapshotPreflight.mockResolvedValue({
+      schemaVersion: '1.0', action: 'create', allowed: true, name: 'before-upgrade',
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'b'.repeat(64),
+    });
+    mockSnapshotSubmit.mockResolvedValue({
+      plan: {
+        action: 'create', name: 'before-upgrade', consistency: 'crash',
+        vm: { id: `ddr_vm_${'a'.repeat(26)}` }, snapshot: { id: `dds_snap_${'b'.repeat(26)}` },
+      },
+      operation: { id: `op_${'f'.repeat(26)}` },
     });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
@@ -217,6 +239,61 @@ describe('Provider SDK routes', () => {
     expect(mockPowerSubmitBulk).toHaveBeenCalledWith(mockHost, [id], expect.objectContaining({
       idempotencyKey: 'bulk-power-request',
     }), { canOperate: true, createdBy: 1 });
+  });
+
+  it('lists, preflights and submits host-scoped common VM snapshots', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const inventory = await request(app).get(`/api/providers/7/virtual-machines/${vmId}/snapshots`)
+      .set('x-test-role', 'viewer');
+    expect(inventory.status).toBe(200);
+    expect(inventory.body.protection.isBackup).toBe(false);
+    expect(mockSnapshotInventory).toHaveBeenCalledWith(mockHost, vmId);
+
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ name: 'before-upgrade', consistency: 'crash' });
+    expect(preflight.status).toBe(200);
+    expect(mockSnapshotPreflight).toHaveBeenCalledWith(mockHost, vmId, 'create',
+      { name: 'before-upgrade', consistency: 'crash' }, null, { canOperate: true });
+
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-request-1')
+      .send({ name: 'before-upgrade', consistency: 'crash', planHash: 'b'.repeat(64), confirm: true });
+    expect(submit.status).toBe(202);
+    expect(mockSnapshotSubmit).toHaveBeenCalledWith(mockHost, vmId, 'create', expect.objectContaining({
+      idempotencyKey: 'snapshot-request-1',
+    }), null, { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_create' }));
+  });
+
+  it('requires operate access and audits typed snapshot revert/delete submissions', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const snapshotId = `dds_snap_${'b'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/preflight`)
+      .set('x-test-role', 'viewer').send({ name: 'blocked' })).status).toBe(403);
+
+    mockSnapshotSubmit.mockResolvedValueOnce({
+      plan: { action: 'revert', vm: { id: vmId }, snapshot: { id: snapshotId } },
+      operation: { id: `op_${'1'.repeat(26)}` },
+    });
+    const revert = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/${snapshotId}/revert`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-revert-1')
+      .send({ confirm: true, confirmName: 'vm-a', planHash: 'c'.repeat(64) });
+    expect(revert.status).toBe(202);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_revert' }));
+
+    mockSnapshotSubmit.mockResolvedValueOnce({
+      plan: { action: 'delete', vm: { id: vmId }, snapshot: { id: snapshotId } },
+      operation: { id: `op_${'2'.repeat(26)}` },
+    });
+    const deletion = await request(app).delete(`/api/providers/7/virtual-machines/${vmId}/snapshots/${snapshotId}`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-delete-1')
+      .send({ confirm: true, confirmName: 'before-upgrade', planHash: 'd'.repeat(64) });
+    expect(deletion.status).toBe(202);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_delete' }));
   });
 
   it('publishes provider manifests and an evidence-backed scorecard', async () => {

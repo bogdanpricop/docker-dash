@@ -129,6 +129,110 @@ const VirtualMachinesPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
+  _snapshotPlanHtml(plan) {
+    const blockers = plan.blockers || [];
+    const warnings = plan.warnings || [];
+    return `<div class="text-sm">
+      <div class="alert alert-warning" style="margin-bottom:12px"><strong>Snapshot is not backup</strong><div>${Utils.escapeHtml(plan.protection?.warning || 'A snapshot shares the provider storage failure domain.')}</div></div>
+      ${blockers.length ? `<div class="alert alert-danger"><strong>Operation blocked</strong><ul style="margin:8px 0 0 18px">${blockers.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="card" style="padding:12px;margin-top:12px">
+        <div><strong>VM:</strong> ${Utils.escapeHtml(plan.vm.displayName)}</div>
+        <div><strong>Action:</strong> ${Utils.escapeHtml(plan.action)}</div>
+        <div><strong>Snapshot:</strong> ${Utils.escapeHtml(plan.snapshot?.name || plan.name || '—')}</div>
+        ${plan.consistency ? `<div><strong>Consistency:</strong> ${Utils.escapeHtml(plan.consistency)}</div>` : ''}
+      </div>
+      ${warnings.filter(item => item.type !== 'NOT_A_BACKUP').length ? `<ul style="margin:12px 0 0 18px">${warnings.filter(item => item.type !== 'NOT_A_BACKUP').map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul>` : ''}
+    </div>`;
+  },
+
+  async _runSnapshotCreate(host, vm) {
+    const input = await Modal.form(`
+      <label class="form-label" for="vm-snapshot-name">Portable snapshot name</label>
+      <input id="vm-snapshot-name" class="form-control" maxlength="80" placeholder="before-upgrade" autocomplete="off">
+      <label class="form-label" for="vm-snapshot-description" style="margin-top:12px">Description</label>
+      <textarea id="vm-snapshot-description" class="form-control" maxlength="1000" rows="3"></textarea>
+      <label class="form-label" for="vm-snapshot-consistency" style="margin-top:12px">Consistency</label>
+      <select id="vm-snapshot-consistency" class="form-control"><option value="crash">Crash-consistent</option><option value="quiesced">Quiesced (requires provider + guest tools)</option></select>
+      <div class="alert alert-warning text-sm" style="margin-top:14px">This snapshot stays in the provider storage failure domain. It is not an independent backup.</div>`, {
+      title: `Create snapshot · ${vm.displayName}`, submitLabel: 'Review preflight',
+      onSubmit: root => {
+        const name = root.querySelector('#vm-snapshot-name').value.trim();
+        if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(name)) {
+          Toast.error('Use 1-80 letters, numbers, dot, underscore or hyphen'); return false;
+        }
+        return { name, description: root.querySelector('#vm-snapshot-description').value.trim(), consistency: root.querySelector('#vm-snapshot-consistency').value };
+      },
+    });
+    if (!input) return;
+    try {
+      const plan = await Api.preflightProviderVMSnapshotCreate(host.id, vm.id, input);
+      if (!plan.allowed) {
+        await Modal.confirm(this._snapshotPlanHtml(plan), { title: 'Snapshot preflight', confirmText: 'Close', html: true, width: '640px' });
+        return;
+      }
+      const confirmed = await Modal.confirm(this._snapshotPlanHtml(plan), {
+        title: `Create snapshot ${plan.name}`, confirmText: 'Create snapshot', html: true, width: '640px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMSnapshotCreate(host.id, vm.id, {
+        ...input, planHash: plan.planHash, confirm: true,
+      }, this._idempotencyKey('vm-snapshot-create'));
+      Toast.success(`Snapshot ${plan.name} queued`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _runSnapshotAction(host, vm, snapshot, action) {
+    try {
+      const plan = await Api.preflightProviderVMSnapshotAction(host.id, vm.id, snapshot.id, action);
+      if (!plan.allowed) {
+        await Modal.confirm(this._snapshotPlanHtml(plan), { title: 'Snapshot preflight', confirmText: 'Close', html: true, width: '640px' });
+        return;
+      }
+      const confirmed = await Modal.confirm(this._snapshotPlanHtml(plan), {
+        title: `${action === 'revert' ? 'Revert to' : 'Delete'} ${snapshot.name}`,
+        confirmText: action === 'revert' ? 'Revert VM' : 'Delete snapshot', danger: true,
+        typeToConfirm: plan.confirmation.expected, html: true, width: '640px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMSnapshotAction(host.id, vm.id, snapshot.id, action, {
+        planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
+      }, this._idempotencyKey(`vm-snapshot-${action}`));
+      Toast.success(`Snapshot ${action} queued`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  _mountSnapshots(panel, section, host, vm) {
+    if (!section.available) {
+      panel.innerHTML = `<div class="empty-msg"><i class="fas fa-ban"></i>${Utils.escapeHtml(section.reason || 'Snapshots unavailable')}</div>`;
+      return;
+    }
+    const items = section.items || [];
+    panel.innerHTML = `<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px">
+      <button class="btn btn-sm btn-primary" id="common-snapshot-create"><i class="fas fa-camera"></i> Create snapshot</button>
+      <button class="btn btn-sm btn-secondary" id="common-snapshot-refresh"><i class="fas fa-sync"></i> Refresh</button>
+    </div>
+    <div class="alert alert-warning text-sm"><strong>Snapshots are not backups.</strong> They share the VM/provider storage failure domain.</div>
+    ${items.length ? `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Name</th><th>Created</th><th>Consistency</th><th>Integrity</th><th>Children</th><th>Actions</th></tr></thead><tbody>${items.map(item => `<tr>
+      <td><strong>${Utils.escapeHtml(item.name)}</strong>${item.isCurrent ? ' <span class="badge badge-info">current</span>' : ''}</td>
+      <td>${Utils.escapeHtml(item.createdAt ? Utils.formatDate(item.createdAt) : '—')}</td><td>${Utils.escapeHtml(item.consistency)}</td>
+      <td><span class="badge ${item.integrity?.state === 'valid' ? 'badge-success' : 'badge-warning'}">${Utils.escapeHtml(item.integrity?.state || 'unknown')}</span></td>
+      <td>${item.childCount || 0}</td><td style="display:flex;gap:6px"><button class="btn btn-sm btn-secondary" data-snapshot-action="revert" data-snapshot-id="${item.id}">Revert</button><button class="btn btn-sm btn-danger" data-snapshot-action="delete" data-snapshot-id="${item.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-msg"><i class="fas fa-camera"></i>No snapshots are currently visible.</div>'}`;
+    panel.querySelector('#common-snapshot-create').addEventListener('click', () => this._runSnapshotCreate(host, vm));
+    panel.querySelector('#common-snapshot-refresh').addEventListener('click', async event => {
+      event.currentTarget.disabled = true;
+      try {
+        const inventory = await Api.getProviderVMSnapshots(host.id, vm.id);
+        this._mountSnapshots(panel, { available: true, items: inventory.items }, host, vm);
+      } catch (err) { Toast.error(err.message); event.currentTarget.disabled = false; }
+    });
+    panel.querySelectorAll('[data-snapshot-action]').forEach(button => button.addEventListener('click', () => {
+      const snapshot = items.find(item => item.id === button.dataset.snapshotId);
+      if (snapshot) this._runSnapshotAction(host, vm, snapshot, button.dataset.snapshotAction);
+    }));
+  },
+
   async render(container, params = {}) {
     this.destroy();
     try {
@@ -304,8 +408,9 @@ const VirtualMachinesPage = {
           definition('Hardware version', value.hardwareVersion), definition('Guest tools', value.toolsStatus), definition('Tools version', value.toolsVersion),
         ]);
       } },
-      ...[['disks', 'Disks', 'fa-hdd'], ['network', 'Network', 'fa-network-wired'], ['snapshots', 'Snapshots', 'fa-camera'], ['events', 'Events', 'fa-stream']]
+      ...[['disks', 'Disks', 'fa-hdd'], ['network', 'Network', 'fa-network-wired'], ['events', 'Events', 'fa-stream']]
         .map(([key, label, icon]) => ({ key, label, icon, render: panel => { panel.innerHTML = unavailable(detail.sections[key]); } })),
+      { key: 'snapshots', label: 'Snapshots', icon: 'fa-camera', render: panel => { this._mountSnapshots(panel, detail.sections.snapshots, host, vm); } },
       { key: 'tasks', label: 'Tasks', icon: 'fa-tasks', render: panel => { panel.innerHTML = listSection(detail.sections.tasks); } },
     ];
     this._shell = DetailShell.create({

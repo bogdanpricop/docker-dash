@@ -169,6 +169,43 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
         .rejects.toMatchObject({ code: 'PROVIDER_ACTION_UNAVAILABLE', status: 400 });
       expect(mockHttps._handlers).toHaveLength(0);
     });
+
+    it('normalizes snapshot trees and submits a native snapshot task', async () => {
+      const seen = [];
+      mockHttps._mockNext((opts, cb) => {
+        seen.push({ method: opts.method, path: opts.path });
+        const res = fakeResponse({ status: 200, body: { data: [
+          { name: 'current', parent: 'child' },
+          { name: 'root', description: 'checkpoint', snaptime: 1767225600 },
+          { name: 'child', parent: 'root', snaptime: 1767312000 },
+        ] } });
+        cb(res); res._fire();
+      });
+      mockHttps._mockNext((opts, cb, req) => {
+        seen.push({ method: opts.method, path: opts.path, body: req._writtenBody?.toString() });
+        const res = fakeResponse({ status: 200, body: { data: 'UPID:pve-a:0002:snapshot-task' } });
+        cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.listVMSnapshots('pve-a', 101, 'qemu')).resolves.toEqual([
+        expect.objectContaining({ nativeRef: 'root', name: 'root', parentRef: null }),
+        expect.objectContaining({ nativeRef: 'child', name: 'child', parentRef: 'root', isCurrent: true }),
+      ]);
+      await expect(client.createVMSnapshot('pve-a', 101, 'qemu', {
+        name: 'before-upgrade', description: 'release checkpoint',
+      })).resolves.toEqual({ taskRef: 'UPID:pve-a:0002:snapshot-task', node: 'pve-a', provider: 'proxmox' });
+      expect(seen[0]).toEqual({ method: 'GET', path: '/api2/json/nodes/pve-a/qemu/101/snapshot' });
+      expect(seen[1]).toEqual(expect.objectContaining({ method: 'POST', path: '/api2/json/nodes/pve-a/qemu/101/snapshot' }));
+      expect(JSON.parse(seen[1].body)).toEqual({
+        snapname: 'before-upgrade', description: 'release checkpoint',
+      });
+    });
+
+    it('rejects invalid snapshot targets before network access', async () => {
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.listVMSnapshots('../unsafe', 101, 'qemu')).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
   });
 
   describe('daemon_config encryption', () => {

@@ -17,4 +17,19 @@ describe('common virtual machines page routing', () => {
       { type: 'ACTION_NOT_ENABLED', reason: 'Read-only in V1.1' },
     ] })).toBe('Change freeze · Read-only in V1.1');
   });
+
+  it('renders snapshot preflight guardrails without trusting provider text', () => {
+    global.Utils = { escapeHtml: value => String(value)
+      .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') };
+    const html = page._snapshotPlanHtml({
+      vm: { displayName: '<img src=x>' }, action: 'create', name: 'safe-snapshot',
+      consistency: 'crash', protection: { warning: '<script>alert(1)</script>' },
+      blockers: [{ reason: '<b>blocked</b>' }], warnings: [{ type: 'NOT_A_BACKUP', reason: 'guardrail' }],
+    });
+    expect(html).toContain('Snapshot is not backup');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('&lt;img src=x&gt;');
+    expect(html).not.toContain('<script>');
+    delete global.Utils;
+  });
 });

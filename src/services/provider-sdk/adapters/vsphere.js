@@ -5,7 +5,6 @@ const { supported, conditional, adapterNotImplemented } = require('./helpers');
 
 const NOT_IMPLEMENTED = [
   'inventory.cluster', 'inventory.task',
-  'vm.snapshot.list', 'vm.snapshot.create', 'vm.snapshot.revert', 'vm.snapshot.delete',
   'vm.console', 'vm.clone', 'vm.create', 'vm.migrate', 'host.maintenance',
   'cluster.ha.read', 'storage.mutate', 'network.mutate', 'task.read',
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
@@ -22,6 +21,10 @@ function declared() {
     'vm.power.shutdown': conditional('Clean shutdown requires running VMware Tools', { perResource: true, requiresGuestTools: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),
     'vm.power.reboot': conditional('Clean reboot requires running VMware Tools', { perResource: true, requiresGuestTools: true }),
+    'vm.snapshot.list': conditional('Snapshot support is checked from VM capabilities', { perResource: true }),
+    'vm.snapshot.create': conditional('Quiesced mode requires a powered-on VM and running VMware Tools', { perResource: true, durableTask: true, consistency: ['crash', 'quiesced'] }),
+    'vm.snapshot.revert': conditional('Snapshot ownership and current VM state are revalidated', { perResource: true, durableTask: true, confirmation: true }),
+    'vm.snapshot.delete': conditional('Snapshot child dependencies are revalidated', { perResource: true, durableTask: true, confirmation: true }),
   };
   for (const key of NOT_IMPLEMENTED) features[key] = adapterNotImplemented('VMware vSphere');
   return features;
@@ -57,7 +60,7 @@ async function listResources(kind, host) {
   try {
     await client.login();
     if (kind === 'virtualMachine') return (await client.listVMs()).map(row => ({
-      ...row, allowedActions: _allowedVmActions(row),
+      ...row, allowedActions: [..._allowedVmActions(row), ..._allowedSnapshotActions(row)],
     }));
     if (kind === 'host') return await client.listHosts();
     if (kind === 'storage') return await client.listDatastores();
@@ -80,4 +83,13 @@ function _allowedVmActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, _internals: { _variant, _allowedVmActions } };
+function _allowedSnapshotActions(row) {
+  if (row?.snapshotOperationsSupported !== true) return [];
+  const actions = ['snapshot'];
+  const state = String(row?.powerState || '').toLowerCase();
+  const tools = String(row?.toolsStatus || '').toLowerCase();
+  if (state === 'poweredon' && ['toolsok', 'toolsold'].includes(tools)) actions.push('snapshotQuiesced');
+  return actions;
+}
+
+module.exports = { type: 'vsphere', declared, probe, listResources, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

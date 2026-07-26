@@ -131,6 +131,28 @@ describe('unified Xen client', () => {
     await expect(client.vmAction('vm-1', 'formatDisk')).rejects.toThrow(/Unsupported/);
   });
 
+  it('does not claim unsupported Xen Orchestra guest quiescing', async () => {
+    const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'TOKEN' });
+    expect(client.capabilities().snapshotQuiesce).toBe(false);
+    await expect(client.createSnapshot('vm-1', 'safe', { quiesce: true }))
+      .rejects.toMatchObject({ code: 'SNAPSHOT_QUIESCE_UNAVAILABLE' });
+    expect(mockHttps._handlers).toHaveLength(0);
+  });
+
+  it('dispatches XAPI quiesced snapshots through the explicit async method', async () => {
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 });
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:vm', id: 2 });
+    queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:task', id: 3 }, 200, (_opts, req) => {
+      const body = JSON.parse(req.body);
+      expect(body.method).toBe('Async.VM.snapshot_with_quiesce');
+      expect(body.params.slice(-2)).toEqual(['OpaqueRef:vm', 'before-upgrade']);
+    });
+    const client = new XapiClient({ endpoint: 'https://xcp.test', username: 'svc', password: 'secret' });
+    await expect(client.createSnapshot('vm-uuid', 'before-upgrade', { quiesce: true }))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:task', provider: 'xapi' });
+    expect(client.capabilities().snapshotQuiesce).toBe(true);
+  });
+
   it('uses one concurrent XAPI login and JSON-RPC task operations', async () => {
     let loginCount = 0;
     queueJson({ jsonrpc: '2.0', result: 'OpaqueRef:session', id: 1 }, 200, (_opts, req) => {

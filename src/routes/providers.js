@@ -6,6 +6,7 @@ const { getDb } = require('../db');
 const providerSdk = require('../services/provider-sdk/registry');
 const providerVmDetail = require('../services/provider-sdk/vm-detail');
 const providerVmPower = require('../services/provider-operations/vm-power');
+const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const conformance = require('../services/provider-conformance');
 const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -44,6 +45,15 @@ function _powerError(res, err) {
   res.status(status).json({
     error: status >= 500 ? 'Provider VM power request failed' : err.message,
     code: err?.code || 'VM_POWER_ERROR',
+    ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _snapshotError(res, err) {
+  const status = Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM snapshot request failed' : err.message,
+    code: err?.code || 'VM_SNAPSHOT_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
   });
 }
@@ -199,6 +209,101 @@ router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _powerError(res, err); }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/snapshots', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerVmSnapshots.inventoryForHost(resolved.host, req.params.resourceId)); }
+    catch (err) { _snapshotError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshots/preflight', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmSnapshots.preflightForHost(
+        resolved.host, req.params.resourceId, 'create', req.body || {}, null, { canOperate: true }
+      ));
+    } catch (err) { _snapshotError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshots', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmSnapshots.submitForHost(
+        resolved.host, req.params.resourceId, 'create', { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        null, { canOperate: true, createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_create', targetType: 'virtualMachine', targetId: result.plan.vm.id,
+        details: {
+          provider: resolved.host.daemon_type, hostId: resolved.host.id,
+          operationId: result.operation.id, snapshotName: result.plan.name,
+          consistency: result.plan.consistency, isBackup: false,
+        }, ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _snapshotError(res, err); }
+  }));
+
+for (const action of ['revert', 'delete']) {
+  router.post(`/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId/${action}/preflight`, requireAuth,
+    requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+      const resolved = _host(req.params.hostId);
+      if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+      try {
+        res.json(await providerVmSnapshots.preflightForHost(
+          resolved.host, req.params.resourceId, action, req.body || {}, req.params.snapshotId, { canOperate: true }
+        ));
+      } catch (err) { _snapshotError(res, err); }
+    }));
+}
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId/revert', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmSnapshots.submitForHost(
+        resolved.host, req.params.resourceId, 'revert', { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        req.params.snapshotId, { canOperate: true, createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_revert', targetType: 'provider_snapshot', targetId: result.plan.snapshot.id,
+        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id, operationId: result.operation.id },
+        ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _snapshotError(res, err); }
+  }));
+
+router.delete('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId', requireAuth,
+  requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmSnapshots.submitForHost(
+        resolved.host, req.params.resourceId, 'delete', { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        req.params.snapshotId, { canOperate: true, createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_delete', targetType: 'provider_snapshot', targetId: result.plan.snapshot.id,
+        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id, operationId: result.operation.id },
+        ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _snapshotError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId', requireAuth,

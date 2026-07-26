@@ -6,6 +6,7 @@ const registrySingleton = require('./registry');
 const snapshotsSingleton = require('./resource-snapshots');
 const operationsSingleton = require('../provider-operations');
 const policySingleton = require('../provider-operations/policy');
+const vmSnapshotStore = require('./vm-snapshot-store');
 
 const DETAIL_SCHEMA_VERSION = '1.0';
 const MAX_DETAIL_BYTES = 512 * 1024;
@@ -98,7 +99,7 @@ function _section(available, options = {}) {
   return section;
 }
 
-function _sections(resource, capabilities, activity) {
+function _sections(resource, capabilities, activity, vmSnapshots = []) {
   const labels = resource.labels || {};
   const snapshotEvidence = capabilities?.features?.['vm.snapshot.list'];
   const eventEvidence = capabilities?.features?.['event.stream'];
@@ -128,10 +129,10 @@ function _sections(resource, capabilities, activity) {
     } }),
     disks: _section(false, { reason: 'Portable disk detail is not implemented by the common provider adapter', items: [] }),
     network: _section(false, { reason: 'Portable NIC detail is not implemented by the common provider adapter', items: [] }),
-    snapshots: _section(false, {
+    snapshots: _section(snapshotEvidence && ['supported', 'conditional'].includes(snapshotEvidence.state), {
       capability: 'vm.snapshot.list',
       reason: snapshotEvidence?.reason || 'Portable snapshot detail is not implemented by the common provider adapter',
-      items: [],
+      items: vmSnapshots,
     }),
     tasks: _section(true, { items: activity }),
     events: _section(false, {
@@ -194,12 +195,15 @@ async function detailForHost(host, canonicalId, options = {}) {
   let policy;
   try { policy = policyService.evaluate({ providerType: host.daemon_type, hostId: Number(host.id) }); }
   catch { policy = { allowed: false, code: 'POLICY_UNAVAILABLE', mode: 'unknown', reason: 'Operation policy could not be evaluated' }; }
+  let vmSnapshots = [];
+  try { vmSnapshots = vmSnapshotStore.list(Number(host.id), id, database).slice(0, 128); }
+  catch { /* migration-safe empty snapshot section */ }
 
   const envelope = {
     schemaVersion: DETAIL_SCHEMA_VERSION,
     resource, capabilities, freshness: _freshness(resource, refreshError),
     actions: _actions(resource, capabilities, policy, options.canOperate === true, options.powerEnabled),
-    sections: _sections(resource, capabilities, activity),
+    sections: _sections(resource, capabilities, activity, vmSnapshots),
     activity,
   };
   if (Buffer.byteLength(JSON.stringify(envelope)) > MAX_DETAIL_BYTES) {

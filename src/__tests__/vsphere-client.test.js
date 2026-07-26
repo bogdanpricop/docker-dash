@@ -177,6 +177,21 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       expect(objs[1].props.name).toBe('db-01');
       expect(objs[1].props['summary.runtime.powerState']).toBe('poweredOff');
     });
+
+    it('parses a nested snapshot tree with current and consistency evidence', () => {
+      const xml = `<snapshot><currentSnapshot type="VirtualMachineSnapshot">snapshot-2</currentSnapshot>
+        <rootSnapshotList><snapshot type="VirtualMachineSnapshot">snapshot-1</snapshot>
+          <vm type="VirtualMachine">vm-1</vm><name>root &amp; safe</name><description>base</description>
+          <createTime>2026-07-01T00:00:00Z</createTime><state>poweredOff</state><quiesced>false</quiesced>
+          <childSnapshotList><snapshot type="VirtualMachineSnapshot">snapshot-2</snapshot>
+            <vm type="VirtualMachine">vm-1</vm><name>child</name><createTime>2026-07-02T00:00:00Z</createTime>
+            <state>poweredOn</state><quiesced>true</quiesced></childSnapshotList>
+        </rootSnapshotList></snapshot>`;
+      expect(_internals._parseSnapshotTree(xml)).toEqual([
+        expect.objectContaining({ nativeRef: 'snapshot-1', name: 'root & safe', parentRef: null, consistency: 'crash', isCurrent: false }),
+        expect.objectContaining({ nativeRef: 'snapshot-2', name: 'child', parentRef: 'snapshot-1', consistency: 'quiesced', isCurrent: true }),
+      ]);
+    });
   });
 
   describe('login flow', () => {
@@ -293,6 +308,31 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
       const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
       client._sessionCookie = 'vmware_soap_session="test"';
       await expect(client.getTaskStatus('haTask-42')).resolves.toEqual({ status: 'success', progress: 100, error: null });
+    });
+  });
+
+  describe('VM snapshot operations', () => {
+    it('submits safe task-backed create, revert and delete SOAP operations', async () => {
+      const bodies = [];
+      for (const task of ['create-1', 'revert-1', 'delete-1']) {
+        mockHttps._mockNext((_opts, cb, req) => {
+          bodies.push(req._writtenBody.toString('utf8'));
+          const res = fakeResponse({ status: 200, body: `<soap:Envelope><soap:Body><Response><returnval type="Task">haTask-${task}</returnval></Response></soap:Body></soap:Envelope>` });
+          cb(res); res._fire();
+        });
+      }
+      const client = new VSphereClient({ endpoint: 'https://esxi', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.createVMSnapshot('vm-9', { name: 'safe&amp;', description: '<checkpoint>', quiesce: true }))
+        .resolves.toEqual({ taskRef: 'haTask-create-1', provider: 'vsphere' });
+      await expect(client.revertVMSnapshot('snapshot-9')).resolves.toEqual({ taskRef: 'haTask-revert-1', provider: 'vsphere' });
+      await expect(client.deleteVMSnapshot('snapshot-9')).resolves.toEqual({ taskRef: 'haTask-delete-1', provider: 'vsphere' });
+      expect(bodies[0]).toContain('<CreateSnapshot_Task xmlns="urn:vim25">');
+      expect(bodies[0]).toContain('<name>safe&amp;amp;</name>');
+      expect(bodies[0]).toContain('<description>&lt;checkpoint&gt;</description>');
+      expect(bodies[0]).toContain('<quiesce>true</quiesce>');
+      expect(bodies[1]).toContain('<suppressPowerOn>true</suppressPowerOn>');
+      expect(bodies[2]).toContain('<removeChildren>false</removeChildren><consolidate>true</consolidate>');
     });
   });
 });
