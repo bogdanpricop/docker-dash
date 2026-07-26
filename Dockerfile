@@ -44,7 +44,10 @@ ENV NODE_ENV=production
 ### Development ###
 FROM base AS development
 ENV NODE_ENV=development
-RUN npm install
+# The development image provides source bind mounts + node --watch at runtime.
+# Test-only native packages (notably canvas) need a full compiler toolchain and
+# are intentionally kept in CI/local test environments, not this runtime image.
+RUN npm ci --omit=dev
 COPY . .
 RUN mkdir -p /data
 EXPOSE 8101
