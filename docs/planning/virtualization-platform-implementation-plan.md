@@ -307,5 +307,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V1.4 | `0265a54` | push + PR #13; CI/build verde | `8.21.4-0265a54`, healthy; live Activity projection read-only | blocat: host key mismatch | owner/permissions, native state, search/timing, safe cancel request și evidence-based unknown resolution |
 | V1.5 | `0d88227` | push + PR #13; CI/build verde | `8.21.4-0d88227`, healthy; ESXi 11-artifact catalog, repeatability 12/12 | blocat: host key mismatch | opaque/encrypted template+image catalog, Proxmox/vSphere/XO/XAPI adapters, VM Catalog UI și WAL-safe persistence |
 | V1.6 | `140494f` | push + PR #13; CI/build verde | `8.21.4-140494f`, healthy; mutation-disabled smoke | blocat: host key mismatch | clone/create-from-template durabil pentru Proxmox, vSphere și XAPI, XO/raw Xen capability-blocked, wizard VM Catalog |
+| V1.7 | `8215774` | push + PR #13; CI/build verde | `8.21.4-8215774`, healthy; flags OFF, customization smoke | blocat: host key mismatch | Linux guest customization structurat pentru Proxmox/vSphere/XO, XAPI/raw fail-closed, recovery și UI |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
