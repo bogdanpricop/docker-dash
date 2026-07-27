@@ -78,6 +78,13 @@ function declared() {
       assertions: ['boot', 'qemu-guest-agent'], cleanup: ['on_success', 'never'],
       preserveFailures: true, arbitraryGuestCommands: false,
     }),
+    'replication.read': conditional('PVE storage-replication jobs are read as intra-cluster asynchronous evidence', {
+      readOnly: true, scope: 'intra_cluster', consistency: 'crash', crossSite: false,
+    }),
+    'replication.configure': unsupported('PVE replication mutation is not enabled until schedule, storage and ownership changes have a dedicated contract'),
+    'dr.failover': unsupported('PVE storage replication alone does not own source fencing, application ordering or network cutover'),
+    'dr.failback': unsupported('PVE failback requires an explicit reverse-protection and data-authority workflow'),
+    'dr.test': unsupported('A multi-workload PVE DR test requires the V4 isolated network ownership contract'),
     'vm.power.start': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.shutdown': conditional('Availability is checked from current guest state', { perResource: true, durableTask: true }),
     'vm.power.force': conditional('Forced power requires typed confirmation', { perResource: true, confirmation: true, durableTask: true }),

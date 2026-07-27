@@ -82,6 +82,16 @@ function _fromCapabilities(capabilities = {}) {
       ? 'Xen Orchestra differential restore transport' : 'Xen'),
     'backup.restore.drill': adapterNotImplemented(capabilities.provider === 'xo'
       ? 'Xen Orchestra health-check mutation transport' : 'Xen'),
+    'replication.read': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra replication-job inventory transport' : 'Xen'),
+    'replication.configure': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra replication policy mutation transport' : 'Xen'),
+    'dr.failover': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra recovery-plan mutation transport' : 'Xen'),
+    'dr.failback': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra reverse-protection transport' : 'Xen'),
+    'dr.test': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra isolated multi-workload test transport' : 'Xen'),
   };
 
   const actions = new Set(capabilities.vmActions || []);

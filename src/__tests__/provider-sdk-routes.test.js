@@ -74,6 +74,14 @@ const mockRestoreDrillGet = jest.fn();
 const mockRestoreDrillPolicyList = jest.fn();
 const mockRestoreDrillPolicyUpsert = jest.fn();
 const mockRestoreDrillPolicyRemove = jest.fn();
+const mockDrOverview = jest.fn();
+const mockDrReplications = jest.fn();
+const mockDrGroupList = jest.fn();
+const mockDrGroupUpsert = jest.fn();
+const mockDrGroupRemove = jest.fn();
+const mockDrPreflight = jest.fn();
+const mockDrRehearse = jest.fn();
+const mockDrRuns = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -82,7 +90,7 @@ jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
-    providerRecoveryRestore: true, providerRestoreDrills: true } };
+    providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true } };
 });
 
 jest.mock('../db', () => ({
@@ -214,6 +222,24 @@ jest.mock('../services/provider-operations/restore-drills', () => {
     listPolicies: (...args) => mockRestoreDrillPolicyList(...args),
     upsertPolicyForHost: (...args) => mockRestoreDrillPolicyUpsert(...args),
     removePolicyForHost: (...args) => mockRestoreDrillPolicyRemove(...args),
+  };
+});
+jest.mock('../services/provider-operations/dr-runbooks', () => {
+  class DrRunbookError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'DrRunbookError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    DrRunbookError,
+    overviewForHost: (...args) => mockDrOverview(...args),
+    listReplicationsForHost: (...args) => mockDrReplications(...args),
+    listGroups: (...args) => mockDrGroupList(...args),
+    upsertGroup: (...args) => mockDrGroupUpsert(...args),
+    removeGroup: (...args) => mockDrGroupRemove(...args),
+    preflightForHost: (...args) => mockDrPreflight(...args),
+    rehearseForHost: (...args) => mockDrRehearse(...args),
+    listRuns: (...args) => mockDrRuns(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -448,6 +474,22 @@ describe('Provider SDK routes', () => {
     mockRestoreDrillPolicyList.mockReturnValue([drillPolicy]);
     mockRestoreDrillPolicyUpsert.mockResolvedValue({ policy: drillPolicy, created: true });
     mockRestoreDrillPolicyRemove.mockReturnValue(drillPolicy);
+    const drGroup = { id: `pdrg_${'8'.repeat(26)}`, name: 'Payments DR', primaryHostId: 7,
+      recoveryHostId: 7, strategy: 'backup_restore', enabled: true,
+      members: [{ vmId: `ddr_vm_${'a'.repeat(26)}` }] };
+    const drPlan = { schemaVersion: '1.0', group: drGroup, mode: 'test', executionType: 'rehearsal',
+      allowed: true, planHash: '8'.repeat(64), blockers: [], warnings: [], steps: [] };
+    const drRun = { id: `pdrun_${'9'.repeat(26)}`, groupId: drGroup.id, mode: 'test',
+      state: 'succeeded', compliance: 'met', evidenceHash: '9'.repeat(64) };
+    mockDrOverview.mockResolvedValue({ schemaVersion: '1.0', summary: { groups: 1 }, groups: [drGroup] });
+    mockDrReplications.mockResolvedValue({ schemaVersion: '1.0', capability: { state: 'unsupported' },
+      count: 0, items: [] });
+    mockDrGroupList.mockReturnValue([drGroup]);
+    mockDrGroupUpsert.mockReturnValue({ group: drGroup, created: true });
+    mockDrGroupRemove.mockReturnValue(drGroup);
+    mockDrPreflight.mockResolvedValue(drPlan);
+    mockDrRehearse.mockResolvedValue({ plan: drPlan, run: drRun });
+    mockDrRuns.mockReturnValue([drRun]);
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -937,6 +979,64 @@ describe('Provider SDK routes', () => {
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
       action: 'provider_restore_drill_policy_deleted',
     }));
+  });
+
+  it('exposes DR posture, replication evidence, protection groups and rehearsal history read-only', async () => {
+    const overview = await request(app).get('/api/providers/7/dr/overview').set('x-test-role', 'viewer');
+    expect(overview.status).toBe(200); expect(overview.body.summary.groups).toBe(1);
+    expect(mockDrOverview).toHaveBeenCalledWith(mockHost);
+    const replications = await request(app).get('/api/providers/7/dr/replications').set('x-test-role', 'viewer');
+    expect(replications.status).toBe(200); expect(replications.body.count).toBe(0);
+    expect(mockDrReplications).toHaveBeenCalledWith(mockHost);
+    const groups = await request(app).get('/api/providers/7/dr/protection-groups?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(groups.status).toBe(200); expect(groups.body.count).toBe(1);
+    expect(mockDrGroupList).toHaveBeenCalledWith(7, { limit: 25 });
+    const groupId = groups.body.items[0].id;
+    const runs = await request(app).get(`/api/providers/7/dr/runs?limit=20&group=${groupId}`)
+      .set('x-test-role', 'viewer');
+    expect(runs.status).toBe(200); expect(runs.body.count).toBe(1);
+    expect(mockDrRuns).toHaveBeenCalledWith(7, { limit: 20, groupId });
+  });
+
+  it('admin-gates and audits DR protection-group lifecycle and deterministic rehearsal', async () => {
+    const body = { name: 'Payments DR', recoveryHostId: 7, strategy: 'backup_restore',
+      members: [{ vmId: `ddr_vm_${'a'.repeat(26)}`, bootStage: 1, dependsOn: [] }] };
+    expect((await request(app).post('/api/providers/7/dr/protection-groups')
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/dr/protection-groups').send(body);
+    expect(created.status).toBe(201);
+    expect(mockDrGroupUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_dr_group_created', targetType: 'dr_protection_group',
+      details: expect.objectContaining({ memberCount: 1, enabled: true }),
+    }));
+    const groupId = created.body.group.id;
+    const preflightBody = { mode: 'test', executionType: 'rehearsal' };
+    expect((await request(app).post(`/api/providers/7/dr/protection-groups/${groupId}/preflight`)
+      .set('x-test-role', 'operator').send(preflightBody)).status).toBe(403);
+    const preflight = await request(app)
+      .post(`/api/providers/7/dr/protection-groups/${groupId}/preflight`).send(preflightBody);
+    expect(preflight.status).toBe(200); expect(preflight.body.planHash).toBe('8'.repeat(64));
+    expect(mockDrPreflight).toHaveBeenCalledWith(mockHost, groupId, preflightBody,
+      { canOperate: true, executionType: 'rehearsal' });
+    const rehearsalBody = { mode: 'test', planHash: '8'.repeat(64), confirm: true,
+      confirmationText: 'REHEARSE Payments DR' };
+    const rehearsed = await request(app)
+      .post(`/api/providers/7/dr/protection-groups/${groupId}/rehearse`).send(rehearsalBody);
+    expect(rehearsed.status).toBe(201); expect(rehearsed.body.run.state).toBe('succeeded');
+    expect(mockDrRehearse).toHaveBeenCalledWith(mockHost, groupId, rehearsalBody,
+      { canOperate: true, createdBy: 1 });
+    const removed = await request(app).delete(`/api/providers/7/dr/protection-groups/${groupId}`);
+    expect(removed.status).toBe(200); expect(mockDrGroupRemove).toHaveBeenCalledWith(7, groupId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_dr_group_deleted' }));
+  });
+
+  it('sanitizes untrusted DR runbook failures', async () => {
+    mockDrOverview.mockRejectedValue(new Error('https://secret@recovery.internal'));
+    const response = await request(app).get('/api/providers/7/dr/overview');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Provider DR runbook request failed', code: 'DR_RUNBOOK_ERROR' });
   });
 
   it('admin-gates and audits plan-only backup policy lifecycle', async () => {

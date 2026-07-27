@@ -111,6 +111,7 @@ module.exports = {
     providerBackupExecution: bool('DD_PROVIDER_BACKUP_EXECUTION', false),
     providerRecoveryRestore: bool('DD_PROVIDER_RECOVERY_RESTORE', false),
     providerRestoreDrills: bool('DD_PROVIDER_RESTORE_DRILLS', false),
+    providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

@@ -9,6 +9,7 @@ const NOT_IMPLEMENTED = [
   'task.cancel', 'task.cleanup', 'event.stream', 'backup.read', 'backup.run',
   'backup.restore.vm', 'backup.restore.disk', 'backup.restore.file',
   'backup.restore.instant', 'backup.restore.differential', 'backup.restore.drill',
+  'replication.read', 'replication.configure', 'dr.failover', 'dr.failback', 'dr.test',
 ];
 
 function declared() {

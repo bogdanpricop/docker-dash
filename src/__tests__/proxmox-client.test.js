@@ -513,3 +513,18 @@ describe('Proxmox HA mutation wrappers', () => {
     ]);
   });
 });
+
+describe('Proxmox storage replication reads', () => {
+  it('uses read-only cluster definition and node status endpoints', async () => {
+    const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'root@pam!dd', tokenSecret: 'secret' });
+    client._request = jest.fn(async () => []);
+    await client.listStorageReplicationJobs();
+    await client.getStorageReplicationStatus('pve-a', '101-0');
+    expect(client._request.mock.calls).toEqual([
+      ['GET', '/api2/json/cluster/replication'],
+      ['GET', '/api2/json/nodes/pve-a/replication/101-0/status'],
+    ]);
+    await expect(client.getStorageReplicationStatus('../unsafe', '101-0'))
+      .rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESOURCE' });
+  });
+});

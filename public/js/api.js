@@ -612,6 +612,34 @@ const Api = {
   deleteProviderRestoreDrillPolicy(hostId, policyId) {
     return this.delete(`/providers/${hostId}/restore-drill-policies/${encodeURIComponent(policyId)}`);
   },
+  getProviderDrOverview(hostId) {
+    return this.get(`/providers/${hostId}/dr/overview`);
+  },
+  getProviderDrReplications(hostId) {
+    return this.get(`/providers/${hostId}/dr/replications`);
+  },
+  getProviderDrProtectionGroups(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/dr/protection-groups?limit=${limit}`);
+  },
+  saveProviderDrProtectionGroup(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/dr/protection-groups`, body);
+  },
+  deleteProviderDrProtectionGroup(hostId, groupId) {
+    return this.delete(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}`);
+  },
+  preflightProviderDrRunbook(hostId, groupId, body) {
+    return this.post(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}/preflight`, body);
+  },
+  rehearseProviderDrRunbook(hostId, groupId, body) {
+    return this.post(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}/rehearse`, body);
+  },
+  getProviderDrRuns(hostId, { limit = 50, groupId = null } = {}) {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (groupId) qs.set('group', groupId);
+    return this.get(`/providers/${hostId}/dr/runs?${qs}`);
+  },
   getProviderBackupPolicies(hostId, limit = 100) {
     return this.get(`/providers/${hostId}/backup-policies?limit=${limit}`);
   },

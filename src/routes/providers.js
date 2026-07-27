@@ -18,6 +18,7 @@ const providerBackupPolicies = require('../services/provider-operations/backup-p
 const providerBackupExecutions = require('../services/provider-operations/backup-executions');
 const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
 const providerRestoreDrills = require('../services/provider-operations/restore-drills');
+const providerDrRunbooks = require('../services/provider-operations/dr-runbooks');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -159,6 +160,31 @@ function _restoreDrillError(res, err) {
     error: status >= 500 ? 'Provider restore-drill request failed' : err.message,
     code: trusted ? err.code : 'PROVIDER_RESTORE_DRILL_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _drRunbookError(res, err) {
+  const trusted = err?.name === 'DrRunbookError'
+    && /^(?:DR_|INVALID_|PROVIDER_|OPERATION_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider DR runbook request failed' : err.message,
+    code: trusted ? err.code : 'DR_RUNBOOK_ERROR',
+    ...(trusted && status < 500 && err.details ? { details: err.details } : {}),
+  });
+}
+
+function _requireDrRunbooks() {
+  if (!config.features.providerDrRunbooks) throw new providerDrRunbooks.DrRunbookError(
+    'DR runbooks are disabled by release policy', 'DR_RUNBOOKS_DISABLED', 404);
+}
+
+function _drRunbookAudit(req, action, targetId, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_dr_${action}`, targetType: 'dr_protection_group', targetId,
+    details: { hostId: Number(req.params.hostId), ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
 
@@ -564,6 +590,129 @@ router.delete('/:hostId/restore-drill-policies/:policyId', requireAuth, requireR
         automaticCleanupAuthorized: false });
       res.json({ ok: true, policyId: policy.id });
     } catch (err) { _restoreDrillError(res, err); }
+  });
+
+router.get('/:hostId/dr/overview', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      res.json(await providerDrRunbooks.overviewForHost(resolved.host));
+    } catch (err) { _drRunbookError(res, err); }
+  }));
+
+router.get('/:hostId/dr/replications', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      res.json(await providerDrRunbooks.listReplicationsForHost(resolved.host));
+    } catch (err) { _drRunbookError(res, err); }
+  }));
+
+router.get('/:hostId/dr/protection-groups', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+      const items = providerDrRunbooks.listGroups(resolved.host.id, { limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _drRunbookError(res, err); }
+  });
+
+router.post('/:hostId/dr/protection-groups', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const result = providerDrRunbooks.upsertGroup(resolved.host, req.body || {}, { createdBy: req.user.id });
+      _drRunbookAudit(req, result.created ? 'group_created' : 'group_updated', result.group.id, {
+        recoveryHostId: result.group.recoveryHostId, strategy: result.group.strategy,
+        memberCount: result.group.members.length, enabled: result.group.enabled,
+      });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _drRunbookError(res, err); }
+  });
+
+router.put('/:hostId/dr/protection-groups/:groupId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const result = providerDrRunbooks.upsertGroup(resolved.host,
+        { ...(req.body || {}), id: req.params.groupId }, { createdBy: req.user.id });
+      _drRunbookAudit(req, 'group_updated', result.group.id, {
+        recoveryHostId: result.group.recoveryHostId, strategy: result.group.strategy,
+        memberCount: result.group.members.length, enabled: result.group.enabled,
+      });
+      res.json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _drRunbookError(res, err); }
+  });
+
+router.delete('/:hostId/dr/protection-groups/:groupId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const group = providerDrRunbooks.removeGroup(resolved.host.id, req.params.groupId);
+      _drRunbookAudit(req, 'group_deleted', group.id, { memberCount: group.members.length, enabled: false });
+      res.json({ ok: true, groupId: group.id });
+    } catch (err) { _drRunbookError(res, err); }
+  });
+
+router.post('/:hostId/dr/protection-groups/:groupId/preflight', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const executionType = req.body?.executionType === 'rehearsal' ? 'rehearsal' : 'real';
+      const plan = await providerDrRunbooks.preflightForHost(resolved.host, req.params.groupId,
+        req.body || {}, { canOperate: true, executionType });
+      _drRunbookAudit(req, 'preflight', plan.group.id, {
+        mode: plan.mode, planHash: plan.planHash, allowed: plan.allowed,
+        incidentDeclared: plan.incident?.reason ? true : undefined,
+        blockerCount: plan.blockers.length, warningCount: plan.warnings.length,
+      });
+      res.json(plan);
+    } catch (err) { _drRunbookError(res, err); }
+  }));
+
+router.post('/:hostId/dr/protection-groups/:groupId/rehearse', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const result = await providerDrRunbooks.rehearseForHost(resolved.host, req.params.groupId,
+        req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _drRunbookAudit(req, 'rehearsal_recorded', result.plan.group.id, {
+        runId: result.run.id, mode: result.run.mode, state: result.run.state,
+        incidentDeclared: result.plan.incident?.reason ? true : undefined,
+        compliance: result.run.compliance, evidenceHash: result.run.evidenceHash,
+      });
+      res.status(201).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _drRunbookError(res, err); }
+  }));
+
+router.get('/:hostId/dr/runs', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      _requireDrRunbooks();
+      const limit = req.query.limit === undefined ? 50 : Number(req.query.limit);
+      const items = providerDrRunbooks.listRuns(resolved.host.id,
+        { limit, groupId: req.query.group || null });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _drRunbookError(res, err); }
   });
 
 router.get('/:hostId/backup-policies', requireAuth, requireHostAccess('view', { param: 'hostId' }), (req, res) => {

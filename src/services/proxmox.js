@@ -332,6 +332,25 @@ class ProxmoxClient {
     return (await this._request('GET', '/api2/json/cluster/resources?type=vm')) || [];
   }
 
+  /** Read PVE storage-replication job definitions without changing them. */
+  async listStorageReplicationJobs() {
+    return (await this._request('GET', '/api2/json/cluster/replication')) || [];
+  }
+
+  /** Read one job's current replication status from its source node. */
+  async getStorageReplicationStatus(node, jobId) {
+    const safeNode = String(node || '');
+    const safeJob = String(jobId || '');
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(safeNode)
+      || !/^[A-Za-z0-9._:-]{1,160}$/.test(safeJob)) {
+      throw Object.assign(new Error('Invalid Proxmox replication target'), {
+        code: 'INVALID_PROVIDER_RESOURCE', status: 400,
+      });
+    }
+    return this._request('GET', `/api2/json/nodes/${encodeURIComponent(safeNode)}`
+      + `/replication/${encodeURIComponent(safeJob)}/status`);
+  }
+
   async getVmHardware(node, guestType, vmid) {
     const safeNode = String(node || '');
     const type = String(guestType || '');

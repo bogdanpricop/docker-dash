@@ -58,6 +58,11 @@ const FEATURE_CATALOG = Object.freeze({
   'backup.restore.instant': 'Start an instant or live restore',
   'backup.restore.differential': 'Restore by reusing a provider base chain',
   'backup.restore.drill': 'Run an isolated automated restore drill',
+  'replication.read': 'Read workload replication state',
+  'replication.configure': 'Configure workload replication',
+  'dr.failover': 'Execute an orchestrated disaster failover',
+  'dr.failback': 'Execute an orchestrated disaster failback',
+  'dr.test': 'Run a non-disruptive disaster-recovery test',
 });
 
 const FEATURE_KEYS = Object.freeze(Object.keys(FEATURE_CATALOG));
