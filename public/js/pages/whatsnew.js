@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.23.0',
+      date: '2026-07-28',
+      title: 'Storage Posture — transparent provider storage evidence',
+      changes: [
+        { type: 'feature', text: 'A new Storage Posture page gives each Proxmox VE, vSphere / ESXi or supported Xen endpoint a read-only view of provider-reported storage accessibility, maintenance state, capacity, used/free space, virtual allocation, type and shared-storage evidence.' },
+        { type: 'improvement', text: 'The assessment marks inaccessible targets and >=95% observed utilization as critical, while maintenance, 85–<95% utilization and virtual allocation above physical capacity are warnings. Capacity remains a point-in-time observation, not a reservation.' },
+        { type: 'security', text: 'Coverage is explicit: unknown or unsupported QoS, multipath, Ceph, Longhorn, vSAN, S2D and appliance telemetry is never shown as healthy. The new endpoint is host-view scoped, uses canonical IDs and performs no storage mutation, test write or shell fallback.' },
+      ],
+    },
+    {
       version: '8.22.0',
       date: '2026-07-28',
       title: 'Provider VM disk lifecycle — reviewed, durable and opt-in',

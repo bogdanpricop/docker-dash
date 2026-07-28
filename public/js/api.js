@@ -559,6 +559,7 @@ const Api = {
   getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
   getProviderClusters(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/clusters?limit=${limit}`); },
   getProviderStorages(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/storages?limit=${limit}`); },
+  getProviderStoragePosture(hostId) { return this.get(`/providers/${hostId}/storage-posture`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

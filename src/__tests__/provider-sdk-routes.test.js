@@ -22,6 +22,7 @@ const mockMaintenanceExit = jest.fn();
 const mockMaintenanceReconcile = jest.fn();
 const mockHaGet = jest.fn();
 const mockHaHistory = jest.fn();
+const mockStoragePosture = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -132,6 +133,9 @@ jest.mock('../services/provider-operations/host-maintenance', () => ({
 jest.mock('../services/provider-sdk/ha-readiness', () => ({
   getForHost: (...args) => mockHaGet(...args),
   historyForHost: (...args) => mockHaHistory(...args),
+}));
+jest.mock('../services/provider-sdk/storage-posture', () => ({
+  postureForHost: (...args) => mockStoragePosture(...args),
 }));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
@@ -526,6 +530,7 @@ describe('Provider SDK routes', () => {
       providerType: 'xen', mode: 'live_readonly', grade: 'certified', score: 100, maxScore: 100,
       evidenceHash: 'f'.repeat(64), checks: [],
     });
+    mockStoragePosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass' }, storages: [] });
     mockConformanceGet.mockReturnValue(null);
   });
 
@@ -563,6 +568,13 @@ describe('Provider SDK routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.kind).toBe('virtualMachine');
     expect(mockResources).toHaveBeenCalledWith(mockHost, 'virtual-machines', { limit: 25 });
+  });
+
+  it('returns read-only storage posture scoped to the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/storage-posture').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.state).toBe('pass');
+    expect(mockStoragePosture).toHaveBeenCalledWith(mockHost);
   });
 
   it('rejects malformed inventory limits before provider access', async () => {

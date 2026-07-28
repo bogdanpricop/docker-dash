@@ -139,7 +139,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
 | V4.1 | Volume lifecycle | B076–B090 | create/resize/attach/detach/move cu safety gates |
-| V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity |
+| V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity; V4.2a a livrat baseline-ul read-only pentru capacity/accessibility/overcommit |
 | V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
@@ -323,5 +323,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V3.5 | `926e6d1` | push + PR #13; CI `30225972140` și build `30225972133` verzi | `8.21.4-926e6d1`, healthy, 0 restarturi; drill flag ON, migrarea 120, API/RBAC autentificat și backup SQLite verificate | blocat: cheia prezentată `SHA256:tqbf5X...` diferă de cheia fixată `SHA256:pwHZ3Y...` | restore drill PVE izolat, assertions boot/agent, RPO/RTO, evidence hash, scheduling și cleanup strict ownership-gated |
 | V3.6 | `eb26679` | push + PR #13; CI `30227581320` și build `30227581317` verzi | `8.21.4-eb26679`, healthy, 0 restarturi; DR flag ON, migrarea 121, API/RBAC autentificat și backup SQLite verificate | blocat: cheia prezentată `SHA256:tqbf5X...` diferă de cheia fixată `SHA256:pwHZ3Y...` | protection groups + DAG, replication inventory PVE read-only, RPO/RTO posture, deterministic failover/failback/test plans și rehearsals non-mutante |
 | V4.1 | `c2a2a6b` | push + tag `v8.22.0` | LAN `192.168.13.20` și VPS healthy, ambele `8.22.0-c2a2a6b`; migrarea 122 verificată | Docker Desktop indisponibil local | lifecycle sigur de volume pentru disk: create/attach, detach retain, grow, move și ownership-bound cleanup; flag-uri de mutație rămân OFF |
+| V4.2a | pending | pending | pending | pending | storage posture read-only: accesibilitate, mentenanță, capacitate/overcommit și coverage explicit pentru policy/QoS/multipath; B091–B100 rămân parțial planificate |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.

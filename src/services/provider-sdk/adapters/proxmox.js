@@ -71,6 +71,10 @@ function declared() {
     'vm.disk.convert': adapterNotImplemented('Proxmox VE safe common disk conversion'),
     'storage.orphan.read': conditional('Inventory is limited to Docker Dash-managed detached volumes', { readOnly: true, managedOnly: true }),
     'storage.snapshotRisk.read': conditional('Snapshot count and chain evidence is correlated with disk mutation preflight', { readOnly: true }),
+    'storage.health.read': conditional('Accessibility, maintenance and capacity posture are derived from live cluster storage inventory', { readOnly: true, signals: ['accessibility', 'maintenance', 'capacity', 'overcommit'] }),
+    'storage.policy.read': conditional('Storage type, content classes and shared-storage evidence are read from live inventory', { readOnly: true, evidenceOnly: true }),
+    'storage.qos.read': adapterNotImplemented('Proxmox VE storage QoS telemetry'),
+    'storage.multipath.read': adapterNotImplemented('Proxmox VE multipath telemetry'),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),
@@ -171,7 +175,8 @@ async function listResources(kind, host) {
     if (kind === 'storage') return (await client.listStorages()).map(row => ({
       ...row,
       name: row.storage || row.name || row.id,
-      accessible: row.active === 1 || row.active === true || String(row.status || '').toLowerCase() === 'available',
+      accessible: row.active === 1 || row.active === true || String(row.status || '').toLowerCase() === 'available'
+        ? true : (row.active === 0 || row.active === false || ['inactive', 'disabled', 'unavailable'].includes(String(row.status || '').toLowerCase()) ? false : null),
       contentType: row.content || row.contentType || null,
     }));
     throw new Error(`Proxmox resource kind is unavailable: ${kind}`);

@@ -47,6 +47,7 @@ const App = {
     'xen-resources': () => XenResourcesPage,
     'virtual-machines': () => VirtualMachinesPage,
     'high-availability': () => HighAvailabilityPage,
+    'storage-posture': () => StoragePosturePage,
     'placement-advisor': () => PlacementAdvisorPage,
     'recovery-points': () => RecoveryPointsPage,
     'backup-policies': () => BackupPoliciesPage,
@@ -1537,7 +1538,7 @@ const App = {
     }[dt];
     const nonDockerPages = ['#/vsphere-resources', '#/incus-instances', '#/proxmox-resources',
       '#/kubernetes-resources', '#/nomad-jobs', '#/xen-resources', '#/migration-vm',
-      '#/virtual-machines', '#/virtualization-catalog', '#/high-availability', '#/placement-advisor', '#/recovery-points', '#/backup-policies', '#/disaster-recovery', '#/activity'];
+      '#/virtual-machines', '#/virtualization-catalog', '#/high-availability', '#/storage-posture', '#/placement-advisor', '#/recovery-points', '#/backup-policies', '#/disaster-recovery', '#/activity'];
     if (daemonPage) {
       if (location.hash === daemonPage) this._route();
       else location.hash = daemonPage;
@@ -2034,6 +2035,7 @@ const App = {
       { icon: 'fa-globe', label: 'Multi-Host Overview', action: () => this.navigate('/multi-host'), section: 'nav' },
       { icon: 'fa-desktop', label: 'Virtual Machines', action: () => this.navigate('/virtual-machines'), section: 'nav' },
       { icon: 'fa-shield-alt', label: 'High Availability', action: () => this.navigate('/high-availability'), section: 'nav' },
+      { icon: 'fa-database', label: 'Storage Posture', action: () => this.navigate('/storage-posture'), section: 'nav' },
       { icon: 'fa-balance-scale', label: 'Placement Advisor', action: () => this.navigate('/placement-advisor'), section: 'nav' },
       { icon: 'fa-box-archive', label: 'Recovery Points', action: () => this.navigate('/recovery-points'), section: 'nav' },
       { icon: 'fa-calendar-check', label: 'Backup Policies', action: () => this.navigate('/backup-policies'), section: 'nav' },

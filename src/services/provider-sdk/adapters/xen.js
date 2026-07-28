@@ -60,6 +60,14 @@ function _fromCapabilities(capabilities = {}) {
     'storage.snapshotRisk.read': capabilities.snapshots
       ? conditional('Snapshot inventory is correlated with disk mutation preflight', { readOnly: true })
       : unsupported('Snapshot risk evidence is unavailable for this Xen provider'),
+    'storage.health.read': capabilities.storages
+      ? conditional('Storage repository attachment and capacity posture are read from the active Xen management plane', { readOnly: true, signals: ['accessibility', 'capacity', 'overcommit'] })
+      : unsupported('Storage posture is unavailable for this Xen provider'),
+    'storage.policy.read': capabilities.storages
+      ? conditional('Storage repository type and shared-storage evidence are read from the active Xen management plane', { readOnly: true, evidenceOnly: true })
+      : unsupported('Storage policy evidence is unavailable for this Xen provider'),
+    'storage.qos.read': adapterNotImplemented('Xen storage QoS telemetry'),
+    'storage.multipath.read': adapterNotImplemented('Xen multipath telemetry'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

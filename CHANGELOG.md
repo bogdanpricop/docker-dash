@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.23.0] - 2026-07-28 — Provider storage posture baseline
+
+Docker Dash now has a provider-neutral **Storage Posture** page for Proxmox VE,
+vSphere / ESXi and supported Xen management planes. It is a read-only assessment
+under the existing Provider SDK v2 contract; no storage policy or volume mutation
+is enabled by this release.
+
+- **Live, bounded evidence.** Each storage target shows provider-reported accessibility,
+  maintenance state, capacity, used/free bytes, virtual allocation where available,
+  type/content and shared-storage evidence. Inaccessible storage and >=95% observed
+  utilization are critical; maintenance, 85–<95% utilization and observed overcommit
+  are warnings.
+- **Honest coverage.** Policy, QoS and multipath capability evidence is shown alongside
+  every result. Missing or unsupported QoS/multipath, Ceph, Longhorn, vSAN, S2D and
+  appliance telemetry is explicitly unknown — it is never presented as healthy.
+- **Safe foundation.** The new host-view endpoint uses canonical IDs and the existing
+  normalized inventory. It performs no write/test-write, no shell fallback, no capacity
+  reservation and no snapshot consolidation. Those workflows remain separately planned
+  and must revalidate at execution time.
+
 ## [8.22.0] - 2026-07-28 — Provider VM disk lifecycle
 
 Docker Dash can now perform a guarded lifecycle for virtual disks on supported Proxmox VE QEMU,
