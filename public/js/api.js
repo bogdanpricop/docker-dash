@@ -572,6 +572,7 @@ const Api = {
   getProviderIpAddressInventory(hostId) { return this.get(`/providers/${hostId}/ip-address-inventory`); },
   getProviderIpConflictCandidates(hostId) { return this.get(`/providers/${hostId}/ip-conflict-candidates`); },
   getProviderGuestNetworkReadiness(hostId) { return this.get(`/providers/${hostId}/guest-network-readiness`); },
+  getProviderEndpointTransportPosture(hostId) { return this.get(`/providers/${hostId}/endpoint-transport-posture`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

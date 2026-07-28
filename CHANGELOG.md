@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.36.0] - 2026-07-28 — Read-only provider endpoint transport posture
+
+Network Posture now surfaces the most recent provider capability-probe outcome
+as endpoint transport evidence.
+
+- **No additional scan.** The feature consumes existing probe evidence only; it
+  performs no new TLS, port, certificate or transport probe.
+- **Bounded meaning.** Reachability is not proof of authentication,
+  authorization, provider feature availability or workload connectivity.
+- **No mutation.** It changes no endpoint, credential, certificate, firewall or
+  network configuration.
+
 ## [8.35.0] - 2026-07-28 — Read-only guest network readiness evidence
 
 Network Posture now summarizes per-VM guest network readiness evidence from

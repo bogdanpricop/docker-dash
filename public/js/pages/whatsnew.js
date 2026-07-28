@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.36.0', date: '2026-07-28', title: 'Endpoint transport posture — existing probe evidence only', changes: [
+      { type: 'feature', text: 'Network Posture now surfaces the most recent provider capability-probe outcome as endpoint transport evidence.' },
+      { type: 'improvement', text: 'Reachability is clearly limited: it does not prove authentication, authorization, feature availability or workload connectivity.' },
+      { type: 'security', text: 'The release runs no new TLS, port, certificate or transport scan and changes no endpoint, credential, firewall or network configuration.' },
+    ] },
     { version: '8.35.0', date: '2026-07-28', title: 'Guest network readiness — evidence, not an active test', changes: [
       { type: 'feature', text: 'Network Posture now summarizes per-VM guest network readiness from provider-visible NIC link and address evidence.' },
       { type: 'improvement', text: 'Ready requires both a connected NIC and an observed address; missing evidence remains unknown and unreadable hardware stays visible as partial coverage.' },
