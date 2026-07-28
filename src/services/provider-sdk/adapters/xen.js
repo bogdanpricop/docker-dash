@@ -66,6 +66,9 @@ function _fromCapabilities(capabilities = {}) {
     'storage.policy.read': capabilities.storages
       ? conditional('Storage repository type and shared-storage evidence are read from the active Xen management plane', { readOnly: true, evidenceOnly: true })
       : unsupported('Storage policy evidence is unavailable for this Xen provider'),
+    'storage.sharedTopology.read': capabilities.hardwareDetails && capabilities.storages
+      ? conditional('VM VDI backings are correlated read-only; only provider-declared sharable VDIs are confirmed shared', { readOnly: true, bounded: true, evidenceOnly: true })
+      : unsupported('Shared-disk topology requires VM hardware and storage inventory'),
     'storage.qos.read': adapterNotImplemented('Xen storage QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('Xen multipath telemetry'),
     'vm.nic.read': capabilities.hardwareDetails

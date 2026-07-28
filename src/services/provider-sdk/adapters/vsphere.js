@@ -70,6 +70,7 @@ function declared() {
     'storage.snapshotRisk.read': conditional('Snapshot inventory is correlated with disk mutation preflight', { readOnly: true }),
     'storage.health.read': conditional('Datastore accessibility, maintenance mode and capacity are read from the vSphere PropertyCollector', { readOnly: true, signals: ['accessibility', 'maintenance', 'capacity'] }),
     'storage.policy.read': conditional('Datastore type and shared capacity evidence are read from the vSphere PropertyCollector', { readOnly: true, evidenceOnly: true }),
+    'storage.sharedTopology.read': conditional('VM disk backing files are correlated read-only; only disks declared sharingMultiWriter are confirmed shared', { readOnly: true, bounded: true, evidenceOnly: true }),
     'storage.qos.read': adapterNotImplemented('VMware vSphere datastore QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('VMware vSphere multipath telemetry'),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),

@@ -40,6 +40,13 @@ const StoragePosturePage = {
     </div></details>`;
   },
 
+  _topologyHtml(result) {
+    const summary = result.summary || {};
+    const coverage = result.coverage || {};
+    const rows = (result.sharedBackings || []).map(group => `<details class="card" style="padding:14px;margin-bottom:10px"><summary style="cursor:pointer;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap"><span><i class="fas fa-project-diagram" aria-hidden="true"></i> <strong>${group.consumerCount || 0} observed consumers</strong></span><span class="badge ${this._badge(group.state === 'confirmed' ? 'pass' : 'warning')}">${Utils.escapeHtml(group.state || 'review')}</span></summary><div style="padding-top:12px"><div class="text-muted text-sm" style="margin-bottom:9px">${Utils.escapeHtml(group.reason || 'No provider explanation')}</div><ul style="margin:0 0 0 18px;display:grid;gap:6px">${(group.attachments || []).map(item => `<li><strong>${Utils.escapeHtml(item.vm?.displayName || item.vm?.id || 'VM')}</strong> · ${Utils.escapeHtml(item.disk?.label || item.disk?.device || 'disk')}<span class="text-muted text-sm">${item.storage?.displayName ? ` · ${Utils.escapeHtml(item.storage.displayName)}` : ''}</span> <span class="badge ${this._badge(item.attachment?.shared === true ? 'pass' : 'unknown')}">shared: ${Utils.escapeHtml(String(item.attachment?.shared ?? 'unknown'))}</span></li>`).join('')}</ul></div></details>`).join('');
+    return `<div class="card" style="padding:16px;margin:16px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><strong>Shared-disk topology</strong><div class="text-muted text-sm">Cross-VM backing correlation; provider-native backing references are hidden.</div></div><span class="badge ${this._badge(coverage.complete ? 'pass' : 'unknown')}">${coverage.complete ? 'complete evidence' : 'partial evidence'}</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${summary.confirmedCount ?? 0}</div><div class="stat-label">Confirmed shared</div></div><div class="stat-card"><div class="stat-value">${summary.reviewCount ?? 0}</div><div class="stat-label">Needs review</div></div><div class="stat-card"><div class="stat-value">${coverage.hardwareUnavailable ?? 0}</div><div class="stat-label">Unreadable VM inventories</div></div></div><div class="text-muted text-sm" style="margin:12px 0">${coverage.truncated ? 'VM selection is bounded; results are incomplete.' : 'VM selection was not truncated.'}</div>${rows || '<div class="empty-msg"><i class="fas fa-check-circle"></i>No multi-VM backing was observed in the selected inventory.</div>'}</div>`;
+  },
+
   _resultHtml(result) {
     const summary = result.summary || {};
     const state = summary.state || 'unknown';
@@ -69,7 +76,15 @@ const StoragePosturePage = {
     if (!target) return;
     if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its storage posture.</div>'; return; }
     target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting live storage evidence…</div>';
-    try { target.innerHTML = this._resultHtml(await Api.getProviderStoragePosture(this._hostId)); }
+    try {
+      const [posture, topology] = await Promise.all([
+        Api.getProviderStoragePosture(this._hostId),
+        Api.getProviderStorageTopology(this._hostId).catch(error => ({ error })),
+      ]);
+      target.innerHTML = this._resultHtml(posture) + (topology.error
+        ? `<div class="alert alert-info"><strong>Shared-disk topology unavailable</strong><div>${Utils.escapeHtml(topology.error.message)}</div></div>`
+        : this._topologyHtml(topology));
+    }
     catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; }
   },
 

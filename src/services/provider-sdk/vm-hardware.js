@@ -49,6 +49,7 @@ function _capabilities(value = {}, nic = false) {
 
 function _disk(row, index, context) {
   const backing = row?.backing && typeof row.backing === 'object' ? row.backing : {};
+  const backingRef = backing.nativeRef ?? backing.path ?? backing.id;
   return {
     id: _opaqueId('disk', context.hostId, context.vmId, row?.nativeRef ?? row?.id ?? row?.device, index),
     label: _text(row?.label ?? row?.name ?? row?.device, 160),
@@ -58,6 +59,10 @@ function _disk(row, index, context) {
     provisioning: ['thin', 'thick', 'eagerZeroedThick', 'unknown'].includes(row?.provisioning) ? row.provisioning : 'unknown',
     format: _text(row?.format, 40),
     backing: {
+      // A backing can be correlated across VMs without publishing its provider
+      // reference.  This is deliberately distinct from the attachment disk id.
+      id: backingRef === null || backingRef === undefined || backingRef === '' ? null
+        : _opaqueId('backing', context.hostId, 'storage', backingRef, index),
       type: _text(backing.type, 80), storageId: _text(backing.storageId, 160),
       storageName: _text(backing.storageName, 160), path: _text(backing.path, 512),
     },

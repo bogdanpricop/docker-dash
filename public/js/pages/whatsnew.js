@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.25.0',
+      date: '2026-07-28',
+      title: 'Shared virtual-disk topology — correlation without unsafe inference',
+      changes: [
+        { type: 'feature', text: 'Storage Posture now includes a read-only, bounded view of virtual-disk backings observed across VMs on supported Proxmox VE, vSphere / ESXi and Xen management planes.' },
+        { type: 'security', text: 'Provider-native VMDK, VDI, volume and path references never reach the browser. Docker Dash correlates attachments through a host-scoped opaque backing identity.' },
+        { type: 'improvement', text: 'A backing is confirmed shared only when every observed attachment is explicitly declared shared by its provider. Other collisions stay “needs review”, and VM limits, unreadable hardware or unavailable disk inventory are shown as partial evidence rather than hidden.' },
+      ],
+    },
+    {
       version: '8.24.0',
       date: '2026-07-28',
       title: 'vSphere snapshot consolidation — explicit, reviewed and verified',

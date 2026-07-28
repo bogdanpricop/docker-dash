@@ -23,6 +23,7 @@ const mockMaintenanceReconcile = jest.fn();
 const mockHaGet = jest.fn();
 const mockHaHistory = jest.fn();
 const mockStoragePosture = jest.fn();
+const mockStorageTopology = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -136,6 +137,9 @@ jest.mock('../services/provider-sdk/ha-readiness', () => ({
 }));
 jest.mock('../services/provider-sdk/storage-posture', () => ({
   postureForHost: (...args) => mockStoragePosture(...args),
+}));
+jest.mock('../services/provider-sdk/storage-topology', () => ({
+  topologyForHost: (...args) => mockStorageTopology(...args),
 }));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),

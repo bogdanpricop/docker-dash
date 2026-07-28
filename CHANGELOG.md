@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.25.0] - 2026-07-28 — Read-only shared virtual-disk topology
+
+Storage Posture now includes a bounded, provider-neutral view of virtual-disk
+backings observed across VMs on Proxmox VE, vSphere / ESXi and supported Xen
+management planes. It is evidence only: the release creates no disks, changes
+no attachment, and enables no storage mutation.
+
+- **Opaque cross-VM correlation.** A host-scoped opaque backing ID correlates
+  observed VM disk attachments without returning VMDK, VDI, volume or provider
+  path references to the browser.
+- **No unsafe inference.** A backing is shown as *confirmed shared* only when
+  every observed attachment is explicitly declared shared by the provider.
+  Any other common backing is a *needs review* observation, never a claim that
+  a multi-writer configuration is valid or safe.
+- **Bounded, honest coverage.** Collection is limited to 100 selected VMs with
+  four concurrent read-only hardware calls. Truncation, unreadable VM hardware
+  or unavailable disk inventory is shown as partial evidence rather than being
+  silently ignored. Native identifiers, guest changes, test writes, repair,
+  policy/QoS changes and automation remain out of scope.
+
 ## [8.24.0] - 2026-07-28 — Guarded vSphere snapshot consolidation
 
 Docker Dash can now submit VMware vSphere snapshot disk consolidation only when the

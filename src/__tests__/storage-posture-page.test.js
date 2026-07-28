@@ -14,4 +14,12 @@ describe('Storage posture presentation helpers', () => {
     expect(html).toContain('qos: unsupported');
     expect(html).toContain('badge-secondary');
   });
+
+  it('labels a topology with unread VM evidence as partial', () => {
+    global.Utils = { escapeHtml: value => String(value), formatBytes: value => `${value} B` };
+    const html = page._topologyHtml({ summary: { confirmedCount: 0, reviewCount: 1 },
+      coverage: { complete: false, truncated: false, hardwareUnavailable: 1 }, sharedBackings: [] });
+    expect(html).toContain('partial evidence');
+    expect(html).toContain('Unreadable VM inventories');
+  });
 });

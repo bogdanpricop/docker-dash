@@ -10,6 +10,7 @@ const providerVmMigration = require('../services/provider-operations/vm-migratio
 const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
 const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerStoragePosture = require('../services/provider-sdk/storage-posture');
+const providerStorageTopology = require('../services/provider-sdk/storage-topology');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1754,6 +1755,21 @@ router.get('/:hostId/storage-posture', requireAuth,
       res.status(status).json({
         error: status >= 500 ? 'Provider storage posture failed' : err.message,
         code: err?.code || 'STORAGE_POSTURE_ERROR',
+      });
+    }
+  }));
+
+router.get('/:hostId/storage-topology', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerStorageTopology.topologyForHost(resolved.host));
+    } catch (err) {
+      const status = Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 ? 'Provider storage topology failed' : err.message,
+        code: err?.code || 'STORAGE_TOPOLOGY_ERROR',
       });
     }
   }));

@@ -139,7 +139,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
 | V4.1 | Volume lifecycle | B076–B090 | create/resize/attach/detach/move cu safety gates |
-| V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity; V4.2a a livrat baseline-ul read-only, iar V4.2b B091 vSphere consolidation strict-gated |
+| V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity; V4.2a a livrat baseline-ul read-only, V4.2b B091 vSphere consolidation strict-gated, iar V4.2c adaugă corelare read-only a backing-urilor shared |
 | V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
