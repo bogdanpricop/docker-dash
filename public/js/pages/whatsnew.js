@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.29.0', date: '2026-07-28',
+      title: 'Network policy compliance — explicit criteria, read-only evidence',
+      changes: [
+        { type: 'feature', text: 'Network Posture can now evaluate provider-visible virtual networks against a temporary policy: accessibility is always required, with optional minimum MTU, managed-network and VLAN-evidence requirements.' },
+        { type: 'improvement', text: 'Each network is labeled compliant, noncompliant or unknown. Missing required evidence is never treated as compliant, and the result makes clear that it does not prove routing, firewall policy, isolation or end-to-end connectivity.' },
+        { type: 'security', text: 'The policy is transient and read-only: it is not stored or applied, does not send test traffic, reserve capacity, change virtual switching or invoke provider CLI fallback. Proxmox remains explicitly unsupported until safe common network evidence is available.' },
+      ],
+    },
+    {
       version: '8.28.0', date: '2026-07-28',
       title: 'Network Posture — virtual network evidence without lockout risk',
       changes: [

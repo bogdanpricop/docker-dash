@@ -140,7 +140,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 |---|---|---|---|
 | V4.1 | Volume lifecycle | B076–B090 | create/resize/attach/detach/move cu safety gates |
 | V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity; V4.2a a livrat baseline-ul read-only, V4.2b B091 vSphere consolidation strict-gated, V4.2c corelează backing-uri shared, V4.2d oferă advisory de plasare, iar V4.2e evaluează policy compliance fără a persista sau aplica politica |
-| V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental |
+| V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental; V4.3a livrează posture read-only, iar V4.3b evaluează o politică de accesibilitate/MTU/managed/VLAN tranzitorie fără persistență, trafic sau mutații |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
 | V4.6 | Projects, quotas și approvals | B176–B200 | tenant scopes, delegated admin și four-eyes |
@@ -328,5 +328,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V4.2c | `e4eb3bc` | push + tag `v8.25.0` | LAN `192.168.13.20` healthy, `8.25.0-e4eb3bc`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.25.0-e4eb3bc`; backup SQLite verificat | topologie backing shared read-only: ID-uri opace, confirmare doar cu `shared=true` pe toate atașările observate, acoperire bounded/explicită; fără mutații |
 | V4.2d | `f7bdab4` | push + tag `v8.26.0` | LAN `192.168.13.20` healthy, `8.26.0-f7bdab4`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.26.0-f7bdab4`; backup SQLite verificat | advisory read-only de plasare disk: dimensiune bounded, headroom, accesibilitate/maintenance/capacitate și `images` PVE; fără reservation sau mutații |
 | V4.2e | `e361c6f` | push + tag `v8.27.0` | LAN `192.168.13.20` healthy, `8.27.0-e361c6f`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.27.0-e361c6f`; backup SQLite verificat | policy compliance read-only: accesibilitate, min-free și shared configurate tranzitoriu, `unknown` fail-closed; fără persistență, reservation sau mutații |
+| V4.3a | `32b61f8` | push + tag `v8.28.0` | LAN `192.168.13.20` healthy, `8.28.0-32b61f8`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.28.0-32b61f8`; backup SQLite verificat | Network Posture read-only pentru vSphere/Xen: accesibilitate, managed, bridge, VLAN și MTU; fără test trafic sau mutații |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.

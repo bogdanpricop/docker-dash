@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.29.0] - 2026-07-28 — Read-only virtual network policy advisory
+
+Network Posture can now assess provider-visible virtual networks against an
+operator-selected, temporary policy: provider-reported accessibility is always
+required, with optional minimum MTU, managed-network and VLAN-evidence criteria.
+
+- **Honest compliance states.** Networks are marked compliant, noncompliant or
+  unknown. Missing required accessibility, VLAN or MTU evidence remains unknown
+  and never appears compliant.
+- **Bounded provider-neutral evidence.** The host-view endpoint evaluates at
+  most 500 canonical network records and returns only neutral signals. Support
+  is conditional for vSphere and Xen; Proxmox remains explicitly unsupported.
+- **No control-plane effect.** The policy is transient and read-only: it is not
+  saved, applied or remediated, sends no traffic, and does not reserve network
+  capacity or use provider CLI fallback.
+
 ## [8.28.0] - 2026-07-28 — Read-only virtual network posture
 
 Docker Dash now has a **Network Posture** page for vSphere and supported Xen

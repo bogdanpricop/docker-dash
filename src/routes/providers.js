@@ -14,6 +14,7 @@ const providerStorageTopology = require('../services/provider-sdk/storage-topolo
 const providerStoragePlacementAdvisory = require('../services/provider-sdk/storage-placement-advisory');
 const providerStoragePolicyAdvisory = require('../services/provider-sdk/storage-policy-advisory');
 const providerNetworkPosture = require('../services/provider-sdk/network-posture');
+const providerNetworkPolicyAdvisory = require('../services/provider-sdk/network-policy-advisory');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1833,6 +1834,14 @@ router.get('/:hostId/network-posture', requireAuth,
       });
     }
   }));
+
+router.get('/:hostId/network-policy-advisory', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  if (req.query.minMtu !== undefined && !/^\d{3,5}$/.test(String(req.query.minMtu))) return res.status(400).json({ error: 'Minimum MTU must be an integer', code: 'INVALID_MIN_MTU' });
+  if (['requireManaged', 'requireVlan'].some(key => req.query[key] !== undefined && !['true', 'false'].includes(String(req.query[key])))) return res.status(400).json({ error: 'Network policy booleans must be true or false', code: 'INVALID_NETWORK_POLICY' });
+  try { res.json(await providerNetworkPolicyAdvisory.advisoryForHost(resolved.host, { minMtu: req.query.minMtu, requireManaged: req.query.requireManaged === 'true', requireVlan: req.query.requireVlan === 'true' })); }
+  catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider network policy advisory failed' : err.message, code: err?.code || 'NETWORK_POLICY_ADVISORY_ERROR' }); }
+}));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
   if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });

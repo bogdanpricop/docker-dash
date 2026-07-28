@@ -77,6 +77,9 @@ function _fromCapabilities(capabilities = {}) {
     'network.health.read': capabilities.networks
       ? conditional('Virtual network bridge, MTU and management observations are read from the active Xen management plane', { readOnly: true, evidenceOnly: true })
       : unsupported('Virtual network posture is unavailable for this Xen provider'),
+    'network.policy.read': capabilities.networks
+      ? conditional('Virtual network configuration evidence is evaluated read-only against an operator-selected transient policy', { readOnly: true, evidenceOnly: true })
+      : unsupported('Virtual network policy evidence is unavailable for this Xen provider'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

@@ -75,6 +75,7 @@ function declared() {
     'storage.qos.read': adapterNotImplemented('VMware vSphere datastore QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('VMware vSphere multipath telemetry'),
     'network.health.read': conditional('Standard port-group accessibility and normalized bridge/VLAN/MTU observations are read without changing network configuration', { readOnly: true, evidenceOnly: true }),
+    'network.policy.read': conditional('Standard port-group configuration evidence is evaluated read-only against an operator-selected transient policy', { readOnly: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),

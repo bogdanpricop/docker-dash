@@ -13,4 +13,12 @@ describe('Network posture presentation helpers', () => {
     expect(html).toContain('Assessment limits');
     expect(html).toContain('Routing is not tested');
   });
+
+  it('labels network policy results as read-only and non-persistent', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._policyHtml({ policy: { minMtu: 1500, requireManaged: true, requireVlan: true }, summary: { compliantCount: 1, noncompliantCount: 2, unknownCount: 3 } });
+    expect(html).toContain('Network policy compliance');
+    expect(html).toContain('This policy is not persisted.');
+    expect(html).toContain('Noncompliant');
+  });
 });
