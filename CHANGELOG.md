@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.35.0] - 2026-07-28 — Read-only guest network readiness evidence
+
+Network Posture now summarizes per-VM guest network readiness evidence from
+provider-visible NIC configuration, link state and reported addresses.
+
+- **Fail-closed status.** A VM is ready only when a connected NIC and an
+  observed address are both present; missing evidence remains unknown.
+- **Bounded coverage.** Reads are limited to 100 VMs with four concurrent NIC
+  inventory requests; unreadable hardware remains visible as partial coverage.
+- **No active validation.** It does not run guest commands, ping, DNS, routing
+  or firewall tests, and makes no network mutation or remediation.
+
 ## [8.34.0] - 2026-07-28 — Read-only IP conflict candidates
 
 Network Posture can now identify repeated provider-visible IP observations as

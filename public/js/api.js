@@ -571,6 +571,7 @@ const Api = {
   saveProviderNetworkDriftBaseline(hostId) { return this.post(`/providers/${hostId}/network-drift-baseline`, {}); },
   getProviderIpAddressInventory(hostId) { return this.get(`/providers/${hostId}/ip-address-inventory`); },
   getProviderIpConflictCandidates(hostId) { return this.get(`/providers/${hostId}/ip-conflict-candidates`); },
+  getProviderGuestNetworkReadiness(hostId) { return this.get(`/providers/${hostId}/guest-network-readiness`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

@@ -20,6 +20,7 @@ const providerNetworkPlacementAdvisory = require('../services/provider-sdk/netwo
 const providerNetworkDriftBaseline = require('../services/provider-sdk/network-drift-baseline');
 const providerIpAddressInventory = require('../services/provider-sdk/ip-address-inventory');
 const providerIpConflictCandidates = require('../services/provider-sdk/ip-conflict-candidates');
+const providerGuestNetworkReadiness = require('../services/provider-sdk/guest-network-readiness');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1882,6 +1883,12 @@ router.get('/:hostId/ip-conflict-candidates', requireAuth, requireHostAccess('vi
   const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
   try { res.json(await providerIpConflictCandidates.candidatesForHost(resolved.host)); }
   catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider IP conflict candidate scan failed' : err.message, code: err?.code || 'IP_CONFLICT_CANDIDATES_ERROR' }); }
+}));
+
+router.get('/:hostId/guest-network-readiness', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  try { res.json(await providerGuestNetworkReadiness.readinessForHost(resolved.host)); }
+  catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider guest network readiness failed' : err.message, code: err?.code || 'GUEST_NETWORK_READINESS_ERROR' }); }
 }));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

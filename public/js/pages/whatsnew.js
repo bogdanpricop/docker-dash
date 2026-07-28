@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.35.0', date: '2026-07-28', title: 'Guest network readiness — evidence, not an active test', changes: [
+      { type: 'feature', text: 'Network Posture now summarizes per-VM guest network readiness from provider-visible NIC link and address evidence.' },
+      { type: 'improvement', text: 'Ready requires both a connected NIC and an observed address; missing evidence remains unknown and unreadable hardware stays visible as partial coverage.' },
+      { type: 'security', text: 'No guest command, ping, DNS, routing or firewall test is executed, and no network mutation, CLI fallback or remediation is performed.' },
+    ] },
     { version: '8.34.0', date: '2026-07-28', title: 'IP conflict candidates — repeated evidence without unsafe conclusions', changes: [
       { type: 'feature', text: 'Network Posture now flags repeated provider-visible IP observations as conflict candidates.' },
       { type: 'improvement', text: 'Candidate results preserve partial inventory coverage and explicitly avoid claiming that a repeated address is a confirmed conflict.' },
