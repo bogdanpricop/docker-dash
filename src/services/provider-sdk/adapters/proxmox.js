@@ -77,6 +77,7 @@ function declared() {
     'storage.placement.read': conditional('Storage accessibility, content classes and capacity are checked read-only for an advisory disk size', { readOnly: true, bounded: true, advisoryOnly: true }),
     'storage.qos.read': adapterNotImplemented('Proxmox VE storage QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('Proxmox VE multipath telemetry'),
+    'network.health.read': unsupported('Proxmox VE common virtual-network inventory is not released'),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),

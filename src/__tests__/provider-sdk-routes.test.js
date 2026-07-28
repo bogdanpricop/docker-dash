@@ -26,6 +26,7 @@ const mockStoragePosture = jest.fn();
 const mockStorageTopology = jest.fn();
 const mockStoragePlacementAdvisory = jest.fn();
 const mockStoragePolicyAdvisory = jest.fn();
+const mockNetworkPosture = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -148,6 +149,9 @@ jest.mock('../services/provider-sdk/storage-placement-advisory', () => ({
 }));
 jest.mock('../services/provider-sdk/storage-policy-advisory', () => ({
   advisoryForHost: (...args) => mockStoragePolicyAdvisory(...args),
+}));
+jest.mock('../services/provider-sdk/network-posture', () => ({
+  postureForHost: (...args) => mockNetworkPosture(...args),
 }));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
@@ -545,6 +549,7 @@ describe('Provider SDK routes', () => {
     mockStoragePosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass' }, storages: [] });
     mockStoragePlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, storages: [] });
     mockStoragePolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, storages: [] });
+    mockNetworkPosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass', networkCount: 1 }, networks: [] });
     mockConformanceGet.mockReturnValue(null);
   });
 
@@ -605,6 +610,13 @@ describe('Provider SDK routes', () => {
     expect(response.body.summary.compliantCount).toBe(1);
     expect(mockStoragePolicyAdvisory).toHaveBeenCalledWith(mockHost, { minFreeBytes: '1073741824', requireShared: true });
     expect((await request(app).get('/api/providers/7/storage-policy-advisory?requireShared=maybe')).status).toBe(400);
+  });
+
+  it('returns read-only virtual network posture for the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/network-posture').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.networkCount).toBe(1);
+    expect(mockNetworkPosture).toHaveBeenCalledWith(mockHost);
   });
 
   it('rejects malformed inventory limits before provider access', async () => {

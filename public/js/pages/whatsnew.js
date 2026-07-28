@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.28.0', date: '2026-07-28',
+      title: 'Network Posture — virtual network evidence without lockout risk',
+      changes: [
+        { type: 'feature', text: 'A new Network Posture page shows live, read-only virtual-network evidence for vSphere and supported Xen management planes: accessibility, managed state, bridge/backing, VLAN and MTU where reported.' },
+        { type: 'improvement', text: 'Missing provider data stays unknown. VLAN, bridge and MTU are clearly labeled as configuration evidence, not proof of routing, firewall policy, connectivity or tenant isolation.' },
+        { type: 'security', text: 'The release performs no network mutation, test traffic, provider CLI fallback or remediation. Proxmox remains explicitly unsupported until a safe common bridge-inventory contract is available.' },
+      ],
+    },
+    {
       version: '8.27.0',
       date: '2026-07-28',
       title: 'Storage policy compliance — explicit operator criteria, honest evidence',

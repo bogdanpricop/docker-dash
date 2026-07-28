@@ -74,6 +74,7 @@ function declared() {
     'storage.placement.read': conditional('Datastore accessibility, maintenance and reported free capacity are checked read-only for an advisory disk size', { readOnly: true, bounded: true, advisoryOnly: true }),
     'storage.qos.read': adapterNotImplemented('VMware vSphere datastore QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('VMware vSphere multipath telemetry'),
+    'network.health.read': conditional('Standard port-group accessibility and normalized bridge/VLAN/MTU observations are read without changing network configuration', { readOnly: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),

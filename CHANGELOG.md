@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.28.0] - 2026-07-28 — Read-only virtual network posture
+
+Docker Dash now has a **Network Posture** page for vSphere and supported Xen
+management planes. It is a read-only, provider-neutral inventory projection;
+Proxmox remains explicitly unsupported until a common bridge-inventory contract
+is available.
+
+- **Live configuration evidence.** Each virtual network shows provider-reported
+  accessibility, management state, bridge/backing, VLAN ID and MTU where the
+  provider exposes them.
+- **Honest limits.** A bridge, VLAN or MTU is configuration evidence only — it
+  is not presented as proof of routing, firewall policy, tenant isolation or
+  end-to-end connectivity. Missing values remain unknown.
+- **No lockout risk.** The host-view endpoint performs no network mutation,
+  test traffic, provider CLI fallback or automatic remediation.
+
 ## [8.27.0] - 2026-07-28 — Read-only storage policy compliance
 
 Storage Posture now evaluates provider-visible storage inventory against a

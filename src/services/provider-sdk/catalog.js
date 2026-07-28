@@ -31,6 +31,7 @@ const FEATURE_CATALOG = Object.freeze({
   'storage.placement.read': 'Read bounded virtual-disk storage placement evidence',
   'storage.qos.read': 'Read storage quality-of-service evidence',
   'storage.multipath.read': 'Read storage multipath evidence',
+  'network.health.read': 'Read virtual-network accessibility and configuration posture',
   'vm.nic.read': 'Virtual machine network-interface inventory',
   'vm.nic.hotplug': 'Virtual machine network-interface hot-plug evidence',
   'vm.power.start': 'Start virtual machine',
