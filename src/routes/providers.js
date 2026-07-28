@@ -11,6 +11,7 @@ const providerHostMaintenance = require('../services/provider-operations/host-ma
 const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerStoragePosture = require('../services/provider-sdk/storage-posture');
 const providerStorageTopology = require('../services/provider-sdk/storage-topology');
+const providerStoragePlacementAdvisory = require('../services/provider-sdk/storage-placement-advisory');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1770,6 +1771,24 @@ router.get('/:hostId/storage-topology', requireAuth,
       res.status(status).json({
         error: status >= 500 ? 'Provider storage topology failed' : err.message,
         code: err?.code || 'STORAGE_TOPOLOGY_ERROR',
+      });
+    }
+  }));
+
+router.get('/:hostId/storage-placement-advisory', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (req.query.requiredBytes !== undefined && !/^\d{1,14}$/.test(String(req.query.requiredBytes))) {
+      return res.status(400).json({ error: 'Requested disk size must be an integer number of bytes', code: 'INVALID_REQUESTED_BYTES' });
+    }
+    try {
+      res.json(await providerStoragePlacementAdvisory.advisoryForHost(resolved.host, { requestedBytes: req.query.requiredBytes }));
+    } catch (err) {
+      const status = Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 ? 'Provider storage placement advisory failed' : err.message,
+        code: err?.code || 'STORAGE_PLACEMENT_ADVISORY_ERROR',
       });
     }
   }));

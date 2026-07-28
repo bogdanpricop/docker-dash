@@ -74,6 +74,7 @@ function declared() {
     'storage.health.read': conditional('Accessibility, maintenance and capacity posture are derived from live cluster storage inventory', { readOnly: true, signals: ['accessibility', 'maintenance', 'capacity', 'overcommit'] }),
     'storage.policy.read': conditional('Storage type, content classes and shared-storage evidence are read from live inventory', { readOnly: true, evidenceOnly: true }),
     'storage.sharedTopology.read': conditional('Configured VM disks are correlated by an opaque backing identity; provider-declared shared attachments are required for confirmation', { readOnly: true, bounded: true, evidenceOnly: true }),
+    'storage.placement.read': conditional('Storage accessibility, content classes and capacity are checked read-only for an advisory disk size', { readOnly: true, bounded: true, advisoryOnly: true }),
     'storage.qos.read': adapterNotImplemented('Proxmox VE storage QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('Proxmox VE multipath telemetry'),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),

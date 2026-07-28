@@ -5,6 +5,7 @@ const StoragePosturePage = {
   _hosts: [],
   _hostId: null,
   _container: null,
+  _placementGiB: 10,
 
   _badge(state) {
     return { pass: 'badge-success', warning: 'badge-warning', fail: 'badge-danger', unknown: 'badge-secondary' }[state] || 'badge-secondary';
@@ -47,6 +48,13 @@ const StoragePosturePage = {
     return `<div class="card" style="padding:16px;margin:16px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><strong>Shared-disk topology</strong><div class="text-muted text-sm">Cross-VM backing correlation; provider-native backing references are hidden.</div></div><span class="badge ${this._badge(coverage.complete ? 'pass' : 'unknown')}">${coverage.complete ? 'complete evidence' : 'partial evidence'}</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${summary.confirmedCount ?? 0}</div><div class="stat-label">Confirmed shared</div></div><div class="stat-card"><div class="stat-value">${summary.reviewCount ?? 0}</div><div class="stat-label">Needs review</div></div><div class="stat-card"><div class="stat-value">${coverage.hardwareUnavailable ?? 0}</div><div class="stat-label">Unreadable VM inventories</div></div></div><div class="text-muted text-sm" style="margin:12px 0">${coverage.truncated ? 'VM selection is bounded; results are incomplete.' : 'VM selection was not truncated.'}</div>${rows || '<div class="empty-msg"><i class="fas fa-check-circle"></i>No multi-VM backing was observed in the selected inventory.</div>'}</div>`;
   },
 
+  _placementHtml(result) {
+    const summary = result.summary || {};
+    const required = result.requested?.requiredBytes;
+    const rows = (result.storages || []).map(storage => `<li><strong>${Utils.escapeHtml(storage.displayName)}</strong> <span class="badge ${this._badge(storage.state === 'candidate' ? 'pass' : (storage.state === 'blocked' ? 'fail' : 'unknown'))}">${Utils.escapeHtml(storage.state)}</span> <span class="text-muted text-sm">${Utils.escapeHtml((storage.signals || []).map(signal => signal.key).join(', ') || 'no evidence')}</span></li>`).join('');
+    return `<div class="card" style="padding:16px;margin:16px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><strong>Disk placement advisory</strong><div class="text-muted text-sm">For ${this._formatBytes(result.requested?.bytes)} plus ${result.requested?.headroomPercent ?? '—'}% headroom (${this._formatBytes(required)} required). This does not reserve capacity.</div></div><span class="badge badge-secondary">read-only</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${summary.candidateCount ?? 0}</div><div class="stat-label">Candidates</div></div><div class="stat-card"><div class="stat-value">${summary.blockedCount ?? 0}</div><div class="stat-label">Blocked</div></div><div class="stat-card"><div class="stat-value">${summary.unknownCount ?? 0}</div><div class="stat-label">Needs evidence</div></div></div><ul style="margin:14px 0 0 18px;display:grid;gap:6px">${rows || '<li>No storage targets were returned.</li>'}</ul></div>`;
+  },
+
   _resultHtml(result) {
     const summary = result.summary || {};
     const state = summary.state || 'unknown';
@@ -64,9 +72,10 @@ const StoragePosturePage = {
     const selected = Api.getHostId();
     this._hostId = this._hosts.some(host => host.id === selected) ? selected : this._hosts[0]?.id || null;
     container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-database"></i> Storage Posture</h1><div class="text-muted text-sm">Read-only provider evidence for accessibility, maintenance, capacity and overcommit risk</div></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<select id="storage-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="storage-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button>` : ''}</div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<label class="text-muted text-sm">Disk GiB <input id="storage-placement-gib" type="number" min="1" max="65536" step="1" value="${this._placementGiB}" class="form-control" style="width:88px;display:inline-block"></label><select id="storage-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="storage-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button>` : ''}</div></div>
       <div id="storage-posture-content"></div>`;
     container.querySelector('#storage-posture-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
+    container.querySelector('#storage-placement-gib')?.addEventListener('change', event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 65536) { this._placementGiB = value; this._load(); } });
     container.querySelector('#storage-posture-refresh')?.addEventListener('click', () => this._load());
     await this._load();
   },
@@ -77,13 +86,17 @@ const StoragePosturePage = {
     if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its storage posture.</div>'; return; }
     target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting live storage evidence…</div>';
     try {
-      const [posture, topology] = await Promise.all([
+      const requestedBytes = this._placementGiB * 1024 * 1024 * 1024;
+      const [posture, topology, placement] = await Promise.all([
         Api.getProviderStoragePosture(this._hostId),
         Api.getProviderStorageTopology(this._hostId).catch(error => ({ error })),
+        Api.getProviderStoragePlacementAdvisory(this._hostId, requestedBytes).catch(error => ({ error })),
       ]);
       target.innerHTML = this._resultHtml(posture) + (topology.error
         ? `<div class="alert alert-info"><strong>Shared-disk topology unavailable</strong><div>${Utils.escapeHtml(topology.error.message)}</div></div>`
-        : this._topologyHtml(topology));
+        : this._topologyHtml(topology)) + (placement.error
+        ? `<div class="alert alert-info"><strong>Disk placement advisory unavailable</strong><div>${Utils.escapeHtml(placement.error.message)}</div></div>`
+        : this._placementHtml(placement));
     }
     catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; }
   },

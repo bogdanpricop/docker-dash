@@ -71,6 +71,7 @@ function declared() {
     'storage.health.read': conditional('Datastore accessibility, maintenance mode and capacity are read from the vSphere PropertyCollector', { readOnly: true, signals: ['accessibility', 'maintenance', 'capacity'] }),
     'storage.policy.read': conditional('Datastore type and shared capacity evidence are read from the vSphere PropertyCollector', { readOnly: true, evidenceOnly: true }),
     'storage.sharedTopology.read': conditional('VM disk backing files are correlated read-only; only disks declared sharingMultiWriter are confirmed shared', { readOnly: true, bounded: true, evidenceOnly: true }),
+    'storage.placement.read': conditional('Datastore accessibility, maintenance and reported free capacity are checked read-only for an advisory disk size', { readOnly: true, bounded: true, advisoryOnly: true }),
     'storage.qos.read': adapterNotImplemented('VMware vSphere datastore QoS telemetry'),
     'storage.multipath.read': adapterNotImplemented('VMware vSphere multipath telemetry'),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),

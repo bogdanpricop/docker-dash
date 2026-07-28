@@ -28,6 +28,7 @@ const FEATURE_CATALOG = Object.freeze({
   'storage.health.read': 'Read storage accessibility, maintenance and capacity posture',
   'storage.policy.read': 'Read provider-visible storage policy and topology evidence',
   'storage.sharedTopology.read': 'Read cross-VM shared virtual-disk backing topology',
+  'storage.placement.read': 'Read bounded virtual-disk storage placement evidence',
   'storage.qos.read': 'Read storage quality-of-service evidence',
   'storage.multipath.read': 'Read storage multipath evidence',
   'vm.nic.read': 'Virtual machine network-interface inventory',

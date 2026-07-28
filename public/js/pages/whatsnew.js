@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.26.0',
+      date: '2026-07-28',
+      title: 'Disk placement advisory — evidence before a storage choice',
+      changes: [
+        { type: 'feature', text: 'Storage Posture can now assess provider-visible storage targets for a disk size you enter in GiB, including the configured capacity headroom.' },
+        { type: 'improvement', text: 'Each target is labeled candidate, blocked or needs evidence from live accessibility, maintenance and capacity observations; Proxmox also checks that the storage reports VM disk-image support.' },
+        { type: 'security', text: 'This is a point-in-time, read-only advisory — it never reserves capacity, writes a test disk or places a workload. Missing evidence never becomes a candidate, and every disk action must perform its own fresh preflight.' },
+      ],
+    },
+    {
       version: '8.25.0',
       date: '2026-07-28',
       title: 'Shared virtual-disk topology — correlation without unsafe inference',

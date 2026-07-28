@@ -561,6 +561,7 @@ const Api = {
   getProviderStorages(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/storages?limit=${limit}`); },
   getProviderStoragePosture(hostId) { return this.get(`/providers/${hostId}/storage-posture`); },
   getProviderStorageTopology(hostId) { return this.get(`/providers/${hostId}/storage-topology`); },
+  getProviderStoragePlacementAdvisory(hostId, requiredBytes) { return this.get(`/providers/${hostId}/storage-placement-advisory?requiredBytes=${encodeURIComponent(requiredBytes)}`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.26.0] - 2026-07-28 — Read-only virtual-disk placement advisory
+
+Storage Posture can now evaluate provider-visible storage targets for a proposed
+virtual-disk size. It applies the same capacity headroom used by the guarded
+disk lifecycle preflight, but remains a read-only, point-in-time advisory.
+
+- **Explicit target evidence.** Operators choose a disk size in GiB and receive
+  candidate, blocked and needs-evidence results based on reported accessibility,
+  maintenance state, free capacity and, for Proxmox, VM image-content support.
+- **No implied reservation.** A target becomes a candidate only when every
+  applicable check is positively evidenced. Missing telemetry remains unknown;
+  capacity is never reserved and a real disk operation must revalidate before
+  provider I/O.
+- **Bounded and portable.** The endpoint is host-view scoped, returns canonical
+  storage identities and is capability-gated for Proxmox VE, vSphere / ESXi and
+  supported Xen management planes. It performs no storage mutation, test write,
+  shell fallback or automatic placement.
+
 ## [8.25.0] - 2026-07-28 — Read-only shared virtual-disk topology
 
 Storage Posture now includes a bounded, provider-neutral view of virtual-disk

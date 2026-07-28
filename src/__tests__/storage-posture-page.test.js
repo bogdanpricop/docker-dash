@@ -22,4 +22,12 @@ describe('Storage posture presentation helpers', () => {
     expect(html).toContain('partial evidence');
     expect(html).toContain('Unreadable VM inventories');
   });
+
+  it('calls placement results advisory-only rather than a reservation', () => {
+    global.Utils = { escapeHtml: value => String(value), formatBytes: value => `${value} B` };
+    const html = page._placementHtml({ requested: { bytes: 10, requiredBytes: 11, headroomPercent: 10 },
+      summary: { candidateCount: 1, blockedCount: 0, unknownCount: 0 }, storages: [] });
+    expect(html).toContain('does not reserve capacity');
+    expect(html).toContain('Candidates');
+  });
 });
