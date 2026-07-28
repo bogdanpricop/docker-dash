@@ -21,4 +21,21 @@ describe('Network posture presentation helpers', () => {
     expect(html).toContain('This policy is not persisted.');
     expect(html).toContain('Noncompliant');
   });
+
+  it('summarizes existing evidence and makes unavailable sources explicit', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._evidenceDashboardHtml({
+      posture: { summary: { networkCount: 2 } },
+      topology: { summary: { attachmentCount: 3 } },
+      ips: { summary: { addressCount: 4 } },
+      conflicts: { summary: { candidateCount: 1 } },
+      readiness: { summary: { readyCount: 2 } },
+      transport: { state: 'observed_reachable' },
+      policy: { error: new Error('unavailable') },
+    });
+    expect(html).toContain('Consolidated network evidence');
+    expect(html).toContain('1 source unavailable');
+    expect(html).toContain('observed_reachable');
+    expect(html).toContain('does not prove connectivity');
+  });
 });

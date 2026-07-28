@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.37.0] - 2026-07-28 — Consolidated network evidence dashboard
+
+Network Posture now begins with a compact, read-only dashboard that brings the
+already-collected network, attachment, address, readiness and endpoint evidence
+into one operational view.
+
+- **No new collection.** The dashboard consumes the same responses shown below;
+  it does not add a provider, guest or network call.
+- **Unavailable stays visible.** If a supporting evidence source cannot be
+  collected, the summary counts it as unavailable rather than inferring a result.
+- **No expanded claim.** The summary does not prove connectivity, isolation,
+  routing, policy enforcement or IP ownership, and has no mutation path.
+
 ## [8.36.0] - 2026-07-28 — Read-only provider endpoint transport posture
 
 Network Posture now surfaces the most recent provider capability-probe outcome

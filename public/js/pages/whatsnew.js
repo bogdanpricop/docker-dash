@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.37.0', date: '2026-07-28', title: 'Consolidated network evidence dashboard', changes: [
+      { type: 'feature', text: 'Network Posture now begins with a compact dashboard of the network, attachment, address, readiness and endpoint evidence already shown on the page.' },
+      { type: 'improvement', text: 'Unavailable sources remain explicitly visible in the summary rather than becoming an inferred healthy result.' },
+      { type: 'security', text: 'The dashboard makes no additional provider, guest or network call and cannot change network configuration.' },
+    ] },
     { version: '8.36.0', date: '2026-07-28', title: 'Endpoint transport posture — existing probe evidence only', changes: [
       { type: 'feature', text: 'Network Posture now surfaces the most recent provider capability-probe outcome as endpoint transport evidence.' },
       { type: 'improvement', text: 'Reachability is clearly limited: it does not prove authentication, authorization, feature availability or workload connectivity.' },
