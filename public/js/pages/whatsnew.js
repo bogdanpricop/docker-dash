@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.31.0', date: '2026-07-28', title: 'Network placement evidence — candidates without unsafe inference', changes: [
+      { type: 'feature', text: 'Network Posture now offers a read-only placement advisory based on provider-reported accessibility and managed-network evidence.' },
+      { type: 'improvement', text: 'A network becomes a candidate only when both signals are explicitly positive; a negative signal blocks it and missing evidence remains unknown.' },
+      { type: 'security', text: 'Candidates are not reservations or connectivity guarantees. The advisory changes no network configuration, sends no traffic and has no provider CLI fallback or remediation.' },
+    ] },
     {
       version: '8.30.0', date: '2026-07-28',
       title: 'VM network attachment topology — bounded, opaque evidence',

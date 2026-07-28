@@ -34,6 +34,7 @@ const FEATURE_CATALOG = Object.freeze({
   'network.health.read': 'Read virtual-network accessibility and configuration posture',
   'network.policy.read': 'Read virtual-network policy compliance evidence',
   'network.attachmentTopology.read': 'Read bounded virtual-machine network attachment topology',
+  'network.placement.read': 'Read virtual-network placement evidence',
   'vm.nic.read': 'Virtual machine network-interface inventory',
   'vm.nic.hotplug': 'Virtual machine network-interface hot-plug evidence',
   'vm.power.start': 'Start virtual machine',

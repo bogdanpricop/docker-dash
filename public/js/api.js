@@ -566,6 +566,7 @@ const Api = {
   getProviderNetworkPosture(hostId) { return this.get(`/providers/${hostId}/network-posture`); },
   getProviderNetworkPolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minMtu) query.set('minMtu', options.minMtu); if (options.requireManaged) query.set('requireManaged', 'true'); if (options.requireVlan) query.set('requireVlan', 'true'); return this.get(`/providers/${hostId}/network-policy-advisory?${query}`); },
   getProviderNetworkAttachmentTopology(hostId) { return this.get(`/providers/${hostId}/network-attachment-topology`); },
+  getProviderNetworkPlacementAdvisory(hostId) { return this.get(`/providers/${hostId}/network-placement-advisory`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

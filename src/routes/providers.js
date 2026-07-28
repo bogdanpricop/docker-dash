@@ -16,6 +16,7 @@ const providerStoragePolicyAdvisory = require('../services/provider-sdk/storage-
 const providerNetworkPosture = require('../services/provider-sdk/network-posture');
 const providerNetworkPolicyAdvisory = require('../services/provider-sdk/network-policy-advisory');
 const providerNetworkAttachmentTopology = require('../services/provider-sdk/network-attachment-topology');
+const providerNetworkPlacementAdvisory = require('../services/provider-sdk/network-placement-advisory');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1848,6 +1849,12 @@ router.get('/:hostId/network-attachment-topology', requireAuth, requireHostAcces
   const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
   try { res.json(await providerNetworkAttachmentTopology.topologyForHost(resolved.host)); }
   catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider network attachment topology failed' : err.message, code: err?.code || 'NETWORK_ATTACHMENT_TOPOLOGY_ERROR' }); }
+}));
+
+router.get('/:hostId/network-placement-advisory', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  try { res.json(await providerNetworkPlacementAdvisory.advisoryForHost(resolved.host)); }
+  catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider network placement advisory failed' : err.message, code: err?.code || 'NETWORK_PLACEMENT_ADVISORY_ERROR' }); }
 }));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

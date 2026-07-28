@@ -83,6 +83,9 @@ function _fromCapabilities(capabilities = {}) {
     'network.attachmentTopology.read': capabilities.networks && capabilities.hardwareDetails
       ? conditional('VM VIFs are correlated to provider-reported virtual-network evidence read-only', { readOnly: true, bounded: true, evidenceOnly: true })
       : unsupported('Network attachment topology requires virtual-network and VM hardware inventory'),
+    'network.placement.read': capabilities.networks
+      ? conditional('Virtual-network accessibility and configuration evidence are evaluated read-only for placement review', { readOnly: true, advisoryOnly: true })
+      : unsupported('Virtual-network placement evidence is unavailable for this Xen provider'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

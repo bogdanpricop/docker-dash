@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.31.0] - 2026-07-28 — Read-only virtual-network placement evidence
+
+Network Posture now evaluates provider-visible virtual networks as placement
+evidence. A candidate requires positive provider evidence for both accessibility
+and managed state; negative evidence blocks it and missing evidence remains
+unknown.
+
+- **Fail-closed advisory.** No missing management or accessibility value can
+  become a candidate.
+- **No implied fabric guarantee.** A candidate is not a reservation and does
+  not prove routing, firewall policy, capacity, connectivity or isolation.
+- **No control-plane effect.** The host-view advisory changes no NIC, switch or
+  VLAN, sends no traffic, and has no CLI fallback or remediation path.
+
 ## [8.30.0] - 2026-07-28 — Read-only VM network attachment topology
 
 Network Posture now includes a bounded view of the provider-visible
