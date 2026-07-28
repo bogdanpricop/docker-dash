@@ -39,6 +39,7 @@ const FEATURE_CATALOG = Object.freeze({
   'vm.snapshot.create': 'Create snapshot',
   'vm.snapshot.revert': 'Revert snapshot',
   'vm.snapshot.delete': 'Delete snapshot',
+  'vm.snapshot.consolidate': 'Consolidate virtual machine snapshot disk state',
   'vm.console': 'Interactive virtual machine console',
   'vm.clone': 'Clone virtual machine',
   'vm.create': 'Provision virtual machine',

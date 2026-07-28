@@ -159,6 +159,7 @@ function _fromCapabilities(capabilities = {}) {
       })
       : unsupported('Portable snapshots are unavailable for this Xen provider');
   }
+  features['vm.snapshot.consolidate'] = adapterNotImplemented('Xen snapshot consolidation');
 
   features['vm.migrate'] = capabilities.migrationExecute
     ? conditional('Same-pool migration uses a native task and execution-time target validation', {

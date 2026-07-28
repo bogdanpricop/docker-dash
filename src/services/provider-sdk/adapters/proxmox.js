@@ -116,6 +116,7 @@ function declared() {
     'vm.snapshot.create': conditional('Storage support is revalidated before snapshot creation', { perResource: true, durableTask: true, consistency: ['crash'] }),
     'vm.snapshot.revert': conditional('Snapshot ownership and dependencies are revalidated before revert', { perResource: true, durableTask: true, confirmation: true }),
     'vm.snapshot.delete': conditional('Snapshot ownership and child dependencies are revalidated before delete', { perResource: true, durableTask: true, confirmation: true }),
+    'vm.snapshot.consolidate': adapterNotImplemented('Proxmox VE standalone snapshot consolidation'),
   };
   for (const key of NOT_IMPLEMENTED) features[key] = adapterNotImplemented('Proxmox VE');
   return features;

@@ -92,6 +92,9 @@ function declared() {
     'vm.snapshot.create': conditional('Quiesced mode requires a powered-on VM and running VMware Tools', { perResource: true, durableTask: true, consistency: ['crash', 'quiesced'] }),
     'vm.snapshot.revert': conditional('Snapshot ownership and current VM state are revalidated', { perResource: true, durableTask: true, confirmation: true }),
     'vm.snapshot.delete': conditional('Snapshot child dependencies are revalidated', { perResource: true, durableTask: true, confirmation: true }),
+    'vm.snapshot.consolidate': conditional('ConsolidateVMDisks_Task is offered only when runtime.consolidationNeeded is true and is post-read verified', {
+      perResource: true, durableTask: true, confirmation: 'typed_name', postVerify: true, requiresConsolidationNeeded: true,
+    }),
   };
   for (const key of NOT_IMPLEMENTED) features[key] = adapterNotImplemented('VMware vSphere');
   return features;

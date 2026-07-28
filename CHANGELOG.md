@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.24.0] - 2026-07-28 — Guarded vSphere snapshot consolidation
+
+Docker Dash can now submit VMware vSphere snapshot disk consolidation only when the
+VM's live runtime explicitly reports that it is needed. This is a separate opt-in
+from regular snapshots: `DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION=true` is required in
+addition to the existing snapshot gate.
+
+- **Evidence before I/O.** Consolidation is offered only for vSphere VMs whose fresh
+  `runtime.consolidationNeeded` value is true. A false or missing observation blocks
+  preview and worker execution; Proxmox and Xen providers remain unsupported.
+- **Durable and verified.** The action uses `ConsolidateVMDisks_Task`, a hash-bound
+  preflight, exact typed VM-name confirmation, admin plus host-operate access, a
+  per-VM lock and non-idempotent operation handling. Success requires both native
+  task completion and a fresh runtime observation that consolidation is no longer needed.
+- **No automation implied.** The release does not delete snapshots, schedule or bulk
+  consolidate workloads, execute guest commands, alter datastore policy/QoS or use a
+  provider CLI fallback. Operators retain explicit control over a potentially I/O-heavy task.
+
 ## [8.23.0] - 2026-07-28 — Provider storage posture baseline
 
 Docker Dash now has a provider-neutral **Storage Posture** page for Proxmox VE,

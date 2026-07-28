@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.24.0',
+      date: '2026-07-28',
+      title: 'vSphere snapshot consolidation — explicit, reviewed and verified',
+      changes: [
+        { type: 'feature', text: 'When a VMware vSphere VM explicitly reports runtime.consolidationNeeded, its Snapshots tab can now prepare and queue a native snapshot disk consolidation task.' },
+        { type: 'security', text: 'Consolidation is separately disabled by default. It requires both snapshot gates, admin and host-operate access, a fresh hash-bound preflight, an exact typed VM-name confirmation, a per-VM operation lock and a durable native task.' },
+        { type: 'improvement', text: 'Success is not inferred from task completion: Docker Dash reads the VM again and requires runtime.consolidationNeeded to clear. Proxmox and Xen remain safely unsupported; there is no bulk/scheduled remediation, snapshot deletion, guest command or CLI fallback.' },
+      ],
+    },
+    {
       version: '8.23.0',
       date: '2026-07-28',
       title: 'Storage Posture — transparent provider storage evidence',

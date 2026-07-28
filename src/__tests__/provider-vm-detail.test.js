@@ -85,6 +85,14 @@ describe('common provider VM detail', () => {
     expect(deps.registry.vmHardwareForHost).toHaveBeenCalledWith(host, expect.objectContaining({ id: VM_ID }), expect.objectContaining({ database: {} }));
   });
 
+  it('projects an explicit vSphere consolidation requirement without inferring one', async () => {
+    const needed = resource({ extensions: { consolidationNeeded: true } });
+    const required = await vmDetail.detailForHost(host, VM_ID, dependencies(needed));
+    expect(required.sections.snapshots.providerState).toEqual({ consolidationNeeded: true });
+    const unknown = await vmDetail.detailForHost(host, VM_ID, dependencies(resource()));
+    expect(unknown.sections.snapshots.providerState).toEqual({ consolidationNeeded: false });
+  });
+
   it('keeps the rest of VM detail available when live hardware inventory fails', async () => {
     const deps = dependencies();
     deps.registry.vmHardwareForHost = jest.fn(async () => { throw Object.assign(new Error('provider secret'), { code: 'PROVIDER_VM_HARDWARE_READ_FAILED' }); });

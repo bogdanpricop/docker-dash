@@ -84,6 +84,12 @@ function _allowsCreate(target, consistency) {
 }
 
 async function mutate(target, action, input = {}, snapshot = null) {
+  if (action === 'consolidate') {
+    if (target.host.daemon_type !== 'vsphere' || target.row?.consolidationNeeded !== true) {
+      throw Object.assign(new Error('Snapshot consolidation is not currently required by this provider VM'), { code: 'SNAPSHOT_CONSOLIDATION_NOT_REQUIRED' });
+    }
+    return target.client.consolidateVMDisks(target.native.vmMoref);
+  }
   if (action === 'create') {
     if (!_allowsCreate(target, input.consistency)) {
       throw Object.assign(new Error('Snapshot create is unavailable for the current VM/provider state'), { code: 'RESOURCE_ACTION_BLOCKED' });
@@ -108,6 +114,13 @@ async function mutate(target, action, input = {}, snapshot = null) {
   return target.client[action === 'revert' ? 'revertSnapshot' : 'deleteSnapshot'](snapshotTarget);
 }
 
+async function consolidationNeeded(target) {
+  if (target?.host?.daemon_type !== 'vsphere') return null;
+  const rows = await target.client.listVMs();
+  const row = rows.find(item => _matches(item, target.identity));
+  return row ? row.consolidationNeeded === true : null;
+}
+
 async function taskStatus(target, task) {
   if (target.host.daemon_type === 'proxmox') return target.client.getTaskStatus(task.node, task.ref);
   if (target.host.daemon_type === 'vsphere') return target.client.getTaskStatus(task.ref);
@@ -121,6 +134,6 @@ async function cancelTask(target, task) {
 }
 
 module.exports = {
-  open, close, list, mutate, taskStatus, cancelTask,
+  open, close, list, mutate, consolidationNeeded, taskStatus, cancelTask,
   _internals: { _matches, _nativeVmTarget, _allowsCreate },
 };

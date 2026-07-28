@@ -96,6 +96,7 @@ function _section(available, options = {}) {
   };
   if (options.data !== undefined) section.data = options.data;
   if (options.items !== undefined) section.items = options.items;
+  if (options.providerState !== undefined) section.providerState = options.providerState;
   return section;
 }
 
@@ -149,6 +150,7 @@ function _sections(resource, capabilities, activity, vmSnapshots = [], vmHardwar
       capability: 'vm.snapshot.list',
       reason: snapshotEvidence?.reason || 'Portable snapshot detail is not implemented by the common provider adapter',
       items: vmSnapshots,
+      providerState: { consolidationNeeded: resource.extensions?.consolidationNeeded === true },
     }),
     tasks: _section(true, { items: activity }),
     events: _section(false, {

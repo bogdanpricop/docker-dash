@@ -7,7 +7,7 @@ jest.mock('../services/provider-sdk/vm-snapshot-store', () => ({
 }));
 jest.mock('../services/provider-operations/snapshot-provider', () => ({
   open: jest.fn(), close: jest.fn(), list: jest.fn(), mutate: jest.fn(),
-  taskStatus: jest.fn(), cancelTask: jest.fn(),
+  consolidationNeeded: jest.fn(), taskStatus: jest.fn(), cancelTask: jest.fn(),
 }));
 
 const handler = require('../services/provider-operations/handlers/vm-snapshot');
@@ -90,6 +90,17 @@ describe('durable common VM snapshot handler', () => {
     const result = await handler.reconcile({ ...context(), nativeTaskRef }, { database: database() });
     expect(result).toEqual(expect.objectContaining({ state: 'succeeded', phase: 'verified' }));
     expect(bridge.taskStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies snapshot consolidation from the live vSphere runtime flag', async () => {
+    bridge.open.mockResolvedValue({ ...target, row: { consolidationNeeded: true } });
+    bridge.mutate.mockResolvedValue({ taskRef: 'haTask-consolidate', provider: 'vsphere' });
+    const queued = await handler.execute(context('consolidate', { consolidationNeeded: true }), { database: database() });
+    expect(queued.state).toBe('reconciling');
+    bridge.taskStatus.mockResolvedValue({ status: 'success' });
+    bridge.consolidationNeeded.mockResolvedValue(false);
+    const result = await handler.reconcile({ ...context('consolidate', { consolidationNeeded: true }), nativeTaskRef: queued.nativeTaskRef }, { database: database() });
+    expect(result).toEqual(expect.objectContaining({ state: 'succeeded', result: expect.objectContaining({ consolidated: true, verified: true }) }));
   });
 
   it('revalidates child dependencies immediately before delete', async () => {

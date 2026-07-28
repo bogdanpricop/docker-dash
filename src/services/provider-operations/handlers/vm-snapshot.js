@@ -94,8 +94,21 @@ function _host(operation, database) {
 }
 
 async function _verify(context, target, database, confirmed) {
-  const items = await _refresh(target, database);
   const { operation, request } = context;
+  if (operation.action === 'consolidate') {
+    const needed = await bridge.consolidationNeeded(target);
+    if (needed === false) {
+      return { state: 'succeeded', phase: 'verified', result: {
+        consolidated: true, verified: true, verifiedBy: 'runtime.consolidationNeeded',
+      } };
+    }
+    if (Date.now() < _deadline(operation)) {
+      context.reportProgress(95, 'post-verify', 'Waiting for provider runtime consolidation state to clear');
+      return { state: 'reconciling', phase: 'post-verify', delayMs: 2000 };
+    }
+    return { state: 'unknown', result: { expected: 'runtime.consolidationNeeded=false', observed: needed } };
+  }
+  const items = await _refresh(target, database);
   if (operation.action === 'create') {
     const matches = items.filter(item => item.name === request.name);
     if (matches.length === 1) {
@@ -144,12 +157,15 @@ async function execute(context, options = {}) {
       if (_graphDepth(items) >= maxDepth) {
         throw Object.assign(new Error('Snapshot chain depth limit reached'), { code: 'SNAPSHOT_CHAIN_LIMIT_REACHED' });
       }
-    } else {
+    } else if (context.operation.action !== 'consolidate') {
       snapshot = _resolve(context.operation, context.request, database);
       if (!snapshot) throw Object.assign(new Error('Provider snapshot was not found'), { code: 'PROVIDER_SNAPSHOT_NOT_FOUND' });
       if (context.operation.action === 'delete' && snapshot.childCount > 0) {
         throw Object.assign(new Error('Snapshot has child dependencies'), { code: 'SNAPSHOT_HAS_CHILDREN' });
       }
+    }
+    if (context.operation.action === 'consolidate' && target.row?.consolidationNeeded !== true) {
+      throw Object.assign(new Error('Provider does not currently require snapshot disk consolidation'), { code: 'SNAPSHOT_CONSOLIDATION_NOT_REQUIRED' });
     }
     context.reportProgress(20, 'pre-submit', 'Snapshot state and ownership revalidated', { count: items.length });
     const result = await bridge.mutate(target, context.operation.action, context.request, snapshot);

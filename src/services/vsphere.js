@@ -273,6 +273,7 @@ class VSphereClient {
       'runtime.host',
       'config.version', 'config.template', 'config.annotation', 'summary.config.guestId',
       'capability.snapshotOperationsSupported',
+      'runtime.consolidationNeeded',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
       'summary.storage.committed', 'summary.storage.uncommitted',
       // v8.9.13-alpha.3 — per-datastore committed bytes, so the Datastores
@@ -298,6 +299,7 @@ class VSphereClient {
       description: o.props['config.annotation'] || null,
       osType: o.props['summary.config.guestId'] || o.props['summary.config.guestFullName'] || null,
       snapshotOperationsSupported: o.props['capability.snapshotOperationsSupported'] === 'true',
+      consolidationNeeded: o.props['runtime.consolidationNeeded'] === 'true',
       cpuUsageMHz: parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0,
       memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
       storageCommittedBytes: parseInt(o.props['summary.storage.committed'], 10) || 0,
@@ -790,6 +792,21 @@ class VSphereClient {
     <_this type="VirtualMachineSnapshot">${this._xesc(snapshotMoref)}</_this>
     <removeChildren>false</removeChildren><consolidate>true</consolidate>
   </RemoveSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  /** Consolidate redo logs only when the VM runtime explicitly requires it. */
+  async consolidateVMDisks(vmMoref) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ConsolidateVMDisks_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+  </ConsolidateVMDisks_Task></soap:Body>
 </soap:Envelope>`;
     return this._snapshotTask(await this._soapPost(body));
   }

@@ -203,6 +203,26 @@ const VirtualMachinesPage = {
     } catch (err) { Toast.error(err.message); }
   },
 
+  async _runSnapshotConsolidation(host, vm) {
+    try {
+      const plan = await Api.preflightProviderVMSnapshotConsolidation(host.id, vm.id);
+      if (!plan.allowed) {
+        await Modal.confirm(this._snapshotPlanHtml(plan), { title: 'Snapshot consolidation preflight', confirmText: 'Close', html: true, width: '640px' });
+        return;
+      }
+      const confirmed = await Modal.confirm(this._snapshotPlanHtml(plan), {
+        title: `Consolidate snapshot disks · ${vm.displayName}`, confirmText: 'Consolidate disks', danger: true,
+        typeToConfirm: plan.confirmation.expected, html: true, width: '640px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMSnapshotConsolidation(host.id, vm.id, {
+        planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
+      }, this._idempotencyKey('vm-snapshot-consolidate'));
+      Toast.success('Snapshot disk consolidation queued');
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); }
+  },
+
   _snapshotPolicyDraft(root) {
     return {
       enabled: root.querySelector('#snapshot-policy-enabled').checked,
@@ -328,6 +348,7 @@ const VirtualMachinesPage = {
     const items = section.items || [];
     panel.innerHTML = `<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px">
       <button class="btn btn-sm btn-primary" id="common-snapshot-create"><i class="fas fa-camera"></i> Create snapshot</button>
+      ${section.providerState?.consolidationNeeded ? '<button class="btn btn-sm btn-warning" id="common-snapshot-consolidate"><i class="fas fa-layer-group"></i> Consolidate disks</button>' : ''}
       <button class="btn btn-sm btn-secondary" id="common-snapshot-refresh"><i class="fas fa-sync"></i> Refresh</button>
     </div>
     <div class="alert alert-warning text-sm"><strong>Snapshots are not backups.</strong> They share the VM/provider storage failure domain.</div>
@@ -338,11 +359,12 @@ const VirtualMachinesPage = {
       <td>${item.childCount || 0}</td><td style="display:flex;gap:6px"><button class="btn btn-sm btn-secondary" data-snapshot-action="revert" data-snapshot-id="${item.id}">Revert</button><button class="btn btn-sm btn-danger" data-snapshot-action="delete" data-snapshot-id="${item.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty-msg"><i class="fas fa-camera"></i>No snapshots are currently visible.</div>'}
     <div id="common-snapshot-policy"></div>`;
     panel.querySelector('#common-snapshot-create').addEventListener('click', () => this._runSnapshotCreate(host, vm));
+    panel.querySelector('#common-snapshot-consolidate')?.addEventListener('click', () => this._runSnapshotConsolidation(host, vm));
     panel.querySelector('#common-snapshot-refresh').addEventListener('click', async event => {
       event.currentTarget.disabled = true;
       try {
         const inventory = await Api.getProviderVMSnapshots(host.id, vm.id);
-        this._mountSnapshots(panel, { available: true, items: inventory.items }, host, vm);
+        this._mountSnapshots(panel, { available: true, items: inventory.items, providerState: inventory.providerState }, host, vm);
       } catch (err) { Toast.error(err.message); event.currentTarget.disabled = false; }
     });
     panel.querySelectorAll('[data-snapshot-action]').forEach(button => button.addEventListener('click', () => {

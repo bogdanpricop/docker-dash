@@ -37,7 +37,7 @@ function dependencies(overrides = {}) {
     vm: {
       id: VM_ID, displayName: 'web-01', powerState: 'running',
       actions: ['snapshot', 'snapshotQuiesced'], identity: { stability: 'stable' },
-    }, count: items.length, maxCount: overrides.maxCount || 32,
+    }, providerState: { consolidationNeeded: overrides.consolidationNeeded === true }, count: items.length, maxCount: overrides.maxCount || 32,
     observedDepth: overrides.observedDepth || 0, maxDepth: overrides.maxDepth || 16, items,
     protection: { warning: 'A snapshot is not a backup' },
   };
@@ -54,6 +54,7 @@ function dependencies(overrides = {}) {
         'vm.snapshot.create': { state: 'conditional', constraints: { consistency: overrides.consistency || ['crash', 'quiesced'] } },
         'vm.snapshot.revert': { state: 'conditional', constraints: {} },
         'vm.snapshot.delete': { state: 'conditional', constraints: {} },
+        'vm.snapshot.consolidate': { state: 'conditional', constraints: {} },
       } })),
     },
     policy: { evaluate: jest.fn(() => overrides.policy || { allowed: true, code: null, mode: 'normal', reason: null }) },
@@ -66,7 +67,7 @@ async function plan(action, input, snapshotId, deps) {
     host, database: deps.database, inventory: deps.inventory,
     capabilities: await deps.registry.capabilitiesForHost(host),
     activeOperations: deps.operations.list(), policy: deps.policy.evaluate(),
-    enabled: deps.enabled, canOperate: deps.canOperate, input,
+    enabled: deps.enabled, consolidationEnabled: deps.consolidationEnabled ?? true, canOperate: deps.canOperate, input,
   };
   return service._internals._plan(context, action, input, snapshotId);
 }
@@ -109,6 +110,19 @@ describe('common VM snapshot plans and submission', () => {
     const deletion = await plan('delete', {}, SNAP_ID, deps);
     expect(deletion.allowed).toBe(false);
     expect(deletion.blockers).toContainEqual(expect.objectContaining({ type: 'SNAPSHOT_HAS_CHILDREN' }));
+  });
+
+  it('offers consolidation only for an explicitly affected vSphere VM and uses the VM typed confirmation', async () => {
+    const needed = dependencies({ consolidationNeeded: true });
+    const planNeeded = await plan('consolidate', {}, null, needed);
+    expect(planNeeded).toEqual(expect.objectContaining({ allowed: true, action: 'consolidate', snapshot: null }));
+    expect(planNeeded.confirmation).toEqual({ required: true, mode: 'typed_name', expected: 'web-01' });
+    expect(planNeeded.warnings).toContainEqual(expect.objectContaining({ type: 'STORAGE_IO' }));
+
+    const notNeeded = dependencies({ consolidationNeeded: false });
+    const planNotNeeded = await plan('consolidate', {}, null, notNeeded);
+    expect(planNotNeeded.allowed).toBe(false);
+    expect(planNotNeeded.blockers).toContainEqual(expect.objectContaining({ type: 'SNAPSHOT_CONSOLIDATION_NOT_REQUIRED' }));
   });
 
   it('submits a durable non-idempotent operation only after exact preflight confirmation', async () => {

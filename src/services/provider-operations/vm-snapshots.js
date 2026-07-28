@@ -15,7 +15,7 @@ const SAFE_SNAPSHOT_ID = /^dds_snap_[a-f0-9]{26}$/;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const PLAN_TTL_MS = 5 * 60 * 1000;
 const TERMINAL_STATES = new Set(['succeeded', 'failed', 'cancelled', 'unknown']);
-const ACTIONS = Object.freeze({ create: 'vm.snapshot.create', revert: 'vm.snapshot.revert', delete: 'vm.snapshot.delete' });
+const ACTIONS = Object.freeze({ create: 'vm.snapshot.create', revert: 'vm.snapshot.revert', delete: 'vm.snapshot.delete', consolidate: 'vm.snapshot.consolidate' });
 
 class VmSnapshotError extends Error {
   constructor(message, code = 'VM_SNAPSHOT_ERROR', status = 400, details = null) {
@@ -97,6 +97,7 @@ async function inventoryForHost(host, vmIdInput, options = {}) {
     return {
       schemaVersion: '1.0', hostId: Number(host.id), providerType: host.daemon_type,
       vm: { id: vm.id, displayName: vm.displayName, powerState: vm.status?.powerState || 'unknown', actions: vm.actions || [], identity: vm.identity },
+      providerState: { consolidationNeeded: target.row?.consolidationNeeded === true },
       count: items.length, maxCount: _maxCount(options), maxDepth: _maxDepth(options),
       observedDepth: _graphDepth(items), items, protection: _protection(),
       observedAt: new Date().toISOString(),
@@ -144,6 +145,8 @@ async function _context(host, vmId, action, input, options = {}) {
   return {
     host, database, inventory, capabilities, activeOperations, policy,
     enabled: options.enabled === undefined ? config.features.providerVmSnapshots : options.enabled === true,
+    consolidationEnabled: options.consolidationEnabled === undefined
+      ? config.features.providerVmSnapshotConsolidation : options.consolidationEnabled === true,
     canOperate: options.canOperate === true, input,
   };
 }
@@ -155,6 +158,9 @@ function _plan(context, action, input = {}, snapshotId = null) {
   const capability = context.capabilities.features[capabilityKey]
     || { state: 'unknown', reason: 'Snapshot capability evidence is unavailable', constraints: {} };
   if (!context.enabled) blockers.push(_blocker('RELEASE_DISABLED', 'Common VM snapshots are disabled by release policy', { code: 'DD_PROVIDER_VM_SNAPSHOTS' }));
+  if (action === 'consolidate' && !context.consolidationEnabled) {
+    blockers.push(_blocker('RELEASE_DISABLED', 'Snapshot consolidation is disabled by release policy', { code: 'DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION' }));
+  }
   if (!['supported', 'conditional'].includes(capability.state)) {
     blockers.push(_blocker(capability.state === 'unknown' ? 'CAPABILITY_UNKNOWN' : 'CAPABILITY_UNSUPPORTED',
       capability.reason || 'Snapshot capability is unavailable', { state: capability.state }));
@@ -191,6 +197,14 @@ function _plan(context, action, input = {}, snapshotId = null) {
       blockers.push(_blocker('RESOURCE_ACTION_BLOCKED', `The provider did not advertise ${requiredAction} for this VM`));
     }
     if (consistency === 'quiesced') warnings.push({ type: 'GUEST_QUIESCE', reason: 'Quiesced consistency depends on guest tools and provider-native freeze behavior' });
+  } else if (action === 'consolidate') {
+    if (context.host.daemon_type !== 'vsphere') {
+      blockers.push(_blocker('CAPABILITY_UNSUPPORTED', 'Snapshot consolidation is released only for vSphere endpoints'));
+    }
+    if (context.inventory.providerState?.consolidationNeeded !== true) {
+      blockers.push(_blocker('SNAPSHOT_CONSOLIDATION_NOT_REQUIRED', 'Provider does not currently report that this VM requires disk consolidation'));
+    }
+    warnings.push({ type: 'STORAGE_IO', reason: 'Provider disk consolidation can generate material datastore I/O; monitor the native task to completion' });
   } else {
     if (!SAFE_SNAPSHOT_ID.test(String(snapshotId || ''))) throw new VmSnapshotError('Snapshot was not found', 'PROVIDER_SNAPSHOT_NOT_FOUND', 404);
     snapshot = context.inventory.items.find(item => item.id === snapshotId) || null;
@@ -209,13 +223,14 @@ function _plan(context, action, input = {}, snapshotId = null) {
     inventory: {
       count: context.inventory.count, maxCount: context.inventory.maxCount,
       observedDepth: context.inventory.observedDepth, maxDepth: context.inventory.maxDepth,
+      consolidationNeeded: context.inventory.providerState?.consolidationNeeded === true,
       graphHash: sha256(JSON.stringify(context.inventory.items.map(item => [item.id, item.name, item.parentId, item.childCount, item.isCurrent]).sort())),
     },
     capability: { key: capabilityKey, state: capability.state, reason: capability.reason || null },
     protection: _protection(), allowed: blockers.length === 0, blockers, warnings,
     confirmation: action === 'create'
       ? { required: true, mode: 'explicit' }
-      : { required: true, mode: 'typed_name', expected: action === 'revert' ? context.inventory.vm.displayName : snapshot.name },
+      : { required: true, mode: 'typed_name', expected: ['revert', 'consolidate'].includes(action) ? context.inventory.vm.displayName : snapshot.name },
     validUntil: new Date((Math.floor(Date.now() / PLAN_TTL_MS) + 1) * PLAN_TTL_MS).toISOString(),
   };
   plan.planHash = sha256(JSON.stringify(_semanticPlan(plan)));
@@ -248,6 +263,7 @@ async function submitForHost(host, vmId, action, input = {}, snapshotId = null, 
     request: {
       planHash: plan.planHash, snapshotId: plan.snapshot?.id || null,
       name: plan.name, description: plan.description, consistency: plan.consistency,
+      consolidationNeeded: plan.inventory.consolidationNeeded === true,
     },
     lockScopes: [`resource:${vmId}`], createdBy: options.createdBy,
   }) };

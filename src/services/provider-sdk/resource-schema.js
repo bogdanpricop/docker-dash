@@ -135,6 +135,7 @@ function _extensions(kind, raw) {
     addNumber('memoryUsageBytes', raw.memoryUsageBytes ?? (_number(raw.memoryUsageMB, { min: 0 }) !== null ? Number(raw.memoryUsageMB) * 1024 * 1024 : null));
     addNumber('storageCommittedBytes', raw.storageCommittedBytes);
     addNumber('storageUncommittedBytes', raw.storageUncommittedBytes);
+    if (raw.consolidationNeeded === true) output.consolidationNeeded = true;
     addNumber('domainId', raw.domid);
     addNumber('cpuTimeSeconds', raw.cpuTimeSeconds);
   } else if (kind === 'host') {

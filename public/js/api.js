@@ -833,6 +833,14 @@ const Api = {
       `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}${action === 'delete' ? '' : '/revert'}`,
       body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey } });
   },
+  preflightProviderVMSnapshotConsolidation(hostId, resourceId) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/consolidate/preflight`, {});
+  },
+  submitProviderVMSnapshotConsolidation(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/consolidate`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   getProviderVMSnapshotPolicy(hostId, resourceId) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`);
   },

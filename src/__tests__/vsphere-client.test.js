@@ -475,7 +475,7 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
   describe('VM snapshot operations', () => {
     it('submits safe task-backed create, revert and delete SOAP operations', async () => {
       const bodies = [];
-      for (const task of ['create-1', 'revert-1', 'delete-1']) {
+      for (const task of ['create-1', 'revert-1', 'delete-1', 'consolidate-1']) {
         mockHttps._mockNext((_opts, cb, req) => {
           bodies.push(req._writtenBody.toString('utf8'));
           const res = fakeResponse({ status: 200, body: `<soap:Envelope><soap:Body><Response><returnval type="Task">haTask-${task}</returnval></Response></soap:Body></soap:Envelope>` });
@@ -488,12 +488,14 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
         .resolves.toEqual({ taskRef: 'haTask-create-1', provider: 'vsphere' });
       await expect(client.revertVMSnapshot('snapshot-9')).resolves.toEqual({ taskRef: 'haTask-revert-1', provider: 'vsphere' });
       await expect(client.deleteVMSnapshot('snapshot-9')).resolves.toEqual({ taskRef: 'haTask-delete-1', provider: 'vsphere' });
+      await expect(client.consolidateVMDisks('vm-9')).resolves.toEqual({ taskRef: 'haTask-consolidate-1', provider: 'vsphere' });
       expect(bodies[0]).toContain('<CreateSnapshot_Task xmlns="urn:vim25">');
       expect(bodies[0]).toContain('<name>safe&amp;amp;</name>');
       expect(bodies[0]).toContain('<description>&lt;checkpoint&gt;</description>');
       expect(bodies[0]).toContain('<quiesce>true</quiesce>');
       expect(bodies[1]).toContain('<suppressPowerOn>true</suppressPowerOn>');
       expect(bodies[2]).toContain('<removeChildren>false</removeChildren><consolidate>true</consolidate>');
+      expect(bodies[3]).toContain('<ConsolidateVMDisks_Task xmlns="urn:vim25">');
     });
   });
 

@@ -741,6 +741,7 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `DD_PROVIDER_SDK_V2` | `true` | Expose the versioned, read-only provider capability contract and Storage Posture assessment; it never enables storage mutation, QoS enforcement or path probes |
 | `DD_PROVIDER_VM_DISK_LIFECYCLE` | `false` | Opt in to reviewed VM-disk create, detach, grow and storage-move operations |
 | `DD_PROVIDER_VM_DISK_DELETE` | `false` | Separately opt in to permanent deletion of a verified Docker Dash-managed detached volume |
+| `DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION` | `false` | Separately opt in to vSphere-only snapshot disk consolidation after live evidence and typed VM-name confirmation |
 | `DD_MODE` | *(unset — standalone)* | Set to `ha` to enable HA mode. Requires `REDIS_URL`. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL. Only consulted when `DD_MODE=ha`. |
 | `TRUST_PROXY` | `loopback` (prod) / `true` (dev) | Trusted proxy range for `X-Forwarded-*` headers. Set to your load balancer's IP/CIDR in HA. |

@@ -1378,6 +1378,38 @@ router.delete('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId', req
     } catch (err) { _snapshotError(res, err); }
   }));
 
+router.post('/:hostId/virtual-machines/:resourceId/snapshots/consolidate/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(await providerVmSnapshots.preflightForHost(
+        resolved.host, req.params.resourceId, 'consolidate', req.body || {}, null,
+        { canOperate: true, consolidationEnabled: config.features.providerVmSnapshotConsolidation }
+      ));
+    } catch (err) { _snapshotError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/snapshots/consolidate', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmSnapshots.submitForHost(
+        resolved.host, req.params.resourceId, 'consolidate', { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        null, { canOperate: true, consolidationEnabled: config.features.providerVmSnapshotConsolidation, createdBy: req.user.id }
+      );
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_snapshot_consolidate', targetType: 'virtualMachine', targetId: result.plan.vm.id,
+        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, operationId: result.operation.id, consolidationNeeded: true },
+        ip: getClientIp(req),
+      });
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _snapshotError(res, err); }
+  }));
+
 router.get('/:hostId/virtual-machines/:resourceId/migration-preflight', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);

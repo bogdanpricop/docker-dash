@@ -89,6 +89,9 @@ module.exports = {
     // UI actions stay closed unless an operator explicitly enables this.
     providerVmPower: bool('DD_PROVIDER_VM_POWER', false),
     providerVmSnapshots: bool('DD_PROVIDER_VM_SNAPSHOTS', false),
+    // vSphere-only disk-chain consolidation. Separate from general snapshot
+    // operations because it can generate material provider-storage I/O.
+    providerVmSnapshotConsolidation: bool('DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION', false),
     providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
     providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
     providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
