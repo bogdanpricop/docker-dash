@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.34.0', date: '2026-07-28', title: 'IP conflict candidates — repeated evidence without unsafe conclusions', changes: [
+      { type: 'feature', text: 'Network Posture now flags repeated provider-visible IP observations as conflict candidates.' },
+      { type: 'improvement', text: 'Candidate results preserve partial inventory coverage and explicitly avoid claiming that a repeated address is a confirmed conflict.' },
+      { type: 'security', text: 'No ARP, ping, DHCP/IPAM query, guest command, mutation, CLI fallback or automatic remediation is performed.' },
+    ] },
     { version: '8.33.0', date: '2026-07-28', title: 'VM IP address evidence — bounded observations, no scanning', changes: [
       { type: 'feature', text: 'Network Posture now summarizes provider-visible and guest-tools-reported VM IP address evidence on supported endpoints.' },
       { type: 'improvement', text: 'The bounded inventory separates IPv4 and IPv6 observations and reports partial coverage when VM NIC inventory cannot be read.' },

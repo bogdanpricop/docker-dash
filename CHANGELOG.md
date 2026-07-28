@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.34.0] - 2026-07-28 — Read-only IP conflict candidates
+
+Network Posture can now identify repeated provider-visible IP observations as
+conflict candidates.
+
+- **Candidates, not conclusions.** NAT, stale guest-tools data, multi-homing
+  and provider semantics may explain a repeated address; no result confirms an
+  IP conflict.
+- **Existing evidence only.** It reuses bounded VM IP observations and preserves
+  partial-inventory coverage rather than performing active discovery.
+- **No remediation.** No ARP/ping, DHCP/IPAM lookup, guest command, provider
+  mutation, CLI fallback or automatic response is performed.
+
 ## [8.33.0] - 2026-07-28 — Read-only VM IP address evidence
 
 Network Posture now summarizes provider-visible and guest-tools-reported VM IP

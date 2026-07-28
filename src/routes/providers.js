@@ -19,6 +19,7 @@ const providerNetworkAttachmentTopology = require('../services/provider-sdk/netw
 const providerNetworkPlacementAdvisory = require('../services/provider-sdk/network-placement-advisory');
 const providerNetworkDriftBaseline = require('../services/provider-sdk/network-drift-baseline');
 const providerIpAddressInventory = require('../services/provider-sdk/ip-address-inventory');
+const providerIpConflictCandidates = require('../services/provider-sdk/ip-conflict-candidates');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1875,6 +1876,12 @@ router.get('/:hostId/ip-address-inventory', requireAuth, requireHostAccess('view
   const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
   try { res.json(await providerIpAddressInventory.inventoryForHost(resolved.host)); }
   catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider IP inventory failed' : err.message, code: err?.code || 'IP_ADDRESS_INVENTORY_ERROR' }); }
+}));
+
+router.get('/:hostId/ip-conflict-candidates', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+  const resolved = _host(req.params.hostId); if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+  try { res.json(await providerIpConflictCandidates.candidatesForHost(resolved.host)); }
+  catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider IP conflict candidate scan failed' : err.message, code: err?.code || 'IP_CONFLICT_CANDIDATES_ERROR' }); }
 }));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
