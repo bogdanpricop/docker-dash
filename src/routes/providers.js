@@ -12,6 +12,7 @@ const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerStoragePosture = require('../services/provider-sdk/storage-posture');
 const providerStorageTopology = require('../services/provider-sdk/storage-topology');
 const providerStoragePlacementAdvisory = require('../services/provider-sdk/storage-placement-advisory');
+const providerStoragePolicyAdvisory = require('../services/provider-sdk/storage-policy-advisory');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -1789,6 +1790,30 @@ router.get('/:hostId/storage-placement-advisory', requireAuth,
       res.status(status).json({
         error: status >= 500 ? 'Provider storage placement advisory failed' : err.message,
         code: err?.code || 'STORAGE_PLACEMENT_ADVISORY_ERROR',
+      });
+    }
+  }));
+
+router.get('/:hostId/storage-policy-advisory', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (req.query.minFreeBytes !== undefined && !/^\d{1,14}$/.test(String(req.query.minFreeBytes))) {
+      return res.status(400).json({ error: 'Minimum free capacity must be an integer number of bytes', code: 'INVALID_MIN_FREE_BYTES' });
+    }
+    if (req.query.requireShared !== undefined && !['true', 'false'].includes(String(req.query.requireShared))) {
+      return res.status(400).json({ error: 'Shared-storage requirement must be true or false', code: 'INVALID_REQUIRE_SHARED' });
+    }
+    try {
+      res.json(await providerStoragePolicyAdvisory.advisoryForHost(resolved.host, {
+        minFreeBytes: req.query.minFreeBytes,
+        requireShared: req.query.requireShared === undefined ? undefined : req.query.requireShared === 'true',
+      }));
+    } catch (err) {
+      const status = Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 ? 'Provider storage policy advisory failed' : err.message,
+        code: err?.code || 'STORAGE_POLICY_ADVISORY_ERROR',
       });
     }
   }));

@@ -30,4 +30,12 @@ describe('Storage posture presentation helpers', () => {
     expect(html).toContain('does not reserve capacity');
     expect(html).toContain('Candidates');
   });
+
+  it('renders policy noncompliance separately from missing evidence', () => {
+    global.Utils = { escapeHtml: value => String(value), formatBytes: value => `${value} B` };
+    const html = page._policyHtml({ policy: { minFreeBytes: 10, requireShared: true },
+      summary: { compliantCount: 1, noncompliantCount: 1, unknownCount: 1 }, storages: [] });
+    expect(html).toContain('Noncompliant');
+    expect(html).toContain('not persisted');
+  });
 });

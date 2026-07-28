@@ -10,6 +10,16 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.27.0',
+      date: '2026-07-28',
+      title: 'Storage policy compliance — explicit operator criteria, honest evidence',
+      changes: [
+        { type: 'feature', text: 'Storage Posture now evaluates provider-visible storage against an accessible-target baseline plus the minimum-free-space and shared-storage requirements you select for the current view.' },
+        { type: 'improvement', text: 'Every target is labeled compliant, noncompliant or unknown. A provider-reported negative value fails the policy; absent accessibility, capacity or shared-state evidence is never labeled compliant.' },
+        { type: 'security', text: 'The policy is transient and read-only: it is not persisted, does not reserve capacity, write test data or change provider configuration. Any future disk operation still needs its own fresh authorized preflight.' },
+      ],
+    },
+    {
       version: '8.26.0',
       date: '2026-07-28',
       title: 'Disk placement advisory — evidence before a storage choice',

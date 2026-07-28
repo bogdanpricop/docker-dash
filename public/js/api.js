@@ -562,6 +562,7 @@ const Api = {
   getProviderStoragePosture(hostId) { return this.get(`/providers/${hostId}/storage-posture`); },
   getProviderStorageTopology(hostId) { return this.get(`/providers/${hostId}/storage-topology`); },
   getProviderStoragePlacementAdvisory(hostId, requiredBytes) { return this.get(`/providers/${hostId}/storage-placement-advisory?requiredBytes=${encodeURIComponent(requiredBytes)}`); },
+  getProviderStoragePolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minFreeBytes !== null && options.minFreeBytes !== undefined) query.set('minFreeBytes', options.minFreeBytes); if (options.requireShared === true) query.set('requireShared', 'true'); return this.get(`/providers/${hostId}/storage-policy-advisory?${query}`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

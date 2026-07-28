@@ -25,6 +25,7 @@ const mockHaHistory = jest.fn();
 const mockStoragePosture = jest.fn();
 const mockStorageTopology = jest.fn();
 const mockStoragePlacementAdvisory = jest.fn();
+const mockStoragePolicyAdvisory = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -144,6 +145,9 @@ jest.mock('../services/provider-sdk/storage-topology', () => ({
 }));
 jest.mock('../services/provider-sdk/storage-placement-advisory', () => ({
   advisoryForHost: (...args) => mockStoragePlacementAdvisory(...args),
+}));
+jest.mock('../services/provider-sdk/storage-policy-advisory', () => ({
+  advisoryForHost: (...args) => mockStoragePolicyAdvisory(...args),
 }));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
@@ -540,6 +544,7 @@ describe('Provider SDK routes', () => {
     });
     mockStoragePosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass' }, storages: [] });
     mockStoragePlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, storages: [] });
+    mockStoragePolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, storages: [] });
     mockConformanceGet.mockReturnValue(null);
   });
 
@@ -592,6 +597,14 @@ describe('Provider SDK routes', () => {
     expect(response.body.summary.candidateCount).toBe(1);
     expect(mockStoragePlacementAdvisory).toHaveBeenCalledWith(mockHost, { requestedBytes: '1073741824' });
     expect((await request(app).get('/api/providers/7/storage-placement-advisory?requiredBytes=1.5')).status).toBe(400);
+  });
+
+  it('returns an operator-selected read-only storage policy assessment', async () => {
+    const response = await request(app).get('/api/providers/7/storage-policy-advisory?minFreeBytes=1073741824&requireShared=true').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.compliantCount).toBe(1);
+    expect(mockStoragePolicyAdvisory).toHaveBeenCalledWith(mockHost, { minFreeBytes: '1073741824', requireShared: true });
+    expect((await request(app).get('/api/providers/7/storage-policy-advisory?requireShared=maybe')).status).toBe(400);
   });
 
   it('rejects malformed inventory limits before provider access', async () => {

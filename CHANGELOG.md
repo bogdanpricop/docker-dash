@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.27.0] - 2026-07-28 — Read-only storage policy compliance
+
+Storage Posture now evaluates provider-visible storage inventory against a
+temporary policy selected by the operator: accessible storage is always
+required, with optional minimum free capacity and shared-storage requirements.
+The policy is a view-only assessment and is never persisted or applied.
+
+- **Compliance without fiction.** Each target is shown as compliant,
+  noncompliant or unknown. A negative provider observation fails the policy;
+  missing accessibility, capacity or shared-state evidence remains unknown and
+  cannot appear compliant.
+- **Scoped, bounded evidence.** The host-view endpoint reads at most 500
+  normalized targets and permits a minimum-free requirement from 0 to 64 TiB.
+  It returns only canonical storage identities and provider-neutral signals.
+- **No hidden control plane.** This release reserves no capacity, changes no
+  storage policy, writes no test data and performs no provider CLI fallback.
+  A later disk operation must still perform its own authorized fresh preflight.
+
 ## [8.26.0] - 2026-07-28 — Read-only virtual-disk placement advisory
 
 Storage Posture can now evaluate provider-visible storage targets for a proposed

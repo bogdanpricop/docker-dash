@@ -6,6 +6,8 @@ const StoragePosturePage = {
   _hostId: null,
   _container: null,
   _placementGiB: 10,
+  _policyMinGiB: null,
+  _policyRequireShared: false,
 
   _badge(state) {
     return { pass: 'badge-success', warning: 'badge-warning', fail: 'badge-danger', unknown: 'badge-secondary' }[state] || 'badge-secondary';
@@ -55,6 +57,14 @@ const StoragePosturePage = {
     return `<div class="card" style="padding:16px;margin:16px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><strong>Disk placement advisory</strong><div class="text-muted text-sm">For ${this._formatBytes(result.requested?.bytes)} plus ${result.requested?.headroomPercent ?? '—'}% headroom (${this._formatBytes(required)} required). This does not reserve capacity.</div></div><span class="badge badge-secondary">read-only</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${summary.candidateCount ?? 0}</div><div class="stat-label">Candidates</div></div><div class="stat-card"><div class="stat-value">${summary.blockedCount ?? 0}</div><div class="stat-label">Blocked</div></div><div class="stat-card"><div class="stat-value">${summary.unknownCount ?? 0}</div><div class="stat-label">Needs evidence</div></div></div><ul style="margin:14px 0 0 18px;display:grid;gap:6px">${rows || '<li>No storage targets were returned.</li>'}</ul></div>`;
   },
 
+  _policyHtml(result) {
+    const summary = result.summary || {};
+    const policy = result.policy || {};
+    const minFree = policy.minFreeBytes === null ? 'no minimum free-space requirement' : `minimum ${this._formatBytes(policy.minFreeBytes)} free`;
+    const rows = (result.storages || []).map(storage => `<li><strong>${Utils.escapeHtml(storage.displayName)}</strong> <span class="badge ${this._badge(storage.state === 'compliant' ? 'pass' : (storage.state === 'noncompliant' ? 'fail' : 'unknown'))}">${Utils.escapeHtml(storage.state)}</span></li>`).join('');
+    return `<div class="card" style="padding:16px;margin:16px 0"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap"><div><strong>Storage policy compliance</strong><div class="text-muted text-sm">Accessible targets; ${Utils.escapeHtml(minFree)}${policy.requireShared ? '; shared storage required' : ''}. View-only policy, not persisted.</div></div><span class="badge badge-secondary">read-only</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${summary.compliantCount ?? 0}</div><div class="stat-label">Compliant</div></div><div class="stat-card"><div class="stat-value">${summary.noncompliantCount ?? 0}</div><div class="stat-label">Noncompliant</div></div><div class="stat-card"><div class="stat-value">${summary.unknownCount ?? 0}</div><div class="stat-label">Unknown</div></div></div><ul style="margin:14px 0 0 18px;display:grid;gap:6px">${rows || '<li>No storage targets were returned.</li>'}</ul></div>`;
+  },
+
   _resultHtml(result) {
     const summary = result.summary || {};
     const state = summary.state || 'unknown';
@@ -72,10 +82,12 @@ const StoragePosturePage = {
     const selected = Api.getHostId();
     this._hostId = this._hosts.some(host => host.id === selected) ? selected : this._hosts[0]?.id || null;
     container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-database"></i> Storage Posture</h1><div class="text-muted text-sm">Read-only provider evidence for accessibility, maintenance, capacity and overcommit risk</div></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<label class="text-muted text-sm">Disk GiB <input id="storage-placement-gib" type="number" min="1" max="65536" step="1" value="${this._placementGiB}" class="form-control" style="width:88px;display:inline-block"></label><select id="storage-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="storage-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button>` : ''}</div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<label class="text-muted text-sm">Disk GiB <input id="storage-placement-gib" type="number" min="1" max="65536" step="1" value="${this._placementGiB}" class="form-control" style="width:88px;display:inline-block"></label><label class="text-muted text-sm">Policy min GiB <input id="storage-policy-min-gib" type="number" min="0" max="65536" step="1" value="${this._policyMinGiB ?? ''}" placeholder="none" class="form-control" style="width:88px;display:inline-block"></label><label class="text-muted text-sm"><input id="storage-policy-shared" type="checkbox"${this._policyRequireShared ? ' checked' : ''}> Shared only</label><select id="storage-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="storage-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button>` : ''}</div></div>
       <div id="storage-posture-content"></div>`;
     container.querySelector('#storage-posture-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
     container.querySelector('#storage-placement-gib')?.addEventListener('change', event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 65536) { this._placementGiB = value; this._load(); } });
+    container.querySelector('#storage-policy-min-gib')?.addEventListener('change', event => { const raw = event.target.value; const value = raw === '' ? null : Number(raw); if (value === null || (Number.isInteger(value) && value >= 0 && value <= 65536)) { this._policyMinGiB = value; this._load(); } });
+    container.querySelector('#storage-policy-shared')?.addEventListener('change', event => { this._policyRequireShared = event.target.checked === true; this._load(); });
     container.querySelector('#storage-posture-refresh')?.addEventListener('click', () => this._load());
     await this._load();
   },
@@ -87,16 +99,20 @@ const StoragePosturePage = {
     target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting live storage evidence…</div>';
     try {
       const requestedBytes = this._placementGiB * 1024 * 1024 * 1024;
-      const [posture, topology, placement] = await Promise.all([
+      const policyMinFreeBytes = this._policyMinGiB === null ? null : this._policyMinGiB * 1024 * 1024 * 1024;
+      const [posture, topology, placement, policy] = await Promise.all([
         Api.getProviderStoragePosture(this._hostId),
         Api.getProviderStorageTopology(this._hostId).catch(error => ({ error })),
         Api.getProviderStoragePlacementAdvisory(this._hostId, requestedBytes).catch(error => ({ error })),
+        Api.getProviderStoragePolicyAdvisory(this._hostId, { minFreeBytes: policyMinFreeBytes, requireShared: this._policyRequireShared }).catch(error => ({ error })),
       ]);
       target.innerHTML = this._resultHtml(posture) + (topology.error
         ? `<div class="alert alert-info"><strong>Shared-disk topology unavailable</strong><div>${Utils.escapeHtml(topology.error.message)}</div></div>`
         : this._topologyHtml(topology)) + (placement.error
         ? `<div class="alert alert-info"><strong>Disk placement advisory unavailable</strong><div>${Utils.escapeHtml(placement.error.message)}</div></div>`
-        : this._placementHtml(placement));
+        : this._placementHtml(placement)) + (policy.error
+        ? `<div class="alert alert-info"><strong>Storage policy compliance unavailable</strong><div>${Utils.escapeHtml(policy.error.message)}</div></div>`
+        : this._policyHtml(policy));
     }
     catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; }
   },
