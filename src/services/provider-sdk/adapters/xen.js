@@ -80,6 +80,9 @@ function _fromCapabilities(capabilities = {}) {
     'network.policy.read': capabilities.networks
       ? conditional('Virtual network configuration evidence is evaluated read-only against an operator-selected transient policy', { readOnly: true, evidenceOnly: true })
       : unsupported('Virtual network policy evidence is unavailable for this Xen provider'),
+    'network.attachmentTopology.read': capabilities.networks && capabilities.hardwareDetails
+      ? conditional('VM VIFs are correlated to provider-reported virtual-network evidence read-only', { readOnly: true, bounded: true, evidenceOnly: true })
+      : unsupported('Network attachment topology requires virtual-network and VM hardware inventory'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

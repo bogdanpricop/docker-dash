@@ -28,6 +28,7 @@ const mockStoragePlacementAdvisory = jest.fn();
 const mockStoragePolicyAdvisory = jest.fn();
 const mockNetworkPosture = jest.fn();
 const mockNetworkPolicyAdvisory = jest.fn();
+const mockNetworkAttachmentTopology = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -157,6 +158,7 @@ jest.mock('../services/provider-sdk/network-posture', () => ({
 jest.mock('../services/provider-sdk/network-policy-advisory', () => ({
   advisoryForHost: (...args) => mockNetworkPolicyAdvisory(...args),
 }));
+jest.mock('../services/provider-sdk/network-attachment-topology', () => ({ topologyForHost: (...args) => mockNetworkAttachmentTopology(...args) }));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
   recommendForVm: (...args) => mockPlacementRecommend(...args),
@@ -555,6 +557,7 @@ describe('Provider SDK routes', () => {
     mockStoragePolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, storages: [] });
     mockNetworkPosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass', networkCount: 1 }, networks: [] });
     mockNetworkPolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, networks: [] });
+    mockNetworkAttachmentTopology.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { networkCount: 1 }, networks: [] });
     mockConformanceGet.mockReturnValue(null);
   });
 
@@ -630,6 +633,11 @@ describe('Provider SDK routes', () => {
     expect(response.body.summary.compliantCount).toBe(1);
     expect(mockNetworkPolicyAdvisory).toHaveBeenCalledWith(mockHost, { minMtu: '1500', requireManaged: true, requireVlan: true });
     expect((await request(app).get('/api/providers/7/network-policy-advisory?requireVlan=maybe')).status).toBe(400);
+  });
+
+  it('returns read-only VM network attachment topology for the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/network-attachment-topology').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200); expect(response.body.summary.networkCount).toBe(1); expect(mockNetworkAttachmentTopology).toHaveBeenCalledWith(mockHost);
   });
 
   it('rejects malformed inventory limits before provider access', async () => {

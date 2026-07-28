@@ -565,6 +565,7 @@ const Api = {
   getProviderStoragePolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minFreeBytes !== null && options.minFreeBytes !== undefined) query.set('minFreeBytes', options.minFreeBytes); if (options.requireShared === true) query.set('requireShared', 'true'); return this.get(`/providers/${hostId}/storage-policy-advisory?${query}`); },
   getProviderNetworkPosture(hostId) { return this.get(`/providers/${hostId}/network-posture`); },
   getProviderNetworkPolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minMtu) query.set('minMtu', options.minMtu); if (options.requireManaged) query.set('requireManaged', 'true'); if (options.requireVlan) query.set('requireVlan', 'true'); return this.get(`/providers/${hostId}/network-policy-advisory?${query}`); },
+  getProviderNetworkAttachmentTopology(hostId) { return this.get(`/providers/${hostId}/network-attachment-topology`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

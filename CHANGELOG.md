@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.30.0] - 2026-07-28 — Read-only VM network attachment topology
+
+Network Posture now includes a bounded view of the provider-visible
+VM-to-virtual-network attachments on supported vSphere and Xen endpoints.
+
+- **Opaque, host-scoped grouping.** Provider-native network identifiers are
+  never returned. Attachments are grouped under an opaque host-scoped identity
+  with the reported display name, bridge and VLAN evidence where available.
+- **Partial evidence remains explicit.** At most 100 VMs are read with bounded
+  concurrency. Truncation and unreadable NIC inventories are reported as partial
+  coverage rather than hidden or treated as no attachments.
+- **No fabric inference or control.** The result does not prove connectivity,
+  routing, firewall policy or tenant isolation. It changes no NIC, switch or
+  VLAN, sends no traffic and has no provider CLI fallback or remediation path.
+
 ## [8.29.0] - 2026-07-28 — Read-only virtual network policy advisory
 
 Network Posture can now assess provider-visible virtual networks against an

@@ -10,6 +10,15 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.30.0', date: '2026-07-28',
+      title: 'VM network attachment topology — bounded, opaque evidence',
+      changes: [
+        { type: 'feature', text: 'Network Posture now shows a bounded, read-only view of provider-visible VM-to-virtual-network attachments on supported vSphere and Xen endpoints.' },
+        { type: 'improvement', text: 'Provider-native network references never reach the browser. Each group uses a host-scoped opaque identity, and unreadable NIC inventory or truncation is shown as partial evidence instead of being silently omitted.' },
+        { type: 'security', text: 'Attachment grouping is not presented as proof of routing, connectivity, firewall policy or tenant isolation. The release makes no NIC, switch or VLAN change, sends no test traffic and has no CLI fallback or remediation.' },
+      ],
+    },
+    {
       version: '8.29.0', date: '2026-07-28',
       title: 'Network policy compliance — explicit criteria, read-only evidence',
       changes: [
