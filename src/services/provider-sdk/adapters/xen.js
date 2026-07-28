@@ -86,6 +86,9 @@ function _fromCapabilities(capabilities = {}) {
     'network.placement.read': capabilities.networks
       ? conditional('Virtual-network accessibility and configuration evidence are evaluated read-only for placement review', { readOnly: true, advisoryOnly: true })
       : unsupported('Virtual-network placement evidence is unavailable for this Xen provider'),
+    'network.ipInventory.read': capabilities.hardwareDetails
+      ? conditional('Provider-visible VIF addresses are collected read-only when available', { readOnly: true, bounded: true, evidenceOnly: true })
+      : unsupported('Virtual-machine IP evidence requires NIC inventory'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

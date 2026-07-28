@@ -569,6 +569,7 @@ const Api = {
   getProviderNetworkPlacementAdvisory(hostId) { return this.get(`/providers/${hostId}/network-placement-advisory`); },
   getProviderNetworkDriftBaseline(hostId) { return this.get(`/providers/${hostId}/network-drift-baseline`); },
   saveProviderNetworkDriftBaseline(hostId) { return this.post(`/providers/${hostId}/network-drift-baseline`, {}); },
+  getProviderIpAddressInventory(hostId) { return this.get(`/providers/${hostId}/ip-address-inventory`); },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

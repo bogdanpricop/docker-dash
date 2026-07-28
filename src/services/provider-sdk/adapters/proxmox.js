@@ -81,6 +81,7 @@ function declared() {
     'network.policy.read': unsupported('Proxmox VE common virtual-network inventory is not released'),
     'network.attachmentTopology.read': unsupported('Proxmox VE common virtual-network inventory is not released'),
     'network.placement.read': unsupported('Proxmox VE common virtual-network inventory is not released'),
+    'network.ipInventory.read': conditional('Configured or QEMU guest-agent NIC addresses are collected read-only when available', { readOnly: true, bounded: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),

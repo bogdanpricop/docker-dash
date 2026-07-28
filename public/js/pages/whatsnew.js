@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.33.0', date: '2026-07-28', title: 'VM IP address evidence — bounded observations, no scanning', changes: [
+      { type: 'feature', text: 'Network Posture now summarizes provider-visible and guest-tools-reported VM IP address evidence on supported endpoints.' },
+      { type: 'improvement', text: 'The bounded inventory separates IPv4 and IPv6 observations and reports partial coverage when VM NIC inventory cannot be read.' },
+      { type: 'security', text: 'This release sends no traffic and makes no DHCP, IPAM, guest-command or provider CLI query. An observed address is not presented as proof of reachability or allocation.' },
+    ] },
     { version: '8.32.0', date: '2026-07-28', title: 'Network drift baseline — explicit comparison, no reconciliation', changes: [
       { type: 'feature', text: 'Network Posture can now compare provider-visible network configuration with an explicitly saved baseline.' },
       { type: 'improvement', text: 'No baseline is treated as unbaselined, not in sync. Differences cover only normalized accessible, managed, bridge, VLAN and MTU evidence.' },

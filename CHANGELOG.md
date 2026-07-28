@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.33.0] - 2026-07-28 — Read-only VM IP address evidence
+
+Network Posture now summarizes provider-visible and guest-tools-reported VM IP
+address evidence on supported endpoints.
+
+- **Bounded observations.** Inventory reads at most 100 VMs and returns at most
+  1,000 observed addresses with IPv4/IPv6 counts and explicit partial coverage.
+- **Honest evidence.** Missing values do not mean a VM has no address; observed
+  values do not prove DHCP ownership, IPAM allocation or reachability.
+- **No active discovery.** No packet, DHCP/IPAM lookup, guest command, network
+  mutation, CLI fallback or remediation is performed.
+
 ## [8.32.0] - 2026-07-28 — Read-only network configuration drift baseline
 
 Network Posture can now retain an operator-created baseline of normalized

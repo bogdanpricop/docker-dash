@@ -78,6 +78,7 @@ function declared() {
     'network.policy.read': conditional('Standard port-group configuration evidence is evaluated read-only against an operator-selected transient policy', { readOnly: true, evidenceOnly: true }),
     'network.attachmentTopology.read': conditional('VM NICs are correlated to provider-reported virtual-network evidence read-only', { readOnly: true, bounded: true, evidenceOnly: true }),
     'network.placement.read': conditional('Virtual-network accessibility and configuration evidence are evaluated read-only for placement review', { readOnly: true, advisoryOnly: true }),
+    'network.ipInventory.read': conditional('VMware Tools network-address observations are collected read-only when available', { readOnly: true, bounded: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),
