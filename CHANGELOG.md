@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.32.0] - 2026-07-28 — Read-only network configuration drift baseline
+
+Network Posture can now retain an operator-created baseline of normalized
+provider-visible network configuration and compare later observations to it.
+
+- **Explicit baseline.** Until an authorized host administrator saves a
+  baseline, the result is `unbaselined`, never falsely in sync.
+- **Bounded normalized diff.** The comparison covers provider-visible
+  accessibility, managed state, bridge, VLAN and MTU; only change types and
+  fields are returned.
+- **No reconciliation.** Saving or comparing a baseline changes no provider
+  network configuration, sends no traffic and has no CLI fallback or remediation.
+
 ## [8.31.0] - 2026-07-28 — Read-only virtual-network placement evidence
 
 Network Posture now evaluates provider-visible virtual networks as placement

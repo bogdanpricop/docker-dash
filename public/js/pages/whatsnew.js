@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.32.0', date: '2026-07-28', title: 'Network drift baseline — explicit comparison, no reconciliation', changes: [
+      { type: 'feature', text: 'Network Posture can now compare provider-visible network configuration with an explicitly saved baseline.' },
+      { type: 'improvement', text: 'No baseline is treated as unbaselined, not in sync. Differences cover only normalized accessible, managed, bridge, VLAN and MTU evidence.' },
+      { type: 'security', text: 'Creating and comparing baselines is read-only for the provider: no NIC, switch or VLAN change, traffic test, CLI fallback or automatic remediation.' },
+    ] },
     { version: '8.31.0', date: '2026-07-28', title: 'Network placement evidence — candidates without unsafe inference', changes: [
       { type: 'feature', text: 'Network Posture now offers a read-only placement advisory based on provider-reported accessibility and managed-network evidence.' },
       { type: 'improvement', text: 'A network becomes a candidate only when both signals are explicitly positive; a negative signal blocks it and missing evidence remains unknown.' },
