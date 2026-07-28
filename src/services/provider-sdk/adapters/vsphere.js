@@ -51,6 +51,23 @@ function declared() {
     }),
     'vm.disk.read': conditional('Virtual devices and datastore backing are read live with PropertyCollector', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('Hot-plug remains unknown unless the VM/device configuration proves it', { perResource: true, evidenceOnly: true }),
+    'vm.disk.create': conditional('VirtualDeviceConfigSpec add uses ReconfigVM_Task and post-read verification', {
+      perResource: true, durableTask: true, postVerify: true, shrink: false,
+    }),
+    'vm.disk.attach': adapterNotImplemented('VMware vSphere managed-volume reattachment'),
+    'vm.disk.detach': conditional('VirtualDeviceConfigSpec remove omits fileOperation so the backing is retained', {
+      perResource: true, durableTask: true, retainBacking: true, postVerify: true,
+    }),
+    'vm.disk.resize': conditional('VirtualDisk capacity changes use ReconfigVM_Task and reject shrink', {
+      perResource: true, durableTask: true, shrink: false, guestExpansionRequired: true, postVerify: true,
+    }),
+    'vm.disk.move': conditional('Per-disk storage relocation uses RelocateVM_Task and a disk locator', {
+      perResource: true, durableTask: true, postVerify: true,
+    }),
+    'vm.disk.delete': adapterNotImplemented('VMware vSphere detached managed-volume backing deletion'),
+    'vm.disk.convert': adapterNotImplemented('VMware vSphere safe common disk conversion'),
+    'storage.orphan.read': conditional('Inventory is limited to Docker Dash-managed detached volumes', { readOnly: true, managedOnly: true }),
+    'storage.snapshotRisk.read': conditional('Snapshot inventory is correlated with disk mutation preflight', { readOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),

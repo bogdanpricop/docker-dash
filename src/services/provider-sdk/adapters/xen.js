@@ -35,6 +35,31 @@ function _fromCapabilities(capabilities = {}) {
     'vm.disk.hotplug': capabilities.diskHotplug
       ? conditional('VBD allowed operations are evaluated per device', { perResource: true, evidenceOnly: true })
       : unsupported('Disk hot-plug is not safely advertised by this Xen provider'),
+    'vm.disk.create': capabilities.provider === 'xapi'
+      ? conditional('XAPI VDI/VBD creation uses Async methods and post-read verification', {
+        perResource: true, durableTask: true, postVerify: true, shrink: false,
+      }) : unsupported('Disk creation requires a conformance-tested XenAPI endpoint'),
+    'vm.disk.attach': unsupported('Managed-volume reattachment is not released for this Xen provider'),
+    'vm.disk.detach': capabilities.provider === 'xapi'
+      ? conditional('XAPI VBD unplug and destroy retains the VDI backing', {
+        perResource: true, durableTask: true, retainBacking: true, postVerify: true,
+      }) : unsupported('Disk detach requires a conformance-tested XenAPI endpoint'),
+    'vm.disk.resize': capabilities.provider === 'xapi'
+      ? conditional('XAPI VDI resize is grow-only; online resize is not assumed across releases/backends', {
+        perResource: true, durableTask: true, shrink: false, online: false, guestExpansionRequired: true,
+      }) : unsupported('Disk resize requires a conformance-tested XenAPI endpoint'),
+    'vm.disk.move': unsupported('XAPI VDI copy requires a multi-stage swap workflow that is not released'),
+    'vm.disk.delete': capabilities.provider === 'xapi'
+      ? conditional('Only a detached Docker Dash-owned VDI can be destroyed after recovery checks', {
+        perResource: true, durableTask: true, ownershipRequired: true, recoveryPointRequired: true,
+      }) : unsupported('Disk delete requires a conformance-tested XenAPI endpoint'),
+    'vm.disk.convert': unsupported('XenAPI exposes no portable rollback-safe format conversion contract'),
+    'storage.orphan.read': capabilities.provider === 'xapi'
+      ? conditional('Inventory is limited to Docker Dash-managed detached VDIs', { readOnly: true, managedOnly: true })
+      : unsupported('Managed detached-volume inventory requires XenAPI'),
+    'storage.snapshotRisk.read': capabilities.snapshots
+      ? conditional('Snapshot inventory is correlated with disk mutation preflight', { readOnly: true })
+      : unsupported('Snapshot risk evidence is unavailable for this Xen provider'),
     'vm.nic.read': capabilities.hardwareDetails
       ? conditional('NIC topology is read from the active Xen management plane', { perResource: true, readOnly: true })
       : unsupported('NIC topology is unavailable for this Xen provider'),

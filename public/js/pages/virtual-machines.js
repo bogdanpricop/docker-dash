@@ -672,7 +672,7 @@ const VirtualMachinesPage = {
           definition('Hardware version', value.hardwareVersion), definition('Guest tools', value.toolsStatus), definition('Tools version', value.toolsVersion),
         ]);
       } },
-      { key: 'disks', label: 'Disks', icon: 'fa-hdd', render: panel => { panel.innerHTML = disksSection(detail.sections.disks); } },
+      { key: 'disks', label: 'Disks', icon: 'fa-hdd', render: panel => { this._mountDisks(panel, detail.sections.disks, host, vm); } },
       { key: 'network', label: 'Network', icon: 'fa-network-wired', render: panel => { panel.innerHTML = networkSection(detail.sections.network); } },
       { key: 'migration', label: 'Migration', icon: 'fa-exchange-alt', render: panel => { this._mountMigrationPreflight(panel, host, vm); } },
       { key: 'events', label: 'Events', icon: 'fa-stream', render: panel => { panel.innerHTML = unavailable(detail.sections.events); } },
@@ -711,6 +711,142 @@ const VirtualMachinesPage = {
       },
     });
     this._shell.mount(container);
+  },
+
+  _diskPlanHtml(plan) {
+    const blockers = plan.blockers || [];
+    const warnings = plan.warnings || [];
+    return `<div class="text-sm">
+      ${blockers.length ? `<div class="alert alert-danger" style="margin-bottom:12px"><strong>Operation blocked</strong><ul style="margin:8px 0 0 18px">${blockers.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <div><strong>VM</strong><br>${Utils.escapeHtml(plan.vm?.displayName || '—')}</div>
+        <div><strong>Action</strong><br>${Utils.escapeHtml(plan.action || '—')}</div>
+        <div><strong>Disk</strong><br>${Utils.escapeHtml(plan.disk?.label || plan.request?.label || 'New disk')}</div>
+        <div><strong>Capacity</strong><br>${plan.request?.sizeBytes ? Utils.escapeHtml(Utils.formatBytes(plan.request.sizeBytes)) : Utils.escapeHtml(Utils.formatBytes(plan.disk?.capacityBytes || 0))}</div>
+        <div><strong>Storage</strong><br>${Utils.escapeHtml(plan.storage?.displayName || plan.disk?.backing?.storageName || 'Retained backing')}</div>
+        <div><strong>Safety</strong><br>${plan.action === 'detach' ? 'Backing retained' : plan.action === 'resize' ? 'Grow only; guest expansion required' : 'Post-read verified'}</div>
+      </div>
+      ${warnings.length ? `<div class="alert alert-warning" style="margin-top:12px"><strong>Warnings</strong><ul style="margin:8px 0 0 18px">${warnings.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  },
+
+  async _mountDisks(panel, fallbackSection, host, vm) {
+    panel.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Loading live disk lifecycle state…</div>';
+    try {
+      const data = await Api.getProviderVMDisks(host.id, vm.id);
+      if (!panel.isConnected) return;
+      const admin = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
+      const canMutate = admin && data.release?.lifecycleEnabled === true;
+      const evidence = value => value === true ? 'Supported' : value === false ? 'Unsupported' : 'Unknown';
+      const rows = (data.disks || []).map(item => `<tr>
+        <td><strong>${Utils.escapeHtml(item.label || item.device || 'Disk')}</strong><div class="text-muted text-sm">${Utils.escapeHtml([item.bus, item.unit].filter(value => value != null).join(' · ') || item.type || '—')}</div></td>
+        <td>${Utils.escapeHtml(item.backing?.storageName || item.backing?.storageId || '—')}<div class="text-muted text-sm">${Utils.escapeHtml(item.backing?.type || '')}</div></td>
+        <td>${item.capacityBytes == null ? '—' : Utils.escapeHtml(Utils.formatBytes(item.capacityBytes))}</td>
+        <td>${Utils.escapeHtml(item.provisioning || 'unknown')}</td>
+        <td><span class="badge ${item.ownership?.managed ? 'badge-success' : 'badge-secondary'}">${item.ownership?.managed ? 'Docker Dash managed' : 'Provider existing'}</span></td>
+        <td title="Online resize: ${Utils.escapeHtml(evidence(item.capabilities?.onlineResize))}; hot-unplug: ${Utils.escapeHtml(evidence(item.capabilities?.hotUnplug))}">
+          ${admin ? `<button class="btn btn-xs btn-secondary" data-disk-action="resize" data-disk-id="${Utils.escapeHtml(item.id)}" ${canMutate ? '' : 'disabled'}>Grow</button>
+          <button class="btn btn-xs btn-secondary" data-disk-action="move" data-disk-id="${Utils.escapeHtml(item.id)}" ${canMutate ? '' : 'disabled'}>Move</button>
+          <button class="btn btn-xs btn-danger" data-disk-action="detach" data-disk-id="${Utils.escapeHtml(item.id)}" ${canMutate ? '' : 'disabled'}>Detach</button>` : 'View only'}
+        </td>
+      </tr>`).join('');
+      const managedDetached = (data.managedVolumes || []).filter(item => item.state === 'detached');
+      panel.innerHTML = `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px">
+        <div><strong>${data.disks?.length || 0} disk(s)</strong><div class="text-muted text-sm">Detach always retains data. Shrink is never allowed.</div></div>
+        ${admin ? `<button class="btn btn-sm btn-primary" id="provider-disk-create" ${canMutate ? '' : 'disabled'} title="${canMutate ? 'Create and attach a managed disk' : 'DD_PROVIDER_VM_DISK_LIFECYCLE is disabled'}"><i class="fas fa-plus"></i> Create disk</button>` : ''}
+      </div>
+      ${!rows ? '<div class="empty-msg"><i class="fas fa-hdd"></i>No disks are configured for this VM.</div>' : `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Device</th><th>Backing</th><th>Capacity</th><th>Provisioning</th><th>Ownership</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`}
+      ${managedDetached.length ? `<div class="card" style="padding:14px;margin-top:12px"><strong>${managedDetached.length} managed detached volume(s)</strong><div class="text-muted text-sm" style="margin:5px 0 10px">Permanent deletion is separately gated and requires a recent verified recovery point.</div>
+        ${managedDetached.map(item => `<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--border)"><span><strong>${Utils.escapeHtml(item.label)}</strong> · ${Utils.escapeHtml(Utils.formatBytes(item.capacityBytes))}</span>${admin ? `<button class="btn btn-xs btn-danger" data-volume-delete="${Utils.escapeHtml(item.id)}" ${data.release?.deleteEnabled ? '' : 'disabled'} title="${data.release?.deleteEnabled ? 'Review permanent deletion' : 'DD_PROVIDER_VM_DISK_DELETE is disabled'}">Delete backing</button>` : ''}</div>`).join('')}</div>` : ''}`;
+      panel.querySelector('#provider-disk-create')?.addEventListener('click', () => this._createDisk(host, vm, panel));
+      panel.querySelectorAll('[data-disk-action]').forEach(button => button.addEventListener('click', () => {
+        const disk = (data.disks || []).find(item => item.id === button.dataset.diskId);
+        if (disk) this._runDiskAction(host, vm, disk, button.dataset.diskAction, panel);
+      }));
+      panel.querySelectorAll('[data-volume-delete]').forEach(button => button.addEventListener('click', () => {
+        const volume = managedDetached.find(item => item.id === button.dataset.volumeDelete);
+        if (volume) this._deleteManagedVolume(host, vm, volume, panel);
+      }));
+    } catch (err) {
+      if (fallbackSection?.available) panel.innerHTML = `<div class="alert alert-warning">Live lifecycle controls are unavailable: ${Utils.escapeHtml(err.message)}</div>`;
+      else panel.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _createDisk(host, vm, panel) {
+    try {
+      const storages = (await Api.getProviderStorages(host.id, 500)).items || [];
+      const available = storages.filter(item => item.status?.accessible !== false);
+      if (!available.length) return Toast.warning('No accessible target storage is available');
+      const input = await Modal.form(`<label class="form-label" for="disk-label">Label</label><input id="disk-label" class="form-control" maxlength="160" value="data-disk">
+        <label class="form-label" for="disk-size" style="margin-top:12px">Capacity (GiB)</label><input id="disk-size" class="form-control" type="number" min="1" step="1" value="10">
+        <label class="form-label" for="disk-storage" style="margin-top:12px">Target storage</label><select id="disk-storage" class="form-control">${available.map(item => `<option value="${Utils.escapeHtml(item.id)}">${Utils.escapeHtml(item.displayName)}${item.status?.freeBytes != null ? ` · ${Utils.escapeHtml(Utils.formatBytes(item.status.freeBytes))} free` : ''}</option>`).join('')}</select>`, {
+        title: `Create managed disk · ${vm.displayName}`, submitLabel: 'Review preflight', width: '620px',
+        onSubmit: root => ({ label: root.querySelector('#disk-label').value.trim(),
+          sizeBytes: Number(root.querySelector('#disk-size').value) * 1024 ** 3,
+          targetStorageId: root.querySelector('#disk-storage').value }),
+      });
+      if (!input) return;
+      const plan = await Api.preflightProviderVMDiskCreate(host.id, vm.id, input);
+      if (!plan.allowed) return Modal.confirm(this._diskPlanHtml(plan), { title: 'Disk create preflight', confirmText: 'Close', html: true, width: '680px' });
+      const confirmed = await Modal.confirm(this._diskPlanHtml(plan), { title: `Create disk · ${vm.displayName}`,
+        confirmText: 'Queue create', typeToConfirm: plan.confirmation.expected, html: true, width: '680px' });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMDiskCreate(host.id, vm.id, { ...input,
+        planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
+      }, this._idempotencyKey('vm-disk-create'));
+      Toast.success(`Disk create queued for ${vm.displayName}`); location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); if (panel?.isConnected) this._mountDisks(panel, {}, host, vm); }
+  },
+
+  async _runDiskAction(host, vm, disk, action, panel) {
+    try {
+      let input = { action };
+      if (action === 'resize') {
+        const currentGiB = Math.ceil(Number(disk.capacityBytes || 0) / 1024 ** 3);
+        const value = await Modal.form(`<label class="form-label" for="disk-new-size">New capacity (GiB; must be greater than ${currentGiB})</label><input id="disk-new-size" class="form-control" type="number" min="${currentGiB + 1}" step="1" value="${currentGiB + 1}">`, {
+          title: `Grow ${disk.label || 'disk'}`, submitLabel: 'Review preflight',
+          onSubmit: root => Number(root.querySelector('#disk-new-size').value) * 1024 ** 3,
+        });
+        if (!value) return; input.sizeBytes = value;
+      } else if (action === 'move') {
+        const storages = (await Api.getProviderStorages(host.id, 500)).items || [];
+        const value = await Modal.form(`<label class="form-label" for="disk-move-storage">Target storage</label><select id="disk-move-storage" class="form-control">${storages.filter(item => item.status?.accessible !== false).map(item => `<option value="${Utils.escapeHtml(item.id)}">${Utils.escapeHtml(item.displayName)}</option>`).join('')}</select>`, {
+          title: `Move ${disk.label || 'disk'}`, submitLabel: 'Review preflight',
+          onSubmit: root => root.querySelector('#disk-move-storage').value,
+        });
+        if (!value) return; input.targetStorageId = value;
+      }
+      const plan = await Api.preflightProviderVMDiskAction(host.id, vm.id, disk.id, input);
+      if (!plan.allowed) return Modal.confirm(this._diskPlanHtml(plan), { title: `Disk ${action} preflight`, confirmText: 'Close', html: true, width: '680px' });
+      const confirmed = await Modal.confirm(this._diskPlanHtml(plan), { title: `${action} · ${vm.displayName}`,
+        confirmText: `Queue ${action}`, danger: action === 'detach', typeToConfirm: plan.confirmation.expected,
+        html: true, width: '680px' });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMDiskAction(host.id, vm.id, disk.id, { ...input,
+        planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
+      }, this._idempotencyKey(`vm-disk-${action}`));
+      Toast.success(`Disk ${action} queued for ${vm.displayName}`); location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); if (panel?.isConnected) this._mountDisks(panel, {}, host, vm); }
+  },
+
+  async _deleteManagedVolume(host, vm, volume, panel) {
+    try {
+      const plan = await Api.preflightProviderManagedVolumeDelete(host.id, volume.id);
+      if (!plan.allowed) return Modal.confirm(this._diskPlanHtml(plan), {
+        title: 'Managed-volume delete preflight', confirmText: 'Close', html: true, width: '680px',
+      });
+      const confirmed = await Modal.confirm(this._diskPlanHtml(plan), {
+        title: `Permanently delete ${volume.label}`, confirmText: 'Delete backing', danger: true,
+        typeToConfirm: plan.confirmation.expected, html: true, width: '680px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderManagedVolumeDelete(host.id, volume.id, {
+        planHash: plan.planHash, confirm: true, confirmPhrase: plan.confirmation.expected,
+      }, this._idempotencyKey('managed-volume-delete'));
+      Toast.success(`Managed-volume deletion queued for ${vm.displayName}`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); if (panel?.isConnected) this._mountDisks(panel, {}, host, vm); }
   },
 
   async _mountMigrationPreflight(panel, host, vm) {

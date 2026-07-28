@@ -97,6 +97,38 @@ describe('Xen VM hardware inventory', () => {
     expect(client._call).toHaveBeenCalledWith('task.cancel', ['OpaqueRef:task']);
   });
 
+  it('uses XAPI VDI/VBD lifecycle calls without shell fallbacks or shrink semantics', async () => {
+    const client = new XapiClient({ endpoint: 'https://xapi.test', username: 'root', password: 'secret' });
+    client._call = jest.fn(async (method) => ({
+      'VDI.create': 'OpaqueRef:vdi-new', 'VBD.create': 'OpaqueRef:vbd-new',
+      'VM.get_record': { power_state: 'Halted' },
+      'VBD.get_record': { currently_attached: false, VDI: 'OpaqueRef:vdi-new' },
+      'Async.VDI.resize': 'OpaqueRef:resize-task', 'VDI.get_VBDs': [],
+      'Async.VDI.destroy': 'OpaqueRef:delete-task',
+    })[method]);
+    await expect(client.createVmDisk('OpaqueRef:vm', {
+      storageRef: 'OpaqueRef:sr', sizeBytes: 2 * 1024 ** 3, unit: 2, label: 'ledger-data',
+    })).resolves.toEqual(expect.objectContaining({
+      synchronous: true, backingRef: 'OpaqueRef:vdi-new', attachmentRef: 'OpaqueRef:vbd-new',
+    }));
+    expect(client._call).toHaveBeenCalledWith('VDI.create', [expect.objectContaining({
+      SR: 'OpaqueRef:sr', virtual_size: String(2 * 1024 ** 3), read_only: false,
+      other_config: { 'docker-dash-managed': 'true' },
+    })]);
+    expect(client._call).toHaveBeenCalledWith('VBD.create', [expect.objectContaining({
+      VM: 'OpaqueRef:vm', VDI: 'OpaqueRef:vdi-new', userdevice: '2', bootable: false,
+    })]);
+    await expect(client.detachVmDisk('OpaqueRef:vbd-new')).resolves.toEqual(expect.objectContaining({
+      synchronous: true, backingRef: 'OpaqueRef:vdi-new',
+    }));
+    expect(client._call).toHaveBeenCalledWith('VBD.destroy', ['OpaqueRef:vbd-new']);
+    await expect(client.resizeVmDisk('OpaqueRef:vdi-new', 3 * 1024 ** 3))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:resize-task', provider: 'xapi', backingRef: 'OpaqueRef:vdi-new' });
+    await expect(client.deleteDetachedVmDisk('OpaqueRef:vdi-new'))
+      .resolves.toEqual({ taskRef: 'OpaqueRef:delete-task', provider: 'xapi', deletedBackingRef: 'OpaqueRef:vdi-new' });
+    expect(client._call.mock.calls.map(call => call[0])).not.toEqual(expect.arrayContaining(['VDI.resize_online']));
+  });
+
   it('enables Xen Orchestra migration only from a recognized runtime OpenAPI schema', async () => {
     const client = new XenOrchestraClient({ endpoint: 'https://xo.test', token: 'token' });
     client._request = jest.fn(async (method, path, body) => {

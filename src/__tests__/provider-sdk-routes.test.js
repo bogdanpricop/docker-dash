@@ -46,6 +46,12 @@ const mockPowerSubmitBulk = jest.fn();
 const mockSnapshotInventory = jest.fn();
 const mockSnapshotPreflight = jest.fn();
 const mockSnapshotSubmit = jest.fn();
+const mockDiskInventory = jest.fn();
+const mockDiskPreflight = jest.fn();
+const mockDiskSubmit = jest.fn();
+const mockManagedVolumeList = jest.fn();
+const mockManagedDeletePreflight = jest.fn();
+const mockManagedDeleteSubmit = jest.fn();
 const mockSnapshotPolicyGet = jest.fn();
 const mockSnapshotPolicyRuns = jest.fn();
 const mockSnapshotPolicyUpsert = jest.fn();
@@ -153,6 +159,14 @@ jest.mock('../services/provider-operations/vm-snapshots', () => ({
   inventoryForHost: (...args) => mockSnapshotInventory(...args),
   preflightForHost: (...args) => mockSnapshotPreflight(...args),
   submitForHost: (...args) => mockSnapshotSubmit(...args),
+}));
+jest.mock('../services/provider-operations/vm-disks', () => ({
+  inventoryForHost: (...args) => mockDiskInventory(...args),
+  preflightForHost: (...args) => mockDiskPreflight(...args),
+  submitForHost: (...args) => mockDiskSubmit(...args),
+  listManagedForHost: (...args) => mockManagedVolumeList(...args),
+  preflightDeleteForHost: (...args) => mockManagedDeletePreflight(...args),
+  submitDeleteForHost: (...args) => mockManagedDeleteSubmit(...args),
 }));
 jest.mock('../services/provider-operations/snapshot-policies', () => ({
   getForVm: (...args) => mockSnapshotPolicyGet(...args),
@@ -294,6 +308,20 @@ describe('Provider SDK routes', () => {
       resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
       freshness: { state: 'fresh' }, actions: [], sections: {}, activity: [],
     });
+    const diskPlan = {
+      schemaVersion: '1.0', providerType: 'xen', action: 'create', allowed: true,
+      planHash: '4'.repeat(64), vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      disk: null, managedVolume: null, request: { label: 'data', sizeBytes: 1073741824 },
+      storage: { id: `ddr_storage_${'c'.repeat(26)}`, displayName: 'sr-a' },
+    };
+    mockDiskInventory.mockResolvedValue({ schemaVersion: '1.0', disks: [], managedVolumes: [] });
+    mockDiskPreflight.mockResolvedValue(diskPlan);
+    mockDiskSubmit.mockResolvedValue({ plan: diskPlan, operation: { id: `op_${'4'.repeat(26)}` } });
+    mockManagedVolumeList.mockReturnValue([]);
+    const volumePlan = { ...diskPlan, action: 'delete', disk: null,
+      managedVolume: { id: `ddv_vol_${'f'.repeat(26)}`, label: 'data' }, storage: null };
+    mockManagedDeletePreflight.mockResolvedValue(volumePlan);
+    mockManagedDeleteSubmit.mockResolvedValue({ plan: volumePlan, operation: { id: `op_${'5'.repeat(26)}` } });
     mockMigrationPreflight.mockResolvedValue({
       schemaVersion: '1.0', generatedAt: '2026-07-26T12:00:00.000Z',
       vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
@@ -1116,6 +1144,53 @@ describe('Provider SDK routes', () => {
       idempotencyKey: 'provision-app-01', confirmName: 'app-01',
     }), { canOperate: true, createdBy: 1 });
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_provision_submit' }));
+  });
+
+  it('exposes disk inventory and admin-gates durable lifecycle submissions', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const diskId = `ddh_disk_${'b'.repeat(26)}`;
+    const storageId = `ddr_storage_${'c'.repeat(26)}`;
+    const inventory = await request(app).get(`/api/providers/7/virtual-machines/${vmId}/disks`)
+      .set('x-test-role', 'viewer');
+    expect(inventory.status).toBe(200);
+    expect(mockDiskInventory).toHaveBeenCalledWith(mockHost, vmId);
+    const body = { label: 'data', sizeBytes: 1073741824, targetStorageId: storageId };
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/preflight`)
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/preflight`).send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockDiskPreflight).toHaveBeenCalledWith(mockHost, vmId, 'create', body, null, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks`)
+      .set('Idempotency-Key', 'disk-create-route-1').send({ ...body, planHash: '4'.repeat(64), confirm: true, confirmName: 'vm-a' });
+    expect(submit.status).toBe(202);
+    expect(mockDiskSubmit).toHaveBeenCalledWith(mockHost, vmId, 'create',
+      expect.objectContaining({ idempotencyKey: 'disk-create-route-1' }), null,
+      { canOperate: true, createdBy: 1 });
+    mockDiskPreflight.mockResolvedValueOnce({ schemaVersion: '1.0', providerType: 'xen', action: 'resize',
+      allowed: true, planHash: '3'.repeat(64), vm: { id: vmId, displayName: 'vm-a' },
+      disk: { id: diskId, label: 'data' }, managedVolume: null,
+      request: { sizeBytes: 2147483648 }, storage: null });
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/${diskId}/preflight`)
+      .send({ action: 'resize', sizeBytes: 2147483648 })).status).toBe(200);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_disk_create_submit' }));
+  });
+
+  it('separately admin-gates permanent managed-volume deletion', async () => {
+    const volumeId = `ddv_vol_${'f'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/managed-volumes/${volumeId}/delete/preflight`)
+      .set('x-test-role', 'operator').send({})).status).toBe(403);
+    expect((await request(app).post(`/api/providers/7/managed-volumes/${volumeId}/delete/preflight`).send({})).status).toBe(200);
+    const submitted = await request(app).delete(`/api/providers/7/managed-volumes/${volumeId}`)
+      .set('Idempotency-Key', 'managed-delete-route-1')
+      .send({ planHash: '4'.repeat(64), confirm: true, confirmPhrase: 'DELETE VOLUME data' });
+    expect(submitted.status).toBe(202);
+    expect(mockManagedDeleteSubmit).toHaveBeenCalledWith(mockHost, volumeId,
+      expect.objectContaining({ idempotencyKey: 'managed-delete-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_vm_disk_delete_submit',
+      details: expect.objectContaining({ permanentDelete: true }),
+    }));
   });
 
   it('exports portable conformance evidence only for admins', async () => {

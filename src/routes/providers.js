@@ -19,6 +19,7 @@ const providerBackupExecutions = require('../services/provider-operations/backup
 const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
 const providerRestoreDrills = require('../services/provider-operations/restore-drills');
 const providerDrRunbooks = require('../services/provider-operations/dr-runbooks');
+const providerVmDisks = require('../services/provider-operations/vm-disks');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -69,6 +70,33 @@ function _snapshotError(res, err) {
     error: status >= 500 ? 'Provider VM snapshot request failed' : err.message,
     code: err?.code || 'VM_SNAPSHOT_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _diskError(res, err) {
+  const trusted = err?.name === 'VmDiskError'
+    && /^(?:VM_DISK_|MANAGED_VOLUME_|PROVIDER_|INVALID_|UNSTABLE_|TARGET_|CAPABILITY_|OPERATION_|POLICY_|PERMISSION_|DELETE_|VERIFIED_)[A-Z0-9_]{0,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM disk request failed' : err.message,
+    code: trusted ? err.code : 'VM_DISK_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _diskAudit(req, action, plan, operation = null) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_vm_disk_${action}`, targetType: plan.managedVolume ? 'managed_volume' : 'virtualMachine',
+    targetId: plan.managedVolume?.id || plan.vm.id,
+    details: {
+      hostId: Number(req.params.hostId), provider: plan.providerType, vmId: plan.vm.id,
+      diskId: plan.disk?.id || null, managedVolumeId: plan.managedVolume?.id || null,
+      operationId: operation?.id || null, planHash: plan.planHash,
+      targetStorageId: plan.storage?.id || null, sizeBytes: plan.request?.sizeBytes || null,
+      retainBacking: plan.action === 'detach', permanentDelete: plan.action === 'delete',
+      allowed: plan.allowed,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
 
@@ -1033,6 +1061,109 @@ router.post('/:hostId/virtual-machines/:resourceId/console', requireAuth,
         code: err.code || 'PROVIDER_CONSOLE_LAUNCH_ERROR',
       });
     }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/disks', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerVmDisks.inventoryForHost(resolved.host, req.params.resourceId)); }
+    catch (err) { _diskError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/disks/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerVmDisks.preflightForHost(
+        resolved.host, req.params.resourceId, 'create', req.body || {}, null, { canOperate: true }
+      );
+      _diskAudit(req, 'create_preflight', plan);
+      res.json(plan);
+    } catch (err) { _diskError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/disks', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmDisks.submitForHost(resolved.host, req.params.resourceId,
+        'create', { ...req.body, idempotencyKey: req.get('Idempotency-Key') }, null,
+        { canOperate: true, createdBy: req.user.id });
+      _diskAudit(req, 'create_submit', result.plan, result.operation);
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _diskError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/disks/:diskId/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerVmDisks.preflightForHost(resolved.host, req.params.resourceId,
+        req.body?.action, req.body || {}, req.params.diskId, { canOperate: true });
+      _diskAudit(req, `${plan.action}_preflight`, plan);
+      res.json(plan);
+    } catch (err) { _diskError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/disks/:diskId/actions', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmDisks.submitForHost(resolved.host, req.params.resourceId,
+        req.body?.action, { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        req.params.diskId, { canOperate: true, createdBy: req.user.id });
+      _diskAudit(req, `${result.plan.action}_submit`, result.plan, result.operation);
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _diskError(res, err); }
+  }));
+
+router.get('/:hostId/managed-volumes', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    if (req.query.limit !== undefined && !/^\d{1,3}$/.test(String(req.query.limit))) {
+      return res.status(400).json({ error: 'Limit must be an integer from 1 to 500', code: 'INVALID_LIMIT' });
+    }
+    const limit = req.query.limit === undefined ? 200 : Number(req.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+      return res.status(400).json({ error: 'Limit must be an integer from 1 to 500', code: 'INVALID_LIMIT' });
+    }
+    const items = providerVmDisks.listManagedForHost(resolved.host.id, { limit, state: req.query.state });
+    res.json({ schemaVersion: '1.0', count: items.length, items });
+  });
+
+router.post('/:hostId/managed-volumes/:volumeId/delete/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerVmDisks.preflightDeleteForHost(
+        resolved.host, req.params.volumeId, req.body || {}, { canOperate: true }
+      );
+      _diskAudit(req, 'delete_preflight', plan);
+      res.json(plan);
+    } catch (err) { _diskError(res, err); }
+  }));
+
+router.delete('/:hostId/managed-volumes/:volumeId', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmDisks.submitDeleteForHost(resolved.host, req.params.volumeId,
+        { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        { canOperate: true, createdBy: req.user.id });
+      _diskAudit(req, 'delete_submit', result.plan, result.operation);
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _diskError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,

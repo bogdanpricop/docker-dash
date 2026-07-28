@@ -112,11 +112,23 @@ module.exports = {
     providerRecoveryRestore: bool('DD_PROVIDER_RECOVERY_RESTORE', false),
     providerRestoreDrills: bool('DD_PROVIDER_RESTORE_DRILLS', false),
     providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
+    providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
+    providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
     pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
     leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
+  },
+  providerVmDisks: {
+    planTtlMs: Math.min(30 * 60 * 1000,
+      Math.max(60_000, int('DD_PROVIDER_VM_DISK_PLAN_TTL_MS', 5 * 60_000))),
+    minimumSizeBytes: Math.max(1024 * 1024,
+      int('DD_PROVIDER_VM_DISK_MIN_SIZE_MIB', 64) * 1024 * 1024),
+    capacityHeadroomPercent: Math.min(50,
+      Math.max(0, int('DD_PROVIDER_VM_DISK_HEADROOM_PERCENT', 10))),
+    deletionRecoveryMaxAgeHours: Math.min(24 * 365,
+      Math.max(1, int('DD_PROVIDER_VM_DISK_DELETE_RECOVERY_MAX_AGE_HOURS', 24))),
   },
   providerHostMaintenance: {
     pollLimit: Math.min(100, Math.max(1, int('DD_PROVIDER_HOST_MAINTENANCE_POLL_LIMIT', 20))),

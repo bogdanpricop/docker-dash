@@ -93,8 +93,9 @@ function _parseProxmoxHardware(config = {}, guestType = 'qemu', agentInterfaces 
           nativeRef: device, label: device, type: cdrom ? 'cdrom' : 'disk', device,
           bus: diskMatch[1], unit: Number(diskMatch[2]), capacityBytes: _parseSizeBytes(options.size),
           provisioning: options.preallocation === 'full' ? 'thick' : (options.preallocation ? 'unknown' : 'thin'),
-          format: options.format || null, backing: _storageBacking(source),
-          attachment: { connected: source !== 'none', startConnected: true, bootable: null, readOnly: cdrom, shared: _flag(options.shared) },
+          format: options.format || null, backing: { ..._storageBacking(source), nativeRef: source },
+          attachment: { connected: source !== 'none', startConnected: true, bootable: null, readOnly: cdrom,
+            shared: _flag(options.shared) ?? false },
           capabilities: {
             hotPlug: _proxmoxHotplug(config, 'disk'), hotUnplug: _proxmoxHotplug(config, 'disk'),
             onlineResize: cdrom ? false : null,
@@ -129,7 +130,7 @@ function _parseProxmoxHardware(config = {}, guestType = 'qemu', agentInterfaces 
         disks.push({
           nativeRef: device, label: device, type: device === 'rootfs' ? 'rootfs' : 'mount', device,
           bus: 'lxc-mount', unit: diskMatch[2] === undefined ? 0 : Number(diskMatch[2]) + 1,
-          capacityBytes: _parseSizeBytes(options.size), provisioning: 'unknown', backing: _storageBacking(source),
+          capacityBytes: _parseSizeBytes(options.size), provisioning: 'unknown', backing: { ..._storageBacking(source), nativeRef: source },
           attachment: { connected: true, startConnected: true, bootable: device === 'rootfs', readOnly: _flag(options.ro) },
           capabilities: { hotPlug: null, hotUnplug: null, onlineResize: null }, status: 'configured',
         });
@@ -370,6 +371,100 @@ class ProxmoxClient {
       } catch { /* guest-agent networking is optional */ }
     }
     return _parseProxmoxHardware(config || {}, type, interfaces);
+  }
+
+  async createVmDisk(node, vmid, guestType, options = {}) {
+    const base = this._guestPath(node, vmid, guestType);
+    const device = String(options.device || '');
+    const storage = String(options.storage || '');
+    const sizeBytes = Number(options.sizeBytes);
+    if (guestType !== 'qemu' || !/^(?:scsi|virtio)\d{1,2}$/.test(device)
+      || !/^[A-Za-z0-9._-]{1,128}$/.test(storage)
+      || !Number.isSafeInteger(sizeBytes) || sizeBytes < 64 * 1024 * 1024) {
+      throw Object.assign(new Error('Invalid Proxmox disk create request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const config = await this._request('GET', `${base}/config`);
+    if (config?.[device] !== undefined) {
+      throw Object.assign(new Error('Proxmox disk slot is already in use'), { code: 'VM_DISK_SLOT_CONFLICT', status: 409 });
+    }
+    const sizeGiB = Math.max(1, Math.ceil(sizeBytes / (1024 ** 3)));
+    const body = { [device]: `${storage}:${sizeGiB}` };
+    if (typeof config?.digest === 'string') body.digest = config.digest;
+    const taskRef = await this._request('PUT', `${base}/config`, body);
+    return {
+      ...(typeof taskRef === 'string' && taskRef.startsWith('UPID:') ? { taskRef, node: String(node) } : { synchronous: true }),
+      provider: 'proxmox', device, allocatedBytes: sizeGiB * (1024 ** 3),
+    };
+  }
+
+  async detachVmDisk(node, vmid, guestType, device) {
+    const base = this._guestPath(node, vmid, guestType);
+    if (guestType !== 'qemu' || !/^(?:ide|sata|scsi|virtio)\d{1,2}$/.test(String(device || ''))) {
+      throw Object.assign(new Error('Invalid Proxmox disk detach request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const config = await this._request('GET', `${base}/config`);
+    if (typeof config?.[device] !== 'string') {
+      throw Object.assign(new Error('Proxmox disk is no longer attached'), { code: 'PROVIDER_VM_DISK_NOT_FOUND', status: 404 });
+    }
+    const backingRef = _configParts(config[device]).source;
+    const body = { delete: String(device) };
+    if (typeof config.digest === 'string') body.digest = config.digest;
+    const taskRef = await this._request('PUT', `${base}/config`, body);
+    return {
+      ...(typeof taskRef === 'string' && taskRef.startsWith('UPID:') ? { taskRef, node: String(node) } : { synchronous: true }),
+      provider: 'proxmox', backingRef,
+    };
+  }
+
+  async resizeVmDisk(node, vmid, guestType, device, sizeBytes) {
+    const base = this._guestPath(node, vmid, guestType);
+    const bytes = Number(sizeBytes);
+    if (guestType !== 'qemu' || !/^(?:ide|sata|scsi|virtio)\d{1,2}$/.test(String(device || ''))
+      || !Number.isSafeInteger(bytes) || bytes < 64 * 1024 * 1024) {
+      throw Object.assign(new Error('Invalid Proxmox disk resize request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const sizeMiB = Math.ceil(bytes / (1024 ** 2));
+    const taskRef = await this._request('PUT', `${base}/resize`, { disk: String(device), size: `${sizeMiB}M` });
+    return {
+      ...(typeof taskRef === 'string' && taskRef.startsWith('UPID:') ? { taskRef, node: String(node) } : { synchronous: true }),
+      provider: 'proxmox', allocatedBytes: sizeMiB * (1024 ** 2),
+    };
+  }
+
+  async moveVmDisk(node, vmid, guestType, device, storage) {
+    const base = this._guestPath(node, vmid, guestType);
+    if (guestType !== 'qemu' || !/^(?:ide|sata|scsi|virtio)\d{1,2}$/.test(String(device || ''))
+      || !/^[A-Za-z0-9._-]{1,128}$/.test(String(storage || ''))) {
+      throw Object.assign(new Error('Invalid Proxmox disk move request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const taskRef = await this._request('POST', `${base}/move_disk`, {
+      disk: String(device), storage: String(storage), delete: 1,
+    });
+    if (typeof taskRef !== 'string' || !taskRef.startsWith('UPID:')) {
+      throw Object.assign(new Error('Proxmox disk move returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE', status: 502 });
+    }
+    return { taskRef, node: String(node), provider: 'proxmox' };
+  }
+
+  async deleteDetachedVmDisk(node, vmid, guestType, backingRef) {
+    const base = this._guestPath(node, vmid, guestType);
+    const backing = String(backingRef || '');
+    if (guestType !== 'qemu' || !/^[A-Za-z0-9._:+/@=-]{1,512}$/.test(backing)) {
+      throw Object.assign(new Error('Invalid Proxmox managed backing'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const config = await this._request('GET', `${base}/config`);
+    const matches = Object.entries(config || {}).filter(([key, value]) => /^unused\d+$/.test(key)
+      && _configParts(value).source === backing);
+    if (matches.length !== 1) {
+      throw Object.assign(new Error('Managed Proxmox backing is not uniquely detached'), { code: 'VM_DISK_OWNERSHIP_UNPROVEN', status: 409 });
+    }
+    const body = { delete: matches[0][0] };
+    if (typeof config.digest === 'string') body.digest = config.digest;
+    const taskRef = await this._request('PUT', `${base}/config`, body);
+    return {
+      ...(typeof taskRef === 'string' && taskRef.startsWith('UPID:') ? { taskRef, node: String(node) } : { synchronous: true }),
+      provider: 'proxmox', deletedBackingRef: backing,
+    };
   }
 
   async getVmMigrationPreconditions(node, guestType, vmid) {

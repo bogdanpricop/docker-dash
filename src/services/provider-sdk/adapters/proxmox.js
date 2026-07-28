@@ -52,6 +52,25 @@ function declared() {
     }),
     'vm.disk.read': conditional('QEMU and LXC configuration is read live from the current node', { perResource: true, readOnly: true }),
     'vm.disk.hotplug': conditional('The VM hotplug configuration and device type determine availability', { perResource: true, evidenceOnly: true }),
+    'vm.disk.create': conditional('QEMU disk create-and-attach uses a configuration digest and mandatory post-read verification', {
+      perResource: true, guestTypes: ['qemu'], postVerify: true, shrink: false,
+    }),
+    'vm.disk.attach': adapterNotImplemented('Proxmox VE managed-volume reattachment'),
+    'vm.disk.detach': conditional('QEMU detach retains the backing as an unused disk and is post-read verified', {
+      perResource: true, guestTypes: ['qemu'], retainBacking: true, postVerify: true,
+    }),
+    'vm.disk.resize': conditional('QEMU virtual disks can grow only; the guest partition and filesystem are unchanged', {
+      perResource: true, guestTypes: ['qemu'], shrink: false, guestExpansionRequired: true, postVerify: true,
+    }),
+    'vm.disk.move': conditional('QEMU disk movement uses the native move_disk task and a canonical target storage', {
+      perResource: true, guestTypes: ['qemu'], durableTask: true, postVerify: true,
+    }),
+    'vm.disk.delete': conditional('Only a detached Docker Dash-owned unused QEMU volume can be deleted', {
+      perResource: true, guestTypes: ['qemu'], ownershipRequired: true, recoveryPointRequired: true,
+    }),
+    'vm.disk.convert': adapterNotImplemented('Proxmox VE safe common disk conversion'),
+    'storage.orphan.read': conditional('Inventory is limited to Docker Dash-managed detached volumes', { readOnly: true, managedOnly: true }),
+    'storage.snapshotRisk.read': conditional('Snapshot count and chain evidence is correlated with disk mutation preflight', { readOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),

@@ -462,7 +462,8 @@ class XenOrchestraClient {
           device: vbd?.device || null, bus: 'xen-vbd', unit: vbd?.userdevice,
           capacityBytes: vdi?.virtual_size, allocatedBytes: vdi?.physical_utilisation,
           provisioning: vdi?.sm_config?.allocation === 'thin' ? 'thin' : 'unknown',
-          backing: { type: vdi?.type || sr?.type || null, storageId: srId, storageName: sr?.name_label || null, path: null },
+          backing: { type: vdi?.type || sr?.type || null, storageId: srId, storageName: sr?.name_label || null, path: null,
+            nativeRef: vdiId },
           attachment: {
             connected: vbd?.currently_attached, startConnected: vbd?.empty === false,
             bootable: vbd?.bootable, readOnly: vbd?.mode === 'RO' || vdi?.read_only, shared: vdi?.sharable,
@@ -1092,7 +1093,8 @@ class XapiClient {
         device: vbd.device || null, bus: 'xen-vbd', unit: vbd.userdevice,
         capacityBytes: vdi?.virtual_size, allocatedBytes: vdi?.physical_utilisation,
         provisioning: vdi?.sm_config?.allocation === 'thin' || vdi?.sm_config?.['vhd-parent'] ? 'thin' : 'unknown',
-        backing: { type: vdi?.type || sr?.type || null, storageId: sr?.uuid || null, storageName: sr?.name_label || null },
+        backing: { type: vdi?.type || sr?.type || null, storageId: sr?.uuid || null, storageName: sr?.name_label || null,
+          nativeRef: vbd.VDI },
         attachment: {
           connected: vbd.currently_attached, startConnected: vbd.empty === false,
           bootable: vbd.bootable, readOnly: vbd.mode === 'RO' || vdi?.read_only, shared: vdi?.sharable,
@@ -1127,6 +1129,74 @@ class XapiClient {
       };
     })).filter(Boolean);
     return { disks, nics, diskAvailable: true, nicAvailable: true };
+  }
+
+  async createVmDisk(vmId, options = {}) {
+    const vmRef = String(vmId || '').startsWith('OpaqueRef:') ? String(vmId) : await this._vmRef(vmId);
+    const srRef = String(options.storageRef || '');
+    const sizeBytes = Number(options.sizeBytes);
+    const unit = String(options.unit);
+    const label = String(options.label || 'Docker Dash disk');
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(vmRef)
+      || !/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(srRef)
+      || !Number.isSafeInteger(sizeBytes) || sizeBytes < 64 * 1024 * 1024
+      || !/^\d{1,3}$/.test(unit) || label.length < 1 || label.length > 160) {
+      throw new XenError('Invalid XAPI disk create request', { code: 'INVALID_VM_DISK_REQUEST', status: 400, provider: 'xapi' });
+    }
+    const vdiRef = await this._call('VDI.create', [{
+      name_label: label, name_description: 'Docker Dash managed volume', SR: srRef,
+      virtual_size: String(sizeBytes), type: 'user', sharable: false, read_only: false,
+      other_config: { 'docker-dash-managed': 'true' }, xenstore_data: {}, sm_config: {}, tags: ['docker-dash-managed'],
+    }]);
+    let vbdRef;
+    try {
+      vbdRef = await this._call('VBD.create', [{
+        VM: vmRef, VDI: vdiRef, userdevice: unit, bootable: false, mode: 'RW', type: 'Disk',
+        unpluggable: true, empty: false, other_config: { 'docker-dash-managed': 'true' },
+        qos_algorithm_type: '', qos_algorithm_params: {},
+      }]);
+    } catch (err) {
+      err.partialManagedBackingRef = vdiRef;
+      throw err;
+    }
+    const vm = await this._call('VM.get_record', [vmRef]);
+    if (String(vm.power_state || '').toLowerCase() === 'running') {
+      return { taskRef: await this._call('Async.VBD.plug', [vbdRef]), provider: 'xapi', backingRef: vdiRef, attachmentRef: vbdRef };
+    }
+    return { synchronous: true, provider: 'xapi', backingRef: vdiRef, attachmentRef: vbdRef };
+  }
+
+  async detachVmDisk(vbdRef) {
+    const ref = String(vbdRef || '');
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(ref)) {
+      throw new XenError('Invalid XAPI VBD detach target', { code: 'INVALID_VM_DISK_REQUEST', status: 400, provider: 'xapi' });
+    }
+    const record = await this._call('VBD.get_record', [ref]);
+    if (record.currently_attached === true) await this._call('VBD.unplug', [ref]);
+    await this._call('VBD.destroy', [ref]);
+    return { synchronous: true, provider: 'xapi', backingRef: record.VDI };
+  }
+
+  async resizeVmDisk(vdiRef, sizeBytes) {
+    const ref = String(vdiRef || '');
+    const bytes = Number(sizeBytes);
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(ref)
+      || !Number.isSafeInteger(bytes) || bytes < 64 * 1024 * 1024) {
+      throw new XenError('Invalid XAPI VDI resize target', { code: 'INVALID_VM_DISK_REQUEST', status: 400, provider: 'xapi' });
+    }
+    return { taskRef: await this._call('Async.VDI.resize', [ref, String(bytes)]), provider: 'xapi', backingRef: ref };
+  }
+
+  async deleteDetachedVmDisk(vdiRef) {
+    const ref = String(vdiRef || '');
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(ref)) {
+      throw new XenError('Invalid XAPI managed VDI target', { code: 'INVALID_VM_DISK_REQUEST', status: 400, provider: 'xapi' });
+    }
+    const vbds = await this._call('VDI.get_VBDs', [ref]);
+    if ((vbds || []).some(_refId)) {
+      throw new XenError('Managed XAPI VDI remains attached', { code: 'VM_DISK_OWNERSHIP_UNPROVEN', status: 409, provider: 'xapi' });
+    }
+    return { taskRef: await this._call('Async.VDI.destroy', [ref]), provider: 'xapi', deletedBackingRef: ref };
   }
 
   async getVmMigrationCompatibility(vmId, targetRefs) {

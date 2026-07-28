@@ -323,6 +323,92 @@ class VSphereClient {
     return _parseVmHardware(props['config.hardware.device'] || '', props['guest.net'] || '');
   }
 
+  async _reconfigureVmDisk(vmMoref, deviceChange) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM disk target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ReconfigVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec><deviceChange>${deviceChange}</deviceChange></spec>
+  </ReconfigVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere disk reconfiguration returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async createVmDisk(vmMoref, options = {}) {
+    const controllerKey = Number(options.controllerKey);
+    const unit = Number(options.unit);
+    const capacityBytes = Number(options.sizeBytes);
+    const datastoreRef = String(options.datastoreRef || '');
+    const datastoreName = String(options.datastoreName || '');
+    if (!Number.isSafeInteger(controllerKey) || !Number.isInteger(unit) || unit < 0 || unit > 63
+      || !Number.isSafeInteger(capacityBytes) || capacityBytes < 1024 * 1024
+      || !/^[A-Za-z0-9._:-]{1,160}$/.test(datastoreRef)
+      || !datastoreName || datastoreName.length > 160) {
+      throw Object.assign(new Error('Invalid vSphere disk create request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const capacityInKB = Math.ceil(capacityBytes / 1024);
+    const backing = `<backing xsi:type="VirtualDiskFlatVer2BackingInfo"><fileName>[${this._xesc(datastoreName)}] </fileName>`
+      + `<datastore type="Datastore">${this._xesc(datastoreRef)}</datastore><diskMode>persistent</diskMode>`
+      + `<thinProvisioned>${options.provisioning === 'thick' ? 'false' : 'true'}</thinProvisioned></backing>`;
+    const change = `<operation>add</operation><fileOperation>create</fileOperation><device xsi:type="VirtualDisk">`
+      + `<key>-100</key>${backing}<controllerKey>${controllerKey}</controllerKey><unitNumber>${unit}</unitNumber>`
+      + `<capacityInKB>${capacityInKB}</capacityInKB></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async detachVmDisk(vmMoref, disk = {}) {
+    const key = Number(disk.nativeRef);
+    if (!Number.isSafeInteger(key)) {
+      throw Object.assign(new Error('Invalid vSphere disk detach target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const change = `<operation>remove</operation><device xsi:type="VirtualDisk"><key>${key}</key></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async resizeVmDisk(vmMoref, disk = {}, sizeBytes) {
+    const key = Number(disk.nativeRef);
+    const controllerKey = Number(disk.controllerKey);
+    const unit = Number(disk.unit);
+    const bytes = Number(sizeBytes);
+    if (![key, controllerKey, unit].every(Number.isSafeInteger)
+      || !Number.isSafeInteger(bytes) || bytes < 1024 * 1024 || !disk.backing?.path) {
+      throw Object.assign(new Error('Invalid vSphere disk resize target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const backing = `<backing xsi:type="VirtualDiskFlatVer2BackingInfo"><fileName>${this._xesc(disk.backing.path)}</fileName>`
+      + `${disk.backing.storageId ? `<datastore type="Datastore">${this._xesc(disk.backing.storageId)}</datastore>` : ''}`
+      + `<diskMode>persistent</diskMode></backing>`;
+    const change = `<operation>edit</operation><device xsi:type="VirtualDisk"><key>${key}</key>${backing}`
+      + `<controllerKey>${controllerKey}</controllerKey><unitNumber>${unit}</unitNumber>`
+      + `<capacityInKB>${Math.ceil(bytes / 1024)}</capacityInKB></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async moveVmDisk(vmMoref, disk = {}, datastoreRef) {
+    const key = Number(disk.nativeRef);
+    const target = String(datastoreRef || '');
+    if (!Number.isSafeInteger(key) || !/^[A-Za-z0-9._:-]{1,160}$/.test(target)) {
+      throw Object.assign(new Error('Invalid vSphere disk move target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    await this._ensureLoggedIn();
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RelocateVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec><disk><diskId>${key}</diskId><datastore type="Datastore">${this._xesc(target)}</datastore></disk></spec>
+    <priority>defaultPriority</priority>
+  </RelocateVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere disk relocation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
   async getVmMigrationCompatibility(vmMoref, hostMorefs) {
     if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || '')) || !Array.isArray(hostMorefs)
       || hostMorefs.length > 64 || hostMorefs.some(ref => !/^[A-Za-z0-9._:-]{1,160}$/.test(String(ref || '')))) {
@@ -1612,18 +1698,19 @@ function _parseVmHardware(deviceXml, guestNetXml) {
       const isCdrom = item.type === 'VirtualCdrom';
       disks.push({
         nativeRef: key, label, type: isCdrom ? 'cdrom' : 'disk',
-        device: label, bus: controller.bus || null, unit,
+        device: label, bus: controller.bus || null, unit, controllerKey,
         capacityBytes: capacityInBytes ?? (capacityInKB === null ? null : capacityInKB * 1024),
         provisioning: isCdrom ? 'unknown' : (thin === true ? 'thin' : (eager === true ? 'eagerZeroedThick' : (thin === false ? 'thick' : 'unknown'))),
         format: isCdrom ? 'iso' : null,
         backing: {
           type: fileName ? 'datastore-file' : 'device', storageId: datastoreRef,
           storageName: /^\[([^\]]+)\]/.exec(fileName || '')?.[1] || null, path: fileName,
+          nativeRef: fileName,
         },
         attachment: {
           connected: _tagBool(item.xml, 'connected'), startConnected: _tagBool(item.xml, 'startConnected'),
           bootable: null, readOnly: isCdrom,
-          shared: (() => { const sharing = _extractTag(item.xml, 'sharing'); return sharing ? /sharingMultiWriter/i.test(sharing) : null; })(),
+          shared: (() => { const sharing = _extractTag(item.xml, 'sharing'); return sharing ? /sharingMultiWriter/i.test(sharing) : false; })(),
         },
         capabilities: { hotPlug: null, hotUnplug: null, onlineResize: isCdrom ? false : null },
         status: _extractTag(item.xml, 'status') || 'configured',

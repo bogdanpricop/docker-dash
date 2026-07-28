@@ -497,6 +497,38 @@ describe('VSphereClient (v8.9.11-alpha.1)', () => {
     });
   });
 
+  describe('VM disk lifecycle operations', () => {
+    it('uses incremental reconfigure and per-disk relocate tasks without backing deletion', async () => {
+      const bodies = [];
+      for (const task of ['create-disk', 'detach-disk', 'resize-disk', 'move-disk']) {
+        mockHttps._mockNext((_opts, cb, req) => {
+          bodies.push(req._writtenBody.toString('utf8'));
+          const res = fakeResponse({ status: 200, body: `<returnval type="Task">task-${task}</returnval>` });
+          cb(res); res._fire();
+        });
+      }
+      const client = new VSphereClient({ endpoint: 'https://vcenter', username: 'root', password: 'x' });
+      client._sessionCookie = 'vmware_soap_session="test"';
+      await expect(client.createVmDisk('vm-9', {
+        controllerKey: 1000, unit: 2, sizeBytes: 2 * 1024 ** 3,
+        datastoreRef: 'datastore-3', datastoreName: 'Fast & Safe', provisioning: 'thin',
+      })).resolves.toEqual({ taskRef: 'task-create-disk', provider: 'vsphere' });
+      const disk = { nativeRef: 2001, controllerKey: 1000, unit: 2,
+        backing: { path: '[Fast & Safe] vm/vm_1.vmdk', storageId: 'datastore-3' } };
+      await expect(client.detachVmDisk('vm-9', disk)).resolves.toEqual({ taskRef: 'task-detach-disk', provider: 'vsphere' });
+      await expect(client.resizeVmDisk('vm-9', disk, 3 * 1024 ** 3)).resolves.toEqual({ taskRef: 'task-resize-disk', provider: 'vsphere' });
+      await expect(client.moveVmDisk('vm-9', disk, 'datastore-4')).resolves.toEqual({ taskRef: 'task-move-disk', provider: 'vsphere' });
+      expect(bodies[0]).toContain('<operation>add</operation><fileOperation>create</fileOperation>');
+      expect(bodies[0]).toContain('[Fast &amp; Safe]');
+      expect(bodies[1]).toContain('<operation>remove</operation>');
+      expect(bodies[1]).not.toContain('fileOperation');
+      expect(bodies[2]).toContain('<operation>edit</operation>');
+      expect(bodies[2]).toContain(`<capacityInKB>${3 * 1024 ** 2}</capacityInKB>`);
+      expect(bodies[3]).toContain('<diskId>2001</diskId>');
+      expect(bodies[3]).toContain('<datastore type="Datastore">datastore-4</datastore>');
+    });
+  });
+
   describe('template inventory', () => {
     it('separates vSphere templates from runnable virtual machines', async () => {
       mockHttps._mockNext((_opts, cb) => { const res = fakeResponse({ status: 200, body: '<returnval>view-1</returnval>' }); cb(res); res._fire(); });

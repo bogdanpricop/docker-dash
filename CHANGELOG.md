@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.22.0] - 2026-07-28 — Provider VM disk lifecycle
+
+Docker Dash can now perform a guarded lifecycle for virtual disks on supported Proxmox VE QEMU,
+vSphere/vCenter and XenAPI endpoints. The feature is intentionally opt-in through
+`DD_PROVIDER_VM_DISK_LIFECYCLE=true`; permanent backing deletion has a second, separate
+`DD_PROVIDER_VM_DISK_DELETE=true` gate.
+
+- **Plan before mutation.** The VM Disks tab provides a fresh, hash-bound preflight for creating and
+  attaching a managed disk, safely detaching while retaining data, grow-only resize, and supported
+  storage moves. Each action rechecks capability, current VM/disk state, safety evidence, permissions
+  and operation conflicts immediately before it is queued.
+- **Durable, auditable operations.** Disk actions use the provider-operation engine with VM/storage
+  locks, idempotency keys, native task reconciliation, positive post-read verification and a
+  hash-chained audit event. Native provider identifiers remain encrypted server-side.
+- **Ownership-protected cleanup.** Docker Dash records ownership only after it creates and verifies a
+  backing. It never adopts foreign disks. Permanent deletion applies solely to a positively detached,
+  Docker Dash-managed volume, and additionally requires no snapshot dependency, a recent verified
+  recovery point and the exact typed confirmation.
+- **Deliberately excluded.** Shrink, guest partition/filesystem changes, implicit format conversion,
+  foreign-volume cleanup and unverified provider transports remain fail-closed. Xen Orchestra REST,
+  raw Xen and Proxmox LXC disk mutations are not released in this slice.
+
 ## [8.21.4] - 2026-07-25 — Fix Linux image startup from Windows-authored releases
 
 - **Fixed Docker restart loop.** `entrypoint.sh` was stored with CRLF line endings, so Linux read its

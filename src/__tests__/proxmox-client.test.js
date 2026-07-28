@@ -358,6 +358,37 @@ describe('ProxmoxClient (v8.9.1-alpha.1)', () => {
       expect(mockHttps._handlers).toHaveLength(0);
     });
 
+    it('creates and moves QEMU disks through bounded native API requests', async () => {
+      const seen = [];
+      const replies = [
+        { digest: 'a'.repeat(40), scsi0: 'local-lvm:vm-101-disk-0,size=8G' },
+        null,
+        'UPID:pve-a:disk-move',
+      ];
+      for (const data of replies) mockHttps._mockNext((opts, cb, req) => {
+        seen.push({ method: opts.method, path: opts.path,
+          body: req._writtenBody ? JSON.parse(req._writtenBody.toString()) : null });
+        const res = fakeResponse({ status: 200, body: { data } }); cb(res); res._fire();
+      });
+      const client = new ProxmoxClient({ endpoint: 'https://pve:8006', tokenId: 'a@b!c', tokenSecret: 'x' });
+      await expect(client.createVmDisk('pve-a', 101, 'qemu', {
+        device: 'scsi1', storage: 'fast-zfs', sizeBytes: 2 * 1024 ** 3,
+      })).resolves.toEqual(expect.objectContaining({ synchronous: true, device: 'scsi1', allocatedBytes: 2 * 1024 ** 3 }));
+      await expect(client.moveVmDisk('pve-a', 101, 'qemu', 'scsi1', 'archive-zfs'))
+        .resolves.toEqual({ taskRef: 'UPID:pve-a:disk-move', node: 'pve-a', provider: 'proxmox' });
+      expect(seen).toEqual([
+        { method: 'GET', path: '/api2/json/nodes/pve-a/qemu/101/config', body: null },
+        { method: 'PUT', path: '/api2/json/nodes/pve-a/qemu/101/config',
+          body: { scsi1: 'fast-zfs:2', digest: 'a'.repeat(40) } },
+        { method: 'POST', path: '/api2/json/nodes/pve-a/qemu/101/move_disk',
+          body: { disk: 'scsi1', storage: 'archive-zfs', delete: 1 } },
+      ]);
+      await expect(client.createVmDisk('pve-a', 101, 'lxc', {
+        device: 'scsi1', storage: 'fast-zfs', sizeBytes: 2 * 1024 ** 3,
+      })).rejects.toMatchObject({ code: 'INVALID_VM_DISK_REQUEST' });
+      expect(mockHttps._handlers).toHaveLength(0);
+    });
+
     it('allocates an ID and submits a full template clone as a durable UPID task', async () => {
       const seen = [];
       mockHttps._mockNext((opts, cb) => {

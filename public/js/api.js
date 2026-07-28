@@ -783,6 +783,36 @@ const Api = {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     });
   },
+  getProviderVMDisks(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks`);
+  },
+  preflightProviderVMDiskCreate(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/preflight`, body);
+  },
+  submitProviderVMDiskCreate(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  preflightProviderVMDiskAction(hostId, resourceId, diskId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/${encodeURIComponent(diskId)}/preflight`, body);
+  },
+  submitProviderVMDiskAction(hostId, resourceId, diskId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/${encodeURIComponent(diskId)}/actions`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderManagedVolumes(hostId, limit = 200) {
+    return this.get(`/providers/${hostId}/managed-volumes?limit=${limit}`);
+  },
+  preflightProviderManagedVolumeDelete(hostId, volumeId) {
+    return this.post(`/providers/${hostId}/managed-volumes/${encodeURIComponent(volumeId)}/delete/preflight`, {});
+  },
+  submitProviderManagedVolumeDelete(hostId, volumeId, body, idempotencyKey) {
+    return this.request('DELETE', `/providers/${hostId}/managed-volumes/${encodeURIComponent(volumeId)}`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   getProviderVMSnapshots(hostId, resourceId) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots`);
   },

@@ -10,6 +10,17 @@ const WhatsNewPage = {
   // Types: feature, fix, improvement, security, breaking
   _releases: [
     {
+      version: '8.22.0',
+      date: '2026-07-28',
+      title: 'Provider VM disk lifecycle — reviewed, durable and opt-in',
+      changes: [
+        { type: 'feature', text: 'The Virtual Machines → Disks tab can now create and attach a managed virtual disk, detach it while retaining its data, grow its virtual capacity, and move it between compatible storage targets. Each supported action starts with a live preflight and shows the exact plan before it is queued.' },
+        { type: 'security', text: 'Every disk change is protected by a short-lived plan hash, typed confirmation, current-state revalidation, a durable operation lock, provider-task reconciliation, a positive post-read and an audit record. Docker Dash keeps provider-native VM, disk, storage and task references encrypted on the server.' },
+        { type: 'security', text: 'Permanent backing deletion is deliberately separate and off by default. It can affect only a Docker Dash-created detached volume and requires a recent verified recovery point, no snapshot dependency and an exact “DELETE VOLUME …” confirmation. Existing provider disks are never adopted or deleted.' },
+        { type: 'improvement', text: 'This opt-in release supports Proxmox VE QEMU, vSphere/vCenter and XenAPI where the endpoint advertises the required capability. Disk shrink, guest filesystem changes, foreign-volume cleanup, Xen Orchestra REST, raw Xen and Proxmox LXC mutations remain safely unavailable.' },
+      ],
+    },
+    {
       version: '8.21.4',
       date: '2026-07-25',
       title: 'Fix — Docker image starts correctly on Linux',
