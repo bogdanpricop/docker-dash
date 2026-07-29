@@ -22,6 +22,12 @@ function _recovery(features = {}) {
   return { declaredFeatureCount: entries.length, supportedOrConditional: entries.filter(feature => ['supported', 'conditional'].includes(feature.state)).length, readOnlyEvidence: entries.filter(feature => feature.readOnly === true).length, durableTasks: entries.filter(feature => feature.durableTask === true).length, createOnlyRestore: entries.filter(feature => feature.createOnly === true).length, isolatedDrills: entries.filter(feature => feature.isolated).length, retentionMutationDisabled: entries.filter(feature => feature.retentionMutation === false).length };
 }
 
+function _consoleExposure(features = {}) {
+  const feature = features['vm.console'] || {};
+  const available = ['supported', 'conditional'].includes(feature.state);
+  return { state: feature.state || 'unknown', available, protocols: Array.isArray(feature.protocols) ? feature.protocols.slice(0, 8) : [], clients: Array.isArray(feature.clients) ? feature.clients.slice(0, 8) : [], singleUseToken: feature.singleUseToken === true, credentialIsolation: feature.credentialIsolation === 'server-side', emergencyLock: feature.emergencyLock === true, reason: feature.reason || null };
+}
+
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
   const capabilities = await registry.capabilitiesForHost(host, { refresh: options.refresh === true });
@@ -30,8 +36,9 @@ async function postureForHost(host, options = {}) {
     coverage: _coverage(capabilities.features),
     safeguards: _safeguards(capabilities.features),
     recovery: _recovery(capabilities.features),
+    consoleExposure: _consoleExposure(capabilities.features),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure } };

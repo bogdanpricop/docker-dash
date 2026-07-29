@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.41.0] - 2026-07-29 — Console exposure safeguard evidence
+
+Provider Security Posture now shows declared console-gateway safeguards: single-use
+tokens, server-side credential isolation, and emergency lock support.
+
+- The data is contract evidence, not a live-console, TLS, or endpoint-hardening test.
+- It does not open a console or expose provider credentials.
+
 ## [8.40.0] - 2026-07-29 — Backup and recovery control evidence
 
 Provider Security Posture now surfaces declared backup, restore, drill, and

@@ -8,6 +8,7 @@ describe('provider security posture', () => {
     expect(result.coverage).toEqual({ declaredFeatureCount: 3, states: { supported: 1, conditional: 1, unsupported: 1, unknown: 0 }, readOnly: 1 });
     expect(result.safeguards).toEqual({ declaredPrivilegedFeatureCount: 0, approvalRequired: 0, typedConfirmation: 0, revalidation: 0, postVerification: 0, durableTasks: 0 });
     expect(result.recovery.declaredFeatureCount).toBe(0);
+    expect(result.consoleExposure.state).toBe('unknown');
     expect(result.limitations.join(' ')).toContain('not a security scan');
   });
 });
