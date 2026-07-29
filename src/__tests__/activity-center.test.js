@@ -25,4 +25,15 @@ describe('Provider operation Activity Center presentation helpers', () => {
     expect(page._resourceHref({ provider: { endpointId: 7 }, resource: { kind: 'virtualMachine', id: 'vm-1' } }))
       .toBe('#/virtual-machines/7/vm-1');
   });
+
+  it('B355 prefers backend deep links and summarizes persistent long tasks', () => {
+    expect(page._resourceHref({ links: { resource: '#/virtual-machines/9/vm-safe' } }))
+      .toBe('#/virtual-machines/9/vm-safe');
+    expect(page._summary([
+      { state: 'running', progress: 20, permissions: { canCancel: true } },
+      { state: 'waiting_retry', progress: 60, permissions: { canCancel: false } },
+      { state: 'failed', progress: 30 }, { state: 'unknown', progress: 80 },
+      { state: 'succeeded', progress: 100 },
+    ])).toEqual({ total: 5, active: 2, failed: 2, succeeded: 1, cancellable: 1, averageProgress: 40 });
+  });
 });

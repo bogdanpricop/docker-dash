@@ -84,3 +84,21 @@ describe('DetailShell._pure.shouldRender', () => {
     expect(P.shouldRender(true, true)).toBe(true);
   });
 });
+
+describe('B353 standardized resource detail contract', () => {
+  it('orders the shared operational tabs first and preserves resource-specific tabs', () => {
+    const tabs = P.standardizeTabs([
+      { key: 'overview' }, { key: 'hardware' }, { key: 'events' }, { key: 'tasks' },
+    ]);
+    expect(tabs.map(tab => tab.key)).toEqual([
+      'overview', 'actions', 'tasks', 'events', 'audit', 'hardware',
+    ]);
+    expect(tabs.find(tab => tab.key === 'actions').unavailable).toBe(true);
+  });
+
+  it('deduplicates action blocker explanations', () => {
+    expect(P.actionExplanation({ available: false, blockers: [
+      { message: 'Read-only policy' }, { message: 'Read-only policy' }, { reason: 'VM is stopped' },
+    ] })).toBe('Read-only policy · VM is stopped');
+  });
+});

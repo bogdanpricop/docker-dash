@@ -890,6 +890,13 @@ const Api = {
   resolveProviderOperation(id, resolution, evidence) {
     return this.post(`/operations/${encodeURIComponent(id)}/resolve`, { resolution, evidence });
   },
+  getInfrastructureHome() { return this.get('/experience/home'); },
+  getExperienceNavigation() { return this.get('/experience/navigation'); },
+  getExperienceActionAvailability(hostId, resourceKind, resourceState = '') {
+    const qs = new URLSearchParams({ hostId, resourceKind });
+    if (resourceState) qs.set('resourceState', resourceState);
+    return this.get(`/experience/actions?${qs}`);
+  },
   getProxmoxVM(node, vmid)            { return this.get(`/proxmox/vms/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
   getProxmoxLXC()                     { return this.get('/proxmox/lxc'); },
   getProxmoxLXCInstance(node, vmid)   { return this.get(`/proxmox/lxc/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
@@ -1745,6 +1752,18 @@ const Api = {
   recordEdgeBmcInventory(endpointId, body) { return this.post(`/edge/bmc-endpoints/${endpointId}/inventory`, body); },
   createEdgeBmcRecovery(endpointId, body) { return this.post(`/edge/bmc-endpoints/${endpointId}/recovery-plans`, body); },
   authorizeEdgeBmcRecovery(planId, body) { return this.post(`/edge/bmc-recovery-plans/${planId}/authorize`, body); },
+  declareEdgeDisaster(siteId, body) { return this.post(`/edge/sites/${siteId}/disasters`, body); },
+  resolveEdgeDisaster(declarationId, body) { return this.post(`/edge/disasters/${declarationId}/resolve`, body); },
+  createEdgeBackupSeed(siteId, body) { return this.post(`/edge/sites/${siteId}/backup-seeds`, body); },
+  recordEdgeBackupCheckpoint(seedId, body) { return this.post(`/edge/backup-seeds/${seedId}/checkpoints`, body); },
+  saveEdgeComplianceProfile(siteId, body) { return this.put(`/edge/sites/${siteId}/compliance-profile`, body); },
+  recordEdgeComplianceSnapshot(siteId, body) { return this.post(`/edge/sites/${siteId}/compliance-snapshots`, body); },
+  getEdgeFleetCompliance() { return this.get('/edge/fleet-compliance'); },
+  saveEdgeFaultDomain(siteId, body) { return this.post(`/edge/sites/${siteId}/fault-domains`, body); },
+  assessEdgeFaultDomains(siteId, body) { return this.post(`/edge/sites/${siteId}/fault-domain-assessments`, body); },
+  createEdgeEnrollmentToken(siteId, body) { return this.post(`/edge/sites/${siteId}/enrollment-tokens`, body); },
+  redeemEdgeEnrollment(body) { return this.post('/edge/enrollments/redeem', body); },
+  approveEdgeEnrollment(attestationId, body) { return this.post(`/edge/enrollments/${attestationId}/approve`, body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

@@ -615,6 +615,9 @@ const VirtualMachinesPage = {
     container.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Loading virtual machine…</div>';
     try {
       const detail = await Api.getProviderVMDetail(route.hostId, route.resourceId, false);
+      detail.experienceActions = await Api.getExperienceActionAvailability(
+        route.hostId, 'virtualMachine', detail.resource?.status?.powerState || ''
+      ).catch(() => null);
       this._mountDetail(container, detail, host);
     } catch (err) {
       container.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}
@@ -685,6 +688,17 @@ const VirtualMachinesPage = {
           definition('Observed', Utils.formatDate(value.observedAt)),
         ]);
       } },
+      { key: 'actions', label: 'Actions', icon: 'fa-bolt', render: panel => {
+        const decisions = detail.experienceActions?.decisions || detail.actions || [];
+        panel.innerHTML = `<div class="card" style="padding:16px"><h3 style="margin-top:0">Action availability</h3>
+          <div class="text-muted text-sm" style="margin-bottom:12px">Capability, policy, resource state and endpoint permission are evaluated separately.</div>
+          <div style="display:grid;gap:10px">${decisions.map(decision => {
+            const explanation = DetailShell._pure.actionExplanation(decision);
+            return `<div style="display:flex;justify-content:space-between;gap:16px;padding:10px;background:var(--surface2);border-radius:var(--radius)">
+              <strong>${Utils.escapeHtml(decision.label || decision.action)}</strong>
+              <span class="${decision.available ? 'text-success' : 'text-muted'}" title="${Utils.escapeHtml(explanation)}">${decision.available ? 'Available' : Utils.escapeHtml(explanation)}</span></div>`;
+          }).join('') || '<div class="empty-msg">No actions are exposed by this provider.</div>'}</div></div>`;
+      } },
       { key: 'hardware', label: 'Hardware', icon: 'fa-microchip', render: panel => {
         const value = detail.sections.hardware.data;
         panel.innerHTML = dataGrid([
@@ -700,10 +714,14 @@ const VirtualMachinesPage = {
       { key: 'events', label: 'Events', icon: 'fa-stream', render: panel => { panel.innerHTML = unavailable(detail.sections.events); } },
       { key: 'snapshots', label: 'Snapshots', icon: 'fa-camera', render: panel => { this._mountSnapshots(panel, detail.sections.snapshots, host, vm); } },
       { key: 'tasks', label: 'Tasks', icon: 'fa-tasks', render: panel => { panel.innerHTML = listSection(detail.sections.tasks); } },
+      { key: 'audit', label: 'Audit', icon: 'fa-history', render: panel => {
+        panel.innerHTML = `<div class="empty-msg"><i class="fas fa-shield-alt"></i>Immutable action evidence is retained in Activity Center and the audit log.
+          <div style="margin-top:12px"><a class="btn btn-sm btn-secondary" href="#/activity">Open resource tasks</a> <a class="btn btn-sm btn-secondary" href="#/audit">Open audit log</a></div></div>`;
+      } },
     ];
     this._shell = DetailShell.create({
       resourceKey: 'virtual-machines', id: `${host.id}/${vm.id}`, hashRouting: true,
-      defaultTab: 'overview', tabs,
+      defaultTab: 'overview', tabs, standardTabs: true,
       header: {
         icon: 'fa-desktop', title: vm.displayName,
         subtitle: `${this._providerLabel(host.daemonType)} · ${host.name} · ${vm.id}`,

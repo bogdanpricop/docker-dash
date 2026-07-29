@@ -171,11 +171,11 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
-| V6.1 | Unified application view | B301–B325, B351–B375 | V6.1a livrează B317–B325: metrics/policy/GitOps, lifecycle, modernization, provenance și environment unificat; B351–B375 rămân în loturile următoare |
+| V6.1 | Unified application view | B301–B325, B351–B375 | V6.1a livrează B317–B325; V6.1b livrează B351–B355: home/navigation/detail/actions/activity comune; B356–B375 rămân în loturile următoare |
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
-| V6.5 | Edge/disconnected/sovereign | B326–B350 | V6.5a livrează B326–B335; V6.5b livrează B336–B345: residency, identity/vault local, single-node/quorum/reservations, console, remote-hands și BMC; B346–B350 rămân planificate |
+| V6.5 | Edge/disconnected/sovereign | B326–B350 | Complet: V6.5a livrează B326–B335, V6.5b B336–B345, iar V6.5c B346–B350: disaster freeze, backup seeding, compliance, fault domains și zero-touch enrollment |
 | V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
 | V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
 

@@ -17,7 +17,9 @@ const DashboardPage = {
     // Render a vSphere-specific summary for that host instead.
     const _curHost = await this._resolveCurrentHost();
     if (_curHost && _curHost.daemonType === 'vsphere') {
-      return this._renderVSphereDashboard(container, _curHost);
+      this._renderVSphereDashboard(container, _curHost);
+      this._loadInfrastructureHome(container);
+      return;
     }
 
     container.innerHTML = `
@@ -172,6 +174,7 @@ const DashboardPage = {
     this._restoreWidgetOrder();
 
     this._loadComposeFirstBanner();
+    this._loadInfrastructureHome(container);
     await this._load();
     this._loadPosturePill();
     this._refreshTimer = setInterval(() => this._load(), 30000);
@@ -188,6 +191,42 @@ const DashboardPage = {
         this._appendHistory(overview);
       }
     });
+  },
+
+  async _loadInfrastructureHome(container) {
+    let target = container.querySelector('#infrastructure-home');
+    if (!target) {
+      target = document.createElement('div');
+      target.id = 'infrastructure-home';
+      target.style.marginBottom = '16px';
+      container.querySelector('.page-header')?.insertAdjacentElement('afterend', target);
+    }
+    target.innerHTML = '<div class="card" style="padding:12px"><i class="fas fa-spinner fa-spin"></i> Loading unified infrastructure health…</div>';
+    try {
+      const data = await Api.getInfrastructureHome();
+      if (!target.isConnected) return;
+      const endpointHealth = data.endpoints?.health || {};
+      const workload = data.workloads || {};
+      const cost = data.cost?.amount == null ? 'Not rated' : `${data.cost.amount.toFixed(2)} ${Utils.escapeHtml(data.cost.currency || '')}`;
+      const stateLabel = item => item?.state === 'unknown' || item?.state === 'partial'
+        ? `${item.count} · ${item.state}` : `${item?.count ?? 0}`;
+      target.innerHTML = `<div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div><strong><i class="fas fa-layer-group" style="margin-right:7px"></i>Unified infrastructure</strong>
+          <div class="text-muted text-sm">Permission-filtered persisted evidence; unknown coverage stays explicit</div></div>
+          <a class="btn btn-sm btn-secondary" href="#/activity">${data.operations?.active || 0} active task(s)</a></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">
+          <div><span class="text-muted text-sm">Endpoints</span><br><strong>${data.endpoints?.total || 0}</strong> <span class="text-muted text-sm">${endpointHealth.healthy || 0} healthy · ${endpointHealth.unhealthy || 0} unhealthy · ${endpointHealth.unknown || 0} unknown</span></div>
+          <div><span class="text-muted text-sm">Virtual machines</span><br><strong>${Utils.escapeHtml(stateLabel(workload.virtualMachines))}</strong></div>
+          <div><span class="text-muted text-sm">Containers</span><br><strong>${Utils.escapeHtml(stateLabel(workload.containers))}</strong></div>
+          <div><span class="text-muted text-sm">Kubernetes endpoints</span><br><strong>${Utils.escapeHtml(stateLabel(workload.kubernetes))}</strong></div>
+          <div><span class="text-muted text-sm">Open risks</span><br><strong>${data.risks?.count || 0}</strong></div>
+          <div><span class="text-muted text-sm">Latest rated cost</span><br><strong>${cost}</strong></div>
+        </div>
+        ${(data.recentChanges || []).length ? `<div class="text-muted text-sm" style="margin-top:12px">Recent: ${(data.recentChanges || []).slice(0, 3).map(item => `<a href="${item.deepLink}">${Utils.escapeHtml(item.action)} · ${Utils.escapeHtml(item.state)}</a>`).join(' · ')}</div>` : ''}
+      </div>`;
+    } catch {
+      if (target.isConnected) target.innerHTML = '<div class="card text-muted text-sm" style="padding:12px">Unified infrastructure evidence is temporarily unavailable.</div>';
+    }
   },
 
   async _loadComposeFirstBanner() {

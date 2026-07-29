@@ -39,6 +39,16 @@ function _decorate(req, operation) {
   const operator = role === 'admin' || role === 'operator';
   return {
     ...operation,
+    links: {
+      self: `/api/operations/${operation.id}`,
+      events: `/api/operations/${operation.id}/events`,
+      activity: `#/activity/${operation.id}`,
+      resource: operation.resource?.kind === 'artifact'
+        ? '#/virtualization-catalog'
+        : operation.resource?.kind === 'virtualMachine'
+          ? `#/virtual-machines/${operation.provider?.endpointId}/${operation.resource?.id}`
+          : `#/activity/${operation.id}`,
+    },
     permissions: {
       canCancel: operator && CANCEL_REQUESTABLE_STATES.has(operation.state)
         && _canAccess(req, operation, 'operate'),

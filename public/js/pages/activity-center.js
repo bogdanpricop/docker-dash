@@ -21,6 +21,7 @@ const ActivityCenterPage = {
   },
 
   _resourceHref(operation) {
+    if (operation.links?.resource) return operation.links.resource;
     if (operation.resource?.kind === 'artifact') return '#/virtualization-catalog';
     return `#/virtual-machines/${operation.provider?.endpointId}/${operation.resource?.id}`;
   },
@@ -41,7 +42,7 @@ const ActivityCenterPage = {
           ${['queued', 'running', 'waiting_retry', 'reconciling', 'cancel_requested', 'succeeded', 'failed', 'cancelled', 'unknown']
             .map(state => `<option value="${state}">${state.replaceAll('_', ' ')}</option>`).join('')}</select>
         <span class="text-muted text-sm" id="activity-count" style="align-self:center"></span>
-      </div><div id="activity-list"></div><div id="activity-detail" style="margin-top:16px"></div>`;
+      </div><div class="stat-cards" id="activity-summary" style="margin-bottom:16px"></div><div id="activity-list"></div><div id="activity-detail" style="margin-top:16px"></div>`;
     container.querySelector('#activity-refresh').addEventListener('click', () => this._load());
     container.querySelector('#activity-host').addEventListener('change', () => this._load());
     container.querySelector('#activity-state').addEventListener('change', () => this._load());
@@ -78,6 +79,7 @@ const ActivityCenterPage = {
       item.id, item.type, item.action, item.provider?.type, item.provider?.endpointId,
       item.resource?.id, this._ownerLabel(item), item.state,
     ].some(value => String(value || '').toLowerCase().includes(needle))) : this._items;
+    this._renderSummary();
     const count = document.getElementById('activity-count');
     if (count) count.textContent = needle ? `${items.length} of ${this._items.length} operation(s)` : `${items.length} operation(s)`;
     if (!items.length) {
@@ -101,6 +103,30 @@ const ActivityCenterPage = {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
       });
     });
+  },
+
+  _summary(items = this._items) {
+    const activeStates = new Set(['queued', 'running', 'waiting_retry', 'reconciling', 'cancel_requested']);
+    const active = items.filter(item => activeStates.has(item.state));
+    return {
+      total: items.length, active: active.length,
+      failed: items.filter(item => ['failed', 'unknown'].includes(item.state)).length,
+      succeeded: items.filter(item => item.state === 'succeeded').length,
+      cancellable: items.filter(item => item.permissions?.canCancel).length,
+      averageProgress: active.length ? Math.round(active.reduce((sum, item) => sum + (item.progress || 0), 0) / active.length) : 0,
+    };
+  },
+
+  _renderSummary() {
+    const target = document.getElementById('activity-summary');
+    if (!target) return;
+    const value = this._summary();
+    target.innerHTML = [
+      ['Active', `${value.active}`, `${value.averageProgress}% average progress`, 'fa-spinner'],
+      ['Failed / unknown', `${value.failed}`, 'Needs operator attention', 'fa-exclamation-triangle'],
+      ['Succeeded', `${value.succeeded}`, `${value.total} retained operations`, 'fa-check-circle'],
+      ['Cancellable', `${value.cancellable}`, 'Safe cancellation available', 'fa-stop-circle'],
+    ].map(item => `<div class="stat-card"><div class="stat-icon blue"><i class="fas ${item[3]}"></i></div><div class="stat-body"><div class="stat-value">${item[1]}</div><div class="stat-label">${item[0]}</div><div class="text-muted text-sm">${item[2]}</div></div></div>`).join('');
   },
 
   async _cancelOperation(operation) {

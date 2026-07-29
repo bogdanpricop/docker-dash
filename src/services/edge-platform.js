@@ -12,7 +12,7 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const FINGERPRINT = /^(?:sha256:)?[a-f0-9]{64}$/;
 const SECRET_KEY = /password|token|private.?key|user.?data|network.?data|secret(?!.*ref)|credential(?!.*ref)|authorization|cookie/i;
 const OFFLINE_ACTIONS = new Set(['host.health_check','host.collect_inventory','service.restart','vm.power_on','vm.power_off']);
-const RUNBOOKS = new Set(['collect_inventory','restart_managed_service','rotate_logs','validate_backup','network_diagnostics']);
+const RUNBOOKS = new Set(['collect_inventory','restart_managed_service','rotate_logs','validate_backup','network_diagnostics','disaster_assessment']);
 const CATEGORIES = ['inventory','event','metric','artifact'];
 const ARTIFACT_KINDS = new Set(['certificate','package','docs','agent','image']);
 const CONTENT_KINDS = new Set(['oci','iso','template','package','docs']);
@@ -23,6 +23,8 @@ const VAULT_KINDS = new Set(['hashicorp_vault','cyberark','local_tpm','kubernete
 const VAULT_AUTH = new Set(['mtls','workload_identity','tpm_attestation','service_account']);
 const CONSOLE_TRANSPORTS = new Set(['serial','text','html5']);
 const BMC_ACTIONS = new Set(['power_cycle','power_on','power_off','nmi','boot_once']);
+const COMPLIANCE_CONTROLS = new Set(['agent_version','connectivity','residency','backup','quorum','bmc_firmware']);
+const FAULT_DOMAIN_TYPES = ['rack','power','network','storage'];
 
 class EdgePlatformError extends Error {
   constructor(message, status = 400, code = 'EDGE_PLATFORM_ERROR', details) {
@@ -94,10 +96,16 @@ class EdgePlatformService {
   }
   _site(id) { const row = this._db().prepare('SELECT * FROM edge_sites WHERE id=?').get(integer(id, 'siteId', 1));
     if (!row) throw fail('Edge site not found', 404, 'EDGE_SITE_NOT_FOUND'); return row; }
+  _ensureSiteMutable(siteId) {
+    const declaration = this._db().prepare("SELECT id,declaration_hash FROM edge_disaster_declarations WHERE site_id=? AND state='active' ORDER BY id DESC LIMIT 1").get(siteId);
+    if (declaration) throw fail('Site mutations are frozen by an active disaster declaration', 423, 'EDGE_SITE_DISASTER_FREEZE',
+      { declarationId: declaration.id, declarationHash: declaration.declaration_hash });
+  }
   _siteTrustRoots(site) { return new Set(parse(site.trust_roots_json, [])); }
   _siteRow(row) {
     if (!row) return null; const db = this._db(); const policy = db.prepare('SELECT * FROM edge_connectivity_policies WHERE site_id=?').get(row.id);
     const last = db.prepare('SELECT * FROM edge_heartbeats WHERE site_id=? ORDER BY observed_at DESC,id DESC LIMIT 1').get(row.id);
+    const disaster = db.prepare("SELECT * FROM edge_disaster_declarations WHERE site_id=? AND state='active' ORDER BY id DESC LIMIT 1").get(row.id);
     const now = Date.now(); const maxStale = Number(policy?.max_staleness_seconds || 300);
     const ageSeconds = last ? Math.max(0, Math.floor((now - Date.parse(last.observed_at)) / 1000)) : null;
     const expected = policy?.expected_offline_until && Date.parse(policy.expected_offline_until) > now;
@@ -112,7 +120,10 @@ class EdgePlatformService {
         expectedOfflineUntil: policy.expected_offline_until, policyHash: policy.policy_hash } : null,
       heartbeat: last ? { agentId: last.agent_id, sequence: last.sequence, status: last.status, version: last.version,
         capabilities: parse(last.capabilities_json, []), observedAt: last.observed_at, ageSeconds } : null,
-      health, expectedDisconnect: !!expected, createdAt: row.created_at, updatedAt: row.updated_at };
+      health: disaster ? 'disaster' : health, expectedDisconnect: !!expected,
+      disaster: disaster ? { id: disaster.id, severity: disaster.severity, ticketRef: disaster.ticket_ref,
+        declarationHash: disaster.declaration_hash, mutationFreeze: true, declaredAt: disaster.declared_at } : null,
+      createdAt: row.created_at, updatedAt: row.updated_at };
   }
 
   saveSite(body = {}, actor) {
@@ -197,7 +208,7 @@ class EdgePlatformService {
   cacheEntries(siteId, actor) { this._admin(actor); const site = this._site(siteId); return this._db().prepare('SELECT * FROM edge_read_cache_entries WHERE site_id=? ORDER BY id DESC LIMIT 200').all(site.id).map(row => this._cacheRow(row)); }
 
   createIntent(siteId, body = {}, actor) {
-    this._admin(actor); secretFree(body, 'intent'); const site = this._site(siteId); const db = this._db(); const policy = db.prepare('SELECT * FROM edge_connectivity_policies WHERE site_id=?').get(site.id);
+    this._admin(actor); secretFree(body, 'intent'); const site = this._site(siteId); this._ensureSiteMutable(site.id); const db = this._db(); const policy = db.prepare('SELECT * FROM edge_connectivity_policies WHERE site_id=?').get(site.id);
     if (policy?.mutation_mode !== 'queue') throw fail('Connectivity policy denies offline mutation queueing', 409, 'EDGE_MUTATION_QUEUE_DISABLED');
     const actionKey = String(body.actionKey || ''); if (!OFFLINE_ACTIONS.has(actionKey)) throw fail('actionKey is not allowlisted');
     const targetRef = reference(body.targetRef, 'targetRef'); const payload = object(body.payload); secretFree(payload, 'payload'); bounded(payload, 'payload', 128 * 1024);
@@ -219,7 +230,7 @@ class EdgePlatformService {
       createdAt: row.created_at, updatedAt: row.updated_at }; }
   revalidateIntent(id, body = {}, actor) {
     this._admin(actor); secretFree(body, 'revalidation'); const db = this._db(); const row = db.prepare('SELECT * FROM edge_offline_intents WHERE id=?').get(integer(id, 'intentId', 1));
-    if (!row) throw fail('Offline intent not found', 404, 'EDGE_INTENT_NOT_FOUND'); if (row.state === 'cancelled') throw fail('Offline intent is cancelled', 409);
+    if (!row) throw fail('Offline intent not found', 404, 'EDGE_INTENT_NOT_FOUND'); this._ensureSiteMutable(row.site_id); if (row.state === 'cancelled') throw fail('Offline intent is cancelled', 409);
     const normalized = { siteId: row.site_id, actionKey: row.action_key, targetRef: row.target_ref, payloadHash: row.payload_hash,
       prerequisites: parse(row.prerequisites_json, []), expiresAt: row.expires_at };
     const expected = this._sign('offline-intent', normalized); if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(row.signature))) throw fail('Offline intent signature is invalid', 409, 'EDGE_INTENT_SIGNATURE_INVALID');
@@ -254,7 +265,7 @@ class EdgePlatformService {
   heartbeat(siteId, body = {}, actor) {
     this._admin(actor); secretFree(body, 'heartbeat'); const site = this._site(siteId); const db = this._db(); const agentId = slug(body.agentId, 'agentId');
     const agent = db.prepare('SELECT * FROM edge_agents WHERE site_id=? AND agent_id=?').get(site.id, agentId);
-    if (!agent || agent.state !== 'active') throw fail('Active edge agent profile not found', 409, 'EDGE_AGENT_NOT_ACTIVE');
+    if (!agent || agent.state !== 'active') throw fail('Active edge agent profile not found', 409, 'EDGE_AGENT_NOT_ACTIVE'); this._ensureSiteMutable(agent.site_id);
     const sequence = integer(body.sequence, 'sequence', 0); if (agent.last_sequence != null && sequence <= agent.last_sequence) throw fail('Heartbeat sequence is not monotonic', 409, 'EDGE_HEARTBEAT_REPLAY');
     const status = String(body.status || 'healthy'); if (!['healthy','degraded','maintenance'].includes(status)) throw fail('status is invalid');
     const version = body.version ? text(body.version, 'version', 100, SAFE_VERSION) : null;
@@ -269,7 +280,7 @@ class EdgePlatformService {
     })();
     return { id: Number(saved), siteId: site.id, agentId, sequence, status, version, capabilities, observedAt,
       receivedAt: db.prepare('SELECT received_at FROM edge_heartbeats WHERE id=?').get(saved).received_at,
-      transport: 'authenticated_admin_ingest_until_zero_touch_enrollment', evidenceHash };
+      transport: 'admin_ingest_or_external_mtls_gateway', evidenceHash };
   }
 
   saveSyncPolicy(siteId, body = {}, actor) {
@@ -373,7 +384,7 @@ class EdgePlatformService {
 
   planAgentUpdate(agentRecordId, body = {}, actor) {
     this._admin(actor); secretFree(body, 'updatePlan'); const db = this._db(); const agent = db.prepare('SELECT * FROM edge_agents WHERE id=?').get(integer(agentRecordId, 'agentId', 1));
-    if (!agent) throw fail('Edge agent not found', 404, 'EDGE_AGENT_NOT_FOUND'); const site = this._site(agent.site_id); const roots = this._siteTrustRoots(site);
+    if (!agent) throw fail('Edge agent not found', 404, 'EDGE_AGENT_NOT_FOUND'); this._ensureSiteMutable(agent.site_id); const site = this._site(agent.site_id); const roots = this._siteTrustRoots(site);
     const targetVersion = text(body.targetVersion, 'targetVersion', 100, SAFE_VERSION); const bundleInput = object(body.bundle);
     const bundle = { digest: String(bundleInput.digest || '').toLowerCase(), localRef: reference(bundleInput.localRef, 'bundle.localRef'),
       signatureIdentity: reference(bundleInput.signatureIdentity, 'bundle.signatureIdentity'), signatureVerified: bundleInput.signatureVerified === true };
@@ -558,7 +569,7 @@ class EdgePlatformService {
     configHash: row.config_hash, credentialsStoredCentrally: false, createdAt: row.created_at }; }
   createSecretResolutionPlan(adapterId, body = {}, actor) {
     this._admin(actor); secretFree(body, 'secretResolution'); const db = this._db(); const adapter = db.prepare('SELECT * FROM edge_vault_adapters WHERE id=?').get(integer(adapterId, 'adapterId', 1));
-    if (!adapter || adapter.state !== 'active') throw fail('Active site-local vault adapter not found', 409, 'EDGE_VAULT_NOT_ACTIVE');
+    if (!adapter || adapter.state !== 'active') throw fail('Active site-local vault adapter not found', 409, 'EDGE_VAULT_NOT_ACTIVE'); this._ensureSiteMutable(adapter.site_id);
     const agent = db.prepare("SELECT * FROM edge_agents WHERE id=? AND site_id=? AND state='active'").get(integer(body.agentRecordId, 'agentRecordId', 1), adapter.site_id);
     if (!agent) throw fail('Active agent at the same site is required', 409, 'EDGE_AGENT_NOT_ACTIVE'); const purpose = reference(body.purpose, 'purpose');
     if (!parse(adapter.allowed_purposes_json, []).includes(purpose)) throw fail('purpose is not allowlisted', 403, 'EDGE_SECRET_PURPOSE_DENIED');
@@ -750,7 +761,7 @@ class EdgePlatformService {
     if (!approval.decided_by || approval.decided_by === row.requested_by || approval.decided_by !== actor.id) throw fail('Four-eyes approval by this administrator is required', 409, 'FOUR_EYES_REQUIRED');
   }
   createRemoteHandsPlan(siteId, body = {}, actor) {
-    this._admin(actor); secretFree(body, 'remoteHands'); const site = this._site(siteId); const db = this._db(); const targetRef = reference(body.targetRef, 'targetRef');
+    this._admin(actor); secretFree(body, 'remoteHands'); const site = this._site(siteId); this._ensureSiteMutable(site.id); const db = this._db(); const targetRef = reference(body.targetRef, 'targetRef');
     const checklist = safeList(body.checklist || [], 'checklist', 30); if (!checklist.length) throw fail('checklist is required');
     const bmcEndpointId = body.bmcEndpointId == null ? null : integer(body.bmcEndpointId, 'bmcEndpointId', 1);
     if (bmcEndpointId && !db.prepare('SELECT 1 FROM edge_bmc_endpoints WHERE id=? AND site_id=?').get(bmcEndpointId, site.id)) throw fail('BMC endpoint is not at this site', 409, 'EDGE_BMC_SITE_MISMATCH');
@@ -769,7 +780,7 @@ class EdgePlatformService {
   }
   authorizeRemoteHands(id, body = {}, actor) {
     this._admin(actor); secretFree(body, 'remoteHandsAuthorization'); const db = this._db(); const row = db.prepare('SELECT * FROM edge_remote_hands_plans WHERE id=?').get(integer(id, 'planId', 1));
-    if (!row) throw fail('Remote-hands plan not found', 404, 'EDGE_REMOTE_HANDS_NOT_FOUND'); if (row.state !== 'pending_approval') throw fail('Remote-hands plan is not pending approval', 409, 'EDGE_REMOTE_HANDS_CLOSED');
+    if (!row) throw fail('Remote-hands plan not found', 404, 'EDGE_REMOTE_HANDS_NOT_FOUND'); this._ensureSiteMutable(row.site_id); if (row.state !== 'pending_approval') throw fail('Remote-hands plan is not pending approval', 409, 'EDGE_REMOTE_HANDS_CLOSED');
     if (body.confirmation !== row.target_ref) throw fail('Typed confirmation must exactly match targetRef', 409, 'CONFIRMATION_MISMATCH');
     this._approvedPlan(row, 'edge.remote_hands.authorize', row.target_ref, body, actor);
     db.prepare("UPDATE edge_remote_hands_plans SET state='ready_for_local_operator',authorized_by=?,authorized_at=datetime('now') WHERE id=?").run(actor.id, row.id);
@@ -784,7 +795,7 @@ class EdgePlatformService {
 
   createBmcRecoveryPlan(endpointId, body = {}, actor) {
     this._admin(actor); secretFree(body, 'bmcRecovery'); const db = this._db(); const endpoint = db.prepare('SELECT * FROM edge_bmc_endpoints WHERE id=?').get(integer(endpointId, 'endpointId', 1));
-    if (!endpoint || endpoint.state !== 'active') throw fail('Active BMC endpoint not found', 409, 'EDGE_BMC_NOT_ACTIVE'); const actionKey = String(body.actionKey || '');
+    if (!endpoint || endpoint.state !== 'active') throw fail('Active BMC endpoint not found', 409, 'EDGE_BMC_NOT_ACTIVE'); this._ensureSiteMutable(endpoint.site_id); const actionKey = String(body.actionKey || '');
     if (!BMC_ACTIONS.has(actionKey)) throw fail('actionKey is invalid'); const safeguards = { targetIdentityMatched: body.safeguards?.targetIdentityMatched === true,
       fencingVerified: body.safeguards?.fencingVerified === true, quorumSafe: body.safeguards?.quorumSafe === true,
       workloadsEvacuated: body.safeguards?.workloadsEvacuated === true, recentBackupVerified: body.safeguards?.recentBackupVerified === true };
@@ -806,7 +817,7 @@ class EdgePlatformService {
   authorizeBmcRecovery(id, body = {}, actor) {
     this._admin(actor); secretFree(body, 'bmcRecoveryAuthorization'); const db = this._db(); const row = db.prepare(`SELECT p.*,e.endpoint_ref
       FROM edge_bmc_recovery_plans p JOIN edge_bmc_endpoints e ON e.id=p.bmc_endpoint_id WHERE p.id=?`).get(integer(id, 'planId', 1));
-    if (!row) throw fail('BMC recovery plan not found', 404, 'EDGE_BMC_RECOVERY_NOT_FOUND'); if (row.state !== 'pending_approval') throw fail('BMC recovery plan is not pending approval', 409, 'EDGE_BMC_RECOVERY_BLOCKED');
+    if (!row) throw fail('BMC recovery plan not found', 404, 'EDGE_BMC_RECOVERY_NOT_FOUND'); this._ensureSiteMutable(db.prepare('SELECT site_id FROM edge_bmc_endpoints WHERE id=?').get(row.bmc_endpoint_id).site_id); if (row.state !== 'pending_approval') throw fail('BMC recovery plan is not pending approval', 409, 'EDGE_BMC_RECOVERY_BLOCKED');
     if (body.confirmation !== row.endpoint_ref) throw fail('Typed confirmation must exactly match the BMC endpoint reference', 409, 'CONFIRMATION_MISMATCH');
     this._approvedPlan(row, `edge.bmc.${row.action_key}`, row.endpoint_ref, body, actor);
     db.prepare("UPDATE edge_bmc_recovery_plans SET state='ready_for_edge_agent',authorized_by=?,authorized_at=datetime('now') WHERE id=?").run(actor.id, row.id);
@@ -818,6 +829,247 @@ class EdgePlatformService {
     state: Date.parse(row.expires_at) <= Date.now() && ['pending_approval','ready_for_edge_agent'].includes(row.state) ? 'expired' : row.state,
     requestedBy: row.requested_by, authorizedBy: row.authorized_by, executionLocation: 'edge_agent', credentialResolution: 'site_local_vault',
     centralBmcExecutionSupported: false, providerMutationsStarted: 0, createdAt: row.created_at }; }
+
+  declareDisaster(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'disaster'); const site = this._site(siteId); const db = this._db();
+    if (db.prepare("SELECT 1 FROM edge_disaster_declarations WHERE site_id=? AND state='active'").get(site.id)) throw fail('Site already has an active disaster declaration', 409, 'EDGE_DISASTER_ACTIVE');
+    const severity = body.severity; if (!['major','critical'].includes(severity)) throw fail('severity must be major or critical');
+    const reason = text(body.reason, 'reason', 1000); const ticketRef = reference(body.ticketRef, 'ticketRef');
+    if (!Array.isArray(body.notifications) || !body.notifications.length || body.notifications.length > 20) throw fail('notifications must contain 1-20 entries');
+    const notifications = body.notifications.map((item, index) => { const channel = item?.channel;
+      if (!['local_banner','email','sms','webhook'].includes(channel)) throw fail(`notifications[${index}].channel is invalid`);
+      return { channel, recipientRef: reference(item.recipientRef, `notifications[${index}].recipientRef`) }; });
+    if (!notifications.some(item => item.channel === 'local_banner')) notifications.unshift({ channel: 'local_banner', recipientRef: `site/${site.slug}` });
+    const expiresAt = timestamp(body.runbookExpiresAt, 'runbookExpiresAt', { future: true, maxFutureMs: 24 * 3600000 });
+    let declaration; db.transaction(() => {
+      const envelope = this.createRunbookEnvelope(body.agentRecordId, { runbookKey: 'disaster_assessment', targetRef: `site/${site.slug}`,
+        parameters: { severity, ticketRef }, expiresAt }, actor);
+      const normalized = { siteId: site.id, severity, reason, ticketRef, notifications, runbookEnvelopeId: envelope.id,
+        runbookEnvelopeHash: envelope.envelopeHash, mutationFreeze: true }; const declarationHash = hash(normalized);
+      const signature = this._sign('disaster-declaration', normalized); const saved = db.prepare(`INSERT INTO edge_disaster_declarations
+        (site_id,severity,reason,ticket_ref,notification_refs_json,runbook_envelope_id,declaration_hash,signature,declared_by)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(site.id, severity, reason, ticketRef, stable(notifications), envelope.id, declarationHash, signature, actor.id);
+      const id = Number(saved.lastInsertRowid); const insert = db.prepare(`INSERT INTO edge_disaster_notification_outbox
+        (declaration_id,channel,recipient_ref,payload_hash) VALUES (?,?,?,?)`);
+      for (const notification of notifications) insert.run(id, notification.channel, notification.recipientRef,
+        hash({ declarationHash, ...notification, severity, ticketRef }));
+      declaration = this._disasterRow(db.prepare('SELECT * FROM edge_disaster_declarations WHERE id=?').get(id));
+    })(); return declaration;
+  }
+  resolveDisaster(id, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'disasterResolution'); const db = this._db(); const row = db.prepare('SELECT * FROM edge_disaster_declarations WHERE id=?').get(integer(id, 'declarationId', 1));
+    if (!row) throw fail('Disaster declaration not found', 404, 'EDGE_DISASTER_NOT_FOUND'); if (row.state !== 'active') return this._disasterRow(row);
+    if (row.declared_by === actor.id) throw fail('A different administrator must resolve the disaster freeze', 409, 'FOUR_EYES_REQUIRED');
+    const site = this._site(row.site_id); if (body.confirmation !== site.slug) throw fail('Typed confirmation must exactly match the site slug', 409, 'CONFIRMATION_MISMATCH');
+    const evidence = object(body.evidence); secretFree(evidence, 'evidence'); bounded(evidence, 'evidence', 64 * 1024);
+    const resolutionEvidenceHash = hash({ declarationHash: row.declaration_hash, evidence });
+    db.prepare("UPDATE edge_disaster_declarations SET state='resolved',resolved_by=?,resolution_evidence_hash=?,resolved_at=datetime('now') WHERE id=?")
+      .run(actor.id, resolutionEvidenceHash, row.id); return this._disasterRow(db.prepare('SELECT * FROM edge_disaster_declarations WHERE id=?').get(row.id));
+  }
+  _disasterRow(row) { return row && { id: row.id, siteId: row.site_id, severity: row.severity, reason: row.reason,
+    ticketRef: row.ticket_ref, notifications: parse(row.notification_refs_json, []), runbookEnvelopeId: row.runbook_envelope_id,
+    mutationFreeze: true, declarationHash: row.declaration_hash, signature: row.signature, state: row.state,
+    declaredBy: row.declared_by, resolvedBy: row.resolved_by, resolutionEvidenceHash: row.resolution_evidence_hash,
+    externalNotificationDeliveryStarted: false, declaredAt: row.declared_at, resolvedAt: row.resolved_at }; }
+
+  createBackupSeed(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'backupSeed'); const site = this._site(siteId); this._ensureSiteMutable(site.id);
+    if (!Array.isArray(body.chunks) || !body.chunks.length || body.chunks.length > 10000) throw fail('chunks must contain 1-10000 entries');
+    const chunks = body.chunks.map((item, index) => { const digest = String(item?.digest || '').toLowerCase(); if (!DIGEST.test(digest)) throw fail(`chunks[${index}].digest must use sha256`);
+      return { index: integer(item.index, `chunks[${index}].index`, 0, 9999), digest,
+        bytes: integer(item.bytes, `chunks[${index}].bytes`, 1, 1024 ** 4), verified: item.verified === true }; });
+    if (chunks.some((item, index) => item.index !== index)) throw fail('chunk indexes must be contiguous from zero');
+    const baseBackupDigest = String(body.baseBackupDigest || '').toLowerCase(); if (!DIGEST.test(baseBackupDigest)) throw fail('baseBackupDigest must use sha256');
+    const totalBytes = chunks.reduce((sum, item) => sum + item.bytes, 0); const expiresAt = timestamp(body.expiresAt, 'expiresAt', { future: true, maxFutureMs: 30 * 86400000 });
+    const normalized = { siteId: site.id, datasetRef: reference(body.datasetRef, 'datasetRef'), baseBackupRef: reference(body.baseBackupRef, 'baseBackupRef'),
+      baseBackupDigest, chunks, encryptionKeyRef: reference(body.encryptionKeyRef, 'encryptionKeyRef'), mediaRef: reference(body.mediaRef, 'mediaRef'),
+      totalBytes, expiresAt }; const manifestHash = hash(normalized); const signature = this._sign('backup-seed', normalized); const db = this._db();
+    const existing = db.prepare('SELECT * FROM edge_backup_seed_manifests WHERE manifest_hash=?').get(manifestHash);
+    if (existing) return { ...this._backupSeedRow(existing), duplicate: true };
+    const state = chunks.every(item => item.verified) ? 'ready' : 'blocked'; const saved = db.prepare(`INSERT INTO edge_backup_seed_manifests
+      (site_id,dataset_ref,base_backup_ref,base_backup_digest,chunks_json,encryption_key_ref,media_ref,total_bytes,expires_at,manifest_hash,signature,state,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(site.id, normalized.datasetRef, normalized.baseBackupRef, baseBackupDigest, stable(chunks),
+        normalized.encryptionKeyRef, normalized.mediaRef, totalBytes, expiresAt, manifestHash, signature, state, actor.id);
+    return { ...this._backupSeedRow(db.prepare('SELECT * FROM edge_backup_seed_manifests WHERE id=?').get(saved.lastInsertRowid)), duplicate: false };
+  }
+  recordBackupSeedCheckpoint(seedId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'backupSeedCheckpoint'); const db = this._db(); const seed = db.prepare('SELECT * FROM edge_backup_seed_manifests WHERE id=?').get(integer(seedId, 'seedId', 1));
+    if (!seed) throw fail('Backup seed not found', 404, 'EDGE_BACKUP_SEED_NOT_FOUND'); this._ensureSiteMutable(seed.site_id);
+    if (seed.state === 'blocked') throw fail('Blocked backup seed cannot accept checkpoints', 409, 'EDGE_BACKUP_SEED_BLOCKED');
+    const chunks = parse(seed.chunks_json, []); const last = db.prepare('SELECT * FROM edge_backup_seed_checkpoints WHERE seed_id=? ORDER BY sequence DESC LIMIT 1').get(seed.id);
+    const sequence = integer(body.sequence, 'sequence', 0); if (last && sequence <= last.sequence) throw fail('Checkpoint sequence must strictly increase', 409, 'EDGE_BACKUP_CHECKPOINT_REPLAY');
+    const completedChunk = integer(body.completedChunk, 'completedChunk', 0, chunks.length - 1);
+    if (last && completedChunk < last.completed_chunk) throw fail('completedChunk may not move backwards', 409, 'EDGE_BACKUP_CHECKPOINT_REPLAY');
+    const transferredBytes = integer(body.transferredBytes, 'transferredBytes', 0, seed.total_bytes);
+    if (last && transferredBytes < last.transferred_bytes) throw fail('transferredBytes may not move backwards', 409, 'EDGE_BACKUP_CHECKPOINT_REPLAY');
+    const rollingDigest = String(body.rollingDigest || '').toLowerCase(); const mediaIdentityHash = String(body.mediaIdentityHash || '').toLowerCase();
+    if (!DIGEST.test(rollingDigest) || !DIGEST.test(mediaIdentityHash)) throw fail('rollingDigest and mediaIdentityHash must use sha256');
+    const continuationCursor = reference(body.continuationCursor, 'continuationCursor'); const complete = completedChunk === chunks.length - 1 && transferredBytes === seed.total_bytes;
+    const normalized = { seedId: seed.id, sequence, completedChunk, transferredBytes, continuationCursor, rollingDigest, mediaIdentityHash,
+      state: complete ? 'complete' : 'in_progress' }; const checkpointHash = hash(normalized); const saved = db.transaction(() => {
+      const result = db.prepare(`INSERT INTO edge_backup_seed_checkpoints
+        (seed_id,sequence,completed_chunk,transferred_bytes,continuation_cursor,rolling_digest,media_identity_hash,state,checkpoint_hash,reported_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(seed.id, sequence, completedChunk, transferredBytes, continuationCursor, rollingDigest,
+          mediaIdentityHash, normalized.state, checkpointHash, actor.id);
+      if (complete) db.prepare("UPDATE edge_backup_seed_manifests SET state='complete' WHERE id=?").run(seed.id); return result.lastInsertRowid;
+    })(); const row = db.prepare('SELECT * FROM edge_backup_seed_checkpoints WHERE id=?').get(saved);
+    return { id: row.id, seedId: row.seed_id, sequence: row.sequence, completedChunk: row.completed_chunk,
+      transferredBytes: row.transferred_bytes, continuationCursor: row.continuation_cursor, rollingDigest: row.rolling_digest,
+      mediaIdentityHash: row.media_identity_hash, state: row.state, checkpointHash: row.checkpoint_hash,
+      continuationSupported: true, transferPerformedByApi: false, reportedAt: row.reported_at };
+  }
+  _backupSeedRow(row) { return row && { id: row.id, siteId: row.site_id, datasetRef: row.dataset_ref,
+    baseBackupRef: row.base_backup_ref, baseBackupDigest: row.base_backup_digest, chunks: parse(row.chunks_json, []),
+    encryptionKeyRef: row.encryption_key_ref, mediaRef: row.media_ref, totalBytes: row.total_bytes, expiresAt: row.expires_at,
+    manifestHash: row.manifest_hash, signature: row.signature, state: row.state, transferStarted: false, createdAt: row.created_at }; }
+
+  saveComplianceProfile(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'complianceProfile'); const site = this._site(siteId);
+    const requiredControls = safeList(body.requiredControls || [...COMPLIANCE_CONTROLS], 'requiredControls', COMPLIANCE_CONTROLS.size, COMPLIANCE_CONTROLS);
+    if (!requiredControls.length) throw fail('requiredControls is required'); const maximumUnknown = integer(body.maximumUnknown ?? 0, 'maximumUnknown', 0, 100);
+    const normalized = { siteId: site.id, requiredControls, maximumUnknown }; const profileHash = hash(normalized); const db = this._db();
+    db.prepare(`INSERT INTO edge_compliance_profiles (site_id,required_controls_json,maximum_unknown,profile_hash,updated_by)
+      VALUES (?,?,?,?,?) ON CONFLICT(site_id) DO UPDATE SET required_controls_json=excluded.required_controls_json,
+      maximum_unknown=excluded.maximum_unknown,profile_hash=excluded.profile_hash,updated_by=excluded.updated_by,updated_at=datetime('now')`)
+      .run(site.id, stable(requiredControls), maximumUnknown, profileHash, actor.id);
+    return { ...normalized, profileHash, exportsSensitiveEvidence: false };
+  }
+  recordComplianceSnapshot(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'complianceSnapshot'); const site = this._site(siteId); const db = this._db();
+    const profile = db.prepare('SELECT * FROM edge_compliance_profiles WHERE site_id=?').get(site.id);
+    if (!profile) throw fail('Compliance profile is required', 409, 'EDGE_COMPLIANCE_PROFILE_REQUIRED');
+    if (!Array.isArray(body.controls) || body.controls.length > COMPLIANCE_CONTROLS.size) throw fail('controls is invalid'); const supplied = new Map();
+    for (const [index, item] of body.controls.entries()) { const control = String(item?.control || ''); if (!COMPLIANCE_CONTROLS.has(control)) throw fail(`controls[${index}].control is invalid`);
+      if (supplied.has(control)) throw fail(`controls[${index}].control is duplicated`); const state = item.state; if (!['pass','fail','unknown'].includes(state)) throw fail(`controls[${index}].state is invalid`);
+      const evidenceDigest = String(item.evidenceDigest || '').toLowerCase(); if (!DIGEST.test(evidenceDigest)) throw fail(`controls[${index}].evidenceDigest must use sha256`); supplied.set(control, { control, state, evidenceDigest }); }
+    const controls = parse(profile.required_controls_json, []).map(control => supplied.get(control) || { control, state: 'unknown', evidenceDigest: null });
+    const passedCount = controls.filter(item => item.state === 'pass').length; const failedCount = controls.filter(item => item.state === 'fail').length;
+    const unknownCount = controls.filter(item => item.state === 'unknown').length; const posture = failedCount ? 'non_compliant' : unknownCount > profile.maximum_unknown ? 'degraded' : unknownCount ? 'unknown' : 'compliant';
+    const observedAt = timestamp(body.observedAt, 'observedAt', { maxFutureMs: 300000, maxPastMs: 7 * 86400000 });
+    const sourceEvidenceDigest = `sha256:${hash(controls.map(item => item.evidenceDigest))}`; const normalized = { siteId: site.id, passedCount, failedCount,
+      unknownCount, controlStates: controls.map(item => ({ control: item.control, state: item.state })), sourceEvidenceDigest, posture, observedAt };
+    const snapshotHash = hash(normalized); const existing = db.prepare('SELECT * FROM edge_compliance_snapshots WHERE snapshot_hash=?').get(snapshotHash);
+    if (existing) return { ...this._complianceRow(existing), duplicate: true };
+    const saved = db.prepare(`INSERT INTO edge_compliance_snapshots
+      (site_id,passed_count,failed_count,unknown_count,control_states_json,source_evidence_digest,posture,snapshot_hash,observed_at,received_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(site.id, passedCount, failedCount, unknownCount, stable(normalized.controlStates), sourceEvidenceDigest,
+        posture, snapshotHash, observedAt, actor.id); return { ...this._complianceRow(db.prepare('SELECT * FROM edge_compliance_snapshots WHERE id=?').get(saved.lastInsertRowid)), duplicate: false };
+  }
+  _complianceRow(row) { return row && { id: row.id, siteId: row.site_id, passedCount: row.passed_count,
+    failedCount: row.failed_count, unknownCount: row.unknown_count, controlStates: parse(row.control_states_json, []),
+    sourceEvidenceDigest: row.source_evidence_digest, posture: row.posture, sensitiveDetailsWithheld: true,
+    snapshotHash: row.snapshot_hash, observedAt: row.observed_at }; }
+  fleetCompliance(actor) {
+    this._admin(actor); const rows = this._db().prepare(`SELECT s.*,e.slug,e.name FROM edge_compliance_snapshots s
+      JOIN edge_sites e ON e.id=s.site_id WHERE s.id IN (SELECT MAX(id) FROM edge_compliance_snapshots GROUP BY site_id) ORDER BY e.name`).all();
+    const sites = rows.map(row => ({ siteId: row.site_id, siteSlug: row.slug, siteName: row.name, posture: row.posture,
+      passedCount: row.passed_count, failedCount: row.failed_count, unknownCount: row.unknown_count, observedAt: row.observed_at }));
+    return { summary: { sites: sites.length, compliant: sites.filter(item => item.posture === 'compliant').length,
+      degraded: sites.filter(item => item.posture === 'degraded' || item.posture === 'unknown').length,
+      nonCompliant: sites.filter(item => item.posture === 'non_compliant').length }, sites,
+    sensitiveDetailsWithheld: true, rawEvidenceExported: false };
+  }
+
+  saveFaultDomain(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'faultDomain'); const site = this._site(siteId); const domainType = body.domainType;
+    if (!FAULT_DOMAIN_TYPES.includes(domainType)) throw fail('domainType is invalid'); const domainKey = slug(body.domainKey, 'domainKey');
+    if (!Array.isArray(body.hostIds) || !body.hostIds.length || body.hostIds.length > 500) throw fail('hostIds must contain 1-500 entries');
+    const hostIds = [...new Set(body.hostIds.map((value, index) => integer(value, `hostIds[${index}]`, 1)))]; const db = this._db();
+    const placeholders = hostIds.map(() => '?').join(','); const matched = db.prepare(`SELECT COUNT(*) count FROM edge_site_hosts WHERE site_id=? AND host_id IN (${placeholders})`).get(site.id, ...hostIds).count;
+    if (matched !== hostIds.length) throw fail('Every host must belong to this site', 409, 'EDGE_FAULT_DOMAIN_HOST_MISMATCH');
+    const metadata = object(body.metadata); secretFree(metadata, 'metadata'); bounded(metadata, 'metadata', 64 * 1024); const normalized = { siteId: site.id,
+      domainType, domainKey, name: text(body.name, 'name', 160), owner: text(body.owner, 'owner', 160), metadata, hostIds: [...hostIds].sort((a,b) => a-b) };
+    const domainHash = hash(normalized); let domainId; db.transaction(() => { db.prepare(`INSERT INTO edge_fault_domains
+      (site_id,domain_type,domain_key,name,owner,metadata_json,domain_hash,created_by) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT(site_id,domain_type,domain_key) DO UPDATE SET name=excluded.name,owner=excluded.owner,metadata_json=excluded.metadata_json,
+      domain_hash=excluded.domain_hash,updated_at=datetime('now')`).run(site.id, domainType, domainKey, normalized.name, normalized.owner,
+        stable(metadata), domainHash, actor.id); domainId = db.prepare('SELECT id FROM edge_fault_domains WHERE site_id=? AND domain_type=? AND domain_key=?').get(site.id, domainType, domainKey).id;
+      for (const hostId of hostIds) db.prepare(`DELETE FROM edge_fault_domain_members WHERE host_id=? AND domain_id IN
+        (SELECT id FROM edge_fault_domains WHERE site_id=? AND domain_type=? AND id<>?)`).run(hostId, site.id, domainType, domainId);
+      db.prepare('DELETE FROM edge_fault_domain_members WHERE domain_id=?').run(domainId); const insert = db.prepare('INSERT INTO edge_fault_domain_members (domain_id,host_id) VALUES (?,?)');
+      for (const hostId of hostIds) insert.run(domainId, hostId); })(); return { id: domainId, ...normalized, domainHash };
+  }
+  assessFaultDomains(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'faultDomainAssessment'); const site = this._site(siteId); const db = this._db();
+    if (!Array.isArray(body.hostIds) || !body.hostIds.length || body.hostIds.length > 500) throw fail('hostIds must contain 1-500 entries');
+    const hostIds = [...new Set(body.hostIds.map((value, index) => integer(value, `hostIds[${index}]`, 1)))]; const requiredReplicas = integer(body.requiredReplicas, 'requiredReplicas', 1, 1000);
+    const placeholders = hostIds.map(() => '?').join(','); const rows = db.prepare(`SELECT d.domain_type,d.domain_key,m.host_id FROM edge_fault_domain_members m
+      JOIN edge_fault_domains d ON d.id=m.domain_id WHERE d.site_id=? AND m.host_id IN (${placeholders})`).all(site.id, ...hostIds);
+    const domainCoverage = {}; const risks = []; for (const type of FAULT_DOMAIN_TYPES) { const typeRows = rows.filter(row => row.domain_type === type);
+      const domains = [...new Set(typeRows.map(row => row.domain_key))]; const coveredHosts = new Set(typeRows.map(row => row.host_id));
+      domainCoverage[type] = { distinctDomains: domains.length, domains, coveredHosts: coveredHosts.size, totalHosts: hostIds.length };
+      if (coveredHosts.size !== hostIds.length) risks.push(`${type}_coverage_unknown`); else if (domains.length < Math.min(requiredReplicas, hostIds.length)) risks.push(`${type}_shared_failure_domain`); }
+    if (hostIds.length < requiredReplicas) risks.push('insufficient_replicas'); const state = risks.some(item => item.endsWith('_unknown')) ? 'unknown' : risks.length ? 'at_risk' : 'resilient';
+    const workloadRef = reference(body.workloadRef, 'workloadRef'); const normalized = { siteId: site.id, workloadRef, hostIds: [...hostIds].sort((a,b) => a-b),
+      requiredReplicas, domainCoverage, risks, state }; const assessmentHash = hash(normalized); const existing = db.prepare('SELECT * FROM edge_fault_domain_assessments WHERE assessment_hash=?').get(assessmentHash);
+    if (existing) return { ...this._faultAssessmentRow(existing), duplicate: true }; const saved = db.prepare(`INSERT INTO edge_fault_domain_assessments
+      (site_id,workload_ref,host_ids_json,required_replicas,domain_coverage_json,risks_json,state,assessment_hash,assessed_by)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(site.id, workloadRef, stable(normalized.hostIds), requiredReplicas, stable(domainCoverage), stable(risks), state, assessmentHash, actor.id);
+    return { ...this._faultAssessmentRow(db.prepare('SELECT * FROM edge_fault_domain_assessments WHERE id=?').get(saved.lastInsertRowid)), duplicate: false };
+  }
+  _faultAssessmentRow(row) { return row && { id: row.id, siteId: row.site_id, workloadRef: row.workload_ref,
+    hostIds: parse(row.host_ids_json, []), requiredReplicas: row.required_replicas, domainCoverage: parse(row.domain_coverage_json, {}),
+    risks: parse(row.risks_json, []), state: row.state, assessmentHash: row.assessment_hash,
+    visualizationReady: true, placementMutationStarted: false, assessedAt: row.assessed_at }; }
+
+  _hardwareClaims(value, key = 'hardware') {
+    const input = object(value); const allowed = ['manufacturer','model','serialNumber','tpmEkHash']; const unknown = Object.keys(input).filter(name => !allowed.includes(name));
+    if (unknown.length) throw fail(`${key} contains unknown claims`, 400, 'EDGE_HARDWARE_CLAIMS', { unknown }); const tpmEkHash = String(input.tpmEkHash || '').toLowerCase();
+    if (!DIGEST.test(tpmEkHash)) throw fail(`${key}.tpmEkHash must use sha256`); return { manufacturer: text(input.manufacturer, `${key}.manufacturer`, 160),
+      model: text(input.model, `${key}.model`, 160), serialNumber: reference(input.serialNumber, `${key}.serialNumber`), tpmEkHash };
+  }
+  createEnrollmentToken(siteId, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'enrollmentToken'); const site = this._site(siteId); const expectedHardware = this._hardwareClaims(body.expectedHardware, 'expectedHardware');
+    const runbookAllowlist = safeList(body.runbookAllowlist || [], 'runbookAllowlist', RUNBOOKS.size, RUNBOOKS); const updateRing = body.updateRing || 'held'; const db = this._db();
+    if (!db.prepare('SELECT 1 FROM edge_update_rings WHERE slug=? AND enabled=1').get(updateRing)) throw fail('Enabled update ring not found');
+    const ttlSeconds = integer(body.ttlSeconds ?? 600, 'ttlSeconds', 60, 900); const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+    const token = `edge_enroll_${crypto.randomBytes(24).toString('base64url')}`; const tokenHash = this._sign('enrollment-token', token); const tokenFingerprint = tokenHash.slice(0, 16);
+    const saved = db.prepare(`INSERT INTO edge_enrollment_tokens
+      (site_id,token_hash,token_fingerprint,expected_hardware_json,runbook_allowlist_json,update_ring,expires_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?)`).run(site.id, tokenHash, tokenFingerprint, stable(expectedHardware), stable(runbookAllowlist), updateRing, expiresAt, actor.id);
+    return { id: Number(saved.lastInsertRowid), siteId: site.id, token, tokenFingerprint, expectedHardware, runbookAllowlist, updateRing,
+      expiresAt, state: 'issued', tokenReturnedOnce: true, privateKeyGenerated: false };
+  }
+  redeemEnrollment(body = {}) {
+    const rawToken = String(body.token || ''); if (!/^edge_enroll_[A-Za-z0-9_-]{32}$/.test(rawToken)) throw fail('Enrollment token is invalid', 401, 'EDGE_ENROLLMENT_TOKEN_INVALID');
+    const db = this._db(); const tokenHash = this._sign('enrollment-token', rawToken); let token = db.prepare('SELECT * FROM edge_enrollment_tokens WHERE token_hash=?').get(tokenHash);
+    if (!token || token.state !== 'issued') throw fail('Enrollment token is invalid or already used', 401, 'EDGE_ENROLLMENT_TOKEN_INVALID');
+    if (Date.parse(token.expires_at) <= Date.now()) { db.prepare("UPDATE edge_enrollment_tokens SET state='expired' WHERE id=?").run(token.id); throw fail('Enrollment token expired', 401, 'EDGE_ENROLLMENT_TOKEN_EXPIRED'); }
+    const hardwareClaims = this._hardwareClaims(body.hardwareClaims, 'hardwareClaims'); if (stable(hardwareClaims) !== stable(parse(token.expected_hardware_json, {}))) throw fail('Hardware identity does not match enrollment policy', 403, 'EDGE_HARDWARE_MISMATCH');
+    const agentId = slug(body.agentId, 'agentId'); const publicKeyFingerprint = String(body.publicKeyFingerprint || '').toLowerCase();
+    if (!DIGEST.test(publicKeyFingerprint)) throw fail('publicKeyFingerprint must use sha256'); const nonce = reference(body.nonce, 'nonce');
+    const normalized = { tokenId: token.id, siteId: token.site_id, agentId, hardwareClaims, publicKeyFingerprint, nonce };
+    const attestationHash = hash(normalized); const bootstrapSignature = this._sign('enrollment-bootstrap', normalized); let id;
+    try { db.transaction(() => { const claimed = db.prepare("UPDATE edge_enrollment_tokens SET state='redeemed',redeemed_at=datetime('now') WHERE id=? AND state='issued'").run(token.id);
+      if (claimed.changes !== 1) throw fail('Enrollment token is invalid or already used', 401, 'EDGE_ENROLLMENT_TOKEN_INVALID'); const saved = db.prepare(`INSERT INTO edge_enrollment_attestations
+        (token_id,site_id,agent_id,hardware_claims_json,public_key_fingerprint,nonce,attestation_hash,bootstrap_signature)
+        VALUES (?,?,?,?,?,?,?,?)`).run(token.id, token.site_id, agentId, stable(hardwareClaims), publicKeyFingerprint, nonce, attestationHash, bootstrapSignature); id = saved.lastInsertRowid; })(); }
+    catch (error) { if (error instanceof EdgePlatformError) throw error; if (String(error.code || '').startsWith('SQLITE_CONSTRAINT')) throw fail('Agent identity is already enrolled or pending', 409, 'EDGE_ENROLLMENT_IDENTITY_EXISTS'); throw error; }
+    return this._attestationRow(db.prepare('SELECT * FROM edge_enrollment_attestations WHERE id=?').get(id));
+  }
+  approveEnrollment(id, body = {}, actor) {
+    this._admin(actor); secretFree(body, 'enrollmentApproval'); const db = this._db(); const row = db.prepare(`SELECT a.*,t.created_by,t.runbook_allowlist_json,t.update_ring
+      FROM edge_enrollment_attestations a JOIN edge_enrollment_tokens t ON t.id=a.token_id WHERE a.id=?`).get(integer(id, 'attestationId', 1));
+    if (!row) throw fail('Enrollment attestation not found', 404, 'EDGE_ENROLLMENT_NOT_FOUND'); if (row.state !== 'certificate_pending') throw fail('Enrollment is not pending certificate approval', 409, 'EDGE_ENROLLMENT_CLOSED');
+    if (row.created_by === actor.id) throw fail('A different administrator must approve enrollment', 409, 'FOUR_EYES_REQUIRED');
+    if (body.attestationHash !== row.attestation_hash || body.confirmation !== row.agent_id) throw fail('Attestation hash or typed agent confirmation does not match', 409, 'EDGE_ENROLLMENT_CONFIRMATION_MISMATCH');
+    const certificateFingerprint = String(body.certificateFingerprint || '').toLowerCase(); if (!FINGERPRINT.test(certificateFingerprint)) throw fail('certificateFingerprint must use sha256');
+    const identityHash = hash({ attestationHash: row.attestation_hash, certificateFingerprint, siteId: row.site_id, agentId: row.agent_id }); let edgeAgentId;
+    try { db.transaction(() => { const saved = db.prepare(`INSERT INTO edge_agents
+        (site_id,agent_id,certificate_fingerprint,runbook_allowlist_json,update_ring,state,created_by) VALUES (?,?,?,?,?,'active',?)`)
+        .run(row.site_id, row.agent_id, certificateFingerprint, row.runbook_allowlist_json, row.update_ring, actor.id); edgeAgentId = Number(saved.lastInsertRowid);
+      db.prepare("UPDATE edge_enrollment_attestations SET state='enrolled',approved_by=?,approved_at=datetime('now') WHERE id=?").run(actor.id, row.id);
+      db.prepare(`INSERT INTO edge_enrolled_identities
+        (attestation_id,edge_agent_id,certificate_fingerprint,identity_hash,created_by) VALUES (?,?,?,?,?)`)
+        .run(row.id, edgeAgentId, certificateFingerprint, identityHash, actor.id); })(); }
+    catch (error) { if (String(error.code || '').startsWith('SQLITE_CONSTRAINT')) throw fail('Agent or certificate identity already exists', 409, 'EDGE_ENROLLMENT_IDENTITY_EXISTS'); throw error; }
+    return { ...this._attestationRow(db.prepare('SELECT * FROM edge_enrollment_attestations WHERE id=?').get(row.id)), edgeAgentId,
+      certificateFingerprint, identityHash, certificatePrivateKeyReturned: false, state: 'enrolled' };
+  }
+  _attestationRow(row) { return row && { id: row.id, tokenId: row.token_id, siteId: row.site_id, agentId: row.agent_id,
+    hardwareClaims: parse(row.hardware_claims_json, {}), publicKeyFingerprint: row.public_key_fingerprint, nonce: row.nonce,
+    attestationHash: row.attestation_hash, bootstrapSignature: row.bootstrap_signature, state: row.state, approvedBy: row.approved_by,
+    enrollmentTokenReturned: false, certificatePrivateKeyReturned: false, receivedAt: row.received_at, approvedAt: row.approved_at }; }
 
   overview(actor) {
     this._admin(actor); const db = this._db(); const sites = db.prepare('SELECT * FROM edge_sites ORDER BY name').all().map(row => this._siteRow(row));
@@ -852,10 +1104,23 @@ class EdgePlatformService {
     const bmcEndpoints = db.prepare('SELECT * FROM edge_bmc_endpoints ORDER BY site_id,name').all().map(row => this._bmcRow(row));
     const bmcInventory = db.prepare('SELECT * FROM edge_bmc_inventory_snapshots ORDER BY id DESC LIMIT 100').all().map(row => this._bmcInventoryRow(row));
     const bmcRecovery = db.prepare('SELECT * FROM edge_bmc_recovery_plans ORDER BY id DESC LIMIT 100').all().map(row => this._bmcRecoveryRow(row));
+    const disasters = db.prepare('SELECT * FROM edge_disaster_declarations ORDER BY id DESC LIMIT 100').all().map(row => this._disasterRow(row));
+    const disasterNotifications = db.prepare('SELECT * FROM edge_disaster_notification_outbox ORDER BY id DESC LIMIT 200').all().map(row => ({ id: row.id,
+      declarationId: row.declaration_id, channel: row.channel, recipientRef: row.recipient_ref, payloadHash: row.payload_hash,
+      state: row.state, externalDeliveryStarted: false, createdAt: row.created_at }));
+    const backupSeeds = db.prepare('SELECT * FROM edge_backup_seed_manifests ORDER BY id DESC LIMIT 100').all().map(row => this._backupSeedRow(row));
+    const compliance = this.fleetCompliance(actor);
+    const faultDomains = db.prepare(`SELECT d.*,COUNT(m.host_id) host_count FROM edge_fault_domains d LEFT JOIN edge_fault_domain_members m
+      ON m.domain_id=d.id GROUP BY d.id ORDER BY d.site_id,d.domain_type,d.domain_key`).all().map(row => ({ id: row.id, siteId: row.site_id,
+      domainType: row.domain_type, domainKey: row.domain_key, name: row.name, owner: row.owner, metadata: parse(row.metadata_json, {}),
+      hostCount: row.host_count, domainHash: row.domain_hash }));
+    const faultAssessments = db.prepare('SELECT * FROM edge_fault_domain_assessments ORDER BY id DESC LIMIT 100').all().map(row => this._faultAssessmentRow(row));
+    const enrollments = db.prepare('SELECT * FROM edge_enrollment_attestations ORDER BY id DESC LIMIT 100').all().map(row => this._attestationRow(row));
     const pendingEvents = db.prepare('SELECT COUNT(*) count,COALESCE(SUM(compressed_bytes),0) bytes FROM edge_event_buffer WHERE delivered_at IS NULL').get();
     return { sites, intents, agents, syncPlans, runbooks, updates, bootstraps, mirrors, cache, residencyPolicies,
       residencyEvaluations, identityGrants, vaultAdapters, secretPlans, singleNodeAssessments, quorum, reservations,
-      consoleProfiles, remoteHands, bmcEndpoints, bmcInventory, bmcRecovery,
+      consoleProfiles, remoteHands, bmcEndpoints, bmcInventory, bmcRecovery, disasters, disasterNotifications,
+      backupSeeds, compliance, faultDomains, faultAssessments, enrollments,
       updateRings: db.prepare('SELECT * FROM edge_update_rings WHERE enabled=1 ORDER BY rollout_percent').all().map(row => ({ slug: row.slug,
         name: row.name, rolloutPercent: row.rollout_percent, requireHealthy: !!row.require_healthy, automaticRollback: !!row.automatic_rollback })),
       summary: { sites: sites.length, online: sites.filter(item => item.health === 'healthy').length,
@@ -870,13 +1135,20 @@ class EdgePlatformService {
         atRiskQuorum: quorum.filter(item => item.state !== 'healthy').length,
         pendingRemoteHands: remoteHands.filter(item => item.state === 'pending_approval').length,
         criticalBmc: bmcInventory.filter(item => item.health === 'critical').length,
-        readyBmcRecovery: bmcRecovery.filter(item => item.state === 'ready_for_edge_agent').length },
+        readyBmcRecovery: bmcRecovery.filter(item => item.state === 'ready_for_edge_agent').length,
+        activeDisasters: disasters.filter(item => item.state === 'active').length,
+        readyBackupSeeds: backupSeeds.filter(item => item.state === 'ready').length,
+        nonCompliantSites: compliance.summary.nonCompliant,
+        atRiskFaultDomains: faultAssessments.filter(item => item.state !== 'resilient').length,
+        pendingEnrollments: enrollments.filter(item => item.state === 'certificate_pending').length },
       capabilities: { offlineActions: [...OFFLINE_ACTIONS], runbooks: [...RUNBOOKS], eventCategories: CATEGORIES,
-        heartbeatTransport: 'authenticated_admin_ingest_until_B350', centralIntentExecution: false,
+        heartbeatTransport: 'admin_ingest_or_external_mtls_gateway', centralIntentExecution: false,
         centralRunbookExecution: false, updateApplySupported: false, mirrorSyncSupported: false,
         residencyFailClosed: true, identityTokensReturned: false, siteLocalSecretResolution: true,
         consoleLaunchSupported: false, centralRemoteHandsExecution: false, centralBmcExecution: false,
-        fourEyesRecovery: true } };
+        fourEyesRecovery: true, disasterMutationFreeze: true, backupSeedTransferSupported: false,
+        complianceRawEvidenceExported: false, faultDomainPlacementApply: false,
+        zeroTouchTokenSingleUse: true, enrollmentPrivateKeysReturned: false } };
   }
 }
 

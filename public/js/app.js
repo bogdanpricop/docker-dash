@@ -1669,6 +1669,21 @@ const App = {
         el.style.display = visible ? '' : 'none';
       });
     } catch { /* /api/hosts is best-effort — leave fleet-daemon items visible */ }
+
+    // The experience manifest refines configured-daemon gating with permitted,
+    // active endpoint health and keeps a human-readable reason on every item.
+    try {
+      const manifest = await Api.getExperienceNavigation();
+      this._experienceNavigation = manifest;
+      (manifest.pages || []).forEach(decision => {
+        const el = document.querySelector(`.nav-item[data-page="${decision.page}"]`);
+        if (!el) return;
+        el.dataset.availabilityReason = decision.reason || '';
+        el.title = decision.reason || '';
+        el.setAttribute('aria-disabled', decision.available ? 'false' : 'true');
+        el.style.display = decision.available ? '' : 'none';
+      });
+    } catch { /* navigation remains usable when the manifest is unavailable */ }
   },
 
   // ─── Version Watcher (v8.7.43) ─────────────────

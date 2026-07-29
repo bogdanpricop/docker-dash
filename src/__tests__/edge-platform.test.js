@@ -10,6 +10,7 @@ const path = require('path');
 const migration131 = require('../db/migrations/131_automation_operations_lifecycle_updates');
 const migration139 = require('../db/migrations/139_edge_disconnected_foundation');
 const migration140 = require('../db/migrations/140_edge_sovereignty_resilience');
+const migration141 = require('../db/migrations/141_edge_continuity_experience');
 const { EdgePlatformService } = require('../services/edge-platform');
 const { InfrastructureOperationsService } = require('../services/infrastructure-operations');
 
@@ -31,7 +32,7 @@ function database() {
       (7,'edge-k8s','kubernetes','{}',1),(8,'edge-docker','docker','{}',1);
     INSERT INTO governance_roles (id,slug) VALUES (1,'site-admin');
   `);
-  migration131.up(db); migration139.up(db); migration140.up(db); return db;
+  migration131.up(db); migration139.up(db); migration140.up(db); migration141.up(db); return db;
 }
 function siteInput(overrides = {}) {
   return { slug: 'bucharest-edge', name: 'Bucharest edge', timezone: 'Europe/Bucharest', region: 'ro-bucharest',
@@ -49,12 +50,12 @@ function registerAgent(service, site, overrides = {}) {
 }
 
 describe('V6.5a edge and disconnected foundation (B326-B335)', () => {
-  test('migrations create thirty-one tables, eight permissions and three update rings idempotently', () => {
-    const db = database(); migration139.up(db); migration140.up(db);
-    expect(db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type=? AND name LIKE 'edge_%'").get('table').count).toBe(31);
-    expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'edge_%'").get().count).toBe(8);
+  test('migrations create forty-three tables, thirteen permissions and three update rings idempotently', () => {
+    const db = database(); migration139.up(db); migration140.up(db); migration141.up(db);
+    expect(db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type=? AND name LIKE 'edge_%'").get('table').count).toBe(43);
+    expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'edge_%'").get().count).toBe(13);
     expect(db.prepare('SELECT slug FROM edge_update_rings ORDER BY rollout_percent').all().map(row => row.slug)).toEqual(['held','canary','stable']);
-    expect(db.prepare("SELECT COUNT(*) count FROM governance_role_permissions WHERE role_id=1 AND permission_key LIKE 'edge_%'").get().count).toBe(8); db.close();
+    expect(db.prepare("SELECT COUNT(*) count FROM governance_role_permissions WHERE role_id=1 AND permission_key LIKE 'edge_%'").get().count).toBe(13); db.close();
   });
 
   test('site model validates IANA timezone, owns each host once and distinguishes expected disconnect', () => {
@@ -104,7 +105,7 @@ describe('V6.5a edge and disconnected foundation (B326-B335)', () => {
       mutationMode: 'deny', expectedOfflineUntil: future(3600000) }, admin);
     const heartbeat = service.heartbeat(site.id, { agentId: 'edge-a', sequence: 7, status: 'healthy', version: '1.0.0',
       capabilities: ['inventory','events'], observedAt: past(120000) }, admin);
-    expect(heartbeat).toMatchObject({ sequence: 7, transport: 'authenticated_admin_ingest_until_zero_touch_enrollment' });
+    expect(heartbeat).toMatchObject({ sequence: 7, transport: 'admin_ingest_or_external_mtls_gateway' });
     expect(service.overview(admin).sites[0]).toMatchObject({ health: 'expected_disconnected', heartbeat: { sequence: 7 } });
     expect(() => service.heartbeat(site.id, { agentId: 'edge-a', sequence: 7, status: 'healthy', capabilities: [], observedAt: new Date().toISOString() }, admin))
       .toThrow(expect.objectContaining({ code: 'EDGE_HEARTBEAT_REPLAY' })); db.close();
@@ -184,7 +185,7 @@ describe('V6.5a edge and disconnected foundation (B326-B335)', () => {
     expect(overview.summary).toMatchObject({ sites: 1, activeAgents: 1, pendingEvents: 0 });
     expect(overview.updateRings).toHaveLength(3);
     expect(overview.capabilities).toMatchObject({ centralIntentExecution: false, centralRunbookExecution: false,
-      updateApplySupported: false, mirrorSyncSupported: false, heartbeatTransport: 'authenticated_admin_ingest_until_B350' }); db.close();
+      updateApplySupported: false, mirrorSyncSupported: false, heartbeatTransport: 'admin_ingest_or_external_mtls_gateway' }); db.close();
   });
 
   test('server, API client and admin navigation expose the edge surface without inline handlers', () => {

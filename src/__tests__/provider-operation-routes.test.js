@@ -60,6 +60,12 @@ describe('Provider operation Activity Center routes', () => {
     const listed = await request(app).get('/api/operations');
     expect(listed.body.items).toHaveLength(1);
     expect(listed.body.items[0].permissions).toEqual({ canCancel: true, canResolve: false });
+    expect(listed.body.items[0].links).toEqual({
+      self: `/api/operations/${operation.id}`,
+      events: `/api/operations/${operation.id}/events`,
+      activity: `#/activity/${operation.id}`,
+      resource: `#/virtual-machines/7/${operation.resource.id}`,
+    });
     const events = await request(app).get(`/api/operations/${operation.id}/events?limit=50`);
     expect(events.status).toBe(200);
     expect(mockEvents).toHaveBeenCalledWith(operation.id, 50);

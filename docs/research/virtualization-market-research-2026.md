@@ -1110,11 +1110,11 @@ modifică workload-uri, clustere ori registre.
 | B343 | Remote-hands runbook | BMC/console/checklist/approval pentru site fără operator. | Ops | M | Done |
 | B344 | BMC inventory | Redfish/IPMI power, sensors, firmware și ownership. | Ops | L | Done |
 | B345 | Out-of-band host recovery | JIT BMC action cu fencing/HA safeguards. | Rez | XL | Done |
-| B346 | Site disaster declaration | Freeze mutations, notify și activate runbook. | Rez | L | Later |
-| B347 | Edge backup seeding | Local seed, offline transfer și delta continuation. | Rez | L | Later |
-| B348 | Edge fleet compliance summary | Aggregate evidence fără exportul datelor sensibile. | Gov | L | Later |
-| B349 | Multi-rack/fault-domain visualization | Rack/power/network/storage domain și placement risk. | Rez | L | Later |
-| B350 | Edge zero-touch enrollment | One-time token, hardware identity și certificate bootstrap. | DX | XL | Later |
+| B346 | Site disaster declaration | Freeze mutations, notify și activate runbook. | Rez | L | Done |
+| B347 | Edge backup seeding | Local seed, offline transfer și delta continuation. | Rez | L | Done |
+| B348 | Edge fleet compliance summary | Aggregate evidence fără exportul datelor sensibile. | Gov | L | Done |
+| B349 | Multi-rack/fault-domain visualization | Rack/power/network/storage domain și placement risk. | Rez | L | Done |
+| B350 | Edge zero-touch enrollment | One-time token, hardware identity și certificate bootstrap. | DX | XL | Done |
 
 **Status implementare 2026-07-29:** B326–B335 au fost închise în V6.5a /
 v8.65.0. Site-urile păstrează timezone IANA, regiune, jurisdicție, owner, trust
@@ -1128,8 +1128,9 @@ de plan hash. Agenții au allowlist de runbook, rings canary/stable/held și
 update plan cu bundle/rollback verificabil, fără apply central. Bootstrap și
 mirror manifests includ numai certificate/package/docs/OCI/ISO/template refs,
 digests și external signature evidence; nu includ private keys și nu descarcă
-ori sincronizează implicit. Transportul agent rămâne admin-ingested până la
-zero-touch enrollment B350.
+ori sincronizează implicit. Heartbeat-ul poate fi ingerat prin endpointul
+administrativ existent sau printr-un gateway mTLS extern; API-ul nu pretinde că
+endpointul administrativ este autentificare directă de agent.
 
 **Status implementare 2026-07-29:** B336–B345 au fost închise în V6.5b /
 v8.66.0. Rezidența este fail-closed și blochează sync plans care ar scoate
@@ -1141,17 +1142,26 @@ resource reservations expun caveats și assessment fără apply. Consola este
 serial/text-first, fără clipboard/file transfer. Remote-hands și BMC recovery
 folosesc plan hash, typed confirmation, approval independent, safeguards de
 fencing/quorum/backup și pachete JIT executabile numai de agentul edge; control
-plane-ul nu apelează BMC-ul. B346–B350 rămân deschise.
+plane-ul nu apelează BMC-ul.
+
+**Status implementare 2026-07-29:** B346–B350 au fost închise în V6.5c /
+v8.67.0. Declarația de disaster îngheață mutațiile, semnează un runbook local și
+pune notificări în outbox, iar alt administrator eliberează freeze-ul cu
+confirmare și evidence hash. Backup seeding păstrează manifests/chunks semnate
+și checkpoints monotone pentru transfer offline/delta. Fleet compliance expune
+numai control/state agregat, fault domains acoperă rack/power/network/storage
+fără placement apply, iar enrollment-ul hardware-bound folosește token one-time,
+attestation și certificate fingerprint four-eyes fără private key central.
 
 ### O. UX, self-service și service catalog (B351–B375)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B351 | Unified infrastructure home | VM/container/K8s health, risks, costs și recent changes. | DX | M | Now |
-| B352 | Provider-aware navigation | Afișează doar pages/actions susținute live. | DX | S | Now |
-| B353 | Consistent resource detail shell | Tabs/actions/tasks/events/audit identice între providers. | DX | M | Now |
-| B354 | Action availability explanation | Tooltip cu capability/policy/state/permission blocker. | DX | S | Now |
-| B355 | Long-task activity center | Persistent jobs, progress, cancel și deep links. | DX | M | Now |
+| B351 | Unified infrastructure home | VM/container/K8s health, risks, costs și recent changes. | DX | M | Done |
+| B352 | Provider-aware navigation | Afișează doar pages/actions susținute live. | DX | S | Done |
+| B353 | Consistent resource detail shell | Tabs/actions/tasks/events/audit identice între providers. | DX | M | Done |
+| B354 | Action availability explanation | Tooltip cu capability/policy/state/permission blocker. | DX | S | Done |
+| B355 | Long-task activity center | Persistent jobs, progress, cancel și deep links. | DX | M | Done |
 | B356 | Global command palette | Search/navigation/safe actions cu permissions. | DX | M | Next |
 | B357 | Bulk selection basket | Resurse cross-page cu preview și compatibility filter. | DX | M | Next |
 | B358 | Infrastructure service catalog | Curated VM/app/cluster offerings. | DX | L | Next |
@@ -1172,6 +1182,15 @@ plane-ul nu apelează BMC-ul. B346–B350 rămân deschise.
 | B373 | Localization completeness gate | Provider/action strings și safety copy testate. | Gov | S | Now |
 | B374 | Accessibility conformance pack | WCAG focus, contrast, labels, live regions și tests. | Gov | M | Now |
 | B375 | Product feedback telemetry opt-in | Feature usage/failure funnels fără sensitive payloads. | DX | M | Next |
+
+**Status implementare 2026-07-29:** B351–B355 au fost închise în V6.1b /
+v8.67.0. Home-ul comun agregă doar endpointurile permise și evidența persistentă
+VM/container/Kubernetes, risks, rated cost și recent operations, marcând
+acoperirea necunoscută. Navigația folosește endpointuri active care nu sunt
+explicit unhealthy. DetailShell normalizează Overview/Actions/Tasks/Events/Audit,
+deciziile de acțiune separă blockers de capability/policy/state/permission, iar
+Activity Center oferă summary, progress, cancel availability și deep links
+canonice pentru operație și resursă.
 
 ### P. Hardware, acceleratoare și performanță (B376–B400)
 

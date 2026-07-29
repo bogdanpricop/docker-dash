@@ -7,6 +7,16 @@ const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 
 const router = Router();
+
+router.post('/enrollments/redeem', writeable, route((req, res) => {
+  const enrollment = edge.redeemEnrollment(req.body || {});
+  auditService.log({ userId: null, username: 'edge-enrollment-device', action: 'edge_enrollment_redeem',
+    targetType: 'edge_enrollment_attestation', targetId: String(enrollment.id), details: { siteId: enrollment.siteId,
+      agentId: enrollment.agentId, attestationHash: enrollment.attestationHash, publicKeyFingerprint: enrollment.publicKeyFingerprint,
+      enrollmentTokenReturned: false, certificatePrivateKeyReturned: false }, ip: getClientIp(req) });
+  res.status(201).json({ enrollment });
+}));
+
 router.use(requireAuth, requireRole('admin'));
 
 function route(handler) {
@@ -240,6 +250,69 @@ router.post('/bmc-recovery-plans/:id/authorize', writeable, route((req, res) => 
   audit(req, 'edge_bmc_recovery_authorize', 'edge_bmc_recovery_plan', plan.id, { approvalId: plan.approvalId,
     actionKey: plan.actionKey, planHash: plan.planHash, authorizedBy: plan.authorizedBy, state: plan.state,
     executionLocation: 'edge_agent', providerMutationsStarted: 0 }); res.json({ plan });
+}));
+
+router.post('/sites/:id/disasters', writeable, route((req, res) => {
+  const declaration = edge.declareDisaster(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_disaster_declare', 'edge_disaster_declaration', declaration.id, { siteId: declaration.siteId,
+    severity: declaration.severity, ticketRef: declaration.ticketRef, runbookEnvelopeId: declaration.runbookEnvelopeId,
+    declarationHash: declaration.declarationHash, mutationFreeze: true, externalNotificationDeliveryStarted: false });
+  res.status(201).json({ declaration });
+}));
+router.post('/disasters/:id/resolve', writeable, route((req, res) => {
+  const declaration = edge.resolveDisaster(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_disaster_resolve', 'edge_disaster_declaration', declaration.id, { siteId: declaration.siteId,
+    declarationHash: declaration.declarationHash, resolutionEvidenceHash: declaration.resolutionEvidenceHash,
+    resolvedBy: declaration.resolvedBy, mutationFreeze: false }); res.json({ declaration });
+}));
+router.post('/sites/:id/backup-seeds', writeable, route((req, res) => {
+  const seed = edge.createBackupSeed(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_backup_seed_manifest', 'edge_backup_seed', seed.id, { siteId: seed.siteId, datasetRef: seed.datasetRef,
+    chunkCount: seed.chunks.length, totalBytes: seed.totalBytes, state: seed.state, manifestHash: seed.manifestHash,
+    transferStarted: false }); res.status(seed.duplicate ? 200 : 201).json({ seed });
+}));
+router.post('/backup-seeds/:id/checkpoints', writeable, route((req, res) => {
+  const checkpoint = edge.recordBackupSeedCheckpoint(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_backup_seed_checkpoint', 'edge_backup_seed_checkpoint', checkpoint.id, { seedId: checkpoint.seedId,
+    sequence: checkpoint.sequence, completedChunk: checkpoint.completedChunk, transferredBytes: checkpoint.transferredBytes,
+    checkpointHash: checkpoint.checkpointHash, state: checkpoint.state, transferPerformedByApi: false }); res.status(201).json({ checkpoint });
+}));
+router.put('/sites/:id/compliance-profile', writeable, route((req, res) => {
+  const profile = edge.saveComplianceProfile(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_compliance_profile_save', 'edge_site', profile.siteId, { requiredControls: profile.requiredControls,
+    maximumUnknown: profile.maximumUnknown, profileHash: profile.profileHash, exportsSensitiveEvidence: false }); res.json({ profile });
+}));
+router.post('/sites/:id/compliance-snapshots', writeable, route((req, res) => {
+  const snapshot = edge.recordComplianceSnapshot(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_compliance_snapshot_ingest', 'edge_compliance_snapshot', snapshot.id, { siteId: snapshot.siteId,
+    posture: snapshot.posture, passedCount: snapshot.passedCount, failedCount: snapshot.failedCount,
+    unknownCount: snapshot.unknownCount, snapshotHash: snapshot.snapshotHash, sensitiveDetailsWithheld: true });
+  res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+}));
+router.get('/fleet-compliance', route((req, res) => res.json(edge.fleetCompliance(req.user))));
+router.post('/sites/:id/fault-domains', writeable, route((req, res) => {
+  const domain = edge.saveFaultDomain(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_fault_domain_save', 'edge_fault_domain', domain.id, { siteId: domain.siteId, domainType: domain.domainType,
+    domainKey: domain.domainKey, hostCount: domain.hostIds.length, domainHash: domain.domainHash }); res.status(201).json({ domain });
+}));
+router.post('/sites/:id/fault-domain-assessments', writeable, route((req, res) => {
+  const assessment = edge.assessFaultDomains(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_fault_domain_assess', 'edge_fault_domain_assessment', assessment.id, { siteId: assessment.siteId,
+    workloadRef: assessment.workloadRef, requiredReplicas: assessment.requiredReplicas, risks: assessment.risks,
+    state: assessment.state, assessmentHash: assessment.assessmentHash, placementMutationStarted: false });
+  res.status(assessment.duplicate ? 200 : 201).json({ assessment });
+}));
+router.post('/sites/:id/enrollment-tokens', writeable, route((req, res) => {
+  const enrollment = edge.createEnrollmentToken(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_enrollment_token_issue', 'edge_enrollment_token', enrollment.id, { siteId: enrollment.siteId,
+    tokenFingerprint: enrollment.tokenFingerprint, expiresAt: enrollment.expiresAt, expectedHardware: enrollment.expectedHardware,
+    tokenReturnedOnce: true, privateKeyGenerated: false }); res.status(201).json({ enrollment });
+}));
+router.post('/enrollments/:id/approve', writeable, route((req, res) => {
+  const enrollment = edge.approveEnrollment(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_enrollment_approve', 'edge_enrollment_attestation', enrollment.id, { siteId: enrollment.siteId,
+    agentId: enrollment.agentId, edgeAgentId: enrollment.edgeAgentId, certificateFingerprint: enrollment.certificateFingerprint,
+    identityHash: enrollment.identityHash, approvedBy: enrollment.approvedBy, certificatePrivateKeyReturned: false }); res.json({ enrollment });
 }));
 
 module.exports = router;

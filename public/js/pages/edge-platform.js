@@ -1,4 +1,4 @@
-/* Edge, ROBO and disconnected operations — B326-B345 */
+/* Edge, ROBO and disconnected operations — B326-B350 */
 'use strict';
 
 const EdgePlatformPage = {
@@ -14,7 +14,7 @@ const EdgePlatformPage = {
   _paint() {
     const data = this._data || {}; const summary = data.summary || {}; const sites = data.sites || [];
     const stateBadge = state => ['healthy','ready','active','allowed','compliant','acknowledged','ready_for_agent','ready_for_edge_agent','ready_for_local_operator'].includes(state) ? 'badge-success'
-      : state === 'blocked' || state === 'offline' || state === 'expired' || state === 'revalidation_required' ? 'badge-danger' : 'badge-warning';
+      : ['blocked','offline','expired','revalidation_required','non_compliant','at_risk','disaster'].includes(state) ? 'badge-danger' : 'badge-warning';
     this._container.innerHTML = `<div class="page-header"><div><h1 class="page-title"><i class="fas fa-tower-broadcast" style="color:var(--accent);margin-right:10px"></i>Edge &amp; disconnected</h1>
       <p class="page-subtitle">Sovereign, resilient operations for ROBO, low-bandwidth and air-gapped sites.</p></div>
       <button class="btn btn-secondary" id="edge-refresh"><i class="fas fa-rotate"></i> Refresh</button></div>
@@ -26,9 +26,12 @@ const EdgePlatformPage = {
         ${this._stat('fa-shield-halved','Blocked transfers',summary.blockedResidency || 0)}${this._stat('fa-key','Active grants',summary.activeIdentityGrants || 0)}
         ${this._stat('fa-scale-balanced','Quorum risks',summary.atRiskQuorum || 0)}${this._stat('fa-screwdriver-wrench','Remote-hands pending',summary.pendingRemoteHands || 0)}
         ${this._stat('fa-microchip','Critical BMC',summary.criticalBmc || 0)}${this._stat('fa-power-off','Recovery ready',summary.readyBmcRecovery || 0)}
+        ${this._stat('fa-triangle-exclamation','Active disasters',summary.activeDisasters || 0)}${this._stat('fa-hard-drive','Ready backup seeds',summary.readyBackupSeeds || 0)}
+        ${this._stat('fa-clipboard-check','Non-compliant sites',summary.nonCompliantSites || 0)}${this._stat('fa-network-wired','Topology risks',summary.atRiskFaultDomains || 0)}
+        ${this._stat('fa-certificate','Pending enrollments',summary.pendingEnrollments || 0)}
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0">
-        ${[['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['intent','Offline intent'],['revalidate','Revalidate'],['agent','Agent'],['heartbeat','Heartbeat'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],['bootstrap','Bootstrap'],['mirror','Mirror'],['residency-policy','Residency policy'],['residency-check','Residency check'],['identity-policy','Identity policy'],['identity-grant','Identity grant'],['identity-activate','Activate grant'],['vault','Local vault'],['secret-plan','Secret plan'],['single-profile','Single-node'],['single-assess','Single assess'],['quorum','Quorum'],['reservation-policy','Reservations'],['reservation-assess','Reserve assess'],['console','Console'],['remote-hands','Remote hands'],['remote-authorize','Authorize hands'],['bmc','BMC endpoint'],['bmc-inventory','BMC inventory'],['bmc-recovery','BMC recovery'],['bmc-authorize','Authorize BMC']].map(([key,label], index) => `<button class="btn btn-sm ${index === 0 ? 'btn-primary' : 'btn-secondary'}" data-edge-action="${key}">${label}</button>`).join('')}
+        ${[['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['intent','Offline intent'],['revalidate','Revalidate'],['agent','Agent'],['heartbeat','Heartbeat'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],['bootstrap','Bootstrap'],['mirror','Mirror'],['residency-policy','Residency policy'],['residency-check','Residency check'],['identity-policy','Identity policy'],['identity-grant','Identity grant'],['identity-activate','Activate grant'],['vault','Local vault'],['secret-plan','Secret plan'],['single-profile','Single-node'],['single-assess','Single assess'],['quorum','Quorum'],['reservation-policy','Reservations'],['reservation-assess','Reserve assess'],['console','Console'],['remote-hands','Remote hands'],['remote-authorize','Authorize hands'],['bmc','BMC endpoint'],['bmc-inventory','BMC inventory'],['bmc-recovery','BMC recovery'],['bmc-authorize','Authorize BMC'],['disaster','Declare disaster'],['disaster-resolve','Resolve disaster'],['backup-seed','Backup seed'],['backup-checkpoint','Seed checkpoint'],['compliance-profile','Compliance profile'],['compliance-snapshot','Compliance snapshot'],['fault-domain','Fault domain'],['fault-assess','Assess domains'],['enrollment-token','Enrollment token'],['enrollment-approve','Approve enrollment']].map(([key,label], index) => `<button class="btn btn-sm ${index === 0 ? 'btn-primary' : 'btn-secondary'}" data-edge-action="${key}">${label}</button>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px">
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Sites &amp; connectivity</h3></div><table class="data-table"><thead><tr><th>Site</th><th>Region / owner</th><th>Connectivity</th><th>Health</th></tr></thead><tbody>
@@ -65,6 +68,18 @@ const EdgePlatformPage = {
           ${(data.remoteHands || []).slice(0,25).map(item => `<tr><td>Hands · ${Utils.escapeHtml(item.targetRef)}<div class="mono text-xs">approval #${item.approvalId}</div></td><td>${item.checklist.length} checks</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('')}
           ${(data.bmcRecovery || []).slice(0,25).map(item => `<tr><td>Recovery · endpoint #${item.endpointId}<div class="mono text-xs">${item.planHash.slice(0,12)}</div></td><td>${Utils.escapeHtml(item.actionKey)}</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No BMC or remote-hands plans', 3)}
         </tbody></table><div class="card-body text-sm text-muted">Inventory snapshots: ${(data.bmcInventory || []).length}. Recovery executes only at the edge after independent approval.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Disaster freeze &amp; offline backup seeding</h3></div><table class="data-table"><thead><tr><th>Evidence</th><th>Scope</th><th>State</th></tr></thead><tbody>
+          ${(data.disasters || []).slice(0,25).map(item => `<tr><td>Disaster #${item.id}<div class="text-xs text-muted">${Utils.escapeHtml(item.ticketRef)} · ${Utils.escapeHtml(item.reason)}</div></td><td>site #${item.siteId} · ${Utils.escapeHtml(item.severity)}</td><td><span class="badge ${item.state === 'active' ? 'badge-danger' : 'badge-success'}">${Utils.escapeHtml(item.state)}</span><div class="text-xs text-muted">mutation freeze ${item.state === 'active' ? 'on' : 'released'}</div></td></tr>`).join('')}
+          ${(data.backupSeeds || []).slice(0,25).map(item => `<tr><td>Seed #${item.id}<div class="text-xs text-muted">${Utils.escapeHtml(item.datasetRef)} · ${item.chunks.length} chunks</div></td><td>${Utils.formatBytes ? Utils.formatBytes(item.totalBytes) : item.totalBytes} · offline media</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No disaster or seed evidence', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Notifications are queued locally; backup bytes never traverse this API.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Fleet compliance &amp; fault domains</h3></div><table class="data-table"><thead><tr><th>Site / domain</th><th>Evidence</th><th>State</th></tr></thead><tbody>
+          ${(data.compliance?.sites || []).map(item => `<tr><td>${Utils.escapeHtml(item.siteName)}<div class="mono text-xs">${Utils.escapeHtml(item.siteSlug)}</div></td><td>${item.passedCount} pass · ${item.failedCount} fail · ${item.unknownCount} unknown</td><td><span class="badge ${stateBadge(item.posture)}">${Utils.escapeHtml(item.posture)}</span></td></tr>`).join('')}
+          ${(data.faultDomains || []).map(item => `<tr><td>${Utils.escapeHtml(item.domainType)} · ${Utils.escapeHtml(item.name)}<div class="mono text-xs">${Utils.escapeHtml(item.domainKey)}</div></td><td>${item.hostCount} host(s) · ${Utils.escapeHtml(item.owner)}</td><td><span class="badge badge-success">mapped</span></td></tr>`).join('')}
+          ${(data.faultAssessments || []).slice(0,25).map(item => `<tr><td>${Utils.escapeHtml(item.workloadRef)}</td><td>${item.requiredReplicas} replicas · ${Utils.escapeHtml(item.risks.join(', ') || 'separated')}</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No aggregate compliance or topology evidence', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Raw compliance evidence is withheld; topology assessment never changes placement.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Zero-touch enrollment attestations</h3></div><table class="data-table"><thead><tr><th>Agent</th><th>Hardware identity</th><th>State</th></tr></thead><tbody>
+          ${(data.enrollments || []).map(item => `<tr><td>${Utils.escapeHtml(item.agentId)}<div class="mono text-xs">attestation #${item.id} · site #${item.siteId}</div></td><td>${Utils.escapeHtml(item.hardwareClaims?.manufacturer || '')} ${Utils.escapeHtml(item.hardwareClaims?.model || '')}<div class="text-xs text-muted">${Utils.escapeHtml(item.hardwareClaims?.serialNumber || '')}</div></td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No enrollment attestations', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Tokens are single-use; agents generate their own key pair and only public fingerprints are retained.</div></div>
       </div>`;
     this._container.querySelector('#edge-refresh')?.addEventListener('click', () => this.render(this._container));
     this._container.querySelectorAll('[data-edge-action]').forEach(button => button.addEventListener('click', () => this._dialog(button.dataset.edgeAction)));
@@ -81,7 +96,7 @@ const EdgePlatformPage = {
       cache: { siteId: 1, providerRef: 'cluster/edge-a', resourceKind: 'node', resourceRef: 'node/edge-a', observedAt: new Date().toISOString(), payload: { state: 'ready', cpu: 4, memoryGiB: 16 } },
       intent: { siteId: 1, actionKey: 'service.restart', targetRef: 'service/local-api', payload: { serviceRef: 'local-api' }, prerequisites: ['site_reconnected','service_identity_unchanged'], expiresAt: new Date(now + 86400000).toISOString() },
       revalidate: { intentId: 1, checks: [{ prerequisite: 'site_reconnected', outcome: 'pass', evidenceRef: 'heartbeat/42' }, { prerequisite: 'service_identity_unchanged', outcome: 'pass', evidenceRef: 'inventory/42' }] },
-      agent: { siteId: 1, agentId: 'edge-a', certificateFingerprint: digestA, runbookAllowlist: ['collect_inventory','restart_managed_service','network_diagnostics'], updateRing: 'canary', state: 'active' },
+      agent: { siteId: 1, agentId: 'edge-a', certificateFingerprint: digestA, runbookAllowlist: ['collect_inventory','restart_managed_service','network_diagnostics','disaster_assessment'], updateRing: 'canary', state: 'active' },
       heartbeat: { siteId: 1, agentId: 'edge-a', sequence: 1, status: 'healthy', version: '1.0.0', capabilities: ['inventory','events','runbooks'], observedAt: new Date().toISOString() },
       'sync-policy': { siteId: 1, bandwidthKbps: 1024, maxBatchBytes: 5242880, priorityOrder: ['inventory','event','metric','artifact'] },
       events: { siteId: 1, agentId: 'edge-a', events: [{ eventId: `inventory-${now}`, category: 'inventory', occurredAt: new Date().toISOString(), payload: { resources: 12, health: 'ready' } }, { eventId: `metric-${now}`, category: 'metric', occurredAt: new Date().toISOString(), payload: { cpuPercent: 24 } }] },
@@ -110,6 +125,16 @@ const EdgePlatformPage = {
       'bmc-inventory': { endpointId: 1, powerState: 'on', manufacturer: 'Dell', model: 'R650', serialNumber: 'ABC123', firmware: { bios: '2.4.1', bmc: '6.10' }, sensors: { temperature: { state: 'ok', celsius: 31 } }, health: 'ok', observedAt: new Date().toISOString() },
       'bmc-recovery': { endpointId: 1, actionKey: 'power_cycle', safeguards: { targetIdentityMatched: true, fencingVerified: true, quorumSafe: true, workloadsEvacuated: true, recentBackupVerified: true }, reason: 'Frozen host after approved maintenance', ticketRef: 'INC-0002', expiresAt: new Date(now + 600000).toISOString(), assigneeUserId: 2 },
       'bmc-authorize': { planId: 1, approvalId: 1, confirmation: 'redfish/edge-node' },
+      disaster: { siteId: 1, agentRecordId: 1, severity: 'critical', reason: 'Site-wide storage and power incident', ticketRef: 'INC-0003', notifications: [{ channel: 'local_banner', recipientRef: 'site/bucharest-edge' }, { channel: 'email', recipientRef: 'oncall/platform' }], runbookExpiresAt: new Date(now + 3600000).toISOString() },
+      'disaster-resolve': { declarationId: 1, confirmation: 'bucharest-edge', evidence: { ticketRef: 'INC-0003', verification: 'Power, storage and provider inventory verified locally' } },
+      'backup-seed': { siteId: 1, datasetRef: 'site/bucharest-edge', baseBackupRef: 'backup/full-20260729', baseBackupDigest: digestA, encryptionKeyRef: 'vault/backup/site-a', mediaRef: 'offline-media/SSD-001', chunks: [{ index: 0, digest: digestB, bytes: 1048576, verified: true }], expiresAt: new Date(now + 7 * 86400000).toISOString() },
+      'backup-checkpoint': { seedId: 1, sequence: 1, completedChunk: 0, transferredBytes: 1048576, continuationCursor: 'chunk/0/complete', rollingDigest: digestB, mediaIdentityHash: digestA },
+      'compliance-profile': { siteId: 1, requiredControls: ['agent_version','connectivity','residency','backup','quorum','bmc_firmware'], maximumUnknown: 0 },
+      'compliance-snapshot': { siteId: 1, observedAt: new Date().toISOString(), controls: ['agent_version','connectivity','residency','backup','quorum','bmc_firmware'].map(control => ({ control, state: 'pass', evidenceDigest: digestA })) },
+      'fault-domain': { siteId: 1, domainType: 'rack', domainKey: 'rack-a', name: 'Rack A', owner: 'local-operations', metadata: { room: 'MDF-1' }, hostIds: [1] },
+      'fault-assess': { siteId: 1, workloadRef: 'workload/local-api', hostIds: [1], requiredReplicas: 1 },
+      'enrollment-token': { siteId: 1, expectedHardware: { manufacturer: 'Dell', model: 'R650', serialNumber: 'ABC123', tpmEkHash: digestA }, runbookAllowlist: ['collect_inventory','network_diagnostics'], updateRing: 'canary', ttlSeconds: 600 },
+      'enrollment-approve': { attestationId: 1, attestationHash: 'copy exact attestationHash', confirmation: 'edge-node-a', certificateFingerprint: digestA },
     };
     const result = await Modal.form(`<p class="text-muted text-sm">Only references and bounded evidence are accepted. Inline credentials/private keys are rejected.</p><textarea id="edge-action-json" class="form-control mono" rows="24">${Utils.escapeHtml(JSON.stringify(examples[action], null, 2))}</textarea>`, {
       title: `Edge platform · ${action}`, width: '900px', confirmText: action === 'ack' ? 'Acknowledge exact plan' : 'Validate and save',
@@ -149,10 +174,26 @@ const EdgePlatformPage = {
           if (action === 'bmc') return Api.saveEdgeBmcEndpoint(body.siteId, body);
           if (action === 'bmc-inventory') return Api.recordEdgeBmcInventory(body.endpointId, body);
           if (action === 'bmc-recovery') return Api.createEdgeBmcRecovery(body.endpointId, body);
+          if (action === 'disaster') return Api.declareEdgeDisaster(body.siteId, body);
+          if (action === 'disaster-resolve') return Api.resolveEdgeDisaster(body.declarationId, body);
+          if (action === 'backup-seed') return Api.createEdgeBackupSeed(body.siteId, body);
+          if (action === 'backup-checkpoint') return Api.recordEdgeBackupCheckpoint(body.seedId, body);
+          if (action === 'compliance-profile') return Api.saveEdgeComplianceProfile(body.siteId, body);
+          if (action === 'compliance-snapshot') return Api.recordEdgeComplianceSnapshot(body.siteId, body);
+          if (action === 'fault-domain') return Api.saveEdgeFaultDomain(body.siteId, body);
+          if (action === 'fault-assess') return Api.assessEdgeFaultDomains(body.siteId, body);
+          if (action === 'enrollment-token') return Api.createEdgeEnrollmentToken(body.siteId, body);
+          if (action === 'enrollment-approve') return Api.approveEdgeEnrollment(body.attestationId, body);
           return Api.authorizeEdgeBmcRecovery(body.planId, body);
         } catch (error) { Toast.error(error.message); return false; }
       },
     });
+    if (result?.enrollment?.token) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      await Modal.confirm(`<p>This one-time token will not be shown again.</p><textarea class="form-control mono" rows="3" readonly>${Utils.escapeHtml(result.enrollment.token)}</textarea>`, {
+        title: 'Copy enrollment token now', confirmText: 'I copied the token', html: true, width: '620px',
+      });
+    }
     if (result) { Toast.success(`${action} evidence saved`); await this.render(this._container); }
   },
 };

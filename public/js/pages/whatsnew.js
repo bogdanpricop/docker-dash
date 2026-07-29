@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.67.0', date: '2026-07-29', title: 'Edge continuity and unified infrastructure experience', changes: [
+      { type: 'security', text: 'Four-eyes disaster declarations freeze site mutations, queue bounded notifications and activate signed local assessment runbooks; resolution requires exact site confirmation and hashed evidence.' },
+      { type: 'feature', text: 'Signed offline backup seed manifests support verified chunks and monotonic delta checkpoints, while fleet compliance exports only aggregate control states and withholds raw site evidence.' },
+      { type: 'security', text: 'Rack, power, network and storage fault-domain risk stays assessment-only; single-use hardware-bound enrollment bootstraps certificate identity without generating or returning private keys.' },
+      { type: 'feature', text: 'The unified infrastructure home combines permission-filtered endpoint health, persisted VM/container/Kubernetes evidence, risks, rated cost and recent changes; navigation now follows healthy permitted provider endpoints.' },
+      { type: 'improvement', text: 'Resource details standardize Overview/Actions/Tasks/Events/Audit, action blockers identify capability/policy/state/permission causes, and Activity Center adds durable task summaries, cancellation counts and backend deep links.' },
+    ] },
     { version: '8.66.0', date: '2026-07-29', title: 'Edge sovereignty and resilient remote operations', changes: [
       { type: 'security', text: 'Fail-closed residency rules persist inventory/log/metric/backup decisions and block sync plans outside the permitted jurisdiction.' },
       { type: 'security', text: 'Disconnected identity stores assertion hashes only, bounds normal/emergency TTL and scopes, and requires four-eyes activation without returning tokens.' },

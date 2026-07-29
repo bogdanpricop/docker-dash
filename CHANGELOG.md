@@ -2,6 +2,32 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.67.0] - 2026-07-29 — Edge continuity and unified infrastructure experience
+
+The B346–B355 batch closes the edge backlog and starts the common operator
+experience with permission-filtered, evidence-aware views.
+
+- A disaster declaration freezes site mutations, signs an allowlisted local
+  assessment runbook and queues local/external notification references without
+  sending from the control plane. A different administrator must confirm the
+  site slug and attach evidence to release the freeze.
+- Offline backup seeds use signed, verified chunk manifests and monotonic,
+  replay-safe continuation checkpoints; transfer remains outside the API.
+  Fleet compliance exposes aggregate control states only and withholds source
+  evidence. Rack, power, network and storage topology visualizes placement risk
+  without changing placement.
+- Zero-touch enrollment returns a hardware-bound token once, verifies TPM and
+  device claims, rejects replay and requires independent approval of the public
+  certificate fingerprint. No private key is generated or returned.
+- The unified infrastructure home aggregates permitted endpoint health,
+  persisted VM inventory, recent container telemetry, Kubernetes topology
+  coverage, risks, rated cost and recent operations while marking unknown
+  evidence explicitly. Navigation is refined by healthy permitted endpoints.
+- DetailShell standardizes Overview, Actions, Tasks, Events and Audit tabs.
+  Action decisions explain capability, policy, state and permission blockers;
+  Activity Center adds persistent summaries, cancellation counts and canonical
+  operation/resource deep links.
+
 ## [8.66.0] - 2026-07-29 — Edge sovereignty and resilient remote operations
 
 The B336–B345 batch extends disconnected sites with fail-closed data movement,

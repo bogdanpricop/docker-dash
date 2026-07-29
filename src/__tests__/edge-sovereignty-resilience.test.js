@@ -8,6 +8,7 @@ const Database = require('better-sqlite3');
 const migration131 = require('../db/migrations/131_automation_operations_lifecycle_updates');
 const migration139 = require('../db/migrations/139_edge_disconnected_foundation');
 const migration140 = require('../db/migrations/140_edge_sovereignty_resilience');
+const migration141 = require('../db/migrations/141_edge_continuity_experience');
 const { EdgePlatformService } = require('../services/edge-platform');
 const { InfrastructureOperationsService } = require('../services/infrastructure-operations');
 
@@ -27,7 +28,7 @@ function setup() {
     INSERT INTO docker_hosts VALUES (7,'edge-node','docker','{}',1);
     INSERT INTO governance_roles VALUES (1,'site-admin');
   `);
-  migration131.up(db); migration139.up(db); migration140.up(db);
+  migration131.up(db); migration139.up(db); migration140.up(db); migration141.up(db);
   const approvals = new InfrastructureOperationsService(() => db);
   const service = new EdgePlatformService(() => db, { signingSecret: 'unit-test-edge-signing-secret-32', approvalService: approvals });
   const site = service.saveSite({ slug: 'bucharest-edge', name: 'Bucharest edge', timezone: 'Europe/Bucharest',
