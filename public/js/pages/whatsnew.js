@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.65.0', date: '2026-07-29', title: 'Edge and disconnected operations foundation', changes: [
+      { type: 'feature', text: 'Edge sites bind registered hosts to IANA timezone, region, jurisdiction, local owner, trust roots and expected-disconnect-aware health.' },
+      { type: 'security', text: 'Offline intents are HMAC-signed, expiring, action-allowlisted and reconnect-revalidated; the central service has no intent executor.' },
+      { type: 'feature', text: 'Replay-safe heartbeats and deflate-raw store-and-forward batches provide cursors, deduplication, byte budgets and inventory/events-first ordering.' },
+      { type: 'security', text: 'Agent profiles restrict signed runbooks; canary/stable/held update plans require trusted offline bundle and rollback evidence and expose no apply.' },
+      { type: 'feature', text: 'Private-key-free bootstrap and OCI/ISO/template/package/docs mirror manifests retain digests and external signature evidence without implicit downloads.' },
+    ] },
     { version: '8.64.0', date: '2026-07-29', title: 'Unified Kubernetes application platform', changes: [
       { type: 'feature', text: 'A common VM/pod topology links namespace, Service, node, PVC/DataVolume and Multus resources; normalized metrics attribute virt-launcher usage and node contention.' },
       { type: 'feature', text: 'Quota, NetworkPolicy, admission and ownership-label evidence join cluster version, node, addon, API-group and OpenShift upgrade readiness.' },

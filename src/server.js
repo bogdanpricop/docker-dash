@@ -258,6 +258,8 @@ app.use('/api/copilot', apiLimiter, require('./routes/copilot'));
 app.use('/api/onboarding', apiLimiter, require('./routes/onboarding'));
 // v8.49.0 — V4.6a scoped roles, projects, invitations and resource quotas.
 app.use('/api/governance', apiLimiter, require('./routes/governance'));
+// v8.65.0 — B326-B335 edge/disconnected planning, evidence and signed manifests.
+app.use('/api/edge', apiLimiter, require('./routes/edge-platform'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

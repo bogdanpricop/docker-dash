@@ -67,6 +67,7 @@ const App = {
     onboarding:       () => OnboardingPage,
     governance:       () => GovernancePage,
     'governance-controls': () => GovernanceControlsPage,
+    'edge-platform': () => EdgePlatformPage,
   },
 
   async init() {

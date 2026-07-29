@@ -1090,16 +1090,16 @@ modifică workload-uri, clustere ori registre.
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B326 | Site/edge location model | Timezone, region, connectivity și local owner. | Gov | M | Next |
-| B327 | Intermittent-connectivity provider mode | Queue/read-cache și explicit stale state. | Rez | L | Next |
-| B328 | Offline mutation queue | Signed, expiring intents cu revalidation la reconnect. | Rez | XL | Later |
-| B329 | Edge heartbeat and last-seen | Health fără false outage la expected disconnect. | Ops | M | Next |
-| B330 | Bandwidth-aware sync | Prioritizează inventory/events înainte de metrics/artifacts. | Cost | L | Next |
-| B331 | Store-and-forward events | Buffer local cu cursor, compression și dedup. | Rez | L | Later |
-| B332 | Local edge execution agent | Runbook allowlist semnat când control plane e offline. | Rez | XL | Later |
-| B333 | Edge agent auto-update rings | Canary/stable/held, rollback și offline bundle. | Rez | L | Later |
-| B334 | Air-gapped provider bootstrap | Certificates, packages și docs bundle verificat. | DX | L | Next |
-| B335 | Offline image/content mirror | OCI/ISO/template/package mirror cu signatures. | Rez | XL | Later |
+| B326 | Site/edge location model | Timezone, region, connectivity și local owner. | Gov | M | Done |
+| B327 | Intermittent-connectivity provider mode | Queue/read-cache și explicit stale state. | Rez | L | Done |
+| B328 | Offline mutation queue | Signed, expiring intents cu revalidation la reconnect. | Rez | XL | Done |
+| B329 | Edge heartbeat and last-seen | Health fără false outage la expected disconnect. | Ops | M | Done |
+| B330 | Bandwidth-aware sync | Prioritizează inventory/events înainte de metrics/artifacts. | Cost | L | Done |
+| B331 | Store-and-forward events | Buffer local cu cursor, compression și dedup. | Rez | L | Done |
+| B332 | Local edge execution agent | Runbook allowlist semnat când control plane e offline. | Rez | XL | Done |
+| B333 | Edge agent auto-update rings | Canary/stable/held, rollback și offline bundle. | Rez | L | Done |
+| B334 | Air-gapped provider bootstrap | Certificates, packages și docs bundle verificat. | DX | L | Done |
+| B335 | Offline image/content mirror | OCI/ISO/template/package mirror cu signatures. | Rez | XL | Done |
 | B336 | Sovereign data-residency policy | Blochează logs/backups/metrics în afara zonei. | Gov | L | Later |
 | B337 | Disconnected identity cache | Short-lived cached auth și emergency policy. | Sig | XL | Later |
 | B338 | Site-local secret vault adapter | Credential resolution fără central secret transit. | Sig | XL | Later |
@@ -1115,6 +1115,21 @@ modifică workload-uri, clustere ori registre.
 | B348 | Edge fleet compliance summary | Aggregate evidence fără exportul datelor sensibile. | Gov | L | Later |
 | B349 | Multi-rack/fault-domain visualization | Rack/power/network/storage domain și placement risk. | Rez | L | Later |
 | B350 | Edge zero-touch enrollment | One-time token, hardware identity și certificate bootstrap. | DX | XL | Later |
+
+**Status implementare 2026-07-29:** B326–B335 au fost închise în V6.5a /
+v8.65.0. Site-urile păstrează timezone IANA, regiune, jurisdicție, owner, trust
+roots și host mapping unic. Conectivitatea intermitentă separă cache `fresh` /
+`stale` / `expired` și expected disconnect de outage. Intențiile offline sunt
+HMAC-signate, expirabile și devin `ready_for_agent` numai după revalidarea
+completă; control plane-ul nu le execută. Heartbeat-ul are sequence anti-replay.
+Event buffer-ul este deflate-raw, cursor-based, deduplicat și sincronizat în
+ordinea configurată inventory/events/metrics/artifacts, cu acknowledgement legat
+de plan hash. Agenții au allowlist de runbook, rings canary/stable/held și
+update plan cu bundle/rollback verificabil, fără apply central. Bootstrap și
+mirror manifests includ numai certificate/package/docs/OCI/ISO/template refs,
+digests și external signature evidence; nu includ private keys și nu descarcă
+ori sincronizează implicit. Transportul agent rămâne admin-ingested până la
+zero-touch enrollment B350.
 
 ### O. UX, self-service și service catalog (B351–B375)
 

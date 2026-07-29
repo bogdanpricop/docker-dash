@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/edge'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -1707,6 +1707,25 @@ const Api = {
   saveFinOpsCarbonFactor(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-factors', body); },
   recommendFinOpsCarbonSchedule(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-recommendations', body); },
   compareFinOpsTco(body) { return this.post('/governance/lifecycle/finops/sustainability/tco-scenarios', body); },
+
+  // ─── Edge / disconnected platform ──────────────
+  getEdgeOverview() { return this.get('/edge/overview'); },
+  saveEdgeSite(body) { return this.post('/edge/sites', body); },
+  saveEdgeConnectivity(siteId, body) { return this.put(`/edge/sites/${siteId}/connectivity`, body); },
+  getEdgeCache(siteId) { return this.get(`/edge/sites/${siteId}/cache`); },
+  recordEdgeCache(siteId, body) { return this.post(`/edge/sites/${siteId}/cache`, body); },
+  createEdgeIntent(siteId, body) { return this.post(`/edge/sites/${siteId}/intents`, body); },
+  revalidateEdgeIntent(intentId, body) { return this.post(`/edge/intents/${intentId}/revalidate`, body); },
+  saveEdgeAgent(siteId, body) { return this.post(`/edge/sites/${siteId}/agents`, body); },
+  recordEdgeHeartbeat(siteId, body) { return this.post(`/edge/sites/${siteId}/heartbeats`, body); },
+  saveEdgeSyncPolicy(siteId, body) { return this.put(`/edge/sites/${siteId}/sync-policy`, body); },
+  bufferEdgeEvents(siteId, body) { return this.post(`/edge/sites/${siteId}/events`, body); },
+  createEdgeSyncPlan(siteId, body = {}) { return this.post(`/edge/sites/${siteId}/sync-plans`, body); },
+  acknowledgeEdgeSyncPlan(planId, body) { return this.post(`/edge/sync-plans/${planId}/acknowledge`, body); },
+  createEdgeRunbook(agentId, body) { return this.post(`/edge/agents/${agentId}/runbooks`, body); },
+  createEdgeUpdatePlan(agentId, body) { return this.post(`/edge/agents/${agentId}/update-plans`, body); },
+  createEdgeBootstrap(siteId, body) { return this.post(`/edge/sites/${siteId}/bootstrap-manifests`, body); },
+  createEdgeMirror(siteId, body) { return this.post(`/edge/sites/${siteId}/mirror-manifests`, body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

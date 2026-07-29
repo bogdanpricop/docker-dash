@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.65.0] - 2026-07-29 — Edge and disconnected operations foundation
+
+The B326–B335 batch adds explicit edge-site state and bounded offline planning
+without turning disconnected evidence into implicit infrastructure execution.
+
+- Edge sites bind unique registered hosts to IANA timezone, region,
+  jurisdiction, local owner and trust roots. Connectivity policies distinguish
+  expected disconnects from outages and cached evidence is explicitly fresh,
+  stale or expired.
+- Offline mutation intents are HMAC-signed, expiring and action-allowlisted;
+  reconnect revalidation must cover every prerequisite before an intent becomes
+  agent-ready. The central service exposes no executor.
+- Replay-safe heartbeats use monotonic sequences. Store-and-forward batches
+  reject secrets, compress with deflate-raw, deduplicate by content identity and
+  prioritize inventory/events ahead of metrics/artifacts within a byte budget.
+- Local agent profiles restrict signed runbook envelopes to an allowlist.
+  Canary/stable/held update plans retain trusted offline bundle and rollback
+  evidence but expose no apply action.
+- Air-gap bootstrap and OCI/ISO/template/package/docs mirror manifests retain
+  digests, local references and external signature evidence, contain no private
+  keys and never download or sync implicitly.
+
 ## [8.64.0] - 2026-07-29 — Unified Kubernetes application platform
 
 The B316–B325 batch closes the VM/container convergence group with common
