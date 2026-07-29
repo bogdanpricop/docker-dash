@@ -12,7 +12,7 @@ router.use(requireAuth, requireRole('admin'));
 function route(handler) {
   return async (req, res, next) => {
     try { await handler(req, res); } catch (error) {
-      if (error.name === 'EdgePlatformError') return res.status(error.status || 400)
+      if (['EdgePlatformError','InfrastructureOperationsError'].includes(error.name)) return res.status(error.status || 400)
         .json({ error: error.message, code: error.code, details: error.details });
       next(error);
     }
@@ -129,6 +129,117 @@ router.post('/sites/:id/mirror-manifests', writeable, route((req, res) => {
     itemCount: manifest.items.length, totalBytes: manifest.totalBytes, state: manifest.state,
     manifestHash: manifest.manifestHash, syncSupported: false, providerMutationsStarted: 0 });
   res.status(manifest.duplicate ? 200 : 201).json({ manifest });
+}));
+
+router.put('/sites/:id/residency-policy', writeable, route((req, res) => {
+  const policy = edge.saveResidencyPolicy(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_residency_policy_save', 'edge_site', policy.siteId, { zone: policy.zone,
+    categoryRules: policy.categoryRules, failClosed: true, policyHash: policy.policyHash }); res.json({ policy });
+}));
+router.post('/sites/:id/residency-evaluations', writeable, route((req, res) => {
+  const evaluation = edge.evaluateResidency(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_residency_evaluate', 'edge_residency_evaluation', evaluation.id, { siteId: evaluation.siteId,
+    dataCategory: evaluation.dataCategory, destinationJurisdiction: evaluation.destinationJurisdiction,
+    decision: evaluation.decision, policyHash: evaluation.policyHash }); res.status(evaluation.duplicate ? 200 : 201).json({ evaluation });
+}));
+router.put('/sites/:id/identity-cache-policy', writeable, route((req, res) => {
+  const policy = edge.saveIdentityCachePolicy(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_identity_cache_policy_save', 'edge_site', policy.siteId, { issuerRef: policy.issuerRef,
+    normalTtlSeconds: policy.normalTtlSeconds, emergencyTtlSeconds: policy.emergencyTtlSeconds,
+    policyHash: policy.policyHash, storesBearerTokens: false }); res.json({ policy });
+}));
+router.post('/sites/:id/identity-grants', writeable, route((req, res) => {
+  const grant = edge.issueIdentityGrant(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_identity_grant_issue', 'edge_identity_grant', grant.id, { siteId: grant.siteId, subjectRef: grant.subjectRef,
+    mode: grant.mode, scopes: grant.scopes, expiresAt: grant.expiresAt, grantHash: grant.grantHash, tokenReturnedByApi: false });
+  res.status(grant.duplicate ? 200 : 201).json({ grant });
+}));
+router.post('/identity-grants/:id/activate', writeable, route((req, res) => {
+  const grant = edge.activateIdentityGrant(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_identity_grant_activate', 'edge_identity_grant', grant.id, { subjectRef: grant.subjectRef,
+    mode: grant.mode, expiresAt: grant.expiresAt, grantHash: grant.grantHash, activatedBy: grant.activatedBy, tokenReturnedByApi: false });
+  res.json({ grant });
+}));
+router.post('/sites/:id/vault-adapters', writeable, route((req, res) => {
+  const adapter = edge.saveVaultAdapter(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_vault_adapter_save', 'edge_vault_adapter', adapter.id, { siteId: adapter.siteId,
+    providerKind: adapter.providerKind, endpointRef: adapter.endpointRef, authMethod: adapter.authMethod,
+    configHash: adapter.configHash, credentialsStoredCentrally: false }); res.status(201).json({ adapter });
+}));
+router.post('/vault-adapters/:id/resolution-plans', writeable, route((req, res) => {
+  const plan = edge.createSecretResolutionPlan(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_secret_resolution_plan', 'edge_secret_resolution_plan', plan.id, { adapterId: plan.adapterId,
+    agentRecordId: plan.agentRecordId, purpose: plan.purpose, secretRef: plan.secretRef, planHash: plan.planHash,
+    resolutionLocation: 'edge_agent', secretReturnedByApi: false }); res.status(plan.duplicate ? 200 : 201).json({ plan });
+}));
+router.put('/sites/:id/single-node-profile', writeable, route((req, res) => {
+  const profile = edge.saveSingleNodeProfile(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_single_node_profile_save', 'edge_site', profile.siteId, { profileHash: profile.profileHash,
+    requireExternalBackup: true, requireMaintenanceWindow: true, automaticUpgrade: false }); res.json({ profile });
+}));
+router.post('/sites/:id/single-node-assessments', writeable, route((req, res) => {
+  const assessment = edge.assessSingleNode(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_single_node_assess', 'edge_single_node_assessment', assessment.id, { siteId: assessment.siteId,
+    state: assessment.state, checks: assessment.checks, assessmentHash: assessment.assessmentHash, applySupported: false });
+  res.status(201).json({ assessment });
+}));
+router.post('/sites/:id/quorum-snapshots', writeable, route((req, res) => {
+  const snapshot = edge.recordQuorumSnapshot(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_quorum_snapshot_ingest', 'edge_quorum_snapshot', snapshot.id, { siteId: snapshot.siteId,
+    clusterRef: snapshot.clusterRef, requiredVotes: snapshot.requiredVotes, availableVotes: snapshot.availableVotes,
+    risks: snapshot.risks, state: snapshot.state, providerMutationsStarted: 0 }); res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+}));
+router.put('/sites/:id/reservation-policy', writeable, route((req, res) => {
+  const policy = edge.saveReservationPolicy(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_reservation_policy_save', 'edge_site', policy.siteId, { policyHash: policy.policyHash,
+    maxWorkloadPercent: policy.maxWorkloadPercent, evictionFreeStoragePercent: policy.evictionFreeStoragePercent }); res.json({ policy });
+}));
+router.post('/sites/:id/reservation-assessments', writeable, route((req, res) => {
+  const assessment = edge.assessReservations(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_reservation_assess', 'edge_reservation_assessment', assessment.id, { siteId: assessment.siteId,
+    state: assessment.state, checks: assessment.checks, assessmentHash: assessment.assessmentHash, applySupported: false }); res.status(201).json({ assessment });
+}));
+router.put('/sites/:id/console-profile', writeable, route((req, res) => {
+  const profile = edge.saveConsoleProfile(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_console_profile_save', 'edge_site', profile.siteId, { transportOrder: profile.transportOrder,
+    maxBandwidthKbps: profile.maxBandwidthKbps, clipboardEnabled: false, fileTransferEnabled: false,
+    profileHash: profile.profileHash, launchSupported: false }); res.json({ profile });
+}));
+router.post('/sites/:id/remote-hands-plans', writeable, route((req, res) => {
+  const plan = edge.createRemoteHandsPlan(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_remote_hands_plan', 'edge_remote_hands_plan', plan.id, { siteId: plan.siteId,
+    targetRef: plan.targetRef, approvalId: plan.approvalId, planHash: plan.planHash, state: plan.state,
+    centralExecutionSupported: false, providerMutationsStarted: 0 }); res.status(plan.duplicate ? 200 : 201).json({ plan });
+}));
+router.post('/remote-hands-plans/:id/authorize', writeable, route((req, res) => {
+  const plan = edge.authorizeRemoteHands(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_remote_hands_authorize', 'edge_remote_hands_plan', plan.id, { approvalId: plan.approvalId,
+    planHash: plan.planHash, authorizedBy: plan.authorizedBy, state: plan.state, executionLocation: plan.executionLocation,
+    providerMutationsStarted: 0 }); res.json({ plan });
+}));
+router.post('/sites/:id/bmc-endpoints', writeable, route((req, res) => {
+  const endpoint = edge.saveBmcEndpoint(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_bmc_endpoint_save', 'edge_bmc_endpoint', endpoint.id, { siteId: endpoint.siteId,
+    hostId: endpoint.hostId, protocol: endpoint.protocol, endpointRef: endpoint.endpointRef, owner: endpoint.owner,
+    configHash: endpoint.configHash, credentialsStoredCentrally: false }); res.status(201).json({ endpoint });
+}));
+router.post('/bmc-endpoints/:id/inventory', writeable, route((req, res) => {
+  const inventory = edge.recordBmcInventory(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_bmc_inventory_ingest', 'edge_bmc_inventory', inventory.id, { endpointId: inventory.endpointId,
+    powerState: inventory.powerState, health: inventory.health, evidenceHash: inventory.evidenceHash,
+    collectionLocation: 'edge_agent', credentialsReturned: false }); res.status(inventory.duplicate ? 200 : 201).json({ inventory });
+}));
+router.post('/bmc-endpoints/:id/recovery-plans', writeable, route((req, res) => {
+  const plan = edge.createBmcRecoveryPlan(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_bmc_recovery_plan', 'edge_bmc_recovery_plan', plan.id, { endpointId: plan.endpointId,
+    actionKey: plan.actionKey, safeguards: plan.safeguards, approvalId: plan.approvalId, state: plan.state,
+    planHash: plan.planHash, centralBmcExecutionSupported: false, providerMutationsStarted: 0 }); res.status(plan.duplicate ? 200 : 201).json({ plan });
+}));
+router.post('/bmc-recovery-plans/:id/authorize', writeable, route((req, res) => {
+  const plan = edge.authorizeBmcRecovery(req.params.id, req.body || {}, req.user);
+  audit(req, 'edge_bmc_recovery_authorize', 'edge_bmc_recovery_plan', plan.id, { approvalId: plan.approvalId,
+    actionKey: plan.actionKey, planHash: plan.planHash, authorizedBy: plan.authorizedBy, state: plan.state,
+    executionLocation: 'edge_agent', providerMutationsStarted: 0 }); res.json({ plan });
 }));
 
 module.exports = router;

@@ -2,6 +2,30 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.66.0] - 2026-07-29 — Edge sovereignty and resilient remote operations
+
+The B336–B345 batch extends disconnected sites with fail-closed data movement,
+short-lived local access and independently approved out-of-band recovery.
+
+- Per-site residency rules cover inventory, logs, metrics and backups. Every
+  evaluated destination is persisted, and synchronization plans are rejected
+  when any selected category falls outside its allowed jurisdiction.
+- Disconnected identity stores only assertion hashes, restricts normal and
+  emergency scopes/TTL and requires another administrator to activate an exact
+  signed grant. Site-local vault adapters retain references only; expiring
+  secret-resolution envelopes execute at the edge and never return a secret.
+- Single-node profiles expose lack of HA, require backup and maintenance-window
+  evidence and disable automatic upgrades. Quorum snapshots compute majority,
+  witness health and failure-domain risk; reservation assessments protect
+  system CPU, memory and storage without applying configuration.
+- Low-bandwidth console profiles prefer serial/text, adapt quality and force
+  clipboard/file transfer off. Remote-hands checklists are signed, expiring and
+  payload-bound to independent approval before local-operator readiness.
+- Redfish/IPMI inventory links a registered host to a local-vault credential
+  reference. Power recovery is blocked unless fencing, quorum, evacuation,
+  backup and identity safeguards pass, then emits a short-lived four-eyes JIT
+  envelope for an edge agent; the central service never calls the BMC.
+
 ## [8.65.0] - 2026-07-29 — Edge and disconnected operations foundation
 
 The B326–B335 batch adds explicit edge-site state and bounded offline planning

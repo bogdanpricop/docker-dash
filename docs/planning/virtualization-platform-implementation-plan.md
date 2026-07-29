@@ -175,7 +175,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
-| V6.5 | Edge/disconnected/sovereign | B326–B350 | V6.5a livrează B326–B335: site/cache, signed offline intents, heartbeat, store-forward, agent/update rings și air-gap manifests; B336–B350 rămân planificate |
+| V6.5 | Edge/disconnected/sovereign | B326–B350 | V6.5a livrează B326–B335; V6.5b livrează B336–B345: residency, identity/vault local, single-node/quorum/reservations, console, remote-hands și BMC; B346–B350 rămân planificate |
 | V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
 | V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
 

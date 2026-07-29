@@ -1,4 +1,4 @@
-/* Edge, ROBO and disconnected operations — B326-B335 */
+/* Edge, ROBO and disconnected operations — B326-B345 */
 'use strict';
 
 const EdgePlatformPage = {
@@ -13,20 +13,22 @@ const EdgePlatformPage = {
 
   _paint() {
     const data = this._data || {}; const summary = data.summary || {}; const sites = data.sites || [];
-    const stateBadge = state => state === 'healthy' || state === 'ready' || state === 'acknowledged' || state === 'ready_for_agent' ? 'badge-success'
+    const stateBadge = state => ['healthy','ready','active','allowed','compliant','acknowledged','ready_for_agent','ready_for_edge_agent','ready_for_local_operator'].includes(state) ? 'badge-success'
       : state === 'blocked' || state === 'offline' || state === 'expired' || state === 'revalidation_required' ? 'badge-danger' : 'badge-warning';
     this._container.innerHTML = `<div class="page-header"><div><h1 class="page-title"><i class="fas fa-tower-broadcast" style="color:var(--accent);margin-right:10px"></i>Edge &amp; disconnected</h1>
-      <p class="page-subtitle">Signed offline intent, bounded cache and store-and-forward evidence for ROBO and air-gapped sites.</p></div>
+      <p class="page-subtitle">Sovereign, resilient operations for ROBO, low-bandwidth and air-gapped sites.</p></div>
       <button class="btn btn-secondary" id="edge-refresh"><i class="fas fa-rotate"></i> Refresh</button></div>
-      <div class="alert alert-info">Central execution is disabled. Intents require reconnect revalidation; runbook/update/bootstrap/mirror records are signed envelopes or manifests only. Agent transport remains authenticated admin ingestion until B350 enrollment.</div>
+      <div class="alert alert-info">Central execution remains disabled. Residency is fail-closed; cached identity returns no token; secrets resolve only at the edge. Remote-hands and BMC recovery require independent approval and create local JIT envelopes.</div>
       <div class="info-grid">
         ${this._stat('fa-location-dot','Sites',summary.sites || 0)}${this._stat('fa-signal','Healthy',summary.online || 0)}
         ${this._stat('fa-plug-circle-xmark','Expected offline',summary.expectedDisconnected || 0)}${this._stat('fa-clock-rotate-left','Stale cache',summary.staleCache || 0)}
         ${this._stat('fa-list-check','Queued intents',summary.queuedIntents || 0)}${this._stat('fa-box','Buffered events',summary.pendingEvents || 0)}
-        ${this._stat('fa-microchip','Active agents',summary.activeAgents || 0)}${this._stat('fa-hard-drive','Ready mirrors',summary.readyMirrors || 0)}
+        ${this._stat('fa-shield-halved','Blocked transfers',summary.blockedResidency || 0)}${this._stat('fa-key','Active grants',summary.activeIdentityGrants || 0)}
+        ${this._stat('fa-scale-balanced','Quorum risks',summary.atRiskQuorum || 0)}${this._stat('fa-screwdriver-wrench','Remote-hands pending',summary.pendingRemoteHands || 0)}
+        ${this._stat('fa-microchip','Critical BMC',summary.criticalBmc || 0)}${this._stat('fa-power-off','Recovery ready',summary.readyBmcRecovery || 0)}
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0">
-        ${[['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['intent','Offline intent'],['revalidate','Revalidate'],['agent','Agent'],['heartbeat','Heartbeat'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],['bootstrap','Bootstrap'],['mirror','Mirror']].map(([key,label], index) => `<button class="btn btn-sm ${index === 0 ? 'btn-primary' : 'btn-secondary'}" data-edge-action="${key}">${label}</button>`).join('')}
+        ${[['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['intent','Offline intent'],['revalidate','Revalidate'],['agent','Agent'],['heartbeat','Heartbeat'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],['bootstrap','Bootstrap'],['mirror','Mirror'],['residency-policy','Residency policy'],['residency-check','Residency check'],['identity-policy','Identity policy'],['identity-grant','Identity grant'],['identity-activate','Activate grant'],['vault','Local vault'],['secret-plan','Secret plan'],['single-profile','Single-node'],['single-assess','Single assess'],['quorum','Quorum'],['reservation-policy','Reservations'],['reservation-assess','Reserve assess'],['console','Console'],['remote-hands','Remote hands'],['remote-authorize','Authorize hands'],['bmc','BMC endpoint'],['bmc-inventory','BMC inventory'],['bmc-recovery','BMC recovery'],['bmc-authorize','Authorize BMC']].map(([key,label], index) => `<button class="btn btn-sm ${index === 0 ? 'btn-primary' : 'btn-secondary'}" data-edge-action="${key}">${label}</button>`).join('')}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px">
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Sites &amp; connectivity</h3></div><table class="data-table"><thead><tr><th>Site</th><th>Region / owner</th><th>Connectivity</th><th>Health</th></tr></thead><tbody>
@@ -48,6 +50,21 @@ const EdgePlatformPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Read cache provenance</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Observed / expiry</th><th>State</th></tr></thead><tbody>
           ${(data.cache || []).slice(0,50).map(item => `<tr><td>${Utils.escapeHtml(item.resourceKind)} · ${Utils.escapeHtml(item.resourceRef)}<div class="text-xs text-muted">${Utils.escapeHtml(item.providerRef)}</div></td><td>${new Date(item.observedAt).toLocaleString()}<div class="text-xs text-muted">expires ${new Date(item.expiresAt).toLocaleString()}</div></td><td><span class="badge ${stateBadge(item.state)}">${item.state}</span></td></tr>`).join('') || this._empty('No cached provider evidence', 3)}
         </tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Sovereignty &amp; disconnected identity</h3></div><table class="data-table"><thead><tr><th>Control</th><th>Scope</th><th>State</th></tr></thead><tbody>
+          ${(data.residencyPolicies || []).map(item => `<tr><td>Residency · site #${item.siteId}<div class="mono text-xs">${item.policyHash.slice(0,12)}</div></td><td>${Utils.escapeHtml(item.zone)} · ${Object.keys(item.categoryRules).length} categories</td><td><span class="badge badge-success">fail closed</span></td></tr>`).join('')}
+          ${(data.identityGrants || []).slice(0,25).map(item => `<tr><td>Identity · ${Utils.escapeHtml(item.subjectRef)}<div class="mono text-xs">${item.grantHash.slice(0,12)}</div></td><td>${Utils.escapeHtml(item.mode)} · ${item.scopes.length} scopes</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('')}
+          ${(data.vaultAdapters || []).map(item => `<tr><td>Vault · ${Utils.escapeHtml(item.name)}<div class="text-xs text-muted">${Utils.escapeHtml(item.providerKind)}</div></td><td>${Utils.escapeHtml(item.endpointRef)}</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No sovereignty or identity controls', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Secrets stored centrally: never · bearer tokens returned: never · secret resolution plans: ${(data.secretPlans || []).length}.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Small-cluster resilience</h3></div><table class="data-table"><thead><tr><th>Evidence</th><th>Result</th><th>Safety boundary</th></tr></thead><tbody>
+          ${(data.singleNodeAssessments || []).slice(0,25).map(item => `<tr><td>Single-node · site #${item.siteId}<div class="mono text-xs">${item.assessmentHash.slice(0,12)}</div></td><td><span class="badge ${stateBadge(item.state)}">${item.state}</span></td><td>HA unavailable · no apply</td></tr>`).join('')}
+          ${(data.quorum || []).slice(0,25).map(item => `<tr><td>Quorum · ${Utils.escapeHtml(item.clusterRef)}<div class="text-xs text-muted">${item.availableVotes}/${item.requiredVotes} votes</div></td><td><span class="badge ${stateBadge(item.state)}">${item.state}</span></td><td>${Utils.escapeHtml(item.risks.join(', ') || 'no recorded risk')}</td></tr>`).join('')}
+          ${(data.reservations || []).slice(0,25).map(item => `<tr><td>Reservations · site #${item.siteId}<div class="mono text-xs">${item.assessmentHash.slice(0,12)}</div></td><td><span class="badge ${stateBadge(item.state)}">${item.state}</span></td><td>assessment only</td></tr>`).join('') || this._empty('No topology or reservation evidence', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Low-bandwidth console profiles: ${(data.consoleProfiles || []).length}; serial/text first, clipboard and file transfer disabled.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Remote hands &amp; out-of-band recovery</h3></div><table class="data-table"><thead><tr><th>Plan / endpoint</th><th>Owner / action</th><th>State</th></tr></thead><tbody>
+          ${(data.bmcEndpoints || []).map(item => `<tr><td>BMC · ${Utils.escapeHtml(item.name)}<div class="text-xs text-muted">${Utils.escapeHtml(item.protocol)} · host #${item.hostId}</div></td><td>${Utils.escapeHtml(item.owner)}</td><td><span class="badge ${stateBadge(item.state)}">${item.state}</span></td></tr>`).join('')}
+          ${(data.remoteHands || []).slice(0,25).map(item => `<tr><td>Hands · ${Utils.escapeHtml(item.targetRef)}<div class="mono text-xs">approval #${item.approvalId}</div></td><td>${item.checklist.length} checks</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('')}
+          ${(data.bmcRecovery || []).slice(0,25).map(item => `<tr><td>Recovery · endpoint #${item.endpointId}<div class="mono text-xs">${item.planHash.slice(0,12)}</div></td><td>${Utils.escapeHtml(item.actionKey)}</td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No BMC or remote-hands plans', 3)}
+        </tbody></table><div class="card-body text-sm text-muted">Inventory snapshots: ${(data.bmcInventory || []).length}. Recovery executes only at the edge after independent approval.</div></div>
       </div>`;
     this._container.querySelector('#edge-refresh')?.addEventListener('click', () => this.render(this._container));
     this._container.querySelectorAll('[data-edge-action]').forEach(button => button.addEventListener('click', () => this._dialog(button.dataset.edgeAction)));
@@ -68,12 +85,31 @@ const EdgePlatformPage = {
       heartbeat: { siteId: 1, agentId: 'edge-a', sequence: 1, status: 'healthy', version: '1.0.0', capabilities: ['inventory','events','runbooks'], observedAt: new Date().toISOString() },
       'sync-policy': { siteId: 1, bandwidthKbps: 1024, maxBatchBytes: 5242880, priorityOrder: ['inventory','event','metric','artifact'] },
       events: { siteId: 1, agentId: 'edge-a', events: [{ eventId: `inventory-${now}`, category: 'inventory', occurredAt: new Date().toISOString(), payload: { resources: 12, health: 'ready' } }, { eventId: `metric-${now}`, category: 'metric', occurredAt: new Date().toISOString(), payload: { cpuPercent: 24 } }] },
-      'sync-plan': { siteId: 1, maxBytes: 5242880 },
+      'sync-plan': { siteId: 1, maxBytes: 5242880, destinationJurisdiction: 'EU/RO' },
       ack: { planId: 1, planHash: 'copy exact planHash from the table/API response' },
       runbook: { agentRecordId: 1, runbookKey: 'collect_inventory', targetRef: 'site/bucharest-edge', parameters: { scope: 'all' }, expiresAt: new Date(now + 3600000).toISOString() },
       update: { agentRecordId: 1, targetVersion: '1.1.0', bundle: { digest: digestA, localRef: 'mirror/agent-1.1.0', signatureIdentity: 'signer/platform-release', signatureVerified: true }, rollback: { version: '1.0.0', digest: digestB, localRef: 'mirror/agent-1.0.0' } },
       bootstrap: { siteId: 1, name: 'edge-bootstrap', version: '1.0.0', expiresAt: new Date(now + 7 * 86400000).toISOString(), artifacts: [{ kind: 'certificate', name: 'site-ca', version: '1.0.0', digest: digestA, localRef: 'bundle/certs/site-ca.pem', byteSize: 2048, signatureIdentity: 'signer/platform-release', signatureVerified: true }, { kind: 'docs', name: 'operations-guide', version: '1.0.0', digest: digestB, localRef: 'bundle/docs/operations.pdf', byteSize: 4096, signatureIdentity: 'signer/platform-release', signatureVerified: true }] },
-      mirror: { siteId: 1, name: 'site-content', sourceMirrorRef: 'airgap/site-a', items: [{ kind: 'oci', name: 'docker-dash', version: '8.65.0', digest: digestA, localRef: 'oci/docker-dash/8.65.0', byteSize: 524288000, signatureIdentity: 'signer/platform-release', signatureVerified: true }] },
+      mirror: { siteId: 1, name: 'site-content', sourceMirrorRef: 'airgap/site-a', items: [{ kind: 'oci', name: 'docker-dash', version: '8.66.0', digest: digestA, localRef: 'oci/docker-dash/8.66.0', byteSize: 524288000, signatureIdentity: 'signer/platform-release', signatureVerified: true }] },
+      'residency-policy': { siteId: 1, zone: 'EU/RO', categoryRules: { inventory: ['EU/RO'], logs: ['EU/RO'], metrics: ['EU/RO'], backups: ['EU/RO'] } },
+      'residency-check': { siteId: 1, dataCategory: 'logs', destinationJurisdiction: 'EU/RO' },
+      'identity-policy': { siteId: 1, issuerRef: 'oidc/romprix', normalTtlSeconds: 600, emergencyTtlSeconds: 180, normalScopes: ['inventory.read','events.write','health.write'], emergencyScopes: ['inventory.read','health.write'] },
+      'identity-grant': { siteId: 1, subjectRef: 'user/local-operator', assertionHash: digestA, scopes: ['inventory.read'], mode: 'emergency', ttlSeconds: 120, reason: 'WAN outage', ticketRef: 'INC-0001' },
+      'identity-activate': { grantId: 1, grantHash: 'copy exact grantHash', confirmation: 'user/local-operator' },
+      vault: { siteId: 1, name: 'site-vault', providerKind: 'hashicorp_vault', endpointRef: 'https://vault.edge.internal', namespaceRef: 'sites/bucharest', authMethod: 'mtls', certificateFingerprint: digestA, allowedPurposes: ['bmc.power','backup.read'] },
+      'secret-plan': { adapterId: 1, agentRecordId: 1, secretRef: 'kv/bmc/edge-node', purpose: 'bmc.power', expiresAt: new Date(now + 180000).toISOString() },
+      'single-profile': { siteId: 1, minimumCpuMillicores: 1000, minimumMemoryMiB: 2048, minimumStorageGiB: 20 },
+      'single-assess': { siteId: 1, nodeCount: 1, cpuMillicores: 4000, memoryMiB: 8192, storageGiB: 100, externalBackupVerified: true, maintenanceWindowDeclared: true },
+      quorum: { siteId: 1, clusterRef: 'cluster/edge-a', observedAt: new Date().toISOString(), members: [{ memberRef: 'node/a', role: 'voter', healthy: true, failureDomain: 'rack/a' }, { memberRef: 'node/b', role: 'voter', healthy: true, failureDomain: 'rack/b' }, { memberRef: 'witness/c', role: 'witness', healthy: true, failureDomain: 'cloud/eu' }] },
+      'reservation-policy': { siteId: 1, systemCpuMillicores: 500, systemMemoryMiB: 1024, systemStorageGiB: 10, maxWorkloadPercent: 75, evictionFreeStoragePercent: 15 },
+      'reservation-assess': { siteId: 1, capacity: { cpuMillicores: 4000, memoryMiB: 8192, storageGiB: 100 }, workload: { cpuMillicores: 2500, memoryMiB: 5000, storageGiB: 70 } },
+      console: { siteId: 1, transportOrder: ['serial','text','html5'], maxBandwidthKbps: 128, maxFps: 5, colorDepth: 8, adaptiveQuality: true, idleTtlSeconds: 300 },
+      'remote-hands': { siteId: 1, targetRef: 'host/edge-node', bmcEndpointId: 1, checklist: ['Confirm asset label', 'Connect serial console', 'Photograph status LEDs'], consoleRef: 'serial/rack-a', expiresAt: new Date(now + 3600000).toISOString(), assigneeUserId: 2 },
+      'remote-authorize': { planId: 1, approvalId: 1, confirmation: 'host/edge-node' },
+      bmc: { siteId: 1, hostId: 1, name: 'edge-node-bmc', protocol: 'redfish', endpointRef: 'redfish/edge-node', vaultAdapterId: 1, credentialRef: 'kv/bmc/edge-node', certificateFingerprint: digestA, owner: 'local-operations' },
+      'bmc-inventory': { endpointId: 1, powerState: 'on', manufacturer: 'Dell', model: 'R650', serialNumber: 'ABC123', firmware: { bios: '2.4.1', bmc: '6.10' }, sensors: { temperature: { state: 'ok', celsius: 31 } }, health: 'ok', observedAt: new Date().toISOString() },
+      'bmc-recovery': { endpointId: 1, actionKey: 'power_cycle', safeguards: { targetIdentityMatched: true, fencingVerified: true, quorumSafe: true, workloadsEvacuated: true, recentBackupVerified: true }, reason: 'Frozen host after approved maintenance', ticketRef: 'INC-0002', expiresAt: new Date(now + 600000).toISOString(), assigneeUserId: 2 },
+      'bmc-authorize': { planId: 1, approvalId: 1, confirmation: 'redfish/edge-node' },
     };
     const result = await Modal.form(`<p class="text-muted text-sm">Only references and bounded evidence are accepted. Inline credentials/private keys are rejected.</p><textarea id="edge-action-json" class="form-control mono" rows="24">${Utils.escapeHtml(JSON.stringify(examples[action], null, 2))}</textarea>`, {
       title: `Edge platform · ${action}`, width: '900px', confirmText: action === 'ack' ? 'Acknowledge exact plan' : 'Validate and save',
@@ -94,7 +130,26 @@ const EdgePlatformPage = {
           if (action === 'runbook') return Api.createEdgeRunbook(body.agentRecordId, body);
           if (action === 'update') return Api.createEdgeUpdatePlan(body.agentRecordId, body);
           if (action === 'bootstrap') return Api.createEdgeBootstrap(body.siteId, body);
-          return Api.createEdgeMirror(body.siteId, body);
+          if (action === 'mirror') return Api.createEdgeMirror(body.siteId, body);
+          if (action === 'residency-policy') return Api.saveEdgeResidencyPolicy(body.siteId, body);
+          if (action === 'residency-check') return Api.evaluateEdgeResidency(body.siteId, body);
+          if (action === 'identity-policy') return Api.saveEdgeIdentityPolicy(body.siteId, body);
+          if (action === 'identity-grant') return Api.issueEdgeIdentityGrant(body.siteId, body);
+          if (action === 'identity-activate') return Api.activateEdgeIdentityGrant(body.grantId, body);
+          if (action === 'vault') return Api.saveEdgeVaultAdapter(body.siteId, body);
+          if (action === 'secret-plan') return Api.createEdgeSecretResolution(body.adapterId, body);
+          if (action === 'single-profile') return Api.saveEdgeSingleNodeProfile(body.siteId, body);
+          if (action === 'single-assess') return Api.assessEdgeSingleNode(body.siteId, body);
+          if (action === 'quorum') return Api.recordEdgeQuorum(body.siteId, body);
+          if (action === 'reservation-policy') return Api.saveEdgeReservationPolicy(body.siteId, body);
+          if (action === 'reservation-assess') return Api.assessEdgeReservations(body.siteId, body);
+          if (action === 'console') return Api.saveEdgeConsoleProfile(body.siteId, body);
+          if (action === 'remote-hands') return Api.createEdgeRemoteHands(body.siteId, body);
+          if (action === 'remote-authorize') return Api.authorizeEdgeRemoteHands(body.planId, body);
+          if (action === 'bmc') return Api.saveEdgeBmcEndpoint(body.siteId, body);
+          if (action === 'bmc-inventory') return Api.recordEdgeBmcInventory(body.endpointId, body);
+          if (action === 'bmc-recovery') return Api.createEdgeBmcRecovery(body.endpointId, body);
+          return Api.authorizeEdgeBmcRecovery(body.planId, body);
         } catch (error) { Toast.error(error.message); return false; }
       },
     });

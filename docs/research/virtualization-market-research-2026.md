@@ -1100,16 +1100,16 @@ modifică workload-uri, clustere ori registre.
 | B333 | Edge agent auto-update rings | Canary/stable/held, rollback și offline bundle. | Rez | L | Done |
 | B334 | Air-gapped provider bootstrap | Certificates, packages și docs bundle verificat. | DX | L | Done |
 | B335 | Offline image/content mirror | OCI/ISO/template/package mirror cu signatures. | Rez | XL | Done |
-| B336 | Sovereign data-residency policy | Blochează logs/backups/metrics în afara zonei. | Gov | L | Later |
-| B337 | Disconnected identity cache | Short-lived cached auth și emergency policy. | Sig | XL | Later |
-| B338 | Site-local secret vault adapter | Credential resolution fără central secret transit. | Sig | XL | Later |
-| B339 | Edge cluster single-node profile | Capability/HA caveats și safe defaults. | Ops | M | Next |
-| B340 | Witness/quorum topology view | Voting members, witness și failure-domain risk. | Rez | M | Next |
-| B341 | Edge resource reservation | Protejează system capacity în small clusters. | Rez | M | Next |
-| B342 | Low-bandwidth console mode | Serial/text-first și adaptive quality. | DX | L | Later |
-| B343 | Remote-hands runbook | BMC/console/checklist/approval pentru site fără operator. | Ops | M | Later |
-| B344 | BMC inventory | Redfish/IPMI power, sensors, firmware și ownership. | Ops | L | Later |
-| B345 | Out-of-band host recovery | JIT BMC action cu fencing/HA safeguards. | Rez | XL | Later |
+| B336 | Sovereign data-residency policy | Blochează logs/backups/metrics în afara zonei. | Gov | L | Done |
+| B337 | Disconnected identity cache | Short-lived cached auth și emergency policy. | Sig | XL | Done |
+| B338 | Site-local secret vault adapter | Credential resolution fără central secret transit. | Sig | XL | Done |
+| B339 | Edge cluster single-node profile | Capability/HA caveats și safe defaults. | Ops | M | Done |
+| B340 | Witness/quorum topology view | Voting members, witness și failure-domain risk. | Rez | M | Done |
+| B341 | Edge resource reservation | Protejează system capacity în small clusters. | Rez | M | Done |
+| B342 | Low-bandwidth console mode | Serial/text-first și adaptive quality. | DX | L | Done |
+| B343 | Remote-hands runbook | BMC/console/checklist/approval pentru site fără operator. | Ops | M | Done |
+| B344 | BMC inventory | Redfish/IPMI power, sensors, firmware și ownership. | Ops | L | Done |
+| B345 | Out-of-band host recovery | JIT BMC action cu fencing/HA safeguards. | Rez | XL | Done |
 | B346 | Site disaster declaration | Freeze mutations, notify și activate runbook. | Rez | L | Later |
 | B347 | Edge backup seeding | Local seed, offline transfer și delta continuation. | Rez | L | Later |
 | B348 | Edge fleet compliance summary | Aggregate evidence fără exportul datelor sensibile. | Gov | L | Later |
@@ -1130,6 +1130,18 @@ mirror manifests includ numai certificate/package/docs/OCI/ISO/template refs,
 digests și external signature evidence; nu includ private keys și nu descarcă
 ori sincronizează implicit. Transportul agent rămâne admin-ingested până la
 zero-touch enrollment B350.
+
+**Status implementare 2026-07-29:** B336–B345 au fost închise în V6.5b /
+v8.66.0. Rezidența este fail-closed și blochează sync plans care ar scoate
+inventory/logs/metrics/backups din jurisdicția permisă. Cache-ul de identitate
+păstrează numai assertion hash, scope și TTL scurt, cu activare four-eyes și
+fără token returnat. Vault adapters păstrează referințe și emit numai planuri
+semnate de rezoluție locală. Profilul single-node, quorum/witness view și
+resource reservations expun caveats și assessment fără apply. Consola este
+serial/text-first, fără clipboard/file transfer. Remote-hands și BMC recovery
+folosesc plan hash, typed confirmation, approval independent, safeguards de
+fencing/quorum/backup și pachete JIT executabile numai de agentul edge; control
+plane-ul nu apelează BMC-ul. B346–B350 rămân deschise.
 
 ### O. UX, self-service și service catalog (B351–B375)
 

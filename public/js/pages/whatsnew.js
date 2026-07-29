@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.66.0', date: '2026-07-29', title: 'Edge sovereignty and resilient remote operations', changes: [
+      { type: 'security', text: 'Fail-closed residency rules persist inventory/log/metric/backup decisions and block sync plans outside the permitted jurisdiction.' },
+      { type: 'security', text: 'Disconnected identity stores assertion hashes only, bounds normal/emergency TTL and scopes, and requires four-eyes activation without returning tokens.' },
+      { type: 'feature', text: 'Site-local vault adapters store references only and issue signed, five-minute-or-less secret-resolution plans for the edge agent.' },
+      { type: 'feature', text: 'Single-node caveats, quorum/witness/failure-domain views and CPU/memory/storage reservations provide small-cluster resilience evidence without apply.' },
+      { type: 'security', text: 'Serial/text-first console, signed remote-hands checklists and Redfish/IPMI inventory lead to safeguarded, approved JIT BMC recovery at the edge—never central execution.' },
+    ] },
     { version: '8.65.0', date: '2026-07-29', title: 'Edge and disconnected operations foundation', changes: [
       { type: 'feature', text: 'Edge sites bind registered hosts to IANA timezone, region, jurisdiction, local owner, trust roots and expected-disconnect-aware health.' },
       { type: 'security', text: 'Offline intents are HMAC-signed, expiring, action-allowlisted and reconnect-revalidated; the central service has no intent executor.' },

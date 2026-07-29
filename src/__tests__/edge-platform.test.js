@@ -7,8 +7,11 @@ process.env.DB_PATH = ':memory:';
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const migration131 = require('../db/migrations/131_automation_operations_lifecycle_updates');
 const migration139 = require('../db/migrations/139_edge_disconnected_foundation');
+const migration140 = require('../db/migrations/140_edge_sovereignty_resilience');
 const { EdgePlatformService } = require('../services/edge-platform');
+const { InfrastructureOperationsService } = require('../services/infrastructure-operations');
 
 const admin = { id: 1, username: 'edge-admin', role: 'admin' };
 const future = milliseconds => new Date(Date.now() + milliseconds).toISOString();
@@ -23,12 +26,12 @@ function database() {
     CREATE TABLE governance_permissions (permission_key TEXT PRIMARY KEY, resource_type TEXT NOT NULL, verb TEXT NOT NULL, description TEXT NOT NULL);
     CREATE TABLE governance_roles (id INTEGER PRIMARY KEY, slug TEXT NOT NULL UNIQUE);
     CREATE TABLE governance_role_permissions (role_id INTEGER REFERENCES governance_roles(id), permission_key TEXT REFERENCES governance_permissions(permission_key), PRIMARY KEY(role_id,permission_key));
-    INSERT INTO users (id,username,role,is_active) VALUES (1,'edge-admin','admin',1);
+    INSERT INTO users (id,username,role,is_active) VALUES (1,'edge-admin','admin',1),(2,'edge-approver','admin',1);
     INSERT INTO docker_hosts (id,name,daemon_type,daemon_config,is_active) VALUES
       (7,'edge-k8s','kubernetes','{}',1),(8,'edge-docker','docker','{}',1);
     INSERT INTO governance_roles (id,slug) VALUES (1,'site-admin');
   `);
-  migration139.up(db); return db;
+  migration131.up(db); migration139.up(db); migration140.up(db); return db;
 }
 function siteInput(overrides = {}) {
   return { slug: 'bucharest-edge', name: 'Bucharest edge', timezone: 'Europe/Bucharest', region: 'ro-bucharest',
@@ -36,7 +39,8 @@ function siteInput(overrides = {}) {
     hosts: [{ hostId: 7, role: 'standalone' }], status: 'active', ...overrides };
 }
 function serviceAndSite() {
-  const db = database(); const service = new EdgePlatformService(() => db, { signingSecret: 'unit-test-edge-signing-secret-32' });
+  const db = database(); const approvalService = new InfrastructureOperationsService(() => db);
+  const service = new EdgePlatformService(() => db, { signingSecret: 'unit-test-edge-signing-secret-32', approvalService });
   const site = service.saveSite(siteInput(), admin); return { db, service, site };
 }
 function registerAgent(service, site, overrides = {}) {
@@ -45,12 +49,12 @@ function registerAgent(service, site, overrides = {}) {
 }
 
 describe('V6.5a edge and disconnected foundation (B326-B335)', () => {
-  test('migration creates fifteen tables, four permissions and three update rings idempotently', () => {
-    const db = database(); migration139.up(db);
-    expect(db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type=? AND name LIKE 'edge_%'").get('table').count).toBe(15);
-    expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'edge_%'").get().count).toBe(4);
+  test('migrations create thirty-one tables, eight permissions and three update rings idempotently', () => {
+    const db = database(); migration139.up(db); migration140.up(db);
+    expect(db.prepare("SELECT COUNT(*) count FROM sqlite_master WHERE type=? AND name LIKE 'edge_%'").get('table').count).toBe(31);
+    expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'edge_%'").get().count).toBe(8);
     expect(db.prepare('SELECT slug FROM edge_update_rings ORDER BY rollout_percent').all().map(row => row.slug)).toEqual(['held','canary','stable']);
-    expect(db.prepare('SELECT COUNT(*) count FROM governance_role_permissions WHERE role_id=1').get().count).toBe(4); db.close();
+    expect(db.prepare("SELECT COUNT(*) count FROM governance_role_permissions WHERE role_id=1 AND permission_key LIKE 'edge_%'").get().count).toBe(8); db.close();
   });
 
   test('site model validates IANA timezone, owns each host once and distinguishes expected disconnect', () => {
