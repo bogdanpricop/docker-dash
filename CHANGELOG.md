@@ -2,6 +2,15 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.40.0] - 2026-07-29 — Backup and recovery control evidence
+
+Provider Security Posture now surfaces declared backup, restore, drill, and
+replication guardrails such as durable tasks, create-only restore, isolation,
+and disabled retention mutation.
+
+- The summary is not backup integrity, restore success, RPO/RTO, or drill proof.
+- It introduces no backup, restore, replication, retention, or provider mutation.
+
 ## [8.39.0] - 2026-07-29 — Privileged-operation safeguard evidence
 
 Provider Security Posture now summarizes declared four-eyes approval, typed

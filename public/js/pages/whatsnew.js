@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.40.0', date: '2026-07-29', title: 'Backup and recovery control evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture now surfaces declared backup, restore, drill, and replication guardrails.' },
+      { type: 'improvement', text: 'Durable task, create-only restore, isolation, and disabled retention mutation evidence remain separate from success claims.' },
+      { type: 'security', text: 'No backup, restore, replication, retention, or provider mutation is introduced.' },
+    ] },
     { version: '8.39.0', date: '2026-07-29', title: 'Privileged-operation safeguard evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture summarizes declared approval, confirmation, revalidation, post-verification, and durable-task controls.' },
       { type: 'improvement', text: 'The page distinguishes contract declarations from proof that a safeguard was exercised.' },
