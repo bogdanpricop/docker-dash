@@ -45,6 +45,11 @@ function _gapRegister(features = {}) {
   const categories = {}; entries.forEach(entry => { const category = entry.key.split('.')[0] || 'other'; categories[category] = (categories[category] || 0) + 1; });
   return { unsupportedCount: entries.length, categories, entries, truncated: Object.entries(features).filter(([, feature]) => feature?.state === 'unsupported').length > entries.length };
 }
+function _freshness(capabilities = {}) {
+  const observedAt = capabilities.observedAt || null; const timestamp = observedAt ? Date.parse(observedAt) : NaN;
+  const ageMs = Number.isFinite(timestamp) ? Math.max(0, Date.now() - timestamp) : null;
+  return { observedAt, ageMs, state: ageMs === null ? 'unknown' : ageMs <= 300000 ? 'fresh' : ageMs <= 3600000 ? 'aging' : 'stale', probeStatus: capabilities.probe?.status || 'unknown', probeDurationMs: Number.isFinite(capabilities.probe?.durationMs) ? capabilities.probe.durationMs : null };
+}
 
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
@@ -59,8 +64,9 @@ async function postureForHost(host, options = {}) {
     networkGuardrails: _networkGuardrails(capabilities.features),
     lifecycleGuardrails: _lifecycleGuardrails(capabilities.features),
     gapRegister: _gapRegister(capabilities.features),
+    freshness: _freshness(capabilities),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails, _lifecycleGuardrails, _gapRegister } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails, _lifecycleGuardrails, _gapRegister, _freshness } };

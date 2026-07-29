@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.46.0', date: '2026-07-29', title: 'Posture evidence freshness', changes: [
+      { type: 'feature', text: 'Provider Security Posture displays the returned capability-evidence timestamp, age band, and existing probe state.' },
+      { type: 'improvement', text: 'Freshness is bounded to returned evidence, not presented as a provider-health guarantee.' },
+      { type: 'security', text: 'The page does not force a refresh or run an additional endpoint probe.' },
+    ] },
     { version: '8.45.0', date: '2026-07-29', title: 'Unsupported capability gap register', changes: [
       { type: 'feature', text: 'Provider Security Posture lists SDK capabilities explicitly declared unsupported, with their contract reasons.' },
       { type: 'improvement', text: 'Unsupported is made visible as a safety boundary instead of an error to bypass.' },

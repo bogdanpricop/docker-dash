@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.46.0] - 2026-07-29 — Posture evidence freshness
+
+Provider Security Posture now displays the returned capability-evidence timestamp,
+age band, and existing probe state.
+
+- Freshness measures returned evidence only; it is not a provider health guarantee.
+- The page does not force a refresh or run an additional endpoint probe.
+
 ## [8.45.0] - 2026-07-29 — Unsupported capability gap register
 
 Provider Security Posture now lists the provider SDK capabilities explicitly
