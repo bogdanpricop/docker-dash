@@ -647,8 +647,20 @@ class GovernanceService {
   }
 
   _quotas(tenantId, usage = this._usage(tenantId)) {
-    const rows = this._db().prepare('SELECT metric, soft_limit, hard_limit FROM governance_project_quotas WHERE tenant_id = ?').all(tenantId);
+    const db = this._db();
+    const rows = db.prepare('SELECT metric, soft_limit, hard_limit FROM governance_project_quotas WHERE tenant_id = ?').all(tenantId);
     const byMetric = new Map(rows.map(row => [row.metric, row]));
+    // Temporary, approved quota grants override the configured limits until
+    // their explicit expiry. Keep this optional for pre-v8.50 test schemas.
+    try {
+      const grants = db.prepare(`SELECT metric, soft_limit, hard_limit, expires_at
+        FROM governance_quota_grants WHERE tenant_id = ? AND datetime(expires_at) > datetime('now')
+        ORDER BY datetime(expires_at) DESC`).all(tenantId);
+      for (const grant of grants) if (!byMetric.has(`grant:${grant.metric}`)) {
+        byMetric.set(grant.metric, grant);
+        byMetric.set(`grant:${grant.metric}`, true);
+      }
+    } catch { /* migration 125 may not exist in isolated legacy tests */ }
     return Object.fromEntries(QUOTA_METRICS.map(metric => {
       const row = byMetric.get(metric) || {};
       const current = usage[metric] || 0;
@@ -664,6 +676,7 @@ class GovernanceService {
         softExceeded,
         hardExceeded,
         state: hardExceeded ? 'hard-exceeded' : softExceeded ? 'soft-exceeded' : 'within-limit',
+        temporaryGrantUntil: row.expires_at || null,
       }];
     }));
   }

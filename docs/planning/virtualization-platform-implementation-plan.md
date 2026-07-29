@@ -143,7 +143,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental; V4.3a–e oferă posture, policy, topologie, placement și baseline drift numai read-only, fără trafic sau mutații |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
-| V4.6 | Projects, quotas și approvals | B176–B200 | V4.6a a livrat B176–B185: catalog, roluri/scope-uri delegate, projects/invitations/ownership și cote CPU/RAM/storage; approvals și B186–B200 rămân planificate |
+| V4.6 | Projects, quotas și approvals | B176–B200 | V4.6a a livrat B176–B185; V4.6b livrează B186–B195: cote network/backup/GPU, requests, federation/SCIM/tokens/workload identity, approvals și blackout; B196–B200 rămân planificate |
 
 **Exit:** orice schimbare de fabric are plan, blast radius, approval și post-validation.
 

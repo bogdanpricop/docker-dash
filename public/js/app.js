@@ -66,6 +66,7 @@ const App = {
     'registry-browse': () => RegistryBrowsePage,
     onboarding:       () => OnboardingPage,
     governance:       () => GovernancePage,
+    'governance-controls': () => GovernanceControlsPage,
   },
 
   async init() {
@@ -197,9 +198,14 @@ const App = {
     if (!section || !btn) return;
 
     try {
-      const result = await fetch('/api/auth/oidc/enabled').then(r => r.json());
+      const [result, federation] = await Promise.all([
+        fetch('/api/auth/oidc/enabled').then(r => r.json()).catch(() => ({ enabled: false })),
+        fetch('/api/identity-federation/realms').then(r => r.json()).catch(() => ({ realms: [] })),
+      ]);
+      const hasFederation = Boolean(federation.realms?.length);
+      section.classList.toggle('hidden', !result.enabled && !hasFederation);
+      btn.classList.toggle('hidden', !result.enabled);
       if (result.enabled) {
-        section.classList.remove('hidden');
         // Remove old listener by cloning
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
@@ -219,8 +225,35 @@ const App = {
             newBtn.innerHTML = '<i class="fas fa-shield-alt"></i> Sign in with SSO';
           }
         });
-      } else {
-        section.classList.add('hidden');
+      }
+      const federated = document.getElementById('federated-login');
+      const federatedBtn = document.getElementById('federated-login-btn');
+      const email = document.getElementById('federated-email');
+      const error = document.getElementById('federated-error');
+      federated?.classList.toggle('hidden', !hasFederation);
+      if (hasFederation && federatedBtn && email) {
+        const replacement = federatedBtn.cloneNode(true);
+        federatedBtn.parentNode.replaceChild(replacement, federatedBtn);
+        const route = async () => {
+          error?.classList.add('hidden');
+          replacement.disabled = true;
+          try {
+            const response = await fetch(`/api/identity-federation/resolve?email=${encodeURIComponent(email.value.trim())}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'No identity provider found');
+            const loginUrl = payload.realm.login_url || payload.realm.loginUrl;
+            if (loginUrl === '/api/auth/oidc/login') {
+              const native = await fetch(loginUrl).then(item => item.json());
+              if (!native.url) throw new Error('Identity provider did not return a login URL');
+              window.location.href = native.url;
+            } else window.location.href = loginUrl;
+          } catch (err) {
+            if (error) { error.textContent = err.message; error.classList.remove('hidden'); }
+            replacement.disabled = false;
+          }
+        };
+        replacement.addEventListener('click', route);
+        email.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); route(); } });
       }
     } catch {
       section.classList.add('hidden');

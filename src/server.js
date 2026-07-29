@@ -151,6 +151,9 @@ const webhookReceiverLimiter = rateLimit(30, 60 * 1000);
 app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/identity-federation', apiLimiter, require('./routes/identity-federation'));
+app.use('/api/workload-identity', apiLimiter, require('./routes/workload-identity'));
+app.use('/api/scim/v2', apiLimiter, require('./routes/scim'));
 app.use('/api/containers', apiLimiter, require('./routes/containers'));
 app.use('/api/images', apiLimiter, require('./routes/images'));
 app.use('/api/volumes', apiLimiter, require('./routes/volumes'));

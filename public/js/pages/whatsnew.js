@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.50.0', date: '2026-07-29', title: 'Identity and policy governance', changes: [
+      { type: 'feature', text: 'Projects gain explicit network/public-IP, snapshot/backup and GPU/device quota accounting plus audited, time-bound quota increase requests.' },
+      { type: 'feature', text: 'Identity & Policy adds domain-routed OIDC/SAML broker realms, SCIM 2.0 provisioning, short-lived service tokens and signed workload identity exchange.' },
+      { type: 'feature', text: 'One/two-person approval policies bind approvals to the exact action and payload; change blackout windows deny matching mutations with a controlled emergency path.' },
+      { type: 'security', text: 'Service secrets are hashed and shown once, workload assertions require pinned public JWKs and reject replay, SCIM cannot create global admins, and emergency exceptions require an admin ticket and reason.' },
+    ] },
     { version: '8.49.0', date: '2026-07-29', title: 'Scoped governance foundation', changes: [
       { type: 'feature', text: 'Governance adds a permission catalog, custom roles, hierarchical scopes and inherited user/team delegation for site administration.' },
       { type: 'feature', text: 'Projects now support owners, members, active/suspended lifecycle, expiring single-use invitations and controlled ownership transfer.' },

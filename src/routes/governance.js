@@ -166,4 +166,7 @@ router.delete('/projects/:id/resources/:resourceId', writeable, route((req, res)
   res.json(result);
 }));
 
+// V4.6b — extended capacity, approval, identity and blackout controls.
+router.use('/controls', require('./governance-controls'));
+
 module.exports = router;

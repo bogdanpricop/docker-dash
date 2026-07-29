@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.50.0] - 2026-07-29 — Identity and policy governance
+
+The next ten market-backlog controls, B186–B195, extend projects with capacity,
+identity lifecycle and mutation governance.
+
+- Network/public-IP, snapshot/backup and GPU/device profiles use explicit soft/hard
+  quota accounting. Audited requests can add time-bound quota grants after one or
+  two distinct approvals.
+- Multiple OIDC/SAML-broker realms route login by email domain. SCIM 2.0 provisions
+  users and groups with scoped Bearer tokens, deactivates deleted users, invalidates
+  their sessions and never grants global admin through SCIM.
+- Short-lived service tokens are shown once, stored only as hashes, scope-checked,
+  rotatable and revocable. Signed OIDC/SPIFFE/cloud JWT assertions can exchange once
+  against pinned JWKs for workload tokens lasting at most one hour.
+- Policy approvals bind the canonical payload and action to distinct approvers and
+  consume the approval after a successful mutation. Blackout windows return HTTP 423;
+  permitted emergency overrides require a global admin, ticket and reason and are stored.
+- The new Identity & Policy page exposes the controls. Migration 125 is additive and
+  provider resources are never discovered, reserved or mutated by quota accounting.
+
 ## [8.49.0] - 2026-07-29 — Scoped governance foundation
 
 Docker Dash now provides an additive governance control plane over its existing

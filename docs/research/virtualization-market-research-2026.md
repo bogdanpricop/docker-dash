@@ -780,16 +780,16 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B183 | CPU quota | Hard/soft quota și current usage. | Gov | M | Next |
 | B184 | Memory quota | Hard/soft quota și reservation accounting. | Gov | M | Next |
 | B185 | Storage quota | Logical/physical/backup usage și limits. | Gov | L | Next |
-| B186 | Network/public-IP quota | NIC/network/IP/security-group limits. | Gov | M | Later |
-| B187 | Snapshot/backup quota | Count și bytes per project/policy. | Gov | M | Next |
-| B188 | GPU/device quota | Profile/count/time allocation pentru acceleratoare. | Gov | L | Later |
-| B189 | Quota request workflow | Request, approval, time-bound increase și audit. | Gov | M | Later |
-| B190 | SSO provider federation | Multi-OIDC/SAML realms și domain routing. | Sig | L | Next |
-| B191 | SCIM user/group provisioning | Sync lifecycle din identity provider. | Gov | L | Later |
-| B192 | Short-lived service tokens | Expiry, scopes, rotation și last-used. | Sig | M | Now |
-| B193 | Workload identity federation | OIDC/SPIFFE/cloud identity fără long-lived secrets. | Sig | XL | Later |
-| B194 | Policy approval engine | One/two-person approval după risk și environment. | Gov | L | Next |
-| B195 | Change blackout windows | Blochează mutations în freeze periods cu emergency exception. | Gov | M | Now |
+| B186 | Network/public-IP quota | NIC/network/IP/security-group limits. | Gov | M | Done |
+| B187 | Snapshot/backup quota | Count și bytes per project/policy. | Gov | M | Done |
+| B188 | GPU/device quota | Profile/count/time allocation pentru acceleratoare. | Gov | L | Done |
+| B189 | Quota request workflow | Request, approval, time-bound increase și audit. | Gov | M | Done |
+| B190 | SSO provider federation | Multi-OIDC/SAML realms și domain routing. | Sig | L | Done |
+| B191 | SCIM user/group provisioning | Sync lifecycle din identity provider. | Gov | L | Done |
+| B192 | Short-lived service tokens | Expiry, scopes, rotation și last-used. | Sig | M | Done |
+| B193 | Workload identity federation | OIDC/SPIFFE/cloud identity fără long-lived secrets. | Sig | XL | Done |
+| B194 | Policy approval engine | One/two-person approval după risk și environment. | Gov | L | Done |
+| B195 | Change blackout windows | Blochează mutations în freeze periods cu emergency exception. | Gov | M | Done |
 | B196 | Resource lease policy | Max TTL, renewal rights și cleanup ownership. | Gov | M | Next |
 | B197 | Ownership completeness policy | Blochează production resource fără owner/service/cost center. | Gov | S | Now |
 | B198 | Separation-of-duties reports | Detectează combinații role conflictuale. | Gov | M | Later |
@@ -799,6 +799,11 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 **Status implementare 2026-07-29:** B176–B185 au fost livrate în V4.6a / v8.49.0.
 Cotele folosesc contabilizarea explicită a resurselor alocate proiectului; discovery-ul
 automat pentru logical/physical/backup storage rămâne în batch-urile următoare.
+
+**Status implementare 2026-07-29:** B186–B195 au fost livrate în V4.6b / v8.50.0.
+Contabilizarea extinsă rămâne explicită și nu rezervă resurse în provider. Federarea
+SAML folosește un broker de identitate de încredere; aplicația nu acceptă assertions
+SAML nesemnate și nu implementează un validator XML ad-hoc.
 
 ### I. Observabilitate, events și AIOps (B201–B225)
 
