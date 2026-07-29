@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.39.0', date: '2026-07-29', title: 'Privileged-operation safeguard evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture summarizes declared approval, confirmation, revalidation, post-verification, and durable-task controls.' },
+      { type: 'improvement', text: 'The page distinguishes contract declarations from proof that a safeguard was exercised.' },
+      { type: 'security', text: 'The view never authorizes, submits, or changes a provider operation.' },
+    ] },
     { version: '8.38.0', date: '2026-07-29', title: 'Provider capability coverage posture', changes: [
       { type: 'feature', text: 'Provider Security Posture now summarizes the SDK contract’s supported, conditional, and unsupported capabilities.' },
       { type: 'improvement', text: 'Conditional features remain visibly conditional instead of being presented as currently available.' },

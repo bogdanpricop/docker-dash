@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.39.0] - 2026-07-29 — Privileged-operation safeguard evidence
+
+Provider Security Posture now summarizes declared four-eyes approval, typed
+confirmation, revalidation, post-verification, and durable-task controls.
+
+- These are contract declarations, not proof that a control has been exercised.
+- The view never authorizes, submits, or changes a privileged operation.
+
 ## [8.38.0] - 2026-07-29 — Provider capability coverage posture
 
 Provider Security Posture introduces a read-only summary of the provider SDK's
