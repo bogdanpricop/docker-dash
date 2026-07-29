@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.52.0', date: '2026-07-29', title: 'Governance lifecycle and VM metrics foundation', changes: [
+      { type: 'feature', text: 'Resource lease policies now enforce maximum TTL, renewal rights and cleanup ownership; expiry flags cleanup but never deletes provider resources.' },
+      { type: 'security', text: 'Production resource assignment can require owner, service and cost center, while separation-of-duties reports detect conflicting direct and team roles.' },
+      { type: 'feature', text: 'Access review campaigns recertify role/scope bindings and service accounts, and tenant offboarding requires a checksummed export plus multiple deletion gates.' },
+      { type: 'feature', text: 'A canonical VM metric schema normalizes Proxmox, Xen, vSphere, Prometheus and Azure Monitor observations with explicit units and provenance.' },
+      { type: 'improvement', text: 'Per-resource freshness, collection errors, adaptive polling and bounded cardinality policies are available in two new governance tabs and Prometheus metrics.' },
+    ] },
     { version: '8.51.0', date: '2026-07-29', title: 'Compose mount and volume attribution', changes: [
       { type: 'feature', text: 'Compose stack storage now includes Docker-reported named-volume usage, counted once even when multiple services share the same volume.' },
       { type: 'improvement', text: 'Stack details identify managed versus external/unknown named volumes and show measurement coverage instead of implying missing values are zero.' },

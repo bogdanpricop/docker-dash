@@ -790,11 +790,11 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B193 | Workload identity federation | OIDC/SPIFFE/cloud identity fără long-lived secrets. | Sig | XL | Done |
 | B194 | Policy approval engine | One/two-person approval după risk și environment. | Gov | L | Done |
 | B195 | Change blackout windows | Blochează mutations în freeze periods cu emergency exception. | Gov | M | Done |
-| B196 | Resource lease policy | Max TTL, renewal rights și cleanup ownership. | Gov | M | Next |
-| B197 | Ownership completeness policy | Blochează production resource fără owner/service/cost center. | Gov | S | Now |
-| B198 | Separation-of-duties reports | Detectează combinații role conflictuale. | Gov | M | Later |
-| B199 | Access review campaigns | Recertificare periodică pe roles/scopes/service accounts. | Gov | L | Later |
-| B200 | Tenant data export/delete | Portabilitate și controlled offboarding. | Gov | L | Later |
+| B196 | Resource lease policy | Max TTL, renewal rights și cleanup ownership. | Gov | M | Done |
+| B197 | Ownership completeness policy | Blochează production resource fără owner/service/cost center. | Gov | S | Done |
+| B198 | Separation-of-duties reports | Detectează combinații role conflictuale. | Gov | M | Done |
+| B199 | Access review campaigns | Recertificare periodică pe roles/scopes/service accounts. | Gov | L | Done |
+| B200 | Tenant data export/delete | Portabilitate și controlled offboarding. | Gov | L | Done |
 
 **Status implementare 2026-07-29:** B176–B185 au fost livrate în V4.6a / v8.49.0.
 Cotele folosesc contabilizarea explicită a resurselor alocate proiectului; discovery-ul
@@ -805,15 +805,19 @@ Contabilizarea extinsă rămâne explicită și nu rezervă resurse în provider
 SAML folosește un broker de identitate de încredere; aplicația nu acceptă assertions
 SAML nesemnate și nu implementează un validator XML ad-hoc.
 
+**Status implementare 2026-07-29:** B196–B200 au fost livrate în V4.6c / v8.52.0.
+Lease expiry rămâne control-plane only, production ownership este fail-closed,
+iar tenant delete cere export valid, checksum, suspendare și confirmare tipărită.
+
 ### I. Observabilitate, events și AIOps (B201–B225)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B201 | Unified VM metrics schema | CPU/RAM/disk/network fields, units și provenance. | Ops | L | Now |
-| B202 | Provider metrics adapters | vSphere perf, XAPI RRD, PVE RRD, Prometheus, Azure Monitor. | Ops | XL | Next |
-| B203 | Metrics freshness indicator | Last sample, lag și collection errors per resource. | Ops | S | Now |
-| B204 | Adaptive metrics polling | Frequency după activity, page visibility și rate budget. | Cost | M | Next |
-| B205 | Metrics cardinality guard | Label budgets, aggregation și sampling controls. | Cost | M | Now |
+| B201 | Unified VM metrics schema | CPU/RAM/disk/network fields, units și provenance. | Ops | L | Done |
+| B202 | Provider metrics adapters | vSphere perf, XAPI RRD, PVE RRD, Prometheus, Azure Monitor. | Ops | XL | Done |
+| B203 | Metrics freshness indicator | Last sample, lag și collection errors per resource. | Ops | S | Done |
+| B204 | Adaptive metrics polling | Frequency după activity, page visibility și rate budget. | Cost | M | Done |
+| B205 | Metrics cardinality guard | Label budgets, aggregation și sampling controls. | Cost | M | Done |
 | B206 | VM performance charts | CPU/RAM/IO/network cu compare și annotations. | Ops | M | Now |
 | B207 | Host contention dashboard | CPU ready, steal, balloon, swap și noisy-neighbor signals. | Ops | L | Next |
 | B208 | Storage performance dashboard | Latency/IOPS/throughput/queue/resync correlation. | Ops | L | Next |
@@ -834,6 +838,11 @@ SAML nesemnate și nu implementează un validator XML ad-hoc.
 | B223 | External observability export | OTLP/Prometheus/webhook/syslog cu filters. | Ops | L | Next |
 | B224 | SLO and availability reports | Uptime, error budget și maintenance exclusions. | Gov | L | Later |
 | B225 | Telemetry privacy controls | Redaction, sampling, retention și data residency. | Gov | M | Next |
+
+**Status implementare 2026-07-29:** B201–B205 au fost livrate în V4.6c / v8.52.0.
+Adaptoarele normalizează payload-uri furnizate prin API și descriu coverage; nu
+pretind colectare live în lipsa unui collector configurat. B206–B225 rămân
+pentru dashboard-uri, events, correlation, alerting și AIOps.
 
 ### J. Automation, GitOps și IaC (B226–B250)
 

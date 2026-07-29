@@ -717,13 +717,44 @@ class GovernanceService {
       memory_bytes: integer(resource.memoryBytes ?? 0, 'memoryBytes'),
       storage_bytes: integer(resource.storageBytes ?? 0, 'storageBytes'),
     };
-    const metadataJson = this._metadata(resource.metadata);
+    const metadata = resource.metadata == null ? {} : resource.metadata;
+    const metadataJson = this._metadata(metadata);
     const db = this._db();
     return db.transaction(() => {
       if (project.status !== 'active') throw fail('Cannot assign resources to a suspended project', 409, 'PROJECT_SUSPENDED');
       const existing = db.prepare(`SELECT * FROM governance_project_resources
         WHERE provider_host_id = ? AND resource_type = ? AND resource_key = ?`).get(providerHostId, resourceType, resourceKey);
       if (existing && existing.tenant_id !== project.id) throw fail('Resource is already assigned to another project', 409, 'RESOURCE_ALREADY_ASSIGNED');
+      const hasOwnershipTables = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='governance_ownership_policies'").get();
+      let ownership = null;
+      if (hasOwnershipTables) {
+        const supplied = metadata.ownership && typeof metadata.ownership === 'object' && !Array.isArray(metadata.ownership)
+          ? metadata.ownership : metadata;
+        const previous = existing ? db.prepare('SELECT * FROM governance_resource_ownership WHERE resource_id=?').get(existing.id) : null;
+        const hasOwnershipInput = ['ownerUserId', 'serviceName', 'costCenter', 'environment'].some(key => Object.hasOwn(supplied, key));
+        const environment = supplied.environment || previous?.environment
+          || (project.usage_mode === 'production' ? 'production' : 'nonproduction');
+        if (!['production', 'nonproduction'].includes(environment)) throw fail('metadata.ownership.environment is invalid');
+        const ownerUserId = supplied.ownerUserId ?? previous?.owner_user_id ?? null;
+        if (ownerUserId != null && (!Number.isSafeInteger(Number(ownerUserId))
+          || !db.prepare('SELECT 1 FROM users WHERE id=? AND is_active=1').get(Number(ownerUserId)))) {
+          throw fail('metadata.ownership.ownerUserId must identify an active user');
+        }
+        const serviceName = supplied.serviceName ?? previous?.service_name ?? null;
+        const costCenter = supplied.costCenter ?? previous?.cost_center ?? null;
+        const policy = db.prepare('SELECT * FROM governance_ownership_policies WHERE tenant_id=? AND enabled=1').get(project.id);
+        const missing = [];
+        if (policy?.require_owner && !ownerUserId) missing.push('owner');
+        if (policy?.require_service && !String(serviceName || '').trim()) missing.push('service');
+        if (policy?.require_cost_center && !String(costCenter || '').trim()) missing.push('costCenter');
+        if (policy?.enforce_production && environment === 'production' && missing.length) {
+          throw fail(`Production ownership is incomplete: ${missing.join(', ')}`, 409, 'OWNERSHIP_INCOMPLETE', { missing });
+        }
+        if (hasOwnershipInput || previous || policy) ownership = { ownerUserId: ownerUserId == null ? null : Number(ownerUserId),
+          serviceName: serviceName ? text(serviceName, 'metadata.ownership.serviceName', 160) : null,
+          costCenter: costCenter ? text(costCenter, 'metadata.ownership.costCenter', 100) : null,
+          environment, completenessState: missing.length ? 'incomplete' : 'complete' };
+      }
       const usage = this._usage(project.id);
       for (const metric of QUOTA_METRICS) usage[metric] = usage[metric] - Number(existing?.[metric] || 0) + accounting[metric];
       const quotas = this._quotas(project.id, usage);
@@ -741,6 +772,13 @@ class GovernanceService {
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(project.id, providerHostId, resourceType, resourceKey,
           displayName, accounting.cpu_millicores, accounting.memory_bytes, accounting.storage_bytes, metadataJson, actor.id).lastInsertRowid);
       }
+      if (ownership) db.prepare(`INSERT INTO governance_resource_ownership
+        (resource_id,tenant_id,owner_user_id,service_name,cost_center,environment,completeness_state,updated_by)
+        VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(resource_id) DO UPDATE SET owner_user_id=excluded.owner_user_id,
+        service_name=excluded.service_name,cost_center=excluded.cost_center,environment=excluded.environment,
+        completeness_state=excluded.completeness_state,updated_by=excluded.updated_by,updated_at=datetime('now')`)
+        .run(rowId, project.id, ownership.ownerUserId, ownership.serviceName, ownership.costCenter,
+          ownership.environment, ownership.completenessState, actor.id);
       const warnings = QUOTA_METRICS.filter(metric => quotas[metric].softExceeded)
         .map(metric => ({ metric, message: `${metric} soft quota exceeded` }));
       return {

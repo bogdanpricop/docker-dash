@@ -143,7 +143,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental; V4.3a–e oferă posture, policy, topologie, placement și baseline drift numai read-only, fără trafic sau mutații |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
-| V4.6 | Projects, quotas și approvals | B176–B200 | V4.6a a livrat B176–B185; V4.6b livrează B186–B195: cote network/backup/GPU, requests, federation/SCIM/tokens/workload identity, approvals și blackout; B196–B200 rămân planificate |
+| V4.6 | Projects, quotas și approvals | B176–B200 | V4.6a a livrat B176–B185; V4.6b B186–B195; V4.6c închide B196–B200 cu leases, ownership completeness, SoD, access reviews și offboarding controlat și livrează fundația de metrici B201–B205 |
 
 **Exit:** orice schimbare de fabric are plan, blast radius, approval și post-validation.
 
@@ -169,7 +169,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V6.1 | Unified application view | B301–B325, B351–B375 | VM+container+Kubernetes într-o singură aplicație |
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
 | V6.3 | FinOps/showback/capacity | B276–B300 | allocation, forecast, owner și confidence |
-| V6.4 | Observability/events/AIOps advisory | B201–B225 | normalized telemetry și explainable recommendations |
+| V6.4 | Observability/events/AIOps advisory | B206–B225 | fundația B201–B205 este în V4.6c; urmează charts, events, correlation, alerting și explainable recommendations |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | local cache, queued ops și reconciliation |
 | V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
 | V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |

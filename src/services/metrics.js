@@ -43,6 +43,8 @@ const _providerProbeDurationMs = new Map();
 const _providerCapabilityCacheTotal = new Map();
 const _providerCapabilityUnknown = new Map();
 const _providerConformanceTotal = new Map();
+const _vmMetricIngestTotal = new Map();
+const _vmMetricFreshness = new Map();
 
 /** Record an HTTP request after it has finished. */
 function recordRequest(method, statusCode, durationMs) {
@@ -106,6 +108,18 @@ function recordProviderConformance(provider, grade) {
   _providerConformanceTotal.set(key, (_providerConformanceTotal.get(key) || 0) + 1);
 }
 
+function recordVmMetricIngest(adapter, result, count = 1) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(adapter || '') || !['accepted', 'dropped'].includes(result)) return;
+  if (!Number.isSafeInteger(count) || count < 0) return;
+  const key = `${adapter}|${result}`;
+  _vmMetricIngestTotal.set(key, (_vmMetricIngestTotal.get(key) || 0) + count);
+}
+
+function setVmMetricFreshness(status, count) {
+  if (!['fresh', 'stale', 'error', 'never'].includes(status) || !Number.isFinite(count) || count < 0) return;
+  _vmMetricFreshness.set(status, Math.floor(count));
+}
+
 function getUptimeSeconds() {
   return Math.floor((Date.now() - _startTime) / 1000);
 }
@@ -126,6 +140,8 @@ function snapshot() {
     providerCapabilityCacheTotal: Object.fromEntries(_providerCapabilityCacheTotal),
     providerCapabilityUnknown: Object.fromEntries(_providerCapabilityUnknown),
     providerConformanceTotal: Object.fromEntries(_providerConformanceTotal),
+    vmMetricIngestTotal: Object.fromEntries(_vmMetricIngestTotal),
+    vmMetricFreshness: Object.fromEntries(_vmMetricFreshness),
   };
 }
 
@@ -143,6 +159,8 @@ function _reset() {
   _providerCapabilityCacheTotal.clear();
   _providerCapabilityUnknown.clear();
   _providerConformanceTotal.clear();
+  _vmMetricIngestTotal.clear();
+  _vmMetricFreshness.clear();
 }
 
 /** Render accumulated metrics as Prometheus text format. */
@@ -226,6 +244,19 @@ function renderPrometheus() {
     lines.push(`docker_dash_provider_conformance_total{provider="${provider}",grade="${grade}"} ${count}`);
   }
 
+  lines.push('# HELP docker_dash_vm_metric_ingest_total Unified VM metric samples accepted or dropped by adapter');
+  lines.push('# TYPE docker_dash_vm_metric_ingest_total counter');
+  for (const [key, count] of _vmMetricIngestTotal) {
+    const [adapter, result] = key.split('|');
+    lines.push(`docker_dash_vm_metric_ingest_total{adapter="${adapter}",result="${result}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_vm_metric_resources VM resources by metric freshness state');
+  lines.push('# TYPE docker_dash_vm_metric_resources gauge');
+  for (const [status, count] of _vmMetricFreshness) {
+    lines.push(`docker_dash_vm_metric_resources{status="${status}"} ${count}`);
+  }
+
   return lines.join('\n') + '\n';
 }
 
@@ -237,6 +268,8 @@ module.exports = {
   recordProviderCapabilityCache,
   setProviderCapabilityUnknown,
   recordProviderConformance,
+  recordVmMetricIngest,
+  setVmMetricFreshness,
   getUptimeSeconds,
   snapshot,
   renderPrometheus,

@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.52.0] - 2026-07-29 — Governance lifecycle and VM metrics foundation
+
+The next ten market-backlog controls, B196–B205, close the governance lifecycle
+wave and establish bounded, provider-aware VM telemetry.
+
+- Resource leases enforce maximum TTL, explicit renewal rights, renewal count
+  and cleanup ownership without deleting provider resources on expiry.
+- Production resource assignment can fail closed until owner, service and cost
+  center are complete; SoD reports include direct and team role bindings.
+- Access review campaigns recertify role/scope bindings and service accounts,
+  preserving evidence when a binding is expired or token revoked.
+- Tenant portability uses a size-bounded JSON export and SHA-256 checksum;
+  deletion requires suspension, cleared blockers, checksum and typed phrase.
+- A 13-series VM metrics schema normalizes PVE RRD, XAPI RRD, vSphere
+  performance, Prometheus and Azure Monitor payloads with units and provenance.
+- Per-resource freshness/errors, adaptive polling and cardinality budgets are
+  visible in the governance UI and exported as bounded Prometheus metrics.
+
 ## [8.51.0] - 2026-07-29 — Compose mount and volume attribution
 
 Compose stack storage now accounts for Docker named volumes as well as image and
