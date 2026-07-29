@@ -354,5 +354,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V4.6c | `2dbbc54` | push + tag `v8.52.0` | LAN `8.52.0-2dbbc54` healthy; backup SQLite verificat | VPS `8.52.0-2dbbc54` healthy; backup SQLite verificat | B196–B205: leases, ownership completeness, SoD, access reviews, tenant offboarding și VM metrics foundation |
 | V6.4a | `1b902c3` | push + tag `v8.53.0` | LAN `8.53.0-1b902c3` healthy; backup SQLite verificat | VPS `8.53.0-1b902c3` healthy; backup SQLite verificat | B206–B215: VM charts, contention/storage/network dashboards, events, correlation, topology și multi-signal alerts |
 | V6.4b | `4387d9f` (`v8.54.0` base `2d80878`) | push + tag `v8.54.0` | LAN `8.54.0-4387d9f` healthy; backup SQLite verificat | VPS `8.54.0-4387d9f` healthy; backup SQLite verificat | B216–B225: baseline/suppression/maintenance, forecast, triage/runbooks, exports, SLO și telemetry privacy |
+| V0.3b | `13bc623` | push + tag `v8.55.0` | LAN `8.55.0-13bc623` healthy; backup SQLite verificat | VPS `8.55.0-13bc623` healthy; backup SQLite verificat | B226–B235: durable-job evidence, DAG/compensation, secret-free manifests, immutable plans și stale rejection |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
