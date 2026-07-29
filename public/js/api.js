@@ -1556,6 +1556,22 @@ const Api = {
   createInfrastructureWorkflow(body) { return this.post('/governance/lifecycle/automation/workflows', body); },
   previewInfrastructureCompensation(workflowId, completedStepIds) { return this.post(`/governance/lifecycle/automation/workflows/${workflowId}/compensation-plan`, { completedStepIds }); },
   linkInfrastructurePlanJob(planId, body) { return this.post(`/governance/lifecycle/automation/plans/${planId}/jobs`, body); },
+  // ─── Infrastructure delivery and GitOps safeguards (V0.3c) ───
+  saveInfrastructureResourceManifest(body) { return this.post('/governance/lifecycle/automation/resource-manifests', body); },
+  importInfrastructureResource(body) { return this.post('/governance/lifecycle/automation/import', body); },
+  evaluateInfrastructureDrift(body) { return this.post('/governance/lifecycle/automation/drift', body); },
+  createInfrastructureReconcile(body) { return this.post('/governance/lifecycle/automation/reconcile-runs', body); },
+  approveInfrastructureReconcile(id, body) { return this.post(`/governance/lifecycle/automation/reconcile-runs/${id}/approve`, body); },
+  applyInfrastructureReconcile(id, body) { return this.post(`/governance/lifecycle/automation/reconcile-runs/${id}/apply`, body); },
+  createInfrastructureController(body) { return this.post('/governance/lifecycle/automation/controllers', body); },
+  runInfrastructureController(id) { return this.post(`/governance/lifecycle/automation/controllers/${id}/run`, {}); },
+  resumeInfrastructureController(id) { return this.post(`/governance/lifecycle/automation/controllers/${id}/resume`, {}); },
+  previewInfrastructurePullRequest(body) { return this.post('/governance/lifecycle/automation/previews/pull-request', body); },
+  createTerraformImportMappings(body) { return this.post('/governance/lifecycle/automation/terraform/import-mappings', body); },
+  ingestTerraformPlan(body) { return this.post('/governance/lifecycle/automation/terraform/plans', body); },
+  authorizeInfrastructureExternalPlan(id, body) { return this.post(`/governance/lifecycle/automation/external-plans/${id}/authorize`, body); },
+  getAnsibleInfrastructureInventory() { return this.get('/governance/lifecycle/automation/ansible-inventory'); },
+  createInfrastructureWebhookTrigger(body) { return this.post('/governance/lifecycle/automation/webhook-triggers', body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

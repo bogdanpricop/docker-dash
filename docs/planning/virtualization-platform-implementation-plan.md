@@ -89,6 +89,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V0.2 | Resource identity și modele comune | B004–B010 | VM/host/cluster/storage/network/task au ID și schema stabile |
 | V0.3 | Operation/job core persistent | B226–B229, B355, B428–B434 | operațiile supraviețuiesc restartului și se reconciliază |
 | V0.3b | Infrastructure automation foundations | B226–B235 | core-ul persistent este reutilizat de manifests, plans, DAG și compensation; apply provider rămâne separat |
+| V0.3c | Infrastructure delivery și GitOps safeguards | B236–B245 | ownership/deletion gates, import/drift/reconcile, PR/Terraform/Ansible și webhook HMAC |
 | V0.4 | Provider conformance kit | B018, B022–B025, B436–B450 | fixtures, fault injection și scorecard automat per provider |
 
 **Exit:** niciun provider nou și nicio mutation nouă nu mai introduc contracte ad-hoc.

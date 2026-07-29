@@ -14,6 +14,7 @@ const EXEMPT_PATHS = [
   '/api/auth/reset-password-token',
   '/api/auth/validate-reset-token',
   '/api/git/webhook',
+  '/api/automation/webhooks/',
   '/api/status-page',
 ];
 

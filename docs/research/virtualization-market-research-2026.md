@@ -863,16 +863,16 @@ redaction, sampling, retention și data residency. V6.4 este astfel închis.
 | B233 | Stale-plan rejection | Revalidare resource versions înainte de apply. | Sig | M | Done |
 | B234 | VM manifest schema | Desired hardware/image/network/storage/policy. | DX | L | Done |
 | B235 | Host/fabric manifest schema | Desired maintenance, tags și policy references. | DX | L | Done |
-| B236 | Storage/network manifest schema | Desired resources cu ownership și deletion safeguards. | DX | XL | Later |
-| B237 | Import live resource to manifest | Export secret-free, normalized și determinist. | DX | M | Next |
-| B238 | Declarative drift detection | Live-vs-Git semantic diff și ownership boundaries. | Gov | L | Next |
-| B239 | Manual GitOps reconcile | Plan/approve/apply cu commit and diff evidence. | Gov | L | Next |
-| B240 | Continuous GitOps reconcile | Optional, scoped, paused-on-conflict controller. | Gov | XL | Later |
-| B241 | Pull-request infrastructure preview | Policy checks, cost și blast radius în PR. | DX | L | Later |
-| B242 | Terraform state import helper | Generează import mappings fără a prelua state ownership. | DX | L | Later |
-| B243 | Terraform run integration | Plan artifact ingestion și gated apply. | Gov | XL | Later |
-| B244 | Ansible inventory export | Dynamic inventory cu tags/groups și secret refs. | DX | M | Next |
-| B245 | Webhook-triggered runbooks | Signed event, allowlist și replay protection. | Ops | M | Next |
+| B236 | Storage/network manifest schema | Desired resources cu ownership și deletion safeguards. | DX | XL | Done |
+| B237 | Import live resource to manifest | Export secret-free, normalized și determinist. | DX | M | Done |
+| B238 | Declarative drift detection | Live-vs-Git semantic diff și ownership boundaries. | Gov | L | Done |
+| B239 | Manual GitOps reconcile | Plan/approve/apply cu commit and diff evidence. | Gov | L | Done |
+| B240 | Continuous GitOps reconcile | Optional, scoped, paused-on-conflict controller. | Gov | XL | Done |
+| B241 | Pull-request infrastructure preview | Policy checks, cost și blast radius în PR. | DX | L | Done |
+| B242 | Terraform state import helper | Generează import mappings fără a prelua state ownership. | DX | L | Done |
+| B243 | Terraform run integration | Plan artifact ingestion și gated apply. | Gov | XL | Done |
+| B244 | Ansible inventory export | Dynamic inventory cu tags/groups și secret refs. | DX | M | Done |
+| B245 | Webhook-triggered runbooks | Signed event, allowlist și replay protection. | Ops | M | Done |
 | B246 | Schedule/calendar triggers | Cron, timezone, holiday și blackout awareness. | Ops | M | Now |
 | B247 | Approval timeout/escalation | Expire/reassign/escalate fără apply implicit. | Gov | M | Next |
 | B248 | Dry-run provider adapters | Native validate/simulate când există; explicit unsupported altfel. | Sig | L | Next |
@@ -885,6 +885,15 @@ strat adaugă DAG-uri și compensări declarative, manifeste secret-free, planur
 imutabile și respingere stale pe revision/live-state/resource-version/expiry.
 Acceptarea intentului și preview-ul de compensare nu execută provider mutations;
 ștergerile storage/network rămân blocate până la safeguards B236.
+
+**Status implementare 2026-07-29:** B236–B245 au fost închise în V0.3c /
+v8.56.0. Storage/network delete este permis numai pentru ownership `managed`,
+`deletionPolicy=delete`, protecție dezactivată și confirmare tipărită. Controller-ul
+continuu procesează observații stocate, deduplică și se oprește la conflict; nu
+pornește provider mutations. Preview-ul PR, Terraform și inventory Ansible sunt
+integrări bounded: nu fac merge, nu preiau state și nu lansează executabile.
+Webhook-urile pot porni numai procedura aleasă de admin după HMAC, timestamp,
+event allowlist și nonce unic.
 
 ### K. Lifecycle, updates și configuration management (B251–B275)
 

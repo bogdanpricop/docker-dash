@@ -84,7 +84,14 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '2mb' })); // Reduced from 10mb — increase per-route if needed
+app.use(express.json({
+  limit: '2mb', // Reduced from 10mb — increase per-route if needed
+  verify: (req, _res, buf) => {
+    if (req.url.startsWith('/api/git/webhook') || req.url.startsWith('/api/automation/webhooks')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 
 // Global prototype pollution protection on all JSON bodies
 app.use((req, res, next) => {
@@ -149,6 +156,7 @@ const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.a
 // Git webhook receiver — public, no auth, separate rate limit
 const webhookReceiverLimiter = rateLimit(30, 60 * 1000);
 app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
+app.use('/api/automation/webhooks', webhookReceiverLimiter, require('./routes/infrastructure-webhooks'));
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/identity-federation', apiLimiter, require('./routes/identity-federation'));
@@ -521,6 +529,12 @@ async function start() {
   try { require('./services/reconciler/monitor').start(); }
   catch (e) { require('./utils/logger')('reconciler').debug('reconciler monitor start skipped', { error: e.message }); }
 
+  // v8.56.0 / B240 — opt-in continuous infrastructure drift evaluation.
+  // It only creates evidence plans and pauses on conflict; it never starts a
+  // provider mutation or external Terraform process.
+  try { require('./services/infrastructure-reconcile-monitor').start(); }
+  catch (e) { require('./utils/logger')('infrastructure-reconcile').debug('monitor start skipped', { error: e.message }); }
+
   // v8.18.0 (Onboarding Phase 4) — trial-expiry lifecycle. Hourly: suspend
   // expired trial tenants + notify, warn a few days out. Best-effort, unref'd.
   try { require('./services/provisioning/trial-monitor').start(); }
@@ -622,6 +636,7 @@ async function shutdown(signal) {
   // dockerService.
   try { require('./services/remediation-scheduler').stop(); } catch {}
   try { require('./services/provider-operations').stop(); } catch {}
+  try { require('./services/infrastructure-reconcile-monitor').stop(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

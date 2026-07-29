@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.56.0] - 2026-07-29 — Infrastructure delivery and GitOps safeguards
+
+The B236–B245 batch extends infrastructure intent into guarded delivery
+workflows while reusing the existing Fleet GitOps and procedure engines.
+
+- Storage and network manifests require explicit ownership, owner and deletion
+  policy; deletion is possible only for managed, unprotected resources.
+- Live-resource import is deterministic and secret-free. Semantic drift honors
+  ownership boundaries and manual reconcile revalidates fresh state before
+  approval, retaining commit, diff and durable-operation evidence.
+- Optional scoped controllers evaluate stored observations on schedule, avoid
+  duplicate plans and pause when live state changes under a pending plan.
+- Pull-request previews retain policy, cost-confidence and blast-radius evidence;
+  Terraform imports and plan ingestion never take state ownership or persist
+  before/after values.
+- Terraform authorization records a typed, audited gate without launching an
+  external process; Ansible inventory exports symbolic secret references only.
+- Runbook webhooks use one-time-issued encrypted HMAC secrets, timestamp windows,
+  event allowlists and transactionally unique nonces to reject replay.
+
 ## [8.55.0] - 2026-07-29 — Infrastructure automation foundations
 
 The B226–B235 batch joins the existing durable provider-operation engine to a

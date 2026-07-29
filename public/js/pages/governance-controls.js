@@ -205,6 +205,7 @@ const GovernanceControlsPage = {
 
   _automation() {
     const data = this._data.infrastructureAutomation || {};
+    const delivery = data.delivery || { capabilities: {}, resourceManifests: [], controllers: [], reconcileRuns: [], externalPlans: [], webhookTriggers: [] };
     const engine = data.operationEngine || { states: {}, activeLocks: 0, idempotencyProtectedJobs: 0, nativeTaskJobs: 0 };
     const capabilities = [
       ['Durable jobs', 'persistentJobEngine'], ['Provider task bridge', 'providerTaskBridge'],
@@ -212,6 +213,13 @@ const GovernanceControlsPage = {
       ['Operation DAG', 'dependencyDag'], ['Compensation framework', 'compensationFramework'],
       ['Infrastructure change plans', 'changePlans'], ['Stale-plan rejection', 'stalePlanRejection'],
       ['VM manifest', 'vmManifest'], ['Host / fabric manifest', 'hostFabricManifest'],
+    ];
+    const deliveryCapabilities = [
+      ['Storage / network manifest', 'storageNetworkManifest'], ['Live resource import', 'liveImport'],
+      ['Declarative drift detection', 'declarativeDrift'], ['Manual GitOps reconcile', 'manualGitOpsReconcile'],
+      ['Continuous GitOps reconcile', 'continuousGitOpsReconcile'], ['Pull-request preview', 'pullRequestPreview'],
+      ['Terraform import helper', 'terraformImport'], ['Terraform run integration', 'terraformRunIntegration'],
+      ['Ansible inventory export', 'ansibleInventory'], ['Webhook-triggered runbooks', 'webhookRunbooks'],
     ];
     return `${this._actions(`<button class="btn btn-secondary btn-sm" data-gc-manifest="VirtualMachine"><i class="fas fa-desktop"></i> VM manifest</button>
       <button class="btn btn-secondary btn-sm" data-gc-manifest="Host"><i class="fas fa-server"></i> Host manifest</button>
@@ -235,6 +243,29 @@ const GovernanceControlsPage = {
         ${(data.workflows || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">v${Utils.escapeHtml(item.version)}</div></td><td>${item.steps.length} / ${new Set(item.steps.map(step => step.stage)).size}<div class="text-xs text-muted">${item.steps.filter(step => step.compensation).length} compensations</div></td><td class="mono text-xs">${item.definitionHash.slice(0, 12)}</td><td><button class="action-btn" data-gc-compensation="${item.id}" title="Preview reverse compensation"><i class="fas fa-rotate-left"></i></button></td></tr>`).join('') || this._empty('No workflow DAGs', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Plan → durable job evidence</h3></div><table class="data-table"><thead><tr><th>Plan / operation</th><th>Relation</th><th>State</th><th>Safety</th></tr></thead><tbody>
         ${(data.jobLinks || []).map(item => `<tr><td class="mono text-xs">#${item.planId}<br>${Utils.escapeHtml(item.operationId)}</td><td>${item.relation}${item.stepId ? ` · ${Utils.escapeHtml(item.stepId)}` : ''}</td><td>${item.state}${item.hasNativeTask ? `<div class="text-xs text-muted">native: ${Utils.escapeHtml(item.nativeTaskState || 'linked')}</div>` : ''}</td><td>${item.idempotencyProtected ? 'idempotent' : 'no key'} · ${item.lockScopes.length} locks</td></tr>`).join('') || this._empty('No accepted plans linked to durable jobs', 4)}</tbody></table></div>
+      </div>
+      ${this._actions(`<button class="btn btn-secondary btn-sm" data-gc-resource-manifest="StorageResource"><i class="fas fa-hard-drive"></i> Storage manifest</button>
+        <button class="btn btn-secondary btn-sm" data-gc-resource-manifest="NetworkResource"><i class="fas fa-diagram-project"></i> Network manifest</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-import"><i class="fas fa-file-import"></i> Import live</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-reconcile"><i class="fas fa-code-compare"></i> Drift &amp; reconcile</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-controller"><i class="fas fa-arrows-rotate"></i> Controller</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-pr"><i class="fas fa-code-pull-request"></i> PR preview</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-terraform"><i class="fas fa-cubes"></i> Terraform plan</button>
+        <button class="btn btn-secondary btn-sm" id="gc-infra-ansible"><i class="fas fa-download"></i> Ansible inventory</button>
+        <button class="btn btn-primary btn-sm" id="gc-infra-webhook"><i class="fas fa-bolt"></i> Signed runbook hook</button>`) }
+      <div class="card"><div class="card-header"><div><h3>Delivery &amp; GitOps safety map</h3><p class="text-muted text-sm">Continuous mode evaluates stored observations and pauses on conflict. Terraform authorization and PR preview never launch an external process or merge.</p></div></div>
+      <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${deliveryCapabilities.map(([label, key]) => `<span class="badge ${delivery.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Owned storage / network intent</h3></div><table class="data-table"><thead><tr><th>Kind / name</th><th>Owner</th><th>Revision</th><th>Deletion</th></tr></thead><tbody>
+        ${(delivery.resourceManifests || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.kind)}</div></td><td>${Utils.escapeHtml(item.owner)}<div class="text-xs text-muted">${item.ownershipMode}</div></td><td>${item.revision}<div class="mono text-xs">${item.documentHash.slice(0, 12)}</div></td><td>${item.deletionProtection ? '<span class="badge badge-success">protected</span>' : '<span class="badge badge-warning">explicit delete</span>'}</td></tr>`).join('') || this._empty('No storage or network manifests', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Reconcile controllers</h3></div><table class="data-table"><thead><tr><th>Controller / scope</th><th>Mode</th><th>State</th><th></th></tr></thead><tbody>
+        ${(delivery.controllers || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.scopeType)}:${Utils.escapeHtml(item.scopeKey)}</div></td><td>${item.mode}<div class="text-xs text-muted">${item.intervalSeconds}s · ${item.enabled ? 'enabled' : 'disabled'}</div></td><td><span class="badge ${item.state === 'in_sync' ? 'badge-success' : ['paused','conflict','error'].includes(item.state) ? 'badge-danger' : 'badge-warning'}">${item.state}</span><div class="text-xs text-muted">${Utils.escapeHtml(item.pauseReason || '')}</div></td><td><button class="action-btn" data-gc-controller-run="${item.id}" title="Evaluate now"><i class="fas fa-play"></i></button>${['paused','conflict','error'].includes(item.state) ? `<button class="action-btn" data-gc-controller-resume="${item.id}" title="Resume explicitly"><i class="fas fa-rotate"></i></button>` : ''}</td></tr>`).join('') || this._empty('No reconcile controllers', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Manual reconcile evidence</h3></div><table class="data-table"><thead><tr><th>Run / commit</th><th>Summary</th><th>State</th><th></th></tr></thead><tbody>
+        ${(delivery.reconcileRuns || []).map(item => `<tr><td class="mono text-xs">#${item.id}<br>${Utils.escapeHtml(item.commitSha || item.planHash.slice(0, 12))}</td><td>+${item.summary.create || 0} ~${item.summary.update || 0} -${item.summary.delete || 0}<div class="text-xs text-muted">${item.summary.blocked || 0} blocked</div></td><td><span class="badge ${item.status === 'applied' || item.status === 'in_sync' ? 'badge-success' : item.status === 'blocked' || item.status === 'conflict' ? 'badge-danger' : 'badge-secondary'}">${item.status}</span></td><td>${item.status === 'planned' ? `<button class="action-btn" data-gc-reconcile-approve="${item.id}" title="Approve reviewed hash"><i class="fas fa-check"></i></button>` : ''}${item.status === 'approved' ? `<button class="action-btn" data-gc-reconcile-apply="${item.id}" title="Attach durable operation evidence"><i class="fas fa-link"></i></button>` : ''}</td></tr>`).join('') || this._empty('No manual or continuous reconcile evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>PR / Terraform plan evidence</h3></div><table class="data-table"><thead><tr><th>Source / reference</th><th>Policy</th><th>Blast radius</th><th></th></tr></thead><tbody>
+        ${(delivery.externalPlans || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.sourceKind)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.externalRef)}</div></td><td><span class="badge ${item.policy.passed ? 'badge-success' : 'badge-danger'}">${item.status}</span></td><td>${item.blastRadius.changedResources ?? item.blastRadius.changedPaths ?? 0} changed<div class="text-xs text-muted">risk: ${item.blastRadius.risk}</div></td><td>${['reviewed','blocked'].includes(item.status) ? `<button class="action-btn" data-gc-external-authorize="${item.id}" title="Record gated authorization"><i class="fas fa-shield-check"></i></button>` : ''}</td></tr>`).join('') || this._empty('No pull-request or Terraform evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Signed runbook triggers</h3></div><table class="data-table"><thead><tr><th>Name</th><th>Procedure</th><th>Events</th><th>Window</th></tr></thead><tbody>
+        ${(delivery.webhookTriggers || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.tokenPrefix)}…</div></td><td>#${item.procedureId}</td><td>${item.events.map(event => `<span class="badge badge-secondary mono">${Utils.escapeHtml(event)}</span>`).join(' ')}</td><td>${item.timestampSkewSeconds}s · ${item.enabled ? 'enabled' : 'disabled'}</td></tr>`).join('') || this._empty('No signed runbook triggers', 4)}</tbody></table></div>
       </div>`;
   },
 
@@ -287,6 +318,23 @@ const GovernanceControlsPage = {
     this._container.querySelectorAll('[data-gc-revalidate-plan]').forEach(button => button.addEventListener('click', () => this._revalidateInfrastructurePlan(button.dataset.gcRevalidatePlan)));
     this._container.querySelectorAll('[data-gc-link-job]').forEach(button => button.addEventListener('click', () => this._linkInfrastructureJob(button.dataset.gcLinkJob)));
     this._container.querySelectorAll('[data-gc-compensation]').forEach(button => button.addEventListener('click', () => this._infrastructureCompensationDialog(button.dataset.gcCompensation)));
+    this._container.querySelectorAll('[data-gc-resource-manifest]').forEach(button => button.addEventListener('click', () => this._resourceManifestDialog(button.dataset.gcResourceManifest)));
+    this._container.querySelector('#gc-infra-import')?.addEventListener('click', () => this._infrastructureImportDialog());
+    this._container.querySelector('#gc-infra-reconcile')?.addEventListener('click', () => this._infrastructureReconcileDialog());
+    this._container.querySelector('#gc-infra-controller')?.addEventListener('click', () => this._infrastructureControllerDialog());
+    this._container.querySelector('#gc-infra-pr')?.addEventListener('click', () => this._infrastructurePrDialog());
+    this._container.querySelector('#gc-infra-terraform')?.addEventListener('click', () => this._terraformPlanDialog());
+    this._container.querySelector('#gc-infra-ansible')?.addEventListener('click', () => this._downloadAnsibleInventory());
+    this._container.querySelector('#gc-infra-webhook')?.addEventListener('click', () => this._infrastructureWebhookDialog());
+    this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
+      try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    }));
+    this._container.querySelectorAll('[data-gc-controller-resume]').forEach(button => button.addEventListener('click', async () => {
+      try { await Api.resumeInfrastructureController(button.dataset.gcControllerResume); Toast.success('Controller resumed explicitly'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    }));
+    this._container.querySelectorAll('[data-gc-reconcile-approve]').forEach(button => button.addEventListener('click', () => this._approveInfrastructureReconcile(button.dataset.gcReconcileApprove)));
+    this._container.querySelectorAll('[data-gc-reconcile-apply]').forEach(button => button.addEventListener('click', () => this._applyInfrastructureReconcile(button.dataset.gcReconcileApply)));
+    this._container.querySelectorAll('[data-gc-external-authorize]').forEach(button => button.addEventListener('click', () => this._authorizeInfrastructureExternal(button.dataset.gcExternalAuthorize)));
     this._container.querySelectorAll('[data-gc-renew-lease]').forEach(button => button.addEventListener('click', () => this._renewLease(button.dataset.gcRenewLease)));
     this._container.querySelectorAll('[data-gc-clean-lease]').forEach(button => button.addEventListener('click', async () => {
       if (!await Modal.confirm('Attest that provider cleanup is complete?', { danger: true })) return;
@@ -802,5 +850,176 @@ const GovernanceControlsPage = {
     const actions = result.plan.actions.map(item => `<tr><td>${Utils.escapeHtml(item.stepId)}</td><td class="mono">${Utils.escapeHtml(item.actionKey)}</td><td>${item.strategy}</td><td>${item.lockScopes.map(value => Utils.escapeHtml(value)).join(', ') || '—'}</td></tr>`).join('');
     Modal.open(`<div class="modal-header"><h3>Reverse compensation preview</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><table class="data-table"><thead><tr><th>Step</th><th>Compensation</th><th>Strategy</th><th>Locks</th></tr></thead><tbody>${actions || this._empty('No automatic compensations declared', 4)}</tbody></table><p class="text-muted text-sm" style="margin-top:12px">${result.plan.providerMutationsScheduled} provider mutations scheduled.</p></div>`);
     Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+  },
+
+  _resourceManifestTemplate(kind) {
+    const metadata = { name: kind === 'StorageResource' ? 'fast-storage' : 'prod-network', providerHostId: 0,
+      ownership: { mode: 'managed', owner: 'platform-team', deletionProtection: true } };
+    if (kind === 'StorageResource') return { apiVersion: 'docker-dash.io/v1alpha1', kind, metadata,
+      spec: { storageType: 'datastore', capacityBytes: 1099511627776, classRef: 'default', shared: true,
+        policies: [], tags: {}, deletionPolicy: 'retain' } };
+    return { apiVersion: 'docker-dash.io/v1alpha1', kind, metadata,
+      spec: { networkType: 'vlan', cidrs: ['10.20.0.0/24'], vlanId: 120, mtu: 1500,
+        policies: [], tags: {}, deletionPolicy: 'retain' } };
+  },
+
+  async _resourceManifestDialog(kind) {
+    const template = JSON.stringify(this._resourceManifestTemplate(kind), null, 2);
+    const result = await Modal.form(`<p class="text-muted text-sm">Deletion requires managed ownership, deletionPolicy=delete and deletionProtection=false. Secret fields are rejected.</p>
+      <div class="form-group"><label>${Utils.escapeHtml(kind)} JSON</label><textarea id="gc-resource-manifest" class="form-control mono" rows="22">${Utils.escapeHtml(template)}</textarea></div>
+      <div class="form-group"><label>Resource versions JSON</label><textarea id="gc-resource-versions" class="form-control mono" rows="3">{}</textarea></div>`,
+    { title: `${kind} intent`, width: '920px', confirmText: 'Validate & save', onSubmit: c => this._submit(() => Api.saveInfrastructureResourceManifest({
+      document: JSON.parse(c.querySelector('#gc-resource-manifest').value),
+      resourceVersions: JSON.parse(c.querySelector('#gc-resource-versions').value),
+    })) });
+    if (result) { Toast.success(`Resource manifest revision ${result.manifest.revision} saved`); await this.render(this._container); }
+  },
+
+  _allInfrastructureManifests() {
+    const core = (this._data.infrastructureAutomation?.manifests || []).map(item => ({ ...item, source: 'core' }));
+    const resources = (this._data.infrastructureAutomation?.delivery?.resourceManifests || []).map(item => ({ ...item, source: 'resource' }));
+    return [...core, ...resources];
+  },
+
+  async _selectInfrastructureManifest(title) {
+    const manifests = this._allInfrastructureManifests();
+    if (!manifests.length) { Toast.warning('Save an infrastructure manifest first'); return null; }
+    const selection = await Modal.form(`<div class="form-group"><label>Manifest</label><select id="gc-delivery-manifest" class="form-control">${manifests.map(item => `<option value="${item.source}:${item.id}">${Utils.escapeHtml(item.kind)} · ${Utils.escapeHtml(item.name)} · r${item.revision}</option>`).join('')}</select></div>`,
+      { title, confirmText: 'Continue', onSubmit: c => c.querySelector('#gc-delivery-manifest').value });
+    if (!selection) return null;
+    const [source, rawId] = selection.split(':');
+    return manifests.find(item => item.source === source && item.id === Number(rawId)) || null;
+  },
+
+  async _infrastructureImportDialog() {
+    const template = JSON.stringify(this._manifestTemplate('Host'), null, 2);
+    const result = await Modal.form(`<p class="text-muted text-sm">Paste a caller-observed resource using the canonical VM, host, fabric, storage or network schema. Import normalizes and exports; it does not persist.</p>
+      <div class="form-group"><label>Observed resource JSON</label><textarea id="gc-import-document" class="form-control mono" rows="22">${Utils.escapeHtml(template)}</textarea></div>
+      <div class="form-group"><label>Native resource versions JSON</label><textarea id="gc-import-versions" class="form-control mono" rows="3">{}</textarea></div>`,
+    { title: 'Import live resource to manifest', width: '920px', confirmText: 'Normalize preview', onSubmit: c => this._submit(() => Api.importInfrastructureResource({
+      document: JSON.parse(c.querySelector('#gc-import-document').value), resourceVersions: JSON.parse(c.querySelector('#gc-import-versions').value),
+    })) });
+    if (!result) return;
+    Modal.open(`<div class="modal-header"><h3>Deterministic secret-free import</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><p class="mono text-xs">SHA-256 ${result.documentHash}</p><textarea class="form-control mono" rows="24" readonly>${Utils.escapeHtml(result.yaml)}</textarea><p class="text-muted text-sm">Persisted: no · provider queries: none.</p></div>`, { width: '920px' });
+    Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+  },
+
+  async _infrastructureReconcileDialog() {
+    const manifest = await this._selectInfrastructureManifest('Select drift target'); if (!manifest) return;
+    const result = await Modal.form(`<p class="text-muted text-sm">Creates immutable diff and commit evidence only. Provider changes must already exist as allowlisted durable operations.</p>
+      <div class="form-group"><label>Observed live state JSON</label><textarea id="gc-reconcile-live" class="form-control mono" rows="18">${Utils.escapeHtml(JSON.stringify(manifest.document.spec, null, 2))}</textarea></div>
+      <div class="form-row"><div class="form-group"><label>Resource versions JSON</label><textarea id="gc-reconcile-versions" class="form-control mono" rows="3">${Utils.escapeHtml(JSON.stringify(manifest.resourceVersions || {}, null, 2))}</textarea></div><div class="form-group"><label>Git commit SHA (optional)</label><input id="gc-reconcile-commit" class="form-control mono"></div></div>`,
+    { title: 'Declarative drift & manual GitOps reconcile', width: '920px', confirmText: 'Create plan evidence', onSubmit: c => this._submit(() => Api.createInfrastructureReconcile({
+      manifestSource: manifest.source, manifestId: manifest.id, liveState: JSON.parse(c.querySelector('#gc-reconcile-live').value),
+      resourceVersions: JSON.parse(c.querySelector('#gc-reconcile-versions').value), commitSha: c.querySelector('#gc-reconcile-commit').value || undefined,
+    })) });
+    if (result) { Toast.success(`Reconcile evidence is ${result.run.status}`); await this.render(this._container); }
+  },
+
+  async _approveInfrastructureReconcile(runId) {
+    const run = (this._data.infrastructureAutomation?.delivery?.reconcileRuns || []).find(item => item.id === Number(runId));
+    if (!run) return Toast.error('Reconcile run is no longer available');
+    const manifest = this._allInfrastructureManifests().find(item => item.source === run.manifestSource && item.id === run.manifestId);
+    if (!manifest) return Toast.error('The reconcile manifest is no longer available');
+    const confirmation = await Modal.form(`<p>Approve reviewed plan <span class="mono">${run.planHash}</span>.</p>
+      <div class="form-group"><label>Fresh live state JSON</label><textarea id="gc-reconcile-fresh" class="form-control mono" rows="16">${Utils.escapeHtml(JSON.stringify(run.evidence.observedState || manifest.document.spec, null, 2))}</textarea></div>
+      <div class="form-group"><label>Fresh resource versions JSON</label><textarea id="gc-reconcile-fresh-versions" class="form-control mono" rows="3">${Utils.escapeHtml(JSON.stringify(run.resourceVersions || {}, null, 2))}</textarea></div>
+      <div class="form-group"><label>Deletion confirmation (only when deletes exist)</label><input id="gc-reconcile-confirm" class="form-control mono" placeholder="DELETE kind name"></div>`,
+    { title: `Approve reconcile #${run.id}`, width: '900px', confirmText: 'Revalidate & approve', onSubmit: c => ({
+      confirmation: c.querySelector('#gc-reconcile-confirm').value, liveState: JSON.parse(c.querySelector('#gc-reconcile-fresh').value),
+      resourceVersions: JSON.parse(c.querySelector('#gc-reconcile-fresh-versions').value),
+    }) });
+    if (confirmation === null || confirmation === undefined) return;
+    try { await Api.approveInfrastructureReconcile(run.id, { planHash: run.planHash, ...confirmation }); Toast.success('Fresh evidence matches; reconcile approved'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _applyInfrastructureReconcile(runId) {
+    const run = (this._data.infrastructureAutomation?.delivery?.reconcileRuns || []).find(item => item.id === Number(runId));
+    const result = await Modal.form(`<p class="text-muted text-sm">Attach existing durable operations. This does not start or replay a provider command.</p>
+      <div class="form-group"><label>Operation IDs (comma-separated)</label><input id="gc-reconcile-operations" class="form-control mono" placeholder="op_…"></div>`,
+    { title: `Apply evidence · #${runId}`, confirmText: 'Attach evidence', onSubmit: c => this._submit(() => Api.applyInfrastructureReconcile(runId, {
+      planHash: run.planHash, operationIds: c.querySelector('#gc-reconcile-operations').value.split(',').map(value => value.trim()).filter(Boolean),
+    })) });
+    if (result) { Toast.success(`Reconcile state: ${result.run.status}`); await this.render(this._container); }
+  },
+
+  async _infrastructureControllerDialog() {
+    const manifest = await this._selectInfrastructureManifest('Controller manifest'); if (!manifest) return;
+    const result = await Modal.form(`<p class="text-muted text-sm">Continuous mode evaluates stored observations on schedule and pauses on conflict; it never starts provider mutations.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-controller-name" class="form-control" value="${Utils.escapeHtml(manifest.name)}-drift"></div><div class="form-group"><label>Scope key</label><input id="gc-controller-scope" class="form-control mono" value="${manifest.source}:${manifest.id}"></div></div>
+      <div class="form-row"><div class="form-group"><label>Mode</label><select id="gc-controller-mode" class="form-control"><option>observe</option><option>continuous</option></select></div><div class="form-group"><label>Interval seconds</label><input id="gc-controller-interval" type="number" min="60" max="86400" value="900" class="form-control"></div></div>
+      <div class="form-group"><label><input id="gc-controller-enabled" type="checkbox"> Enable scheduled evaluation</label></div>
+      <div class="form-group"><label>Initial observed live state JSON</label><textarea id="gc-controller-live" class="form-control mono" rows="16">${Utils.escapeHtml(JSON.stringify(manifest.document.spec, null, 2))}</textarea></div>`,
+    { title: 'Scoped reconcile controller', width: '900px', onSubmit: c => this._submit(() => Api.createInfrastructureController({
+      name: c.querySelector('#gc-controller-name').value, manifestSource: manifest.source, manifestId: manifest.id,
+      scopeType: manifest.kind === 'fabric' ? 'fabric' : manifest.kind === 'host' ? 'host' : 'resource', scopeKey: c.querySelector('#gc-controller-scope').value,
+      mode: c.querySelector('#gc-controller-mode').value, intervalSeconds: Number(c.querySelector('#gc-controller-interval').value),
+      enabled: c.querySelector('#gc-controller-enabled').checked, liveState: JSON.parse(c.querySelector('#gc-controller-live').value),
+    })) });
+    if (result) { Toast.success('Conflict-pausing controller saved'); await this.render(this._container); }
+  },
+
+  async _infrastructurePrDialog() {
+    const manifest = await this._selectInfrastructureManifest('Pull-request preview target'); if (!manifest) return;
+    const result = await Modal.form(`<div class="form-group"><label>Pull-request reference</label><input id="gc-pr-ref" class="form-control mono" value="github/pr/1"></div>
+      <div class="form-group"><label>Observed live state JSON</label><textarea id="gc-pr-live" class="form-control mono" rows="16">${Utils.escapeHtml(JSON.stringify(manifest.document.spec, null, 2))}</textarea></div>
+      <div class="form-row"><div class="form-group"><label>Currency</label><input id="gc-pr-currency" class="form-control" value="EUR"></div><div class="form-group"><label>Monthly rates JSON (optional)</label><input id="gc-pr-rates" class="form-control mono" value="{}"></div></div>`,
+    { title: 'Pull-request infrastructure preview', width: '900px', onSubmit: c => this._submit(() => Api.previewInfrastructurePullRequest({
+      externalRef: c.querySelector('#gc-pr-ref').value, manifestSource: manifest.source, manifestId: manifest.id,
+      liveState: JSON.parse(c.querySelector('#gc-pr-live').value), currency: c.querySelector('#gc-pr-currency').value,
+      monthlyRates: JSON.parse(c.querySelector('#gc-pr-rates').value),
+    })) });
+    if (result) { Toast.success(`PR preview ${result.preview.status}; no merge or provider action started`); await this.render(this._container); }
+  },
+
+  async _terraformPlanDialog() {
+    const sample = { format_version: '1.2', terraform_version: '1.9.0', resource_changes: [
+      { address: 'proxmox_vm_qemu.example', type: 'proxmox_vm_qemu', change: { actions: ['update'], before_sensitive: {}, after_sensitive: {} } },
+    ] };
+    const result = await Modal.form(`<p class="text-muted text-sm">Only addresses, types, actions and sensitivity flags are retained. Before/after values are discarded.</p>
+      <div class="form-group"><label>Run reference</label><input id="gc-tf-ref" class="form-control mono" value="terraform/run-1"></div>
+      <div class="form-group"><label>Terraform plan JSON</label><textarea id="gc-tf-plan" class="form-control mono" rows="22">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>`,
+    { title: 'Terraform run integration', width: '920px', confirmText: 'Ingest redacted evidence', onSubmit: c => this._submit(() => Api.ingestTerraformPlan({
+      externalRef: c.querySelector('#gc-tf-ref').value, plan: JSON.parse(c.querySelector('#gc-tf-plan').value),
+    })) });
+    if (result) { Toast.success(`Terraform plan ${result.plan.status}; no Terraform process started`); await this.render(this._container); }
+  },
+
+  async _authorizeInfrastructureExternal(planId) {
+    const plan = (this._data.infrastructureAutomation?.delivery?.externalPlans || []).find(item => item.id === Number(planId));
+    if (!plan) return Toast.error('External plan is no longer available');
+    const phrase = plan.sourceKind === 'terraform' ? `AUTHORIZE TERRAFORM ${plan.id}` : `APPROVE PREVIEW ${plan.id}`;
+    const result = await Modal.form(`<p>This records authorization only; Docker Dash will not execute Terraform or merge a pull request.</p>
+      <div class="form-group"><label>Type ${phrase}</label><input id="gc-external-confirm" class="form-control mono"></div>
+      <div class="form-group"><label><input id="gc-external-override" type="checkbox"> Explicitly override blocked policy findings</label></div>`,
+    { title: 'Gated external authorization', danger: true, onSubmit: c => this._submit(() => Api.authorizeInfrastructureExternalPlan(plan.id, {
+      confirmation: c.querySelector('#gc-external-confirm').value, allowPolicyOverride: c.querySelector('#gc-external-override').checked,
+    })) });
+    if (result) { Toast.success('Authorization recorded; external execution was not started'); await this.render(this._container); }
+  },
+
+  async _downloadAnsibleInventory() {
+    try {
+      const result = await Api.getAnsibleInfrastructureInventory(); const blob = new Blob([result.yaml], { type: 'application/yaml' });
+      const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'docker-dash-inventory.yaml'; link.click(); URL.revokeObjectURL(url);
+      Toast.success('Secret-free Ansible inventory exported');
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _infrastructureWebhookDialog() {
+    let procedureRows;
+    try { procedureRows = await Api.getProcedures(); } catch (error) { return Toast.error(error.message); }
+    if (!procedureRows.length) return Toast.warning('Create an active procedure first');
+    const result = await Modal.form(`<p class="text-muted text-sm">The token and HMAC secret are shown once. Requests require timestamp, nonce, allowlisted event and SHA-256 signature.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-hook-name" class="form-control" value="incident-hook"></div><div class="form-group"><label>Procedure</label><select id="gc-hook-procedure" class="form-control">${procedureRows.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.name)}</option>`).join('')}</select></div></div>
+      <div class="form-row"><div class="form-group"><label>Events (comma-separated)</label><input id="gc-hook-events" class="form-control mono" value="incident.opened"></div><div class="form-group"><label>Timestamp window seconds</label><input id="gc-hook-window" type="number" min="30" max="900" value="300" class="form-control"></div></div>`,
+    { title: 'Signed webhook-triggered runbook', onSubmit: c => this._submit(() => Api.createInfrastructureWebhookTrigger({
+      name: c.querySelector('#gc-hook-name').value, procedureId: Number(c.querySelector('#gc-hook-procedure').value),
+      events: c.querySelector('#gc-hook-events').value.split(',').map(value => value.trim()).filter(Boolean),
+      timestampSkewSeconds: Number(c.querySelector('#gc-hook-window').value),
+    })) });
+    if (!result) return;
+    Modal.open(`<div class="modal-header"><h3>Save webhook credentials now</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><p>Endpoint</p><input class="form-control mono" readonly value="${Utils.escapeHtml(`${location.origin}/api/automation/webhooks/${result.token}`)}"><p style="margin-top:12px">HMAC secret</p><input class="form-control mono" readonly value="${Utils.escapeHtml(result.secret)}"><p class="text-muted text-sm">Signature input: timestamp.nonce.event.raw-body. These values will not be shown again.</p></div>`, { width: '850px' });
+    Modal._content.querySelector('#gc-close').addEventListener('click', () => { Modal.close(); this.render(this._container); });
   },
 };

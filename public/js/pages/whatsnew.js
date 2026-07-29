@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.56.0', date: '2026-07-29', title: 'Infrastructure delivery and GitOps safeguards', changes: [
+      { type: 'feature', text: 'Storage/network manifests add explicit ownership and deletion protection; deterministic live import and semantic drift preserve unmanaged boundaries.' },
+      { type: 'feature', text: 'Manual reconcile retains commit and diff evidence, revalidates fresh state, and can reference only existing durable provider operations.' },
+      { type: 'improvement', text: 'Optional continuous controllers evaluate stored observations, deduplicate unchanged plans and pause when a pending plan conflicts with new live state.' },
+      { type: 'feature', text: 'Pull-request previews, Terraform import/plan evidence and secret-reference-only Ansible inventory provide bounded IaC interoperability.' },
+      { type: 'security', text: 'Terraform authorization starts no external process; runbook webhooks require encrypted HMAC secrets, bounded timestamps, event allowlists and unique nonces.' },
+    ] },
     { version: '8.55.0', date: '2026-07-29', title: 'Infrastructure automation foundations', changes: [
       { type: 'feature', text: 'Secret-free VM, host and fabric manifests provide normalized, versioned desired state with hash-idempotent revisions.' },
       { type: 'feature', text: 'Immutable infrastructure plans classify create, update, delete, unchanged and blocked paths, then reject stale live-state or resource-version evidence before acceptance.' },
