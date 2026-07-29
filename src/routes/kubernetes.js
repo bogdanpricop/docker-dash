@@ -19,6 +19,7 @@ const { getDb } = require('../db');
 const { fromHostRow, buildKubeconfig } = require('../services/kubernetes');
 const virtualization = require('../services/kubernetes-virtualization');
 const convergence = require('../services/kubernetes-convergence');
+const unified = require('../services/kubernetes-unified-platform');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -45,7 +46,7 @@ function _getK8sHost(req, res) {
 function virtualizationRoute(handler) {
   return async (req, res, next) => {
     try { await handler(req, res); } catch (error) {
-      if (['KubernetesVirtualizationError', 'KubernetesConvergenceError'].includes(error.name)) {
+      if (['KubernetesVirtualizationError', 'KubernetesConvergenceError', 'KubernetesUnifiedPlatformError'].includes(error.name)) {
         return res.status(error.status || 400).json({ error: error.message, code: error.code, details: error.details });
       }
       next(error);
@@ -382,6 +383,113 @@ router.post('/virtualization/migration-policies', requireAuth, requireRole('admi
       action: 'kubevirt_migration_policy_save', targetType: 'kubevirt_migration_policy', targetId: String(policy.id),
       details: { policyHash: policy.policyHash, applySupported: false, providerMutationsStarted: 0 }, ip: getClientIp(req) });
     res.status(201).json({ policy });
+  }));
+
+// ─── v8.64.0 — B316-B325: unified VM/container platform ───
+
+router.get('/virtualization/unified/evidence/:kind', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await unified.liveEvidence(row, req.params.kind, req.query.namespace || undefined));
+}));
+
+router.post('/virtualization/unified/evidence/:kind/refresh', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const snapshot = await unified.refreshEvidence(row, req.params.kind, req.body?.namespace || undefined, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubernetes_unified_snapshot', targetType: 'host', targetId: String(req.hostId),
+      details: { kind: snapshot.kind, namespace: snapshot.namespace, evidenceHash: snapshot.evidenceHash,
+        duplicate: snapshot.duplicate, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+  }));
+
+router.get('/virtualization/unified/snapshots', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json({ snapshots: unified.snapshots(row.id, req.user) });
+}));
+
+router.post('/virtualization/unified/gitops/plans', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const plan = await unified.planVmGitOps(row, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_gitops_plan', targetType: 'kubevirt_gitops_plan', targetId: String(plan.id),
+      details: { namespace: plan.namespace, vmName: plan.vmName, state: plan.state,
+        desiredHash: plan.desiredHash, liveHash: plan.liveHash, planHash: plan.planHash,
+        providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(plan.duplicate ? 200 : 201).json({ plan });
+  }));
+
+router.get('/virtualization/unified/gitops/plans', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json({ plans: unified.gitOpsPlans(row.id, req.user) });
+}));
+
+router.get('/virtualization/unified/admission/policies', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ policies: unified.admissionPolicies(req.user) })));
+
+router.post('/virtualization/unified/admission/evaluate', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const evaluation = unified.evaluateAdmission(row, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_admission_evaluate', targetType: 'kubevirt_admission_evaluation', targetId: String(evaluation.id),
+      details: { namespace: evaluation.namespace, vmName: evaluation.vmName, decision: evaluation.decision,
+        evaluationHash: evaluation.evaluationHash, enforced: false, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(evaluation.duplicate ? 200 : 201).json({ evaluation });
+  }));
+
+router.get('/virtualization/unified/cluster-catalog', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ catalog: unified.clusterCatalog(req.user) })));
+router.get('/virtualization/unified/cluster-plans', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ plans: unified.clusterPlans(req.user) })));
+router.post('/virtualization/unified/cluster-plans', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const plan = unified.planCluster(req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubernetes_cluster_plan', targetType: 'kubernetes_cluster_plan', targetId: String(plan.id),
+      details: { catalogSlug: plan.catalogSlug, state: plan.state, planHash: plan.planHash,
+        executionSupported: false, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(plan.duplicate ? 200 : 201).json({ plan });
+  }));
+
+router.get('/virtualization/unified/modernization', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ maps: unified.modernizationMaps(req.user) })));
+router.post('/virtualization/unified/modernization', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const map = unified.createModernizationMap(req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'virtualization_modernization_map', targetType: 'modernization_map', targetId: String(map.id),
+      details: { sourceVmRef: map.sourceVmRef, readinessScore: map.readinessScore,
+        blockerCount: map.blockers.length, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(map.duplicate ? 200 : 201).json({ map });
+  }));
+
+router.get('/virtualization/unified/image-provenance', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ records: unified.imageProvenance(req.user) })));
+router.post('/virtualization/unified/image-provenance', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const record = unified.ingestImageProvenance(req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'shared_image_provenance_ingest', targetType: 'image_provenance', targetId: String(record.id),
+      details: { imageKind: record.imageKind, digest: record.digest, trustState: record.trustState,
+        evidenceHash: record.evidenceHash, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(record.duplicate ? 200 : 201).json({ record });
+  }));
+
+router.get('/virtualization/unified/environments', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ environments: unified.applicationEnvironments(req.user) })));
+router.get('/virtualization/unified/environments/:slug', requireAuth, requireRole('admin'),
+  virtualizationRoute((req, res) => res.json({ environment: unified.applicationEnvironment(req.params.slug, req.user) })));
+router.post('/virtualization/unified/environments', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const environment = unified.saveApplicationEnvironment(req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'unified_application_environment_save', targetType: 'application_environment', targetId: String(environment.id),
+      details: { slug: environment.slug, environmentHash: environment.environmentHash,
+        componentCount: environment.components.length, relationshipCount: environment.relationships.length,
+        providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(201).json({ environment });
   }));
 
 module.exports = router;

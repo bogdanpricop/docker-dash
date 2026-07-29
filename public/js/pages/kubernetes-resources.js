@@ -42,6 +42,7 @@ const KubernetesResourcesPage = {
         <button class="tab" data-tab="virtualization">Virtualization platform</button>
         <button class="tab" data-tab="virtualization-storage">VM storage & templates</button>
         <button class="tab" data-tab="virtualization-network">VM network & migration</button>
+        <button class="tab" data-tab="unified-platform">Unified platform</button>
       </div>
       <div id="k8s-tab-container">Loading...</div>
     `;
@@ -162,6 +163,24 @@ const KubernetesResourcesPage = {
             Api.getKubeVirtMigrationPolicies(),
           ]);
           this._renderVirtualizationNetwork(el, { drain, multus, nmstate, exposure, migration });
+          break;
+        }
+        case 'unified-platform': {
+          const [topology, metrics, policy, gitops, lifecycle, gitopsPlans, admissionPolicies,
+            catalog, clusterPlans, modernization, provenance, environments] = await Promise.all([
+            Api.getKubernetesUnifiedEvidence('topology', this._namespace),
+            Api.getKubernetesUnifiedEvidence('metrics', this._namespace),
+            Api.getKubernetesUnifiedEvidence('policy', this._namespace),
+            Api.getKubernetesUnifiedEvidence('gitops', this._namespace),
+            Api.getKubernetesUnifiedEvidence('lifecycle'), Api.getKubeVirtGitOpsPlans(),
+            Api.getKubeVirtAdmissionPolicies(), Api.getKubernetesClusterCatalog(), Api.getKubernetesClusterPlans(),
+            Api.getVirtualizationModernizationMaps(), Api.getSharedImageProvenance(), Api.getUnifiedApplicationEnvironments(),
+          ]);
+          this._renderUnifiedPlatform(el, { topology, metrics, policy, gitops, lifecycle,
+            gitopsPlans: gitopsPlans.plans || [], admissionPolicies: admissionPolicies.policies || [],
+            catalog: catalog.catalog || [], clusterPlans: clusterPlans.plans || [],
+            modernization: modernization.maps || [], provenance: provenance.records || [],
+            environments: environments.environments || [] });
           break;
         }
       }
@@ -404,6 +423,69 @@ const KubernetesResourcesPage = {
       try { await Promise.all(['node_drain', 'multus', 'nmstate', 'vm_exposure'].map(kind => Api.refreshKubernetesConvergence(kind, ['multus', 'vm_exposure'].includes(kind) ? this._namespace : null))); Toast.success('Network and drain evidence saved'); }
       catch (error) { Toast.error(error.message); }
     });
+  },
+
+  _renderUnifiedPlatform(el, data) {
+    const summary = data.topology?.summary || {}; const workloads = data.metrics?.workloads || [];
+    const pressure = (data.metrics?.contention || []).filter(item => item.pressure).length;
+    const noncompliant = (data.policy?.workloads || []).filter(item => !item.compliant).length;
+    const lifecycle = data.lifecycle || {}; const blockers = lifecycle.upgradeReadiness?.blockers || [];
+    const environments = data.environments || [];
+    el.innerHTML = `<div class="alert alert-info">This view correlates evidence only. GitOps and cluster workflows stop at plan/dry-run; admission evaluations are not enforcement webhooks.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn btn-sm btn-primary" data-unified-action="gitops">Plan VM GitOps</button>
+        <button class="btn btn-sm btn-primary" data-unified-action="admission">Evaluate VM admission</button>
+        <button class="btn btn-sm btn-secondary" data-unified-action="cluster">Plan cluster workflow</button>
+        <button class="btn btn-sm btn-secondary" data-unified-action="modernization">Add modernization map</button>
+        <button class="btn btn-sm btn-secondary" data-unified-action="provenance">Add image provenance</button>
+        <button class="btn btn-sm btn-secondary" data-unified-action="environment">Save application environment</button>
+        <button class="btn btn-sm btn-secondary" id="unified-save-evidence">Save all evidence</button>
+      </div>
+      <div class="info-grid">
+        ${[['VMs',summary.vm || 0],['Pods',summary.pod || 0],['Services',summary.service || 0],['Storage',summary.storage || 0],['Networks',summary.network || 0],['Metric workloads',workloads.length],['Pressure nodes',pressure],['Policy gaps',noncompliant]].map(([label,value]) => `<div class="info-item"><div class="info-label">${label}</div><div class="info-value">${value}</div></div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Unified topology</h3></div><table class="table"><tbody>${Object.entries(summary).map(([kind,count]) => `<tr><td>${Utils.escapeHtml(kind)}</td><td>${count}</td></tr>`).join('') || '<tr><td>No topology evidence</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">Edges: ${data.topology?.edges?.length || 0} · coverage ${Utils.escapeHtml(JSON.stringify(data.topology?.coverage || {}))}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Common workload metrics</h3></div><table class="table"><thead><tr><th>Kind</th><th>Workload</th><th>Node</th><th>CPU</th><th>Memory</th></tr></thead><tbody>${workloads.slice(0,100).map(item => `<tr><td>${Utils.escapeHtml(item.kind)}</td><td>${Utils.escapeHtml(`${item.namespace}/${item.name}`)}</td><td>${Utils.escapeHtml(item.nodeName || '—')}</td><td>${Number(item.cpuCores || 0).toFixed(3)}</td><td>${Utils.escapeHtml(Utils.formatBytes ? Utils.formatBytes(item.memoryBytes || 0) : String(item.memoryBytes || 0))}</td></tr>`).join('') || '<tr><td colspan="5">Metrics API unavailable or empty</td></tr>'}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Policy & admission</h3></div><table class="table"><tbody><tr><td>ResourceQuotas</td><td>${data.policy?.quotas?.items?.length || 0}</td></tr><tr><td>NetworkPolicies</td><td>${data.policy?.networkPolicies?.items?.length || 0}</td></tr><tr><td>Validating webhooks</td><td>${data.policy?.admission?.validating?.count ?? '—'}</td></tr><tr><td>Kyverno</td><td>${Utils.escapeHtml(data.policy?.admission?.kyverno?.state || 'unknown')}</td></tr><tr><td>Gatekeeper</td><td>${Utils.escapeHtml(data.policy?.admission?.gatekeeper?.state || 'unknown')}</td></tr><tr><td>VM policy library</td><td>${data.admissionPolicies.length}</td></tr></tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>VM GitOps</h3></div><table class="table"><thead><tr><th>Controller</th><th>Observed</th></tr></thead><tbody><tr><td>Flux</td><td>${Utils.escapeHtml(data.gitops?.flux?.state || 'unknown')} · ${data.gitops?.flux?.items?.length || 0}</td></tr><tr><td>Argo CD</td><td>${Utils.escapeHtml(data.gitops?.argo?.state || 'unknown')} · ${data.gitops?.argo?.items?.length || 0}</td></tr><tr><td>Plans</td><td>${data.gitopsPlans.length} · ${data.gitopsPlans.filter(plan => plan.state === 'drift').length} drift</td></tr></tbody></table><div class="card-body text-sm text-muted">Every plan includes Kubernetes dryRun=All and starts zero apply operations.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Cluster lifecycle</h3></div><table class="table"><tbody><tr><td>Version</td><td>${Utils.escapeHtml(lifecycle.version?.gitVersion || 'unknown')}</td></tr><tr><td>Nodes</td><td>${lifecycle.nodes?.items?.length || 0}</td></tr><tr><td>Addons</td><td>${lifecycle.addons?.items?.length || 0}</td></tr><tr><td>Upgrade readiness</td><td><span class="badge ${lifecycle.upgradeReadiness?.state === 'ready' ? 'badge-success' : lifecycle.upgradeReadiness?.state === 'blocked' ? 'badge-danger' : 'badge-warning'}">${Utils.escapeHtml(lifecycle.upgradeReadiness?.state || 'unknown')}</span></td></tr></tbody></table><div class="card-body text-sm text-muted">${blockers.map(item => Utils.escapeHtml(item)).join('<br>') || 'No observed runtime blocker; official support lifecycle remains separately sourced.'}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Cluster provisioning catalog</h3></div><table class="table"><thead><tr><th>Workflow</th><th>Provider</th><th>Stages</th></tr></thead><tbody>${data.catalog.map(item => `<tr><td>${Utils.escapeHtml(item.name)}</td><td>${Utils.escapeHtml(item.provider)}</td><td>${item.stages.length}</td></tr>`).join('')}</tbody></table><div class="card-body text-sm text-muted">Plans: ${data.clusterPlans.length}; execution adapters: disabled.</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Modernization & provenance</h3></div><table class="table"><tbody><tr><td>VM modernization maps</td><td>${data.modernization.length}</td></tr><tr><td>Shared image provenance</td><td>${data.provenance.length}</td></tr><tr><td>Externally verified images</td><td>${data.provenance.filter(item => item.trustState === 'externally_verified').length}</td></tr></tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Application environments</h3></div><table class="table"><thead><tr><th>Name</th><th>Environment</th><th>Owner</th><th>Components</th></tr></thead><tbody>${environments.map(item => `<tr><td>${Utils.escapeHtml(item.name)}</td><td>${Utils.escapeHtml(item.environment)}</td><td>${Utils.escapeHtml(item.owner)}</td><td>${item.components?.length || 0}</td></tr>`).join('') || '<tr><td colspan="4">No unified environments</td></tr>'}</tbody></table></div>
+      </div>`;
+    el.querySelectorAll('[data-unified-action]').forEach(button => button.addEventListener('click', () => this._openUnifiedAction(button.dataset.unifiedAction)));
+    el.querySelector('#unified-save-evidence')?.addEventListener('click', async () => {
+      try { await Promise.all(['topology','metrics','policy','gitops','lifecycle'].map(kind =>
+        Api.refreshKubernetesUnifiedEvidence(kind, kind === 'lifecycle' ? null : this._namespace))); Toast.success('Unified evidence saved'); }
+      catch (error) { Toast.error(error.message); }
+    });
+  },
+
+  async _openUnifiedAction(action) {
+    const examples = {
+      gitops: { sourceKind: 'repository', repositoryUrl: 'https://git.example/platform.git', repositoryPath: 'vms/default/vm-a.yaml', revision: 'main', manifest: { apiVersion: 'kubevirt.io/v1', kind: 'VirtualMachine', metadata: { namespace: this._namespace || 'default', name: 'vm-a' }, spec: { template: { spec: { domain: { cpu: { cores: 2 }, resources: { requests: { memory: '4Gi' } } } } } } } },
+      admission: { manifest: { apiVersion: 'kubevirt.io/v1', kind: 'VirtualMachine', metadata: { namespace: this._namespace || 'default', name: 'vm-a', labels: { 'app.kubernetes.io/name': 'vm-a', 'app.kubernetes.io/part-of': 'demo', 'docker-dash.io/owner': 'platform', 'docker-dash.io/environment': 'test' } }, spec: { template: { spec: { domain: { cpu: { cores: 2 }, memory: { guest: '4Gi' }, firmware: { bootloader: { efi: { secureBoot: true } } }, features: { smm: { enabled: true } } }, networks: [] } } } }, profile: { trustedImagePrefixes: [], allowedNetworks: [], maxCpu: 16, maxMemoryGiB: 64 } },
+      cluster: { catalogSlug: 'rancher', planName: 'cluster-a', parameters: { clusterName: 'cluster-a', provider: 'vsphere', nodeCount: 3, kubernetesVersion: 'v1.32.0', networkRef: 'network/production', credentialProfileRef: 'credential-profile/rancher' } },
+      modernization: { name: 'legacy-app', sourceVmRef: 'default/vm-a', targetPlatform: 'kubernetes', owner: 'platform-team', dependencies: [{ id: 'database', kind: 'database', ref: 'postgres/legacy', protocol: 'tcp', port: 5432, criticality: 'critical', state: 'known', targetRef: 'service/postgres' }], stages: { discovery: 'complete', baseline: 'ready', rollback_validation: 'pending' } },
+      provenance: { imageKind: 'oci', imageRef: 'registry.example/app:1.0', digest: `sha256:${'0'.repeat(64)}`, sourceUrl: 'https://registry.example/app', sbom: { format: 'spdx-json', digest: `sha256:${'1'.repeat(64)}`, url: 'https://registry.example/sbom/app.json', packageCount: 0, generatedAt: new Date().toISOString() }, signatures: [], links: [{ kind: 'application', ref: 'demo' }] },
+      environment: { slug: 'demo', name: 'Demo application', environment: 'test', owner: 'platform-team', components: [{ id: 'compose', type: 'compose_stack', ref: 'a4lchat' }, { id: 'vm', type: 'kubevirt_vm', ref: 'default/vm-a' }, { id: 'api', type: 'kubernetes_workload', ref: 'default/deployment/api' }], relationships: [{ from: 'api', to: 'vm', kind: 'depends_on' }, { from: 'compose', to: 'api', kind: 'connects_to' }] },
+    };
+    const result = await Modal.form(`<p class="text-muted text-sm">Review every field. Secret values are rejected; use opaque references.</p><textarea id="unified-action-json" class="form-control mono" rows="24">${Utils.escapeHtml(JSON.stringify(examples[action], null, 2))}</textarea>`, {
+      title: `Unified platform · ${action}`, width: '900px', confirmText: action === 'gitops' ? 'Dry-run and save plan' : 'Validate and save',
+      onSubmit: async content => {
+        let body; try { body = JSON.parse(content.querySelector('#unified-action-json').value); } catch { Toast.error('JSON is invalid'); return false; }
+        try {
+          if (action === 'gitops') return Api.createKubeVirtGitOpsPlan(body);
+          if (action === 'admission') return Api.evaluateKubeVirtAdmission(body);
+          if (action === 'cluster') return Api.createKubernetesClusterPlan(body);
+          if (action === 'modernization') return Api.createVirtualizationModernizationMap(body);
+          if (action === 'provenance') return Api.ingestSharedImageProvenance(body);
+          return Api.saveUnifiedApplicationEnvironment(body);
+        } catch (error) { Toast.error(error.message); return false; }
+      },
+    });
+    if (result) { Toast.success(`${action} evidence saved`); this._load(); }
   },
 
   async _openDataVolumePlan() {

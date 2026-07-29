@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.64.0] - 2026-07-29 — Unified Kubernetes application platform
+
+The B316–B325 batch closes the VM/container convergence group with common
+operational evidence, policy planning and application-level context.
+
+- A bounded topology graph connects namespaces, pods, VMs, Services, nodes,
+  PVCs/DataVolumes and Multus networks; normalized metrics attribute
+  virt-launcher usage to VMs and expose node contention.
+- ResourceQuota, NetworkPolicy, admission-controller and required-label
+  evidence share one policy view. Cluster version, nodes, addons, API groups
+  and OpenShift operators feed an explicit upgrade-readiness dashboard.
+- Flux/Argo-aware VM GitOps plans accept credential-free HTTPS sources, reject
+  inline secrets, compare live drift and stop after Kubernetes `dryRun=All`.
+  The five-policy VM admission library records evaluations but never enforces.
+- Curated AKS Arc, NKE, OpenShift, CloudStack CKS and Rancher workflows create
+  blocked local plans with required prechecks; no provider executor is exposed.
+- VM modernization maps, shared OCI/VM digest-SBOM-signature provenance and a
+  unified Compose/Kubernetes/KubeVirt application environment are persistent,
+  bounded and hash-idempotent without mutating providers or registries.
+
 ## [8.63.0] - 2026-07-29 — KubeVirt storage and network convergence
 
 The B306–B315 batch adds CDI/template workflows and read-only storage, network

@@ -161,7 +161,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V5.3 | Nutanix Prism Central | B001–B075 | tasks, categories și AHV lifecycle |
 | V5.4 | OpenStack provider | B001–B150, B176–B200 | Keystone catalog + Nova/Cinder/Neutron/Glance |
 | V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
-| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | V5.6a livrează B301–B305; V5.6b livrează B306–B315: CDI/templates, guarded create, migration/drain, CSI, Multus, NMState și exposure; B316 rămâne planificat |
+| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | Livrat: V5.6a B301–B305, V5.6b B306–B315 și V5.6c B316; discovery/inventory, guarded CDI/templates și topologie VM/pod |
 | V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
 | V5.8 | Provider plugin SDK | B401–B425 | signed manifest, permissions, sandbox și test kit |
 
@@ -171,7 +171,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
-| V6.1 | Unified application view | B301–B325, B351–B375 | VM+container+Kubernetes într-o singură aplicație |
+| V6.1 | Unified application view | B301–B325, B351–B375 | V6.1a livrează B317–B325: metrics/policy/GitOps, lifecycle, modernization, provenance și environment unificat; B351–B375 rămân în loturile următoare |
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |

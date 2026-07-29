@@ -43,6 +43,19 @@ const log = require('../utils/logger')('kubernetes');
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
 
+function cpuCores(value) {
+  const text = String(value || '0'); const match = text.match(/^([0-9]+(?:\.[0-9]+)?)(n|u|m)?$/);
+  if (!match) return null; const number = Number(match[1]);
+  return number * ({ n: 1e-9, u: 1e-6, m: 1e-3 }[match[2]] || 1);
+}
+function memoryBytes(value) {
+  const text = String(value || '0'); const match = text.match(/^([0-9]+(?:\.[0-9]+)?)([KMGTPE]i|[kMGTPE])?$/);
+  if (!match) return null; const number = Number(match[1]);
+  const binary = { Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3, Ti: 1024 ** 4, Pi: 1024 ** 5, Ei: 1024 ** 6 };
+  const decimal = { k: 1000, M: 1000 ** 2, G: 1000 ** 3, T: 1000 ** 4, P: 1000 ** 5, E: 1000 ** 6 };
+  return number * (binary[match[2]] || decimal[match[2]] || 1);
+}
+
 /**
  * KubernetesClient — thin wrapper over a single Kubernetes API server.
  *
@@ -597,6 +610,209 @@ class KubernetesClient {
     return { namespace: namespace || null, entries,
       coverage: { virtualMachines: vms.state, services: services.state, routes: routes.state, ingresses: ingresses.state },
       providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  // ─── v8.64.0 — unified VM/container platform evidence ───
+
+  async unifiedWorkloadTopology(namespace) {
+    const customNs = namespace ? `/namespaces/${encodeURIComponent(namespace)}` : '';
+    const coreNs = namespace ? `/namespaces/${encodeURIComponent(namespace)}` : '';
+    const [nodes, pods, services, pvcs, vms, vmis, dataVolumes, networks] = await Promise.all([
+      this._probe('GET', '/api/v1/nodes'), this._probe('GET', `/api/v1${coreNs}/pods`),
+      this._probe('GET', `/api/v1${coreNs}/services`), this._probe('GET', `/api/v1${coreNs}/persistentvolumeclaims`),
+      this._probe('GET', `/apis/kubevirt.io/v1${customNs}/virtualmachines`),
+      this._probe('GET', `/apis/kubevirt.io/v1${customNs}/virtualmachineinstances`),
+      this._probe('GET', `/apis/cdi.kubevirt.io/v1beta1${customNs}/datavolumes`),
+      this._probe('GET', `/apis/k8s.cni.cncf.io/v1${customNs}/network-attachment-definitions`),
+    ]);
+    const graphNodes = []; const edges = []; const nodeKeys = new Set(); const edgeKeys = new Set();
+    const addNode = value => { if (!nodeKeys.has(value.id)) { nodeKeys.add(value.id); graphNodes.push(value); } };
+    const addEdge = (from, to, kind, detail = null) => {
+      const key = `${from}|${to}|${kind}`; if (!edgeKeys.has(key)) { edgeKeys.add(key); edges.push({ from, to, kind, detail }); }
+    };
+    const namespaceNode = ns => { const id = `namespace:${ns}`; addNode({ id, kind: 'namespace', name: ns }); return id; };
+    for (const node of nodes.value?.items || []) addNode({ id: `node:${node.metadata?.name}`, kind: 'node',
+      name: node.metadata?.name || null, ready: (node.status?.conditions || []).some(c => c.type === 'Ready' && c.status === 'True') });
+    const workloadLabels = new Map();
+    for (const pod of pods.value?.items || []) {
+      const ns = pod.metadata?.namespace || 'default'; const name = pod.metadata?.name || ''; const id = `pod:${ns}/${name}`;
+      namespaceNode(ns); addNode({ id, kind: 'pod', namespace: ns, name, phase: pod.status?.phase || 'Unknown' });
+      addEdge(`namespace:${ns}`, id, 'contains'); workloadLabels.set(id, pod.metadata?.labels || {});
+      if (pod.spec?.nodeName) { addNode({ id: `node:${pod.spec.nodeName}`, kind: 'node', name: pod.spec.nodeName }); addEdge(id, `node:${pod.spec.nodeName}`, 'scheduled_on'); }
+      for (const volume of pod.spec?.volumes || []) if (volume.persistentVolumeClaim?.claimName) {
+        const storageId = `pvc:${ns}/${volume.persistentVolumeClaim.claimName}`;
+        addNode({ id: storageId, kind: 'storage', subtype: 'pvc', namespace: ns, name: volume.persistentVolumeClaim.claimName });
+        addEdge(id, storageId, 'mounts', volume.name || null);
+      }
+      const attachment = pod.metadata?.annotations?.['k8s.v1.cni.cncf.io/networks'];
+      if (attachment) {
+        let values; try { values = JSON.parse(attachment); } catch { values = attachment.split(',').map(nameValue => ({ name: nameValue.trim() })); }
+        if (!Array.isArray(values)) values = [values];
+        for (const value of values) { const ref = typeof value === 'string' ? value : value?.name; if (!ref) continue;
+          const parts = ref.split('/'); const netNs = parts.length === 2 ? parts[0] : ns; const netName = parts.length === 2 ? parts[1] : parts[0];
+          const networkId = `network:${netNs}/${netName}`; addNode({ id: networkId, kind: 'network', namespace: netNs, name: netName }); addEdge(id, networkId, 'attaches'); }
+      }
+    }
+    const vmiByKey = new Map((vmis.value?.items || []).map(vmi => [`${vmi.metadata?.namespace}/${vmi.metadata?.name}`, vmi]));
+    for (const vm of vms.value?.items || []) {
+      const ns = vm.metadata?.namespace || 'default'; const name = vm.metadata?.name || ''; const id = `vm:${ns}/${name}`;
+      namespaceNode(ns); const vmi = vmiByKey.get(`${ns}/${name}`); addNode({ id, kind: 'vm', namespace: ns, name,
+        phase: vm.status?.printableStatus || vmi?.status?.phase || 'Stopped' }); addEdge(`namespace:${ns}`, id, 'contains');
+      workloadLabels.set(id, { ...(vm.metadata?.labels || {}), 'kubevirt.io/domain': name, 'vm.kubevirt.io/name': name });
+      if (vmi?.status?.nodeName) { addNode({ id: `node:${vmi.status.nodeName}`, kind: 'node', name: vmi.status.nodeName }); addEdge(id, `node:${vmi.status.nodeName}`, 'scheduled_on'); }
+      for (const volume of vm.spec?.template?.spec?.volumes || []) {
+        const storageName = volume.persistentVolumeClaim?.claimName || volume.dataVolume?.name; if (!storageName) continue;
+        const subtype = volume.dataVolume ? 'datavolume' : 'pvc'; const storageId = `${subtype}:${ns}/${storageName}`;
+        addNode({ id: storageId, kind: 'storage', subtype, namespace: ns, name: storageName }); addEdge(id, storageId, 'mounts', volume.name || null);
+      }
+      for (const network of vm.spec?.template?.spec?.networks || []) if (network.multus?.networkName) {
+        const parts = network.multus.networkName.split('/'); const netNs = parts.length === 2 ? parts[0] : ns;
+        const netName = parts.length === 2 ? parts[1] : parts[0]; const networkId = `network:${netNs}/${netName}`;
+        addNode({ id: networkId, kind: 'network', namespace: netNs, name: netName }); addEdge(id, networkId, 'attaches', network.name || null);
+      }
+    }
+    for (const pvc of pvcs.value?.items || []) addNode({ id: `pvc:${pvc.metadata?.namespace}/${pvc.metadata?.name}`,
+      kind: 'storage', subtype: 'pvc', namespace: pvc.metadata?.namespace || null, name: pvc.metadata?.name || null,
+      phase: pvc.status?.phase || 'Unknown', storageClass: pvc.spec?.storageClassName || null });
+    for (const dv of dataVolumes.value?.items || []) addNode({ id: `datavolume:${dv.metadata?.namespace}/${dv.metadata?.name}`,
+      kind: 'storage', subtype: 'datavolume', namespace: dv.metadata?.namespace || null, name: dv.metadata?.name || null,
+      phase: dv.status?.phase || 'Unknown' });
+    for (const nad of networks.value?.items || []) addNode({ id: `network:${nad.metadata?.namespace}/${nad.metadata?.name}`,
+      kind: 'network', namespace: nad.metadata?.namespace || null, name: nad.metadata?.name || null });
+    for (const service of services.value?.items || []) {
+      const ns = service.metadata?.namespace || 'default'; const name = service.metadata?.name || ''; const id = `service:${ns}/${name}`;
+      namespaceNode(ns); addNode({ id, kind: 'service', namespace: ns, name, serviceType: service.spec?.type || 'ClusterIP' });
+      addEdge(`namespace:${ns}`, id, 'contains'); const selectors = Object.entries(service.spec?.selector || {});
+      if (!selectors.length) continue;
+      for (const [workloadId, labels] of workloadLabels) if (workloadId.includes(`:${ns}/`)
+        && selectors.every(([key, value]) => labels[key] === value)) addEdge(id, workloadId, 'selects');
+    }
+    return { namespace: namespace || null, nodes: graphNodes.slice(0, 5000), edges: edges.slice(0, 10000),
+      truncated: graphNodes.length > 5000 || edges.length > 10000,
+      summary: Object.fromEntries(['namespace','node','pod','vm','service','storage','network'].map(kind =>
+        [kind, graphNodes.filter(item => item.kind === kind).length])),
+      coverage: { nodes: nodes.state, pods: pods.state, services: services.state, persistentVolumeClaims: pvcs.state,
+        virtualMachines: vms.state, instances: vmis.state, dataVolumes: dataVolumes.state, networks: networks.state },
+      providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async unifiedWorkloadMetrics(namespace) {
+    const ns = namespace ? `/namespaces/${encodeURIComponent(namespace)}` : '';
+    const [podMetrics, nodeMetrics, pods, nodes] = await Promise.all([
+      this._probe('GET', `/apis/metrics.k8s.io/v1beta1${ns}/pods`),
+      this._probe('GET', '/apis/metrics.k8s.io/v1beta1/nodes'),
+      this._probe('GET', namespace ? `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods` : '/api/v1/pods'),
+      this._probe('GET', '/api/v1/nodes'),
+    ]);
+    const podByKey = new Map((pods.value?.items || []).map(pod => [`${pod.metadata?.namespace}/${pod.metadata?.name}`, pod]));
+    const workloads = (podMetrics.value?.items || []).map(metric => {
+      const key = `${metric.metadata?.namespace}/${metric.metadata?.name}`; const pod = podByKey.get(key);
+      const vmName = pod?.metadata?.labels?.['kubevirt.io/domain']; const kind = vmName ? 'vm' : 'pod';
+      return { kind, namespace: metric.metadata?.namespace || null, name: vmName || metric.metadata?.name || null,
+        sourcePod: vmName ? metric.metadata?.name || null : null, nodeName: pod?.spec?.nodeName || null,
+        cpuCores: (metric.containers || []).reduce((sum, item) => sum + (cpuCores(item.usage?.cpu) || 0), 0),
+        memoryBytes: (metric.containers || []).reduce((sum, item) => sum + (memoryBytes(item.usage?.memory) || 0), 0),
+        sampleAt: metric.timestamp || null, window: metric.window || null, provenance: 'metrics.k8s.io/pod' };
+    });
+    const capacityByNode = new Map((nodes.value?.items || []).map(node => [node.metadata?.name, {
+      cpu: cpuCores(node.status?.allocatable?.cpu), memory: memoryBytes(node.status?.allocatable?.memory) }]));
+    const contention = (nodeMetrics.value?.items || []).map(metric => { const capacity = capacityByNode.get(metric.metadata?.name) || {};
+      const cpu = cpuCores(metric.usage?.cpu); const memory = memoryBytes(metric.usage?.memory);
+      return { nodeName: metric.metadata?.name || null, cpuCores: cpu, memoryBytes: memory,
+        cpuUtilizationPercent: capacity.cpu ? Math.round(cpu / capacity.cpu * 10000) / 100 : null,
+        memoryUtilizationPercent: capacity.memory ? Math.round(memory / capacity.memory * 10000) / 100 : null,
+        pressure: capacity.cpu && capacity.memory ? (cpu / capacity.cpu > 0.85 || memory / capacity.memory > 0.9) : null,
+        sampleAt: metric.timestamp || null };
+    });
+    return { namespace: namespace || null, workloads, contention,
+      coverage: { workloadMetrics: podMetrics.state, nodeMetrics: nodeMetrics.state, podIdentity: pods.state, nodeCapacity: nodes.state },
+      limitations: ['VM metrics are inferred from virt-launcher pod labels', 'Disk and network rates require a Prometheus adapter'],
+      providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async unifiedPolicyEvidence(namespace) {
+    const coreNs = namespace ? `/namespaces/${encodeURIComponent(namespace)}` : '';
+    const [quotas, networkPolicies, validating, mutating, kyverno, gatekeeper, pods, vms] = await Promise.all([
+      this._probe('GET', `/api/v1${coreNs}/resourcequotas`),
+      this._probe('GET', `/apis/networking.k8s.io/v1${coreNs}/networkpolicies`),
+      this._probe('GET', '/apis/admissionregistration.k8s.io/v1/validatingwebhookconfigurations'),
+      this._probe('GET', '/apis/admissionregistration.k8s.io/v1/mutatingwebhookconfigurations'),
+      this._probe('GET', '/apis/kyverno.io/v1/clusterpolicies'),
+      this._probe('GET', '/apis/templates.gatekeeper.sh/v1beta1/constrainttemplates'),
+      this._probe('GET', `/api/v1${coreNs}/pods`), this._probe('GET', `/apis/kubevirt.io/v1${coreNs}/virtualmachines`),
+    ]);
+    const required = ['app.kubernetes.io/name', 'app.kubernetes.io/part-of', 'docker-dash.io/owner', 'docker-dash.io/environment'];
+    const workload = (kind, item) => { const labels = item.metadata?.labels || {}; const missing = required.filter(key => !labels[key]);
+      return { kind, namespace: item.metadata?.namespace || null, name: item.metadata?.name || null,
+        labels: Object.fromEntries(required.filter(key => labels[key]).map(key => [key, labels[key]])), missingLabels: missing,
+        compliant: missing.length === 0 };
+    };
+    return { namespace: namespace || null,
+      quotas: { state: quotas.state, items: (quotas.value?.items || []).map(item => ({ namespace: item.metadata?.namespace || null,
+        name: item.metadata?.name || null, hard: item.status?.hard || item.spec?.hard || {}, used: item.status?.used || {} })) },
+      networkPolicies: { state: networkPolicies.state, items: (networkPolicies.value?.items || []).map(item => ({
+        namespace: item.metadata?.namespace || null, name: item.metadata?.name || null,
+        podSelector: item.spec?.podSelector || {}, policyTypes: item.spec?.policyTypes || [] })) },
+      admission: { validating: { state: validating.state, count: validating.value?.items?.length ?? null },
+        mutating: { state: mutating.state, count: mutating.value?.items?.length ?? null },
+        kyverno: { state: kyverno.state, items: (kyverno.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+          ready: (item.status?.conditions || []).some(condition => condition.type === 'Ready' && condition.status === 'True') })) },
+        gatekeeper: { state: gatekeeper.state, templates: (gatekeeper.value?.items || []).map(item => item.metadata?.name).filter(Boolean) } },
+      workloads: [...(pods.value?.items || []).map(item => workload('pod', item)), ...(vms.value?.items || []).map(item => workload('vm', item))],
+      requiredLabels: required, coverage: { quotas: quotas.state, networkPolicies: networkPolicies.state,
+        pods: pods.state, virtualMachines: vms.state }, providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async gitOpsControllerStatus(namespace) {
+    const ns = namespace ? `/namespaces/${encodeURIComponent(namespace)}` : '';
+    const [flux, argo] = await Promise.all([
+      this._probe('GET', `/apis/kustomize.toolkit.fluxcd.io/v1${ns}/kustomizations`),
+      this._probe('GET', `/apis/argoproj.io/v1alpha1${ns}/applications`),
+    ]);
+    const safeMessage = value => String(value || '').replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@')
+      .replace(/([?&](?:token|key|secret|password|signature)=)[^&\s]+/gi, '$1[redacted]').slice(0, 500) || null;
+    const conditions = item => (item.status?.conditions || []).map(condition => ({ type: condition.type || null,
+      status: condition.status || null, reason: condition.reason || null, message: safeMessage(condition.message) }));
+    return { flux: { state: flux.state, items: (flux.value?.items || []).map(item => ({ namespace: item.metadata?.namespace || null,
+      name: item.metadata?.name || null, revision: item.status?.lastAppliedRevision || item.status?.lastAttemptedRevision || null,
+      path: item.spec?.path || null, suspended: !!item.spec?.suspend, conditions: conditions(item) })) },
+    argo: { state: argo.state, items: (argo.value?.items || []).map(item => ({ namespace: item.metadata?.namespace || null,
+      name: item.metadata?.name || null, revision: item.status?.sync?.revision || null, sync: item.status?.sync?.status || 'Unknown',
+      health: item.status?.health?.status || 'Unknown', path: item.spec?.source?.path || null })) },
+    providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async clusterLifecycleDashboard() {
+    const [version, nodes, groups, addons, operators, clusterVersions] = await Promise.all([
+      this._probe('GET', '/version'), this._probe('GET', '/api/v1/nodes'), this._probe('GET', '/apis'),
+      this._probe('GET', '/apis/apps/v1/namespaces/kube-system/deployments'),
+      this._probe('GET', '/apis/config.openshift.io/v1/clusteroperators'),
+      this._probe('GET', '/apis/config.openshift.io/v1/clusterversions'),
+    ]);
+    const nodeItems = (nodes.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+      ready: (item.status?.conditions || []).some(condition => condition.type === 'Ready' && condition.status === 'True'),
+      unschedulable: !!item.spec?.unschedulable, kubeletVersion: item.status?.nodeInfo?.kubeletVersion || null,
+      osImage: item.status?.nodeInfo?.osImage || null, containerRuntime: item.status?.nodeInfo?.containerRuntimeVersion || null }));
+    const versions = [...new Set(nodeItems.map(item => item.kubeletVersion).filter(Boolean))]; const blockers = [];
+    if (nodes.state !== 'supported') blockers.push('Node readiness is unavailable');
+    if (nodeItems.some(item => !item.ready)) blockers.push('One or more nodes are not Ready');
+    if (nodeItems.some(item => item.unschedulable)) blockers.push('One or more nodes are unschedulable');
+    if (versions.length > 2) blockers.push('Kubelet version skew exceeds two observed versions');
+    const operatorItems = (operators.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+      available: (item.status?.conditions || []).some(c => c.type === 'Available' && c.status === 'True'),
+      degraded: (item.status?.conditions || []).some(c => c.type === 'Degraded' && c.status === 'True') }));
+    if (operatorItems.some(item => item.degraded || !item.available)) blockers.push('OpenShift operator health is degraded');
+    return { version: { state: version.state, gitVersion: version.value?.gitVersion || null,
+      platform: version.value?.platform || null }, nodes: { state: nodes.state, items: nodeItems, observedVersions: versions },
+    addons: { state: addons.state, items: (addons.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+      ready: item.status?.readyReplicas || 0, desired: item.spec?.replicas || 0,
+      images: (item.spec?.template?.spec?.containers || []).map(container => container.image).filter(Boolean) })) },
+    apiGroups: { state: groups.state, items: (groups.value?.groups || []).map(group => group.name).filter(Boolean).sort() },
+    openshift: { operators: { state: operators.state, items: operatorItems }, clusterVersions: { state: clusterVersions.state,
+      items: (clusterVersions.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+        desiredVersion: item.status?.desired?.version || null, availableUpdates: item.status?.availableUpdates?.map(update => update.version) || [] })) } },
+    upgradeReadiness: { state: blockers.length ? 'blocked' : nodes.state === 'supported' ? 'ready' : 'unknown', blockers,
+      supportLifecycle: 'unknown_without_official_registry' }, providerMutationsStarted: 0, observedAt: new Date().toISOString() };
   }
 
   // ─── Namespaces ─────────────────────────────────────────

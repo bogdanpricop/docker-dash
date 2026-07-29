@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.64.0', date: '2026-07-29', title: 'Unified Kubernetes application platform', changes: [
+      { type: 'feature', text: 'A common VM/pod topology links namespace, Service, node, PVC/DataVolume and Multus resources; normalized metrics attribute virt-launcher usage and node contention.' },
+      { type: 'feature', text: 'Quota, NetworkPolicy, admission and ownership-label evidence join cluster version, node, addon, API-group and OpenShift upgrade readiness.' },
+      { type: 'security', text: 'Flux/Argo-aware VM GitOps rejects credential-bearing sources and inline secrets, compares drift and stops after dryRun=All; admission evaluations never enforce.' },
+      { type: 'feature', text: 'Curated AKS Arc, NKE, OpenShift, CloudStack CKS and Rancher workflows create precheck-blocked local plans with no provider executor.' },
+      { type: 'feature', text: 'Modernization maps, OCI/VM provenance and unified Compose/Kubernetes/KubeVirt application environments are bounded and hash-idempotent.' },
+    ] },
     { version: '8.63.0', date: '2026-07-29', title: 'KubeVirt storage and network convergence', changes: [
       { type: 'feature', text: 'CDI DataVolume inventory and a guarded HTTPS/registry/PVC/upload wizard expose source, storage, checksum, phase and progress evidence.' },
       { type: 'feature', text: 'OpenShift templates plus KubeVirt instancetypes/preferences can plan VM creation after parameter, namespace, storage and Multus validation.' },

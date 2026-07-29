@@ -1041,16 +1041,16 @@ migrare, discount și risc și nu creează achiziții ori tranzacții de billing
 | B313 | Multus network inventory | NADs, attachments, IPAM și interface mappings. | Ops | M | Done |
 | B314 | NMState network intent | Host network policies și enactment health. | Ops | L | Done |
 | B315 | VM service exposure | Kubernetes Service/Route/Ingress mapping pentru VM. | DX | M | Done |
-| B316 | VM/pod unified topology | Relații namespace/service/network/storage/node. | Ops | L | Next |
-| B317 | VM/pod unified metrics | Common workload charts și contention context. | Ops | L | Next |
-| B318 | VM/pod unified policy | Labels, quotas, network și admission evidence. | Gov | XL | Later |
-| B319 | VM GitOps reconciliation | Flux/Argo-compatible manifests și status. | DX | L | Later |
-| B320 | VM admission policy library | Secure boot, images, resources, networks și ownership. | Sig | L | Later |
-| B321 | Kubernetes cluster provisioning catalog | AKS Arc/NKE/OpenShift/CKS/Rancher workflows. | DX | XL | Later |
-| B322 | Cluster lifecycle dashboard | Version, support, nodes, addons și upgrade readiness. | Ops | L | Later |
-| B323 | VM-to-container modernization map | App dependencies și staged migration checklist. | DX | L | Later |
-| B324 | Shared image provenance | OCI/VM image SBOM, signatures și source linkage. | Sig | XL | Later |
-| B325 | Unified application environment | Un singur view pentru stack Compose, VM și Kubernetes app. | DX | XL | Later |
+| B316 | VM/pod unified topology | Relații namespace/service/network/storage/node. | Ops | L | Done |
+| B317 | VM/pod unified metrics | Common workload charts și contention context. | Ops | L | Done |
+| B318 | VM/pod unified policy | Labels, quotas, network și admission evidence. | Gov | XL | Done |
+| B319 | VM GitOps reconciliation | Flux/Argo-compatible manifests și status. | DX | L | Done |
+| B320 | VM admission policy library | Secure boot, images, resources, networks și ownership. | Sig | L | Done |
+| B321 | Kubernetes cluster provisioning catalog | AKS Arc/NKE/OpenShift/CKS/Rancher workflows. | DX | XL | Done |
+| B322 | Cluster lifecycle dashboard | Version, support, nodes, addons și upgrade readiness. | Ops | L | Done |
+| B323 | VM-to-container modernization map | App dependencies și staged migration checklist. | DX | L | Done |
+| B324 | Shared image provenance | OCI/VM image SBOM, signatures și source linkage. | Sig | XL | Done |
+| B325 | Unified application environment | Un singur view pentru stack Compose, VM și Kubernetes app. | DX | XL | Done |
 
 **Status implementare 2026-07-29:** B301–B305 au fost închise în V5.6a /
 v8.62.0. Discovery combină API groups și CRD evidence și raportează `unknown`
@@ -1073,6 +1073,18 @@ fingerprint. Politica de live migration este declarativă/locală și nu se apli
 singură. Drain awareness, CSI snapshots, Multus, NMState și Service/Route/Ingress
 sunt evidence read-only, cu redacție și stări `unknown` când RBAC/API nu permit
 un verdict.
+
+**Status implementare 2026-07-29:** B316–B325 au fost închise în V5.6c / V6.1a
+/ v8.64.0. Topologia corelează namespace, pod/VM, Service, node, PVC/DataVolume
+și Multus, iar metricile normalizează CPU/memorie și marchează contention cu
+proveniență explicită. Quotas, NetworkPolicy, admission controllers și labels
+formează evidence unificat. Planurile VM GitOps sunt Flux/Argo-aware, resping
+secrete și URL-uri credentializate și se opresc după `dryRun=All`; nu există
+apply. Biblioteca de cinci politici produce numai evaluări locale. Catalogul de
+provisioning pentru AKS Arc, NKE, OpenShift, CKS și Rancher rămâne blocat până la
+prechecks și nu are executor de provider. Lifecycle, modernization, provenance
+OCI/VM și application environments sunt persistente, hash-idempotent și nu
+modifică workload-uri, clustere ori registre.
 
 ### N. Edge, ROBO, disconnected și sovereign (B326–B350)
 

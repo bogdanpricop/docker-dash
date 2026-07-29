@@ -1096,6 +1096,27 @@ const Api = {
   executeKubeVirtChangePlan(id, body) { return this.post(`/kubernetes/virtualization/change-plans/${id}/execute`, body); },
   getKubeVirtMigrationPolicies() { return this.get('/kubernetes/virtualization/migration-policies'); },
   saveKubeVirtMigrationPolicy(body) { return this.post('/kubernetes/virtualization/migration-policies', body); },
+  getKubernetesUnifiedEvidence(kind, namespace) {
+    return this.get(`/kubernetes/virtualization/unified/evidence/${encodeURIComponent(kind)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesUnifiedEvidence(kind, namespace) {
+    return this.post(`/kubernetes/virtualization/unified/evidence/${encodeURIComponent(kind)}/refresh`, { namespace: namespace || undefined });
+  },
+  getKubernetesUnifiedSnapshots() { return this.get('/kubernetes/virtualization/unified/snapshots'); },
+  createKubeVirtGitOpsPlan(body) { return this.post('/kubernetes/virtualization/unified/gitops/plans', body); },
+  getKubeVirtGitOpsPlans() { return this.get('/kubernetes/virtualization/unified/gitops/plans'); },
+  getKubeVirtAdmissionPolicies() { return this.get('/kubernetes/virtualization/unified/admission/policies'); },
+  evaluateKubeVirtAdmission(body) { return this.post('/kubernetes/virtualization/unified/admission/evaluate', body); },
+  getKubernetesClusterCatalog() { return this.get('/kubernetes/virtualization/unified/cluster-catalog'); },
+  getKubernetesClusterPlans() { return this.get('/kubernetes/virtualization/unified/cluster-plans'); },
+  createKubernetesClusterPlan(body) { return this.post('/kubernetes/virtualization/unified/cluster-plans', body); },
+  getVirtualizationModernizationMaps() { return this.get('/kubernetes/virtualization/unified/modernization'); },
+  createVirtualizationModernizationMap(body) { return this.post('/kubernetes/virtualization/unified/modernization', body); },
+  getSharedImageProvenance() { return this.get('/kubernetes/virtualization/unified/image-provenance'); },
+  ingestSharedImageProvenance(body) { return this.post('/kubernetes/virtualization/unified/image-provenance', body); },
+  getUnifiedApplicationEnvironments() { return this.get('/kubernetes/virtualization/unified/environments'); },
+  getUnifiedApplicationEnvironment(slug) { return this.get(`/kubernetes/virtualization/unified/environments/${encodeURIComponent(slug)}`); },
+  saveUnifiedApplicationEnvironment(body) { return this.post('/kubernetes/virtualization/unified/environments', body); },
 
   // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
   listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },
