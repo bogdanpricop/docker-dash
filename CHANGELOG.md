@@ -2,6 +2,19 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.51.0] - 2026-07-29 — Compose mount and volume attribution
+
+Compose stack storage now accounts for Docker named volumes as well as image and
+writable-layer sizes, while keeping host-owned mounts explicitly separate.
+
+- Shared named volumes are deduplicated, show Docker-reported usage coverage,
+  and distinguish volumes managed by the stack from external or unknown ones.
+- Stack and service detail show bind-mount topology, including writable versus
+  read-only binds and tmpfs mounts, without scanning host filesystems.
+- Approximate persistent footprint includes named volume usage only when Docker
+  returned complete measurements; bind mounts, logs and build cache remain out
+  of scope and no Docker mutation is performed.
+
 ## [8.50.0] - 2026-07-29 — Identity and policy governance
 
 The next ten market-backlog controls, B186–B195, extend projects with capacity,

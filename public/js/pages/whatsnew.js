@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.51.0', date: '2026-07-29', title: 'Compose mount and volume attribution', changes: [
+      { type: 'feature', text: 'Compose stack storage now includes Docker-reported named-volume usage, counted once even when multiple services share the same volume.' },
+      { type: 'improvement', text: 'Stack details identify managed versus external/unknown named volumes and show measurement coverage instead of implying missing values are zero.' },
+      { type: 'feature', text: 'Each stack now summarizes bind mounts (writable and read-only) plus tmpfs mounts, with mount details on every service row.' },
+      { type: 'security', text: 'The view remains read-only: it never scans host filesystems or mutates Docker. Bind mounts, logs and build cache are explicitly excluded from footprint calculations.' },
+    ] },
     { version: '8.50.0', date: '2026-07-29', title: 'Identity and policy governance', changes: [
       { type: 'feature', text: 'Projects gain explicit network/public-IP, snapshot/backup and GPU/device quota accounting plus audited, time-bound quota increase requests.' },
       { type: 'feature', text: 'Identity & Policy adds domain-routed OIDC/SAML broker realms, SCIM 2.0 provisioning, short-lived service tokens and signed workload identity exchange.' },

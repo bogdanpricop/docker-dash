@@ -359,7 +359,8 @@ class DockerService {
       })),
       networks: Object.keys(c.NetworkSettings?.Networks || {}),
       mounts: (c.Mounts || []).map(m => ({
-        type: m.Type, source: m.Source, destination: m.Destination, rw: m.RW
+        type: m.Type, name: m.Name || null, source: m.Source,
+        destination: m.Destination, rw: m.RW, driver: m.Driver || null
       })),
       labels: c.Labels || {},
       stack: c.Labels?.['com.docker.compose.project'] || null,

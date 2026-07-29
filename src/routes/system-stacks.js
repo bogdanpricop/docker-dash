@@ -45,9 +45,10 @@ function _knownBytes(value) {
   return Number.isFinite(bytes) && bytes >= 0 ? bytes : null;
 }
 
-function _stackStorage(containers, images) {
+function _stackStorage(containers, images, volumes = [], stackName = '') {
   const imageById = new Map();
   const imageByRef = new Map();
+  const volumeByName = new Map((volumes || []).map(volume => [volume.name, volume]));
   for (const image of images || []) {
     if (image.id) imageById.set(image.id, image);
     for (const ref of image.repoTags || []) imageByRef.set(ref, image);
@@ -59,6 +60,13 @@ function _stackStorage(containers, images) {
   let rootFsBytes = 0;
   let measuredContainers = 0;
   let measuredRootFs = 0;
+  const namedVolumeNames = new Set();
+  const measuredVolumes = new Map();
+  const managedVolumeNames = new Set();
+  let bindMounts = 0;
+  let writableBindMounts = 0;
+  let readOnlyBindMounts = 0;
+  let tmpfsMounts = 0;
 
   const enriched = (containers || []).map(container => {
     const image = imageById.get(container.imageIdFull) || imageByRef.get(container.image) || null;
@@ -76,30 +84,81 @@ function _stackStorage(containers, images) {
       rootFsBytes += rootFsSizeBytes;
       measuredRootFs++;
     }
-    return { ...container, imageSizeBytes, writableSizeBytes, rootFsSizeBytes };
+    const namedVolumeMounts = [];
+    let containerBindMounts = 0;
+    let containerWritableBindMounts = 0;
+    let containerReadOnlyBindMounts = 0;
+    let containerTmpfsMounts = 0;
+    for (const mount of container.mounts || []) {
+      if (mount.type === 'volume') {
+        const name = mount.name || (volumeByName.has(mount.source) ? mount.source : null);
+        if (!name) continue;
+        const volume = volumeByName.get(name) || null;
+        const sizeBytes = _knownBytes(volume?.size);
+        const managed = volume?.labels?.['com.docker.compose.project'] === stackName;
+        namedVolumeNames.add(name);
+        if (sizeBytes != null) measuredVolumes.set(name, sizeBytes);
+        if (managed) managedVolumeNames.add(name);
+        namedVolumeMounts.push({ name, destination: mount.destination || '', rw: mount.rw !== false, sizeBytes, managed });
+      } else if (mount.type === 'bind') {
+        bindMounts++;
+        containerBindMounts++;
+        if (mount.rw === false) {
+          readOnlyBindMounts++;
+          containerReadOnlyBindMounts++;
+        } else {
+          writableBindMounts++;
+          containerWritableBindMounts++;
+        }
+      } else if (mount.type === 'tmpfs') {
+        tmpfsMounts++;
+        containerTmpfsMounts++;
+      }
+    }
+    return {
+      ...container, imageSizeBytes, writableSizeBytes, rootFsSizeBytes,
+      namedVolumeMounts, bindMountCount: containerBindMounts,
+      writableBindMountCount: containerWritableBindMounts,
+      readOnlyBindMountCount: containerReadOnlyBindMounts,
+      tmpfsMountCount: containerTmpfsMounts,
+    };
   });
 
   const imageBytes = [...measuredImages.values()].reduce((total, bytes) => total + bytes, 0);
   const imageMeasurementComplete = uniqueImageKeys.size > 0 && measuredImages.size === uniqueImageKeys.size;
   const containerMeasurementComplete = enriched.length > 0 && measuredContainers === enriched.length;
   const rootFsMeasurementComplete = enriched.length > 0 && measuredRootFs === enriched.length;
+  const namedVolumeBytes = [...measuredVolumes.values()].reduce((total, bytes) => total + bytes, 0);
+  const namedVolumeMeasurementComplete = measuredVolumes.size === namedVolumeNames.size;
+  const storageFootprintComplete = imageMeasurementComplete && containerMeasurementComplete
+    && namedVolumeMeasurementComplete;
 
   return {
     containers: enriched,
     storage: {
-      available: measuredImages.size > 0 || measuredContainers > 0 || measuredRootFs > 0,
+      available: measuredImages.size > 0 || measuredContainers > 0 || measuredRootFs > 0
+        || namedVolumeNames.size > 0 || bindMounts > 0 || tmpfsMounts > 0,
       uniqueImages: uniqueImageKeys.size,
       measuredImages: measuredImages.size,
       measuredContainers,
       imageBytes: measuredImages.size > 0 ? imageBytes : null,
       writableBytes: measuredContainers > 0 ? writableBytes : null,
       rootFsBytes: measuredRootFs > 0 ? rootFsBytes : null,
-      approximateFootprintBytes: imageMeasurementComplete && containerMeasurementComplete
-        ? imageBytes + writableBytes : null,
+      namedVolumes: namedVolumeNames.size,
+      measuredNamedVolumes: measuredVolumes.size,
+      namedVolumeBytes: namedVolumeNames.size === 0 || measuredVolumes.size > 0 ? namedVolumeBytes : null,
+      managedNamedVolumes: managedVolumeNames.size,
+      externalOrUnknownNamedVolumes: namedVolumeNames.size - managedVolumeNames.size,
+      bindMounts,
+      writableBindMounts,
+      readOnlyBindMounts,
+      tmpfsMounts,
+      approximateFootprintBytes: storageFootprintComplete ? imageBytes + writableBytes + namedVolumeBytes : null,
       imageMeasurementComplete,
       containerMeasurementComplete,
       rootFsMeasurementComplete,
-      excludes: ['volumes', 'logs', 'build_cache'],
+      namedVolumeMeasurementComplete,
+      excludes: ['bind_mounts', 'logs', 'build_cache'],
     },
   };
 }
@@ -592,11 +651,17 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
 
     const files = workingDir ? _readStackFiles(workingDir) : { config: '', envFile: '' };
     let images = [];
+    let volumes = [];
     if (stackContainers.length) {
-      try { images = await dockerService.listImages(req.hostId); }
-      catch { /* container state remains useful when image sizing is unavailable */ }
+      const needsVolumes = stackContainers.some(container => (container.mounts || []).some(mount => mount.type === 'volume'));
+      const [imageResult, volumeResult] = await Promise.allSettled([
+        dockerService.listImages(req.hostId),
+        needsVolumes ? dockerService.listVolumes(req.hostId) : Promise.resolve([]),
+      ]);
+      if (imageResult.status === 'fulfilled') images = imageResult.value;
+      if (volumeResult.status === 'fulfilled') volumes = volumeResult.value;
     }
-    const measured = _stackStorage(stackContainers, images);
+    const measured = _stackStorage(stackContainers, images, volumes, req.params.name);
 
     res.json({
       name: req.params.name,
@@ -609,6 +674,11 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
         imageSizeBytes: c.imageSizeBytes,
         writableSizeBytes: c.writableSizeBytes,
         rootFsSizeBytes: c.rootFsSizeBytes,
+        namedVolumeMounts: c.namedVolumeMounts,
+        bindMountCount: c.bindMountCount,
+        writableBindMountCount: c.writableBindMountCount,
+        readOnlyBindMountCount: c.readOnlyBindMountCount,
+        tmpfsMountCount: c.tmpfsMountCount,
       })),
       storage: measured.storage,
       config: files.config, source, services, serviceCount,

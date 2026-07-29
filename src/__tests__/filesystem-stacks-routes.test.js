@@ -24,6 +24,7 @@ jest.mock('../middleware/auth', () => ({
 jest.mock('../services/docker', () => ({
   listContainers: jest.fn(async () => []),
   listImages: jest.fn(async () => []),
+  listVolumes: jest.fn(async () => []),
   getDocker: jest.fn(),
 }));
 jest.mock('../services/compose-runner', () => ({
@@ -61,6 +62,7 @@ describe('filesystem-backed stack routes', () => {
   beforeEach(() => {
     dockerService.listContainers.mockReset().mockResolvedValue([]);
     dockerService.listImages.mockReset().mockResolvedValue([]);
+    dockerService.listVolumes.mockReset().mockResolvedValue([]);
   });
 
   afterAll(() => fs.rmSync(sandbox, { recursive: true, force: true }));
@@ -119,12 +121,68 @@ describe('filesystem-backed stack routes', () => {
       approximateFootprintBytes: 1030,
       imageMeasurementComplete: true,
       containerMeasurementComplete: true,
-      excludes: ['volumes', 'logs', 'build_cache'],
+      excludes: ['bind_mounts', 'logs', 'build_cache'],
     }));
     expect(detail.body.containers).toEqual([
       expect.objectContaining({ imageSizeBytes: 1000, writableSizeBytes: 10, rootFsSizeBytes: 1010 }),
       expect.objectContaining({ imageSizeBytes: 1000, writableSizeBytes: 20, rootFsSizeBytes: 1020 }),
     ]);
+  });
+
+  test('attributes named volume usage once and separates bind and tmpfs mounts', async () => {
+    const workingDir = path.join(stacksRoot, 'mounted');
+    dockerService.listContainers.mockResolvedValue([
+      {
+        id: 'container-mounted-a', name: 'app', state: 'running', image: 'demo/app:1',
+        imageIdFull: 'sha256:app-image', sizeRw: 10, stack: 'mounted',
+        mounts: [
+          { type: 'volume', name: 'mounted_data', source: '/var/lib/docker/volumes/mounted_data/_data', destination: '/data', rw: true },
+          { type: 'bind', source: '/srv/mounted/config', destination: '/config', rw: false },
+          { type: 'tmpfs', destination: '/run/cache', rw: true },
+        ],
+        labels: {
+          'com.docker.compose.project': 'mounted',
+          'com.docker.compose.project.working_dir': workingDir,
+        },
+      },
+      {
+        id: 'container-mounted-b', name: 'worker', state: 'running', image: 'demo/app:1',
+        imageIdFull: 'sha256:app-image', sizeRw: 20, stack: 'mounted',
+        mounts: [
+          { type: 'volume', name: 'mounted_data', source: '/var/lib/docker/volumes/mounted_data/_data', destination: '/work', rw: true },
+          { type: 'volume', name: 'shared_external', source: '/var/lib/docker/volumes/shared_external/_data', destination: '/shared', rw: false },
+          { type: 'bind', source: '/srv/mounted/uploads', destination: '/uploads', rw: true },
+        ],
+        labels: { 'com.docker.compose.project': 'mounted' },
+      },
+    ]);
+    dockerService.listImages.mockResolvedValue([{ id: 'sha256:app-image', repoTags: ['demo/app:1'], size: 1000 }]);
+    dockerService.listVolumes.mockResolvedValue([
+      { name: 'mounted_data', size: 200, labels: { 'com.docker.compose.project': 'mounted' } },
+      { name: 'shared_external', size: 300, labels: {} },
+    ]);
+
+    const detail = await request(app).get('/api/system/stacks/mounted').expect(200);
+
+    expect(dockerService.listVolumes).toHaveBeenCalledWith(0);
+    expect(detail.body.storage).toEqual(expect.objectContaining({
+      namedVolumes: 2,
+      measuredNamedVolumes: 2,
+      namedVolumeBytes: 500,
+      managedNamedVolumes: 1,
+      externalOrUnknownNamedVolumes: 1,
+      bindMounts: 2,
+      writableBindMounts: 1,
+      readOnlyBindMounts: 1,
+      tmpfsMounts: 1,
+      approximateFootprintBytes: 1530,
+      namedVolumeMeasurementComplete: true,
+      excludes: ['bind_mounts', 'logs', 'build_cache'],
+    }));
+    expect(detail.body.containers[0]).toEqual(expect.objectContaining({
+      bindMountCount: 1, readOnlyBindMountCount: 1, tmpfsMountCount: 1,
+      namedVolumeMounts: [expect.objectContaining({ name: 'mounted_data', sizeBytes: 200, managed: true })],
+    }));
   });
 
   test('runs Compose Up from the discovered working directory', async () => {

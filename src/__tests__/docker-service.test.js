@@ -96,7 +96,7 @@ describe('DockerService (src/services/docker.js)', () => {
         Created: 1700000000,
         Ports: [{ PrivatePort: 80, PublicPort: 8080, Type: 'tcp', IP: '0.0.0.0' }],
         NetworkSettings: { Networks: { bridge: {} } },
-        Mounts: [{ Type: 'volume', Source: '/data', Destination: '/var/lib/data', RW: true }],
+        Mounts: [{ Type: 'volume', Name: 'mystack_data', Source: '/data', Destination: '/var/lib/data', RW: true, Driver: 'local' }],
         Labels: { 'com.docker.compose.project': 'mystack', foo: 'bar' },
       },
     ]);
@@ -115,6 +115,9 @@ describe('DockerService (src/services/docker.js)', () => {
     expect(result[0].networks).toEqual(['bridge']);
     expect(result[0].labels.foo).toBe('bar');
     expect(result[0].imageIdFull).toBe('sha256:1234567890abcdef');
+    expect(result[0].mounts).toEqual([{
+      type: 'volume', name: 'mystack_data', source: '/data', destination: '/var/lib/data', rw: true, driver: 'local',
+    }]);
     expect(result[0].sizeRw).toBeNull();
     expect(mockDockerInstance.listContainers).toHaveBeenCalledWith({ all: true });
   });
