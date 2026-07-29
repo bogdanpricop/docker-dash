@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.45.0] - 2026-07-29 — Unsupported capability gap register
+
+Provider Security Posture now lists the provider SDK capabilities explicitly
+declared unsupported, with their contract reasons.
+
+- Unsupported is presented as a safety boundary, not as an error to bypass.
+- No provider CLI or compatibility fallback is invoked.
+
 ## [8.44.0] - 2026-07-29 — Workload lifecycle guardrail evidence
 
 Provider Security Posture now summarizes declared safeguards for VM power,

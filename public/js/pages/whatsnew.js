@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.45.0', date: '2026-07-29', title: 'Unsupported capability gap register', changes: [
+      { type: 'feature', text: 'Provider Security Posture lists SDK capabilities explicitly declared unsupported, with their contract reasons.' },
+      { type: 'improvement', text: 'Unsupported is made visible as a safety boundary instead of an error to bypass.' },
+      { type: 'security', text: 'No provider CLI or compatibility fallback is invoked.' },
+    ] },
     { version: '8.44.0', date: '2026-07-29', title: 'Workload lifecycle guardrail evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture summarizes declared safeguards for VM power, snapshots, clone/create, and guest customization.' },
       { type: 'improvement', text: 'Lifecycle contract evidence is clearly distinct from an operation safety or completion result.' },

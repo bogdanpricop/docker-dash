@@ -40,6 +40,11 @@ function _lifecycleGuardrails(features = {}) {
   const entries = Object.entries(features).filter(([key]) => /^(vm\.power\.|vm\.snapshot\.|vm\.(clone|create|guestCustomize)$)/.test(key)).map(([, value]) => value || {});
   return { declaredFeatureCount: entries.length, supportedOrConditional: entries.filter(feature => ['supported', 'conditional'].includes(feature.state)).length, durableTasks: entries.filter(feature => feature.durableTask === true).length, confirmationRequired: entries.filter(feature => feature.confirmation === true || feature.confirmation === 'typed_name').length, postVerified: entries.filter(feature => feature.postVerify === true).length, revalidated: entries.filter(feature => feature.revalidate === true).length };
 }
+function _gapRegister(features = {}) {
+  const entries = Object.entries(features).filter(([, feature]) => feature?.state === 'unsupported').slice(0, 100).map(([key, feature]) => ({ key, reason: feature.reason || 'No capability evidence was provided' }));
+  const categories = {}; entries.forEach(entry => { const category = entry.key.split('.')[0] || 'other'; categories[category] = (categories[category] || 0) + 1; });
+  return { unsupportedCount: entries.length, categories, entries, truncated: Object.entries(features).filter(([, feature]) => feature?.state === 'unsupported').length > entries.length };
+}
 
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
@@ -53,8 +58,9 @@ async function postureForHost(host, options = {}) {
     taskAssurance: _taskAssurance(capabilities.features),
     networkGuardrails: _networkGuardrails(capabilities.features),
     lifecycleGuardrails: _lifecycleGuardrails(capabilities.features),
+    gapRegister: _gapRegister(capabilities.features),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails, _lifecycleGuardrails } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails, _lifecycleGuardrails, _gapRegister } };
