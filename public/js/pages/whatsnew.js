@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.59.0', date: '2026-07-29', title: 'Lifecycle assurance, content and support', changes: [
+      { type: 'security', text: 'Certificate renewal uses immutable plans, payload-bound approval, durable-operation evidence, registered apply/verify adapters and approved rollback behavior.' },
+      { type: 'feature', text: 'License entitlements map opaque contract references to resources and generate idempotent capacity, expiry and usage-forecast alerts.' },
+      { type: 'security', text: 'Canonical host snapshots redact secret-shaped fields before persistence; diffs, drift policies and versioned host profiles produce advisory compliance evidence.' },
+      { type: 'feature', text: 'Air-gap mirrors accept only requested, trusted signed artifacts and have no direct-download fallback when an adapter is absent.' },
+      { type: 'feature', text: 'Multi-node support bundles are bounded, redacted, checksummed and expiring; six-category post-upgrade validation fails closed on required missing checks.' },
+    ] },
     { version: '8.58.0', date: '2026-07-29', title: 'Lifecycle maintenance and compatibility operations', changes: [
       { type: 'feature', text: 'Maintenance plans model bounded waves, owner and availability constraints, evacuation readiness and immutable hash-bound approvals.' },
       { type: 'feature', text: 'Rolling cluster, guest-tools and VM hardware campaigns advance stage-by-stage only after a durable provider operation succeeds and post-verification passes.' },

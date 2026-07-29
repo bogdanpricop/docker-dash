@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -23,6 +23,7 @@ const GovernanceControlsPage = {
         Api.getVmObservabilityTopology(),
         Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(), Api.getLifecycleUpdates(),
         Api.getLifecycleMaintenance(),
+        Api.getLifecycleAssurance(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -30,7 +31,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -298,6 +299,7 @@ const GovernanceControlsPage = {
   _updates() {
     const data = this._data.lifecycleUpdates || { capabilities: {}, inventory: [], supportRegistry: [], upgradePaths: [], catalog: [], prechecks: [], summary: {} };
     const ops = this._data.lifecycleMaintenance || { capabilities: {}, maintenancePlans: [], campaigns: [], livePatchEvidence: [], rebootSignals: [], firmwareCatalog: [], driverMatrix: [], certificates: [], reminderPolicies: [], reminders: [], summary: {} };
+    const assurance = this._data.lifecycleAssurance || { capabilities: {}, renewals: [], entitlements: [], licensePolicies: [], licenseAlerts: [], snapshots: [], diffs: [], driftPolicies: [], profiles: [], mirrors: [], supportBundles: [], validationPacks: [], validationRuns: [], summary: {} };
     const supportBadge = state => state === 'supported' ? 'badge-success' : state === 'eol' ? 'badge-warning' : 'badge-danger';
     return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-update-inventory"><i class="fas fa-boxes-stacked"></i> Record inventory</button>
       <button class="btn btn-secondary btn-sm" id="gc-update-support"><i class="fas fa-calendar-xmark"></i> Support lifecycle</button>
@@ -353,6 +355,35 @@ const GovernanceControlsPage = {
         ${(ops.driverMatrix || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.deviceModel)}</strong></td><td>${Utils.escapeHtml(item.driverName)}<div class="text-xs text-muted">host ${Utils.escapeHtml(item.hostRelease)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.driverVersion)} / fw ${Utils.escapeHtml(item.firmwareVersion)}</td><td><span class="badge ${item.status === 'supported' ? 'badge-success' : item.status === 'blocked' ? 'badge-danger' : 'badge-warning'}">${item.status}</span></td></tr>`).join('') || this._empty('No firmware or driver evidence', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto;grid-column:1/-1"><div class="card-header"><h3>Certificate ownership &amp; renewal reminders</h3></div><table class="data-table"><thead><tr><th>Certificate / resource</th><th>Owner</th><th>Expiry</th><th>Maintenance</th><th>Reminder</th></tr></thead><tbody>
         ${(ops.certificates || []).map(item => { const reminder = (ops.reminders || []).find(row => row.ownershipId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.name || item.inventoryKey)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceType)}:${Utils.escapeHtml(item.resourceRef)}</div></td><td>${Utils.escapeHtml(item.owner)}</td><td>${item.notAfter ? new Date(item.notAfter).toLocaleString() : 'unknown'}<div class="text-xs text-muted">${item.daysRemaining == null ? 'no expiry evidence' : `${item.daysRemaining} days`}</div></td><td>${item.maintenancePlanId ? `plan #${item.maintenancePlanId}` : '<span class="text-muted">not assigned</span>'}</td><td>${reminder ? `<span class="badge ${['critical','expired'].includes(reminder.severity) ? 'badge-danger' : 'badge-warning'}">${reminder.severity}</span>` : '—'}</td></tr>`; }).join('') || this._empty('No certificate ownership inventory', 5)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-header"><div><h3>Lifecycle assurance, content &amp; support</h3><p class="text-muted text-sm">Renewal, mirror, collection and validation use registered adapters only. Configuration and support evidence is bounded and secret-redacted; no missing adapter falls back to shell or provider mutation.</p></div></div>
+        <div style="padding:12px;display:flex;gap:7px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-renewal"><i class="fas fa-rotate"></i> Renewal plan</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-license"><i class="fas fa-file-contract"></i> Entitlement</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-license-policy"><i class="fas fa-bell"></i> License policy</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-license-evaluate"><i class="fas fa-chart-line"></i> Evaluate licenses</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-snapshot"><i class="fas fa-camera"></i> Config snapshot</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-diff"><i class="fas fa-code-compare"></i> Config diff</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-drift"><i class="fas fa-shield"></i> Drift policy</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-profile"><i class="fas fa-clipboard-check"></i> Host profile</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-mirror"><i class="fas fa-box-archive"></i> Air-gap mirror</button>
+          <button class="btn btn-secondary btn-sm" id="gc-assurance-bundle"><i class="fas fa-life-ring"></i> Support bundle</button>
+          <button class="btn btn-primary btn-sm" id="gc-assurance-validation"><i class="fas fa-vial-circle-check"></i> Validation pack</button>
+        </div>
+        <div class="info-grid" style="padding:0 12px 12px">
+          ${this._stat('fa-triangle-exclamation', 'Renewal attention', assurance.summary?.renewalAttention || 0)}
+          ${this._stat('fa-file-circle-exclamation', 'Open license alerts', assurance.summary?.openLicenseAlerts || 0)}
+          ${this._stat('fa-camera', 'Config snapshots', assurance.summary?.configurationSnapshots || 0)}
+          ${this._stat('fa-ban', 'Denied drift', assurance.summary?.deniedDrift || 0)}
+          ${this._stat('fa-box-archive', 'Degraded mirrors', assurance.summary?.degradedMirrors || 0)}
+          ${this._stat('fa-vial', 'Failed validations', assurance.summary?.failedValidations || 0)}
+        </div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Certificate renewal jobs</h3></div><table class="data-table"><thead><tr><th>Job</th><th>Adapter</th><th>Evidence</th><th>State</th><th></th></tr></thead><tbody>${(assurance.renewals || []).map(item => `<tr><td>#${item.id}<div class="text-xs text-muted">ownership #${item.ownershipId}</div></td><td>${Utils.escapeHtml(item.adapterKey)}</td><td class="mono text-xs">${item.planHash.slice(0, 12)}<div>${Utils.escapeHtml(item.operationId || 'not executed')}</div></td><td><span class="badge ${item.state === 'succeeded' ? 'badge-success' : ['failed','rollback_required'].includes(item.state) ? 'badge-danger' : 'badge-warning'}">${item.state}</span></td><td>${item.state === 'ready' ? `<button class="action-btn success" data-gc-assurance-approve-renewal="${item.id}" title="Approve renewal"><i class="fas fa-check"></i></button>` : item.state === 'approved' ? `<button class="action-btn danger" data-gc-assurance-execute-renewal="${item.id}" title="Execute via registered adapter"><i class="fas fa-play"></i></button>` : ''}</td></tr>`).join('') || this._empty('No certificate renewal jobs', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>License entitlements &amp; alerts</h3></div><table class="data-table"><thead><tr><th>Product</th><th>Capacity</th><th>Assigned / used</th><th>Expiry</th><th></th></tr></thead><tbody>${(assurance.entitlements || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.edition)} · ${Utils.escapeHtml(item.entitlementReference)}</div></td><td>${item.capacity} ${Utils.escapeHtml(item.unit)}</td><td>${item.assignments.reduce((total, row) => total + row.assignedCapacity, 0)} / ${item.latestUsage?.usedCapacity ?? 'unknown'}</td><td>${item.expiresAt ? new Date(item.expiresAt).toLocaleDateString() : 'perpetual'}</td><td><button class="action-btn" data-gc-assurance-license-use="${item.id}" title="Assignment / usage"><i class="fas fa-chart-simple"></i></button></td></tr>`).join('') || this._empty('No license entitlements', 5)}</tbody></table><div style="padding:10px">${(assurance.licenseAlerts || []).slice(0, 8).map(item => `<span class="badge ${item.severity === 'critical' ? 'badge-danger' : 'badge-warning'}" title="${Utils.escapeHtml(item.message)}">${Utils.escapeHtml(item.type)}</span>`).join(' ') || '<span class="text-muted text-sm">No license alerts</span>'}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Configuration snapshots, diff &amp; compliance</h3></div><table class="data-table"><thead><tr><th>Snapshot</th><th>Source</th><th>Digest</th><th>Redacted</th></tr></thead><tbody>${(assurance.snapshots || []).map(item => `<tr><td>#${item.id}<div class="mono text-xs">${Utils.escapeHtml(item.scopeRef)}</div></td><td>${Utils.escapeHtml(item.sourceKind)}</td><td class="mono text-xs">${item.configurationHash.slice(0, 12)}</td><td>${item.redactedPaths.length}</td></tr>`).join('') || this._empty('No configuration snapshots', 4)}</tbody></table><div style="padding:10px;display:flex;gap:6px;flex-wrap:wrap"><span class="badge badge-secondary">${assurance.diffs.length} diffs</span><span class="badge badge-secondary">${assurance.driftPolicies.length} drift policies</span><span class="badge badge-secondary">${assurance.profiles.length} profiles</span></div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Air-gap mirrors &amp; support bundles</h3></div><table class="data-table"><thead><tr><th>Name / site</th><th>Content</th><th>State</th><th></th></tr></thead><tbody>${(assurance.mirrors || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.siteRef)}</div></td><td>${item.artifacts.length} signed artifacts</td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-warning'}">${item.state}</span></td><td><button class="action-btn" data-gc-assurance-sync-mirror="${item.id}" title="Sync signed manifest"><i class="fas fa-arrows-rotate"></i></button></td></tr>`).join('')}${(assurance.supportBundles || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">expires ${new Date(item.expiresAt).toLocaleString()}</div></td><td>${item.targetRefs.length} nodes · ${Utils.formatBytes(item.byteSize)}</td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : item.state === 'failed' ? 'badge-danger' : 'badge-warning'}">${item.state}</span></td><td class="mono text-xs">${item.checksumSha256?.slice(0, 12) || '—'}</td></tr>`).join('') || this._empty('No mirrors or support bundles', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto;grid-column:1/-1"><div class="card-header"><h3>Post-upgrade validation packs</h3></div><table class="data-table"><thead><tr><th>Pack</th><th>Checks</th><th>Latest result</th><th>Boundary</th><th></th></tr></thead><tbody>${(assurance.validationPacks || []).map(item => { const run = (assurance.validationRuns || []).find(row => row.packId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.version)} · ${item.packHash.slice(0, 12)}</div></td><td>${item.checks.length}<div class="text-xs text-muted">${[...new Set(item.checks.map(check => check.category))].join(' · ')}</div></td><td>${run ? `<span class="badge ${run.state === 'passed' ? 'badge-success' : 'badge-danger'}">${run.state}</span>` : 'not run'}</td><td class="text-muted text-xs">verification only · 0 mutations</td><td><button class="action-btn" data-gc-assurance-run-validation="${item.id}" title="Run validation"><i class="fas fa-play"></i></button></td></tr>`; }).join('') || this._empty('No post-upgrade validation packs', 5)}</tbody></table></div>
       </div>`;
   },
 
@@ -438,6 +469,22 @@ const GovernanceControlsPage = {
     this._container.querySelectorAll('[data-gc-life-approve-plan]').forEach(button => button.addEventListener('click', () => this._approveLifecycleMaintenancePlan(button.dataset.gcLifeApprovePlan)));
     this._container.querySelectorAll('[data-gc-life-approve-campaign]').forEach(button => button.addEventListener('click', () => this._approveLifecycleCampaign(button.dataset.gcLifeApproveCampaign)));
     this._container.querySelectorAll('[data-gc-life-advance-campaign]').forEach(button => button.addEventListener('click', () => this._advanceLifecycleCampaign(button.dataset.gcLifeAdvanceCampaign)));
+    this._container.querySelector('#gc-assurance-renewal')?.addEventListener('click', () => this._assuranceRenewalDialog());
+    this._container.querySelector('#gc-assurance-license')?.addEventListener('click', () => this._assuranceLicenseDialog());
+    this._container.querySelector('#gc-assurance-license-policy')?.addEventListener('click', () => this._assuranceLicensePolicyDialog());
+    this._container.querySelector('#gc-assurance-license-evaluate')?.addEventListener('click', () => this._evaluateLicenseAlerts());
+    this._container.querySelector('#gc-assurance-snapshot')?.addEventListener('click', () => this._assuranceSnapshotDialog());
+    this._container.querySelector('#gc-assurance-diff')?.addEventListener('click', () => this._assuranceDiffDialog());
+    this._container.querySelector('#gc-assurance-drift')?.addEventListener('click', () => this._assuranceDriftDialog());
+    this._container.querySelector('#gc-assurance-profile')?.addEventListener('click', () => this._assuranceProfileDialog());
+    this._container.querySelector('#gc-assurance-mirror')?.addEventListener('click', () => this._assuranceMirrorDialog());
+    this._container.querySelector('#gc-assurance-bundle')?.addEventListener('click', () => this._assuranceBundleDialog());
+    this._container.querySelector('#gc-assurance-validation')?.addEventListener('click', () => this._assuranceValidationDialog());
+    this._container.querySelectorAll('[data-gc-assurance-approve-renewal]').forEach(button => button.addEventListener('click', () => this._approveAssuranceRenewal(button.dataset.gcAssuranceApproveRenewal)));
+    this._container.querySelectorAll('[data-gc-assurance-execute-renewal]').forEach(button => button.addEventListener('click', () => this._executeAssuranceRenewal(button.dataset.gcAssuranceExecuteRenewal)));
+    this._container.querySelectorAll('[data-gc-assurance-license-use]').forEach(button => button.addEventListener('click', () => this._assuranceLicenseUsageDialog(button.dataset.gcAssuranceLicenseUse)));
+    this._container.querySelectorAll('[data-gc-assurance-sync-mirror]').forEach(button => button.addEventListener('click', () => this._syncAssuranceMirror(button.dataset.gcAssuranceSyncMirror)));
+    this._container.querySelectorAll('[data-gc-assurance-run-validation]').forEach(button => button.addEventListener('click', () => this._runAssuranceValidation(button.dataset.gcAssuranceRunValidation)));
     this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
       try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1470,5 +1517,190 @@ const GovernanceControlsPage = {
     try { const result = await Api.evaluateLifecycleCertificateReminders();
       Toast.success(`${result.created} reminders created; ${result.renewalsStarted} renewals started`); await this.render(this._container);
     } catch (error) { Toast.error(error.message); }
+  },
+
+  async _assuranceRenewalDialog() {
+    const certificates = (this._data.lifecycleMaintenance?.certificates || []).filter(item => item.certificateId);
+    if (!certificates.length) return Toast.warning('Link a tracked certificate to ownership before planning renewal');
+    const result = await Modal.form(`<p class="text-muted text-sm">A missing adapter is saved as unsupported. A ready plan still needs hash approval and a separate certificate.renew approval before execution.</p>
+      <div class="form-group"><label>Certificate ownership</label><select id="gc-ar-owner" class="form-control">${certificates.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.inventoryKey)} · ${Utils.escapeHtml(item.owner)}</option>`).join('')}</select></div>
+      <div class="form-row"><div class="form-group"><label>Adapter key</label><input id="gc-ar-adapter" class="form-control mono" value="acme"></div><div class="form-group"><label>Approved maintenance plan ID (optional)</label><input id="gc-ar-plan" type="number" min="1" class="form-control"></div></div>
+      <label><input id="gc-ar-rollback" type="checkbox" checked> Roll back automatically if post-renewal verification fails</label>`,
+    { title: 'Certificate renewal plan', onSubmit: c => this._submit(() => Api.planCertificateRenewal({
+      ownershipId: Number(c.querySelector('#gc-ar-owner').value), adapterKey: c.querySelector('#gc-ar-adapter').value,
+      maintenancePlanId: Number(c.querySelector('#gc-ar-plan').value) || undefined,
+      rollbackOnFailure: c.querySelector('#gc-ar-rollback').checked,
+    })) });
+    if (result) { Toast.success(`Renewal plan is ${result.job.state}; apply not started`); await this.render(this._container); }
+  },
+
+  async _approveAssuranceRenewal(id) {
+    const job = (this._data.lifecycleAssurance?.renewals || []).find(item => item.id === Number(id));
+    const body = await Modal.form(`<p>Review immutable plan hash <span class="mono">${job.planHash}</span>.</p><div class="form-group"><label>Type APPROVE RENEWAL ${job.id}</label><input id="gc-ar-confirm" class="form-control mono" autocomplete="off"></div>`,
+      { title: 'Approve certificate renewal', confirmText: 'Approve', onSubmit: c => ({ planHash: job.planHash, confirmation: c.querySelector('#gc-ar-confirm').value }) });
+    if (!body) return; try { await Api.approveCertificateRenewal(job.id, body); Toast.success('Renewal approved; execution remains separate'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _executeAssuranceRenewal(id) {
+    const job = (this._data.lifecycleAssurance?.renewals || []).find(item => item.id === Number(id));
+    const result = await Modal.form(`<p class="text-danger text-sm">This calls the registered renewal adapter. Verification runs immediately and the approved rollback policy is enforced on failure.</p>
+      <div class="form-row"><div class="form-group"><label>certificate.renew approval ID</label><input id="gc-ar-approval" type="number" min="1" class="form-control"></div><div class="form-group"><label>Durable operation ID</label><input id="gc-ar-operation" class="form-control mono" placeholder="op_..."></div></div>
+      <div class="form-group"><label>Type EXECUTE RENEWAL ${job.id}</label><input id="gc-ar-execute" class="form-control mono" autocomplete="off"></div>
+      <div class="form-group"><label>Secret-free adapter request JSON</label><textarea id="gc-ar-request" class="form-control mono" rows="6">{}</textarea></div>`,
+    { title: 'Execute approved renewal', danger: true, onSubmit: c => this._submit(() => Api.executeCertificateRenewal(job.id, {
+      approvalId: Number(c.querySelector('#gc-ar-approval').value), operationId: c.querySelector('#gc-ar-operation').value,
+      confirmation: c.querySelector('#gc-ar-execute').value, request: JSON.parse(c.querySelector('#gc-ar-request').value),
+    })) });
+    if (result) { Toast.success(`Renewal finished in state ${result.job.state}`); await this.render(this._container); }
+  },
+
+  async _assuranceLicenseDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Store an opaque contract/reference, never a license key.</p>
+      <div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-al-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Product</label><input id="gc-al-product" class="form-control" value="Platform"></div><div class="form-group"><label>Edition</label><input id="gc-al-edition" class="form-control" value="Enterprise"></div></div>
+      <div class="form-row"><div class="form-group"><label>Entitlement reference</label><input id="gc-al-reference" class="form-control mono" value="contract-${Date.now()}"></div><div class="form-group"><label>Metric</label><select id="gc-al-metric" class="form-control"><option>host</option><option>socket</option><option>core</option><option>vm</option><option>capacity</option><option>subscription</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Capacity</label><input id="gc-al-capacity" type="number" min="0" value="1" class="form-control"></div><div class="form-group"><label>Unit</label><input id="gc-al-unit" class="form-control" value="hosts"></div><div class="form-group"><label>Expiry (optional)</label><input id="gc-al-expiry" type="date" class="form-control"></div></div>
+      <div class="form-group"><label>Official HTTPS source</label><input id="gc-al-source" class="form-control mono" value="https://vendor.example/entitlement"></div>`,
+    { title: 'License entitlement inventory', width: '900px', onSubmit: c => this._submit(() => Api.saveLicenseEntitlement({
+      vendor: c.querySelector('#gc-al-vendor').value, product: c.querySelector('#gc-al-product').value,
+      edition: c.querySelector('#gc-al-edition').value, entitlementReference: c.querySelector('#gc-al-reference').value,
+      metric: c.querySelector('#gc-al-metric').value, capacity: Number(c.querySelector('#gc-al-capacity').value),
+      unit: c.querySelector('#gc-al-unit').value, expiresAt: c.querySelector('#gc-al-expiry').value || undefined,
+      sourceUrl: c.querySelector('#gc-al-source').value, metadata: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success('License entitlement saved without a license key'); await this.render(this._container); }
+  },
+
+  async _assuranceLicenseUsageDialog(id) {
+    const item = (this._data.lifecycleAssurance?.entitlements || []).find(row => row.id === Number(id));
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Resource type</label><input id="gc-alu-type" class="form-control" value="cluster"></div><div class="form-group"><label>Resource reference</label><input id="gc-alu-ref" class="form-control mono" value="cluster-a"></div><div class="form-group"><label>Owner</label><input id="gc-alu-owner" class="form-control" value="platform"></div></div>
+      <div class="form-row"><div class="form-group"><label>Assigned ${Utils.escapeHtml(item.unit)}</label><input id="gc-alu-assigned" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Observed usage</label><input id="gc-alu-used" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Environment</label><select id="gc-alu-env" class="form-control"><option>production</option><option>nonproduction</option></select></div></div>`,
+    { title: `Assignment and usage · ${item.product}`, onSubmit: c => this._submit(async () => {
+      const assignedCapacity = Number(c.querySelector('#gc-alu-assigned').value);
+      await Api.assignLicenseEntitlement(item.id, { resourceType: c.querySelector('#gc-alu-type').value,
+        resourceRef: c.querySelector('#gc-alu-ref').value, owner: c.querySelector('#gc-alu-owner').value,
+        environment: c.querySelector('#gc-alu-env').value, assignedCapacity });
+      return Api.recordLicenseUsage(item.id, { assignedCapacity, usedCapacity: Number(c.querySelector('#gc-alu-used').value),
+        observedAt: new Date().toISOString(), evidence: { enteredVia: 'governance-ui' } });
+    }) });
+    if (result) { Toast.success('License assignment and usage evidence saved'); await this.render(this._container); }
+  },
+
+  async _assuranceLicensePolicyDialog() {
+    const entitlements = this._data.lifecycleAssurance?.entitlements || [];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-alp-name" class="form-control" value="license-alerts-${Date.now()}"></div><div class="form-group"><label>Entitlement</label><select id="gc-alp-id" class="form-control"><option value="">All entitlements</option>${entitlements.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</option>`).join('')}</select></div></div>
+      <div class="form-row"><div class="form-group"><label>Over threshold %</label><input id="gc-alp-over" type="number" min="1" value="100" class="form-control"></div><div class="form-group"><label>Under threshold %</label><input id="gc-alp-under" type="number" min="0" max="100" value="20" class="form-control"></div><div class="form-group"><label>Expiry days</label><input id="gc-alp-expiry" type="number" min="0" value="60" class="form-control"></div><div class="form-group"><label>Forecast days</label><input id="gc-alp-forecast" type="number" min="1" value="30" class="form-control"></div></div>`,
+    { title: 'License usage alert policy', onSubmit: c => this._submit(() => Api.createLicenseAlertPolicy({
+      name: c.querySelector('#gc-alp-name').value, entitlementId: Number(c.querySelector('#gc-alp-id').value) || undefined,
+      overPercent: Number(c.querySelector('#gc-alp-over').value), underPercent: Number(c.querySelector('#gc-alp-under').value),
+      expiryDays: Number(c.querySelector('#gc-alp-expiry').value), forecastDays: Number(c.querySelector('#gc-alp-forecast').value),
+    })) });
+    if (result) { Toast.success('License alert policy saved'); await this.render(this._container); }
+  },
+
+  async _evaluateLicenseAlerts() {
+    try { const result = await Api.evaluateLicenseAlerts(); Toast.success(`${result.created} alerts created; ${result.licenseChangesApplied} license changes`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _assuranceSnapshotDialog() {
+    const sample = { service: { enabled: true, endpoint: 'https://service.example.com', apiToken: 'will-be-redacted' }, network: { mtu: 1500 } };
+    const result = await Modal.form(`<p class="text-muted text-sm">Secret-shaped fields are replaced with [REDACTED] before hashing or persistence.</p>
+      <div class="form-row"><div class="form-group"><label>Provider host ID</label><input id="gc-acs-host" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Scope reference</label><input id="gc-acs-scope" class="form-control mono" value="host.node-a"></div><div class="form-group"><label>Source</label><select id="gc-acs-source" class="form-control"><option>actual</option><option>desired</option><option>imported</option></select></div></div>
+      <div class="form-group"><label>Configuration JSON</label><textarea id="gc-acs-document" class="form-control mono" rows="15">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>`,
+    { title: 'Secret-redacted host configuration snapshot', width: '900px', onSubmit: c => this._submit(() => Api.createConfigurationSnapshot({
+      providerHostId: Number(c.querySelector('#gc-acs-host').value), scopeRef: c.querySelector('#gc-acs-scope').value,
+      sourceKind: c.querySelector('#gc-acs-source').value, configuration: JSON.parse(c.querySelector('#gc-acs-document').value),
+      observedAt: new Date().toISOString(),
+    })) });
+    if (result) { Toast.success(`${result.snapshot.redactedPaths.length} sensitive paths redacted`); await this.render(this._container); }
+  },
+
+  async _assuranceDiffDialog() {
+    const snapshots = this._data.lifecycleAssurance?.snapshots || []; if (snapshots.length < 2) return Toast.warning('Record at least two matching-scope snapshots');
+    const options = snapshots.map(item => `<option value="${item.id}">#${item.id} · ${Utils.escapeHtml(item.scopeRef)} · ${item.sourceKind}</option>`).join('');
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>From snapshot</label><select id="gc-acd-from" class="form-control">${options}</select></div><div class="form-group"><label>To snapshot</label><select id="gc-acd-to" class="form-control">${options}</select></div></div>`,
+      { title: 'Human-readable configuration diff', onSubmit: c => this._submit(() => Api.createConfigurationDiff({ fromSnapshotId: Number(c.querySelector('#gc-acd-from').value), toSnapshotId: Number(c.querySelector('#gc-acd-to').value) })) });
+    if (result) { Toast.success(`${result.diff.changes.length} configuration changes; remediation not started`); await this.render(this._container); }
+  },
+
+  async _assuranceDriftDialog() {
+    const diffs = this._data.lifecycleAssurance?.diffs || []; const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-adp-name" class="form-control" value="host-drift-${Date.now()}"></div><div class="form-group"><label>Host ID</label><input id="gc-adp-host" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Scope pattern</label><input id="gc-adp-scope" class="form-control mono" value="host.*"></div></div>
+      <div class="form-row"><div class="form-group"><label>Owner</label><input id="gc-adp-owner" class="form-control" value="platform"></div><div class="form-group"><label>Evaluate diff (optional)</label><select id="gc-adp-diff" class="form-control"><option value="">Save only</option>${diffs.map(item => `<option value="${item.id}">diff #${item.id} · ${item.changes.length} changes</option>`).join('')}</select></div></div>
+      <div class="form-group"><label>Rules JSON</label><textarea id="gc-adp-rules" class="form-control mono" rows="8">{"allowed":["owner.*"],"denied":["network.*"],"ignored":["telemetry.*"]}</textarea></div>`,
+    { title: 'Configuration drift policy', onSubmit: c => this._submit(async () => { const saved = await Api.createDriftPolicy({
+      name: c.querySelector('#gc-adp-name').value, providerHostId: Number(c.querySelector('#gc-adp-host').value),
+      scopePattern: c.querySelector('#gc-adp-scope').value, owner: c.querySelector('#gc-adp-owner').value,
+      rules: JSON.parse(c.querySelector('#gc-adp-rules').value),
+    }); const diffId = Number(c.querySelector('#gc-adp-diff').value); return diffId ? Api.evaluateDriftPolicy(saved.policy.id, diffId) : saved; }) });
+    if (result) { Toast.success(result.assessment ? `Drift state: ${result.assessment.state}; remediation not started` : 'Drift policy saved'); await this.render(this._container); }
+  },
+
+  async _assuranceProfileDialog() {
+    const snapshots = this._data.lifecycleAssurance?.snapshots || [];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-ahp-name" class="form-control" value="production-host"></div><div class="form-group"><label>Version</label><input id="gc-ahp-version" class="form-control mono" value="1.0"></div><div class="form-group"><label>Scope pattern</label><input id="gc-ahp-scope" class="form-control mono" value="host.*"></div></div>
+      <div class="form-row"><div class="form-group"><label>Severity</label><select id="gc-ahp-severity" class="form-control"><option>info</option><option selected>warning</option><option>critical</option></select></div><div class="form-group"><label>Assess snapshot (optional)</label><select id="gc-ahp-snapshot" class="form-control"><option value="">Save only</option>${snapshots.map(item => `<option value="${item.id}">#${item.id} · ${Utils.escapeHtml(item.scopeRef)}</option>`).join('')}</select></div></div>
+      <div class="form-group"><label>Expected path/value baseline JSON</label><textarea id="gc-ahp-baseline" class="form-control mono" rows="10">{"service.enabled":true,"network.mtu":1500}</textarea></div>`,
+    { title: 'Host profile compliance', onSubmit: c => this._submit(async () => { const saved = await Api.createHostProfile({
+      name: c.querySelector('#gc-ahp-name').value, version: c.querySelector('#gc-ahp-version').value,
+      scopePattern: c.querySelector('#gc-ahp-scope').value, severity: c.querySelector('#gc-ahp-severity').value,
+      baseline: JSON.parse(c.querySelector('#gc-ahp-baseline').value),
+    }); const snapshotId = Number(c.querySelector('#gc-ahp-snapshot').value); return snapshotId ? Api.assessHostProfile(saved.profile.id, snapshotId) : saved; }) });
+    if (result) { Toast.success(result.assessment ? `Profile state: ${result.assessment.state}; remediation not started` : 'Host profile saved'); await this.render(this._container); }
+  },
+
+  async _assuranceMirrorDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">The root is an adapter-owned reference. Only artifacts signed by listed trust identities can enter the inventory.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-aam-name" class="form-control" value="site-mirror-${Date.now()}"></div><div class="form-group"><label>Site reference</label><input id="gc-aam-site" class="form-control mono" value="site-a"></div><div class="form-group"><label>Adapter</label><input id="gc-aam-adapter" class="form-control mono" value="filesystem"></div></div>
+      <div class="form-row"><div class="form-group"><label>Root reference</label><input id="gc-aam-root" class="form-control mono" value="/mirror/site-a"></div><div class="form-group"><label>Maximum bytes</label><input id="gc-aam-bytes" type="number" min="1" value="10737418240" class="form-control"></div></div>
+      <div class="form-group"><label>Trusted signature identities</label><input id="gc-aam-trust" class="form-control mono" value="vendor-signing"></div>`,
+    { title: 'Air-gap content mirror', onSubmit: c => this._submit(() => Api.createAirgapMirror({
+      name: c.querySelector('#gc-aam-name').value, siteRef: c.querySelector('#gc-aam-site').value,
+      adapterKey: c.querySelector('#gc-aam-adapter').value, rootReference: c.querySelector('#gc-aam-root').value,
+      maxBytes: Number(c.querySelector('#gc-aam-bytes').value),
+      trustRoots: c.querySelector('#gc-aam-trust').value.split(',').map(value => value.trim()).filter(Boolean),
+    })) });
+    if (result) { Toast.success('Air-gap mirror definition saved'); await this.render(this._container); }
+  },
+
+  async _syncAssuranceMirror(id) {
+    const sample = [{ kind: 'package', name: 'hypervisor', version: '1.0', digest: '0'.repeat(64),
+      signatureIdentity: 'vendor-signing', sourceUrl: 'https://vendor.example/package' }];
+    const result = await Modal.form(`<p class="text-muted text-sm">The adapter must return the exact requested digest plus a trusted verified signature. No direct URL fallback exists.</p><div class="form-group"><label>Artifact manifest JSON</label><textarea id="gc-aam-artifacts" class="form-control mono" rows="15">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>`,
+      { title: 'Sync signed air-gap content', onSubmit: c => this._submit(() => Api.syncAirgapMirror(id, { artifacts: JSON.parse(c.querySelector('#gc-aam-artifacts').value) })) });
+    if (result) { Toast.success(`Mirror run ${result.state}: ${result.artifactsAdded} signed artifacts, ${result.unsignedArtifactsAccepted || 0} unsigned`); await this.render(this._container); }
+  },
+
+  async _assuranceBundleDialog() {
+    const expires = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16);
+    const result = await Modal.form(`<p class="text-muted text-sm">Collectors are allowlisted adapters. Returned evidence is bounded, secret-redacted, checksummed and automatically expires.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-asb-name" class="form-control" value="support-${Date.now()}"></div><div class="form-group"><label>Collector adapter</label><input id="gc-asb-adapter" class="form-control mono" value="native"></div><div class="form-group"><label>Expires</label><input id="gc-asb-expiry" type="datetime-local" class="form-control" value="${expires}"></div></div>
+      <div class="form-group"><label>Target references</label><input id="gc-asb-targets" class="form-control mono" value="node-a,node-b"></div><div class="form-group"><label>Sections</label><input id="gc-asb-sections" class="form-control mono" value="logs,configuration,metrics,tasks,events"></div>`,
+    { title: 'Multi-node support bundle', onSubmit: c => this._submit(() => Api.collectLifecycleSupportBundle({
+      name: c.querySelector('#gc-asb-name').value, adapterKey: c.querySelector('#gc-asb-adapter').value,
+      expiresAt: new Date(c.querySelector('#gc-asb-expiry').value).toISOString(), maxNodeBytes: 10485760,
+      targetRefs: c.querySelector('#gc-asb-targets').value.split(',').map(value => value.trim()).filter(Boolean),
+      sections: c.querySelector('#gc-asb-sections').value.split(',').map(value => value.trim()).filter(Boolean),
+    })) });
+    if (result) { Toast.success(`Support bundle ${result.bundle.state}; secrets returned: ${result.bundle.secretsReturned || false}`); await this.render(this._container); }
+  },
+
+  async _assuranceValidationDialog() {
+    const checks = ['api','ha','migration','storage','network','vm'].map(category => ({ key: `${category}-smoke`, category, adapterKey: 'native', required: true, config: {} }));
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-apv-name" class="form-control" value="post-upgrade"></div><div class="form-group"><label>Version</label><input id="gc-apv-version" class="form-control mono" value="1.0"></div></div>
+      <div class="form-group"><label>Validation checks JSON</label><textarea id="gc-apv-checks" class="form-control mono" rows="18">${Utils.escapeHtml(JSON.stringify(checks, null, 2))}</textarea></div>`,
+    { title: 'Post-upgrade validation pack', width: '900px', onSubmit: c => this._submit(() => Api.createPostUpgradeValidationPack({
+      name: c.querySelector('#gc-apv-name').value, version: c.querySelector('#gc-apv-version').value,
+      checks: JSON.parse(c.querySelector('#gc-apv-checks').value),
+    })) });
+    if (result) { Toast.success('Validation pack saved; no checks started'); await this.render(this._container); }
+  },
+
+  async _runAssuranceValidation(id) {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Target reference</label><input id="gc-apv-target" class="form-control mono" value="cluster-a"></div><div class="form-group"><label>Completed lifecycle campaign ID (optional)</label><input id="gc-apv-campaign" type="number" min="1" class="form-control"></div></div>
+      <div class="form-group"><label>Secret-free validation context JSON</label><textarea id="gc-apv-context" class="form-control mono" rows="8">{}</textarea></div>`,
+    { title: 'Run post-upgrade validation', onSubmit: c => this._submit(() => Api.runPostUpgradeValidationPack(id, {
+      targetRef: c.querySelector('#gc-apv-target').value, campaignId: Number(c.querySelector('#gc-apv-campaign').value) || undefined,
+      context: JSON.parse(c.querySelector('#gc-apv-context').value),
+    })) });
+    if (result) { Toast.success(`Validation ${result.run.state}; ${result.run.providerMutationsStarted} provider mutations`); await this.render(this._container); }
   },
 };

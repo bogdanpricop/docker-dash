@@ -156,4 +156,8 @@ router.use('/updates', require('./lifecycle-updates'));
 // compatibility evidence and certificate renewal readiness.
 router.use('/maintenance-lifecycle', require('./lifecycle-maintenance'));
 
+// V0.3f / B266-B275 — certificate renewal, license assurance, configuration
+// drift/compliance, air-gap mirrors, support bundles and validation packs.
+router.use('/assurance', require('./lifecycle-assurance'));
+
 module.exports = router;

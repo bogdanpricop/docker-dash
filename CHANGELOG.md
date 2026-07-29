@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.59.0] - 2026-07-29 — Lifecycle assurance, content and support
+
+The B266–B275 batch completes the lifecycle/configuration-management research
+track with adapter-gated mutation, redacted evidence and fail-closed validation.
+
+- Certificate renewal plans require an immutable approval, a separate
+  payload-bound approval and a durable operation before a registered adapter
+  can apply. Verification updates tracked evidence; failures follow the
+  approved rollback policy.
+- License entitlements store opaque contract references rather than license
+  keys, map capacity to resources and emit idempotent over-assignment,
+  over-usage, under-assignment, expiry and growth-forecast alerts.
+- Canonical host configuration snapshots redact secret-shaped values before
+  persistence. Human-readable diffs feed allow/deny/ignore drift policies and
+  versioned host-profile compliance with advisory remediation plans.
+- Air-gap mirrors accept only exact requested digests signed by configured
+  trust identities; unregistered adapters and unsigned content remain explicit
+  failures without direct-download fallback.
+- Multi-node support bundle adapters return bounded, redacted, checksummed and
+  expiring evidence. Post-upgrade validation packs cover API, HA, migration,
+  storage, network and VM checks and fail closed for required missing adapters.
+
 ## [8.58.0] - 2026-07-29 — Lifecycle maintenance and compatibility operations
 
 The B256–B265 batch turns update readiness into explicit, staged operational

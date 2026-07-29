@@ -923,16 +923,16 @@ curated, instanțiate numai după validarea parametrilor.
 | B263 | VM hardware version campaign | Precheck, snapshot/backup și staged upgrade. | Ops | L | Done |
 | B264 | Certificate inventory | Endpoint/service/host cert ownership și expiry. | Sig | M | Done |
 | B265 | Certificate renewal reminders | Thresholds, escalation și maintenance dependencies. | Sig | S | Done |
-| B266 | Automated certificate renewal | Vendor adapters cu verify și rollback. | Sig | XL | Later |
-| B267 | License entitlement inventory | Edition, capacity, expiry și assigned resources. | Gov | L | Next |
-| B268 | License usage alerts | Over/under-assignment și expiry forecasts. | Cost | M | Next |
-| B269 | Host configuration snapshot | Periodic secret-redacted desired/actual capture. | Gov | M | Next |
-| B270 | Configuration diff | Human-readable changes between captures. | Gov | M | Next |
-| B271 | Drift policy | Allowed/denied/ignored fields și owner. | Gov | M | Next |
-| B272 | Host profile compliance | Baseline comparison și remediation plan. | Gov | L | Later |
-| B273 | Air-gap content mirror | Cache signed packages/images/advisories per site. | Rez | XL | Later |
-| B274 | Support bundle orchestrator | Multi-node collection, redaction, checksum și expiry. | Ops | L | Next |
-| B275 | Post-upgrade validation pack | API/HA/migration/storage/network/VM smoke tests. | Rez | L | Next |
+| B266 | Automated certificate renewal | Vendor adapters cu verify și rollback. | Sig | XL | Done |
+| B267 | License entitlement inventory | Edition, capacity, expiry și assigned resources. | Gov | L | Done |
+| B268 | License usage alerts | Over/under-assignment și expiry forecasts. | Cost | M | Done |
+| B269 | Host configuration snapshot | Periodic secret-redacted desired/actual capture. | Gov | M | Done |
+| B270 | Configuration diff | Human-readable changes between captures. | Gov | M | Done |
+| B271 | Drift policy | Allowed/denied/ignored fields și owner. | Gov | M | Done |
+| B272 | Host profile compliance | Baseline comparison și remediation plan. | Gov | L | Done |
+| B273 | Air-gap content mirror | Cache signed packages/images/advisories per site. | Rez | XL | Done |
+| B274 | Support bundle orchestrator | Multi-node collection, redaction, checksum și expiry. | Ops | L | Done |
+| B275 | Post-upgrade validation pack | API/HA/migration/storage/network/VM smoke tests. | Rez | L | Done |
 
 **Status implementare 2026-07-29:** B251–B255 au fost închise în V0.3d /
 v8.57.0. Inventarul host/control-plane/tool/firmware păstrează versiune, build,
@@ -952,6 +952,17 @@ lipsa adapterului rămâne `unsupported`. Reboot detection unește patru surse
 fără a programa reboot. Firmware/driver compatibility păstrează surse HTTPS și
 digest, iar certificatele leagă expiry de owner, escalation, maintenance și
 reminders idempotente fără renewal automat.
+
+**Status implementare 2026-07-29:** B266–B275 au fost închise în V0.3f /
+v8.59.0. Renewal-ul cere plan hash, două aprobări explicite și operation evidence;
+adapterul face apply/verify și urmează rollback policy la eșec. License inventory
+folosește referințe opace, iar alertele acoperă assignment, usage, expiry și
+forecast fără schimbare de licență. Snapshot-urile redactează înainte de hash,
+diff-urile alimentează reguli allowed/denied/ignored și profile versionate cu
+remediation advisory. Mirror-ul acceptă doar digesturi cerute și semnături din
+trust roots, fără fallback de download. Support bundles sunt bounded, redacted,
+checksummed și expiring, iar validation packs fail-closed pentru cele șase
+categorii și pornesc zero provider mutations.
 
 ### L. FinOps, capacity și sustenabilitate (B276–B300)
 
