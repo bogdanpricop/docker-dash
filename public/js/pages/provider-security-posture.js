@@ -1,0 +1,22 @@
+/* Read-only provider SDK security posture evidence. */
+'use strict';
+
+const ProviderSecurityPosturePage = {
+  _hosts: [], _hostId: null, _container: null,
+  _badge(state) { return { supported: 'badge-success', conditional: 'badge-warning', unsupported: 'badge-secondary' }[state] || 'badge-secondary'; },
+  _coverageHtml(result) {
+    const s = result.coverage?.states || {};
+    return `<div class="card" style="padding:16px;margin-bottom:16px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><strong><i class="fas fa-shield-alt" aria-hidden="true"></i> Provider capability coverage</strong><div class="text-muted text-sm">Declared SDK contract evidence, not a security scan or compliance verdict.</div></div><span class="badge badge-secondary">read-only</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${result.coverage?.declaredFeatureCount ?? 0}</div><div class="stat-label">Declared features</div></div>${['supported', 'conditional', 'unsupported'].map(state => `<div class="stat-card"><div class="stat-value"><span class="badge ${this._badge(state)}">${s[state] ?? 0}</span></div><div class="stat-label">${state}</div></div>`).join('')}</div></div>`;
+  },
+  async render(container) {
+    this._container = container;
+    try { this._hosts = (await Api.getHosts()).filter(host => host.isActive && ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); } catch { this._hosts = []; }
+    const selected = Api.getHostId(); this._hostId = this._hosts.some(host => host.id === selected) ? selected : this._hosts[0]?.id || null;
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-shield-alt"></i> Provider Security Posture</h1><div class="text-muted text-sm">Read-only evidence from provider SDK capability contracts</div></div>${this._hosts.length ? `<div style="display:flex;gap:8px"><select id="provider-security-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="provider-security-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button></div>` : ''}</div><div id="provider-security-content"></div>`;
+    container.querySelector('#provider-security-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
+    container.querySelector('#provider-security-refresh')?.addEventListener('click', () => this._load()); await this._load();
+  },
+  async _load() { const target = this._container?.querySelector('#provider-security-content'); if (!target) return; if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its declared safeguards.</div>'; return; } target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting declared capability evidence…</div>'; try { const result = await Api.getProviderSecurityPosture(this._hostId); target.innerHTML = this._coverageHtml(result) + `<div class="alert alert-info"><strong>Assessment limits</strong><ul>${(result.limitations || []).map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>`; } catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; } },
+  destroy() { this._container = null; },
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = ProviderSecurityPosturePage;

@@ -49,6 +49,7 @@ const App = {
     'high-availability': () => HighAvailabilityPage,
     'storage-posture': () => StoragePosturePage,
     'network-posture': () => NetworkPosturePage,
+    'provider-security-posture': () => ProviderSecurityPosturePage,
     'placement-advisor': () => PlacementAdvisorPage,
     'recovery-points': () => RecoveryPointsPage,
     'backup-policies': () => BackupPoliciesPage,

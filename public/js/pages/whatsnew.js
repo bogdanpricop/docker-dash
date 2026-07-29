@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.38.0', date: '2026-07-29', title: 'Provider capability coverage posture', changes: [
+      { type: 'feature', text: 'Provider Security Posture now summarizes the SDK contract’s supported, conditional, and unsupported capabilities.' },
+      { type: 'improvement', text: 'Conditional features remain visibly conditional instead of being presented as currently available.' },
+      { type: 'security', text: 'The page uses existing SDK evidence only and performs no endpoint, credential, TLS, certificate, port, guest, or provider-setting operation.' },
+    ] },
     { version: '8.37.0', date: '2026-07-28', title: 'Consolidated network evidence dashboard', changes: [
       { type: 'feature', text: 'Network Posture now begins with a compact dashboard of the network, attachment, address, readiness and endpoint evidence already shown on the page.' },
       { type: 'improvement', text: 'Unavailable sources remain explicitly visible in the summary rather than becoming an inferred healthy result.' },

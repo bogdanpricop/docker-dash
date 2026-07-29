@@ -338,5 +338,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V4.4c | `579cf4a` | push + tag `v8.35.0` | LAN `192.168.13.20` healthy, `8.35.0-579cf4a`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.35.0-579cf4a`; backup SQLite verificat | readiness derivat read-only din atașamente/posture; fără agent guest, trafic sau mutații |
 | V4.5a | `8bcb9ec` | push + tag `v8.36.0` | LAN `192.168.13.20` healthy, `8.36.0-8bcb9ec`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.36.0-8bcb9ec`; backup SQLite verificat | transport posture din probele SDK existente; fără scanare TLS/certificat/port, trafic sau mutații |
 | V4.5b | `3df3fcb` | push + tag `v8.37.0` | LAN `192.168.13.20` healthy, `8.37.0-3df3fcb`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.37.0-3df3fcb`; backup SQLite verificat | dashboard de prezentare peste evidențele deja încărcate; indisponibilitățile sunt explicite, fără apeluri noi sau mutații |
+| V4.5c | pending release | pending tag `v8.38.0` | pending deployment | pending deployment | acoperire declarată a contractului SDK, nu scanare sau verdict de securitate |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.

@@ -2,6 +2,16 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.38.0] - 2026-07-29 — Provider capability coverage posture
+
+Provider Security Posture introduces a read-only summary of the provider SDK's
+declared supported, conditional, and unsupported capabilities.
+
+- It is contract coverage, not a security scan, authorization audit, or
+  compliance certification.
+- Conditional capability remains explicitly conditional per provider/resource.
+- No endpoint, credential, TLS, certificate, port, guest, or provider setting is read or changed beyond existing SDK evidence.
+
 ## [8.37.0] - 2026-07-28 — Consolidated network evidence dashboard
 
 Network Posture now begins with a compact, read-only dashboard that brings the
