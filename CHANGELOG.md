@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.55.0] - 2026-07-29 — Infrastructure automation foundations
+
+The B226–B235 batch joins the existing durable provider-operation engine to a
+secret-free, stale-safe infrastructure intent layer.
+
+- Versioned VM, host and fabric manifests normalize desired state, reject
+  secret-bearing fields and deduplicate identical revisions by SHA-256.
+- Immutable change plans classify create, update, delete, unchanged and blocked
+  paths; destructive storage/network changes remain blocked until B236.
+- Plan acceptance revalidates manifest revision, live-state hash, native
+  resource-version hash and expiry before recording reviewed intent.
+- Workflow DAGs validate dependencies and cycles, and expose deterministic
+  reverse-order compensation previews without executing provider mutations.
+- Accepted plans can link to the existing durable provider jobs while exposing
+  state, retry, idempotency, lock and native-task evidence without ciphertext.
+- Governance → Automation & IaC provides the complete admin-only control surface;
+  accepting a plan or previewing compensation schedules zero provider mutations.
+
 ## [8.54.0] - 2026-07-29 — Advanced VM observability operations
 
 The B216–B225 market-backlog batch adds explainable operational controls on

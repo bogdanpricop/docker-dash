@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -21,14 +21,14 @@ const GovernanceControlsPage = {
         Api.getVmObservabilityCatalog(), Api.getVmPerformanceDashboard('contention'), Api.getVmPerformanceDashboard('storage'),
         Api.getVmPerformanceDashboard('network'), Api.listVmObservabilityEvents({ limit: 100 }), Api.getVmSignalRules(),
         Api.getVmObservabilityTopology(),
-        Api.getVmObservabilityAdvanced(), Api.getVmSloReports(),
+        Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
         tokens: tokens.tokens || [], trusts: trusts.trusts || [], governanceCatalog, subjects,
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
-        signalState, topology, advancedObservability, sloReports: sloReports.reports || [] };
+        signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -54,6 +54,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('lifecycle', 'fa-arrows-rotate', 'Lifecycle')}
         ${this._tabButton('metrics', 'fa-chart-line', 'VM metrics')}
         ${this._tabButton('observability', 'fa-wave-square', 'Observability')}
+        ${this._tabButton('automation', 'fa-code-branch', 'Automation & IaC')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -66,6 +67,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'lifecycle') return this._lifecycle();
     if (this._tab === 'metrics') return this._metrics();
     if (this._tab === 'observability') return this._observability();
+    if (this._tab === 'automation') return this._automation();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -201,6 +203,41 @@ const GovernanceControlsPage = {
       ${this._data.observedEvents.map(event => `<tr><td>${new Date(event.occurred_at).toLocaleString()}</td><td><strong>${Utils.escapeHtml(event.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(event.event_type)} · ${Utils.escapeHtml(event.adapter)}</div></td><td class="mono text-xs">${Utils.escapeHtml(event.resource_type)}:${Utils.escapeHtml(event.resource_key)}</td><td><span class="badge ${event.severity === 'critical' || event.severity === 'high' ? 'badge-danger' : event.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${event.severity}</span></td><td>${event.repeat_count}</td><td><button class="action-btn" data-gc-impact="${event.id}" title="Topology impact"><i class="fas fa-diagram-project"></i></button><button class="action-btn" data-gc-triage-event="${event.id}" title="Triage assistant"><i class="fas fa-flask"></i></button></td></tr>`).join('') || this._empty('No normalized events', 6)}</tbody></table></div>`;
   },
 
+  _automation() {
+    const data = this._data.infrastructureAutomation || {};
+    const engine = data.operationEngine || { states: {}, activeLocks: 0, idempotencyProtectedJobs: 0, nativeTaskJobs: 0 };
+    const capabilities = [
+      ['Durable jobs', 'persistentJobEngine'], ['Provider task bridge', 'providerTaskBridge'],
+      ['Idempotency keys', 'idempotencyKeys'], ['Resource locks', 'resourceLocks'],
+      ['Operation DAG', 'dependencyDag'], ['Compensation framework', 'compensationFramework'],
+      ['Infrastructure change plans', 'changePlans'], ['Stale-plan rejection', 'stalePlanRejection'],
+      ['VM manifest', 'vmManifest'], ['Host / fabric manifest', 'hostFabricManifest'],
+    ];
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" data-gc-manifest="VirtualMachine"><i class="fas fa-desktop"></i> VM manifest</button>
+      <button class="btn btn-secondary btn-sm" data-gc-manifest="Host"><i class="fas fa-server"></i> Host manifest</button>
+      <button class="btn btn-secondary btn-sm" data-gc-manifest="Fabric"><i class="fas fa-network-wired"></i> Fabric manifest</button>
+      <button class="btn btn-secondary btn-sm" id="gc-infra-plan"><i class="fas fa-list-check"></i> Change plan</button>
+      <button class="btn btn-primary btn-sm" id="gc-infra-workflow"><i class="fas fa-diagram-project"></i> Workflow DAG</button>`) }
+      <div class="card"><div class="card-header"><div><h3>Automation capability map</h3><p class="text-muted text-sm">The manifest layer reuses the encrypted durable provider-operation engine; accepting a plan records reviewed intent and never schedules an arbitrary handler.</p></div></div>
+      <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${capabilities.map(([label, key]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}</div></div>
+      <div class="info-grid" style="margin-top:12px">
+        ${this._stat('fa-gears', 'Queued / running jobs', Number(engine.states.queued || 0) + Number(engine.states.running || 0))}
+        ${this._stat('fa-fingerprint', 'Idempotency-protected', engine.idempotencyProtectedJobs)}
+        ${this._stat('fa-link', 'Native task bridges', engine.nativeTaskJobs)}
+        ${this._stat('fa-lock', 'Active resource locks', engine.activeLocks)}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Desired-state manifests</h3></div><table class="data-table"><thead><tr><th>Kind / name</th><th>Target</th><th>Revision</th><th>Ownership</th></tr></thead><tbody>
+        ${(data.manifests || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.kind)}</div></td><td>${item.providerHostId || 'global'}<div class="mono text-xs">${Utils.escapeHtml(item.resourceId || 'create intent')}</div></td><td>${item.revision}<div class="mono text-xs">${item.documentHash.slice(0, 12)}</div></td><td>${item.authoritative ? '<span class="badge badge-warning">authoritative</span>' : '<span class="badge badge-secondary">bounded</span>'}</td></tr>`).join('') || this._empty('No infrastructure manifests', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Infrastructure change plans</h3></div><table class="data-table"><thead><tr><th>Plan</th><th>Changes</th><th>State / expiry</th><th></th></tr></thead><tbody>
+        ${(data.plans || []).map(item => `<tr><td class="mono text-xs">#${item.id}<br>${item.planHash.slice(0, 12)}</td><td>+${item.summary.create} ~${item.summary.update} -${item.summary.delete}<div class="text-xs text-muted">${item.summary.blocked} blocked · ${item.summary.unchanged} unchanged</div></td><td><span class="badge ${item.status === 'accepted' ? 'badge-success' : item.status === 'stale' ? 'badge-danger' : 'badge-secondary'}">${item.status}</span><div class="text-xs text-muted">${new Date(item.expiresAt).toLocaleString()}</div></td><td>${item.status === 'planned' ? `<button class="action-btn" data-gc-revalidate-plan="${item.id}" title="Revalidate and accept"><i class="fas fa-shield-check"></i></button>` : ''}${item.status === 'accepted' ? `<button class="action-btn" data-gc-link-job="${item.id}" title="Link allowlisted durable operation"><i class="fas fa-link"></i></button>` : ''}</td></tr>`).join('') || this._empty('No change plans', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Workflow DAG &amp; compensation</h3></div><table class="data-table"><thead><tr><th>Workflow</th><th>Steps / stages</th><th>Hash</th><th></th></tr></thead><tbody>
+        ${(data.workflows || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">v${Utils.escapeHtml(item.version)}</div></td><td>${item.steps.length} / ${new Set(item.steps.map(step => step.stage)).size}<div class="text-xs text-muted">${item.steps.filter(step => step.compensation).length} compensations</div></td><td class="mono text-xs">${item.definitionHash.slice(0, 12)}</td><td><button class="action-btn" data-gc-compensation="${item.id}" title="Preview reverse compensation"><i class="fas fa-rotate-left"></i></button></td></tr>`).join('') || this._empty('No workflow DAGs', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Plan → durable job evidence</h3></div><table class="data-table"><thead><tr><th>Plan / operation</th><th>Relation</th><th>State</th><th>Safety</th></tr></thead><tbody>
+        ${(data.jobLinks || []).map(item => `<tr><td class="mono text-xs">#${item.planId}<br>${Utils.escapeHtml(item.operationId)}</td><td>${item.relation}${item.stepId ? ` · ${Utils.escapeHtml(item.stepId)}` : ''}</td><td>${item.state}${item.hasNativeTask ? `<div class="text-xs text-muted">native: ${Utils.escapeHtml(item.nativeTaskState || 'linked')}</div>` : ''}</td><td>${item.idempotencyProtected ? 'idempotent' : 'no key'} · ${item.lockScopes.length} locks</td></tr>`).join('') || this._empty('No accepted plans linked to durable jobs', 4)}</tbody></table></div>
+      </div>`;
+  },
+
   _bind() {
     this._container.querySelector('#gc-refresh')?.addEventListener('click', () => this.render(this._container));
     this._container.querySelectorAll('[data-gc-tab]').forEach(button => button.addEventListener('click', () => { this._tab = button.dataset.gcTab; this._paint(); }));
@@ -244,6 +281,12 @@ const GovernanceControlsPage = {
     this._container.querySelectorAll('[data-gc-export-preview]').forEach(button => button.addEventListener('click', () => this._previewExport(button.dataset.gcExportPreview)));
     this._container.querySelectorAll('[data-gc-export-deliver]').forEach(button => button.addEventListener('click', () => this._deliverExport(button.dataset.gcExportDeliver)));
     this._container.querySelectorAll('[data-gc-retention]').forEach(button => button.addEventListener('click', () => this._retentionDialog(button.dataset.gcRetention)));
+    this._container.querySelectorAll('[data-gc-manifest]').forEach(button => button.addEventListener('click', () => this._infrastructureManifestDialog(button.dataset.gcManifest)));
+    this._container.querySelector('#gc-infra-plan')?.addEventListener('click', () => this._infrastructurePlanDialog());
+    this._container.querySelector('#gc-infra-workflow')?.addEventListener('click', () => this._infrastructureWorkflowDialog());
+    this._container.querySelectorAll('[data-gc-revalidate-plan]').forEach(button => button.addEventListener('click', () => this._revalidateInfrastructurePlan(button.dataset.gcRevalidatePlan)));
+    this._container.querySelectorAll('[data-gc-link-job]').forEach(button => button.addEventListener('click', () => this._linkInfrastructureJob(button.dataset.gcLinkJob)));
+    this._container.querySelectorAll('[data-gc-compensation]').forEach(button => button.addEventListener('click', () => this._infrastructureCompensationDialog(button.dataset.gcCompensation)));
     this._container.querySelectorAll('[data-gc-renew-lease]').forEach(button => button.addEventListener('click', () => this._renewLease(button.dataset.gcRenewLease)));
     this._container.querySelectorAll('[data-gc-clean-lease]').forEach(button => button.addEventListener('click', async () => {
       if (!await Modal.confirm('Attest that provider cleanup is complete?', { danger: true })) return;
@@ -669,5 +712,95 @@ const GovernanceControlsPage = {
       const result = await Api.applyVmTelemetryRetention(hostId, { confirmation });
       Toast.success(`${result.deletedMetricSamples} metrics and ${result.deletedEvents} events deleted`); await this.render(this._container);
     } catch (error) { Toast.error(error.message); }
+  },
+
+  _manifestTemplate(kind) {
+    const base = { apiVersion: 'docker-dash.io/v1alpha1', kind, metadata: { name: `${kind.toLowerCase()}-intent`, providerHostId: 0, authoritative: false } };
+    if (kind === 'VirtualMachine') return { ...base, spec: { hardware: { cpuCount: 2, memoryBytes: 4294967296 },
+      image: { imageRef: 'ubuntu:24.04' }, networks: [{ networkRef: 'default', model: 'virtio', connected: true }],
+      storage: [{ name: 'root', sizeBytes: 42949672960, storageRef: 'default', boot: true }], policies: [], tags: {}, desiredPowerState: 'unchanged' } };
+    if (kind === 'Host') return { ...base, spec: { maintenanceMode: 'normal', tags: {}, policies: [], fabricRefs: [] } };
+    return { ...base, spec: { maintenanceMode: 'normal', tags: {}, policies: [], memberRefs: [] } };
+  },
+
+  async _infrastructureManifestDialog(kind) {
+    const template = JSON.stringify(this._manifestTemplate(kind), null, 2);
+    const result = await Modal.form(`<p class="text-muted text-sm">Secret-free desired state only. Validation and hashing happen before persistence; this action performs no provider mutation.</p>
+      <div class="form-group"><label>${Utils.escapeHtml(kind)} manifest JSON</label><textarea id="gc-infra-manifest-json" class="form-control mono" rows="22">${Utils.escapeHtml(template)}</textarea></div>
+      <div class="form-group"><label>Resource versions JSON</label><textarea id="gc-infra-manifest-versions" class="form-control mono" rows="3">{}</textarea></div>`,
+    { title: `${kind} manifest`, width: '920px', confirmText: 'Validate & save', onSubmit: c => this._submit(async () => {
+      const document = JSON.parse(c.querySelector('#gc-infra-manifest-json').value);
+      const resourceVersions = JSON.parse(c.querySelector('#gc-infra-manifest-versions').value);
+      await Api.validateInfrastructureManifest(document);
+      return Api.saveInfrastructureManifest({ document, resourceVersions });
+    }) });
+    if (result) { Toast.success(`Manifest revision ${result.manifest.revision} saved`); await this.render(this._container); }
+  },
+
+  async _infrastructurePlanDialog() {
+    const manifests = this._data.infrastructureAutomation?.manifests || [];
+    if (!manifests.length) return Toast.warning('Save a VM, host or fabric manifest first');
+    const selectedId = await Modal.form(`<div class="form-group"><label>Manifest</label><select id="gc-infra-plan-manifest" class="form-control">${manifests.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.kind)} · ${Utils.escapeHtml(item.name)} · r${item.revision}</option>`).join('')}</select></div>`,
+      { title: 'Select infrastructure intent', confirmText: 'Continue', onSubmit: c => Number(c.querySelector('#gc-infra-plan-manifest').value) });
+    if (!selectedId) return;
+    const selected = manifests.find(item => item.id === selectedId);
+    if (!selected) return Toast.error('Selected manifest is no longer available');
+    const result = await Modal.form(`<p class="text-muted text-sm">Planning against ${Utils.escapeHtml(selected.kind)} · ${Utils.escapeHtml(selected.name)} · revision ${selected.revision}.</p>
+      <div class="form-group"><label>Current live state JSON</label><textarea id="gc-infra-live" class="form-control mono" rows="18">${Utils.escapeHtml(JSON.stringify(selected.document.spec, null, 2))}</textarea></div>
+      <div class="form-group"><label>Current resource versions JSON</label><textarea id="gc-infra-versions" class="form-control mono" rows="3">${Utils.escapeHtml(JSON.stringify(selected.resourceVersions || {}, null, 2))}</textarea></div>
+      <div class="form-group"><label>Plan TTL (minutes)</label><input id="gc-infra-ttl" type="number" min="5" max="1440" value="30" class="form-control"></div>`,
+    { title: 'Infrastructure change plan', width: '920px', confirmText: 'Create immutable plan', onSubmit: c => this._submit(() => Api.createInfrastructurePlan(
+      selectedId, { liveState: JSON.parse(c.querySelector('#gc-infra-live').value),
+        resourceVersions: JSON.parse(c.querySelector('#gc-infra-versions').value), ttlMinutes: Number(c.querySelector('#gc-infra-ttl').value) })) });
+    if (result) { Toast.success(`Plan ${result.plan.planHash.slice(0, 12)} created`); await this.render(this._container); }
+  },
+
+  async _infrastructureWorkflowDialog() {
+    const sample = [{ id: 'prepare', stage: 1, needs: [], actionKey: 'vm.prepare', lockScopes: ['resource:vm'],
+      compensation: { actionKey: 'vm.cleanup', strategy: 'best_effort', input: {} } },
+    { id: 'apply', stage: 2, needs: ['prepare'], actionKey: 'vm.apply', lockScopes: ['resource:vm'],
+      compensation: { actionKey: 'vm.restore', strategy: 'required', input: { checkpoint: 'pre-change' } } },
+    { id: 'verify', stage: 3, needs: ['apply'], actionKey: 'vm.verify', lockScopes: [] }];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-infra-wf-name" class="form-control" value="vm-change"></div><div class="form-group"><label>Version</label><input id="gc-infra-wf-version" class="form-control" value="1.0"></div></div>
+      <div class="form-group"><label>Description</label><input id="gc-infra-wf-description" class="form-control" value="Staged VM change with reverse compensation"></div>
+      <div class="form-group"><label>Steps JSON</label><textarea id="gc-infra-wf-steps" class="form-control mono" rows="22">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>`,
+    { title: 'Operation dependency DAG', width: '920px', onSubmit: c => this._submit(() => Api.createInfrastructureWorkflow({
+      name: c.querySelector('#gc-infra-wf-name').value, version: c.querySelector('#gc-infra-wf-version').value,
+      description: c.querySelector('#gc-infra-wf-description').value, steps: JSON.parse(c.querySelector('#gc-infra-wf-steps').value),
+    })) });
+    if (result) { Toast.success('Workflow DAG validated and saved'); await this.render(this._container); }
+  },
+
+  async _revalidateInfrastructurePlan(planId) {
+    const result = await Modal.form(`<p class="text-muted text-sm">Supply fresh live state and native resource versions. Any hash, version, manifest revision or expiry change rejects this plan as stale.</p>
+      <div class="form-group"><label>Fresh live state JSON</label><textarea id="gc-infra-revalidate-live" class="form-control mono" rows="16">{}</textarea></div>
+      <div class="form-group"><label>Fresh resource versions JSON</label><textarea id="gc-infra-revalidate-versions" class="form-control mono" rows="3">{}</textarea></div>`,
+    { title: `Stale-plan rejection · #${planId}`, width: '900px', confirmText: 'Revalidate & accept intent', onSubmit: c => this._submit(() => Api.revalidateInfrastructurePlan(planId, {
+      liveState: JSON.parse(c.querySelector('#gc-infra-revalidate-live').value), resourceVersions: JSON.parse(c.querySelector('#gc-infra-revalidate-versions').value),
+    })) });
+    if (result) { Toast.success('Plan accepted; no provider mutation was scheduled'); await this.render(this._container); }
+  },
+
+  async _linkInfrastructureJob(planId) {
+    const result = await Modal.form(`<p class="text-muted text-sm">Only an existing allowlisted provider operation can be linked. Encrypted request and native task references remain hidden.</p>
+      <div class="form-group"><label>Operation ID</label><input id="gc-infra-operation" class="form-control mono" placeholder="op_…"></div>
+      <div class="form-row"><div class="form-group"><label>Relation</label><select id="gc-infra-relation" class="form-control"><option>executes</option><option>verifies</option><option>compensates</option></select></div><div class="form-group"><label>Workflow step ID (optional)</label><input id="gc-infra-step" class="form-control mono"></div></div>`,
+    { title: `Provider task bridge · plan #${planId}`, onSubmit: c => this._submit(() => Api.linkInfrastructurePlanJob(planId, {
+      operationId: c.querySelector('#gc-infra-operation').value, relation: c.querySelector('#gc-infra-relation').value,
+      stepId: c.querySelector('#gc-infra-step').value || undefined,
+    })) });
+    if (result) { Toast.success(`Durable job linked (${result.link.state})`); await this.render(this._container); }
+  },
+
+  async _infrastructureCompensationDialog(workflowId) {
+    const workflow = (this._data.infrastructureAutomation?.workflows || []).find(item => item.id === Number(workflowId));
+    const result = await Modal.form(`<p class="text-muted text-sm">Select completed steps. The preview orders declared compensations in reverse stage/definition order and performs no action.</p>
+      <div class="form-group"><label>Completed step IDs (comma-separated)</label><input id="gc-infra-completed" class="form-control mono" value="${Utils.escapeHtml((workflow?.steps || []).map(step => step.id).join(', '))}"></div>`,
+    { title: 'Compensation framework preview', confirmText: 'Build preview', onSubmit: c => this._submit(() => Api.previewInfrastructureCompensation(workflowId,
+      c.querySelector('#gc-infra-completed').value.split(',').map(item => item.trim()).filter(Boolean))) });
+    if (!result) return;
+    const actions = result.plan.actions.map(item => `<tr><td>${Utils.escapeHtml(item.stepId)}</td><td class="mono">${Utils.escapeHtml(item.actionKey)}</td><td>${item.strategy}</td><td>${item.lockScopes.map(value => Utils.escapeHtml(value)).join(', ') || '—'}</td></tr>`).join('');
+    Modal.open(`<div class="modal-header"><h3>Reverse compensation preview</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><table class="data-table"><thead><tr><th>Step</th><th>Compensation</th><th>Strategy</th><th>Locks</th></tr></thead><tbody>${actions || this._empty('No automatic compensations declared', 4)}</tbody></table><p class="text-muted text-sm" style="margin-top:12px">${result.plan.providerMutationsScheduled} provider mutations scheduled.</p></div>`);
+    Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
   },
 };

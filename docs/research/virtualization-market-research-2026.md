@@ -853,16 +853,16 @@ redaction, sampling, retention și data residency. V6.4 este astfel închis.
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B226 | Persistent infrastructure job engine | Durable state, retry, cancel, resume și compensation. | Rez | XL | Now |
-| B227 | Provider task bridge | Leagă job-ul Docker Dash de task-ul nativ. | Ops | L | Now |
-| B228 | Idempotency keys | Deduplică mutations și retry-uri după timeout. | Rez | M | Now |
-| B229 | Resource locks | Serializare per VM/host/datastore cu lease/expiry. | Rez | M | Now |
-| B230 | Operation dependency DAG | Pași/stadii/needs și cycle validation. | Ops | L | Now |
-| B231 | Compensation action framework | Rollback/cleanup semantic per step. | Rez | L | Next |
-| B232 | Infrastructure change plan | Create/update/delete/blocked/unchanged cu hash. | Gov | L | Now |
-| B233 | Stale-plan rejection | Revalidare resource versions înainte de apply. | Sig | M | Now |
-| B234 | VM manifest schema | Desired hardware/image/network/storage/policy. | DX | L | Next |
-| B235 | Host/fabric manifest schema | Desired maintenance, tags și policy references. | DX | L | Later |
+| B226 | Persistent infrastructure job engine | Durable state, retry, cancel, resume și compensation. | Rez | XL | Done |
+| B227 | Provider task bridge | Leagă job-ul Docker Dash de task-ul nativ. | Ops | L | Done |
+| B228 | Idempotency keys | Deduplică mutations și retry-uri după timeout. | Rez | M | Done |
+| B229 | Resource locks | Serializare per VM/host/datastore cu lease/expiry. | Rez | M | Done |
+| B230 | Operation dependency DAG | Pași/stadii/needs și cycle validation. | Ops | L | Done |
+| B231 | Compensation action framework | Rollback/cleanup semantic per step. | Rez | L | Done |
+| B232 | Infrastructure change plan | Create/update/delete/blocked/unchanged cu hash. | Gov | L | Done |
+| B233 | Stale-plan rejection | Revalidare resource versions înainte de apply. | Sig | M | Done |
+| B234 | VM manifest schema | Desired hardware/image/network/storage/policy. | DX | L | Done |
+| B235 | Host/fabric manifest schema | Desired maintenance, tags și policy references. | DX | L | Done |
 | B236 | Storage/network manifest schema | Desired resources cu ownership și deletion safeguards. | DX | XL | Later |
 | B237 | Import live resource to manifest | Export secret-free, normalized și determinist. | DX | M | Next |
 | B238 | Declarative drift detection | Live-vs-Git semantic diff și ownership boundaries. | Gov | L | Next |
@@ -878,6 +878,13 @@ redaction, sampling, retention și data residency. V6.4 este astfel închis.
 | B248 | Dry-run provider adapters | Native validate/simulate când există; explicit unsupported altfel. | Sig | L | Next |
 | B249 | Automation secret broker | JIT fetch, memory-only use și access audit. | Sig | L | Next |
 | B250 | Workflow template library | Curated maintenance/migration/backup/security runbooks. | DX | L | Next |
+
+**Status implementare 2026-07-29:** B226–B235 au fost închise în V0.3b /
+v8.55.0. B226–B229 reutilizează nucleul persistent V0.3 deja livrat, iar noul
+strat adaugă DAG-uri și compensări declarative, manifeste secret-free, planuri
+imutabile și respingere stale pe revision/live-state/resource-version/expiry.
+Acceptarea intentului și preview-ul de compensare nu execută provider mutations;
+ștergerile storage/network rămân blocate până la safeguards B236.
 
 ### K. Lifecycle, updates și configuration management (B251–B275)
 

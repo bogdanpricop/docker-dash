@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.55.0', date: '2026-07-29', title: 'Infrastructure automation foundations', changes: [
+      { type: 'feature', text: 'Secret-free VM, host and fabric manifests provide normalized, versioned desired state with hash-idempotent revisions.' },
+      { type: 'feature', text: 'Immutable infrastructure plans classify create, update, delete, unchanged and blocked paths, then reject stale live-state or resource-version evidence before acceptance.' },
+      { type: 'feature', text: 'Dependency DAGs and reverse-order compensation previews add reusable workflow semantics without starting provider actions.' },
+      { type: 'improvement', text: 'Accepted plans link to the existing durable operation engine and surface retry, idempotency, lock and native-task evidence without exposing encrypted payloads.' },
+      { type: 'security', text: 'Storage/network deletion is blocked pending dedicated safeguards; plan acceptance and compensation preview schedule zero provider mutations.' },
+    ] },
     { version: '8.54.0', date: '2026-07-29', title: 'Advanced VM observability operations', changes: [
       { type: 'feature', text: 'Dynamic baselines, maintenance-aware dependency suppression, capacity forecasts and incident triage turn normalized VM evidence into bounded operational guidance.' },
       { type: 'feature', text: 'Versioned runbook mappings, explicit telemetry exports and SLO availability reports provide traceable operational follow-through.' },

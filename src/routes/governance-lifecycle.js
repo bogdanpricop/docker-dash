@@ -144,4 +144,8 @@ router.post('/metrics/errors', writeable, route((req, res) => {
 // topology impact and advisory multi-signal alerts.
 router.use('/observability', require('./vm-observability'));
 
+// V0.3b / B226-B235 — durable-operation evidence, infrastructure manifests,
+// stale-safe plans, workflow DAGs and compensation planning.
+router.use('/automation', require('./infrastructure-automation'));
+
 module.exports = router;

@@ -1547,6 +1547,15 @@ const Api = {
   deliverVmObservabilityExport(id, body = {}) { return this.post(`/governance/lifecycle/observability/exports/${id}/deliver`, body); },
   saveVmSlo(body) { return this.put('/governance/lifecycle/observability/slo', body); },
   getVmSloReports() { return this.get('/governance/lifecycle/observability/slo/reports'); },
+  // ─── Infrastructure automation, manifests and stale-safe plans (V0.3b) ───
+  getInfrastructureAutomation() { return this.get('/governance/lifecycle/automation'); },
+  validateInfrastructureManifest(document) { return this.post('/governance/lifecycle/automation/manifests/validate', { document }); },
+  saveInfrastructureManifest(body) { return this.post('/governance/lifecycle/automation/manifests', body); },
+  createInfrastructurePlan(manifestId, body) { return this.post(`/governance/lifecycle/automation/manifests/${manifestId}/plans`, body); },
+  revalidateInfrastructurePlan(planId, body) { return this.post(`/governance/lifecycle/automation/plans/${planId}/revalidate`, body); },
+  createInfrastructureWorkflow(body) { return this.post('/governance/lifecycle/automation/workflows', body); },
+  previewInfrastructureCompensation(workflowId, completedStepIds) { return this.post(`/governance/lifecycle/automation/workflows/${workflowId}/compensation-plan`, { completedStepIds }); },
+  linkInfrastructurePlanJob(planId, body) { return this.post(`/governance/lifecycle/automation/plans/${planId}/jobs`, body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
