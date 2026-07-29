@@ -362,5 +362,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V0.3c | `70404fe` | push + tag `v8.56.0` | LAN `8.56.0-70404fe` healthy; backup SQLite verificat | VPS `8.56.0-70404fe` healthy; backup SQLite verificat | B236–B245: ownership/delete safety, drift/reconcile, PR/Terraform/Ansible flows și signed webhook triggers |
 | V0.3d | `8e19e0e` | push + tag `v8.57.0` | LAN `8.57.0-8e19e0e` healthy; backup SQLite verificat | VPS `8.57.0-8e19e0e` healthy; backup SQLite verificat | B246–B255: calendar/approval/dry-run/secret/template controls și lifecycle inventory/support/catalog/precheck evidence |
 | V0.3e | `1e5e8c8` | push + tag `v8.58.0` | LAN `8.58.0-1e5e8c8` healthy; backup SQLite verificat | VPS `8.58.0-1e5e8c8` healthy; backup SQLite verificat | B256–B265: maintenance waves, gated lifecycle campaigns, live patch/reboot evidence, firmware/driver compatibility și certificate reminders |
+| V0.3f | `d8d4d4a` | push + tag `v8.59.0` | LAN `8.59.0-d8d4d4a` healthy; backup SQLite verificat | VPS `8.59.0-d8d4d4a` healthy; backup SQLite verificat | B266–B275: certificate renewal, license assurance, configuration drift/profiles, air-gap mirrors, support bundles și post-upgrade validation |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
