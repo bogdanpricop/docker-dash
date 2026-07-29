@@ -114,6 +114,30 @@ describe('DockerService (src/services/docker.js)', () => {
     expect(result[0].ports[0]).toEqual({ private: 80, public: 8080, type: 'tcp', ip: '0.0.0.0' });
     expect(result[0].networks).toEqual(['bridge']);
     expect(result[0].labels.foo).toBe('bar');
+    expect(result[0].imageIdFull).toBe('sha256:1234567890abcdef');
+    expect(result[0].sizeRw).toBeNull();
+    expect(mockDockerInstance.listContainers).toHaveBeenCalledWith({ all: true });
+  });
+
+  it('listContainers requests and preserves Docker filesystem sizes only when asked', async () => {
+    mockDockerInstance.listContainers.mockResolvedValue([
+      {
+        Id: 'size1234567890aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        Names: ['/sized'], Image: 'alpine:3.20', ImageID: 'sha256:image123',
+        State: 'exited', Status: 'Exited (0)', Created: 1700000000,
+        Ports: [], NetworkSettings: { Networks: {} }, Mounts: [], Labels: {},
+        SizeRw: 4096, SizeRootFs: 12_345_678,
+      },
+    ]);
+
+    const result = await dockerService.listContainers(0, { includeSize: true });
+
+    expect(mockDockerInstance.listContainers).toHaveBeenCalledWith({ all: true, size: true });
+    expect(result[0]).toMatchObject({
+      imageIdFull: 'sha256:image123',
+      sizeRw: 4096,
+      sizeRootFs: 12_345_678,
+    });
   });
 
   it('listContainers handles empty list (returns [])', async () => {

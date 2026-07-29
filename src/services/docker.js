@@ -339,15 +339,18 @@ class DockerService {
 
   // ─── Containers ──────────────────────────────────────────
 
-  async listContainers(hostId = 0) {
+  async listContainers(hostId = 0, { includeSize = false } = {}) {
     const docker = this.getDocker(hostId);
-    const containers = await docker.listContainers({ all: true });
+    const options = { all: true };
+    if (includeSize) options.size = true;
+    const containers = await docker.listContainers(options);
     return containers.map(c => ({
       id: c.Id,
       shortId: c.Id.substring(0, 12),
       name: c.Names[0]?.replace(/^\//, '') || 'unknown',
       image: c.Image,
       imageId: c.ImageID?.substring(7, 19),
+      imageIdFull: c.ImageID || null,
       state: c.State,
       status: c.Status,
       created: c.Created,
@@ -360,6 +363,10 @@ class DockerService {
       })),
       labels: c.Labels || {},
       stack: c.Labels?.['com.docker.compose.project'] || null,
+      sizeRw: includeSize && c.SizeRw != null && Number.isFinite(Number(c.SizeRw)) && Number(c.SizeRw) >= 0
+        ? Number(c.SizeRw) : null,
+      sizeRootFs: includeSize && c.SizeRootFs != null && Number.isFinite(Number(c.SizeRootFs)) && Number(c.SizeRootFs) >= 0
+        ? Number(c.SizeRootFs) : null,
       isSelf: hostId === 0 && this.isSelf(c.Id),
       hostId,
     }));

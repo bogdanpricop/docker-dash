@@ -32,6 +32,22 @@ It uses the same asynchronous runner and returns only after the command complete
 
 Both endpoints require an authenticated administrator or operator and honor writeable/read-only mode and CSRF protection. Each action is audited as `compose_up`, `compose_down`, `compose_restart`, or `compose_pull`, including status, host, exit code, duration, and a redacted tail of the last 4 KB of captured output. A user may run at most three Compose actions concurrently.
 
+## Storage footprint
+
+The **Services** tab requests Docker container summaries with `size=true` only
+when one stack detail is opened. Each running/stopped container shows:
+
+- image size from the matching Docker image ID;
+- writable-layer bytes changed or added by that container;
+- root-filesystem bytes reported by Docker for that container.
+
+The stack summary counts a shared image only once and defines approximate
+footprint as unique image bytes plus all measured writable layers. Docker
+volumes, container log files and build cache are explicitly excluded. If image
+or container coverage is partial, the API returns the measured coverage and
+does not synthesize an approximate total from incomplete evidence. Global stack
+listing remains on the lightweight Docker request without size accounting.
+
 ## YAML editing and validation
 
 Create Stack, the stack Config tab, and Git Stack **Edit & Push** use the same offline YAML editor. The browser-ready CodeMirror and js-yaml files are vendored with Docker Dash, so syntax highlighting, bracket matching, automatic bracket closing, line numbers, and linting work without a CDN or frontend build step. The theme follows Docker Dash light and dark CSS variables, and a plain textarea remains usable if editor enhancement cannot load.

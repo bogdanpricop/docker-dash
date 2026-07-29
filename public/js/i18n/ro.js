@@ -1908,7 +1908,19 @@ i18n.register('ro', 'RO', "Română", {
       fullGitStackView: "Vizualizare completă Stack Git",
       deploymentStarted: "Deployment pornit",
       updatesAvailable: "Actualizări disponibile",
-      upToDate: "Deja la zi"
+      upToDate: "Deja la zi",
+      uniqueImageSize: "Dimensiune imagini unice",
+      writableLayers: "Straturi scriabile containere",
+      approximateFootprint: "Amprentă aproximativă stack",
+      footprintFormula: "imagini unice + straturi scriabile",
+      measurementCoverage: "măsurate {{measured}}",
+      storageExclusions: "Dimensiuni filesystem raportate de Docker; volumele, logurile și build cache-ul sunt excluse.",
+      imageSize: "Dimensiune imagine",
+      writableSize: "Scriabil",
+      rootFsSize: "Root FS",
+      imageSizeHelp: "Dimensiunea imaginii Docker. Imaginile partajate sunt numărate o singură dată în sumarul stack-ului.",
+      writableSizeHelp: "Octeți modificați sau adăugați în stratul scriabil al acestui container.",
+      rootFsSizeHelp: "Dimensiunea filesystem-ului rădăcină raportată de Docker (imagine plus strat scriabil)."
     },
     swarm: {
       deployToSwarm: "Deploy în Swarm",

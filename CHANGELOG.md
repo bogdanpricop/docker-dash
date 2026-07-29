@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.48.0] - 2026-07-29 — Compose stack storage footprint
+
+Compose stack details now show Docker-reported image and container filesystem
+sizes for every running or stopped service.
+
+- Per-container rows distinguish shared image size, writable-layer size and
+  root-filesystem size.
+- The stack summary deduplicates shared images and calculates approximate
+  footprint only when image and writable-layer coverage are complete.
+- Size accounting runs only when a stack detail is opened and explicitly
+  excludes volumes, logs and build cache; it performs no Docker mutation.
+
 ## [8.47.0] - 2026-07-29 — Consolidated provider security evidence
 
 Provider Security Posture now begins with a compact summary of its existing

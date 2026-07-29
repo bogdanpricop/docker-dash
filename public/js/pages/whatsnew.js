@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.48.0', date: '2026-07-29', title: 'Compose stack storage footprint', changes: [
+      { type: 'feature', text: 'Compose stack details show image, writable-layer and root-filesystem sizes for each running or stopped container.' },
+      { type: 'improvement', text: 'The stack summary counts shared images once and reports an approximate footprint only when Docker returned complete image and container coverage.' },
+      { type: 'security', text: 'Sizing is read-only, requested only for the opened stack detail, and excludes volumes, logs and build cache.' },
+    ] },
     { version: '8.47.0', date: '2026-07-29', title: 'Consolidated provider security evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture now begins with a compact summary of existing capability, safeguard, gap, and freshness evidence.' },
       { type: 'improvement', text: 'The dashboard provides orientation without turning contract evidence into a security rating or compliance certification.' },

@@ -1147,6 +1147,18 @@ i18n.register('en', 'EN', 'English', {
       deploymentStarted: 'Deployment started',
       updatesAvailable: 'Updates available',
       upToDate: 'Already up to date',
+      uniqueImageSize: 'Unique image size',
+      writableLayers: 'Container writable layers',
+      approximateFootprint: 'Approx. stack footprint',
+      footprintFormula: 'unique images + writable layers',
+      measurementCoverage: 'measured {{measured}}',
+      storageExclusions: 'Docker-reported filesystem sizes; volumes, logs and build cache are excluded.',
+      imageSize: 'Image size',
+      writableSize: 'Writable',
+      rootFsSize: 'Root FS',
+      imageSizeHelp: 'Docker image size. Shared images are counted once in the stack summary.',
+      writableSizeHelp: 'Bytes changed or added in this container writable layer.',
+      rootFsSizeHelp: 'Container root filesystem size reported by Docker (image plus writable layer).',
     },
     // ── Swarm deploy bridges (promote container / stack to swarm) ──
     swarm: {

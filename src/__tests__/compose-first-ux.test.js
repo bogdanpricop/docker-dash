@@ -29,4 +29,17 @@ describe('Compose-first navigation contract', () => {
     expect(dashboard).toContain('href="#/stacks"');
     expect(dashboard).toContain('href="?mode=simple#/stacks"');
   });
+
+  test('Compose stack detail renders image, writable-layer and root filesystem sizes', () => {
+    const stacks = readPublic('js/pages/stacks.js');
+    const en = readPublic('js/i18n/en.js');
+    const ro = readPublic('js/i18n/ro.js');
+    expect(stacks).toContain('storage.approximateFootprintBytes');
+    expect(stacks).toContain('c.imageSizeBytes');
+    expect(stacks).toContain('c.writableSizeBytes');
+    expect(stacks).toContain('c.rootFsSizeBytes');
+    expect(stacks).toContain("i18n.t('pages.stacks.storageExclusions')");
+    expect(en).toContain("uniqueImageSize: 'Unique image size'");
+    expect(ro).toContain('uniqueImageSize: "Dimensiune imagini unice"');
+  });
 });

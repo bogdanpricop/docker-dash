@@ -39,6 +39,71 @@ function _stackMatches(container, stackName) {
     || container.labels?.['com.docker.compose.project'] === stackName;
 }
 
+function _knownBytes(value) {
+  if (value == null) return null;
+  const bytes = Number(value);
+  return Number.isFinite(bytes) && bytes >= 0 ? bytes : null;
+}
+
+function _stackStorage(containers, images) {
+  const imageById = new Map();
+  const imageByRef = new Map();
+  for (const image of images || []) {
+    if (image.id) imageById.set(image.id, image);
+    for (const ref of image.repoTags || []) imageByRef.set(ref, image);
+  }
+
+  const uniqueImageKeys = new Set();
+  const measuredImages = new Map();
+  let writableBytes = 0;
+  let rootFsBytes = 0;
+  let measuredContainers = 0;
+  let measuredRootFs = 0;
+
+  const enriched = (containers || []).map(container => {
+    const image = imageById.get(container.imageIdFull) || imageByRef.get(container.image) || null;
+    const imageKey = image?.id || container.imageIdFull || `ref:${container.image}`;
+    const imageSizeBytes = _knownBytes(image?.size);
+    const writableSizeBytes = _knownBytes(container.sizeRw);
+    const rootFsSizeBytes = _knownBytes(container.sizeRootFs);
+    uniqueImageKeys.add(imageKey);
+    if (imageSizeBytes != null) measuredImages.set(imageKey, imageSizeBytes);
+    if (writableSizeBytes != null) {
+      writableBytes += writableSizeBytes;
+      measuredContainers++;
+    }
+    if (rootFsSizeBytes != null) {
+      rootFsBytes += rootFsSizeBytes;
+      measuredRootFs++;
+    }
+    return { ...container, imageSizeBytes, writableSizeBytes, rootFsSizeBytes };
+  });
+
+  const imageBytes = [...measuredImages.values()].reduce((total, bytes) => total + bytes, 0);
+  const imageMeasurementComplete = uniqueImageKeys.size > 0 && measuredImages.size === uniqueImageKeys.size;
+  const containerMeasurementComplete = enriched.length > 0 && measuredContainers === enriched.length;
+  const rootFsMeasurementComplete = enriched.length > 0 && measuredRootFs === enriched.length;
+
+  return {
+    containers: enriched,
+    storage: {
+      available: measuredImages.size > 0 || measuredContainers > 0 || measuredRootFs > 0,
+      uniqueImages: uniqueImageKeys.size,
+      measuredImages: measuredImages.size,
+      measuredContainers,
+      imageBytes: measuredImages.size > 0 ? imageBytes : null,
+      writableBytes: measuredContainers > 0 ? writableBytes : null,
+      rootFsBytes: measuredRootFs > 0 ? rootFsBytes : null,
+      approximateFootprintBytes: imageMeasurementComplete && containerMeasurementComplete
+        ? imageBytes + writableBytes : null,
+      imageMeasurementComplete,
+      containerMeasurementComplete,
+      rootFsMeasurementComplete,
+      excludes: ['volumes', 'logs', 'build_cache'],
+    },
+  };
+}
+
 function _filesystemStack(stackName) {
   return stacksFs.discover().find(candidate => candidate.name === stackName) || null;
 }
@@ -508,7 +573,7 @@ router.get('/stacks', requireAuth, async (req, res) => {
 
 router.get('/stacks/:name', requireAuth, async (req, res) => {
   try {
-    const containers = await dockerService.listContainers(req.hostId);
+    const containers = await dockerService.listContainers(req.hostId, { includeSize: true });
     const stackContainers = containers.filter(c => _stackMatches(c, req.params.name));
     let workingDir = '';
     let source = 'runtime';
@@ -526,11 +591,26 @@ router.get('/stacks/:name', requireAuth, async (req, res) => {
     }
 
     const files = workingDir ? _readStackFiles(workingDir) : { config: '', envFile: '' };
+    let images = [];
+    if (stackContainers.length) {
+      try { images = await dockerService.listImages(req.hostId); }
+      catch { /* container state remains useful when image sizing is unavailable */ }
+    }
+    const measured = _stackStorage(stackContainers, images);
 
     res.json({
       name: req.params.name,
       workingDir,
-      containers: stackContainers.map(c => ({ id: c.id, name: c.name, state: c.state, image: c.image })),
+      containers: measured.containers.map(c => ({
+        id: c.id,
+        name: c.name,
+        state: c.state,
+        image: c.image,
+        imageSizeBytes: c.imageSizeBytes,
+        writableSizeBytes: c.writableSizeBytes,
+        rootFsSizeBytes: c.rootFsSizeBytes,
+      })),
+      storage: measured.storage,
       config: files.config, source, services, serviceCount,
       status: stackContainers.some(c => c.state === 'running') ? 'running' : 'stopped',
       diskOnly: stackContainers.length === 0,

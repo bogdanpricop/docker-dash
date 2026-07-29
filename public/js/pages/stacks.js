@@ -388,16 +388,43 @@ const StacksPage = {
       document.getElementById('cs-restart')?.toggleAttribute('disabled', !hasContainers);
 
       if (tab === 'services') {
+        const storage = stack.storage || {};
+        const formatSize = value => value == null ? '—' : Utils.formatBytes(value);
+        const imageCoverage = `${storage.measuredImages || 0}/${storage.uniqueImages || 0}`;
+        const containerCoverage = `${storage.measuredContainers || 0}/${(stack.containers || []).length}`;
         el.innerHTML = `
+          ${hasContainers ? `
+            <div class="info-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin:0 0 12px">
+              <div class="info-item">
+                <div class="info-label"><i class="fas fa-images" style="margin-right:5px"></i>${i18n.t('pages.stacks.uniqueImageSize')}</div>
+                <div class="info-value" style="font-family:var(--mono)">${formatSize(storage.imageBytes)}</div>
+                <div class="text-xs text-muted">${i18n.t('pages.stacks.measurementCoverage', { measured: imageCoverage })}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label"><i class="fas fa-layer-group" style="margin-right:5px"></i>${i18n.t('pages.stacks.writableLayers')}</div>
+                <div class="info-value" style="font-family:var(--mono)">${formatSize(storage.writableBytes)}</div>
+                <div class="text-xs text-muted">${i18n.t('pages.stacks.measurementCoverage', { measured: containerCoverage })}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label"><i class="fas fa-hdd" style="margin-right:5px"></i>${i18n.t('pages.stacks.approximateFootprint')}</div>
+                <div class="info-value" style="font-family:var(--mono)">${formatSize(storage.approximateFootprintBytes)}</div>
+                <div class="text-xs text-muted">${i18n.t('pages.stacks.footprintFormula')}</div>
+              </div>
+            </div>
+            <div class="text-xs text-muted" style="margin:-4px 0 10px"><i class="fas fa-info-circle" style="margin-right:4px"></i>${i18n.t('pages.stacks.storageExclusions')}</div>
+          ` : ''}
           <div class="card">
             <div class="card-body" style="padding:0">
               <table class="data-table" style="margin:0">
-                <thead><tr><th>${i18n.t('pages.containers.container', { defaultValue: 'Container' })}</th><th>${i18n.t('pages.containers.image')}</th><th>${i18n.t('common.status')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
+                <thead><tr><th>${i18n.t('pages.containers.container', { defaultValue: 'Container' })}</th><th>${i18n.t('pages.containers.image')}</th><th title="${i18n.t('pages.stacks.imageSizeHelp')}">${i18n.t('pages.stacks.imageSize')}</th><th title="${i18n.t('pages.stacks.writableSizeHelp')}">${i18n.t('pages.stacks.writableSize')}</th><th title="${i18n.t('pages.stacks.rootFsSizeHelp')}">${i18n.t('pages.stacks.rootFsSize')}</th><th>${i18n.t('common.status')}</th><th>${i18n.t('common.actions')}</th></tr></thead>
                 <tbody>
                   ${(stack.containers || []).map(c => `
                     <tr>
                       <td><a href="#/containers/${c.id}" style="color:var(--accent)">${Utils.escapeHtml(c.name)}</a></td>
                       <td class="text-muted text-sm" style="font-family:var(--mono)">${Utils.escapeHtml(c.image)}</td>
+                      <td class="text-sm" style="font-family:var(--mono);white-space:nowrap">${formatSize(c.imageSizeBytes)}</td>
+                      <td class="text-sm" style="font-family:var(--mono);white-space:nowrap">${formatSize(c.writableSizeBytes)}</td>
+                      <td class="text-sm" style="font-family:var(--mono);white-space:nowrap">${formatSize(c.rootFsSizeBytes)}</td>
                       <td><span class="badge ${c.state === 'running' ? 'badge-success' : 'badge-danger'}">${c.state}</span></td>
                       <td style="display:flex;gap:4px">
                         <button class="action-btn svc-action" data-id="${c.id}" data-action="restart" title="Restart"><i class="fas fa-sync-alt"></i></button>
@@ -408,10 +435,13 @@ const StacksPage = {
                     <tr>
                       <td>${Utils.escapeHtml(service)}</td>
                       <td class="text-muted text-sm">Configured in Compose</td>
+                      <td class="text-muted">—</td>
+                      <td class="text-muted">—</td>
+                      <td class="text-muted">—</td>
                       <td><span class="badge badge-stopped">stopped</span></td>
                       <td class="text-muted text-sm">Use <strong>Up</strong> to start</td>
                     </tr>
-                  `).join('') || `<tr><td colspan="4" class="text-muted" style="text-align:center;padding:24px">No services found in this Compose file.</td></tr>`}
+                  `).join('') || `<tr><td colspan="7" class="text-muted" style="text-align:center;padding:24px">No services found in this Compose file.</td></tr>`}
                 </tbody>
               </table>
             </div>

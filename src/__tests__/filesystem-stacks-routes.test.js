@@ -23,6 +23,7 @@ jest.mock('../middleware/auth', () => ({
 }));
 jest.mock('../services/docker', () => ({
   listContainers: jest.fn(async () => []),
+  listImages: jest.fn(async () => []),
   getDocker: jest.fn(),
 }));
 jest.mock('../services/compose-runner', () => ({
@@ -40,6 +41,7 @@ const express = require('express');
 const request = require('supertest');
 const composeRunner = require('../services/compose-runner');
 const stacksFs = require('../services/stacks-fs');
+const dockerService = require('../services/docker');
 
 const app = express();
 app.use(express.json());
@@ -54,6 +56,11 @@ describe('filesystem-backed stack routes', () => {
       '  web:',
       '    image: nginx:alpine',
     ].join('\n'));
+  });
+
+  beforeEach(() => {
+    dockerService.listContainers.mockReset().mockResolvedValue([]);
+    dockerService.listImages.mockReset().mockResolvedValue([]);
   });
 
   afterAll(() => fs.rmSync(sandbox, { recursive: true, force: true }));
@@ -71,6 +78,53 @@ describe('filesystem-backed stack routes', () => {
       services: ['web'], status: 'stopped',
     }));
     expect(detail.body.config).toContain('nginx:alpine');
+  });
+
+  test('opens a running stack with deduplicated image and container sizes', async () => {
+    const imageId = 'sha256:shared-image';
+    const workingDir = path.join(stacksRoot, 'measured');
+    dockerService.listContainers.mockResolvedValue([
+      {
+        id: 'container-a', name: 'web-a', state: 'running', image: 'demo/web:1',
+        imageIdFull: imageId, sizeRw: 10, sizeRootFs: 1010, stack: 'measured',
+        labels: {
+          'com.docker.compose.project': 'measured',
+          'com.docker.compose.project.working_dir': workingDir,
+        },
+      },
+      {
+        id: 'container-b', name: 'web-b', state: 'running', image: 'demo/web:1',
+        imageIdFull: imageId, sizeRw: 20, sizeRootFs: 1020, stack: 'measured',
+        labels: {
+          'com.docker.compose.project': 'measured',
+          'com.docker.compose.project.working_dir': workingDir,
+        },
+      },
+    ]);
+    dockerService.listImages.mockResolvedValue([
+      { id: imageId, repoTags: ['demo/web:1'], size: 1000 },
+    ]);
+
+    const detail = await request(app).get('/api/system/stacks/measured').expect(200);
+
+    expect(dockerService.listContainers).toHaveBeenCalledWith(0, { includeSize: true });
+    expect(detail.body.storage).toEqual(expect.objectContaining({
+      available: true,
+      uniqueImages: 1,
+      measuredImages: 1,
+      measuredContainers: 2,
+      imageBytes: 1000,
+      writableBytes: 30,
+      rootFsBytes: 2030,
+      approximateFootprintBytes: 1030,
+      imageMeasurementComplete: true,
+      containerMeasurementComplete: true,
+      excludes: ['volumes', 'logs', 'build_cache'],
+    }));
+    expect(detail.body.containers).toEqual([
+      expect.objectContaining({ imageSizeBytes: 1000, writableSizeBytes: 10, rootFsSizeBytes: 1010 }),
+      expect.objectContaining({ imageSizeBytes: 1000, writableSizeBytes: 20, rootFsSizeBytes: 1020 }),
+    ]);
   });
 
   test('runs Compose Up from the discovered working directory', async () => {
