@@ -1572,6 +1572,22 @@ const Api = {
   authorizeInfrastructureExternalPlan(id, body) { return this.post(`/governance/lifecycle/automation/external-plans/${id}/authorize`, body); },
   getAnsibleInfrastructureInventory() { return this.get('/governance/lifecycle/automation/ansible-inventory'); },
   createInfrastructureWebhookTrigger(body) { return this.post('/governance/lifecycle/automation/webhook-triggers', body); },
+  // ─── Automation operations and lifecycle readiness (V0.3d) ───
+  createInfrastructureSchedule(body) { return this.post('/governance/lifecycle/automation/operations/schedules', body); },
+  evaluateInfrastructureSchedule(id, at) { return this.get(`/governance/lifecycle/automation/operations/schedules/${id}/evaluate${at ? `?at=${encodeURIComponent(at)}` : ''}`); },
+  createInfrastructureApproval(body) { return this.post('/governance/lifecycle/automation/operations/approvals', body); },
+  decideInfrastructureApproval(id, body) { return this.post(`/governance/lifecycle/automation/operations/approvals/${id}/decision`, body); },
+  createInfrastructureDryRun(body) { return this.post('/governance/lifecycle/automation/operations/dry-runs', body); },
+  createInfrastructureSecretBroker(body) { return this.post('/governance/lifecycle/automation/operations/secret-brokers', body); },
+  probeInfrastructureSecretBroker(id, purpose) { return this.post(`/governance/lifecycle/automation/operations/secret-brokers/${id}/probe`, { purpose }); },
+  instantiateInfrastructureTemplate(id, body) { return this.post(`/governance/lifecycle/automation/operations/workflow-templates/${id}/instantiate`, body); },
+  getLifecycleUpdates() { return this.get('/governance/lifecycle/updates'); },
+  recordLifecycleInventory(body) { return this.post('/governance/lifecycle/updates/inventory', body); },
+  saveLifecycleSupport(body) { return this.put('/governance/lifecycle/updates/support', body); },
+  saveLifecycleUpgradePath(body) { return this.put('/governance/lifecycle/updates/upgrade-paths', body); },
+  getLifecycleUpgradeAdvice(id, targetVersion) { return this.get(`/governance/lifecycle/updates/inventory/${id}/advisor?targetVersion=${encodeURIComponent(targetVersion)}`); },
+  ingestLifecycleUpdateCatalog(body) { return this.post('/governance/lifecycle/updates/catalog/ingest', body); },
+  runLifecycleUpgradePrecheck(body) { return this.post('/governance/lifecycle/updates/prechecks', body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

@@ -535,6 +535,12 @@ async function start() {
   try { require('./services/infrastructure-reconcile-monitor').start(); }
   catch (e) { require('./utils/logger')('infrastructure-reconcile').debug('monitor start skipped', { error: e.message }); }
 
+  // v8.57.0 / B246-B247 — leader-gated schedule and approval deadline
+  // evaluation. Ready schedules create durable evidence only; approval expiry or
+  // escalation never authorizes or starts an apply.
+  try { require('./services/infrastructure-operations-monitor').start(); }
+  catch (e) { require('./utils/logger')('infrastructure-operations').debug('monitor start skipped', { error: e.message }); }
+
   // v8.18.0 (Onboarding Phase 4) — trial-expiry lifecycle. Hourly: suspend
   // expired trial tenants + notify, warn a few days out. Best-effort, unref'd.
   try { require('./services/provisioning/trial-monitor').start(); }
@@ -637,6 +643,7 @@ async function shutdown(signal) {
   try { require('./services/remediation-scheduler').stop(); } catch {}
   try { require('./services/provider-operations').stop(); } catch {}
   try { require('./services/infrastructure-reconcile-monitor').stop(); } catch {}
+  try { require('./services/infrastructure-operations-monitor').stop(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

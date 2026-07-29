@@ -873,11 +873,11 @@ redaction, sampling, retention și data residency. V6.4 este astfel închis.
 | B243 | Terraform run integration | Plan artifact ingestion și gated apply. | Gov | XL | Done |
 | B244 | Ansible inventory export | Dynamic inventory cu tags/groups și secret refs. | DX | M | Done |
 | B245 | Webhook-triggered runbooks | Signed event, allowlist și replay protection. | Ops | M | Done |
-| B246 | Schedule/calendar triggers | Cron, timezone, holiday și blackout awareness. | Ops | M | Now |
-| B247 | Approval timeout/escalation | Expire/reassign/escalate fără apply implicit. | Gov | M | Next |
-| B248 | Dry-run provider adapters | Native validate/simulate când există; explicit unsupported altfel. | Sig | L | Next |
-| B249 | Automation secret broker | JIT fetch, memory-only use și access audit. | Sig | L | Next |
-| B250 | Workflow template library | Curated maintenance/migration/backup/security runbooks. | DX | L | Next |
+| B246 | Schedule/calendar triggers | Cron, timezone, holiday și blackout awareness. | Ops | M | Done |
+| B247 | Approval timeout/escalation | Expire/reassign/escalate fără apply implicit. | Gov | M | Done |
+| B248 | Dry-run provider adapters | Native validate/simulate când există; explicit unsupported altfel. | Sig | L | Done |
+| B249 | Automation secret broker | JIT fetch, memory-only use și access audit. | Sig | L | Done |
+| B250 | Workflow template library | Curated maintenance/migration/backup/security runbooks. | DX | L | Done |
 
 **Status implementare 2026-07-29:** B226–B235 au fost închise în V0.3b /
 v8.55.0. B226–B229 reutilizează nucleul persistent V0.3 deja livrat, iar noul
@@ -895,15 +895,24 @@ integrări bounded: nu fac merge, nu preiau state și nu lansează executabile.
 Webhook-urile pot porni numai procedura aleasă de admin după HMAC, timestamp,
 event allowlist și nonce unic.
 
+**Status implementare 2026-07-29:** B246–B250 au fost închise în V0.3d /
+v8.57.0. Schedulerul este timezone/holiday/blackout-aware și păstrează evidence
+idempotent pe minut fără a porni automat workflow-ul. Approval timeout poate
+escalada sau expira, dar nu autorizează apply. Dry-run-ul folosește numai un
+adapter validate/simulate înregistrat și raportează explicit `unsupported` în
+lipsa lui. Secret broker-ul păstrează doar referințe, face fetch JIT, golește
+bufferul și expune doar fingerprint/audit. Biblioteca include cinci DAG-uri
+curated, instanțiate numai după validarea parametrilor.
+
 ### K. Lifecycle, updates și configuration management (B251–B275)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B251 | Version and build inventory | Host/control-plane/tools/firmware versions. | Ops | M | Now |
-| B252 | Support lifecycle registry | GA/EOL/EOS dates și recommended target. | Gov | M | Now |
-| B253 | Upgrade path advisor | Supported hops, prerequisites și blockers per vendor. | Ops | L | Next |
-| B254 | Update catalog ingestion | Advisories/packages/bundles din surse oficiale. | Ops | L | Next |
-| B255 | Upgrade precheck framework | Health, capacity, backup, compatibility, free space. | Rez | L | Next |
+| B251 | Version and build inventory | Host/control-plane/tools/firmware versions. | Ops | M | Done |
+| B252 | Support lifecycle registry | GA/EOL/EOS dates și recommended target. | Gov | M | Done |
+| B253 | Upgrade path advisor | Supported hops, prerequisites și blockers per vendor. | Ops | L | Done |
+| B254 | Update catalog ingestion | Advisories/packages/bundles din surse oficiale. | Ops | L | Done |
+| B255 | Upgrade precheck framework | Health, capacity, backup, compatibility, free space. | Rez | L | Done |
 | B256 | Maintenance window planner | Durată, waves, evacuation și owner conflicts. | Ops | M | Next |
 | B257 | Cluster rolling-upgrade runner | Node-by-node cu gates și pause. | Rez | XL | Later |
 | B258 | Live-patch adapter | Inventory/apply/verify când vendorul îl oferă. | Rez | L | Later |
@@ -924,6 +933,14 @@ event allowlist și nonce unic.
 | B273 | Air-gap content mirror | Cache signed packages/images/advisories per site. | Rez | XL | Later |
 | B274 | Support bundle orchestrator | Multi-node collection, redaction, checksum și expiry. | Ops | L | Next |
 | B275 | Post-upgrade validation pack | API/HA/migration/storage/network/VM smoke tests. | Rez | L | Next |
+
+**Status implementare 2026-07-29:** B251–B255 au fost închise în V0.3d /
+v8.57.0. Inventarul host/control-plane/tool/firmware păstrează versiune, build,
+freshness și hash-ul evidence. Registrul support derivă GA/EOL/EOS și target,
+iar advisorul cere hops/prerequisites/blockers susținute de o sursă HTTPS.
+Catalogul acceptă numai ingest marcat `official_vendor`, fără download/install.
+Precheck-ul verifică health, capacity, backup, compatibility, free space și
+freshness; rezultatul este expiring evidence și nu pornește upgrade-ul.
 
 ### L. FinOps, capacity și sustenabilitate (B276–B300)
 

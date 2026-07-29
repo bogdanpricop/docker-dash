@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -21,14 +21,14 @@ const GovernanceControlsPage = {
         Api.getVmObservabilityCatalog(), Api.getVmPerformanceDashboard('contention'), Api.getVmPerformanceDashboard('storage'),
         Api.getVmPerformanceDashboard('network'), Api.listVmObservabilityEvents({ limit: 100 }), Api.getVmSignalRules(),
         Api.getVmObservabilityTopology(),
-        Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(),
+        Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(), Api.getLifecycleUpdates(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
         tokens: tokens.tokens || [], trusts: trusts.trusts || [], governanceCatalog, subjects,
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
-        signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation };
+        signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation, lifecycleUpdates };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -55,6 +55,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('metrics', 'fa-chart-line', 'VM metrics')}
         ${this._tabButton('observability', 'fa-wave-square', 'Observability')}
         ${this._tabButton('automation', 'fa-code-branch', 'Automation & IaC')}
+        ${this._tabButton('updates', 'fa-arrow-up-from-bracket', 'Lifecycle & updates')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -68,6 +69,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'metrics') return this._metrics();
     if (this._tab === 'observability') return this._observability();
     if (this._tab === 'automation') return this._automation();
+    if (this._tab === 'updates') return this._updates();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -206,6 +208,7 @@ const GovernanceControlsPage = {
   _automation() {
     const data = this._data.infrastructureAutomation || {};
     const delivery = data.delivery || { capabilities: {}, resourceManifests: [], controllers: [], reconcileRuns: [], externalPlans: [], webhookTriggers: [] };
+    const operations = data.operations || { capabilities: {}, schedules: [], scheduleRuns: [], approvals: [], dryRuns: [], secretBrokers: [], secretAccessEvents: [], workflowTemplates: [] };
     const engine = data.operationEngine || { states: {}, activeLocks: 0, idempotencyProtectedJobs: 0, nativeTaskJobs: 0 };
     const capabilities = [
       ['Durable jobs', 'persistentJobEngine'], ['Provider task bridge', 'providerTaskBridge'],
@@ -266,6 +269,55 @@ const GovernanceControlsPage = {
         ${(delivery.externalPlans || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.sourceKind)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.externalRef)}</div></td><td><span class="badge ${item.policy.passed ? 'badge-success' : 'badge-danger'}">${item.status}</span></td><td>${item.blastRadius.changedResources ?? item.blastRadius.changedPaths ?? 0} changed<div class="text-xs text-muted">risk: ${item.blastRadius.risk}</div></td><td>${['reviewed','blocked'].includes(item.status) ? `<button class="action-btn" data-gc-external-authorize="${item.id}" title="Record gated authorization"><i class="fas fa-shield-check"></i></button>` : ''}</td></tr>`).join('') || this._empty('No pull-request or Terraform evidence', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Signed runbook triggers</h3></div><table class="data-table"><thead><tr><th>Name</th><th>Procedure</th><th>Events</th><th>Window</th></tr></thead><tbody>
         ${(delivery.webhookTriggers || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.tokenPrefix)}…</div></td><td>#${item.procedureId}</td><td>${item.events.map(event => `<span class="badge badge-secondary mono">${Utils.escapeHtml(event)}</span>`).join(' ')}</td><td>${item.timestampSkewSeconds}s · ${item.enabled ? 'enabled' : 'disabled'}</td></tr>`).join('') || this._empty('No signed runbook triggers', 4)}</tbody></table></div>
+      </div>
+      ${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-ops-schedule"><i class="fas fa-calendar-days"></i> Schedule</button>
+        <button class="btn btn-secondary btn-sm" id="gc-ops-approval"><i class="fas fa-user-clock"></i> Timed approval</button>
+        <button class="btn btn-secondary btn-sm" id="gc-ops-dry-run"><i class="fas fa-flask"></i> Provider dry-run</button>
+        <button class="btn btn-secondary btn-sm" id="gc-ops-broker"><i class="fas fa-key"></i> Secret broker</button>
+        <button class="btn btn-primary btn-sm" id="gc-ops-template"><i class="fas fa-book"></i> Workflow template</button>`) }
+      <div class="card"><div class="card-header"><div><h3>Automation operations safety</h3><p class="text-muted text-sm">Calendar and approval timers create evidence only. Dry runs never fall back to apply, and broker probes expose fingerprints rather than secret material.</p></div></div>
+        <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">
+          ${[['Calendar schedules','calendarSchedules'],['Approval escalation','approvalEscalation'],['Provider dry-run','providerDryRunAdapters'],['JIT secret broker','secretBrokerJit'],['Curated templates','curatedWorkflowTemplates']].map(([label,key]) => `<span class="badge ${operations.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}
+          <span class="badge badge-success"><i class="fas fa-shield" style="margin-right:4px"></i>No implicit apply</span>
+        </div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Calendar-aware schedules</h3></div><table class="data-table"><thead><tr><th>Name / workflow</th><th>Cron / timezone</th><th>Calendar</th><th>State</th></tr></thead><tbody>
+        ${(operations.schedules || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">workflow #${item.workflowId}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.cron)}<br>${Utils.escapeHtml(item.timezone)}</td><td>${item.holidays.length} holidays · ${item.blackoutWindows.length} blackouts</td><td><span class="badge ${item.enabled ? 'badge-success' : 'badge-secondary'}">${item.enabled ? 'enabled' : 'disabled'}</span></td></tr>`).join('') || this._empty('No automation schedules', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Timed approval evidence</h3></div><table class="data-table"><thead><tr><th>Action / target</th><th>Deadline</th><th>State</th><th></th></tr></thead><tbody>
+        ${(operations.approvals || []).map(item => `<tr><td><strong class="mono text-xs">${Utils.escapeHtml(item.actionKey)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.targetType)}:${Utils.escapeHtml(item.targetId)}</div></td><td>${new Date(item.dueAt).toLocaleString()}<div class="text-xs text-muted">${item.escalationCount} escalations</div></td><td><span class="badge ${item.state === 'approved' ? 'badge-success' : ['expired','rejected'].includes(item.state) ? 'badge-danger' : 'badge-warning'}">${item.state}</span></td><td>${['pending','escalated'].includes(item.state) ? `<button class="action-btn success" data-gc-ops-approve="${item.id}" title="Approve reviewed hash"><i class="fas fa-check"></i></button><button class="action-btn danger" data-gc-ops-reject="${item.id}" title="Reject"><i class="fas fa-times"></i></button>` : ''}</td></tr>`).join('') || this._empty('No timed approvals', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Provider dry-run evidence</h3></div><table class="data-table"><thead><tr><th>Provider / action</th><th>Target</th><th>Status</th><th>Evidence</th></tr></thead><tbody>
+        ${(operations.dryRuns || []).map(item => `<tr><td>${Utils.escapeHtml(item.providerType)}<div class="mono text-xs">${Utils.escapeHtml(item.actionKey)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.targetRef)}</td><td><span class="badge ${item.status === 'valid' ? 'badge-success' : item.status === 'unsupported' ? 'badge-secondary' : 'badge-danger'}">${item.status}</span></td><td class="mono text-xs">${item.requestHash.slice(0, 12)}</td></tr>`).join('') || this._empty('No provider dry-run evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>JIT secret brokers &amp; templates</h3></div><table class="data-table"><thead><tr><th>Name</th><th>Kind</th><th>Policy</th><th></th></tr></thead><tbody>
+        ${(operations.secretBrokers || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.secretReference)}</div></td><td>${Utils.escapeHtml(item.providerKind)}</td><td>${item.maxLeaseSeconds}s · ${item.allowedPurposes.length} purposes</td><td><button class="action-btn" data-gc-ops-probe="${item.id}" title="Probe without returning secret"><i class="fas fa-stethoscope"></i></button></td></tr>`).join('') || this._empty('No JIT secret brokers', 4)}</tbody></table>
+        <div style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">${(operations.workflowTemplates || []).map(item => `<span class="badge badge-secondary">${Utils.escapeHtml(item.category)} · ${Utils.escapeHtml(item.slug)}@${Utils.escapeHtml(item.version)}</span>`).join('')}</div></div>
+      </div>`;
+  },
+
+  _updates() {
+    const data = this._data.lifecycleUpdates || { capabilities: {}, inventory: [], supportRegistry: [], upgradePaths: [], catalog: [], prechecks: [], summary: {} };
+    const supportBadge = state => state === 'supported' ? 'badge-success' : state === 'eol' ? 'badge-warning' : 'badge-danger';
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-update-inventory"><i class="fas fa-boxes-stacked"></i> Record inventory</button>
+      <button class="btn btn-secondary btn-sm" id="gc-update-support"><i class="fas fa-calendar-xmark"></i> Support lifecycle</button>
+      <button class="btn btn-secondary btn-sm" id="gc-update-path"><i class="fas fa-route"></i> Upgrade path</button>
+      <button class="btn btn-secondary btn-sm" id="gc-update-catalog"><i class="fas fa-download"></i> Ingest official catalog</button>
+      <button class="btn btn-primary btn-sm" id="gc-update-precheck"><i class="fas fa-list-check"></i> Upgrade precheck</button>`) }
+      <div class="info-grid">
+        ${this._stat('fa-cubes-stacked', 'Inventory items', data.summary?.inventoryItems || 0)}
+        ${this._stat('fa-clock-rotate-left', 'Stale inventory', data.summary?.staleInventory || 0)}
+        ${this._stat('fa-triangle-exclamation', 'Unsupported lines', data.summary?.unsupportedVersions || 0)}
+        ${this._stat('fa-circle-check', 'Ready prechecks', data.summary?.readyPrechecks || 0)}
+      </div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Lifecycle readiness boundary</h3><p class="text-muted text-sm">Vendor evidence, supported hops and five-category prechecks are advisory. Docker Dash does not download packages or start an upgrade.</p></div></div>
+        <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${[['Version/build inventory','versionBuildInventory'],['Support registry','supportLifecycleRegistry'],['Upgrade advisor','upgradePathAdvisor'],['Official catalog ingestion','officialUpdateCatalogIngestion'],['Upgrade prechecks','upgradePrecheckFramework']].map(([label,key]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-shield" style="margin-right:4px"></i>No automatic upgrade</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Version &amp; build inventory</h3></div><table class="data-table"><thead><tr><th>Component</th><th>Product</th><th>Version / build</th><th>Freshness</th><th></th></tr></thead><tbody>
+        ${(data.inventory || []).map(item => `<tr><td>${Utils.escapeHtml(item.componentType)}<div class="text-xs text-muted">host ${item.providerHostId || 'global'}</div></td><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.source)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.version)}<br>${Utils.escapeHtml(item.build || '—')}</td><td><span class="badge ${item.ageSeconds <= 86400 ? 'badge-success' : 'badge-warning'}">${Math.floor(item.ageSeconds / 3600)}h old</span></td><td><button class="action-btn" data-gc-update-advise="${item.id}" title="Upgrade path advisor"><i class="fas fa-route"></i></button></td></tr>`).join('') || this._empty('No version/build inventory', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Support lifecycle registry</h3></div><table class="data-table"><thead><tr><th>Product / line</th><th>GA</th><th>EOL / EOS</th><th>State / target</th></tr></thead><tbody>
+        ${(data.supportRegistry || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.versionLine)}</div></td><td>${item.gaDate || '—'}</td><td>${item.eolDate || '—'}<br>${item.eosDate || '—'}</td><td><span class="badge ${supportBadge(item.state)}">${item.state}</span><div class="mono text-xs">→ ${Utils.escapeHtml(item.recommendedTarget || 'not set')}</div></td></tr>`).join('') || this._empty('No support lifecycle evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Official update catalog</h3></div><table class="data-table"><thead><tr><th>Advisory</th><th>Product</th><th>Kind / target</th><th>Severity</th></tr></thead><tbody>
+        ${(data.catalog || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.advisoryId)}</div></td><td>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</td><td>${Utils.escapeHtml(item.updateKind)}<div class="mono text-xs">${Utils.escapeHtml(item.targetVersion || 'all')}</div></td><td><span class="badge ${['critical','high'].includes(item.severity) ? 'badge-danger' : item.severity === 'medium' ? 'badge-warning' : 'badge-secondary'}">${item.severity}</span></td></tr>`).join('') || this._empty('No official update catalog evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Upgrade precheck evidence</h3></div><table class="data-table"><thead><tr><th>Inventory / target</th><th>Checks</th><th>Expiry</th><th>Status</th></tr></thead><tbody>
+        ${(data.prechecks || []).map(item => `<tr><td>#${item.inventoryId}<div class="mono text-xs">→ ${Utils.escapeHtml(item.targetVersion)}</div></td><td>${item.results.filter(result => result.passed).length}/${item.results.length}<div class="text-xs text-muted">health · capacity · backup · compatibility · space</div></td><td>${new Date(item.expiresAt).toLocaleString()}</td><td><span class="badge ${item.status === 'ready' && !item.stale ? 'badge-success' : 'badge-danger'}">${item.stale ? 'stale' : item.status}</span></td></tr>`).join('') || this._empty('No upgrade precheck evidence', 4)}</tbody></table></div>
       </div>`;
   },
 
@@ -326,6 +378,19 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-infra-terraform')?.addEventListener('click', () => this._terraformPlanDialog());
     this._container.querySelector('#gc-infra-ansible')?.addEventListener('click', () => this._downloadAnsibleInventory());
     this._container.querySelector('#gc-infra-webhook')?.addEventListener('click', () => this._infrastructureWebhookDialog());
+    this._container.querySelector('#gc-ops-schedule')?.addEventListener('click', () => this._automationScheduleDialog());
+    this._container.querySelector('#gc-ops-approval')?.addEventListener('click', () => this._automationApprovalDialog());
+    this._container.querySelector('#gc-ops-dry-run')?.addEventListener('click', () => this._automationDryRunDialog());
+    this._container.querySelector('#gc-ops-broker')?.addEventListener('click', () => this._automationBrokerDialog());
+    this._container.querySelector('#gc-ops-template')?.addEventListener('click', () => this._automationTemplateDialog());
+    this._container.querySelectorAll('[data-gc-ops-probe]').forEach(button => button.addEventListener('click', () => this._probeAutomationBroker(button.dataset.gcOpsProbe)));
+    for (const decision of ['approve', 'reject']) this._container.querySelectorAll(`[data-gc-ops-${decision}]`).forEach(button => button.addEventListener('click', () => this._decideAutomationApproval(button.dataset[`gcOps${decision[0].toUpperCase()}${decision.slice(1)}`], decision)));
+    this._container.querySelector('#gc-update-inventory')?.addEventListener('click', () => this._lifecycleInventoryDialog());
+    this._container.querySelector('#gc-update-support')?.addEventListener('click', () => this._lifecycleSupportDialog());
+    this._container.querySelector('#gc-update-path')?.addEventListener('click', () => this._lifecyclePathDialog());
+    this._container.querySelector('#gc-update-catalog')?.addEventListener('click', () => this._lifecycleCatalogDialog());
+    this._container.querySelector('#gc-update-precheck')?.addEventListener('click', () => this._lifecyclePrecheckDialog());
+    this._container.querySelectorAll('[data-gc-update-advise]').forEach(button => button.addEventListener('click', () => this._lifecycleAdvisorDialog(button.dataset.gcUpdateAdvise)));
     this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
       try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1021,5 +1086,178 @@ const GovernanceControlsPage = {
     if (!result) return;
     Modal.open(`<div class="modal-header"><h3>Save webhook credentials now</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><p>Endpoint</p><input class="form-control mono" readonly value="${Utils.escapeHtml(`${location.origin}/api/automation/webhooks/${result.token}`)}"><p style="margin-top:12px">HMAC secret</p><input class="form-control mono" readonly value="${Utils.escapeHtml(result.secret)}"><p class="text-muted text-sm">Signature input: timestamp.nonce.event.raw-body. These values will not be shown again.</p></div>`, { width: '850px' });
     Modal._content.querySelector('#gc-close').addEventListener('click', () => { Modal.close(); this.render(this._container); });
+  },
+
+  async _automationScheduleDialog() {
+    const workflows = this._data.infrastructureAutomation?.workflows || [];
+    if (!workflows.length) return Toast.warning('Create or instantiate a workflow first');
+    const result = await Modal.form(`<p class="text-muted text-sm">A matching minute creates ready/suppressed evidence only; it does not execute the workflow.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-schedule-name" class="form-control" value="maintenance-calendar"></div><div class="form-group"><label>Workflow</label><select id="gc-schedule-workflow" class="form-control">${workflows.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.name)} @ ${Utils.escapeHtml(item.version)}</option>`).join('')}</select></div></div>
+      <div class="form-row"><div class="form-group"><label>Five-field cron</label><input id="gc-schedule-cron" class="form-control mono" value="0 2 * * 1-5"></div><div class="form-group"><label>IANA timezone</label><input id="gc-schedule-zone" class="form-control mono" value="Europe/Bucharest"></div></div>
+      <div class="form-group"><label>Holiday dates JSON</label><textarea id="gc-schedule-holidays" class="form-control mono" rows="3">[]</textarea></div>
+      <div class="form-group"><label>Blackout windows JSON</label><textarea id="gc-schedule-blackouts" class="form-control mono" rows="5">[{"name":"night-freeze","weekdays":[0,6],"start":"00:00","end":"23:59"}]</textarea></div>
+      <label><input type="checkbox" id="gc-schedule-enabled"> Enable schedule</label>`,
+    { title: 'Calendar-aware workflow schedule', width: '900px', onSubmit: c => this._submit(() => Api.createInfrastructureSchedule({
+      name: c.querySelector('#gc-schedule-name').value, workflowId: Number(c.querySelector('#gc-schedule-workflow').value),
+      cron: c.querySelector('#gc-schedule-cron').value, timezone: c.querySelector('#gc-schedule-zone').value,
+      holidays: JSON.parse(c.querySelector('#gc-schedule-holidays').value), blackoutWindows: JSON.parse(c.querySelector('#gc-schedule-blackouts').value),
+      enabled: c.querySelector('#gc-schedule-enabled').checked,
+    })) });
+    if (result) { Toast.success('Schedule saved; no workflow execution started'); await this.render(this._container); }
+  },
+
+  async _automationApprovalDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Expiry can reassign or escalate, but approval never starts apply implicitly.</p>
+      <div class="form-row"><div class="form-group"><label>Action key</label><input id="gc-op-approval-action" class="form-control mono" value="host.maintenance"></div><div class="form-group"><label>Target type / ID</label><input id="gc-op-approval-target" class="form-control mono" value="host:7"></div></div>
+      <div class="form-group"><label>Reviewed payload JSON</label><textarea id="gc-op-approval-payload" class="form-control mono" rows="6">{"mode":"maintenance"}</textarea></div>
+      <div class="form-row"><div class="form-group"><label>Due minutes</label><input id="gc-op-approval-due" type="number" min="1" value="60" class="form-control"></div><div class="form-group"><label>Escalation user</label><select id="gc-op-approval-escalation" class="form-control"><option value="">None (expire)</option>${this._userOptions()}</select></div></div>`,
+    { title: 'Timed automation approval', width: '800px', onSubmit: c => { const [targetType, ...target] = c.querySelector('#gc-op-approval-target').value.split(':'); return this._submit(() => Api.createInfrastructureApproval({
+      actionKey: c.querySelector('#gc-op-approval-action').value, targetType, targetId: target.join(':'),
+      payload: JSON.parse(c.querySelector('#gc-op-approval-payload').value), dueMinutes: Number(c.querySelector('#gc-op-approval-due').value),
+      escalationUserId: Number(c.querySelector('#gc-op-approval-escalation').value) || undefined,
+    })); } });
+    if (result) { Toast.success('Timed approval saved; apply remains separate'); await this.render(this._container); }
+  },
+
+  async _decideAutomationApproval(id, decision) {
+    const item = this._data.infrastructureAutomation?.operations?.approvals?.find(row => row.id === Number(id));
+    if (!item) return Toast.error('Approval evidence is no longer available');
+    if (!await Modal.confirm(`${decision === 'approve' ? 'Approve' : 'Reject'} reviewed payload ${item.payloadHash.slice(0, 12)}? This does not start apply.`, { danger: decision === 'reject' })) return;
+    try { await Api.decideInfrastructureApproval(item.id, { decision: decision === 'approve' ? 'approved' : 'rejected', payloadHash: item.payloadHash }); Toast.success('Decision recorded; no apply started'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _automationDryRunDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">If no native validate/simulate adapter exists, the result is explicitly unsupported.</p>
+      <div class="form-row"><div class="form-group"><label>Provider type</label><input id="gc-dry-provider" class="form-control" value="proxmox"></div><div class="form-group"><label>Adapter</label><input id="gc-dry-adapter" class="form-control" value="native"></div></div>
+      <div class="form-row"><div class="form-group"><label>Action key</label><input id="gc-dry-action" class="form-control mono" value="vm.resize"></div><div class="form-group"><label>Target reference</label><input id="gc-dry-target" class="form-control mono" value="vm-101"></div></div>
+      <div class="form-group"><label>Secret-free request JSON</label><textarea id="gc-dry-request" class="form-control mono" rows="8">{"cpu":4,"memoryBytes":8589934592}</textarea></div>`,
+    { title: 'Provider validate / simulate', width: '850px', onSubmit: c => this._submit(() => Api.createInfrastructureDryRun({
+      providerType: c.querySelector('#gc-dry-provider').value, adapterKey: c.querySelector('#gc-dry-adapter').value,
+      actionKey: c.querySelector('#gc-dry-action').value, targetRef: c.querySelector('#gc-dry-target').value,
+      request: JSON.parse(c.querySelector('#gc-dry-request').value),
+    })) });
+    if (result) { Toast.success(`Dry-run evidence: ${result.evidence.status}; provider mutation not started`); await this.render(this._container); }
+  },
+
+  async _automationBrokerDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Only a provider reference is stored. Environment references must start with DD_BROKER_SECRET_.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-broker-name" class="form-control" value="automation-secret"></div><div class="form-group"><label>Provider</label><select id="gc-broker-kind" class="form-control"><option value="environment">Environment</option><option value="vault">Vault</option><option value="aws_secrets_manager">AWS Secrets Manager</option><option value="azure_key_vault">Azure Key Vault</option></select></div></div>
+      <div class="form-group"><label>Secret reference (never the value)</label><input id="gc-broker-reference" class="form-control mono" value="DD_BROKER_SECRET_AUTOMATION"></div>
+      <div class="form-row"><div class="form-group"><label>Allowed purposes</label><input id="gc-broker-purposes" class="form-control mono" value="backup.execute"></div><div class="form-group"><label>Maximum lease seconds</label><input id="gc-broker-ttl" type="number" min="1" max="300" value="60" class="form-control"></div></div>`,
+    { title: 'JIT automation secret broker', width: '850px', onSubmit: c => this._submit(() => Api.createInfrastructureSecretBroker({
+      name: c.querySelector('#gc-broker-name').value, providerKind: c.querySelector('#gc-broker-kind').value,
+      secretReference: c.querySelector('#gc-broker-reference').value,
+      allowedPurposes: c.querySelector('#gc-broker-purposes').value.split(',').map(value => value.trim()).filter(Boolean),
+      maxLeaseSeconds: Number(c.querySelector('#gc-broker-ttl').value),
+    })) });
+    if (result) { Toast.success('Secret reference policy saved; no secret value stored'); await this.render(this._container); }
+  },
+
+  async _probeAutomationBroker(id) {
+    const broker = this._data.infrastructureAutomation?.operations?.secretBrokers?.find(item => item.id === Number(id));
+    if (!broker) return Toast.error('Secret broker is no longer available');
+    const purpose = broker.allowedPurposes[0];
+    try { const result = await Api.probeInfrastructureSecretBroker(id, purpose); Toast.success(`Available until ${new Date(result.expiresAt).toLocaleTimeString()} · fingerprint ${result.fingerprint}`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _automationTemplateDialog() {
+    const templates = this._data.infrastructureAutomation?.operations?.workflowTemplates || [];
+    if (!templates.length) return Toast.warning('No curated templates are available');
+    const chosen = await Modal.form(`<div class="form-group"><label>Curated template</label><select id="gc-template-id" class="form-control">${templates.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.category)} · ${Utils.escapeHtml(item.slug)}@${Utils.escapeHtml(item.version)}</option>`).join('')}</select></div>`,
+      { title: 'Choose workflow template', confirmText: 'Continue', onSubmit: c => Number(c.querySelector('#gc-template-id').value) });
+    if (!chosen) return; const template = templates.find(item => item.id === chosen);
+    const defaults = Object.fromEntries(template.parameters.map(parameter => [parameter, parameter.endsWith('Id') ? '7' : 'target']));
+    const result = await Modal.form(`<p>${Utils.escapeHtml(template.description)}</p><div class="form-row"><div class="form-group"><label>Workflow name</label><input id="gc-template-name" class="form-control" value="${Utils.escapeHtml(template.slug)}-${Date.now()}"></div><div class="form-group"><label>Version</label><input id="gc-template-version" class="form-control" value="${Utils.escapeHtml(template.version)}"></div></div><div class="form-group"><label>Parameters JSON</label><textarea id="gc-template-params" class="form-control mono" rows="8">${Utils.escapeHtml(JSON.stringify(defaults, null, 2))}</textarea></div>`,
+    { title: `Instantiate ${template.slug}`, width: '800px', onSubmit: c => this._submit(() => Api.instantiateInfrastructureTemplate(template.id, {
+      name: c.querySelector('#gc-template-name').value, version: c.querySelector('#gc-template-version').value,
+      parameters: JSON.parse(c.querySelector('#gc-template-params').value),
+    })) });
+    if (result) { Toast.success('Curated workflow instantiated; execution not started'); await this.render(this._container); }
+  },
+
+  async _lifecycleInventoryDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Component type</label><select id="gc-life-component" class="form-control"><option value="host">Host</option><option value="control_plane">Control plane</option><option value="tool">Tool</option><option value="firmware">Firmware</option></select></div><div class="form-group"><label>Provider host ID (0 = global)</label><input id="gc-life-host" type="number" min="0" value="0" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-life-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Product</label><input id="gc-life-product" class="form-control" value="Hypervisor"></div></div>
+      <div class="form-row"><div class="form-group"><label>Version</label><input id="gc-life-version" class="form-control mono" value="1.0.0"></div><div class="form-group"><label>Build</label><input id="gc-life-build" class="form-control mono" value="build-1"></div></div>
+      <div class="form-group"><label>Evidence source</label><input id="gc-life-source" class="form-control mono" value="provider-api"></div>`,
+    { title: 'Record version & build evidence', width: '800px', onSubmit: c => this._submit(() => Api.recordLifecycleInventory({
+      componentType: c.querySelector('#gc-life-component').value, providerHostId: Number(c.querySelector('#gc-life-host').value),
+      vendor: c.querySelector('#gc-life-vendor').value, product: c.querySelector('#gc-life-product').value,
+      version: c.querySelector('#gc-life-version').value, build: c.querySelector('#gc-life-build').value,
+      source: c.querySelector('#gc-life-source').value, observedAt: new Date().toISOString(), evidence: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success('Version/build evidence recorded'); await this.render(this._container); }
+  },
+
+  async _lifecycleSupportDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-support-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Product</label><input id="gc-support-product" class="form-control" value="Hypervisor"></div><div class="form-group"><label>Version line</label><input id="gc-support-line" class="form-control mono" value="1"></div></div>
+      <div class="form-row"><div class="form-group"><label>GA date</label><input id="gc-support-ga" type="date" class="form-control"></div><div class="form-group"><label>EOL date</label><input id="gc-support-eol" type="date" class="form-control"></div><div class="form-group"><label>EOS date</label><input id="gc-support-eos" type="date" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Recommended target</label><input id="gc-support-target" class="form-control mono" value="2.0"></div><div class="form-group"><label>Official HTTPS source</label><input id="gc-support-url" class="form-control mono" value="https://vendor.example/support"></div></div>`,
+    { title: 'Support lifecycle evidence', width: '900px', onSubmit: c => this._submit(() => Api.saveLifecycleSupport({
+      vendor: c.querySelector('#gc-support-vendor').value, product: c.querySelector('#gc-support-product').value,
+      versionLine: c.querySelector('#gc-support-line').value, gaDate: c.querySelector('#gc-support-ga').value || undefined,
+      eolDate: c.querySelector('#gc-support-eol').value || undefined, eosDate: c.querySelector('#gc-support-eos').value || undefined,
+      recommendedTarget: c.querySelector('#gc-support-target').value, sourceUrl: c.querySelector('#gc-support-url').value,
+      retrievedAt: new Date().toISOString(),
+    })) });
+    if (result) { Toast.success('Support lifecycle registry updated'); await this.render(this._container); }
+  },
+
+  async _lifecyclePathDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-path-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Product</label><input id="gc-path-product" class="form-control" value="Hypervisor"></div></div>
+      <div class="form-row"><div class="form-group"><label>From version</label><input id="gc-path-from" class="form-control mono" value="1.0"></div><div class="form-group"><label>To version</label><input id="gc-path-to" class="form-control mono" value="2.0"></div></div>
+      <div class="form-group"><label>Supported hops (comma-separated)</label><input id="gc-path-hops" class="form-control mono" value="1.0,1.5,2.0"></div>
+      <div class="form-group"><label>Prerequisites (one per line)</label><textarea id="gc-path-prereq" class="form-control" rows="3">Verified backup</textarea></div>
+      <div class="form-group"><label>Known blockers (one per line)</label><textarea id="gc-path-blockers" class="form-control" rows="3"></textarea></div>
+      <div class="form-group"><label>Official HTTPS source</label><input id="gc-path-url" class="form-control mono" value="https://vendor.example/upgrade"></div>`,
+    { title: 'Vendor-supported upgrade path', width: '850px', onSubmit: c => this._submit(() => Api.saveLifecycleUpgradePath({
+      vendor: c.querySelector('#gc-path-vendor').value, product: c.querySelector('#gc-path-product').value,
+      fromVersion: c.querySelector('#gc-path-from').value, toVersion: c.querySelector('#gc-path-to').value,
+      supportedHops: c.querySelector('#gc-path-hops').value.split(',').map(value => value.trim()).filter(Boolean),
+      prerequisites: c.querySelector('#gc-path-prereq').value.split('\n').map(value => value.trim()).filter(Boolean),
+      blockers: c.querySelector('#gc-path-blockers').value.split('\n').map(value => value.trim()).filter(Boolean),
+      sourceUrl: c.querySelector('#gc-path-url').value,
+    })) });
+    if (result) { Toast.success('Upgrade path evidence saved'); await this.render(this._container); }
+  },
+
+  async _lifecycleCatalogDialog() {
+    const sample = [{ advisoryId: 'ADV-2026-001', title: 'Vendor update bundle', updateKind: 'bundle', targetVersion: '2.0', severity: 'high', publishedAt: new Date().toISOString(), metadata: {} }];
+    const result = await Modal.form(`<p class="text-muted text-sm">Only evidence labelled official_vendor is accepted. Ingestion does not download or install packages.</p>
+      <div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-catalog-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Product</label><input id="gc-catalog-product" class="form-control" value="Hypervisor"></div></div>
+      <div class="form-group"><label>Official HTTPS feed URL</label><input id="gc-catalog-url" class="form-control mono" value="https://vendor.example/advisories"></div>
+      <div class="form-group"><label>Normalized catalog items JSON</label><textarea id="gc-catalog-items" class="form-control mono" rows="14">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>`,
+    { title: 'Ingest official update catalog', width: '900px', onSubmit: c => this._submit(() => Api.ingestLifecycleUpdateCatalog({
+      vendor: c.querySelector('#gc-catalog-vendor').value, product: c.querySelector('#gc-catalog-product').value,
+      sourceKind: 'official_vendor', sourceUrl: c.querySelector('#gc-catalog-url').value,
+      items: JSON.parse(c.querySelector('#gc-catalog-items').value),
+    })) });
+    if (result) { Toast.success(`${result.created} created, ${result.updated} updated; no packages installed`); await this.render(this._container); }
+  },
+
+  async _lifecyclePrecheckDialog() {
+    const inventory = this._data.lifecycleUpdates?.inventory || [];
+    if (!inventory.length) return Toast.warning('Record version inventory first');
+    const evidence = { health: { status: 'healthy' }, capacity: { headroomPercent: 30, requiredHeadroomPercent: 20 },
+      backup: { verified: true, ageHours: 2 }, compatibility: { compatible: true },
+      freeSpace: { availableBytes: 21474836480, requiredBytes: 10737418240 } };
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Inventory item</label><select id="gc-precheck-inventory" class="form-control">${inventory.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)} ${Utils.escapeHtml(item.version)}</option>`).join('')}</select></div><div class="form-group"><label>Target version</label><input id="gc-precheck-target" class="form-control mono"></div></div>
+      <div class="form-group"><label>Fresh precheck evidence JSON</label><textarea id="gc-precheck-evidence" class="form-control mono" rows="16">${Utils.escapeHtml(JSON.stringify(evidence, null, 2))}</textarea></div>`,
+    { title: 'Non-mutating upgrade precheck', width: '900px', onSubmit: c => this._submit(() => Api.runLifecycleUpgradePrecheck({
+      inventoryId: Number(c.querySelector('#gc-precheck-inventory').value), targetVersion: c.querySelector('#gc-precheck-target').value,
+      evidence: JSON.parse(c.querySelector('#gc-precheck-evidence').value),
+    })) });
+    if (result) { Toast.success(`Upgrade precheck: ${result.precheck.status}; upgrade not started`); await this.render(this._container); }
+  },
+
+  async _lifecycleAdvisorDialog(id) {
+    const target = await Modal.form('<div class="form-group"><label>Target version</label><input id="gc-advisor-target" class="form-control mono"></div>',
+      { title: 'Upgrade path advisor', confirmText: 'Evaluate', onSubmit: c => c.querySelector('#gc-advisor-target').value });
+    if (!target) return;
+    try {
+      const result = await Api.getLifecycleUpgradeAdvice(id, target);
+      Modal.open(`<div class="modal-header"><h3>Upgrade advice · ${Utils.escapeHtml(result.status)}</h3><button class="modal-close-btn" id="gc-close-advisor"><i class="fas fa-times"></i></button></div><div class="modal-body"><p class="text-muted">Advisory only; upgrade was not started.</p><pre class="code-block">${Utils.escapeHtml(JSON.stringify(result, null, 2))}</pre></div>`, { width: '920px' });
+      Modal._content.querySelector('#gc-close-advisor').addEventListener('click', () => Modal.close());
+    } catch (error) { Toast.error(error.message); }
   },
 };

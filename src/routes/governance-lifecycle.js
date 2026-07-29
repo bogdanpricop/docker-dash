@@ -148,4 +148,8 @@ router.use('/observability', require('./vm-observability'));
 // stale-safe plans, workflow DAGs and compensation planning.
 router.use('/automation', require('./infrastructure-automation'));
 
+// V0.3d / B251-B255 — version/build inventory, support lifecycle, upgrade
+// advice, official catalog evidence and non-mutating upgrade prechecks.
+router.use('/updates', require('./lifecycle-updates'));
+
 module.exports = router;

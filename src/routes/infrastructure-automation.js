@@ -4,12 +4,13 @@ const { Router } = require('express');
 const { writeable } = require('../middleware/auth');
 const automation = require('../services/infrastructure-automation');
 const delivery = require('../services/infrastructure-delivery');
+const operations = require('../services/infrastructure-operations');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 
 const router = Router();
 function route(handler) { return async (req, res, next) => { try { await handler(req, res); } catch (error) {
-  if (['InfrastructureAutomationError', 'InfrastructureDeliveryError'].includes(error.name)) return res.status(error.status || 400)
+  if (['InfrastructureAutomationError', 'InfrastructureDeliveryError', 'InfrastructureOperationsError'].includes(error.name)) return res.status(error.status || 400)
     .json({ error: error.message, code: error.code, details: error.details }); next(error);
 } }; }
 function audit(req, action, targetType, targetId, details = {}) {
@@ -17,7 +18,8 @@ function audit(req, action, targetType, targetId, details = {}) {
     details, ip: getClientIp(req) });
 }
 
-router.get('/', route((req, res) => res.json({ ...automation.overview(req.user), delivery: delivery.overview(req.user) })));
+router.get('/', route((req, res) => res.json({ ...automation.overview(req.user), delivery: delivery.overview(req.user),
+  operations: operations.overview(req.user) })));
 router.post('/manifests/validate', route((req, res) => res.json(automation.validateManifest(req.body?.document || req.body, req.user))));
 router.get('/manifests', route((req, res) => res.json({ manifests: automation.manifests(req.user) })));
 router.get('/manifests/:id', route((req, res) => res.json({ manifest: automation.manifest(req.params.id, req.user) })));
@@ -162,5 +164,9 @@ router.post('/webhook-triggers', writeable, route((req, res) => {
     { name: result.trigger.name, procedureId: result.trigger.procedureId, events: result.trigger.events, shownOnce: true });
   res.status(201).json(result);
 }));
+
+// V0.3d / B246-B250 — calendar-aware triggers, approval escalation,
+// provider dry-run evidence, JIT secret brokering and curated templates.
+router.use('/operations', require('./infrastructure-operations'));
 
 module.exports = router;

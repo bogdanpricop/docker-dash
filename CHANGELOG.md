@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.57.0] - 2026-07-29 — Automation operations and lifecycle readiness
+
+The B246–B255 batch closes the automation research section and starts the
+lifecycle/update track with durable, non-mutating operational evidence.
+
+- Calendar-aware workflow schedules validate five-field cron and IANA timezone,
+  suppress holidays/blackouts and deduplicate evidence per minute without
+  launching workflow execution.
+- Timed approvals can reassign, escalate and expire; decision requires the
+  reviewed payload hash and never implies apply.
+- Provider validate/simulate adapters persist bounded dry-run evidence and
+  return explicit `unsupported` when no native adapter exists.
+- The secret broker stores references only, fetches just in time, restricts
+  purpose/TTL, zeroes memory buffers and audits fingerprints without returning
+  secret values. Five curated workflow DAGs cover maintenance, migration,
+  backup, security and upgrade readiness.
+- Version/build inventory, GA/EOL/EOS support registry and vendor-supported
+  upgrade paths provide freshness, hop, prerequisite and blocker evidence.
+- Official-vendor catalog ingestion normalizes advisories without installing
+  packages. Expiring upgrade prechecks cover health, capacity, verified backup,
+  compatibility, free space and inventory freshness without starting upgrades.
+
 ## [8.56.0] - 2026-07-29 — Infrastructure delivery and GitOps safeguards
 
 The B236–B245 batch extends infrastructure intent into guarded delivery

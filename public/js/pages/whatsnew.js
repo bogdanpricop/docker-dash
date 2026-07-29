@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.57.0', date: '2026-07-29', title: 'Automation operations and lifecycle readiness', changes: [
+      { type: 'feature', text: 'Calendar schedules understand cron, IANA timezones, holidays and blackout windows while producing idempotent evidence without automatically executing workflows.' },
+      { type: 'security', text: 'Timed approvals escalate or expire without implicit apply; provider dry-runs are explicit about unsupported adapters and never fall back to mutation.' },
+      { type: 'security', text: 'The JIT secret broker stores references only, enforces purpose/TTL, zeroes memory buffers and returns fingerprints rather than secret values.' },
+      { type: 'feature', text: 'Five curated workflow DAGs cover maintenance, migration, verified backup, reviewed security remediation and upgrade readiness.' },
+      { type: 'feature', text: 'Version/build inventory, GA/EOL/EOS registry, supported upgrade hops and official update catalogs feed expiring health/capacity/backup/compatibility/free-space prechecks.' },
+    ] },
     { version: '8.56.0', date: '2026-07-29', title: 'Infrastructure delivery and GitOps safeguards', changes: [
       { type: 'feature', text: 'Storage/network manifests add explicit ownership and deletion protection; deterministic live import and semantic drift preserve unmanaged boundaries.' },
       { type: 'feature', text: 'Manual reconcile retains commit and diff evidence, revalidates fresh state, and can reference only existing durable provider operations.' },
