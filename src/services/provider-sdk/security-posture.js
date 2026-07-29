@@ -27,6 +27,10 @@ function _consoleExposure(features = {}) {
   const available = ['supported', 'conditional'].includes(feature.state);
   return { state: feature.state || 'unknown', available, protocols: Array.isArray(feature.protocols) ? feature.protocols.slice(0, 8) : [], clients: Array.isArray(feature.clients) ? feature.clients.slice(0, 8) : [], singleUseToken: feature.singleUseToken === true, credentialIsolation: feature.credentialIsolation === 'server-side', emergencyLock: feature.emergencyLock === true, reason: feature.reason || null };
 }
+function _taskAssurance(features = {}) {
+  const entries = Object.values(features).filter(feature => feature?.state !== 'unsupported' && (feature?.durableTask === true || feature?.cancel === true || feature?.postVerify === true));
+  return { declaredTaskFeatures: entries.length, durable: entries.filter(feature => feature.durableTask === true).length, cancellable: entries.filter(feature => feature.cancel === true).length, postVerified: entries.filter(feature => feature.postVerify === true).length, revalidated: entries.filter(feature => feature.revalidate === true).length };
+}
 
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
@@ -37,8 +41,9 @@ async function postureForHost(host, options = {}) {
     safeguards: _safeguards(capabilities.features),
     recovery: _recovery(capabilities.features),
     consoleExposure: _consoleExposure(capabilities.features),
+    taskAssurance: _taskAssurance(capabilities.features),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance } };

@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.42.0', date: '2026-07-29', title: 'Native task assurance evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture summarizes declared durable-task, cancellation, post-verification, and revalidation properties.' },
+      { type: 'improvement', text: 'Task-contract evidence remains distinct from task history, health, or reconciliation outcomes.' },
+      { type: 'security', text: 'No provider task is started, cancelled, retried, or modified.' },
+    ] },
     { version: '8.41.0', date: '2026-07-29', title: 'Console exposure safeguard evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture shows declared console single-use-token, credential-isolation, and emergency-lock safeguards.' },
       { type: 'improvement', text: 'Console contract evidence is clearly separated from a live-console or endpoint-hardening result.' },

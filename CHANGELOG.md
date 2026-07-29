@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.42.0] - 2026-07-29 — Native task assurance evidence
+
+Provider Security Posture now summarizes declared durable-task, cancellation,
+post-verification, and revalidation properties for eligible provider operations.
+
+- It is not a task history, task health, or reconciliation result.
+- No task is started, cancelled, retried, or modified.
+
 ## [8.41.0] - 2026-07-29 — Console exposure safeguard evidence
 
 Provider Security Posture now shows declared console-gateway safeguards: single-use
