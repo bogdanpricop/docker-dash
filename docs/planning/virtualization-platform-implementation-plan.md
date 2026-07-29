@@ -349,5 +349,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V4.5k | `243b088` | push + tag `v8.46.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | freshness pentru evidența returnată, fără refresh sau probe noi |
 | V4.5l | `fef215a` | push + tag `v8.47.0` | LAN `8.47.0-fef215a` healthy; backup SQLite verificat | VPS `8.47.0-fef215a` healthy; backup SQLite verificat | dashboard consolidat, fără colectări sau mutații suplimentare |
 | V4.6a | `b2a81a1` | push + tag `v8.49.0` | LAN `8.49.0-b2a81a1` healthy; backup SQLite verificat | VPS `8.49.0-b2a81a1` healthy; backup SQLite verificat | B176–B185: catalog/roluri/scope delegation, projects, invitații, ownership și cote CPU/RAM/storage fără mutații provider |
+| V4.6b | `4b08bd0` | push + tag `v8.50.0` | LAN `8.50.0-4b08bd0` healthy; backup SQLite verificat | VPS `8.50.0-4b08bd0` healthy; backup SQLite verificat | B186–B195: cote network/backup/GPU, quota requests, federation/SCIM/tokens/workload identity, approvals și blackout windows |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
