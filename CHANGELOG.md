@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.53.0] - 2026-07-29 — VM observability and event correlation
+
+The next ten market-backlog capabilities, B206–B215, turn the normalized VM
+telemetry foundation into bounded performance, event and correlation views.
+
+- VM performance comparison charts support up to ten resources, twelve metrics,
+  31 days, downsampling and normalized event annotations.
+- Contention, storage and network dashboards expose ready/steal/balloon/swap,
+  latency/IOPS/queue/resync and throughput/drop/error/flow/MTU evidence.
+- Six cursor/watch/webhook/poll event adapters normalize caller-supplied
+  observations and deduplicate them by native ID or a bounded fingerprint
+  window while retaining repeat counts.
+- Correlation and VM incident timelines combine normalized events, audit
+  changes, existing alerts and metric evidence.
+- Fabric topology edges produce bounded downstream impact overlays; multi-signal
+  rules combine metric, event and collection-state conditions with duration
+  evidence and create advisory, explainable alerts.
+
 ## [8.52.0] - 2026-07-29 — Governance lifecycle and VM metrics foundation
 
 The next ten market-backlog controls, B196–B205, close the governance lifecycle

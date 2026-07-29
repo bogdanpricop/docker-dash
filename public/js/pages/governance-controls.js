@@ -11,16 +11,22 @@ const GovernanceControlsPage = {
     container.innerHTML = '<div class="page-loading"><i class="fas fa-spinner fa-spin"></i></div>';
     try {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
-        governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness] = await Promise.all([
+        governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
+        observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
         Api.getSeparationOfDutiesReport(), Api.listAccessReviewCampaigns(), Api.getVmMetricFreshness(),
+        Api.getVmObservabilityCatalog(), Api.getVmPerformanceDashboard('contention'), Api.getVmPerformanceDashboard('storage'),
+        Api.getVmPerformanceDashboard('network'), Api.listVmObservabilityEvents({ limit: 100 }), Api.getVmSignalRules(),
+        Api.getVmObservabilityTopology(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
         tokens: tokens.tokens || [], trusts: trusts.trusts || [], governanceCatalog, subjects,
-        lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness };
+        lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
+        observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
+        signalState, topology };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -45,6 +51,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('blackouts', 'fa-ban', 'Blackouts')}
         ${this._tabButton('lifecycle', 'fa-arrows-rotate', 'Lifecycle')}
         ${this._tabButton('metrics', 'fa-chart-line', 'VM metrics')}
+        ${this._tabButton('observability', 'fa-wave-square', 'Observability')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -56,6 +63,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'blackouts') return this._blackouts();
     if (this._tab === 'lifecycle') return this._lifecycle();
     if (this._tab === 'metrics') return this._metrics();
+    if (this._tab === 'observability') return this._observability();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -136,6 +144,35 @@ const GovernanceControlsPage = {
       ${resources.map(item => `<tr><td class="mono text-sm">${Utils.escapeHtml(item.resource_key)}</td><td>${Utils.escapeHtml(item.provider)}<div class="mono text-xs">${Utils.escapeHtml(item.adapter)}</div></td><td>${item.last_sample_at ? new Date(item.last_sample_at).toLocaleString() : 'never'}${item.last_error ? `<div class="text-xs text-danger">${Utils.escapeHtml(item.last_error)}</div>` : ''}</td><td>${item.lagSeconds == null ? '—' : `${item.lagSeconds}s`}</td><td>${item.accepted_samples} / ${item.dropped_samples}</td><td><span class="badge ${statusBadge(item.status)}">${item.status}</span></td></tr>`).join('') || this._empty('No VM metrics have been ingested yet', 6)}</tbody></table></div>`;
   },
 
+  _observability() {
+    const contention = this._data.contention.rows || [];
+    const storage = this._data.storagePerformance.rows || [];
+    const network = this._data.networkPerformance.rows || [];
+    const badge = status => status === 'normal' ? 'badge-success' : status === 'contended' || status === 'degraded' ? 'badge-warning' : 'badge-secondary';
+    const ratio = value => value == null ? '—' : `${(value * 100).toFixed(1)}%`;
+    const rate = value => value == null ? '—' : `${Utils.formatBytes(value)}/s`;
+    const signals = row => (row.signals || []).map(item => `<span class="badge badge-warning">${Utils.escapeHtml(item)}</span>`).join(' ') || '<span class="text-muted">none</span>';
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-performance-chart"><i class="fas fa-chart-line"></i> Performance chart</button>
+      <button class="btn btn-secondary btn-sm" id="gc-event-ingest"><i class="fas fa-inbox"></i> Ingest event</button>
+      <button class="btn btn-secondary btn-sm" id="gc-timeline"><i class="fas fa-timeline"></i> Correlation timeline</button>
+      <button class="btn btn-secondary btn-sm" id="gc-topology-edge"><i class="fas fa-diagram-project"></i> Topology edge</button>
+      <button class="btn btn-secondary btn-sm" id="gc-signal-rule"><i class="fas fa-bell"></i> Multi-signal rule</button>
+      <button class="btn btn-primary btn-sm" id="gc-evaluate-signals"><i class="fas fa-play"></i> Evaluate rules</button>`) }
+      <div class="card"><div class="card-header"><div><h3>Unified event adapters and correlation</h3><p class="text-muted text-sm">Cursor/watch/webhook/poll observations are normalized locally, deduplicated and retained as evidence. No provider mutation is performed.</p></div></div>
+      <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${this._data.observabilityCatalog.eventAdapters.map(item => `<span class="badge badge-secondary" title="${Utils.escapeHtml(item.transport)}">${Utils.escapeHtml(item.key)} · ${Utils.escapeHtml(item.cursorKind)}</span>`).join('')}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Host contention</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>CPU / ready / steal</th><th>Signals</th><th>Neighbor</th></tr></thead><tbody>
+        ${contention.map(row => `<tr><td class="mono">${Utils.escapeHtml(row.resourceKey)}<br><span class="badge ${badge(row.status)}">${row.status}</span></td><td>${ratio(row.cpuUtilizationRatio)} / ${ratio(row.cpuReadyRatio)} / ${ratio(row.cpuStealRatio)}</td><td>${signals(row)}</td><td class="mono text-xs">${Utils.escapeHtml(row.noisyNeighbor?.resourceKey || '—')}</td></tr>`).join('') || this._empty('No contention metrics', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Storage performance</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Read / write</th><th>Latency / queue</th><th>Signals</th></tr></thead><tbody>
+        ${storage.map(row => `<tr><td class="mono">${Utils.escapeHtml(row.resourceKey)}<br><span class="badge ${badge(row.status)}">${row.status}</span></td><td>${rate(row.readBytesPerSecond)} / ${rate(row.writeBytesPerSecond)}<div class="text-xs text-muted">${row.readIops == null ? '—' : row.readIops.toFixed(1)} / ${row.writeIops == null ? '—' : row.writeIops.toFixed(1)} IOPS</div></td><td>${row.readLatencySeconds == null ? '—' : `${(row.readLatencySeconds * 1000).toFixed(1)} ms`} / ${row.queueDepth ?? '—'}</td><td>${signals(row)}</td></tr>`).join('') || this._empty('No storage metrics', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Network performance</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Receive / transmit</th><th>Drops / errors</th><th>Signals</th></tr></thead><tbody>
+        ${network.map(row => `<tr><td class="mono">${Utils.escapeHtml(row.resourceKey)}<br><span class="badge ${badge(row.status)}">${row.status}</span></td><td>${rate(row.receiveBytesPerSecond)} / ${rate(row.transmitBytesPerSecond)}<div class="text-xs text-muted">flows: ${row.activeFlows ?? '—'}</div></td><td>${row.receiveDropsPerSecond == null ? '—' : row.receiveDropsPerSecond.toFixed(2)} / ${row.receiveErrorsPerSecond == null ? '—' : row.receiveErrorsPerSecond.toFixed(2)}</td><td>${signals(row)}</td></tr>`).join('') || this._empty('No network metrics', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Topology and multi-signal state</h3></div><div style="padding:15px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${this._stat('fa-circle-nodes', 'Nodes', this._data.topology.nodes.length)}${this._stat('fa-link', 'Edges', this._data.topology.edges.length)}${this._stat('fa-bell', 'Active alerts', (this._data.signalState.alerts || []).filter(item => item.state === 'active').length)}</div></div>
+      </div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Normalized event timeline</h3></div><table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>Resource</th><th>Severity</th><th>Repeats</th><th></th></tr></thead><tbody>
+      ${this._data.observedEvents.map(event => `<tr><td>${new Date(event.occurred_at).toLocaleString()}</td><td><strong>${Utils.escapeHtml(event.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(event.event_type)} · ${Utils.escapeHtml(event.adapter)}</div></td><td class="mono text-xs">${Utils.escapeHtml(event.resource_type)}:${Utils.escapeHtml(event.resource_key)}</td><td><span class="badge ${event.severity === 'critical' || event.severity === 'high' ? 'badge-danger' : event.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${event.severity}</span></td><td>${event.repeat_count}</td><td><button class="action-btn" data-gc-impact="${event.id}" title="Topology impact"><i class="fas fa-diagram-project"></i></button></td></tr>`).join('') || this._empty('No normalized events', 6)}</tbody></table></div>`;
+  },
+
   _bind() {
     this._container.querySelector('#gc-refresh')?.addEventListener('click', () => this.render(this._container));
     this._container.querySelectorAll('[data-gc-tab]').forEach(button => button.addEventListener('click', () => { this._tab = button.dataset.gcTab; this._paint(); }));
@@ -153,6 +190,15 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-review')?.addEventListener('click', () => this._reviewDialog());
     this._container.querySelector('#gc-offboard')?.addEventListener('click', () => this._offboardingDialog());
     this._container.querySelector('#gc-metrics-policy')?.addEventListener('click', () => this._metricsPolicyDialog());
+    this._container.querySelector('#gc-performance-chart')?.addEventListener('click', () => this._performanceDialog());
+    this._container.querySelector('#gc-event-ingest')?.addEventListener('click', () => this._eventDialog());
+    this._container.querySelector('#gc-timeline')?.addEventListener('click', () => this._timelineDialog());
+    this._container.querySelector('#gc-topology-edge')?.addEventListener('click', () => this._topologyDialog());
+    this._container.querySelector('#gc-signal-rule')?.addEventListener('click', () => this._signalRuleDialog());
+    this._container.querySelector('#gc-evaluate-signals')?.addEventListener('click', async () => {
+      try { const result = await Api.evaluateVmSignalRules(); Toast.success(`${result.triggered} alerts triggered, ${result.resolved} resolved`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    });
+    this._container.querySelectorAll('[data-gc-impact]').forEach(button => button.addEventListener('click', () => this._impactDialog(button.dataset.gcImpact)));
     this._container.querySelectorAll('[data-gc-renew-lease]').forEach(button => button.addEventListener('click', () => this._renewLease(button.dataset.gcRenewLease)));
     this._container.querySelectorAll('[data-gc-clean-lease]').forEach(button => button.addEventListener('click', async () => {
       if (!await Modal.confirm('Attest that provider cleanup is complete?', { danger: true })) return;
@@ -349,5 +395,98 @@ const GovernanceControlsPage = {
     const result = await Modal.form(`<div class="form-group"><label>Name</label><input id="gc-name" class="form-control"></div><div class="form-group"><label>Action pattern</label><input id="gc-action" class="form-control mono" value="* /api/*"></div><div class="form-row"><div class="form-group"><label>Starts</label><input id="gc-start" type="datetime-local" value="${local(now)}" class="form-control"></div><div class="form-group"><label>Ends</label><input id="gc-end" type="datetime-local" value="${local(now + 3600000)}" class="form-control"></div></div><div class="form-group"><label>Reason</label><textarea id="gc-reason" class="form-control" rows="3"></textarea></div><label><input id="gc-emergency" type="checkbox"> Allow audited emergency override for global admins (ticket + reason headers)</label>`,
       { title: 'Change blackout window', onSubmit: c => this._submit(() => Api.createBlackout({ name: c.querySelector('#gc-name').value, actionPattern: c.querySelector('#gc-action').value, environment: 'any', startsAt: new Date(c.querySelector('#gc-start').value).toISOString(), endsAt: new Date(c.querySelector('#gc-end').value).toISOString(), reason: c.querySelector('#gc-reason').value, allowEmergencyOverride: c.querySelector('#gc-emergency').checked })) });
     if (result) await this.render(this._container);
+  },
+
+  async _performanceDialog() {
+    const resources = [...new Set((this._data.freshness.resources || []).map(item => item.resource_key))];
+    if (!resources.length) return Toast.warning('Ingest VM metrics before opening a performance chart');
+    const definitions = this._data.lifecycleCatalog.metrics || [];
+    const query = await Modal.form(`<div class="form-row"><div class="form-group"><label>Resources (up to 10)</label><select id="gc-chart-resources" class="form-control" multiple size="7">${resources.map((item, index) => `<option ${index < 2 ? 'selected' : ''}>${Utils.escapeHtml(item)}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Metrics (up to 12)</label><select id="gc-chart-metrics" class="form-control" multiple size="7">${definitions.map((item, index) => `<option value="${Utils.escapeHtml(item.metric_key)}" ${index === 0 ? 'selected' : ''}>${Utils.escapeHtml(item.metric_key)}</option>`).join('')}</select></div></div>
+      <div class="form-group"><label>Range</label><select id="gc-chart-hours" class="form-control"><option value="1">1 hour</option><option value="24" selected>24 hours</option><option value="168">7 days</option><option value="744">31 days</option></select></div>`,
+    { title: 'VM performance comparison', confirmText: 'Draw chart', width: '760px', onSubmit: c => {
+      const resourceKeys = [...c.querySelector('#gc-chart-resources').selectedOptions].map(item => item.value).slice(0, 10);
+      const metricKeys = [...c.querySelector('#gc-chart-metrics').selectedOptions].map(item => item.value).slice(0, 12);
+      if (!resourceKeys.length || !metricKeys.length) throw new Error('Select at least one resource and metric');
+      return { resourceKeys: resourceKeys.join(','), metricKeys: metricKeys.join(','),
+        from: new Date(Date.now() - Number(c.querySelector('#gc-chart-hours').value) * 3600000).toISOString() };
+    } });
+    if (!query) return;
+    try {
+      const chart = await Api.getVmPerformance(query);
+      const labels = [...new Set(chart.series.flatMap(series => series.points.map(point => point.at)))].sort();
+      const colors = ['#0ea5e9','#a855f7','#22c55e','#f59e0b','#ef4444','#14b8a6','#f97316','#6366f1','#84cc16','#ec4899'];
+      const datasets = chart.series.map((series, index) => { const values = new Map(series.points.map(point => [point.at, point.value])); return {
+        label: `${series.resourceKey} · ${series.metricKey}`, data: labels.map(label => values.has(label) ? values.get(label) : null),
+        borderColor: colors[index % colors.length], backgroundColor: colors[index % colors.length], pointRadius: 1, tension: 0.2, spanGaps: true,
+      }; });
+      const annotations = chart.annotations.map(item => `<tr><td>${new Date(item.occurred_at).toLocaleString()}</td><td>${Utils.escapeHtml(item.title)}</td><td class="mono text-xs">${Utils.escapeHtml(item.resource_key)}</td><td>${item.repeat_count}</td></tr>`).join('');
+      Modal.open(`<div class="modal-header"><h3>VM performance comparison</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div style="height:390px"><canvas id="gc-performance-canvas"></canvas></div><h4 style="margin-top:18px">Event annotations</h4><table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>Resource</th><th>Repeats</th></tr></thead><tbody>${annotations || this._empty('No events in this range', 4)}</tbody></table></div>`, { width: '1100px' });
+      Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+      const canvas = Modal._content.querySelector('#gc-performance-canvas');
+      new Chart(canvas, { type: 'line', data: { labels: labels.map(item => new Date(item).toLocaleString()), datasets },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },
+          plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } } });
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _eventDialog() {
+    const adapters = this._data.observabilityCatalog.eventAdapters;
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Adapter</label><select id="gc-event-adapter" class="form-control">${adapters.map(item => `<option value="${item.key}">${item.key}</option>`).join('')}</select></div><div class="form-group"><label>Native event ID (optional)</label><input id="gc-event-id" class="form-control mono"></div></div>
+      <div class="form-row"><div class="form-group"><label>Resource type</label><input id="gc-event-resource-type" class="form-control" value="vm"></div><div class="form-group"><label>Resource key</label><input id="gc-event-resource-key" class="form-control mono"></div></div>
+      <div class="form-row"><div class="form-group"><label>Event type</label><input id="gc-event-type" class="form-control mono" value="GuestAlert"></div><div class="form-group"><label>Category / severity</label><div style="display:flex;gap:6px"><select id="gc-event-category" class="form-control"><option>alert</option><option>state</option><option>task</option><option>config</option><option>lifecycle</option><option>fabric</option><option>security</option></select><select id="gc-event-severity" class="form-control"><option>info</option><option>warning</option><option>high</option><option>critical</option></select></div></div></div>
+      <div class="form-group"><label>Title</label><input id="gc-event-title" class="form-control"></div><div class="form-group"><label>Message</label><textarea id="gc-event-message" class="form-control" rows="3"></textarea></div>`,
+    { title: 'Ingest normalized event evidence', onSubmit: c => this._submit(() => Api.ingestVmObservabilityEvents({
+      adapter: c.querySelector('#gc-event-adapter').value, events: [{ nativeEventId: c.querySelector('#gc-event-id').value || undefined,
+        resourceType: c.querySelector('#gc-event-resource-type').value, resourceKey: c.querySelector('#gc-event-resource-key').value,
+        eventType: c.querySelector('#gc-event-type').value, category: c.querySelector('#gc-event-category').value,
+        severity: c.querySelector('#gc-event-severity').value, title: c.querySelector('#gc-event-title').value,
+        message: c.querySelector('#gc-event-message').value || undefined, occurredAt: new Date().toISOString() }] })) });
+    if (result) { Toast.success(`${result.inserted} inserted, ${result.duplicates} deduplicated`); await this.render(this._container); }
+  },
+
+  async _timelineDialog() {
+    const resourceKey = await Modal.form(`<div class="form-group"><label>Resource key (blank = all)</label><input id="gc-timeline-resource" class="form-control mono"></div>`,
+      { title: 'Correlation timeline', confirmText: 'Load', onSubmit: c => c.querySelector('#gc-timeline-resource').value.trim() });
+    if (resourceKey === undefined || resourceKey === null) return;
+    try {
+      const timeline = await Api.getVmCorrelationTimeline({ hours: 24, ...(resourceKey ? { resourceKey } : {}) });
+      const rows = timeline.items.map(item => `<tr><td>${new Date(item.time).toLocaleString()}</td><td><span class="badge badge-secondary">${Utils.escapeHtml(item.kind)}</span></td><td>${Utils.escapeHtml(item.title)}</td><td class="mono text-xs">${Utils.escapeHtml(item.resourceKey || '—')}</td><td>${Utils.escapeHtml(item.severity || 'info')}</td></tr>`).join('');
+      Modal.open(`<div class="modal-header"><h3>24-hour correlation timeline</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><table class="data-table"><thead><tr><th>Time</th><th>Kind</th><th>Evidence</th><th>Resource</th><th>Severity</th></tr></thead><tbody>${rows || this._empty('No correlated evidence', 5)}</tbody></table></div>`, { width: '1050px' });
+      Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _topologyDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Edges point from an upstream dependency to the resource it can impact.</p><div class="form-row"><div class="form-group"><label>From type</label><input id="gc-top-from-type" class="form-control" value="host"></div><div class="form-group"><label>From key</label><input id="gc-top-from-key" class="form-control mono"></div></div><div class="form-row"><div class="form-group"><label>To type</label><input id="gc-top-to-type" class="form-control" value="vm"></div><div class="form-group"><label>To key</label><input id="gc-top-to-key" class="form-control mono"></div></div><div class="form-group"><label>Relation</label><input id="gc-top-relation" class="form-control" value="runs"></div>`,
+    { title: 'Fabric topology edge', onSubmit: c => this._submit(() => Api.saveVmObservabilityTopologyEdge({
+      fromType: c.querySelector('#gc-top-from-type').value, fromKey: c.querySelector('#gc-top-from-key').value,
+      toType: c.querySelector('#gc-top-to-type').value, toKey: c.querySelector('#gc-top-to-key').value,
+      relation: c.querySelector('#gc-top-relation').value, evidence: { source: 'operator' } })) });
+    if (result) { Toast.success('Topology edge saved'); await this.render(this._container); }
+  },
+
+  async _impactDialog(eventId) {
+    try {
+      const result = await Api.getVmTopologyImpact(eventId);
+      const rows = result.impacted.map(item => `<tr><td>${item.depth}</td><td class="mono">${Utils.escapeHtml(item.type)}:${Utils.escapeHtml(item.key)}</td><td>${Utils.escapeHtml(item.relation)}</td></tr>`).join('');
+      Modal.open(`<div class="modal-header"><h3>Fabric impact · ${Utils.escapeHtml(result.event.title)}</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><table class="data-table"><thead><tr><th>Depth</th><th>Impacted resource</th><th>Dependency</th></tr></thead><tbody>${rows || this._empty('No downstream dependencies', 3)}</tbody></table></div>`);
+      Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _signalRuleDialog() {
+    const definitions = this._data.lifecycleCatalog.metrics || [];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-signal-name" class="form-control"></div><div class="form-group"><label>Severity</label><select id="gc-signal-severity" class="form-control"><option>warning</option><option>high</option><option>critical</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Metric</label><select id="gc-signal-metric" class="form-control">${definitions.map(item => `<option>${Utils.escapeHtml(item.metric_key)}</option>`).join('')}</select></div><div class="form-group"><label>Operator / threshold</label><div style="display:flex;gap:6px"><select id="gc-signal-op" class="form-control"><option>&gt;</option><option>&gt;=</option><option>&lt;</option><option>&lt;=</option></select><input id="gc-signal-threshold" type="number" step="any" value="0.8" class="form-control"></div></div></div>
+      <div class="form-row"><div class="form-group"><label>Event type</label><input id="gc-signal-event" class="form-control mono" value="VmRestarted"></div><div class="form-group"><label>Sustained duration (seconds)</label><input id="gc-signal-duration" type="number" min="0" max="604800" value="60" class="form-control"></div></div>`,
+    { title: 'Create metric + event rule', onSubmit: c => this._submit(() => Api.createVmSignalRule({
+      name: c.querySelector('#gc-signal-name').value, severity: c.querySelector('#gc-signal-severity').value,
+      durationSeconds: Number(c.querySelector('#gc-signal-duration').value), matchMode: 'all', conditions: [
+        { type: 'metric', metricKey: c.querySelector('#gc-signal-metric').value, aggregate: 'latest',
+          operator: c.querySelector('#gc-signal-op').value, threshold: Number(c.querySelector('#gc-signal-threshold').value), windowSeconds: 300 },
+        { type: 'event', eventTypes: [c.querySelector('#gc-signal-event').value], withinSeconds: 300 },
+      ] })) });
+    if (result) { Toast.success('Multi-signal rule saved'); await this.render(this._container); }
   },
 };

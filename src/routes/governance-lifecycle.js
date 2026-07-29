@@ -140,4 +140,8 @@ router.post('/metrics/errors', writeable, route((req, res) => {
   res.json({ state });
 }));
 
+// V6.4a / B206-B215 — charts, performance dashboards, events, correlation,
+// topology impact and advisory multi-signal alerts.
+router.use('/observability', require('./vm-observability'));
+
 module.exports = router;

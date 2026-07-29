@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.53.0', date: '2026-07-29', title: 'VM observability and event correlation', changes: [
+      { type: 'feature', text: 'VM performance charts compare canonical CPU, memory, disk and network series across up to ten resources and include normalized event annotations.' },
+      { type: 'feature', text: 'Contention, storage and network dashboards expose ready/steal/balloon/swap, latency/IOPS/queue/resync and throughput/drop/error/flow/MTU signals.' },
+      { type: 'improvement', text: 'Cursor/watch/webhook/poll event adapters normalize caller-supplied evidence and deduplicate by native ID or fingerprint window while preserving repeat counts.' },
+      { type: 'feature', text: 'Correlation and VM incident timelines combine normalized events, configuration audit, alerts and metric samples in one bounded evidence view.' },
+      { type: 'security', text: 'Topology impact and metric+event+state rules are advisory and explainable; no provider collection or mutation is inferred or started.' },
+    ] },
     { version: '8.52.0', date: '2026-07-29', title: 'Governance lifecycle and VM metrics foundation', changes: [
       { type: 'feature', text: 'Resource lease policies now enforce maximum TTL, renewal rights and cleanup ownership; expiry flags cleanup but never deletes provider resources.' },
       { type: 'security', text: 'Production resource assignment can require owner, service and cost center, while separation-of-duties reports detect conflicting direct and team roles.' },

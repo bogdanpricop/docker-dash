@@ -1516,6 +1516,21 @@ const Api = {
   ingestVmMetrics(body) { return this.post('/governance/lifecycle/metrics/ingest', body); },
   recordVmMetricError(body) { return this.post('/governance/lifecycle/metrics/errors', body); },
 
+  // ─── VM observability, events and multi-signal correlation (V6.4a) ───
+  getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
+  getVmPerformance(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/performance?${query}`); },
+  getVmPerformanceDashboard(kind, params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/dashboards/${encodeURIComponent(kind)}${query ? `?${query}` : ''}`); },
+  listVmObservabilityEvents(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/events${query ? `?${query}` : ''}`); },
+  ingestVmObservabilityEvents(body) { return this.post('/governance/lifecycle/observability/events/ingest', body); },
+  getVmCorrelationTimeline(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/timeline${query ? `?${query}` : ''}`); },
+  getVmIncidentTimeline(resourceKey, params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/incidents/${encodeURIComponent(resourceKey)}${query ? `?${query}` : ''}`); },
+  getVmObservabilityTopology(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/topology${query ? `?${query}` : ''}`); },
+  saveVmObservabilityTopologyEdge(body) { return this.put('/governance/lifecycle/observability/topology/edges', body); },
+  getVmTopologyImpact(eventId) { return this.get(`/governance/lifecycle/observability/topology/impact/${eventId}`); },
+  getVmSignalRules() { return this.get('/governance/lifecycle/observability/signal-rules'); },
+  createVmSignalRule(body) { return this.post('/governance/lifecycle/observability/signal-rules', body); },
+  evaluateVmSignalRules(body = {}) { return this.post('/governance/lifecycle/observability/signal-rules/evaluate', body); },
+
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
   getAboutFile(name) { return this.get(`/about/file/${encodeURIComponent(name)}`); },

@@ -818,16 +818,16 @@ iar tenant delete cere export valid, checksum, suspendare și confirmare tipări
 | B203 | Metrics freshness indicator | Last sample, lag și collection errors per resource. | Ops | S | Done |
 | B204 | Adaptive metrics polling | Frequency după activity, page visibility și rate budget. | Cost | M | Done |
 | B205 | Metrics cardinality guard | Label budgets, aggregation și sampling controls. | Cost | M | Done |
-| B206 | VM performance charts | CPU/RAM/IO/network cu compare și annotations. | Ops | M | Now |
-| B207 | Host contention dashboard | CPU ready, steal, balloon, swap și noisy-neighbor signals. | Ops | L | Next |
-| B208 | Storage performance dashboard | Latency/IOPS/throughput/queue/resync correlation. | Ops | L | Next |
-| B209 | Network performance dashboard | Throughput/drops/errors/flows/MTU incidents. | Ops | L | Next |
-| B210 | Unified event ingestion | Cursor/watch/webhook/poll adapters și normalization. | Ops | XL | Next |
-| B211 | Event deduplication | Native ID/fingerprint/time window și repeat counter. | Ops | M | Next |
-| B212 | Event correlation timeline | Config changes, tasks, alerts și metrics într-o cronologie. | Ops | L | Next |
-| B213 | VM incident timeline | Restart/migrate/snapshot/backup/guest alert context. | Ops | M | Next |
-| B214 | Fabric topology correlation | Alert propagation pe host/storage/network dependencies. | Ops | XL | Later |
-| B215 | Multi-signal alert rules | Metric+event+state+duration conditions. | Ops | L | Next |
+| B206 | VM performance charts | CPU/RAM/IO/network cu compare și annotations. | Ops | M | Done |
+| B207 | Host contention dashboard | CPU ready, steal, balloon, swap și noisy-neighbor signals. | Ops | L | Done |
+| B208 | Storage performance dashboard | Latency/IOPS/throughput/queue/resync correlation. | Ops | L | Done |
+| B209 | Network performance dashboard | Throughput/drops/errors/flows/MTU incidents. | Ops | L | Done |
+| B210 | Unified event ingestion | Cursor/watch/webhook/poll adapters și normalization. | Ops | XL | Done |
+| B211 | Event deduplication | Native ID/fingerprint/time window și repeat counter. | Ops | M | Done |
+| B212 | Event correlation timeline | Config changes, tasks, alerts și metrics într-o cronologie. | Ops | L | Done |
+| B213 | VM incident timeline | Restart/migrate/snapshot/backup/guest alert context. | Ops | M | Done |
+| B214 | Fabric topology correlation | Alert propagation pe host/storage/network dependencies. | Ops | XL | Done |
+| B215 | Multi-signal alert rules | Metric+event+state+duration conditions. | Ops | L | Done |
 | B216 | Dynamic baseline alerts | Sezon/percentile baseline cu explainability. | Ops | L | Later |
 | B217 | Alert dependency suppression | Suprimă simptomele când cauza upstream este activă. | Ops | L | Later |
 | B218 | Maintenance-aware alerting | Silence automat cu owner și end time. | Ops | M | Now |
@@ -839,10 +839,12 @@ iar tenant delete cere export valid, checksum, suspendare și confirmare tipări
 | B224 | SLO and availability reports | Uptime, error budget și maintenance exclusions. | Gov | L | Later |
 | B225 | Telemetry privacy controls | Redaction, sampling, retention și data residency. | Gov | M | Next |
 
-**Status implementare 2026-07-29:** B201–B205 au fost livrate în V4.6c / v8.52.0.
-Adaptoarele normalizează payload-uri furnizate prin API și descriu coverage; nu
-pretind colectare live în lipsa unui collector configurat. B206–B225 rămân
-pentru dashboard-uri, events, correlation, alerting și AIOps.
+**Status implementare 2026-07-29:** B201–B205 au fost livrate în V4.6c / v8.52.0,
+iar B206–B215 în V6.4a / v8.53.0. Adaptoarele normalizează payload-uri furnizate
+prin API și descriu coverage; nu pretind colectare live în lipsa unui collector
+configurat. Charts au limite de range/series, deduplicarea păstrează repeat
+evidence, iar topology propagation și multi-signal evaluation sunt advisory.
+B216–B225 rămân pentru baseline, suppression, forecast, AIOps și export/privacy.
 
 ### J. Automation, GitOps și IaC (B226–B250)
 
