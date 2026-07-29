@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.47.0', date: '2026-07-29', title: 'Consolidated provider security evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture now begins with a compact summary of existing capability, safeguard, gap, and freshness evidence.' },
+      { type: 'improvement', text: 'The dashboard provides orientation without turning contract evidence into a security rating or compliance certification.' },
+      { type: 'security', text: 'No additional provider, guest, network, or configuration operation is performed.' },
+    ] },
     { version: '8.46.0', date: '2026-07-29', title: 'Posture evidence freshness', changes: [
       { type: 'feature', text: 'Provider Security Posture displays the returned capability-evidence timestamp, age band, and existing probe state.' },
       { type: 'improvement', text: 'Freshness is bounded to returned evidence, not presented as a provider-health guarantee.' },

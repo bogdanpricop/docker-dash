@@ -2,6 +2,15 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.47.0] - 2026-07-29 — Consolidated provider security evidence
+
+Provider Security Posture now begins with a compact summary of its existing
+capability, safeguard, gap, and freshness evidence.
+
+- The dashboard consumes the response already collected by the page.
+- It is not a security rating, compliance certification, or vulnerability assessment.
+- No additional provider, guest, network, or configuration operation is performed.
+
 ## [8.46.0] - 2026-07-29 — Posture evidence freshness
 
 Provider Security Posture now displays the returned capability-evidence timestamp,
