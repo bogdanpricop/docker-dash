@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.60.0] - 2026-07-29 — FinOps cost foundation
+
+The B276–B285 batch adds transparent, evidence-backed infrastructure rating
+without turning Docker Dash into a billing system.
+
+- An immutable resource ledger records allocated and used vCPU, RAM, storage,
+  GPU and IP/network quantities with bounded intervals and secret-free source
+  evidence.
+- Versioned private-cloud, provider/license, storage-tier, network/public-IP and
+  GPU-profile models keep effective windows, currency, confidence and HTTPS
+  provenance alongside their exact parameters.
+- Priority tag rules map provider metadata to business unit, application,
+  environment, cost center, project and site without changing provider tags.
+- Hash-idempotent showback ratings preserve quantity, rate, formula and
+  provenance per resource/model line and aggregate by category, cost center and
+  confidence.
+- Deterministic CSV/JSON chargeback exports are ready for billing or ERP import
+  while explicitly creating no billing transaction.
+- Monthly and quarterly budgets compare global or dimension-scoped rated spend;
+  threshold/forecast notifications remain isolated for B286.
+
 ## [8.59.0] - 2026-07-29 — Lifecycle assurance, content and support
 
 The B266–B275 batch completes the lifecycle/configuration-management research

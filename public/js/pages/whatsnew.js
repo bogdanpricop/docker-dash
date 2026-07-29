@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.60.0', date: '2026-07-29', title: 'FinOps cost foundation', changes: [
+      { type: 'feature', text: 'An immutable resource ledger separates allocated and used vCPU, RAM, storage, GPU and IP/network quantities with source evidence.' },
+      { type: 'feature', text: 'Versioned private-cloud, licensing, storage, network and GPU cost models retain exact windows, currencies, confidence and provenance.' },
+      { type: 'improvement', text: 'Priority tag rules map resources into business unit, application, environment, cost center, project and site without modifying providers.' },
+      { type: 'feature', text: 'Showback preserves formula and provenance per rated line; deterministic CSV/JSON chargeback exports create no billing transactions.' },
+      { type: 'feature', text: 'Monthly and quarterly budgets compare global or scoped spend while threshold alerting remains explicitly reserved for the next batch.' },
+    ] },
     { version: '8.59.0', date: '2026-07-29', title: 'Lifecycle assurance, content and support', changes: [
       { type: 'security', text: 'Certificate renewal uses immutable plans, payload-bound approval, durable-operation evidence, registered apply/verify adapters and approved rollback behavior.' },
       { type: 'feature', text: 'License entitlements map opaque contract references to resources and generate idempotent capacity, expiry and usage-forecast alerts.' },

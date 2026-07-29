@@ -968,16 +968,16 @@ categorii și pornesc zero provider mutations.
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B276 | Unified resource allocation ledger | vCPU/RAM/storage/GPU/IP alocat vs folosit. | Cost | L | Next |
-| B277 | Private-cloud cost model | Hardware/software/facility/energy/personnel parameters. | Cost | L | Next |
-| B278 | Provider/license cost model | Per-core/socket/host/subscription cost windows. | Cost | M | Next |
-| B279 | Storage tier cost model | Cost per logical/physical/replicated/backup GB. | Cost | M | Next |
-| B280 | Network/public-IP cost model | Transfer, egress, LB, VPN și address cost. | Cost | M | Later |
-| B281 | GPU accelerator cost model | Device/profile/hour și reservation accounting. | Cost | M | Later |
-| B282 | Tag-based cost allocation | Business unit/app/env/cost center mapping. | Cost | M | Next |
-| B283 | Showback dashboards | Transparent usage/cost fără billing transaction. | Cost | L | Next |
-| B284 | Chargeback export | Rated usage CSV/API pentru billing/ERP. | Cost | L | Later |
-| B285 | Budget definitions | Monthly/quarterly per scope/cost center. | Cost | M | Next |
+| B276 | Unified resource allocation ledger | vCPU/RAM/storage/GPU/IP alocat vs folosit. | Cost | L | Done |
+| B277 | Private-cloud cost model | Hardware/software/facility/energy/personnel parameters. | Cost | L | Done |
+| B278 | Provider/license cost model | Per-core/socket/host/subscription cost windows. | Cost | M | Done |
+| B279 | Storage tier cost model | Cost per logical/physical/replicated/backup GB. | Cost | M | Done |
+| B280 | Network/public-IP cost model | Transfer, egress, LB, VPN și address cost. | Cost | M | Done |
+| B281 | GPU accelerator cost model | Device/profile/hour și reservation accounting. | Cost | M | Done |
+| B282 | Tag-based cost allocation | Business unit/app/env/cost center mapping. | Cost | M | Done |
+| B283 | Showback dashboards | Transparent usage/cost fără billing transaction. | Cost | L | Done |
+| B284 | Chargeback export | Rated usage CSV/API pentru billing/ERP. | Cost | L | Done |
+| B285 | Budget definitions | Monthly/quarterly per scope/cost center. | Cost | M | Done |
 | B286 | Budget threshold alerts | Forecast și actual 50/80/100% notifications. | Cost | S | Next |
 | B287 | Cost anomaly detection | Unexpected spend/consumption changes cu evidence. | Cost | L | Later |
 | B288 | Idle VM detector | Low utilization + owner/uptime/criticality context. | Cost | M | Now |
@@ -993,6 +993,16 @@ categorii și pornesc zero provider mutations.
 | B298 | Carbon factor configuration | Region/site/time carbon intensity și provenance. | Gov | M | Later |
 | B299 | Carbon-aware scheduling recommendation | Propune time/site fără a încălca SLA/data residency. | Cost | XL | Later |
 | B300 | TCO scenario comparator | Compară hardware/provider/licensing/migration assumptions. | Cost | XL | Later |
+
+**Status implementare 2026-07-29:** B276–B285 au fost închise în V6.3a /
+v8.60.0. Ledger-ul păstrează separat allocation și usage pentru CPU, RAM,
+storage, GPU și IP, cu interval și evidence hash. Cinci modele versionate acoperă
+private cloud, provider/licensing, storage tiers, network/IP și GPU, fiecare cu
+currency, confidence, sursă HTTPS și fereastră de valabilitate. Regulile de tag
+rezolvă business unit, application, environment și cost center cu prioritate
+deterministă. Rating-ul showback păstrează formula și provenance pe linie, iar
+CSV/JSON chargeback sunt exporturi pentru ERP, nu tranzacții. Bugetele monthly
+sau quarterly sunt comparate per scope; alertele de prag rămân explicit B286.
 
 ### M. Kubernetes și convergență VM–container (B301–B325)
 

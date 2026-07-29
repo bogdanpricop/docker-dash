@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -24,6 +24,7 @@ const GovernanceControlsPage = {
         Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(), Api.getLifecycleUpdates(),
         Api.getLifecycleMaintenance(),
         Api.getLifecycleAssurance(),
+        Api.getFinOpsFoundation(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -31,7 +32,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -59,6 +60,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('observability', 'fa-wave-square', 'Observability')}
         ${this._tabButton('automation', 'fa-code-branch', 'Automation & IaC')}
         ${this._tabButton('updates', 'fa-arrow-up-from-bracket', 'Lifecycle & updates')}
+        ${this._tabButton('finops', 'fa-coins', 'FinOps')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -73,6 +75,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'observability') return this._observability();
     if (this._tab === 'automation') return this._automation();
     if (this._tab === 'updates') return this._updates();
+    if (this._tab === 'finops') return this._finops();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -296,6 +299,32 @@ const GovernanceControlsPage = {
       </div>`;
   },
 
+  _finops() {
+    const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
+    const latest = data.latestShowback; const currency = data.summary?.currency || 'USD';
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-finops-ledger"><i class="fas fa-list"></i> Usage entry</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-model"><i class="fas fa-calculator"></i> Cost model</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-rule"><i class="fas fa-tags"></i> Allocation rule</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-budget"><i class="fas fa-wallet"></i> Budget</button>
+      <button class="btn btn-primary btn-sm" id="gc-finops-rate"><i class="fas fa-chart-pie"></i> Rate showback</button>`) }
+      <div class="info-grid">
+        ${this._stat('fa-list-check', 'Ledger entries', data.summary?.ledgerEntries || 0)}
+        ${this._stat('fa-calculator', 'Cost models', data.summary?.costModels || 0)}
+        ${this._stat('fa-tags', 'Allocation coverage', `${Math.round((data.summary?.allocationCoverage || 0) * 100)}%`)}
+        ${this._stat('fa-coins', 'Latest rated cost', `${currency} ${Number(data.summary?.latestRatedCost || 0).toFixed(2)}`)}
+        ${this._stat('fa-triangle-exclamation', 'Over budget', data.summary?.overBudget || 0)}
+        ${this._stat('fa-file-invoice-dollar', 'Billing transactions', data.summary?.billingTransactionsCreated || 0)}
+      </div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>FinOps evidence boundary</h3><p class="text-muted text-sm">Rates are versioned, scoped and provenance-linked. Showback is explanatory; chargeback produces rated files for ERP import and never creates a billing transaction.</p></div></div>
+        <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${[['Unified ledger','unifiedResourceLedger'],['Private cloud','privateCloudCostModel'],['License','providerLicenseCostModel'],['Storage','storageTierCostModel'],['Network/IP','networkPublicIpCostModel'],['GPU','gpuAcceleratorCostModel'],['Tag allocation','tagBasedAllocation'],['Showback','showbackDashboard'],['Chargeback export','chargebackExport'],['Budgets','budgets']].map(([label,key]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Allocation &amp; usage ledger</h3></div><table class="data-table"><thead><tr><th>Resource / interval</th><th>Allocated</th><th>Used</th><th>Allocation</th><th></th></tr></thead><tbody>${(data.ledger || []).map(item => { const allocation = (data.allocations || []).find(value => value.ledgerEntryId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.resourceType)} · ${Utils.escapeHtml(item.resourceRef)}</strong><div class="text-xs text-muted">${new Date(item.intervalStart).toLocaleDateString()} → ${new Date(item.intervalEnd).toLocaleDateString()}</div></td><td>${item.allocation.vCpu ?? 0} vCPU · ${item.allocation.ramGb ?? 0} GB<div class="text-xs text-muted">${item.allocation.logicalStorageGb ?? 0} GB logical · ${item.allocation.gpuDevices ?? 0} GPU</div></td><td>${item.usage.usedVcpu ?? '—'} vCPU · ${item.usage.usedRamGb ?? '—'} GB<div class="text-xs text-muted">${item.usage.egressGb ?? 0} GB egress · ${item.usage.gpuHours ?? 0} GPUh</div></td><td><span class="badge ${allocation?.state === 'allocated' ? 'badge-success' : allocation?.state === 'partial' ? 'badge-warning' : 'badge-secondary'}">${allocation?.state || 'unresolved'}</span></td><td><button class="action-btn" data-gc-finops-allocate="${item.id}" title="Resolve tag allocation"><i class="fas fa-tags"></i></button></td></tr>`; }).join('') || this._empty('No FinOps ledger observations', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Versioned cost models</h3></div><table class="data-table"><thead><tr><th>Model</th><th>Scope</th><th>Window</th><th>Evidence</th></tr></thead><tbody>${(data.costModels || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.kind)} · v${Utils.escapeHtml(item.version)}</div></td><td>${Utils.escapeHtml(item.scopeRef)}<div class="text-xs text-muted">${item.currency} · ${item.confidence}</div></td><td>${new Date(item.effectiveFrom).toLocaleDateString()} → ${item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open'}</td><td class="mono text-xs">${item.modelHash.slice(0, 12)}</td></tr>`).join('') || this._empty('No cost models', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Latest showback</h3></div>${latest ? `<table class="data-table"><thead><tr><th>Category</th><th>Cost</th><th>Confidence / provenance</th></tr></thead><tbody>${latest.lines.map(line => `<tr><td>${Utils.escapeHtml(line.category)}<div class="text-xs text-muted">${Utils.escapeHtml(line.dimensions.costCenter || 'unallocated')} · ${Utils.escapeHtml(line.dimensions.resourceRef)}</div></td><td class="mono">${line.currency} ${Number(line.amount).toFixed(4)}</td><td>${line.confidence}<div class="mono text-xs">${line.provenanceHash.slice(0, 12)}</div></td></tr>`).join('') || this._empty('Rating completed without line items', 3)}</tbody></table><div style="padding:12px;display:flex;justify-content:space-between"><strong>Total: ${latest.currency} ${Number(latest.totalCost).toFixed(4)}</strong><div><button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="csv"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="json"><i class="fas fa-code"></i> JSON</button></div></div>` : '<div class="empty-state"><p>No showback rating run yet.</p></div>'}</div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Budgets &amp; allocation rules</h3></div><table class="data-table"><thead><tr><th>Name</th><th>Scope</th><th>Amount</th><th>Status</th></tr></thead><tbody>${(data.budgets || []).map(item => { const state = latest?.budgets?.find(value => value.id === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">${item.cadence}</div></td><td>${item.scopeType}${item.scopeValue ? `:${Utils.escapeHtml(item.scopeValue)}` : ''}</td><td>${item.currency} ${Number(item.amount).toFixed(2)}</td><td>${state ? `<span class="badge ${state.state === 'over' ? 'badge-danger' : 'badge-success'}">${state.utilizationPercent}%</span>` : '<span class="badge badge-secondary">not rated</span>'}</td></tr>`; }).join('') || this._empty('No budgets', 4)}</tbody></table><div style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">${(data.allocationRules || []).map(item => `<span class="badge badge-secondary" title="${Utils.escapeHtml(JSON.stringify(item.matchTags))}">${Utils.escapeHtml(item.name)} · p${item.priority}</span>`).join('') || '<span class="text-muted text-sm">No allocation rules</span>'}</div></div>
+      </div>`;
+  },
+
   _updates() {
     const data = this._data.lifecycleUpdates || { capabilities: {}, inventory: [], supportRegistry: [], upgradePaths: [], catalog: [], prechecks: [], summary: {} };
     const ops = this._data.lifecycleMaintenance || { capabilities: {}, maintenancePlans: [], campaigns: [], livePatchEvidence: [], rebootSignals: [], firmwareCatalog: [], driverMatrix: [], certificates: [], reminderPolicies: [], reminders: [], summary: {} };
@@ -485,6 +514,15 @@ const GovernanceControlsPage = {
     this._container.querySelectorAll('[data-gc-assurance-license-use]').forEach(button => button.addEventListener('click', () => this._assuranceLicenseUsageDialog(button.dataset.gcAssuranceLicenseUse)));
     this._container.querySelectorAll('[data-gc-assurance-sync-mirror]').forEach(button => button.addEventListener('click', () => this._syncAssuranceMirror(button.dataset.gcAssuranceSyncMirror)));
     this._container.querySelectorAll('[data-gc-assurance-run-validation]').forEach(button => button.addEventListener('click', () => this._runAssuranceValidation(button.dataset.gcAssuranceRunValidation)));
+    this._container.querySelector('#gc-finops-ledger')?.addEventListener('click', () => this._finopsLedgerDialog());
+    this._container.querySelector('#gc-finops-model')?.addEventListener('click', () => this._finopsModelDialog());
+    this._container.querySelector('#gc-finops-rule')?.addEventListener('click', () => this._finopsRuleDialog());
+    this._container.querySelector('#gc-finops-budget')?.addEventListener('click', () => this._finopsBudgetDialog());
+    this._container.querySelector('#gc-finops-rate')?.addEventListener('click', () => this._finopsRatingDialog());
+    this._container.querySelectorAll('[data-gc-finops-allocate]').forEach(button => button.addEventListener('click', async () => {
+      try { const result = await Api.resolveFinOpsAllocation(button.dataset.gcFinopsAllocate); Toast.success(`Allocation: ${result.allocation.state}`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    }));
+    this._container.querySelectorAll('[data-gc-finops-export]').forEach(button => button.addEventListener('click', () => this._finopsExport(button.dataset.gcFinopsExport, button.dataset.format)));
     this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
       try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1516,6 +1554,92 @@ const GovernanceControlsPage = {
   async _evaluateLifecycleReminders() {
     try { const result = await Api.evaluateLifecycleCertificateReminders();
       Toast.success(`${result.created} reminders created; ${result.renewalsStarted} renewals started`); await this.render(this._container);
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _finopsLedgerDialog() {
+    const intervalEnd = new Date(); const intervalStart = new Date(intervalEnd.getTime() - 30 * 86400000);
+    const result = await Modal.form(`<p class="text-muted text-sm">This writes one immutable observation. Allocated and used values stay separate and the source evidence must be secret-free.</p>
+      <div class="form-row"><div class="form-group"><label>Resource type</label><input id="gc-fl-type" class="form-control" value="vm"></div><div class="form-group"><label>Resource reference</label><input id="gc-fl-ref" class="form-control mono" value="provider/vm-100"></div><div class="form-group"><label>Provider / site</label><input id="gc-fl-provider" class="form-control mono" value="provider-a"><input id="gc-fl-site" class="form-control mono" value="site-a" style="margin-top:6px"></div></div>
+      <div class="form-row"><div class="form-group"><label>Interval start</label><input id="gc-fl-start" type="datetime-local" class="form-control" value="${intervalStart.toISOString().slice(0, 16)}"></div><div class="form-group"><label>Interval end</label><input id="gc-fl-end" type="datetime-local" class="form-control" value="${intervalEnd.toISOString().slice(0, 16)}"></div></div>
+      <div class="form-row"><div class="form-group"><label>Allocation JSON</label><textarea id="gc-fl-allocation" class="form-control mono" rows="9">{"vCpu":4,"ramGb":16,"logicalStorageGb":200,"gpuDevices":0,"publicIps":1}</textarea></div><div class="form-group"><label>Usage JSON</label><textarea id="gc-fl-usage" class="form-control mono" rows="9">{"usedVcpu":1.5,"usedRamGb":8,"transferGb":100,"egressGb":10,"publicIpHours":730}</textarea></div></div>
+      <div class="form-row"><div class="form-group"><label>Tags JSON</label><textarea id="gc-fl-tags" class="form-control mono" rows="5">{"business-unit":"platform","app":"docker-dash","env":"production","cost-center":"IT-PLATFORM"}</textarea></div><div class="form-group"><label>Source evidence JSON</label><textarea id="gc-fl-evidence" class="form-control mono" rows="5">{"source":"provider-metering","coverage":"complete"}</textarea></div></div>`,
+    { title: 'FinOps resource ledger observation', width: '980px', onSubmit: c => this._submit(() => Api.recordFinOpsLedger({
+      resourceType: c.querySelector('#gc-fl-type').value, resourceRef: c.querySelector('#gc-fl-ref').value,
+      providerRef: c.querySelector('#gc-fl-provider').value || undefined, siteRef: c.querySelector('#gc-fl-site').value || undefined,
+      intervalStart: new Date(c.querySelector('#gc-fl-start').value).toISOString(), intervalEnd: new Date(c.querySelector('#gc-fl-end').value).toISOString(),
+      allocation: JSON.parse(c.querySelector('#gc-fl-allocation').value), usage: JSON.parse(c.querySelector('#gc-fl-usage').value),
+      tags: JSON.parse(c.querySelector('#gc-fl-tags').value), evidence: JSON.parse(c.querySelector('#gc-fl-evidence').value),
+    })) });
+    if (result) { Toast.success(result.entry.duplicate ? 'Identical ledger evidence already exists' : 'Immutable ledger evidence recorded'); await this.render(this._container); }
+  },
+
+  async _finopsModelDialog() {
+    const from = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)); const to = new Date(Date.UTC(new Date().getUTCFullYear() + 2, 0, 1));
+    const sample = { monthlyCosts: { hardware: 5000, software: 1500, facility: 800, energy: 1200, personnel: 3000 },
+      capacity: { vCpu: 512, ramGb: 2048 }, weights: { vCpu: 0.5, ramGb: 0.5 } };
+    const result = await Modal.form(`<p class="text-muted text-sm">Choose one kind and provide its parameters: private cloud monthlyCosts/capacity/weights; provider_license metric/unitCost/billingPeriod; storage or network rates; GPU profiles.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fm-name" class="form-control" value="private-cloud-${Date.now()}"></div><div class="form-group"><label>Version</label><input id="gc-fm-version" class="form-control mono" value="1.0"></div><div class="form-group"><label>Kind</label><select id="gc-fm-kind" class="form-control"><option value="private_cloud">private_cloud</option><option value="provider_license">provider_license</option><option value="storage">storage</option><option value="network">network</option><option value="gpu">gpu</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Scope</label><input id="gc-fm-scope" class="form-control mono" value="*"></div><div class="form-group"><label>Currency</label><input id="gc-fm-currency" class="form-control" value="EUR"></div><div class="form-group"><label>Confidence</label><select id="gc-fm-confidence" class="form-control"><option>actual</option><option>contracted</option><option selected>estimated</option><option>allocated</option></select></div></div>
+      <div class="form-group"><label>Parameters JSON</label><textarea id="gc-fm-parameters" class="form-control mono" rows="13">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea></div>
+      <div class="form-row"><div class="form-group"><label>Source URL</label><input id="gc-fm-source" class="form-control mono" value="https://finance.example/cost-model"></div><div class="form-group"><label>Effective from</label><input id="gc-fm-from" type="datetime-local" class="form-control" value="${from.toISOString().slice(0, 16)}"></div><div class="form-group"><label>Effective to</label><input id="gc-fm-to" type="datetime-local" class="form-control" value="${to.toISOString().slice(0, 16)}"></div></div>`,
+    { title: 'Versioned FinOps cost model', width: '950px', onSubmit: c => this._submit(() => Api.createFinOpsCostModel({
+      name: c.querySelector('#gc-fm-name').value, version: c.querySelector('#gc-fm-version').value,
+      kind: c.querySelector('#gc-fm-kind').value, scopeRef: c.querySelector('#gc-fm-scope').value,
+      currency: c.querySelector('#gc-fm-currency').value.toUpperCase(), confidence: c.querySelector('#gc-fm-confidence').value,
+      parameters: JSON.parse(c.querySelector('#gc-fm-parameters').value), sourceUrl: c.querySelector('#gc-fm-source').value,
+      effectiveFrom: new Date(c.querySelector('#gc-fm-from').value).toISOString(),
+      effectiveTo: c.querySelector('#gc-fm-to').value ? new Date(c.querySelector('#gc-fm-to').value).toISOString() : undefined,
+    })) });
+    if (result) { Toast.success(result.model.duplicate ? 'Identical cost model already exists' : 'Cost model version saved'); await this.render(this._container); }
+  },
+
+  async _finopsRuleDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Higher priority rules fill dimensions first. Values may contain <code>*</code>; no provider tags are changed.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fr-name" class="form-control" value="production-app"></div><div class="form-group"><label>Priority</label><input id="gc-fr-priority" type="number" min="0" max="10000" value="100" class="form-control"></div></div>
+      <div class="form-group"><label>Match tags JSON</label><textarea id="gc-fr-match" class="form-control mono" rows="6">{"env":"production","app":"*"}</textarea></div>
+      <div class="form-group"><label>Business dimensions JSON</label><textarea id="gc-fr-dimensions" class="form-control mono" rows="7">{"businessUnit":"platform","application":"docker-dash","environment":"production","costCenter":"IT-PLATFORM"}</textarea></div>`,
+    { title: 'Tag-based cost allocation rule', onSubmit: c => this._submit(() => Api.saveFinOpsAllocationRule({
+      name: c.querySelector('#gc-fr-name').value, priority: Number(c.querySelector('#gc-fr-priority').value),
+      matchTags: JSON.parse(c.querySelector('#gc-fr-match').value), dimensions: JSON.parse(c.querySelector('#gc-fr-dimensions').value), active: true,
+    })) });
+    if (result) { Toast.success('Allocation rule saved; provider resources unchanged'); await this.render(this._container); }
+  },
+
+  async _finopsBudgetDialog() {
+    const from = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fb-name" class="form-control" value="Platform monthly"></div><div class="form-group"><label>Cadence</label><select id="gc-fb-cadence" class="form-control"><option>monthly</option><option>quarterly</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Scope type</label><select id="gc-fb-scope" class="form-control"><option>global</option><option>cost_center</option><option>business_unit</option><option>application</option><option>environment</option><option>project</option><option>site</option></select></div><div class="form-group"><label>Scope value (blank for global)</label><input id="gc-fb-value" class="form-control" value=""></div></div>
+      <div class="form-row"><div class="form-group"><label>Amount</label><input id="gc-fb-amount" type="number" min="0.01" step="0.01" value="10000" class="form-control"></div><div class="form-group"><label>Currency</label><input id="gc-fb-currency" class="form-control" value="EUR"></div><div class="form-group"><label>Effective from</label><input id="gc-fb-from" type="datetime-local" class="form-control" value="${from.toISOString().slice(0, 16)}"></div></div>`,
+    { title: 'Scoped FinOps budget', onSubmit: c => this._submit(() => Api.createFinOpsBudget({
+      name: c.querySelector('#gc-fb-name').value, cadence: c.querySelector('#gc-fb-cadence').value,
+      scopeType: c.querySelector('#gc-fb-scope').value, scopeValue: c.querySelector('#gc-fb-value').value || undefined,
+      amount: Number(c.querySelector('#gc-fb-amount').value), currency: c.querySelector('#gc-fb-currency').value.toUpperCase(),
+      effectiveFrom: new Date(c.querySelector('#gc-fb-from').value).toISOString(), active: true,
+    })) });
+    if (result) { Toast.success('Budget saved; threshold notifications begin in the next FinOps batch'); await this.render(this._container); }
+  },
+
+  async _finopsRatingDialog() {
+    const models = this._data.finopsFoundation?.costModels || []; if (!models.length) return Toast.error('Create at least one cost model first');
+    const entries = this._data.finopsFoundation?.ledger || []; const earliest = entries.length ? new Date(Math.min(...entries.map(item => new Date(item.intervalStart)))) : new Date(Date.now() - 30 * 86400000);
+    const latest = entries.length ? new Date(Math.max(...entries.map(item => new Date(item.intervalEnd)))) : new Date();
+    const result = await Modal.form(`<p class="text-muted text-sm">Only ledger intervals fully contained in the selected period are rated. Every selected model must cover the whole period and use the same currency.</p>
+      <div class="form-row"><div class="form-group"><label>Period start</label><input id="gc-frr-start" type="datetime-local" class="form-control" value="${earliest.toISOString().slice(0, 16)}"></div><div class="form-group"><label>Period end</label><input id="gc-frr-end" type="datetime-local" class="form-control" value="${latest.toISOString().slice(0, 16)}"></div></div>
+      <div class="form-group"><label>Cost model versions</label><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;margin-top:8px">${models.map(item => `<label class="card" style="padding:10px"><input type="checkbox" data-finops-model-id="${item.id}" checked> <strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">${item.kind} · ${item.currency} · ${item.confidence}</div></label>`).join('')}</div></div>`,
+    { title: 'Create immutable showback rating', width: '900px', onSubmit: c => this._submit(() => Api.createFinOpsRatingRun({
+      periodStart: new Date(c.querySelector('#gc-frr-start').value).toISOString(), periodEnd: new Date(c.querySelector('#gc-frr-end').value).toISOString(),
+      costModelIds: [...c.querySelectorAll('[data-finops-model-id]:checked')].map(input => Number(input.dataset.finopsModelId)),
+    })) });
+    if (result) { Toast.success(`Showback ${result.run.currency} ${Number(result.run.totalCost).toFixed(4)}; billing transactions: 0`); await this.render(this._container); }
+  },
+
+  async _finopsExport(runId, format) {
+    try {
+      const result = await Api.createFinOpsChargebackExport(runId, { format });
+      const blob = new Blob([result.content], { type: result.export.metadata.contentType }); const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = result.export.metadata.filename; link.click(); URL.revokeObjectURL(url);
+      Toast.success(`${result.export.rowCount} rated rows exported; no billing transaction created`); await this.render(this._container);
     } catch (error) { Toast.error(error.message); }
   },
 

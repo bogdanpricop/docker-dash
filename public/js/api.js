@@ -1623,6 +1623,15 @@ const Api = {
   collectLifecycleSupportBundle(body) { return this.post('/governance/lifecycle/assurance/support-bundles', body); },
   createPostUpgradeValidationPack(body) { return this.post('/governance/lifecycle/assurance/validation-packs', body); },
   runPostUpgradeValidationPack(id, body) { return this.post(`/governance/lifecycle/assurance/validation-packs/${id}/run`, body); },
+  getFinOpsFoundation() { return this.get('/governance/lifecycle/finops'); },
+  recordFinOpsLedger(body) { return this.post('/governance/lifecycle/finops/ledger', body); },
+  createFinOpsCostModel(body) { return this.post('/governance/lifecycle/finops/cost-models', body); },
+  saveFinOpsAllocationRule(body) { return this.post('/governance/lifecycle/finops/allocation-rules', body); },
+  resolveFinOpsAllocation(id) { return this.post(`/governance/lifecycle/finops/ledger/${id}/allocate`, {}); },
+  createFinOpsRatingRun(body) { return this.post('/governance/lifecycle/finops/rating-runs', body); },
+  getFinOpsRatingRun(id) { return this.get(`/governance/lifecycle/finops/rating-runs/${id}`); },
+  createFinOpsChargebackExport(id, body) { return this.post(`/governance/lifecycle/finops/rating-runs/${id}/chargeback-exports`, body); },
+  createFinOpsBudget(body) { return this.post('/governance/lifecycle/finops/budgets', body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },
