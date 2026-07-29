@@ -12,7 +12,8 @@ const GovernanceControlsPage = {
     try {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
-        observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology] = await Promise.all([
+        observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
+        advancedObservability, sloReports] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -20,13 +21,14 @@ const GovernanceControlsPage = {
         Api.getVmObservabilityCatalog(), Api.getVmPerformanceDashboard('contention'), Api.getVmPerformanceDashboard('storage'),
         Api.getVmPerformanceDashboard('network'), Api.listVmObservabilityEvents({ limit: 100 }), Api.getVmSignalRules(),
         Api.getVmObservabilityTopology(),
+        Api.getVmObservabilityAdvanced(), Api.getVmSloReports(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
         tokens: tokens.tokens || [], trusts: trusts.trusts || [], governanceCatalog, subjects,
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
-        signalState, topology };
+        signalState, topology, advancedObservability, sloReports: sloReports.reports || [] };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -148,6 +150,7 @@ const GovernanceControlsPage = {
     const contention = this._data.contention.rows || [];
     const storage = this._data.storagePerformance.rows || [];
     const network = this._data.networkPerformance.rows || [];
+    const advanced = this._data.advancedObservability || {};
     const badge = status => status === 'normal' ? 'badge-success' : status === 'contended' || status === 'degraded' ? 'badge-warning' : 'badge-secondary';
     const ratio = value => value == null ? '—' : `${(value * 100).toFixed(1)}%`;
     const rate = value => value == null ? '—' : `${Utils.formatBytes(value)}/s`;
@@ -157,7 +160,14 @@ const GovernanceControlsPage = {
       <button class="btn btn-secondary btn-sm" id="gc-timeline"><i class="fas fa-timeline"></i> Correlation timeline</button>
       <button class="btn btn-secondary btn-sm" id="gc-topology-edge"><i class="fas fa-diagram-project"></i> Topology edge</button>
       <button class="btn btn-secondary btn-sm" id="gc-signal-rule"><i class="fas fa-bell"></i> Multi-signal rule</button>
-      <button class="btn btn-primary btn-sm" id="gc-evaluate-signals"><i class="fas fa-play"></i> Evaluate rules</button>`) }
+      <button class="btn btn-secondary btn-sm" id="gc-baseline"><i class="fas fa-wave-square"></i> Dynamic baseline</button>
+      <button class="btn btn-secondary btn-sm" id="gc-maintenance"><i class="fas fa-screwdriver-wrench"></i> Maintenance</button>
+      <button class="btn btn-secondary btn-sm" id="gc-capacity-forecast"><i class="fas fa-chart-simple"></i> Capacity forecast</button>
+      <button class="btn btn-secondary btn-sm" id="gc-runbook"><i class="fas fa-book"></i> Runbook</button>
+      <button class="btn btn-secondary btn-sm" id="gc-observability-export"><i class="fas fa-share-nodes"></i> Export</button>
+      <button class="btn btn-secondary btn-sm" id="gc-slo"><i class="fas fa-bullseye"></i> SLO</button>
+      <button class="btn btn-secondary btn-sm" id="gc-privacy"><i class="fas fa-user-shield"></i> Privacy</button>
+      <button class="btn btn-primary btn-sm" id="gc-evaluate-signals"><i class="fas fa-play"></i> Evaluate & suppress</button>`) }
       <div class="card"><div class="card-header"><div><h3>Unified event adapters and correlation</h3><p class="text-muted text-sm">Cursor/watch/webhook/poll observations are normalized locally, deduplicated and retained as evidence. No provider mutation is performed.</p></div></div>
       <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${this._data.observabilityCatalog.eventAdapters.map(item => `<span class="badge badge-secondary" title="${Utils.escapeHtml(item.transport)}">${Utils.escapeHtml(item.key)} · ${Utils.escapeHtml(item.cursorKind)}</span>`).join('')}</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;margin-top:12px">
@@ -169,8 +179,26 @@ const GovernanceControlsPage = {
         ${network.map(row => `<tr><td class="mono">${Utils.escapeHtml(row.resourceKey)}<br><span class="badge ${badge(row.status)}">${row.status}</span></td><td>${rate(row.receiveBytesPerSecond)} / ${rate(row.transmitBytesPerSecond)}<div class="text-xs text-muted">flows: ${row.activeFlows ?? '—'}</div></td><td>${row.receiveDropsPerSecond == null ? '—' : row.receiveDropsPerSecond.toFixed(2)} / ${row.receiveErrorsPerSecond == null ? '—' : row.receiveErrorsPerSecond.toFixed(2)}</td><td>${signals(row)}</td></tr>`).join('') || this._empty('No network metrics', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Topology and multi-signal state</h3></div><div style="padding:15px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${this._stat('fa-circle-nodes', 'Nodes', this._data.topology.nodes.length)}${this._stat('fa-link', 'Edges', this._data.topology.edges.length)}${this._stat('fa-bell', 'Active alerts', (this._data.signalState.alerts || []).filter(item => item.state === 'active').length)}</div></div>
       </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><div><h3>Dynamic baseline</h3><p class="text-muted text-sm">Seasonal percentiles produce explainable, evidence-counted assessments.</p></div><button class="btn btn-sm btn-secondary" id="gc-evaluate-baselines">Evaluate</button></div><table class="data-table"><thead><tr><th>Policy</th><th>Metric</th><th>Seasonality</th><th>Latest</th></tr></thead><tbody>
+        ${(advanced.baselinePolicies || []).map(policy => { const latest = (advanced.baselineAssessments || []).find(item => item.policy_id === policy.id); return `<tr><td>${Utils.escapeHtml(policy.name)}</td><td class="mono text-xs">${Utils.escapeHtml(policy.metric_key)}</td><td>${policy.seasonality}</td><td><span class="badge ${latest?.status === 'above_baseline' ? 'badge-warning' : 'badge-secondary'}">${latest?.status || 'not evaluated'}</span></td></tr>`; }).join('') || this._empty('No baseline policies', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto" data-section="Dependency & maintenance suppression"><div class="card-header"><div><h3>Dependency &amp; maintenance suppression</h3><p class="text-muted text-sm">Active alerts remain visible while duplicate downstream notifications are suppressed with evidence.</p></div><button class="btn btn-sm btn-secondary" id="gc-reconcile-suppressions">Reconcile</button></div><table class="data-table"><thead><tr><th>Kind</th><th>Resource</th><th>Reason</th></tr></thead><tbody>
+        ${(advanced.suppressions || []).filter(item => item.active).map(item => `<tr><td><span class="badge badge-warning">${item.suppression_kind}</span></td><td class="mono text-xs">${Utils.escapeHtml(item.resource_type)}:${Utils.escapeHtml(item.resource_key)}</td><td>${Utils.escapeHtml(item.reason)}</td></tr>`).join('') || this._empty('No active suppressions', 3)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Capacity forecast</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Metric</th><th>Projected full</th><th>Confidence</th></tr></thead><tbody>
+        ${(advanced.capacityForecasts || []).slice(0, 10).map(item => `<tr><td class="mono text-xs">${Utils.escapeHtml(item.resource_key)}</td><td class="mono text-xs">${Utils.escapeHtml(item.metric_key)}</td><td>${item.projected_full_at ? new Date(item.projected_full_at).toLocaleString() : 'not projected'}</td><td>${(Number(item.confidence) * 100).toFixed(0)}%</td></tr>`).join('') || this._empty('No capacity forecasts', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Triage assistant &amp; root-cause candidates</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Summary</th><th>Runbooks</th></tr></thead><tbody>
+        ${(advanced.triageReports || []).slice(0, 10).map(item => `<tr><td class="mono text-xs">${Utils.escapeHtml(item.resource_type)}:${Utils.escapeHtml(item.resource_key)}</td><td>${Utils.escapeHtml(item.summary)}</td><td>${item.runbooks.map(runbook => `<a href="${Utils.escapeHtml(runbook.url)}" target="_blank" rel="noopener">${Utils.escapeHtml(runbook.title)}</a>`).join('<br>') || '—'}</td></tr>`).join('') || this._empty('Use the flask button on an event to create advisory triage', 3)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Runbook links</h3></div><table class="data-table"><thead><tr><th>Pattern</th><th>Minimum</th><th>Version</th><th>Link</th></tr></thead><tbody>
+        ${(advanced.runbooks || []).map(item => `<tr><td class="mono text-xs">${Utils.escapeHtml(item.event_pattern)}</td><td>${item.minimum_severity}</td><td>${Utils.escapeHtml(item.version)}</td><td><a href="${Utils.escapeHtml(item.url)}" target="_blank" rel="noopener">${Utils.escapeHtml(item.title)}</a></td></tr>`).join('') || this._empty('No runbook mappings', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Observability export</h3></div><table class="data-table"><thead><tr><th>Target</th><th>Kind / region</th><th>Last delivery</th><th></th></tr></thead><tbody>
+        ${(advanced.exportTargets || []).map(item => { const delivery = (advanced.exportDeliveries || []).find(row => row.target_id === item.id); return `<tr><td>${Utils.escapeHtml(item.name)}</td><td>${item.export_kind} / ${Utils.escapeHtml(item.region)}</td><td>${delivery?.status || 'never'}</td><td><button class="action-btn" data-gc-export-preview="${item.id}" title="Preview"><i class="fas fa-eye"></i></button><button class="action-btn success" data-gc-export-deliver="${item.id}" title="Deliver explicitly"><i class="fas fa-paper-plane"></i></button></td></tr>`; }).join('') || this._empty('No export targets', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>SLO availability</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Target</th><th>Availability</th><th>Status</th></tr></thead><tbody>
+        ${(this._data.sloReports || []).map(item => `<tr><td class="mono text-xs">${Utils.escapeHtml(item.resourceKey)}</td><td>${item.targetRatio == null ? '—' : `${(item.targetRatio * 100).toFixed(3)}%`}</td><td>${item.availabilityRatio == null ? '—' : `${(item.availabilityRatio * 100).toFixed(3)}%`}</td><td><span class="badge ${item.status === 'met' ? 'badge-success' : item.status === 'breached' ? 'badge-danger' : 'badge-secondary'}">${item.status}</span></td></tr>`).join('') || this._empty('No SLO policies or availability evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Telemetry privacy</h3></div><table class="data-table"><thead><tr><th>Host</th><th>Sampling</th><th>Retention metric/event</th><th>Residency</th><th></th></tr></thead><tbody>
+        ${(advanced.privacyPolicies || []).map(item => `<tr><td>${item.provider_host_id === 0 ? 'default' : item.provider_host_id}</td><td>${(item.sampling_ratio * 100).toFixed(0)}%</td><td>${item.metric_retention_days}d / ${item.event_retention_days}d</td><td>${Utils.escapeHtml(item.residency_region)}</td><td><button class="action-btn danger" data-gc-retention="${item.provider_host_id}" title="Preview retention purge"><i class="fas fa-eraser"></i></button></td></tr>`).join('') || this._empty('No telemetry privacy policies', 5)}</tbody></table></div>
+      </div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Normalized event timeline</h3></div><table class="data-table"><thead><tr><th>Time</th><th>Event</th><th>Resource</th><th>Severity</th><th>Repeats</th><th></th></tr></thead><tbody>
-      ${this._data.observedEvents.map(event => `<tr><td>${new Date(event.occurred_at).toLocaleString()}</td><td><strong>${Utils.escapeHtml(event.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(event.event_type)} · ${Utils.escapeHtml(event.adapter)}</div></td><td class="mono text-xs">${Utils.escapeHtml(event.resource_type)}:${Utils.escapeHtml(event.resource_key)}</td><td><span class="badge ${event.severity === 'critical' || event.severity === 'high' ? 'badge-danger' : event.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${event.severity}</span></td><td>${event.repeat_count}</td><td><button class="action-btn" data-gc-impact="${event.id}" title="Topology impact"><i class="fas fa-diagram-project"></i></button></td></tr>`).join('') || this._empty('No normalized events', 6)}</tbody></table></div>`;
+      ${this._data.observedEvents.map(event => `<tr><td>${new Date(event.occurred_at).toLocaleString()}</td><td><strong>${Utils.escapeHtml(event.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(event.event_type)} · ${Utils.escapeHtml(event.adapter)}</div></td><td class="mono text-xs">${Utils.escapeHtml(event.resource_type)}:${Utils.escapeHtml(event.resource_key)}</td><td><span class="badge ${event.severity === 'critical' || event.severity === 'high' ? 'badge-danger' : event.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${event.severity}</span></td><td>${event.repeat_count}</td><td><button class="action-btn" data-gc-impact="${event.id}" title="Topology impact"><i class="fas fa-diagram-project"></i></button><button class="action-btn" data-gc-triage-event="${event.id}" title="Triage assistant"><i class="fas fa-flask"></i></button></td></tr>`).join('') || this._empty('No normalized events', 6)}</tbody></table></div>`;
   },
 
   _bind() {
@@ -195,10 +223,27 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-timeline')?.addEventListener('click', () => this._timelineDialog());
     this._container.querySelector('#gc-topology-edge')?.addEventListener('click', () => this._topologyDialog());
     this._container.querySelector('#gc-signal-rule')?.addEventListener('click', () => this._signalRuleDialog());
+    this._container.querySelector('#gc-baseline')?.addEventListener('click', () => this._baselineDialog());
+    this._container.querySelector('#gc-maintenance')?.addEventListener('click', () => this._maintenanceDialog());
+    this._container.querySelector('#gc-capacity-forecast')?.addEventListener('click', () => this._capacityForecastDialog());
+    this._container.querySelector('#gc-runbook')?.addEventListener('click', () => this._runbookDialog());
+    this._container.querySelector('#gc-observability-export')?.addEventListener('click', () => this._exportDialog());
+    this._container.querySelector('#gc-slo')?.addEventListener('click', () => this._sloDialog());
+    this._container.querySelector('#gc-privacy')?.addEventListener('click', () => this._privacyDialog());
+    this._container.querySelector('#gc-evaluate-baselines')?.addEventListener('click', async () => {
+      try { const result = await Api.evaluateVmDynamicBaselines(); Toast.success(`${result.assessments.length} baseline assessments saved`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    });
+    this._container.querySelector('#gc-reconcile-suppressions')?.addEventListener('click', async () => {
+      try { const result = await Api.reconcileVmAlertSuppressions(); Toast.success(`${result.active} active suppressions`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    });
     this._container.querySelector('#gc-evaluate-signals')?.addEventListener('click', async () => {
       try { const result = await Api.evaluateVmSignalRules(); Toast.success(`${result.triggered} alerts triggered, ${result.resolved} resolved`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     });
     this._container.querySelectorAll('[data-gc-impact]').forEach(button => button.addEventListener('click', () => this._impactDialog(button.dataset.gcImpact)));
+    this._container.querySelectorAll('[data-gc-triage-event]').forEach(button => button.addEventListener('click', () => this._triageEvent(button.dataset.gcTriageEvent)));
+    this._container.querySelectorAll('[data-gc-export-preview]').forEach(button => button.addEventListener('click', () => this._previewExport(button.dataset.gcExportPreview)));
+    this._container.querySelectorAll('[data-gc-export-deliver]').forEach(button => button.addEventListener('click', () => this._deliverExport(button.dataset.gcExportDeliver)));
+    this._container.querySelectorAll('[data-gc-retention]').forEach(button => button.addEventListener('click', () => this._retentionDialog(button.dataset.gcRetention)));
     this._container.querySelectorAll('[data-gc-renew-lease]').forEach(button => button.addEventListener('click', () => this._renewLease(button.dataset.gcRenewLease)));
     this._container.querySelectorAll('[data-gc-clean-lease]').forEach(button => button.addEventListener('click', async () => {
       if (!await Modal.confirm('Attest that provider cleanup is complete?', { danger: true })) return;

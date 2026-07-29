@@ -269,9 +269,21 @@ class VmObservabilityService {
     const db = this._db();
     const catalog = EVENT_ADAPTERS.find(item => item.key === body.adapter);
     if (!catalog) throw fail('event adapter is unsupported');
-    const events = Array.isArray(body.events) ? body.events : [];
+    let events = Array.isArray(body.events) ? body.events : [];
     if (!events.length || events.length > 5000) throw fail('events must contain between 1 and 5000 observations');
     const host = integer(body.providerHostId ?? 0, 'providerHostId');
+    const received = events.length;
+    const privacyTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vm_observability_privacy_policies'").get();
+    const privacy = privacyTable ? db.prepare('SELECT * FROM vm_observability_privacy_policies WHERE provider_host_id=?').get(host)
+      || db.prepare('SELECT * FROM vm_observability_privacy_policies WHERE provider_host_id=0').get() : null;
+    let sampledOut = 0;
+    if (privacy?.sampling_ratio < 1) events = events.filter(raw => {
+      const key = JSON.stringify([host, raw.nativeEventId || raw.id || raw.key, raw.eventType || raw.eventTypeId || raw.type,
+        raw.resourceKey || raw.resourceId || raw.vm?.value, raw.occurredAt || raw.createdTime || raw.timestamp]);
+      const bucket = crypto.createHash('sha256').update(key).digest().readUInt32BE(0) / 0xffffffff;
+      if (bucket < privacy.sampling_ratio) return true;
+      sampledOut += 1; return false;
+    });
     const provider = clean(body.provider || catalog.provider, 'provider', 60).toLowerCase();
     const source = clean(body.source || catalog.transport, 'source', 160);
     const dedupeWindow = integer(body.dedupeWindowSeconds ?? 300, 'dedupeWindowSeconds', 1, 86400);
@@ -290,6 +302,8 @@ class VmObservabilityService {
     db.transaction(() => {
       for (const raw of events) {
         const event = normalizeEvent(catalog.key, raw);
+        if (privacy?.redact_event_message) event.message = '[REDACTED]';
+        if (privacy?.redact_raw_payload) event.raw = { redacted: true };
         const fingerprint = crypto.createHash('sha256').update(JSON.stringify([host, event.resourceType, event.resourceKey,
           event.eventType, event.title.toLowerCase(), String(event.message || '').toLowerCase()])).digest('hex');
         const cutoff = new Date(Date.parse(event.occurredAt) - dedupeWindow * 1000).toISOString();
@@ -318,7 +332,7 @@ class VmObservabilityService {
           cursor_kind=excluded.cursor_kind,updated_at=datetime('now')`).run(host, catalog.key, value, kind);
       }
     })();
-    return { providerHostId: host, adapter: catalog.key, accepted: events.length, inserted, duplicates, events: rows };
+    return { providerHostId: host, adapter: catalog.key, accepted: events.length, received, sampledOut, inserted, duplicates, events: rows };
   }
 
   events(query = {}, actor) {

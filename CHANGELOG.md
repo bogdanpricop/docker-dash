@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.54.0] - 2026-07-29 — Advanced VM observability operations
+
+The B216–B225 market-backlog batch adds explainable operational controls on
+top of normalized VM telemetry. All assessments are bounded and advisory; no
+provider mutation or collection is inferred.
+
+- Dynamic baseline policies, multi-signal alert suppression and maintenance
+  windows retain evidence for every evaluation and suppression decision.
+- Capacity forecasts, incident triage and versioned runbook links turn metric
+  and event evidence into bounded operator guidance.
+- Explicit telemetry exports apply per-host privacy, residency and delivery
+  checks; retention requires a typed confirmation.
+- SLO reports calculate availability across their full window and exclude the
+  union of matching maintenance intervals without double-counting overlaps.
+
 ## [8.53.0] - 2026-07-29 — VM observability and event correlation
 
 The next ten market-backlog capabilities, B206–B215, turn the normalized VM

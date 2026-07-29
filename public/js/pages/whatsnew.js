@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.54.0', date: '2026-07-29', title: 'Advanced VM observability operations', changes: [
+      { type: 'feature', text: 'Dynamic baselines, maintenance-aware dependency suppression, capacity forecasts and incident triage turn normalized VM evidence into bounded operational guidance.' },
+      { type: 'feature', text: 'Versioned runbook mappings, explicit telemetry exports and SLO availability reports provide traceable operational follow-through.' },
+      { type: 'security', text: 'Telemetry privacy applies sampling, label redaction, retention confirmation and residency checks before any explicit export delivery.' },
+      { type: 'improvement', text: 'SLO maintenance exclusions merge overlapping windows so downtime and coverage are never double-counted.' },
+    ] },
     { version: '8.53.0', date: '2026-07-29', title: 'VM observability and event correlation', changes: [
       { type: 'feature', text: 'VM performance charts compare canonical CPU, memory, disk and network series across up to ten resources and include normalized event annotations.' },
       { type: 'feature', text: 'Contention, storage and network dashboards expose ready/steal/balloon/swap, latency/IOPS/queue/resync and throughput/drop/error/flow/MTU signals.' },
