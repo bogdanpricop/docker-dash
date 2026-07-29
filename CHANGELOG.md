@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.43.0] - 2026-07-29 — Network-change guardrail evidence
+
+Provider Security Posture now summarizes declared network/NIC evidence bounds
+and the released state of common network mutation.
+
+- It does not test routing, VLAN safety, firewall policy, or isolation.
+- It changes no NIC, bridge, VLAN, security group, or network configuration.
+
 ## [8.42.0] - 2026-07-29 — Native task assurance evidence
 
 Provider Security Posture now summarizes declared durable-task, cancellation,

@@ -31,6 +31,11 @@ function _taskAssurance(features = {}) {
   const entries = Object.values(features).filter(feature => feature?.state !== 'unsupported' && (feature?.durableTask === true || feature?.cancel === true || feature?.postVerify === true));
   return { declaredTaskFeatures: entries.length, durable: entries.filter(feature => feature.durableTask === true).length, cancellable: entries.filter(feature => feature.cancel === true).length, postVerified: entries.filter(feature => feature.postVerify === true).length, revalidated: entries.filter(feature => feature.revalidate === true).length };
 }
+function _networkGuardrails(features = {}) {
+  const entries = Object.entries(features).filter(([key]) => key.startsWith('network.') || key.startsWith('vm.nic.')).map(([, value]) => value || {});
+  const mutation = features['network.mutate'] || {};
+  return { declaredFeatureCount: entries.length, readOnlyEvidence: entries.filter(feature => feature.readOnly === true || feature.evidenceOnly === true || feature.advisoryOnly === true).length, boundedEvidence: entries.filter(feature => feature.bounded === true).length, nicHotplugEvidenceOnly: features['vm.nic.hotplug']?.evidenceOnly === true, mutationState: mutation.state || 'unknown', mutationReleased: ['supported', 'conditional'].includes(mutation.state) };
+}
 
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
@@ -42,8 +47,9 @@ async function postureForHost(host, options = {}) {
     recovery: _recovery(capabilities.features),
     consoleExposure: _consoleExposure(capabilities.features),
     taskAssurance: _taskAssurance(capabilities.features),
+    networkGuardrails: _networkGuardrails(capabilities.features),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails } };

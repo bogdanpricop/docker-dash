@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.43.0', date: '2026-07-29', title: 'Network-change guardrail evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture summarizes declared network/NIC evidence bounds and common network-mutation state.' },
+      { type: 'improvement', text: 'The view explicitly avoids implying routing, VLAN safety, firewall-policy, or isolation validation.' },
+      { type: 'security', text: 'No NIC, bridge, VLAN, security group, or network configuration is changed.' },
+    ] },
     { version: '8.42.0', date: '2026-07-29', title: 'Native task assurance evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture summarizes declared durable-task, cancellation, post-verification, and revalidation properties.' },
       { type: 'improvement', text: 'Task-contract evidence remains distinct from task history, health, or reconciliation outcomes.' },
