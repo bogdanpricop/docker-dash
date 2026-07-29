@@ -161,7 +161,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V5.3 | Nutanix Prism Central | B001–B075 | tasks, categories și AHV lifecycle |
 | V5.4 | OpenStack provider | B001–B150, B176–B200 | Keystone catalog + Nova/Cinder/Neutron/Glance |
 | V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
-| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | V5.6a livrează B301–B305: discovery, VM/VMI/migration inventory, OpenShift/Harvester evidence și YAML server dry-run; B306–B316 rămân planificate |
+| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | V5.6a livrează B301–B305; V5.6b livrează B306–B315: CDI/templates, guarded create, migration/drain, CSI, Multus, NMState și exposure; B316 rămâne planificat |
 | V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
 | V5.8 | Provider plugin SDK | B401–B425 | signed manifest, permissions, sandbox și test kit |
 

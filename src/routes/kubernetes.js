@@ -18,6 +18,7 @@ const { Router } = require('express');
 const { getDb } = require('../db');
 const { fromHostRow, buildKubeconfig } = require('../services/kubernetes');
 const virtualization = require('../services/kubernetes-virtualization');
+const convergence = require('../services/kubernetes-convergence');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -44,7 +45,7 @@ function _getK8sHost(req, res) {
 function virtualizationRoute(handler) {
   return async (req, res, next) => {
     try { await handler(req, res); } catch (error) {
-      if (error.name === 'KubernetesVirtualizationError') {
+      if (['KubernetesVirtualizationError', 'KubernetesConvergenceError'].includes(error.name)) {
         return res.status(error.status || 400).json({ error: error.message, code: error.code, details: error.details });
       }
       next(error);
@@ -300,5 +301,87 @@ router.get('/virtualization/evidence', requireAuth, requireRole('admin'), virtua
   const row = _getK8sHost(req, res); if (!row) return;
   res.json(virtualization.evidence(row.id, req.user));
 }));
+
+// ─── v8.63.0 — B306-B315: CDI/template/storage/network convergence ───
+
+router.get('/virtualization/convergence/:kind', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await convergence.liveEvidence(row, req.params.kind, req.query.namespace || undefined));
+}));
+
+router.post('/virtualization/convergence/:kind/refresh', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const snapshot = await convergence.refreshEvidence(row, req.params.kind, req.body?.namespace || undefined, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_convergence_snapshot', targetType: 'host', targetId: String(req.hostId),
+      details: { kind: snapshot.kind, namespace: snapshot.namespace, evidenceHash: snapshot.evidenceHash,
+        duplicate: snapshot.duplicate, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+  }));
+
+router.get('/virtualization/convergence-snapshots', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json({ snapshots: convergence.snapshots(row.id, req.user) });
+}));
+
+router.post('/virtualization/datavolumes/plans', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const plan = await convergence.planDataVolume(row, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_datavolume_plan', targetType: 'kubevirt_change_plan', targetId: String(plan.id),
+      details: { namespace: plan.namespace, resourceName: plan.resourceName, planHash: plan.planHash,
+        approvalId: plan.approvalId, duplicate: plan.duplicate, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(plan.duplicate ? 200 : 201).json({ plan });
+  }));
+
+router.post('/virtualization/templates/plans', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const plan = await convergence.planTemplateInstantiation(row, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_template_plan', targetType: 'kubevirt_change_plan', targetId: String(plan.id),
+      details: { namespace: plan.namespace, resourceName: plan.resourceName, planHash: plan.planHash,
+        approvalId: plan.approvalId, duplicate: plan.duplicate, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(plan.duplicate ? 200 : 201).json({ plan });
+  }));
+
+router.get('/virtualization/change-plans', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json({ plans: convergence.plans(row.id, req.user) });
+}));
+
+router.get('/virtualization/change-plans/:id/events', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json({ events: convergence.operationEvents(req.params.id, req.user) });
+}));
+
+router.post('/virtualization/change-plans/:id/execute', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const plan = await convergence.executePlan(row, req.params.id, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_change_execute', targetType: 'kubevirt_change_plan', targetId: String(plan.id),
+      details: { kind: plan.kind, namespace: plan.namespace, resourceName: plan.resourceName,
+        planHash: plan.planHash, approvalId: plan.approvalId, operationRef: plan.operationRef,
+        state: plan.state, providerMutationStarted: plan.state === 'succeeded' }, ip: getClientIp(req) });
+    res.json({ plan });
+  }));
+
+router.get('/virtualization/migration-policies', requireAuth, requireRole('admin'), virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await convergence.migrationPolicies(row, req.user));
+}));
+
+router.post('/virtualization/migration-policies', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute((req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const policy = convergence.saveMigrationPolicy(row, req.body || {}, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_migration_policy_save', targetType: 'kubevirt_migration_policy', targetId: String(policy.id),
+      details: { policyHash: policy.policyHash, applySupported: false, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(201).json({ policy });
+  }));
 
 module.exports = router;

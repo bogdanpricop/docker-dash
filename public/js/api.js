@@ -1082,6 +1082,20 @@ const Api = {
     return this.post(`/kubernetes/virtualization/vms/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/dry-run`, { yaml });
   },
   getKubernetesVirtualizationEvidence() { return this.get('/kubernetes/virtualization/evidence'); },
+  getKubernetesConvergence(kind, namespace) {
+    return this.get(`/kubernetes/virtualization/convergence/${encodeURIComponent(kind)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesConvergence(kind, namespace) {
+    return this.post(`/kubernetes/virtualization/convergence/${encodeURIComponent(kind)}/refresh`, { namespace: namespace || undefined });
+  },
+  getKubernetesConvergenceSnapshots() { return this.get('/kubernetes/virtualization/convergence-snapshots'); },
+  createKubeVirtDataVolumePlan(body) { return this.post('/kubernetes/virtualization/datavolumes/plans', body); },
+  createKubeVirtTemplatePlan(body) { return this.post('/kubernetes/virtualization/templates/plans', body); },
+  getKubeVirtChangePlans() { return this.get('/kubernetes/virtualization/change-plans'); },
+  getKubeVirtChangePlanEvents(id) { return this.get(`/kubernetes/virtualization/change-plans/${id}/events`); },
+  executeKubeVirtChangePlan(id, body) { return this.post(`/kubernetes/virtualization/change-plans/${id}/execute`, body); },
+  getKubeVirtMigrationPolicies() { return this.get('/kubernetes/virtualization/migration-policies'); },
+  saveKubeVirtMigrationPolicy(body) { return this.post('/kubernetes/virtualization/migration-policies', body); },
 
   // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
   listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },

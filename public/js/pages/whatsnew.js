@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.63.0', date: '2026-07-29', title: 'KubeVirt storage and network convergence', changes: [
+      { type: 'feature', text: 'CDI DataVolume inventory and a guarded HTTPS/registry/PVC/upload wizard expose source, storage, checksum, phase and progress evidence.' },
+      { type: 'feature', text: 'OpenShift templates plus KubeVirt instancetypes/preferences can plan VM creation after parameter, namespace, storage and Multus validation.' },
+      { type: 'security', text: 'DataVolume/VM creation requires dryRun=All, hash-bound four-eyes approval, typed confirmation, fresh validation, durable events and fingerprinted read-back.' },
+      { type: 'feature', text: 'Live-migration policy and node-drain awareness cover bandwidth, concurrency, timeouts, eviction strategy and non-migratable blockers without implicit apply.' },
+      { type: 'feature', text: 'CSI snapshots, Multus mappings, redacted NMState health and VM Service/Route/Ingress exposure provide live and persisted convergence evidence.' },
+    ] },
     { version: '8.62.0', date: '2026-07-29', title: 'Sustainability and KubeVirt convergence', changes: [
       { type: 'feature', text: 'Power and energy telemetry plus carbon factors feed W/VM, W/workload, idle-waste, emissions and coverage dashboards with provenance.' },
       { type: 'feature', text: 'Carbon-aware scheduling and TCO comparisons enforce hard operational constraints while starting no move, schedule, purchase or billing action.' },

@@ -1031,16 +1031,16 @@ migrare, discount și risc și nu creează achiziții ori tranzacții de billing
 | B303 | OpenShift Virtualization adapter | OCP routes, RBAC, projects și operator conditions. | Ops | L | Done |
 | B304 | Harvester adapter | Harvester CRDs, images, networks, backups și Longhorn state. | Ops | L | Done |
 | B305 | VM YAML editor | Schema-aware, diff și server dry-run pentru CRD. | DX | M | Done |
-| B306 | DataVolume inventory | CDI sources, import/clone/upload și progress. | Ops | M | Next |
-| B307 | DataVolume creation wizard | HTTP/registry/PVC/upload source cu checksum. | DX | L | Next |
-| B308 | VM template/instancetype inventory | Templates, instancetypes și preferences. | DX | M | Next |
-| B309 | VM template instantiate | Parametri, namespace, storage și network validation. | DX | L | Next |
-| B310 | VM live-migration policy | Bandwidth, concurrency, completion și timeout policy. | Rez | L | Next |
-| B311 | Node drain VM awareness | Eviction/migration strategy și non-migratable blockers. | Rez | L | Next |
-| B312 | CSI snapshot capability map | VolumeSnapshotClass, quiesce și restore support. | Rez | M | Next |
-| B313 | Multus network inventory | NADs, attachments, IPAM și interface mappings. | Ops | M | Next |
-| B314 | NMState network intent | Host network policies și enactment health. | Ops | L | Later |
-| B315 | VM service exposure | Kubernetes Service/Route/Ingress mapping pentru VM. | DX | M | Next |
+| B306 | DataVolume inventory | CDI sources, import/clone/upload și progress. | Ops | M | Done |
+| B307 | DataVolume creation wizard | HTTP/registry/PVC/upload source cu checksum. | DX | L | Done |
+| B308 | VM template/instancetype inventory | Templates, instancetypes și preferences. | DX | M | Done |
+| B309 | VM template instantiate | Parametri, namespace, storage și network validation. | DX | L | Done |
+| B310 | VM live-migration policy | Bandwidth, concurrency, completion și timeout policy. | Rez | L | Done |
+| B311 | Node drain VM awareness | Eviction/migration strategy și non-migratable blockers. | Rez | L | Done |
+| B312 | CSI snapshot capability map | VolumeSnapshotClass, quiesce și restore support. | Rez | M | Done |
+| B313 | Multus network inventory | NADs, attachments, IPAM și interface mappings. | Ops | M | Done |
+| B314 | NMState network intent | Host network policies și enactment health. | Ops | L | Done |
+| B315 | VM service exposure | Kubernetes Service/Route/Ingress mapping pentru VM. | DX | M | Done |
 | B316 | VM/pod unified topology | Relații namespace/service/network/storage/node. | Ops | L | Next |
 | B317 | VM/pod unified metrics | Common workload charts și contention context. | Ops | L | Next |
 | B318 | VM/pod unified policy | Labels, quotas, network și admission evidence. | Gov | XL | Later |
@@ -1061,6 +1061,18 @@ operator/RBAC, images, NAD networks, backups și Longhorn fără mutații. Edito
 acceptă exclusiv `kubevirt.io/v1 VirtualMachine`, blochează identitatea/statusul
 și secretele inline, produce diff și trimite numai `dryRun=All`; nu există
 endpoint de apply.
+
+**Status implementare 2026-07-29:** B306–B315 au fost închise în V5.6b /
+v8.63.0. CDI inventory normalizează sursa, storage, faza, progresul și condițiile,
+iar wizardul acceptă HTTPS/registry/PVC/upload și checksum SHA-256. Template,
+instancetype și preference inventory păstrează coverage fără a returna valorile
+implicite ale parametrilor. Crearea DataVolume și instanțierea VM folosesc
+manifest canonic, prerequisites, API `dryRun=All`, approval legat de plan hash,
+four-eyes, confirmare tipărită, revalidare, jurnal durabil și read-back cu
+fingerprint. Politica de live migration este declarativă/locală și nu se aplică
+singură. Drain awareness, CSI snapshots, Multus, NMState și Service/Route/Ingress
+sunt evidence read-only, cu redacție și stări `unknown` când RBAC/API nu permit
+un verdict.
 
 ### N. Edge, ROBO, disconnected și sovereign (B326–B350)
 

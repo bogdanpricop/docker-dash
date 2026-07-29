@@ -40,6 +40,8 @@ const KubernetesResourcesPage = {
         <button class="tab" data-tab="nodes">Nodes</button>
         <button class="tab" data-tab="virtualmachines">Virtual machines</button>
         <button class="tab" data-tab="virtualization">Virtualization platform</button>
+        <button class="tab" data-tab="virtualization-storage">VM storage & templates</button>
+        <button class="tab" data-tab="virtualization-network">VM network & migration</button>
       </div>
       <div id="k8s-tab-container">Loading...</div>
     `;
@@ -142,6 +144,24 @@ const KubernetesResourcesPage = {
           ]);
           this._virtualizationCapabilities = capabilities;
           this._renderVirtualizationPlatform(el, { capabilities, openshift, harvester });
+          break;
+        }
+        case 'virtualization-storage': {
+          const [dataVolumes, templates, csi, plans] = await Promise.all([
+            Api.getKubernetesConvergence('datavolumes', this._namespace),
+            Api.getKubernetesConvergence('templates', this._namespace),
+            Api.getKubernetesConvergence('csi_snapshots'), Api.getKubeVirtChangePlans(),
+          ]);
+          this._renderVirtualizationStorage(el, { dataVolumes, templates, csi, plans: plans.plans || [] });
+          break;
+        }
+        case 'virtualization-network': {
+          const [drain, multus, nmstate, exposure, migration] = await Promise.all([
+            Api.getKubernetesConvergence('node_drain'), Api.getKubernetesConvergence('multus', this._namespace),
+            Api.getKubernetesConvergence('nmstate'), Api.getKubernetesConvergence('vm_exposure', this._namespace),
+            Api.getKubeVirtMigrationPolicies(),
+          ]);
+          this._renderVirtualizationNetwork(el, { drain, multus, nmstate, exposure, migration });
           break;
         }
       }
@@ -340,6 +360,102 @@ const KubernetesResourcesPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Harvester / Longhorn</h3></div><table class="table"><thead><tr><th>Evidence</th><th>State</th><th>Items</th></tr></thead><tbody>
           ${[['Images',harvester.images],['Networks',harvester.networks],['Backups',harvester.backups],['Longhorn volumes',harvester.longhornVolumes]].map(([label, item]) => `<tr><td>${label}</td><td>${Utils.escapeHtml(item?.state || 'unknown')}</td><td>${item?.items?.length || 0}</td></tr>`).join('')}</tbody></table></div>
       </div><div class="alert alert-info" style="margin-top:12px">All platform adapters in this view are read-only. Capability and inventory snapshots require an explicit refresh API; discovery never starts a VM, migration, backup or volume action.</div>`;
+  },
+
+  _renderVirtualizationStorage(el, data) {
+    const volumes = data.dataVolumes?.items || []; const templates = data.templates?.templates?.items || [];
+    const snapshotClasses = data.csi?.snapshotClasses || []; const plans = data.plans || [];
+    const volumeRows = volumes.map(item => `<tr><td>${Utils.escapeHtml(item.namespace || '—')}</td><td><strong>${Utils.escapeHtml(item.name || '—')}</strong></td><td>${Utils.escapeHtml(item.sourceKind || 'unknown')}</td><td>${Utils.escapeHtml(item.phase || 'Unknown')}</td><td>${Utils.escapeHtml(item.progress || '—')}</td></tr>`).join('');
+    const templateRows = templates.map(item => `<tr><td>${Utils.escapeHtml(item.namespace || '—')}</td><td><strong>${Utils.escapeHtml(item.name || '—')}</strong></td><td>${item.parameters?.length || 0}</td><td>${item.objectKinds?.map(kind => Utils.escapeHtml(kind)).join('<br>') || '—'}</td><td><button class="btn btn-xs btn-primary" data-kubevirt-template="${Utils.escapeHtml(item.name || '')}" data-ns="${Utils.escapeHtml(item.namespace || this._namespace || 'default')}">Plan VM</button></td></tr>`).join('');
+    const planRows = plans.map(plan => `<tr><td>#${plan.id}</td><td>${Utils.escapeHtml(plan.kind)}</td><td>${Utils.escapeHtml(`${plan.namespace}/${plan.resourceName}`)}</td><td><span class="badge ${plan.state === 'succeeded' ? 'badge-success' : plan.state === 'failed' || plan.state === 'stale' ? 'badge-danger' : 'badge-warning'}">${Utils.escapeHtml(plan.state)}</span></td><td>${plan.approvalId || '—'}</td><td>${plan.state === 'validated' ? `<button class="btn btn-xs btn-danger" data-kubevirt-execute="${plan.id}" data-name="${Utils.escapeHtml(plan.resourceName)}" data-approval="${plan.approvalId}">Execute</button>` : Utils.escapeHtml(plan.operationRef || '—')}</td></tr>`).join('');
+    el.innerHTML = `<div class="alert alert-info">Creation is always <strong>plan → Kubernetes dryRun=All → independent approval → revalidation → create → read-back verify</strong>. Approval alone never executes a change.</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn btn-sm btn-primary" id="kubevirt-new-dv"><i class="fas fa-plus"></i> Plan DataVolume</button><button class="btn btn-sm btn-secondary" id="kubevirt-storage-snapshot">Save evidence snapshot</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>CDI DataVolumes · ${Utils.escapeHtml(data.dataVolumes?.state || 'unknown')}</h3></div><table class="table"><thead><tr><th>Namespace</th><th>Name</th><th>Source</th><th>Phase</th><th>Progress</th></tr></thead><tbody>${volumeRows || '<tr><td colspan="5">No DataVolumes observed</td></tr>'}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>VM templates</h3></div><table class="table"><thead><tr><th>Namespace</th><th>Name</th><th>Params</th><th>Objects</th><th></th></tr></thead><tbody>${templateRows || '<tr><td colspan="5">No OpenShift templates observed</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">Instancetypes: ${(data.templates?.instancetypes?.cluster?.items?.length || 0) + (data.templates?.instancetypes?.namespaced?.items?.length || 0)} · preferences: ${(data.templates?.preferences?.cluster?.items?.length || 0) + (data.templates?.preferences?.namespaced?.items?.length || 0)}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>CSI snapshot map</h3></div><table class="table"><thead><tr><th>Class</th><th>Driver</th><th>Deletion</th><th>Default</th></tr></thead><tbody>${snapshotClasses.map(item => `<tr><td>${Utils.escapeHtml(item.name || '—')}</td><td>${Utils.escapeHtml(item.driver || '—')}</td><td>${Utils.escapeHtml(item.deletionPolicy || '—')}</td><td>${item.isDefault ? 'yes' : 'no'}</td></tr>`).join('') || '<tr><td colspan="4">Snapshot API unavailable or empty</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">Quiesce: ${Utils.escapeHtml(data.csi?.quiesceSupport || 'unknown')} · restore: ${Utils.escapeHtml(data.csi?.restoreSupport || 'unknown')}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Guarded change plans</h3></div><table class="table"><thead><tr><th>ID</th><th>Kind</th><th>Target</th><th>State</th><th>Approval</th><th></th></tr></thead><tbody>${planRows || '<tr><td colspan="6">No plans</td></tr>'}</tbody></table></div>
+      </div>`;
+    el.querySelector('#kubevirt-new-dv')?.addEventListener('click', () => this._openDataVolumePlan());
+    el.querySelector('#kubevirt-storage-snapshot')?.addEventListener('click', async () => {
+      try { await Promise.all([Api.refreshKubernetesConvergence('datavolumes', this._namespace), Api.refreshKubernetesConvergence('templates', this._namespace), Api.refreshKubernetesConvergence('csi_snapshots')]); Toast.success('Storage evidence saved'); }
+      catch (error) { Toast.error(error.message); }
+    });
+    el.querySelectorAll('[data-kubevirt-template]').forEach(button => button.addEventListener('click', () =>
+      this._openTemplatePlan(button.dataset.ns, button.dataset.kubevirtTemplate)));
+    el.querySelectorAll('[data-kubevirt-execute]').forEach(button => button.addEventListener('click', () =>
+      this._executeKubeVirtPlan(Number(button.dataset.kubevirtExecute), button.dataset.name, Number(button.dataset.approval))));
+  },
+
+  _renderVirtualizationNetwork(el, data) {
+    const nodes = data.drain?.items || []; const networks = data.multus?.networks || [];
+    const policies = data.nmstate?.policies?.items || []; const exposure = data.exposure?.entries || [];
+    const migrationRows = (data.migration?.declared || []).map(policy => `<tr><td>${Utils.escapeHtml(policy.name)}</td><td>${Utils.escapeHtml(policy.bandwidthPerMigration)}</td><td>${policy.parallelMigrationsPerCluster}/${policy.parallelOutboundPerNode}</td><td>${policy.completionTimeoutPerGiB}s/GiB · ${policy.progressTimeoutSeconds}s</td><td>${policy.allowAutoConverge ? 'auto-converge ' : ''}${policy.allowPostCopy ? 'post-copy' : ''}</td></tr>`).join('');
+    el.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn btn-sm btn-primary" id="kubevirt-migration-policy">Save migration policy</button><button class="btn btn-sm btn-secondary" id="kubevirt-network-snapshot">Save evidence snapshot</button></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Node drain VM awareness</h3></div><table class="table"><thead><tr><th>Node</th><th>Ready</th><th>VMs</th><th>Blockers</th></tr></thead><tbody>${nodes.map(node => `<tr><td>${Utils.escapeHtml(node.name || '—')}</td><td><span class="badge ${node.drainReady === true ? 'badge-success' : node.drainReady === false ? 'badge-danger' : 'badge-warning'}">${node.drainReady === true ? 'drain ready' : node.drainReady === false ? 'blocked' : 'unknown'}</span></td><td>${node.virtualMachines?.length || 0}</td><td>${node.virtualMachines?.flatMap(vm => vm.blockers || []).map(item => Utils.escapeHtml(item)).join('<br>') || (node.evidenceComplete ? '—' : 'RBAC/API evidence incomplete')}</td></tr>`).join('') || '<tr><td colspan="4">No node evidence</td></tr>'}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Multus networks</h3></div><table class="table"><thead><tr><th>Network</th><th>Plugin</th><th>VLAN</th><th>IPAM</th></tr></thead><tbody>${networks.map(item => `<tr><td>${Utils.escapeHtml(`${item.namespace || '—'}/${item.name || '—'}`)}</td><td>${Utils.escapeHtml(item.pluginType || 'unknown')}</td><td>${item.vlan ?? '—'}</td><td>${Utils.escapeHtml(item.ipam?.type || '—')}</td></tr>`).join('') || '<tr><td colspan="4">No NAD evidence</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">VM interface attachments: ${data.multus?.attachments?.length || 0}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>NMState intent</h3></div><table class="table"><thead><tr><th>Policy</th><th>Nodes unavailable</th><th>Conditions</th></tr></thead><tbody>${policies.map(item => `<tr><td>${Utils.escapeHtml(item.name || '—')}</td><td>${item.enactments ?? '—'}</td><td>${item.conditions?.map(condition => `${Utils.escapeHtml(condition.type)}=${Utils.escapeHtml(condition.status)}`).join('<br>') || '—'}</td></tr>`).join('') || '<tr><td colspan="3">NMState unavailable or empty</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">Observed node states: ${data.nmstate?.nodeStates?.items?.length || 0}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>VM service exposure</h3></div><table class="table"><thead><tr><th>VM</th><th>Services</th><th>Routes / Ingresses</th></tr></thead><tbody>${exposure.map(item => `<tr><td>${Utils.escapeHtml(`${item.namespace}/${item.vmName}`)}</td><td>${item.services?.map(service => Utils.escapeHtml(`${service.name} (${service.type})`)).join('<br>') || '—'}</td><td>${item.services?.flatMap(service => [...(service.routes || []).map(route => route.host || route.name), ...(service.ingresses || []).flatMap(ingress => ingress.hosts || [ingress.name])]).map(value => Utils.escapeHtml(value)).join('<br>') || '—'}</td></tr>`).join('') || '<tr><td colspan="3">No VM exposure observed</td></tr>'}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Live-migration policy</h3></div><table class="table"><thead><tr><th>Name</th><th>Bandwidth</th><th>Cluster/node</th><th>Timeouts</th><th>Risk modes</th></tr></thead><tbody>${migrationRows || '<tr><td colspan="5">No declared policy</td></tr>'}</tbody></table><div class="card-body text-sm text-muted">Policy apply is deliberately disabled; observed KubeVirt configurations: ${data.migration?.observed?.items?.length || 0}</div></div>
+      </div>`;
+    el.querySelector('#kubevirt-migration-policy')?.addEventListener('click', () => this._openMigrationPolicy());
+    el.querySelector('#kubevirt-network-snapshot')?.addEventListener('click', async () => {
+      try { await Promise.all(['node_drain', 'multus', 'nmstate', 'vm_exposure'].map(kind => Api.refreshKubernetesConvergence(kind, ['multus', 'vm_exposure'].includes(kind) ? this._namespace : null))); Toast.success('Network and drain evidence saved'); }
+      catch (error) { Toast.error(error.message); }
+    });
+  },
+
+  async _openDataVolumePlan() {
+    const result = await Modal.form(`<div class="form-group"><label>Namespace</label><input id="dv-namespace" class="form-control" value="${Utils.escapeHtml(this._namespace || 'default')}"></div><div class="form-group"><label>Name</label><input id="dv-name" class="form-control" placeholder="ubuntu-disk"></div><div class="form-group"><label>Source type</label><select id="dv-source-type" class="form-control"><option value="http">HTTPS</option><option value="registry">Registry</option><option value="pvc">PVC clone</option><option value="upload">Upload</option></select></div><div class="form-group"><label>Source URL or namespace/name</label><input id="dv-source" class="form-control" placeholder="https://… or namespace/pvc"></div><div class="form-group"><label>Size</label><input id="dv-size" class="form-control" value="20Gi"></div><div class="form-group"><label>StorageClass (optional)</label><input id="dv-storage-class" class="form-control"></div><div class="form-group"><label>SHA-256 checksum (optional)</label><input id="dv-checksum" class="form-control" placeholder="sha256:…"></div>`, {
+      title: 'Plan CDI DataVolume', confirmText: 'Dry-run and request approval', onSubmit: async content => {
+        const sourceType = content.querySelector('#dv-source-type').value; const sourceValue = content.querySelector('#dv-source').value.trim();
+        const source = sourceType === 'pvc' ? { namespace: sourceValue.split('/')[0], name: sourceValue.split('/')[1] } : { url: sourceValue };
+        try { return await Api.createKubeVirtDataVolumePlan({ namespace: content.querySelector('#dv-namespace').value,
+          name: content.querySelector('#dv-name').value, sourceType, source, checksum: content.querySelector('#dv-checksum').value,
+          storage: { size: content.querySelector('#dv-size').value, storageClassName: content.querySelector('#dv-storage-class').value } }); }
+        catch (error) { Toast.error(error.message); return false; }
+      },
+    });
+    if (result?.plan) { Toast.success(`Plan #${result.plan.id}; approval #${result.plan.approvalId}`); this._load(); }
+  },
+
+  async _openTemplatePlan(namespace, templateName) {
+    const result = await Modal.form(`<p>Template <code>${Utils.escapeHtml(`${namespace}/${templateName}`)}</code></p><div class="form-group"><label>VM name</label><input id="template-vm-name" class="form-control"></div><div class="form-group"><label>Parameters (JSON)</label><textarea id="template-params" class="form-control mono" rows="8">{}</textarea></div>`, {
+      title: 'Plan VM template instantiation', confirmText: 'Validate and request approval', onSubmit: async content => {
+        let parameters; try { parameters = JSON.parse(content.querySelector('#template-params').value); } catch { Toast.error('Parameters must be valid JSON'); return false; }
+        try { return await Api.createKubeVirtTemplatePlan({ namespace, templateName,
+          vmName: content.querySelector('#template-vm-name').value, parameters }); }
+        catch (error) { Toast.error(error.message); return false; }
+      },
+    });
+    if (result?.plan) { Toast.success(`Plan #${result.plan.id}; approval #${result.plan.approvalId}`); this._load(); }
+  },
+
+  async _executeKubeVirtPlan(id, name, suggestedApproval) {
+    const approvalId = window.prompt(`Approved request ID for plan #${id}`, String(suggestedApproval || ''));
+    if (approvalId === null) return; const confirmation = window.prompt(`Type ${name} to execute`, '');
+    if (confirmation === null) return;
+    try { const result = await Api.executeKubeVirtChangePlan(id, { approvalId: Number(approvalId), confirmation });
+      Toast.success(`Operation ${result.plan.operationRef} ${result.plan.state}`); this._load(); }
+    catch (error) { Toast.error(error.message); }
+  },
+
+  async _openMigrationPolicy() {
+    const result = await Modal.form(`<div class="form-group"><label>Name</label><input id="mig-name" class="form-control" value="default"></div><div class="form-group"><label>Bandwidth per migration</label><input id="mig-bandwidth" class="form-control" value="64Mi"></div><div class="form-group"><label>Parallel per cluster</label><input id="mig-cluster" type="number" class="form-control" value="5"></div><div class="form-group"><label>Parallel outbound per node</label><input id="mig-node" type="number" class="form-control" value="2"></div><div class="form-group"><label>Completion timeout seconds/GiB</label><input id="mig-completion" type="number" class="form-control" value="800"></div><div class="form-group"><label>Progress timeout seconds</label><input id="mig-progress" type="number" class="form-control" value="150"></div><label><input id="mig-converge" type="checkbox"> Allow auto-converge</label><br><label><input id="mig-postcopy" type="checkbox"> Allow post-copy</label>`, {
+      title: 'Declared live-migration policy', confirmText: 'Save local policy', onSubmit: async content => {
+        try { return await Api.saveKubeVirtMigrationPolicy({ name: content.querySelector('#mig-name').value,
+          bandwidthPerMigration: content.querySelector('#mig-bandwidth').value,
+          parallelMigrationsPerCluster: Number(content.querySelector('#mig-cluster').value),
+          parallelOutboundPerNode: Number(content.querySelector('#mig-node').value),
+          completionTimeoutPerGiB: Number(content.querySelector('#mig-completion').value),
+          progressTimeoutSeconds: Number(content.querySelector('#mig-progress').value),
+          allowAutoConverge: content.querySelector('#mig-converge').checked,
+          allowPostCopy: content.querySelector('#mig-postcopy').checked }); }
+        catch (error) { Toast.error(error.message); return false; }
+      },
+    });
+    if (result?.policy) { Toast.success('Migration policy saved'); this._load(); }
   },
 
   async _openKubeVirtYamlEditor(namespace, name) {

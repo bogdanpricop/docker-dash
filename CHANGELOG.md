@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.63.0] - 2026-07-29 — KubeVirt storage and network convergence
+
+The B306–B315 batch adds CDI/template workflows and read-only storage, network
+and drain convergence evidence with guarded, independently approved creation.
+
+- DataVolume inventory normalizes HTTP, registry, PVC clone and upload sources,
+  storage, phase, progress and conditions. The creation wizard supports those
+  sources, HTTPS enforcement and optional SHA-256 provenance.
+- OpenShift templates, KubeVirt instancetypes and preferences expose explicit
+  API/RBAC coverage without returning parameter defaults. Template
+  instantiation validates namespace, storage classes and Multus attachments.
+- DataVolume and VM creation require a canonical plan, Kubernetes `dryRun=All`,
+  hash-bound approval by another administrator, typed confirmation, fresh
+  prerequisite validation, durable operation events and fingerprinted read-back.
+- Local migration policies capture bandwidth, concurrency and timeout intent
+  without applying cluster configuration. Node-drain evidence reports eviction
+  strategy and non-migratable blockers.
+- CSI snapshot classes/drivers/storage classes, Multus NAD/IPAM/interface
+  mappings, redacted NMState intent/health and VM Service/Route/Ingress exposure
+  are available as live evidence and explicit persisted snapshots.
+
 ## [8.62.0] - 2026-07-29 — Sustainability and KubeVirt convergence
 
 The B296–B305 batch completes FinOps sustainability and starts the converged
