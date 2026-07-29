@@ -534,4 +534,140 @@ const GovernanceControlsPage = {
       ] })) });
     if (result) { Toast.success('Multi-signal rule saved'); await this.render(this._container); }
   },
+
+  async _baselineDialog() {
+    const definitions = this._data.lifecycleCatalog.metrics || [];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-base-name" class="form-control" value="Seasonal utilization"></div><div class="form-group"><label>Metric</label><select id="gc-base-metric" class="form-control">${definitions.map(item => `<option>${Utils.escapeHtml(item.metric_key)}</option>`).join('')}</select></div></div>
+      <div class="form-row"><div class="form-group"><label>Resource key (blank = every VM)</label><input id="gc-base-resource" class="form-control mono"></div><div class="form-group"><label>Seasonality</label><select id="gc-base-season" class="form-control"><option value="hour_of_day">hour of day</option><option value="day_of_week">day of week</option><option value="none">none</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Window days</label><input id="gc-base-window" type="number" min="2" max="90" value="14" class="form-control"></div><div class="form-group"><label>Minimum samples</label><input id="gc-base-samples" type="number" min="4" value="20" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Percentile</label><input id="gc-base-percentile" type="number" min="0.5" max="0.999" step="0.001" value="0.95" class="form-control"></div><div class="form-group"><label>Deviation multiplier</label><input id="gc-base-multiplier" type="number" min="1" step="0.1" value="1.5" class="form-control"></div></div>`,
+    { title: 'Dynamic baseline policy', onSubmit: c => this._submit(() => Api.createVmDynamicBaseline({
+      name: c.querySelector('#gc-base-name').value, metricKey: c.querySelector('#gc-base-metric').value,
+      resourceType: 'vm', resourceKey: c.querySelector('#gc-base-resource').value || undefined,
+      seasonality: c.querySelector('#gc-base-season').value, windowDays: Number(c.querySelector('#gc-base-window').value),
+      minimumSamples: Number(c.querySelector('#gc-base-samples').value), percentile: Number(c.querySelector('#gc-base-percentile').value),
+      deviationMultiplier: Number(c.querySelector('#gc-base-multiplier').value),
+    })) });
+    if (result) { Toast.success('Dynamic baseline saved'); await this.render(this._container); }
+  },
+
+  async _maintenanceDialog() {
+    const local = date => new Date(date - new Date(date).getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    const now = Date.now();
+    const result = await Modal.form(`<div class="form-group"><label>Name</label><input id="gc-maint-name" class="form-control" value="Planned maintenance"></div>
+      <div class="form-row"><div class="form-group"><label>Scope type</label><input id="gc-maint-type" class="form-control" value="vm"></div><div class="form-group"><label>Scope key (* = all)</label><input id="gc-maint-key" class="form-control mono" value="*"></div></div>
+      <div class="form-row"><div class="form-group"><label>Starts</label><input id="gc-maint-start" type="datetime-local" class="form-control" value="${local(now)}"></div><div class="form-group"><label>Ends</label><input id="gc-maint-end" type="datetime-local" class="form-control" value="${local(now + 3600000)}"></div></div>
+      <div class="form-group"><label>Reason</label><textarea id="gc-maint-reason" class="form-control" rows="3"></textarea></div>`,
+    { title: 'Maintenance-aware alerting', onSubmit: c => this._submit(() => Api.createVmObservabilityMaintenance({
+      name: c.querySelector('#gc-maint-name').value, scopeType: c.querySelector('#gc-maint-type').value,
+      scopeKey: c.querySelector('#gc-maint-key').value, startsAt: new Date(c.querySelector('#gc-maint-start').value).toISOString(),
+      endsAt: new Date(c.querySelector('#gc-maint-end').value).toISOString(), reason: c.querySelector('#gc-maint-reason').value,
+    })) });
+    if (result) { Toast.success('Maintenance window saved'); await this.render(this._container); }
+  },
+
+  async _capacityForecastDialog() {
+    const resources = [...new Set((this._data.freshness.resources || []).map(item => item.resource_key))];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Resource</label><input id="gc-forecast-resource" list="gc-forecast-resources" class="form-control mono"><datalist id="gc-forecast-resources">${resources.map(item => `<option value="${Utils.escapeHtml(item)}">`).join('')}</datalist></div><div class="form-group"><label>Metric</label><select id="gc-forecast-metric" class="form-control"><option>disk.used_bytes</option><option>memory.used_bytes</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Window days</label><input id="gc-forecast-window" type="number" min="2" max="90" value="30" class="form-control"></div><div class="form-group"><label>Capacity override (optional)</label><input id="gc-forecast-capacity" type="number" min="0" class="form-control"></div></div>`,
+    { title: 'Capacity forecast', onSubmit: c => this._submit(() => Api.createVmCapacityForecast({ resourceType: 'vm',
+      resourceKey: c.querySelector('#gc-forecast-resource').value, metricKey: c.querySelector('#gc-forecast-metric').value,
+      windowDays: Number(c.querySelector('#gc-forecast-window').value),
+      ...(c.querySelector('#gc-forecast-capacity').value ? { capacityValue: Number(c.querySelector('#gc-forecast-capacity').value) } : {}),
+    })) });
+    if (result) { Toast.success(`Forecast: ${result.forecast.status}`); await this.render(this._container); }
+  },
+
+  async _runbookDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-runbook-name" class="form-control"></div><div class="form-group"><label>Version</label><input id="gc-runbook-version" class="form-control" value="1.0"></div></div>
+      <div class="form-row"><div class="form-group"><label>Event regex</label><input id="gc-runbook-pattern" class="form-control mono" value="restart|failure"></div><div class="form-group"><label>Resource type (optional)</label><input id="gc-runbook-type" class="form-control" value="vm"></div></div>
+      <div class="form-row"><div class="form-group"><label>Minimum severity</label><select id="gc-runbook-severity" class="form-control"><option>info</option><option selected>warning</option><option>high</option><option>critical</option></select></div><div class="form-group"><label>Link title</label><input id="gc-runbook-title" class="form-control"></div></div>
+      <div class="form-group"><label>Internal path or HTTPS URL</label><input id="gc-runbook-url" class="form-control" value="/docs/features/observability"></div>`,
+    { title: 'Recommended runbook link', onSubmit: c => this._submit(() => Api.createVmRunbookMapping({ name: c.querySelector('#gc-runbook-name').value,
+      eventPattern: c.querySelector('#gc-runbook-pattern').value, resourceType: c.querySelector('#gc-runbook-type').value || undefined,
+      minimumSeverity: c.querySelector('#gc-runbook-severity').value, title: c.querySelector('#gc-runbook-title').value,
+      url: c.querySelector('#gc-runbook-url').value, version: c.querySelector('#gc-runbook-version').value,
+    })) });
+    if (result) { Toast.success('Runbook mapping saved'); await this.render(this._container); }
+  },
+
+  async _exportDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-export-name" class="form-control"></div><div class="form-group"><label>Kind</label><select id="gc-export-kind" class="form-control"><option value="webhook">webhook JSON</option><option value="otlp_http">OTLP HTTP JSON</option><option value="syslog_udp">syslog UDP</option><option value="prometheus">Prometheus pull</option></select></div></div>
+      <div class="form-group"><label>Endpoint (blank for Prometheus pull)</label><input id="gc-export-endpoint" class="form-control" placeholder="https://collector.example.com/v1/metrics"></div>
+      <div class="form-row"><div class="form-group"><label>Residency region</label><input id="gc-export-region" class="form-control" value="local"></div><div class="form-group"><label>Provider host IDs (comma-separated)</label><input id="gc-export-hosts" class="form-control mono" placeholder="0, 7"></div></div>
+      <label><input id="gc-export-private" type="checkbox"> Explicitly allow private-network destination</label>`,
+    { title: 'Observability export target', onSubmit: c => this._submit(() => Api.createVmObservabilityExport({
+      name: c.querySelector('#gc-export-name').value, exportKind: c.querySelector('#gc-export-kind').value,
+      endpoint: c.querySelector('#gc-export-endpoint').value || undefined, region: c.querySelector('#gc-export-region').value,
+      allowPrivateNetwork: c.querySelector('#gc-export-private').checked, filters: { providerHostIds: c.querySelector('#gc-export-hosts').value
+        .split(',').map(item => item.trim()).filter(Boolean).map(Number) },
+    })) });
+    if (result) { Toast.success('Export target saved; no data was sent'); await this.render(this._container); }
+  },
+
+  async _privacyDialog() {
+    const hostId = await Modal.form('<div class="form-group"><label>Provider host ID (0 = default)</label><input id="gc-privacy-host" type="number" min="0" value="0" class="form-control"></div>',
+      { title: 'Select telemetry scope', confirmText: 'Load policy', onSubmit: c => Number(c.querySelector('#gc-privacy-host').value) });
+    if (hostId == null) return;
+    try {
+      const { policy } = await Api.getVmTelemetryPrivacy(hostId);
+      const result = await Modal.form(`<div class="form-group"><label>Redacted label keys (comma-separated)</label><input id="gc-privacy-labels" class="form-control mono" value="${Utils.escapeHtml((policy.redactedLabelKeys || []).join(', '))}"></div>
+        <div class="form-row"><div class="form-group"><label>Sampling ratio</label><input id="gc-privacy-sampling" type="number" min="0.01" max="1" step="0.01" value="${policy.sampling_ratio}" class="form-control"></div><div class="form-group"><label>Residency region</label><input id="gc-privacy-region" class="form-control" value="${Utils.escapeHtml(policy.residency_region)}"></div></div>
+        <div class="form-row"><div class="form-group"><label>Metric retention days</label><input id="gc-privacy-metric-days" type="number" min="1" max="3650" value="${policy.metric_retention_days}" class="form-control"></div><div class="form-group"><label>Event retention days</label><input id="gc-privacy-event-days" type="number" min="1" max="3650" value="${policy.event_retention_days}" class="form-control"></div></div>
+        <label style="display:block"><input id="gc-privacy-message" type="checkbox" ${policy.redact_event_message ? 'checked' : ''}> Redact normalized event messages</label>
+        <label style="display:block;margin-top:8px"><input id="gc-privacy-raw" type="checkbox" ${policy.redact_raw_payload ? 'checked' : ''}> Redact raw event payloads</label>`,
+      { title: `Telemetry privacy · host ${hostId}`, onSubmit: c => this._submit(() => Api.saveVmTelemetryPrivacy(hostId, {
+        redactedLabelKeys: c.querySelector('#gc-privacy-labels').value.split(',').map(item => item.trim()).filter(Boolean),
+        samplingRatio: Number(c.querySelector('#gc-privacy-sampling').value), residencyRegion: c.querySelector('#gc-privacy-region').value,
+        metricRetentionDays: Number(c.querySelector('#gc-privacy-metric-days').value), eventRetentionDays: Number(c.querySelector('#gc-privacy-event-days').value),
+        redactEventMessage: c.querySelector('#gc-privacy-message').checked, redactRawPayload: c.querySelector('#gc-privacy-raw').checked,
+      })) });
+      if (result) { Toast.success('Telemetry privacy policy saved'); await this.render(this._container); }
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _sloDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-slo-name" class="form-control" value="VM availability"></div><div class="form-group"><label>Resource key</label><input id="gc-slo-resource" class="form-control mono"></div></div>
+      <div class="form-row"><div class="form-group"><label>Target ratio</label><input id="gc-slo-target" type="number" min="0.5" max="0.99999" step="0.0001" value="0.999" class="form-control"></div><div class="form-group"><label>Window days</label><input id="gc-slo-days" type="number" min="1" max="365" value="30" class="form-control"></div></div>
+      <label><input id="gc-slo-maintenance" type="checkbox" checked> Exclude approved maintenance</label>`,
+    { title: 'SLO availability policy', onSubmit: c => this._submit(() => Api.saveVmSlo({ name: c.querySelector('#gc-slo-name').value,
+      resourceType: 'vm', resourceKey: c.querySelector('#gc-slo-resource').value, targetRatio: Number(c.querySelector('#gc-slo-target').value),
+      windowDays: Number(c.querySelector('#gc-slo-days').value), excludeMaintenance: c.querySelector('#gc-slo-maintenance').checked,
+    })) });
+    if (result) { Toast.success('SLO policy saved'); await this.render(this._container); }
+  },
+
+  async _triageEvent(eventId) {
+    try {
+      const { report } = await Api.createVmIncidentTriage({ eventId: Number(eventId) });
+      const candidates = report.candidates.map(item => `<tr><td>${item.rank}</td><td>${Utils.escapeHtml(item.title)}</td><td class="mono text-xs">${Utils.escapeHtml(item.resourceType)}:${Utils.escapeHtml(item.resourceKey)}</td><td>${(item.score * 100).toFixed(1)}%</td><td>${item.reasons.map(Utils.escapeHtml).join(', ')}</td></tr>`).join('');
+      Modal.open(`<div class="modal-header"><h3>Triage assistant</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><p>${Utils.escapeHtml(report.summary)}</p><table class="data-table"><thead><tr><th>Rank</th><th>Candidate</th><th>Resource</th><th>Score</th><th>Evidence</th></tr></thead><tbody>${candidates}</tbody></table><p class="text-muted text-sm" style="margin-top:12px">Candidate ranking is advisory and does not claim causality.</p></div>`, { width: '1000px' });
+      Modal._content.querySelector('#gc-close').addEventListener('click', () => { Modal.close(); this.render(this._container); });
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _previewExport(id) {
+    try {
+      const result = await Api.previewVmObservabilityExport(id);
+      Modal.open(`<div class="modal-header"><h3>Export preview · ${Utils.escapeHtml(result.target.name)}</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><p>${result.eventCount} events · ${result.sampleCount} samples · ${Utils.formatBytes(result.byteSize)} · SHA-256 <span class="mono">${result.checksumSha256}</span></p><textarea class="form-control mono" rows="18" readonly>${Utils.escapeHtml(result.preview)}</textarea></div>`, { width: '1000px' });
+      Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _deliverExport(id) {
+    if (!await Modal.confirm('Send this bounded, redacted payload to the configured target now?')) return;
+    try { const { delivery } = await Api.deliverVmObservabilityExport(id); Toast.success(`Export ${delivery.status}; ${Utils.formatBytes(delivery.byteSize)}`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _retentionDialog(hostId) {
+    try {
+      const plan = await Api.getVmTelemetryRetentionPlan(hostId);
+      const confirmation = await Modal.form(`<p>This will permanently delete <strong>${plan.metricSamples}</strong> metric samples before ${new Date(plan.metricBefore).toLocaleString()} and <strong>${plan.events}</strong> events before ${new Date(plan.eventBefore).toLocaleString()}.</p><div class="form-group"><label>Type ${plan.confirmation}</label><input id="gc-retention-confirm" class="form-control mono"></div>`,
+        { title: `Retention purge · host ${hostId}`, confirmText: 'Delete expired telemetry', danger: true,
+          onSubmit: c => c.querySelector('#gc-retention-confirm').value });
+      if (!confirmation) return;
+      const result = await Api.applyVmTelemetryRetention(hostId, { confirmation });
+      Toast.success(`${result.deletedMetricSamples} metrics and ${result.deletedEvents} events deleted`); await this.render(this._container);
+    } catch (error) { Toast.error(error.message); }
+  },
 };

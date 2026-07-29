@@ -828,23 +828,26 @@ iar tenant delete cere export valid, checksum, suspendare și confirmare tipări
 | B213 | VM incident timeline | Restart/migrate/snapshot/backup/guest alert context. | Ops | M | Done |
 | B214 | Fabric topology correlation | Alert propagation pe host/storage/network dependencies. | Ops | XL | Done |
 | B215 | Multi-signal alert rules | Metric+event+state+duration conditions. | Ops | L | Done |
-| B216 | Dynamic baseline alerts | Sezon/percentile baseline cu explainability. | Ops | L | Later |
-| B217 | Alert dependency suppression | Suprimă simptomele când cauza upstream este activă. | Ops | L | Later |
-| B218 | Maintenance-aware alerting | Silence automat cu owner și end time. | Ops | M | Now |
-| B219 | Capacity forecast | Time-to-full pe cluster/storage/pool. | Cost | L | Next |
-| B220 | Anomaly triage assistant | Rezumă semnale și citează evidence; fără auto-mutation. | Ops | L | Later |
-| B221 | Root-cause candidate ranking | Scor explainable pe dependencies și temporal order. | Ops | XL | Later |
-| B222 | Recommended runbook links | Mapează finding/event la procedură versionată. | Ops | M | Next |
-| B223 | External observability export | OTLP/Prometheus/webhook/syslog cu filters. | Ops | L | Next |
-| B224 | SLO and availability reports | Uptime, error budget și maintenance exclusions. | Gov | L | Later |
-| B225 | Telemetry privacy controls | Redaction, sampling, retention și data residency. | Gov | M | Next |
+| B216 | Dynamic baseline alerts | Sezon/percentile baseline cu explainability. | Ops | L | Done |
+| B217 | Alert dependency suppression | Suprimă simptomele când cauza upstream este activă. | Ops | L | Done |
+| B218 | Maintenance-aware alerting | Silence automat cu owner și end time. | Ops | M | Done |
+| B219 | Capacity forecast | Time-to-full pe cluster/storage/pool. | Cost | L | Done |
+| B220 | Anomaly triage assistant | Rezumă semnale și citează evidence; fără auto-mutation. | Ops | L | Done |
+| B221 | Root-cause candidate ranking | Scor explainable pe dependencies și temporal order. | Ops | XL | Done |
+| B222 | Recommended runbook links | Mapează finding/event la procedură versionată. | Ops | M | Done |
+| B223 | External observability export | OTLP/Prometheus/webhook/syslog cu filters. | Ops | L | Done |
+| B224 | SLO and availability reports | Uptime, error budget și maintenance exclusions. | Gov | L | Done |
+| B225 | Telemetry privacy controls | Redaction, sampling, retention și data residency. | Gov | M | Done |
 
 **Status implementare 2026-07-29:** B201–B205 au fost livrate în V4.6c / v8.52.0,
 iar B206–B215 în V6.4a / v8.53.0. Adaptoarele normalizează payload-uri furnizate
 prin API și descriu coverage; nu pretind colectare live în lipsa unui collector
 configurat. Charts au limite de range/series, deduplicarea păstrează repeat
 evidence, iar topology propagation și multi-signal evaluation sunt advisory.
-B216–B225 rămân pentru baseline, suppression, forecast, AIOps și export/privacy.
+B216–B225 au fost livrate în V6.4b / v8.54.0: baseline-urile sunt sezoniere și
+explicabile, suppressions păstrează cauza dependency/maintenance, forecast-ul și
+triage-ul sunt advisory, iar exportul este explicit, bounded și guvernat de
+redaction, sampling, retention și data residency. V6.4 este astfel închis.
 
 ### J. Automation, GitOps și IaC (B226–B250)
 

@@ -16,6 +16,9 @@ provider mutation or collection is inferred.
   checks; retention requires a typed confirmation.
 - SLO reports calculate availability across their full window and exclude the
   union of matching maintenance intervals without double-counting overlaps.
+- The Governance → Observability control surface exposes every policy and
+  evidence workflow; export delivery and retention purge remain separate,
+  explicitly confirmed operator actions.
 
 ## [8.53.0] - 2026-07-29 — VM observability and event correlation
 

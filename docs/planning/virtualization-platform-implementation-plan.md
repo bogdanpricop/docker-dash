@@ -169,7 +169,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V6.1 | Unified application view | B301–B325, B351–B375 | VM+container+Kubernetes într-o singură aplicație |
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
 | V6.3 | FinOps/showback/capacity | B276–B300 | allocation, forecast, owner și confidence |
-| V6.4 | Observability/events/AIOps advisory | B206–B225 | V6.4a livrează B206–B215 cu charts, performance dashboards, events, correlation, topology și multi-signal alerts; B216–B225 rămân pentru baseline, suppression, forecast, AIOps și export/privacy |
+| V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | local cache, queued ops și reconciliation |
 | V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
 | V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
