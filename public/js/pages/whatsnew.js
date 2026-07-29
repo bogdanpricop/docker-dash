@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.61.0', date: '2026-07-29', title: 'FinOps optimization and capacity', changes: [
+      { type: 'feature', text: 'Budget threshold notifications and scoped cost anomalies use idempotent rating-run evidence, forecast context and confidence.' },
+      { type: 'feature', text: 'Idle, oversized and zombie detectors include ownership, criticality, coverage, peak and protection guards and never remediate implicitly.' },
+      { type: 'security', text: 'Off-hours automation requires an automate policy, payload-bound approval, durable operation, typed phrase and verified registered adapter.' },
+      { type: 'feature', text: 'Reserved capacity and N+1 consolidation compare headroom, commitments, failure reserve and utilization without purchasing or removing hosts.' },
+      { type: 'feature', text: 'Capacity forecasts explain when and what to purchase; placement ranks cost, performance, resilience and compliance without moving workloads.' },
+    ] },
     { version: '8.60.0', date: '2026-07-29', title: 'FinOps cost foundation', changes: [
       { type: 'feature', text: 'An immutable resource ledger separates allocated and used vCPU, RAM, storage, GPU and IP/network quantities with source evidence.' },
       { type: 'feature', text: 'Versioned private-cloud, licensing, storage, network and GPU cost models retain exact windows, currencies, confidence and provenance.' },

@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.61.0] - 2026-07-29 — FinOps optimization and capacity
+
+The B286–B295 batch adds evidence-backed alerts, savings guidance and capacity
+planning while keeping advisory actions separate from provider mutation.
+
+- Budget policies queue idempotent actual and full-period forecast threshold
+  notifications; scoped cost anomaly policies compare bounded rating-run
+  baselines with amount floors, direction and confidence.
+- Idle VM checks include CPU/RAM usage, uptime, owner, criticality and coverage;
+  oversized checks use peak evidence, observation length and headroom guards.
+- Stale disk, snapshot, IP, template and backup candidates honor attached,
+  protected, criticality and owner context and never auto-delete.
+- Off-hours policies support recommendation mode and a separate automation path
+  requiring a payload-bound approval, durable operation, typed confirmation and
+  registered apply/verify adapter.
+- Reserved-capacity options compare on-prem and cloud commitments; N+1
+  consolidation scenarios preserve HA reserve and utilization ceilings.
+- CPU/RAM/storage growth forecasts estimate purchase date/quantity, while
+  placement scoring explains cost, performance, resilience and compliance and
+  excludes blocked candidates without placing workloads.
+
 ## [8.60.0] - 2026-07-29 — FinOps cost foundation
 
 The B276–B285 batch adds transparent, evidence-backed infrastructure rating

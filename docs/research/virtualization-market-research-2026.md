@@ -978,16 +978,16 @@ categorii și pornesc zero provider mutations.
 | B283 | Showback dashboards | Transparent usage/cost fără billing transaction. | Cost | L | Done |
 | B284 | Chargeback export | Rated usage CSV/API pentru billing/ERP. | Cost | L | Done |
 | B285 | Budget definitions | Monthly/quarterly per scope/cost center. | Cost | M | Done |
-| B286 | Budget threshold alerts | Forecast și actual 50/80/100% notifications. | Cost | S | Next |
-| B287 | Cost anomaly detection | Unexpected spend/consumption changes cu evidence. | Cost | L | Later |
-| B288 | Idle VM detector | Low utilization + owner/uptime/criticality context. | Cost | M | Now |
-| B289 | Oversized VM detector | Rightsize CPU/RAM cu confidence și peak guard. | Cost | L | Next |
-| B290 | Zombie resource detector | Stale disk/snapshot/IP/template/backup candidates. | Cost | M | Next |
-| B291 | Schedule-based savings | Recomandă/automatizează off-hours power policy. | Cost | M | Next |
-| B292 | Reserved capacity recommendations | On-prem headroom și cloud commitment guidance. | Cost | L | Later |
-| B293 | Cluster consolidation scenario | Simulează host removal fără SLA/HA breach. | Cost | L | Later |
-| B294 | Capacity purchase forecast | When/what capacity pe growth și failure tolerance. | Cost | L | Later |
-| B295 | Workload placement cost score | Cost+performance+resilience+compliance. | Cost | XL | Later |
+| B286 | Budget threshold alerts | Forecast și actual 50/80/100% notifications. | Cost | S | Done |
+| B287 | Cost anomaly detection | Unexpected spend/consumption changes cu evidence. | Cost | L | Done |
+| B288 | Idle VM detector | Low utilization + owner/uptime/criticality context. | Cost | M | Done |
+| B289 | Oversized VM detector | Rightsize CPU/RAM cu confidence și peak guard. | Cost | L | Done |
+| B290 | Zombie resource detector | Stale disk/snapshot/IP/template/backup candidates. | Cost | M | Done |
+| B291 | Schedule-based savings | Recomandă/automatizează off-hours power policy. | Cost | M | Done |
+| B292 | Reserved capacity recommendations | On-prem headroom și cloud commitment guidance. | Cost | L | Done |
+| B293 | Cluster consolidation scenario | Simulează host removal fără SLA/HA breach. | Cost | L | Done |
+| B294 | Capacity purchase forecast | When/what capacity pe growth și failure tolerance. | Cost | L | Done |
+| B295 | Workload placement cost score | Cost+performance+resilience+compliance. | Cost | XL | Done |
 | B296 | Power/energy telemetry ingestion | BMC/vendor metrics normalizate per host. | Cost | L | Later |
 | B297 | Energy efficiency dashboard | Watt/VM, watt/workload și idle host waste. | Cost | L | Later |
 | B298 | Carbon factor configuration | Region/site/time carbon intensity și provenance. | Gov | M | Later |
@@ -1002,7 +1002,16 @@ currency, confidence, sursă HTTPS și fereastră de valabilitate. Regulile de t
 rezolvă business unit, application, environment și cost center cu prioritate
 deterministă. Rating-ul showback păstrează formula și provenance pe linie, iar
 CSV/JSON chargeback sunt exporturi pentru ERP, nu tranzacții. Bugetele monthly
-sau quarterly sunt comparate per scope; alertele de prag rămân explicit B286.
+sau quarterly sunt comparate per scope.
+
+**Status implementare 2026-07-29:** B286–B295 au fost închise în V6.3b /
+v8.61.0. Pragurile actual/forecast produc notificări idempotente, iar anomaly
+detection compară rating runs cu baseline și evidence. Detectoarele idle,
+oversized și zombie includ owner, criticality, coverage, peak guards și nu
+execută remedieri. Off-hours automation necesită policy automate, approval
+legat de hash, durable operation, confirmare tipărită și adapter cu verify.
+Reserved-capacity, consolidarea N+1, purchase forecast și placement scoring sunt
+scenarii explicabile; nu cumpără, nu elimină hosturi și nu mută workload-uri.
 
 ### M. Kubernetes și convergență VM–container (B301–B325)
 

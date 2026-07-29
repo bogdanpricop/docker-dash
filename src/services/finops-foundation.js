@@ -13,7 +13,7 @@ const ALLOCATION_KEYS = ['vCpu', 'ramGb', 'logicalStorageGb', 'physicalStorageGb
   'backupStorageGb', 'gpuDevices', 'publicIps', 'licenseUnits'];
 const USAGE_KEYS = ['usedVcpu', 'usedRamGb', 'cpuHours', 'ramGbHours', 'transferGb', 'egressGb',
   'loadBalancerHours', 'vpnHours', 'publicIpHours', 'gpuHours', 'gpuReservations', 'licenseSockets',
-  'licenseHosts', 'licenseSubscriptions'];
+  'licenseHosts', 'licenseSubscriptions', 'peakVcpu', 'peakRamGb', 'uptimeHours'];
 
 class FinOpsError extends Error {
   constructor(message, status = 400, code = 'FINOPS_ERROR', details) {

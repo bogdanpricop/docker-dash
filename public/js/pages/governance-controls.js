@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -25,6 +25,7 @@ const GovernanceControlsPage = {
         Api.getLifecycleMaintenance(),
         Api.getLifecycleAssurance(),
         Api.getFinOpsFoundation(),
+        Api.getFinOpsOptimization(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -32,7 +33,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -301,11 +302,16 @@ const GovernanceControlsPage = {
 
   _finops() {
     const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
+    const optimization = this._data.finopsOptimization || { capabilities: {}, budgetAlertPolicies: [], budgetAlerts: [], anomalyPolicies: [], costAnomalies: [], assessments: [], schedules: [], executions: [], reservations: [], consolidation: [], forecasts: [], placementScores: [], summary: {} };
     const latest = data.latestShowback; const currency = data.summary?.currency || 'USD';
     return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-finops-ledger"><i class="fas fa-list"></i> Usage entry</button>
       <button class="btn btn-secondary btn-sm" id="gc-finops-model"><i class="fas fa-calculator"></i> Cost model</button>
       <button class="btn btn-secondary btn-sm" id="gc-finops-rule"><i class="fas fa-tags"></i> Allocation rule</button>
       <button class="btn btn-secondary btn-sm" id="gc-finops-budget"><i class="fas fa-wallet"></i> Budget</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-alert-policy"><i class="fas fa-bell"></i> Budget alerts</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-anomaly-policy"><i class="fas fa-wave-square"></i> Anomaly policy</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-zombie"><i class="fas fa-ghost"></i> Zombie check</button>
+      <button class="btn btn-secondary btn-sm" id="gc-finops-schedule"><i class="fas fa-clock"></i> Savings schedule</button>
       <button class="btn btn-primary btn-sm" id="gc-finops-rate"><i class="fas fa-chart-pie"></i> Rate showback</button>`) }
       <div class="info-grid">
         ${this._stat('fa-list-check', 'Ledger entries', data.summary?.ledgerEntries || 0)}
@@ -318,10 +324,26 @@ const GovernanceControlsPage = {
       <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>FinOps evidence boundary</h3><p class="text-muted text-sm">Rates are versioned, scoped and provenance-linked. Showback is explanatory; chargeback produces rated files for ERP import and never creates a billing transaction.</p></div></div>
         <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${[['Unified ledger','unifiedResourceLedger'],['Private cloud','privateCloudCostModel'],['License','providerLicenseCostModel'],['Storage','storageTierCostModel'],['Network/IP','networkPublicIpCostModel'],['GPU','gpuAcceleratorCostModel'],['Tag allocation','tagBasedAllocation'],['Showback','showbackDashboard'],['Chargeback export','chargebackExport'],['Budgets','budgets']].map(([label,key]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
-        <div class="card" style="overflow:auto"><div class="card-header"><h3>Allocation &amp; usage ledger</h3></div><table class="data-table"><thead><tr><th>Resource / interval</th><th>Allocated</th><th>Used</th><th>Allocation</th><th></th></tr></thead><tbody>${(data.ledger || []).map(item => { const allocation = (data.allocations || []).find(value => value.ledgerEntryId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.resourceType)} · ${Utils.escapeHtml(item.resourceRef)}</strong><div class="text-xs text-muted">${new Date(item.intervalStart).toLocaleDateString()} → ${new Date(item.intervalEnd).toLocaleDateString()}</div></td><td>${item.allocation.vCpu ?? 0} vCPU · ${item.allocation.ramGb ?? 0} GB<div class="text-xs text-muted">${item.allocation.logicalStorageGb ?? 0} GB logical · ${item.allocation.gpuDevices ?? 0} GPU</div></td><td>${item.usage.usedVcpu ?? '—'} vCPU · ${item.usage.usedRamGb ?? '—'} GB<div class="text-xs text-muted">${item.usage.egressGb ?? 0} GB egress · ${item.usage.gpuHours ?? 0} GPUh</div></td><td><span class="badge ${allocation?.state === 'allocated' ? 'badge-success' : allocation?.state === 'partial' ? 'badge-warning' : 'badge-secondary'}">${allocation?.state || 'unresolved'}</span></td><td><button class="action-btn" data-gc-finops-allocate="${item.id}" title="Resolve tag allocation"><i class="fas fa-tags"></i></button></td></tr>`; }).join('') || this._empty('No FinOps ledger observations', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Allocation &amp; usage ledger</h3></div><table class="data-table"><thead><tr><th>Resource / interval</th><th>Allocated</th><th>Used</th><th>Allocation</th><th></th></tr></thead><tbody>${(data.ledger || []).map(item => { const allocation = (data.allocations || []).find(value => value.ledgerEntryId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.resourceType)} · ${Utils.escapeHtml(item.resourceRef)}</strong><div class="text-xs text-muted">${new Date(item.intervalStart).toLocaleDateString()} → ${new Date(item.intervalEnd).toLocaleDateString()}</div></td><td>${item.allocation.vCpu ?? 0} vCPU · ${item.allocation.ramGb ?? 0} GB<div class="text-xs text-muted">${item.allocation.logicalStorageGb ?? 0} GB logical · ${item.allocation.gpuDevices ?? 0} GPU</div></td><td>${item.usage.usedVcpu ?? '—'} vCPU · ${item.usage.usedRamGb ?? '—'} GB<div class="text-xs text-muted">${item.usage.egressGb ?? 0} GB egress · ${item.usage.gpuHours ?? 0} GPUh</div></td><td><span class="badge ${allocation?.state === 'allocated' ? 'badge-success' : allocation?.state === 'partial' ? 'badge-warning' : 'badge-secondary'}">${allocation?.state || 'unresolved'}</span></td><td><button class="action-btn" data-gc-finops-allocate="${item.id}" title="Resolve tag allocation"><i class="fas fa-tags"></i></button>${item.resourceType === 'vm' ? `<button class="action-btn" data-gc-finops-idle="${item.id}" title="Idle assessment"><i class="fas fa-moon"></i></button><button class="action-btn" data-gc-finops-oversized="${item.id}" title="Rightsize assessment"><i class="fas fa-compress"></i></button>` : ''}</td></tr>`; }).join('') || this._empty('No FinOps ledger observations', 5)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Versioned cost models</h3></div><table class="data-table"><thead><tr><th>Model</th><th>Scope</th><th>Window</th><th>Evidence</th></tr></thead><tbody>${(data.costModels || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.kind)} · v${Utils.escapeHtml(item.version)}</div></td><td>${Utils.escapeHtml(item.scopeRef)}<div class="text-xs text-muted">${item.currency} · ${item.confidence}</div></td><td>${new Date(item.effectiveFrom).toLocaleDateString()} → ${item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'open'}</td><td class="mono text-xs">${item.modelHash.slice(0, 12)}</td></tr>`).join('') || this._empty('No cost models', 4)}</tbody></table></div>
-        <div class="card" style="overflow:auto"><div class="card-header"><h3>Latest showback</h3></div>${latest ? `<table class="data-table"><thead><tr><th>Category</th><th>Cost</th><th>Confidence / provenance</th></tr></thead><tbody>${latest.lines.map(line => `<tr><td>${Utils.escapeHtml(line.category)}<div class="text-xs text-muted">${Utils.escapeHtml(line.dimensions.costCenter || 'unallocated')} · ${Utils.escapeHtml(line.dimensions.resourceRef)}</div></td><td class="mono">${line.currency} ${Number(line.amount).toFixed(4)}</td><td>${line.confidence}<div class="mono text-xs">${line.provenanceHash.slice(0, 12)}</div></td></tr>`).join('') || this._empty('Rating completed without line items', 3)}</tbody></table><div style="padding:12px;display:flex;justify-content:space-between"><strong>Total: ${latest.currency} ${Number(latest.totalCost).toFixed(4)}</strong><div><button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="csv"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="json"><i class="fas fa-code"></i> JSON</button></div></div>` : '<div class="empty-state"><p>No showback rating run yet.</p></div>'}</div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Latest showback</h3></div>${latest ? `<table class="data-table"><thead><tr><th>Category</th><th>Cost</th><th>Confidence / provenance</th></tr></thead><tbody>${latest.lines.map(line => `<tr><td>${Utils.escapeHtml(line.category)}<div class="text-xs text-muted">${Utils.escapeHtml(line.dimensions.costCenter || 'unallocated')} · ${Utils.escapeHtml(line.dimensions.resourceRef)}</div></td><td class="mono">${line.currency} ${Number(line.amount).toFixed(4)}</td><td>${line.confidence}<div class="mono text-xs">${line.provenanceHash.slice(0, 12)}</div></td></tr>`).join('') || this._empty('Rating completed without line items', 3)}</tbody></table><div style="padding:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>Total: ${latest.currency} ${Number(latest.totalCost).toFixed(4)}</strong><div><button class="btn btn-secondary btn-sm" data-gc-finops-evaluate-alerts="${latest.id}"><i class="fas fa-bell"></i> Thresholds</button> <button class="btn btn-secondary btn-sm" data-gc-finops-evaluate-anomalies="${latest.id}"><i class="fas fa-wave-square"></i> Anomalies</button> <button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="csv"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-secondary btn-sm" data-gc-finops-export="${latest.id}" data-format="json"><i class="fas fa-code"></i> JSON</button></div></div>` : '<div class="empty-state"><p>No showback rating run yet.</p></div>'}</div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Budgets &amp; allocation rules</h3></div><table class="data-table"><thead><tr><th>Name</th><th>Scope</th><th>Amount</th><th>Status</th></tr></thead><tbody>${(data.budgets || []).map(item => { const state = latest?.budgets?.find(value => value.id === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-xs text-muted">${item.cadence}</div></td><td>${item.scopeType}${item.scopeValue ? `:${Utils.escapeHtml(item.scopeValue)}` : ''}</td><td>${item.currency} ${Number(item.amount).toFixed(2)}</td><td>${state ? `<span class="badge ${state.state === 'over' ? 'badge-danger' : 'badge-success'}">${state.utilizationPercent}%</span>` : '<span class="badge badge-secondary">not rated</span>'}</td></tr>`; }).join('') || this._empty('No budgets', 4)}</tbody></table><div style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">${(data.allocationRules || []).map(item => `<span class="badge badge-secondary" title="${Utils.escapeHtml(JSON.stringify(item.matchTags))}">${Utils.escapeHtml(item.name)} · p${item.priority}</span>`).join('') || '<span class="text-muted text-sm">No allocation rules</span>'}</div></div>
+      </div>
+      ${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-finops-reservation"><i class="fas fa-ticket"></i> Reserved capacity</button>
+        <button class="btn btn-secondary btn-sm" id="gc-finops-consolidation"><i class="fas fa-server"></i> Consolidation</button>
+        <button class="btn btn-secondary btn-sm" id="gc-finops-forecast"><i class="fas fa-arrow-trend-up"></i> Capacity forecast</button>
+        <button class="btn btn-primary btn-sm" id="gc-finops-placement"><i class="fas fa-location-dot"></i> Placement score</button>`) }
+      <div class="info-grid">
+        ${this._stat('fa-bell', 'Queued budget alerts', optimization.summary?.queuedBudgetAlerts || 0)}
+        ${this._stat('fa-wave-square', 'Cost anomalies', optimization.summary?.openAnomalies || 0)}
+        ${this._stat('fa-lightbulb', 'Optimization candidates', optimization.summary?.optimizationCandidates || 0)}
+        ${this._stat('fa-server', 'Blocked consolidations', optimization.summary?.blockedConsolidations || 0)}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Budget &amp; anomaly evidence</h3></div><table class="data-table"><thead><tr><th>Signal</th><th>Scope</th><th>Observed</th><th>Evidence</th></tr></thead><tbody>${(optimization.budgetAlerts || []).map(item => `<tr><td><span class="badge ${item.severity === 'critical' ? 'badge-danger' : item.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${item.signal} ${item.thresholdPercent}%</span></td><td>budget #${item.budgetId}</td><td>${item.observedPercent}%</td><td class="mono text-xs">${item.fingerprint.slice(0, 12)}</td></tr>`).join('')}${(optimization.costAnomalies || []).map(item => `<tr><td><span class="badge badge-warning">${item.direction}</span></td><td>policy #${item.policyId}</td><td>${item.deviationPercent}%<div class="text-xs text-muted">${item.baselineAmount} → ${item.currentAmount}</div></td><td>${item.confidence}<div class="mono text-xs">${item.fingerprint.slice(0, 12)}</div></td></tr>`).join('') || this._empty('No budget alerts or cost anomalies', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Optimization candidates</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Assessment</th><th>State</th><th>Confidence</th></tr></thead><tbody>${(optimization.assessments || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.resourceType)} · ${Utils.escapeHtml(item.resourceRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.owner || 'no owner')} · ${Utils.escapeHtml(item.criticality || 'unknown')}</div></td><td>${Utils.escapeHtml(item.type)}</td><td><span class="badge ${item.state.endsWith('_candidate') ? 'badge-warning' : item.state === 'protected' ? 'badge-success' : 'badge-secondary'}">${Utils.escapeHtml(item.state)}</span></td><td>${item.confidence}<div class="text-xs text-muted">0 implicit mutations</div></td></tr>`).join('') || this._empty('No optimization assessments', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Savings schedules</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Window</th><th>Mode</th><th></th></tr></thead><tbody>${(optimization.schedules || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceRef)}</div></td><td>${item.offHoursStart}–${item.offHoursEnd}<div class="text-xs text-muted">${Utils.escapeHtml(item.timezone)} · ${item.weekdays.join(',')}</div></td><td><span class="badge ${item.mode === 'automate' ? 'badge-warning' : 'badge-secondary'}">${item.mode}</span></td><td><button class="action-btn" data-gc-finops-execute-schedule="${item.id}" title="Create recommendation / gated execution"><i class="fas fa-play"></i></button></td></tr>`).join('') || this._empty('No savings schedules', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Capacity &amp; placement scenarios</h3></div><table class="data-table"><thead><tr><th>Evidence</th><th>Scope / target</th><th>Result</th><th>Boundary</th></tr></thead><tbody>${(optimization.reservations || []).map(item => `<tr><td>reserved capacity</td><td>${Utils.escapeHtml(item.scopeRef)}</td><td>${Utils.escapeHtml(item.state)}</td><td>no purchase</td></tr>`).join('')}${(optimization.consolidation || []).map(item => `<tr><td>${Utils.escapeHtml(item.name)}</td><td>remove ${Utils.escapeHtml(item.removedHostRef)}</td><td><span class="badge ${item.state === 'safe' ? 'badge-success' : 'badge-danger'}">${item.state}</span></td><td>simulation only</td></tr>`).join('')}${(optimization.forecasts || []).map(item => `<tr><td>capacity forecast</td><td>${Utils.escapeHtml(item.scopeRef)}</td><td>${Utils.escapeHtml(item.recommendation)}</td><td>no purchase</td></tr>`).join('')}${(optimization.placementScores || []).map(item => `<tr><td>${Utils.escapeHtml(item.workloadRef)}</td><td>${Utils.escapeHtml(item.selectedTargetRef || 'no eligible target')}</td><td>${item.ranking.length} candidates</td><td>score only</td></tr>`).join('') || this._empty('No capacity or placement evidence', 4)}</tbody></table></div>
       </div>`;
   },
 
@@ -519,10 +541,27 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-finops-rule')?.addEventListener('click', () => this._finopsRuleDialog());
     this._container.querySelector('#gc-finops-budget')?.addEventListener('click', () => this._finopsBudgetDialog());
     this._container.querySelector('#gc-finops-rate')?.addEventListener('click', () => this._finopsRatingDialog());
+    this._container.querySelector('#gc-finops-alert-policy')?.addEventListener('click', () => this._finopsAlertPolicyDialog());
+    this._container.querySelector('#gc-finops-anomaly-policy')?.addEventListener('click', () => this._finopsAnomalyPolicyDialog());
+    this._container.querySelector('#gc-finops-zombie')?.addEventListener('click', () => this._finopsZombieDialog());
+    this._container.querySelector('#gc-finops-schedule')?.addEventListener('click', () => this._finopsScheduleDialog());
+    this._container.querySelector('#gc-finops-reservation')?.addEventListener('click', () => this._finopsReservationDialog());
+    this._container.querySelector('#gc-finops-consolidation')?.addEventListener('click', () => this._finopsConsolidationDialog());
+    this._container.querySelector('#gc-finops-forecast')?.addEventListener('click', () => this._finopsForecastDialog());
+    this._container.querySelector('#gc-finops-placement')?.addEventListener('click', () => this._finopsPlacementDialog());
     this._container.querySelectorAll('[data-gc-finops-allocate]').forEach(button => button.addEventListener('click', async () => {
       try { const result = await Api.resolveFinOpsAllocation(button.dataset.gcFinopsAllocate); Toast.success(`Allocation: ${result.allocation.state}`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
     this._container.querySelectorAll('[data-gc-finops-export]').forEach(button => button.addEventListener('click', () => this._finopsExport(button.dataset.gcFinopsExport, button.dataset.format)));
+    this._container.querySelectorAll('[data-gc-finops-idle]').forEach(button => button.addEventListener('click', () => this._finopsIdleDialog(button.dataset.gcFinopsIdle)));
+    this._container.querySelectorAll('[data-gc-finops-oversized]').forEach(button => button.addEventListener('click', () => this._finopsOversizedDialog(button.dataset.gcFinopsOversized)));
+    this._container.querySelectorAll('[data-gc-finops-evaluate-alerts]').forEach(button => button.addEventListener('click', async () => {
+      try { const result = await Api.evaluateFinOpsBudgetAlerts(button.dataset.gcFinopsEvaluateAlerts); Toast.success(`${result.created} budget notifications queued`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    }));
+    this._container.querySelectorAll('[data-gc-finops-evaluate-anomalies]').forEach(button => button.addEventListener('click', async () => {
+      try { const result = await Api.evaluateFinOpsAnomalies(button.dataset.gcFinopsEvaluateAnomalies); Toast.success(`${result.created} cost anomalies recorded`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+    }));
+    this._container.querySelectorAll('[data-gc-finops-execute-schedule]').forEach(button => button.addEventListener('click', () => this._finopsExecuteScheduleDialog(button.dataset.gcFinopsExecuteSchedule)));
     this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
       try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1562,7 +1601,7 @@ const GovernanceControlsPage = {
     const result = await Modal.form(`<p class="text-muted text-sm">This writes one immutable observation. Allocated and used values stay separate and the source evidence must be secret-free.</p>
       <div class="form-row"><div class="form-group"><label>Resource type</label><input id="gc-fl-type" class="form-control" value="vm"></div><div class="form-group"><label>Resource reference</label><input id="gc-fl-ref" class="form-control mono" value="provider/vm-100"></div><div class="form-group"><label>Provider / site</label><input id="gc-fl-provider" class="form-control mono" value="provider-a"><input id="gc-fl-site" class="form-control mono" value="site-a" style="margin-top:6px"></div></div>
       <div class="form-row"><div class="form-group"><label>Interval start</label><input id="gc-fl-start" type="datetime-local" class="form-control" value="${intervalStart.toISOString().slice(0, 16)}"></div><div class="form-group"><label>Interval end</label><input id="gc-fl-end" type="datetime-local" class="form-control" value="${intervalEnd.toISOString().slice(0, 16)}"></div></div>
-      <div class="form-row"><div class="form-group"><label>Allocation JSON</label><textarea id="gc-fl-allocation" class="form-control mono" rows="9">{"vCpu":4,"ramGb":16,"logicalStorageGb":200,"gpuDevices":0,"publicIps":1}</textarea></div><div class="form-group"><label>Usage JSON</label><textarea id="gc-fl-usage" class="form-control mono" rows="9">{"usedVcpu":1.5,"usedRamGb":8,"transferGb":100,"egressGb":10,"publicIpHours":730}</textarea></div></div>
+      <div class="form-row"><div class="form-group"><label>Allocation JSON</label><textarea id="gc-fl-allocation" class="form-control mono" rows="9">{"vCpu":4,"ramGb":16,"logicalStorageGb":200,"gpuDevices":0,"publicIps":1}</textarea></div><div class="form-group"><label>Usage JSON</label><textarea id="gc-fl-usage" class="form-control mono" rows="9">{"usedVcpu":1.5,"usedRamGb":8,"peakVcpu":2.5,"peakRamGb":10,"uptimeHours":720,"transferGb":100,"egressGb":10,"publicIpHours":730}</textarea></div></div>
       <div class="form-row"><div class="form-group"><label>Tags JSON</label><textarea id="gc-fl-tags" class="form-control mono" rows="5">{"business-unit":"platform","app":"docker-dash","env":"production","cost-center":"IT-PLATFORM"}</textarea></div><div class="form-group"><label>Source evidence JSON</label><textarea id="gc-fl-evidence" class="form-control mono" rows="5">{"source":"provider-metering","coverage":"complete"}</textarea></div></div>`,
     { title: 'FinOps resource ledger observation', width: '980px', onSubmit: c => this._submit(() => Api.recordFinOpsLedger({
       resourceType: c.querySelector('#gc-fl-type').value, resourceRef: c.querySelector('#gc-fl-ref').value,
@@ -1617,7 +1656,7 @@ const GovernanceControlsPage = {
       amount: Number(c.querySelector('#gc-fb-amount').value), currency: c.querySelector('#gc-fb-currency').value.toUpperCase(),
       effectiveFrom: new Date(c.querySelector('#gc-fb-from').value).toISOString(), active: true,
     })) });
-    if (result) { Toast.success('Budget saved; threshold notifications begin in the next FinOps batch'); await this.render(this._container); }
+    if (result) { Toast.success('Budget saved; configure threshold notifications from Budget alerts'); await this.render(this._container); }
   },
 
   async _finopsRatingDialog() {
@@ -1641,6 +1680,144 @@ const GovernanceControlsPage = {
       const link = document.createElement('a'); link.href = url; link.download = result.export.metadata.filename; link.click(); URL.revokeObjectURL(url);
       Toast.success(`${result.export.rowCount} rated rows exported; no billing transaction created`); await this.render(this._container);
     } catch (error) { Toast.error(error.message); }
+  },
+
+  async _finopsAlertPolicyDialog() {
+    const budgets = this._data.finopsFoundation?.budgets || [];
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fap-name" class="form-control" value="budget-thresholds"></div><div class="form-group"><label>Budget</label><select id="gc-fap-budget" class="form-control"><option value="">All budgets</option>${budgets.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.name)}</option>`).join('')}</select></div></div>
+      <div class="form-row"><div class="form-group"><label>Thresholds (%)</label><input id="gc-fap-thresholds" class="form-control mono" value="50,80,100"></div><div class="form-group"><label>Channels</label><input id="gc-fap-channels" class="form-control mono" value="in_app"></div></div><label><input id="gc-fap-forecast" type="checkbox" checked> Queue forecast threshold notifications</label>`,
+    { title: 'Budget threshold policy', onSubmit: c => this._submit(() => Api.saveFinOpsBudgetAlertPolicy({
+      name: c.querySelector('#gc-fap-name').value, budgetId: Number(c.querySelector('#gc-fap-budget').value) || undefined,
+      thresholds: c.querySelector('#gc-fap-thresholds').value.split(',').map(Number),
+      channels: c.querySelector('#gc-fap-channels').value.split(',').map(value => value.trim()).filter(Boolean),
+      forecastEnabled: c.querySelector('#gc-fap-forecast').checked, active: true,
+    })) });
+    if (result) { Toast.success('Budget alert policy saved'); await this.render(this._container); }
+  },
+
+  async _finopsAnomalyPolicyDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fan-name" class="form-control" value="unexpected-spend"></div><div class="form-group"><label>Scope</label><select id="gc-fan-scope" class="form-control"><option>global</option><option>category</option><option>cost_center</option></select></div><div class="form-group"><label>Scope value</label><input id="gc-fan-value" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Baseline runs</label><input id="gc-fan-runs" type="number" min="2" max="24" value="6" class="form-control"></div><div class="form-group"><label>Minimum deviation %</label><input id="gc-fan-deviation" type="number" min="1" value="30" class="form-control"></div><div class="form-group"><label>Minimum amount</label><input id="gc-fan-amount" type="number" min="0" value="10" class="form-control"></div></div>`,
+    { title: 'Cost anomaly policy', onSubmit: c => this._submit(() => Api.saveFinOpsAnomalyPolicy({
+      name: c.querySelector('#gc-fan-name').value, scopeType: c.querySelector('#gc-fan-scope').value,
+      scopeValue: c.querySelector('#gc-fan-value').value || undefined, baselineRuns: Number(c.querySelector('#gc-fan-runs').value),
+      minimumDeviationPercent: Number(c.querySelector('#gc-fan-deviation').value), minimumAmount: Number(c.querySelector('#gc-fan-amount').value), active: true,
+    })) });
+    if (result) { Toast.success('Cost anomaly policy saved'); await this.render(this._container); }
+  },
+
+  async _finopsIdleDialog(ledgerId) {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Data coverage %</label><input id="gc-fid-coverage" type="number" min="0" max="100" value="95" class="form-control"></div><div class="form-group"><label>Minimum uptime hours</label><input id="gc-fid-uptime" type="number" min="0" value="168" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>CPU threshold %</label><input id="gc-fid-cpu" type="number" min="0" max="100" value="10" class="form-control"></div><div class="form-group"><label>RAM threshold %</label><input id="gc-fid-ram" type="number" min="0" max="100" value="20" class="form-control"></div><div class="form-group"><label>Criticality override</label><input id="gc-fid-criticality" class="form-control" placeholder="use tag"></div></div>`,
+    { title: 'Idle VM assessment', onSubmit: c => this._submit(() => Api.assessFinOpsIdleVm(ledgerId, {
+      dataCoveragePercent: Number(c.querySelector('#gc-fid-coverage').value), minimumUptimeHours: Number(c.querySelector('#gc-fid-uptime').value),
+      cpuThresholdPercent: Number(c.querySelector('#gc-fid-cpu').value), ramThresholdPercent: Number(c.querySelector('#gc-fid-ram').value),
+      criticality: c.querySelector('#gc-fid-criticality').value || undefined,
+    })) });
+    if (result) { Toast.success(`Idle assessment: ${result.assessment.state}; auto-stop false`); await this.render(this._container); }
+  },
+
+  async _finopsOversizedDialog(ledgerId) {
+    const result = await Modal.form(`<p class="text-muted text-sm">Peak CPU/RAM values must exist in the ledger. Recommendations never resize the VM.</p><div class="form-row"><div class="form-group"><label>Coverage %</label><input id="gc-fov-coverage" type="number" min="0" max="100" value="95" class="form-control"></div><div class="form-group"><label>Observation days</label><input id="gc-fov-days" type="number" min="1" value="30" class="form-control"></div><div class="form-group"><label>Peak headroom %</label><input id="gc-fov-headroom" type="number" min="0" value="30" class="form-control"></div><div class="form-group"><label>Min reduction %</label><input id="gc-fov-reduction" type="number" min="0" max="100" value="20" class="form-control"></div></div>`,
+    { title: 'Oversized VM assessment', onSubmit: c => this._submit(() => Api.assessFinOpsOversizedVm(ledgerId, {
+      dataCoveragePercent: Number(c.querySelector('#gc-fov-coverage').value), observationDays: Number(c.querySelector('#gc-fov-days').value),
+      headroomPercent: Number(c.querySelector('#gc-fov-headroom').value), minimumReductionPercent: Number(c.querySelector('#gc-fov-reduction').value),
+    })) });
+    if (result) { Toast.success(`Rightsize assessment: ${result.assessment.state}; provider unchanged`); await this.render(this._container); }
+  },
+
+  async _finopsZombieDialog() {
+    const lastUsed = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 16);
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Type</label><select id="gc-fzr-type" class="form-control"><option>disk</option><option>snapshot</option><option>ip</option><option>template</option><option>backup</option></select></div><div class="form-group"><label>Resource reference</label><input id="gc-fzr-ref" class="form-control mono" value="resource-old"></div><div class="form-group"><label>Owner</label><input id="gc-fzr-owner" class="form-control" value="platform"></div></div>
+      <div class="form-row"><div class="form-group"><label>Last used</label><input id="gc-fzr-last" type="datetime-local" class="form-control" value="${lastUsed}"></div><div class="form-group"><label>Stale after days</label><input id="gc-fzr-days" type="number" min="1" value="30" class="form-control"></div></div><label><input id="gc-fzr-attached" type="checkbox"> Attached</label> <label style="margin-left:16px"><input id="gc-fzr-protected" type="checkbox"> Protected</label>`,
+    { title: 'Zombie resource assessment', onSubmit: c => this._submit(() => Api.assessFinOpsZombie({
+      resourceType: c.querySelector('#gc-fzr-type').value, resourceRef: c.querySelector('#gc-fzr-ref').value,
+      owner: c.querySelector('#gc-fzr-owner').value || undefined, lastUsedAt: new Date(c.querySelector('#gc-fzr-last').value).toISOString(),
+      observedAt: new Date().toISOString(), staleDays: Number(c.querySelector('#gc-fzr-days').value),
+      attached: c.querySelector('#gc-fzr-attached').checked, protected: c.querySelector('#gc-fzr-protected').checked,
+      evidence: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success(`Zombie assessment: ${result.assessment.state}; auto-delete false`); await this.render(this._container); }
+  },
+
+  async _finopsScheduleDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Recommend mode never mutates. Automate mode still needs a hash-bound approval, durable operation, typed phrase and registered adapter.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fss-name" class="form-control" value="off-hours-${Date.now()}"></div><div class="form-group"><label>Resource</label><input id="gc-fss-ref" class="form-control mono" value="provider/vm-100"></div><div class="form-group"><label>Owner</label><input id="gc-fss-owner" class="form-control" value="platform"></div></div>
+      <div class="form-row"><div class="form-group"><label>Timezone</label><input id="gc-fss-zone" class="form-control" value="Europe/Bucharest"></div><div class="form-group"><label>Weekdays (1-7)</label><input id="gc-fss-days" class="form-control mono" value="1,2,3,4,5"></div><div class="form-group"><label>Off-hours</label><input id="gc-fss-start" class="form-control" value="20:00"><input id="gc-fss-end" class="form-control" value="07:00" style="margin-top:6px"></div></div>
+      <div class="form-row"><div class="form-group"><label>Mode</label><select id="gc-fss-mode" class="form-control"><option>recommend</option><option>automate</option></select></div><div class="form-group"><label>Adapter key</label><input id="gc-fss-adapter" class="form-control mono" value="provider"></div></div>`,
+    { title: 'Schedule-based savings policy', onSubmit: c => this._submit(() => Api.saveFinOpsSavingsSchedule({
+      name: c.querySelector('#gc-fss-name').value, resourceRef: c.querySelector('#gc-fss-ref').value, owner: c.querySelector('#gc-fss-owner').value,
+      timezone: c.querySelector('#gc-fss-zone').value, weekdays: c.querySelector('#gc-fss-days').value.split(',').map(Number),
+      offHoursStart: c.querySelector('#gc-fss-start').value, offHoursEnd: c.querySelector('#gc-fss-end').value,
+      mode: c.querySelector('#gc-fss-mode').value, adapterKey: c.querySelector('#gc-fss-adapter').value, active: true,
+    })) });
+    if (result) { Toast.success(`Savings schedule saved in ${result.schedule.mode} mode`); await this.render(this._container); }
+  },
+
+  async _finopsExecuteScheduleDialog(id) {
+    const schedule = (this._data.finopsOptimization?.schedules || []).find(item => item.id === Number(id)); if (!schedule) return;
+    const result = await Modal.form(`<p class="text-muted text-sm">For recommend mode, credentials below are ignored. Automate requires action-specific approval hash and durable operation.</p>
+      <div class="form-row"><div class="form-group"><label>Action</label><select id="gc-fse-action" class="form-control"><option>stop</option><option>start</option></select></div><div class="form-group"><label>Scheduled at</label><input id="gc-fse-at" type="datetime-local" class="form-control" value="${new Date().toISOString().slice(0, 16)}"></div></div>
+      <div class="form-row"><div class="form-group"><label>Approval ID</label><input id="gc-fse-approval" type="number" min="1" class="form-control"></div><div class="form-group"><label>Durable operation ID</label><input id="gc-fse-operation" class="form-control mono" placeholder="op_..."></div></div>
+      <div class="form-group"><label>Type EXECUTE SAVINGS ${schedule.id}</label><input id="gc-fse-confirm" class="form-control mono"></div>`,
+    { title: `Savings execution · ${schedule.mode}`, danger: schedule.mode === 'automate', onSubmit: c => this._submit(() => Api.executeFinOpsSavingsSchedule(schedule.id, {
+      action: c.querySelector('#gc-fse-action').value, scheduledAt: new Date(c.querySelector('#gc-fse-at').value).toISOString(),
+      approvalId: Number(c.querySelector('#gc-fse-approval').value) || undefined, operationId: c.querySelector('#gc-fse-operation').value || undefined,
+      confirmation: c.querySelector('#gc-fse-confirm').value,
+    })) });
+    if (result) { Toast.success(`Savings execution state: ${result.execution.state}`); await this.render(this._container); }
+  },
+
+  async _finopsReservationDialog() {
+    const options = [{ name: 'new-host', type: 'on_prem', capacity: { vCpu: 64, ramGb: 512 }, monthlyCost: 1200, termMonths: 36 },
+      { name: 'cloud-commitment', type: 'cloud_commitment', capacity: { vCpu: 32, ramGb: 128 }, monthlyCost: 700, termMonths: 12 }];
+    const result = await Modal.form(`<div class="form-group"><label>Scope</label><input id="gc-frc-scope" class="form-control mono" value="cluster-a"></div>
+      <div class="form-row"><div class="form-group"><label>Current capacity JSON</label><textarea id="gc-frc-current" class="form-control mono" rows="4">{"vCpu":100,"ramGb":500}</textarea></div><div class="form-group"><label>Peak demand JSON</label><textarea id="gc-frc-peak" class="form-control mono" rows="4">{"vCpu":90,"ramGb":400}</textarea></div><div class="form-group"><label>Forecast demand JSON</label><textarea id="gc-frc-forecast" class="form-control mono" rows="4">{"vCpu":110,"ramGb":450}</textarea></div></div>
+      <div class="form-group"><label>Purchase/commitment options JSON</label><textarea id="gc-frc-options" class="form-control mono" rows="12">${Utils.escapeHtml(JSON.stringify(options, null, 2))}</textarea></div>`,
+    { title: 'Reserved capacity recommendation', width: '950px', onSubmit: c => this._submit(() => Api.recommendFinOpsReservedCapacity({
+      scopeRef: c.querySelector('#gc-frc-scope').value, currentCapacity: JSON.parse(c.querySelector('#gc-frc-current').value),
+      peakDemand: JSON.parse(c.querySelector('#gc-frc-peak').value), forecastDemand: JSON.parse(c.querySelector('#gc-frc-forecast').value),
+      headroomPercent: 20, options: JSON.parse(c.querySelector('#gc-frc-options').value),
+    })) });
+    if (result) { Toast.success(`Capacity recommendation: ${result.recommendation.state}; no purchase started`); await this.render(this._container); }
+  },
+
+  async _finopsConsolidationDialog() {
+    const hosts = ['host-a','host-b','host-c'].map(ref => ({ ref, capacity: { vCpu: 64, ramGb: 256 }, demand: { vCpu: 12, ramGb: 48 }, haEligible: true }));
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-fcs-name" class="form-control" value="remove-host-a"></div><div class="form-group"><label>Removed host</label><input id="gc-fcs-remove" class="form-control mono" value="host-a"></div></div>
+      <div class="form-group"><label>Host capacity/demand JSON</label><textarea id="gc-fcs-hosts" class="form-control mono" rows="16">${Utils.escapeHtml(JSON.stringify(hosts, null, 2))}</textarea></div>`,
+    { title: 'N+1 consolidation scenario', width: '900px', onSubmit: c => this._submit(() => Api.simulateFinOpsConsolidation({
+      name: c.querySelector('#gc-fcs-name').value, removedHostRef: c.querySelector('#gc-fcs-remove').value,
+      hosts: JSON.parse(c.querySelector('#gc-fcs-hosts').value), failureToleranceHosts: 1, maximumUtilizationPercent: 80,
+    })) });
+    if (result) { Toast.success(`Consolidation scenario: ${result.scenario.state}; provider unchanged`); await this.render(this._container); }
+  },
+
+  async _finopsForecastDialog() {
+    const observations = [0,30,60].map((day, index) => ({ timestamp: new Date(Date.now() - (60 - day) * 86400000).toISOString(),
+      vCpu: 40 + index * 10, ramGb: 160 + index * 30, storageGb: 500 + index * 100 }));
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Scope</label><input id="gc-fcf-scope" class="form-control mono" value="cluster-a"></div><div class="form-group"><label>Horizon days</label><input id="gc-fcf-days" type="number" min="1" max="1095" value="365" class="form-control"></div><div class="form-group"><label>Failure reserve %</label><input id="gc-fcf-reserve" type="number" min="0" max="90" value="20" class="form-control"></div></div>
+      <div class="form-group"><label>Current capacity JSON</label><input id="gc-fcf-capacity" class="form-control mono" value='{"vCpu":128,"ramGb":512,"storageGb":2000}'></div>
+      <div class="form-group"><label>Observations JSON</label><textarea id="gc-fcf-observations" class="form-control mono" rows="15">${Utils.escapeHtml(JSON.stringify(observations, null, 2))}</textarea></div>`,
+    { title: 'Capacity purchase forecast', width: '900px', onSubmit: c => this._submit(() => Api.forecastFinOpsCapacity({
+      scopeRef: c.querySelector('#gc-fcf-scope').value, horizonDays: Number(c.querySelector('#gc-fcf-days').value),
+      failureReservePercent: Number(c.querySelector('#gc-fcf-reserve').value), currentCapacity: JSON.parse(c.querySelector('#gc-fcf-capacity').value),
+      observations: JSON.parse(c.querySelector('#gc-fcf-observations').value),
+    })) });
+    if (result) { Toast.success(`Capacity forecast: ${result.forecast.recommendation}; no purchase started`); await this.render(this._container); }
+  },
+
+  async _finopsPlacementDialog() {
+    const candidates = [{ targetRef: 'cluster-a', scores: { cost: 80, performance: 90, resilience: 95, compliance: 100 } },
+      { targetRef: 'cluster-b', scores: { cost: 100, performance: 80, resilience: 80, compliance: 60 } }];
+    const result = await Modal.form(`<div class="form-group"><label>Workload</label><input id="gc-fps-workload" class="form-control mono" value="vm-workload"></div>
+      <div class="form-row"><div class="form-group"><label>Weights JSON</label><input id="gc-fps-weights" class="form-control mono" value='{"cost":40,"performance":20,"resilience":20,"compliance":20}'></div><div class="form-group"><label>Minimum compliance</label><input id="gc-fps-compliance" type="number" min="0" max="100" value="70" class="form-control"></div></div>
+      <div class="form-group"><label>Candidates JSON</label><textarea id="gc-fps-candidates" class="form-control mono" rows="14">${Utils.escapeHtml(JSON.stringify(candidates, null, 2))}</textarea></div>`,
+    { title: 'Workload placement cost score', width: '900px', onSubmit: c => this._submit(() => Api.scoreFinOpsPlacement({
+      workloadRef: c.querySelector('#gc-fps-workload').value, weights: JSON.parse(c.querySelector('#gc-fps-weights').value),
+      minimumComplianceScore: Number(c.querySelector('#gc-fps-compliance').value), candidates: JSON.parse(c.querySelector('#gc-fps-candidates').value),
+    })) });
+    if (result) { Toast.success(`Placement recommendation: ${result.score.selectedTargetRef || 'no eligible target'}; no placement started`); await this.render(this._container); }
   },
 
   async _assuranceRenewalDialog() {
