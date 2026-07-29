@@ -245,6 +245,8 @@ app.use('/api/copilot', apiLimiter, require('./routes/copilot'));
 // v8.15.0 — Onboarding & Provisioning Wizard (Phase 1 backend): tenant model +
 // provisioning saga engine. All routes admin-gated + audited; secrets redacted.
 app.use('/api/onboarding', apiLimiter, require('./routes/onboarding'));
+// v8.49.0 — V4.6a scoped roles, projects, invitations and resource quotas.
+app.use('/api/governance', apiLimiter, require('./routes/governance'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md

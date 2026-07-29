@@ -117,6 +117,9 @@ module.exports = {
     providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
+    // V4.6a — additive governance control plane. This gates only the new
+    // governance API/UI; existing host/stack/provider RBAC remains independent.
+    governance: bool('DD_GOVERNANCE_ENABLED', true),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),

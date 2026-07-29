@@ -796,6 +796,10 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B199 | Access review campaigns | Recertificare periodică pe roles/scopes/service accounts. | Gov | L | Later |
 | B200 | Tenant data export/delete | Portabilitate și controlled offboarding. | Gov | L | Later |
 
+**Status implementare 2026-07-29:** B176–B185 au fost livrate în V4.6a / v8.49.0.
+Cotele folosesc contabilizarea explicită a resurselor alocate proiectului; discovery-ul
+automat pentru logical/physical/backup storage rămâne în batch-urile următoare.
+
 ### I. Observabilitate, events și AIOps (B201–B225)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |

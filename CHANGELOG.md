@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.49.0] - 2026-07-29 — Scoped governance foundation
+
+Docker Dash now provides an additive governance control plane over its existing
+tenant model for B176–B185 from the virtualization market backlog.
+
+- A permission catalog, custom roles, hierarchical scopes and inherited
+  user/team bindings support delegated site administration without granting
+  global Docker Dash admin rights.
+- Projects include owners, members, active/suspended lifecycle, hashed expiring
+  invitations, transactional ownership transfer and explicit resource assignments.
+- CPU, memory and storage expose current usage plus soft warnings and hard
+  transactional limits. Accounting assignments never move or mutate provider resources.
+- The new Governance page and audited API are guarded by `DD_GOVERNANCE_ENABLED`.
+
 ## [8.48.0] - 2026-07-29 — Compose stack storage footprint
 
 Compose stack details now show Docker-reported image and container filesystem

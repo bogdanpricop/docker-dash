@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.49.0', date: '2026-07-29', title: 'Scoped governance foundation', changes: [
+      { type: 'feature', text: 'Governance adds a permission catalog, custom roles, hierarchical scopes and inherited user/team delegation for site administration.' },
+      { type: 'feature', text: 'Projects now support owners, members, active/suspended lifecycle, expiring single-use invitations and controlled ownership transfer.' },
+      { type: 'improvement', text: 'CPU, memory and storage accounting reports current usage, soft warnings and transactional hard limits.' },
+      { type: 'security', text: 'Invitation tokens are stored only as SHA-256 digests, delegated users cannot grant permissions they do not hold, and resource assignments never mutate provider resources.' },
+    ] },
     { version: '8.48.0', date: '2026-07-29', title: 'Compose stack storage footprint', changes: [
       { type: 'feature', text: 'Compose stack details show image, writable-layer and root-filesystem sizes for each running or stopped container.' },
       { type: 'improvement', text: 'The stack summary counts shared images once and reports an approximate footprint only when Docker returned complete image and container coverage.' },

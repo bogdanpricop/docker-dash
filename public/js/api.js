@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -1430,6 +1430,33 @@ const Api = {
   // reactivates a lapsed/suspended trial.
   replanOnboarding(tenantId, declaration) { return this.post(`/onboarding/tenants/${tenantId}/replan`, declaration); },
   extendTrial(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/extend-trial`, body || {}); },
+
+  // ─── Governance foundation (v8.49.0 / V4.6a) ──────────────
+  getGovernanceCatalog() { return this.get('/governance/catalog'); },
+  getGovernanceSubjects() { return this.get('/governance/subjects'); },
+  listGovernanceRoles() { return this.get('/governance/roles'); },
+  createGovernanceRole(body) { return this.post('/governance/roles', body); },
+  updateGovernanceRole(id, body) { return this.put(`/governance/roles/${id}`, body); },
+  deleteGovernanceRole(id) { return this.delete(`/governance/roles/${id}`); },
+  listGovernanceScopes() { return this.get('/governance/scopes'); },
+  createGovernanceScope(body) { return this.post('/governance/scopes', body); },
+  listGovernanceBindings(scopeId) { return this.get(`/governance/scopes/${scopeId}/bindings`); },
+  createGovernanceBinding(body) { return this.post('/governance/bindings', body); },
+  deleteGovernanceBinding(id) { return this.delete(`/governance/bindings/${id}`); },
+  listGovernanceProjects() { return this.get('/governance/projects'); },
+  getGovernanceProject(id) { return this.get(`/governance/projects/${id}`); },
+  createGovernanceProject(body) { return this.post('/governance/projects', body); },
+  updateGovernanceProject(id, body) { return this.put(`/governance/projects/${id}`, body); },
+  setGovernanceProjectMember(id, body) { return this.post(`/governance/projects/${id}/members`, body); },
+  removeGovernanceProjectMember(id, userId) { return this.delete(`/governance/projects/${id}/members/${userId}`); },
+  transferGovernanceProjectOwner(id, userId) { return this.post(`/governance/projects/${id}/transfer-owner`, { userId }); },
+  listGovernanceInvitations(id) { return this.get(`/governance/projects/${id}/invitations`); },
+  createGovernanceInvitation(id, body) { return this.post(`/governance/projects/${id}/invitations`, body); },
+  revokeGovernanceInvitation(id, invitationId) { return this.delete(`/governance/projects/${id}/invitations/${invitationId}`); },
+  acceptGovernanceInvitation(token) { return this.post('/governance/invitations/accept', { token }); },
+  setGovernanceProjectQuotas(id, body) { return this.put(`/governance/projects/${id}/quotas`, body); },
+  assignGovernanceProjectResource(id, body) { return this.post(`/governance/projects/${id}/resources`, body); },
+  unassignGovernanceProjectResource(id, resourceId) { return this.delete(`/governance/projects/${id}/resources/${resourceId}`); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

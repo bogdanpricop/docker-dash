@@ -65,6 +65,7 @@ const App = {
     'sample-feature': () => SampleFeaturePage,
     'registry-browse': () => RegistryBrowsePage,
     onboarding:       () => OnboardingPage,
+    governance:       () => GovernancePage,
   },
 
   async init() {
