@@ -152,4 +152,8 @@ router.use('/automation', require('./infrastructure-automation'));
 // advice, official catalog evidence and non-mutating upgrade prechecks.
 router.use('/updates', require('./lifecycle-updates'));
 
+// V0.3e / B256-B265 — maintenance waves, gated lifecycle campaigns,
+// compatibility evidence and certificate renewal readiness.
+router.use('/maintenance-lifecycle', require('./lifecycle-maintenance'));
+
 module.exports = router;

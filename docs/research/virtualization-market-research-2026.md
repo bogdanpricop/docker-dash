@@ -913,16 +913,16 @@ curated, instanțiate numai după validarea parametrilor.
 | B253 | Upgrade path advisor | Supported hops, prerequisites și blockers per vendor. | Ops | L | Done |
 | B254 | Update catalog ingestion | Advisories/packages/bundles din surse oficiale. | Ops | L | Done |
 | B255 | Upgrade precheck framework | Health, capacity, backup, compatibility, free space. | Rez | L | Done |
-| B256 | Maintenance window planner | Durată, waves, evacuation și owner conflicts. | Ops | M | Next |
-| B257 | Cluster rolling-upgrade runner | Node-by-node cu gates și pause. | Rez | XL | Later |
-| B258 | Live-patch adapter | Inventory/apply/verify când vendorul îl oferă. | Rez | L | Later |
-| B259 | Reboot-required detector | Kernel/hypervisor/toolstack signals și vendor guidance. | Ops | M | Next |
-| B260 | Firmware catalog | BIOS/BMC/NIC/storage/GPU mapping și compatibility. | Ops | XL | Later |
-| B261 | Driver compatibility checker | Device/driver/firmware/host release matrix. | Rez | XL | Later |
-| B262 | Guest tools upgrade campaign | Staged tools update cu compatibility și rollback. | Ops | L | Later |
-| B263 | VM hardware version campaign | Precheck, snapshot/backup și staged upgrade. | Ops | L | Later |
-| B264 | Certificate inventory | Endpoint/service/host cert ownership și expiry. | Sig | M | Now |
-| B265 | Certificate renewal reminders | Thresholds, escalation și maintenance dependencies. | Sig | S | Now |
+| B256 | Maintenance window planner | Durată, waves, evacuation și owner conflicts. | Ops | M | Done |
+| B257 | Cluster rolling-upgrade runner | Node-by-node cu gates și pause. | Rez | XL | Done |
+| B258 | Live-patch adapter | Inventory/apply/verify când vendorul îl oferă. | Rez | L | Done |
+| B259 | Reboot-required detector | Kernel/hypervisor/toolstack signals și vendor guidance. | Ops | M | Done |
+| B260 | Firmware catalog | BIOS/BMC/NIC/storage/GPU mapping și compatibility. | Ops | XL | Done |
+| B261 | Driver compatibility checker | Device/driver/firmware/host release matrix. | Rez | XL | Done |
+| B262 | Guest tools upgrade campaign | Staged tools update cu compatibility și rollback. | Ops | L | Done |
+| B263 | VM hardware version campaign | Precheck, snapshot/backup și staged upgrade. | Ops | L | Done |
+| B264 | Certificate inventory | Endpoint/service/host cert ownership și expiry. | Sig | M | Done |
+| B265 | Certificate renewal reminders | Thresholds, escalation și maintenance dependencies. | Sig | S | Done |
 | B266 | Automated certificate renewal | Vendor adapters cu verify și rollback. | Sig | XL | Later |
 | B267 | License entitlement inventory | Edition, capacity, expiry și assigned resources. | Gov | L | Next |
 | B268 | License usage alerts | Over/under-assignment și expiry forecasts. | Cost | M | Next |
@@ -941,6 +941,17 @@ iar advisorul cere hops/prerequisites/blockers susținute de o sursă HTTPS.
 Catalogul acceptă numai ingest marcat `official_vendor`, fără download/install.
 Precheck-ul verifică health, capacity, backup, compatibility, free space și
 freshness; rezultatul este expiring evidence și nu pornește upgrade-ul.
+
+**Status implementare 2026-07-29:** B256–B265 au fost închise în V0.3e /
+v8.58.0. Plannerul separă availability groups și owner concurrency în waves,
+verifică durata/evacuarea și cere aprobarea hash-ului imutabil. Campaniile de
+cluster, guest tools și VM hardware avansează numai cu o operație durabilă
+reușită și post-verificare pozitivă; orice eșec le pune în pause. Live patch
+este un contract de adapter explicit cu approval și typed confirmation, iar
+lipsa adapterului rămâne `unsupported`. Reboot detection unește patru surse
+fără a programa reboot. Firmware/driver compatibility păstrează surse HTTPS și
+digest, iar certificatele leagă expiry de owner, escalation, maintenance și
+reminders idempotente fără renewal automat.
 
 ### L. FinOps, capacity și sustenabilitate (B276–B300)
 

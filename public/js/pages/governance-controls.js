@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -22,13 +22,15 @@ const GovernanceControlsPage = {
         Api.getVmPerformanceDashboard('network'), Api.listVmObservabilityEvents({ limit: 100 }), Api.getVmSignalRules(),
         Api.getVmObservabilityTopology(),
         Api.getVmObservabilityAdvanced(), Api.getVmSloReports(), Api.getInfrastructureAutomation(), Api.getLifecycleUpdates(),
+        Api.getLifecycleMaintenance(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
         tokens: tokens.tokens || [], trusts: trusts.trusts || [], governanceCatalog, subjects,
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
-        signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation, lifecycleUpdates };
+        signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
+        lifecycleUpdates, lifecycleMaintenance };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -295,6 +297,7 @@ const GovernanceControlsPage = {
 
   _updates() {
     const data = this._data.lifecycleUpdates || { capabilities: {}, inventory: [], supportRegistry: [], upgradePaths: [], catalog: [], prechecks: [], summary: {} };
+    const ops = this._data.lifecycleMaintenance || { capabilities: {}, maintenancePlans: [], campaigns: [], livePatchEvidence: [], rebootSignals: [], firmwareCatalog: [], driverMatrix: [], certificates: [], reminderPolicies: [], reminders: [], summary: {} };
     const supportBadge = state => state === 'supported' ? 'badge-success' : state === 'eol' ? 'badge-warning' : 'badge-danger';
     return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-update-inventory"><i class="fas fa-boxes-stacked"></i> Record inventory</button>
       <button class="btn btn-secondary btn-sm" id="gc-update-support"><i class="fas fa-calendar-xmark"></i> Support lifecycle</button>
@@ -318,6 +321,38 @@ const GovernanceControlsPage = {
         ${(data.catalog || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.title)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.advisoryId)}</div></td><td>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.product)}</td><td>${Utils.escapeHtml(item.updateKind)}<div class="mono text-xs">${Utils.escapeHtml(item.targetVersion || 'all')}</div></td><td><span class="badge ${['critical','high'].includes(item.severity) ? 'badge-danger' : item.severity === 'medium' ? 'badge-warning' : 'badge-secondary'}">${item.severity}</span></td></tr>`).join('') || this._empty('No official update catalog evidence', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Upgrade precheck evidence</h3></div><table class="data-table"><thead><tr><th>Inventory / target</th><th>Checks</th><th>Expiry</th><th>Status</th></tr></thead><tbody>
         ${(data.prechecks || []).map(item => `<tr><td>#${item.inventoryId}<div class="mono text-xs">→ ${Utils.escapeHtml(item.targetVersion)}</div></td><td>${item.results.filter(result => result.passed).length}/${item.results.length}<div class="text-xs text-muted">health · capacity · backup · compatibility · space</div></td><td>${new Date(item.expiresAt).toLocaleString()}</td><td><span class="badge ${item.status === 'ready' && !item.stale ? 'badge-success' : 'badge-danger'}">${item.stale ? 'stale' : item.status}</span></td></tr>`).join('') || this._empty('No upgrade precheck evidence', 4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-header"><div><h3>Maintenance &amp; compatibility operations</h3><p class="text-muted text-sm">Plans and campaigns are immutable, explicitly approved and advanced only with durable provider-operation evidence. Catalog and reminder actions never patch, reboot or renew implicitly.</p></div></div>
+        <div style="padding:12px;display:flex;gap:7px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="gc-life-maint-plan"><i class="fas fa-calendar-days"></i> Maintenance plan</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-campaign"><i class="fas fa-layer-group"></i> Lifecycle campaign</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-live-patch"><i class="fas fa-bandage"></i> Live-patch evidence</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-reboot"><i class="fas fa-power-off"></i> Reboot signal</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-firmware"><i class="fas fa-microchip"></i> Firmware</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-driver"><i class="fas fa-puzzle-piece"></i> Driver matrix</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-certificate"><i class="fas fa-certificate"></i> Certificate owner</button>
+          <button class="btn btn-secondary btn-sm" id="gc-life-reminder-policy"><i class="fas fa-bell"></i> Reminder policy</button>
+          <button class="btn btn-primary btn-sm" id="gc-life-evaluate-reminders"><i class="fas fa-clock"></i> Evaluate reminders</button>
+        </div>
+        <div class="info-grid" style="padding:0 12px 12px">
+          ${this._stat('fa-calendar-check', 'Planned windows', ops.summary?.plannedWindows || 0)}
+          ${this._stat('fa-arrows-rotate', 'Active campaigns', ops.summary?.activeCampaigns || 0)}
+          ${this._stat('fa-power-off', 'Reboots required', ops.summary?.rebootRequired || 0)}
+          ${this._stat('fa-certificate', 'Expiring certificates', ops.summary?.expiringCertificates || 0)}
+        </div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Maintenance windows</h3></div><table class="data-table"><thead><tr><th>Plan / scope</th><th>Window</th><th>Waves</th><th>State</th><th></th></tr></thead><tbody>
+        ${(ops.maintenancePlans || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.scopeType)}:${Utils.escapeHtml(item.scopeKey)}</div></td><td>${new Date(item.startsAt).toLocaleString()}<div class="text-xs text-muted">${item.durationMinutes}m · ${Utils.escapeHtml(item.timezone)}</div></td><td>${item.waves.length}<div class="text-xs text-muted">${item.conflicts.length} conflicts</div></td><td><span class="badge ${item.state === 'approved' ? 'badge-success' : item.conflicts.length ? 'badge-danger' : 'badge-warning'}">${item.state}</span></td><td>${item.state === 'ready' ? `<button class="action-btn success" data-gc-life-approve-plan="${item.id}" title="Approve immutable plan"><i class="fas fa-check"></i></button>` : ''}</td></tr>`).join('') || this._empty('No maintenance plans', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Staged lifecycle campaigns</h3></div><table class="data-table"><thead><tr><th>Campaign</th><th>Target</th><th>Stages</th><th>State</th><th></th></tr></thead><tbody>
+        ${(ops.campaigns || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.kind)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.targetVersion)}</td><td>${new Set(item.targets.map(target => target.stage)).size}<div class="text-xs text-muted">current ${item.currentStage}</div></td><td><span class="badge ${item.state === 'completed' ? 'badge-success' : ['paused','failed'].includes(item.state) ? 'badge-danger' : 'badge-warning'}">${item.state}</span></td><td>${item.state === 'ready' ? `<button class="action-btn success" data-gc-life-approve-campaign="${item.id}" title="Approve campaign"><i class="fas fa-check"></i></button>` : ['approved','running'].includes(item.state) ? `<button class="action-btn" data-gc-life-advance-campaign="${item.id}" title="Attach durable operation evidence"><i class="fas fa-forward-step"></i></button>` : ''}</td></tr>`).join('') || this._empty('No lifecycle campaigns', 5)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Live patch &amp; reboot evidence</h3></div><table class="data-table"><thead><tr><th>Target</th><th>Evidence</th><th>Operation</th><th>State</th></tr></thead><tbody>
+        ${(ops.livePatchEvidence || []).map(item => `<tr><td>${Utils.escapeHtml(item.providerType)}<div class="mono text-xs">${Utils.escapeHtml(item.targetRef)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.patchId)}<br>${item.requestHash.slice(0, 12)}</td><td class="mono text-xs">${Utils.escapeHtml(item.operationId || 'inventory only')}</td><td><span class="badge ${item.phase === 'verified' ? 'badge-success' : item.phase === 'failed' ? 'badge-danger' : 'badge-secondary'}">${item.phase}</span></td></tr>`).join('') || this._empty('No live-patch evidence', 4)}
+        ${(ops.rebootSignals || []).map(item => `<tr><td>host ${item.providerHostId}<div class="mono text-xs">${Utils.escapeHtml(item.targetRef)}</div></td><td>${item.signals.length} independent signals</td><td class="text-muted text-xs">no implicit reboot</td><td><span class="badge ${item.requiredState === 'required' ? 'badge-danger' : item.requiredState === 'not_required' ? 'badge-success' : 'badge-warning'}">${item.requiredState}</span></td></tr>`).join('')}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Firmware &amp; driver compatibility</h3></div><table class="data-table"><thead><tr><th>Device</th><th>Component</th><th>Version</th><th>Status</th></tr></thead><tbody>
+        ${(ops.firmwareCatalog || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.deviceModel)}</strong></td><td>${Utils.escapeHtml(item.componentType)}</td><td class="mono text-xs">${Utils.escapeHtml(item.firmwareVersion)}<div>driver ≥ ${Utils.escapeHtml(item.minimumDriverVersion || 'n/a')}</div></td><td><span class="badge ${item.severity === 'critical' ? 'badge-danger' : 'badge-secondary'}">${item.severity}</span></td></tr>`).join('')}
+        ${(ops.driverMatrix || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.vendor)} ${Utils.escapeHtml(item.deviceModel)}</strong></td><td>${Utils.escapeHtml(item.driverName)}<div class="text-xs text-muted">host ${Utils.escapeHtml(item.hostRelease)}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.driverVersion)} / fw ${Utils.escapeHtml(item.firmwareVersion)}</td><td><span class="badge ${item.status === 'supported' ? 'badge-success' : item.status === 'blocked' ? 'badge-danger' : 'badge-warning'}">${item.status}</span></td></tr>`).join('') || this._empty('No firmware or driver evidence', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto;grid-column:1/-1"><div class="card-header"><h3>Certificate ownership &amp; renewal reminders</h3></div><table class="data-table"><thead><tr><th>Certificate / resource</th><th>Owner</th><th>Expiry</th><th>Maintenance</th><th>Reminder</th></tr></thead><tbody>
+        ${(ops.certificates || []).map(item => { const reminder = (ops.reminders || []).find(row => row.ownershipId === item.id); return `<tr><td><strong>${Utils.escapeHtml(item.name || item.inventoryKey)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceType)}:${Utils.escapeHtml(item.resourceRef)}</div></td><td>${Utils.escapeHtml(item.owner)}</td><td>${item.notAfter ? new Date(item.notAfter).toLocaleString() : 'unknown'}<div class="text-xs text-muted">${item.daysRemaining == null ? 'no expiry evidence' : `${item.daysRemaining} days`}</div></td><td>${item.maintenancePlanId ? `plan #${item.maintenancePlanId}` : '<span class="text-muted">not assigned</span>'}</td><td>${reminder ? `<span class="badge ${['critical','expired'].includes(reminder.severity) ? 'badge-danger' : 'badge-warning'}">${reminder.severity}</span>` : '—'}</td></tr>`; }).join('') || this._empty('No certificate ownership inventory', 5)}</tbody></table></div>
       </div>`;
   },
 
@@ -391,6 +426,18 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-update-catalog')?.addEventListener('click', () => this._lifecycleCatalogDialog());
     this._container.querySelector('#gc-update-precheck')?.addEventListener('click', () => this._lifecyclePrecheckDialog());
     this._container.querySelectorAll('[data-gc-update-advise]').forEach(button => button.addEventListener('click', () => this._lifecycleAdvisorDialog(button.dataset.gcUpdateAdvise)));
+    this._container.querySelector('#gc-life-maint-plan')?.addEventListener('click', () => this._lifecycleMaintenancePlanDialog());
+    this._container.querySelector('#gc-life-campaign')?.addEventListener('click', () => this._lifecycleCampaignDialog());
+    this._container.querySelector('#gc-life-live-patch')?.addEventListener('click', () => this._lifecycleLivePatchDialog());
+    this._container.querySelector('#gc-life-reboot')?.addEventListener('click', () => this._lifecycleRebootDialog());
+    this._container.querySelector('#gc-life-firmware')?.addEventListener('click', () => this._lifecycleFirmwareDialog());
+    this._container.querySelector('#gc-life-driver')?.addEventListener('click', () => this._lifecycleDriverDialog());
+    this._container.querySelector('#gc-life-certificate')?.addEventListener('click', () => this._lifecycleCertificateDialog());
+    this._container.querySelector('#gc-life-reminder-policy')?.addEventListener('click', () => this._lifecycleReminderPolicyDialog());
+    this._container.querySelector('#gc-life-evaluate-reminders')?.addEventListener('click', () => this._evaluateLifecycleReminders());
+    this._container.querySelectorAll('[data-gc-life-approve-plan]').forEach(button => button.addEventListener('click', () => this._approveLifecycleMaintenancePlan(button.dataset.gcLifeApprovePlan)));
+    this._container.querySelectorAll('[data-gc-life-approve-campaign]').forEach(button => button.addEventListener('click', () => this._approveLifecycleCampaign(button.dataset.gcLifeApproveCampaign)));
+    this._container.querySelectorAll('[data-gc-life-advance-campaign]').forEach(button => button.addEventListener('click', () => this._advanceLifecycleCampaign(button.dataset.gcLifeAdvanceCampaign)));
     this._container.querySelectorAll('[data-gc-controller-run]').forEach(button => button.addEventListener('click', async () => {
       try { await Api.runInfrastructureController(button.dataset.gcControllerRun); Toast.success('Controller evaluated; no provider mutation scheduled'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1258,6 +1305,170 @@ const GovernanceControlsPage = {
       const result = await Api.getLifecycleUpgradeAdvice(id, target);
       Modal.open(`<div class="modal-header"><h3>Upgrade advice · ${Utils.escapeHtml(result.status)}</h3><button class="modal-close-btn" id="gc-close-advisor"><i class="fas fa-times"></i></button></div><div class="modal-body"><p class="text-muted">Advisory only; upgrade was not started.</p><pre class="code-block">${Utils.escapeHtml(JSON.stringify(result, null, 2))}</pre></div>`, { width: '920px' });
       Modal._content.querySelector('#gc-close-advisor').addEventListener('click', () => Modal.close());
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _lifecycleMaintenancePlanDialog() {
+    const starts = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
+    const targets = [{ ref: 'node-a', providerHostId: 1, owner: 'platform', availabilityGroup: 'rack-a',
+      evacuationRequired: true, evacuable: true, estimatedMinutes: 30 }];
+    const result = await Modal.form(`<p class="text-muted text-sm">The planner separates availability groups and owners into bounded waves and validates evacuation capacity. Saving does not touch a provider.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-lm-name" class="form-control" value="cluster-maintenance-${Date.now()}"></div><div class="form-group"><label>Scope</label><div style="display:flex;gap:6px"><select id="gc-lm-scope-type" class="form-control"><option>cluster</option><option>host</option><option>site</option><option>fleet</option></select><input id="gc-lm-scope-key" class="form-control mono" value="cluster-a"></div></div></div>
+      <div class="form-row"><div class="form-group"><label>Start</label><input id="gc-lm-start" type="datetime-local" class="form-control" value="${starts}"></div><div class="form-group"><label>IANA timezone</label><input id="gc-lm-timezone" class="form-control mono" value="Europe/Bucharest"></div></div>
+      <div class="form-row"><div class="form-group"><label>Duration (minutes)</label><input id="gc-lm-duration" type="number" min="15" value="180" class="form-control"></div><div class="form-group"><label>Wave / max per owner</label><div style="display:flex;gap:6px"><input id="gc-lm-wave" type="number" min="1" value="1" class="form-control"><input id="gc-lm-owner" type="number" min="1" value="1" class="form-control"></div></div></div>
+      <div class="form-row"><div class="form-group"><label>Evacuation destinations</label><input id="gc-lm-destinations" class="form-control mono" value="cluster-b"></div><label style="align-self:center"><input id="gc-lm-capacity" type="checkbox" checked> Evacuation capacity verified</label></div>
+      <div class="form-group"><label>Targets JSON</label><textarea id="gc-lm-targets" class="form-control mono" rows="10">${Utils.escapeHtml(JSON.stringify(targets, null, 2))}</textarea></div>`,
+    { title: 'Maintenance window planner', width: '950px', onSubmit: c => this._submit(() => Api.createLifecycleMaintenancePlan({
+      name: c.querySelector('#gc-lm-name').value, scopeType: c.querySelector('#gc-lm-scope-type').value,
+      scopeKey: c.querySelector('#gc-lm-scope-key').value, startsAt: new Date(c.querySelector('#gc-lm-start').value).toISOString(),
+      timezone: c.querySelector('#gc-lm-timezone').value, durationMinutes: Number(c.querySelector('#gc-lm-duration').value),
+      waveSize: Number(c.querySelector('#gc-lm-wave').value), maxConcurrentPerOwner: Number(c.querySelector('#gc-lm-owner').value),
+      evacuation: { capacityVerified: c.querySelector('#gc-lm-capacity').checked,
+        destinationRefs: c.querySelector('#gc-lm-destinations').value.split(',').map(value => value.trim()).filter(Boolean) },
+      targets: JSON.parse(c.querySelector('#gc-lm-targets').value),
+    })) });
+    if (result) { Toast.success(`${result.waves.length} waves planned; ${result.providerMutationsStarted} provider mutations`); await this.render(this._container); }
+  },
+
+  async _approveLifecycleMaintenancePlan(id) {
+    const plan = (this._data.lifecycleMaintenance?.maintenancePlans || []).find(item => item.id === Number(id));
+    if (!plan) return Toast.error('Maintenance plan is no longer available');
+    const body = await Modal.form(`<p>Review plan hash <span class="mono">${plan.planHash}</span>, ${plan.waves.length} waves and ${plan.conflicts.length} conflicts.</p><div class="form-group"><label>Type APPROVE MAINTENANCE ${plan.id}</label><input id="gc-lm-confirm" class="form-control mono" autocomplete="off"></div>`,
+      { title: 'Approve immutable maintenance plan', confirmText: 'Approve', onSubmit: c => ({ planHash: plan.planHash, confirmation: c.querySelector('#gc-lm-confirm').value }) });
+    if (!body) return;
+    try { await Api.approveLifecycleMaintenancePlan(plan.id, body); Toast.success('Maintenance plan approved; no provider action started'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _lifecycleCampaignDialog() {
+    const targets = [{ ref: 'node-a', providerHostId: 1, owner: 'platform', availabilityGroup: 'rack-a', currentVersion: '1.0',
+      precheck: { healthReady: true, compatible: true, haReady: true, evacuationReady: true, guestResponsive: true },
+      protection: { backupVerified: true } }];
+    const result = await Modal.form(`<p class="text-muted text-sm">Each target must pass the gates for its campaign kind. Execution remains separate and must produce a durable provider-operation ID.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-lc-name" class="form-control" value="rolling-upgrade-${Date.now()}"></div><div class="form-group"><label>Kind</label><select id="gc-lc-kind" class="form-control"><option value="rolling_cluster">cluster rolling upgrade</option><option value="guest_tools">guest tools</option><option value="vm_hardware">VM hardware version</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Target version</label><input id="gc-lc-version" class="form-control mono" value="2.0"></div><div class="form-group"><label>Wave size</label><input id="gc-lc-wave" type="number" min="1" value="1" class="form-control"></div><div class="form-group"><label>Approved maintenance plan (optional)</label><input id="gc-lc-plan" type="number" min="1" class="form-control"></div></div>
+      <div class="form-group"><label>Targets and precheck evidence JSON</label><textarea id="gc-lc-targets" class="form-control mono" rows="15">${Utils.escapeHtml(JSON.stringify(targets, null, 2))}</textarea></div>`,
+    { title: 'Staged lifecycle campaign', width: '950px', onSubmit: c => this._submit(() => Api.createLifecycleCampaign({
+      name: c.querySelector('#gc-lc-name').value, kind: c.querySelector('#gc-lc-kind').value,
+      targetVersion: c.querySelector('#gc-lc-version').value, waveSize: Number(c.querySelector('#gc-lc-wave').value),
+      maintenancePlanId: Number(c.querySelector('#gc-lc-plan').value) || undefined,
+      rollbackPolicy: { mode: 'pause' }, targets: JSON.parse(c.querySelector('#gc-lc-targets').value),
+    })) });
+    if (result) { Toast.success(`Campaign ${result.campaign.state}; ${result.campaign.providerOperationsCreated} provider operations created`); await this.render(this._container); }
+  },
+
+  async _approveLifecycleCampaign(id) {
+    const campaign = (this._data.lifecycleMaintenance?.campaigns || []).find(item => item.id === Number(id));
+    if (!campaign) return Toast.error('Campaign is no longer available');
+    const body = await Modal.form(`<p>Review ${campaign.targets.length} targets and hash <span class="mono">${campaign.planHash}</span>.</p><div class="form-group"><label>Type APPROVE CAMPAIGN ${campaign.id}</label><input id="gc-lc-confirm" class="form-control mono" autocomplete="off"></div>`,
+      { title: 'Approve lifecycle campaign', confirmText: 'Approve', onSubmit: c => ({ planHash: campaign.planHash, confirmation: c.querySelector('#gc-lc-confirm').value }) });
+    if (!body) return;
+    try { await Api.approveLifecycleCampaign(campaign.id, body); Toast.success('Campaign approved; provider execution remains separate'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
+  },
+
+  async _advanceLifecycleCampaign(id) {
+    const campaign = (this._data.lifecycleMaintenance?.campaigns || []).find(item => item.id === Number(id));
+    const stage = Math.min(...campaign.targets.filter(item => !['verified','skipped'].includes(item.state)).map(item => item.stage));
+    const targets = campaign.targets.filter(item => item.stage === stage && !['verified','skipped'].includes(item.state));
+    const result = await Modal.form(`<p class="text-muted text-sm">Attach evidence from an already completed durable operation. A failed operation or verification pauses the campaign.</p>
+      <div class="form-group"><label>Current-stage target</label><select id="gc-lc-target" class="form-control">${targets.map(item => `<option value="${item.id}">${Utils.escapeHtml(item.targetRef)}</option>`).join('')}</select></div>
+      <div class="form-group"><label>Durable operation ID</label><input id="gc-lc-operation" class="form-control mono" placeholder="op_..."></div>
+      <div class="form-group"><label>Post-verification JSON</label><textarea id="gc-lc-verification" class="form-control mono" rows="7">{"passed":true,"health":"green"}</textarea></div>`,
+    { title: `Advance campaign stage ${stage}`, onSubmit: c => this._submit(() => Api.advanceLifecycleCampaign(campaign.id, {
+      targetId: Number(c.querySelector('#gc-lc-target').value), operationId: c.querySelector('#gc-lc-operation').value,
+      verification: JSON.parse(c.querySelector('#gc-lc-verification').value),
+    })) });
+    if (result) { Toast.success(`Campaign is ${result.campaign.state}`); await this.render(this._container); }
+  },
+
+  async _lifecycleLivePatchDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Inventory is safe without approval. Apply/verify requires a matching approved live_patch.apply request, durable operation and typed confirmation. Unsupported providers remain explicit.</p>
+      <div class="form-row"><div class="form-group"><label>Provider type</label><input id="gc-lp-provider" class="form-control" value="linux"></div><div class="form-group"><label>Host ID</label><input id="gc-lp-host" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Phase</label><select id="gc-lp-phase" class="form-control"><option>inventory</option><option>apply</option><option>verify</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Target reference</label><input id="gc-lp-target" class="form-control mono" value="node-a"></div><div class="form-group"><label>Patch ID</label><input id="gc-lp-patch" class="form-control mono" value="LP-1"></div></div>
+      <div class="form-row"><div class="form-group"><label>Approval ID (apply/verify)</label><input id="gc-lp-approval" type="number" min="1" class="form-control"></div><div class="form-group"><label>Operation ID (apply/verify)</label><input id="gc-lp-operation" class="form-control mono"></div></div>
+      <div class="form-group"><label>Typed confirmation (APPLY LIVE PATCH &lt;patch&gt; &lt;target&gt;)</label><input id="gc-lp-confirm" class="form-control mono"></div>
+      <div class="form-group"><label>Adapter request JSON</label><textarea id="gc-lp-request" class="form-control mono" rows="6">{}</textarea></div>`,
+    { title: 'Live-patch adapter evidence', width: '900px', onSubmit: c => this._submit(() => Api.recordLifecycleLivePatch({
+      providerType: c.querySelector('#gc-lp-provider').value, providerHostId: Number(c.querySelector('#gc-lp-host').value),
+      phase: c.querySelector('#gc-lp-phase').value, targetRef: c.querySelector('#gc-lp-target').value,
+      patchId: c.querySelector('#gc-lp-patch').value, approvalId: Number(c.querySelector('#gc-lp-approval').value) || undefined,
+      operationId: c.querySelector('#gc-lp-operation').value || undefined, confirmation: c.querySelector('#gc-lp-confirm').value || undefined,
+      request: JSON.parse(c.querySelector('#gc-lp-request').value),
+    })) });
+    if (result) { Toast.success(`Live-patch evidence: ${result.evidence.phase}; no implicit reboot`); await this.render(this._container); }
+  },
+
+  async _lifecycleRebootDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Host ID</label><input id="gc-lr-host" type="number" min="0" value="0" class="form-control"></div><div class="form-group"><label>Target</label><input id="gc-lr-target" class="form-control mono" value="node-a"></div></div>
+      <div class="form-row"><div class="form-group"><label>Source</label><select id="gc-lr-source" class="form-control"><option>kernel</option><option>hypervisor</option><option>toolstack</option><option>vendor</option></select></div><div class="form-group"><label>Signal key</label><input id="gc-lr-key" class="form-control mono" value="pending-update"></div><div class="form-group"><label>State</label><select id="gc-lr-state" class="form-control"><option>required</option><option>not_required</option><option>unknown</option></select></div></div>
+      <div class="form-group"><label>Guidance</label><textarea id="gc-lr-guidance" class="form-control" rows="3">Schedule reboot inside an approved maintenance window.</textarea></div>`,
+    { title: 'Reboot-required signal', onSubmit: c => this._submit(() => Api.recordLifecycleRebootSignal({
+      providerHostId: Number(c.querySelector('#gc-lr-host').value), targetRef: c.querySelector('#gc-lr-target').value,
+      signalSource: c.querySelector('#gc-lr-source').value, signalKey: c.querySelector('#gc-lr-key').value,
+      requiredState: c.querySelector('#gc-lr-state').value, guidance: c.querySelector('#gc-lr-guidance').value,
+      observedAt: new Date().toISOString(), evidence: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success(`Aggregate reboot state: ${result.status.requiredState}; reboot not scheduled`); await this.render(this._container); }
+  },
+
+  async _lifecycleFirmwareDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-lf-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Device model</label><input id="gc-lf-device" class="form-control" value="Device-1"></div><div class="form-group"><label>Component</label><select id="gc-lf-component" class="form-control"><option>bios</option><option>bmc</option><option>nic</option><option>storage</option><option>gpu</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Firmware version</label><input id="gc-lf-version" class="form-control mono" value="1.0"></div><div class="form-group"><label>Minimum driver</label><input id="gc-lf-driver" class="form-control mono"></div><div class="form-group"><label>Severity</label><select id="gc-lf-severity" class="form-control"><option>info</option><option>recommended</option><option>critical</option></select></div></div>
+      <div class="form-group"><label>Compatible host releases</label><input id="gc-lf-releases" class="form-control mono" value="8.0"></div><div class="form-group"><label>Official HTTPS source</label><input id="gc-lf-source" class="form-control mono" value="https://vendor.example/firmware"></div>`,
+    { title: 'Firmware compatibility catalog', onSubmit: c => this._submit(() => Api.saveLifecycleFirmware({
+      vendor: c.querySelector('#gc-lf-vendor').value, deviceModel: c.querySelector('#gc-lf-device').value,
+      componentType: c.querySelector('#gc-lf-component').value, firmwareVersion: c.querySelector('#gc-lf-version').value,
+      minimumDriverVersion: c.querySelector('#gc-lf-driver').value || undefined, severity: c.querySelector('#gc-lf-severity').value,
+      compatibleHostReleases: c.querySelector('#gc-lf-releases').value.split(',').map(value => value.trim()).filter(Boolean),
+      sourceUrl: c.querySelector('#gc-lf-source').value, publishedAt: new Date().toISOString(), metadata: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success('Firmware compatibility evidence saved'); await this.render(this._container); }
+  },
+
+  async _lifecycleDriverDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Vendor</label><input id="gc-ld-vendor" class="form-control" value="Vendor"></div><div class="form-group"><label>Device model</label><input id="gc-ld-device" class="form-control" value="Device-1"></div><div class="form-group"><label>Driver name</label><input id="gc-ld-name" class="form-control" value="driver"></div></div>
+      <div class="form-row"><div class="form-group"><label>Driver version</label><input id="gc-ld-version" class="form-control mono" value="1.0"></div><div class="form-group"><label>Firmware version</label><input id="gc-ld-firmware" class="form-control mono" value="1.0"></div><div class="form-group"><label>Host release</label><input id="gc-ld-host-release" class="form-control mono" value="8.0"></div></div>
+      <div class="form-row"><div class="form-group"><label>Status</label><select id="gc-ld-status" class="form-control"><option>supported</option><option>deprecated</option><option>blocked</option></select></div><div class="form-group"><label>Official HTTPS source</label><input id="gc-ld-source" class="form-control mono" value="https://vendor.example/driver-matrix"></div></div>`,
+    { title: 'Driver compatibility matrix', onSubmit: c => this._submit(async () => { const body = {
+      vendor: c.querySelector('#gc-ld-vendor').value, deviceModel: c.querySelector('#gc-ld-device').value,
+      driverName: c.querySelector('#gc-ld-name').value, driverVersion: c.querySelector('#gc-ld-version').value,
+      firmwareVersion: c.querySelector('#gc-ld-firmware').value, hostRelease: c.querySelector('#gc-ld-host-release').value,
+      status: c.querySelector('#gc-ld-status').value, sourceUrl: c.querySelector('#gc-ld-source').value,
+    }; await Api.saveLifecycleDriverCompatibility(body); return Api.checkLifecycleDriverCompatibility(body); }) });
+    if (result) { Toast.success(`Driver compatibility: ${result.status}; remediation not scheduled`); await this.render(this._container); }
+  },
+
+  async _lifecycleCertificateDialog() {
+    const result = await Modal.form(`<p class="text-muted text-sm">Link an existing tracked certificate when available; ownership can also be registered before discovery completes.</p>
+      <div class="form-row"><div class="form-group"><label>Tracked certificate ID</label><input id="gc-lcert-id" type="number" min="1" class="form-control"></div><div class="form-group"><label>Inventory key</label><input id="gc-lcert-key" class="form-control mono" value="tls/service"></div><div class="form-group"><label>Environment</label><select id="gc-lcert-env" class="form-control"><option>production</option><option>nonproduction</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Resource type</label><select id="gc-lcert-type" class="form-control"><option>endpoint</option><option>service</option><option>host</option></select></div><div class="form-group"><label>Resource reference</label><input id="gc-lcert-ref" class="form-control mono" value="service-api"></div><div class="form-group"><label>HTTPS endpoint</label><input id="gc-lcert-endpoint" class="form-control mono" value="https://service.example.com"></div></div>
+      <div class="form-row"><div class="form-group"><label>Owner</label><input id="gc-lcert-owner" class="form-control" value="platform"></div><div class="form-group"><label>Escalation admin ID</label><input id="gc-lcert-escalation" type="number" min="1" class="form-control"></div><div class="form-group"><label>Maintenance plan ID</label><input id="gc-lcert-plan" type="number" min="1" class="form-control"></div></div>`,
+    { title: 'Certificate ownership inventory', width: '920px', onSubmit: c => this._submit(() => Api.saveLifecycleCertificateOwnership({
+      certificateId: Number(c.querySelector('#gc-lcert-id').value) || undefined, inventoryKey: c.querySelector('#gc-lcert-key').value,
+      resourceType: c.querySelector('#gc-lcert-type').value, resourceRef: c.querySelector('#gc-lcert-ref').value,
+      endpoint: c.querySelector('#gc-lcert-endpoint').value || undefined, owner: c.querySelector('#gc-lcert-owner').value,
+      escalationUserId: Number(c.querySelector('#gc-lcert-escalation').value) || undefined,
+      maintenancePlanId: Number(c.querySelector('#gc-lcert-plan').value) || undefined,
+      environment: c.querySelector('#gc-lcert-env').value,
+    })) });
+    if (result) { Toast.success('Certificate ownership saved'); await this.render(this._container); }
+  },
+
+  async _lifecycleReminderPolicyDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Name</label><input id="gc-lrp-name" class="form-control" value="certificate-expiry-${Date.now()}"></div><div class="form-group"><label>Environment</label><select id="gc-lrp-env" class="form-control"><option>all</option><option>production</option><option>nonproduction</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Threshold days</label><input id="gc-lrp-days" class="form-control mono" value="90,30,14,7,1,0"></div><div class="form-group"><label>Escalation admin ID</label><input id="gc-lrp-escalation" type="number" min="1" class="form-control"></div></div>
+      <label><input id="gc-lrp-maintenance" type="checkbox" checked> Require maintenance-plan dependency before renewal</label>`,
+    { title: 'Certificate renewal reminders', onSubmit: c => this._submit(() => Api.createLifecycleCertificateReminderPolicy({
+      name: c.querySelector('#gc-lrp-name').value, environment: c.querySelector('#gc-lrp-env').value,
+      thresholdDays: c.querySelector('#gc-lrp-days').value.split(',').map(value => Number(value.trim())),
+      escalationUserId: Number(c.querySelector('#gc-lrp-escalation').value) || undefined,
+      requireMaintenanceWindow: c.querySelector('#gc-lrp-maintenance').checked,
+    })) });
+    if (result) { Toast.success('Certificate reminder policy saved'); await this.render(this._container); }
+  },
+
+  async _evaluateLifecycleReminders() {
+    try { const result = await Api.evaluateLifecycleCertificateReminders();
+      Toast.success(`${result.created} reminders created; ${result.renewalsStarted} renewals started`); await this.render(this._container);
     } catch (error) { Toast.error(error.message); }
   },
 };

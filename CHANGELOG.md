@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.58.0] - 2026-07-29 — Lifecycle maintenance and compatibility operations
+
+The B256–B265 batch turns update readiness into explicit, staged operational
+plans while retaining strict separation from provider execution.
+
+- Maintenance windows model duration, owner/availability constraints,
+  evacuation readiness and deterministic waves, then require a plan-hash-bound
+  typed approval without starting provider work.
+- Rolling cluster, guest-tools and VM hardware campaigns enforce distinct
+  prechecks, ordered stages, verified durable-operation evidence and automatic
+  pause on failed work or post-verification.
+- Injectable live-patch adapters expose inventory/apply/verify evidence;
+  apply/verify needs a matching approval, durable operation and typed phrase,
+  while unavailable adapters remain explicitly unsupported.
+- Independent kernel, hypervisor, toolstack and vendor signals produce an
+  aggregate reboot-required result but never schedule a reboot.
+- Official HTTPS firmware catalogs and exact device/driver/firmware/host-release
+  compatibility records provide source-digested, non-remediating guidance.
+- Certificate inventory links endpoints, services or hosts to owners,
+  escalation and maintenance dependencies. Idempotent threshold reminders do
+  not renew certificates automatically.
+
 ## [8.57.0] - 2026-07-29 — Automation operations and lifecycle readiness
 
 The B246–B255 batch closes the automation research section and starts the

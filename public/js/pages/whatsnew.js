@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.58.0', date: '2026-07-29', title: 'Lifecycle maintenance and compatibility operations', changes: [
+      { type: 'feature', text: 'Maintenance plans model bounded waves, owner and availability constraints, evacuation readiness and immutable hash-bound approvals.' },
+      { type: 'feature', text: 'Rolling cluster, guest-tools and VM hardware campaigns advance stage-by-stage only after a durable provider operation succeeds and post-verification passes.' },
+      { type: 'security', text: 'Live-patch apply/verify requires a matching timed approval, durable operation and typed confirmation; unsupported adapters remain explicit and no reboot is inferred.' },
+      { type: 'feature', text: 'Kernel, hypervisor, toolstack and vendor reboot signals join official firmware and exact driver compatibility evidence in one lifecycle view.' },
+      { type: 'feature', text: 'Certificate ownership covers endpoints, services and hosts with expiry thresholds, escalation and maintenance dependencies; reminder evaluation starts zero renewals.' },
+    ] },
     { version: '8.57.0', date: '2026-07-29', title: 'Automation operations and lifecycle readiness', changes: [
       { type: 'feature', text: 'Calendar schedules understand cron, IANA timezones, holidays and blackout windows while producing idempotent evidence without automatically executing workflows.' },
       { type: 'security', text: 'Timed approvals escalate or expire without implicit apply; provider dry-runs are explicit about unsupported adapters and never fall back to mutation.' },

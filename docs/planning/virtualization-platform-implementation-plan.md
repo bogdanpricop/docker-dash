@@ -91,6 +91,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V0.3b | Infrastructure automation foundations | B226–B235 | core-ul persistent este reutilizat de manifests, plans, DAG și compensation; apply provider rămâne separat |
 | V0.3c | Infrastructure delivery și GitOps safeguards | B236–B245 | ownership/deletion gates, import/drift/reconcile, PR/Terraform/Ansible și webhook HMAC |
 | V0.3d | Automation operations și lifecycle readiness | B246–B255 | calendar/approval/dry-run/secret/template controls plus version/support/update/precheck evidence |
+| V0.3e | Lifecycle maintenance și compatibility operations | B256–B265 | maintenance waves, staged durable-operation campaigns, live patch/reboot evidence, firmware/driver matrix și certificate reminders |
 | V0.4 | Provider conformance kit | B018, B022–B025, B436–B450 | fixtures, fault injection și scorecard automat per provider |
 
 **Exit:** niciun provider nou și nicio mutation nouă nu mai introduc contracte ad-hoc.
