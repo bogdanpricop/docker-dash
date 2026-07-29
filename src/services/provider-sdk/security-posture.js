@@ -36,6 +36,10 @@ function _networkGuardrails(features = {}) {
   const mutation = features['network.mutate'] || {};
   return { declaredFeatureCount: entries.length, readOnlyEvidence: entries.filter(feature => feature.readOnly === true || feature.evidenceOnly === true || feature.advisoryOnly === true).length, boundedEvidence: entries.filter(feature => feature.bounded === true).length, nicHotplugEvidenceOnly: features['vm.nic.hotplug']?.evidenceOnly === true, mutationState: mutation.state || 'unknown', mutationReleased: ['supported', 'conditional'].includes(mutation.state) };
 }
+function _lifecycleGuardrails(features = {}) {
+  const entries = Object.entries(features).filter(([key]) => /^(vm\.power\.|vm\.snapshot\.|vm\.(clone|create|guestCustomize)$)/.test(key)).map(([, value]) => value || {});
+  return { declaredFeatureCount: entries.length, supportedOrConditional: entries.filter(feature => ['supported', 'conditional'].includes(feature.state)).length, durableTasks: entries.filter(feature => feature.durableTask === true).length, confirmationRequired: entries.filter(feature => feature.confirmation === true || feature.confirmation === 'typed_name').length, postVerified: entries.filter(feature => feature.postVerify === true).length, revalidated: entries.filter(feature => feature.revalidate === true).length };
+}
 
 async function postureForHost(host, options = {}) {
   if (!host || !Number.isInteger(Number(host.id))) throw new ProviderSecurityPostureError('Valid provider host required', 'INVALID_HOST');
@@ -48,8 +52,9 @@ async function postureForHost(host, options = {}) {
     consoleExposure: _consoleExposure(capabilities.features),
     taskAssurance: _taskAssurance(capabilities.features),
     networkGuardrails: _networkGuardrails(capabilities.features),
+    lifecycleGuardrails: _lifecycleGuardrails(capabilities.features),
     limitations: ['This is a declared SDK capability-coverage summary, not a security scan, vulnerability assessment, compliance certification, or authorization audit.', 'Feature declarations can be conditional per resource and do not prove current entitlement or runtime availability.', 'No TLS, certificate, port, credential, guest, provider CLI, packet, or configuration operation is performed.'],
   };
 }
 
-module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails } };
+module.exports = { ProviderSecurityPostureError, postureForHost, _internals: { _coverage, _safeguards, _recovery, _consoleExposure, _taskAssurance, _networkGuardrails, _lifecycleGuardrails } };

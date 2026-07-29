@@ -2,6 +2,14 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.44.0] - 2026-07-29 — Workload lifecycle guardrail evidence
+
+Provider Security Posture now summarizes declared safeguards for VM power,
+snapshots, clone/create, and guest customization capabilities.
+
+- It is contract evidence, not proof that a lifecycle operation is safe or complete.
+- No VM power, snapshot, clone, create, or guest customization action is submitted.
+
 ## [8.43.0] - 2026-07-29 — Network-change guardrail evidence
 
 Provider Security Posture now summarizes declared network/NIC evidence bounds

@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.44.0', date: '2026-07-29', title: 'Workload lifecycle guardrail evidence', changes: [
+      { type: 'feature', text: 'Provider Security Posture summarizes declared safeguards for VM power, snapshots, clone/create, and guest customization.' },
+      { type: 'improvement', text: 'Lifecycle contract evidence is clearly distinct from an operation safety or completion result.' },
+      { type: 'security', text: 'No VM power, snapshot, clone, create, or guest customization action is submitted.' },
+    ] },
     { version: '8.43.0', date: '2026-07-29', title: 'Network-change guardrail evidence', changes: [
       { type: 'feature', text: 'Provider Security Posture summarizes declared network/NIC evidence bounds and common network-mutation state.' },
       { type: 'improvement', text: 'The view explicitly avoids implying routing, VLAN safety, firewall-policy, or isolation validation.' },
