@@ -338,6 +338,15 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V4.4c | `579cf4a` | push + tag `v8.35.0` | LAN `192.168.13.20` healthy, `8.35.0-579cf4a`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.35.0-579cf4a`; backup SQLite verificat | readiness derivat read-only din atașamente/posture; fără agent guest, trafic sau mutații |
 | V4.5a | `8bcb9ec` | push + tag `v8.36.0` | LAN `192.168.13.20` healthy, `8.36.0-8bcb9ec`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.36.0-8bcb9ec`; backup SQLite verificat | transport posture din probele SDK existente; fără scanare TLS/certificat/port, trafic sau mutații |
 | V4.5b | `3df3fcb` | push + tag `v8.37.0` | LAN `192.168.13.20` healthy, `8.37.0-3df3fcb`; backup SQLite verificat | VPS `89.37.212.66` healthy, `8.37.0-3df3fcb`; backup SQLite verificat | dashboard de prezentare peste evidențele deja încărcate; indisponibilitățile sunt explicite, fără apeluri noi sau mutații |
-| V4.5c | pending release | pending tag `v8.38.0` | pending deployment | pending deployment | acoperire declarată a contractului SDK, nu scanare sau verdict de securitate |
+| V4.5c | `223d829` | push + tag `v8.38.0` | LAN healthy, `8.38.0-223d829`; backup SQLite verificat | VPS healthy, `8.38.0-223d829`; backup SQLite verificat | acoperire declarată a contractului SDK, nu scanare sau verdict de securitate |
+| V4.5d | `89124ae` | push + tag `v8.39.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | approval, confirmare, revalidare, post-verificare și task durabil ca evidence declarată |
+| V4.5e | `fc17e1e` | push + tag `v8.40.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | guardrail-uri declarate backup/recovery; fără execuție sau mutație |
+| V4.5f | `d25bb47` | push + tag `v8.41.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | safeguards declarate console, fără sesiune sau credential exposure |
+| V4.5g | `c460674` | push + tag `v8.42.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | task assurance declarată, fără creare/anulare/retry |
+| V4.5h | `54bfce1` | push + tag `v8.43.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | guardrail-uri rețea declarate, fără schimbări de fabric |
+| V4.5i | `4b7c4d6` | push + tag `v8.44.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | guardrail-uri lifecycle workload declarate, fără operații VM |
+| V4.5j | `ff567ca` | push + tag `v8.45.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | registru bounded pentru capabilități explicit unsupported |
+| V4.5k | `243b088` | push + tag `v8.46.0` | LAN/VPS healthy; backup SQLite verificat | LAN/VPS healthy; backup SQLite verificat | freshness pentru evidența returnată, fără refresh sau probe noi |
+| V4.5l | `fef215a` | push + tag `v8.47.0` | LAN `8.47.0-fef215a` healthy; backup SQLite verificat | VPS `8.47.0-fef215a` healthy; backup SQLite verificat | dashboard consolidat, fără colectări sau mutații suplimentare |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
