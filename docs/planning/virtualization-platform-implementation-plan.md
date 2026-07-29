@@ -366,5 +366,6 @@ Ordinea se poate schimba numai pe bază de preflight sau feedback din endpoint-u
 | V6.3a | `c8ed49b` | push + tag `v8.60.0` | LAN `8.60.0-c8ed49b` healthy; backup SQLite verificat | VPS `8.60.0-c8ed49b` healthy; backup SQLite verificat | B276–B285: ledger allocation/usage, cinci familii de cost, tag allocation, showback, chargeback export și bugete |
 | V6.3b | `e08c40c` | push + tag `v8.61.0` | LAN `8.61.0-e08c40c` healthy; backup SQLite verificat | VPS `8.61.0-e08c40c` healthy; backup SQLite verificat | B286–B295: alerte de buget/anomalii, idle/oversized/zombie, savings schedules, capacity commitments/consolidation/forecast și placement scoring |
 | V6.3c / V5.6a | `9362b9f` | push + tag `v8.62.0`; PR #13 | LAN `8.62.0-9362b9f` healthy; backup SQLite verificat | VPS `8.62.0-9362b9f` healthy; backup SQLite verificat | B296–B305: energy/carbon/TCO și KubeVirt discovery/inventory, OpenShift/Harvester evidence, VM YAML server dry-run fără apply |
+| V5.6b | `61c46c3` | push + tag `v8.63.0`; PR #13 | LAN `8.63.0-61c46c3` healthy; backup SQLite verificat | VPS `8.63.0-61c46c3` healthy; backup SQLite verificat | B306–B315: CDI/templates guarded create, migration/drain, CSI, Multus, NMState și VM exposure |
 
 Acest tabel se actualizează după fiecare push și deploy. Detaliile fiecărui batch sunt păstrate sub `docs/planning/virtualization-platform/`.
