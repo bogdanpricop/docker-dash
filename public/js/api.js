@@ -1061,6 +1061,27 @@ const Api = {
   getKubernetesDeployments(namespace) { return this.get(`/kubernetes/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
   getKubernetesServices(namespace)    { return this.get(`/kubernetes/services${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
   getKubernetesNodes()                { return this.get('/kubernetes/nodes'); },
+  getKubernetesVirtualizationCapabilities() { return this.get('/kubernetes/virtualization/capabilities'); },
+  refreshKubernetesVirtualizationCapabilities() { return this.post('/kubernetes/virtualization/capabilities/refresh', {}); },
+  getKubernetesVirtualizationInventory(namespace) {
+    return this.get(`/kubernetes/virtualization/inventory${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesVirtualizationInventory(namespace) {
+    return this.post('/kubernetes/virtualization/inventory/refresh', { namespace: namespace || undefined });
+  },
+  getOpenShiftVirtualizationOverview(namespace) {
+    return this.get(`/kubernetes/virtualization/openshift?namespace=${encodeURIComponent(namespace || 'default')}`);
+  },
+  getHarvesterOverview(namespace) {
+    return this.get(`/kubernetes/virtualization/harvester?namespace=${encodeURIComponent(namespace || 'default')}`);
+  },
+  getKubeVirtVmYaml(namespace, name) {
+    return this.get(`/kubernetes/virtualization/vms/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/yaml`);
+  },
+  dryRunKubeVirtVmYaml(namespace, name, yaml) {
+    return this.post(`/kubernetes/virtualization/vms/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/dry-run`, { yaml });
+  },
+  getKubernetesVirtualizationEvidence() { return this.get('/kubernetes/virtualization/evidence'); },
 
   // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
   listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },
@@ -1646,6 +1667,11 @@ const Api = {
   simulateFinOpsConsolidation(body) { return this.post('/governance/lifecycle/finops/optimization/consolidation-scenarios', body); },
   forecastFinOpsCapacity(body) { return this.post('/governance/lifecycle/finops/optimization/capacity-forecasts', body); },
   scoreFinOpsPlacement(body) { return this.post('/governance/lifecycle/finops/optimization/placement-scores', body); },
+  getFinOpsSustainability() { return this.get('/governance/lifecycle/finops/sustainability'); },
+  recordFinOpsPowerTelemetry(body) { return this.post('/governance/lifecycle/finops/sustainability/power-telemetry', body); },
+  saveFinOpsCarbonFactor(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-factors', body); },
+  recommendFinOpsCarbonSchedule(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-recommendations', body); },
+  compareFinOpsTco(body) { return this.post('/governance/lifecycle/finops/sustainability/tco-scenarios', body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.62.0] - 2026-07-29 — Sustainability and KubeVirt convergence
+
+The B296–B305 batch completes FinOps sustainability and starts the converged
+Kubernetes virtualization track without adding implicit provider actions.
+
+- Host/site power telemetry retains interval, watt/kWh, utilization, workload
+  counts, source and provenance; dashboards expose W/VM, W/workload, idle waste,
+  emissions and explicit carbon-factor coverage.
+- Time-bounded carbon factors require credential-free HTTPS sources.
+  Carbon-aware recommendations enforce capacity, residency, SLA and latency
+  blockers and never schedule or migrate a workload.
+- TCO scenarios compare CAPEX, recurring cost families, migration, residual
+  value, discount, escalation, carbon and risk without purchasing or billing.
+- KubeVirt discovery detects VM, CDI, migration, snapshot and console APIs and
+  reports RBAC-obscured evidence as unknown. VM/VMI/migration inventory is
+  normalized by namespace/name identity.
+- OpenShift Virtualization exposes projects, routes, operator conditions and
+  namespace RBAC; Harvester exposes images, networks, backups and Longhorn state.
+- The VM YAML editor accepts only `kubevirt.io/v1 VirtualMachine`, blocks
+  server-owned status, identity changes and inline secrets, and offers diff plus
+  `dryRun=All` validation with no Apply endpoint.
+
 ## [8.61.0] - 2026-07-29 — FinOps optimization and capacity
 
 The B286–B295 batch adds evidence-backed alerts, savings guidance and capacity

@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.62.0', date: '2026-07-29', title: 'Sustainability and KubeVirt convergence', changes: [
+      { type: 'feature', text: 'Power and energy telemetry plus carbon factors feed W/VM, W/workload, idle-waste, emissions and coverage dashboards with provenance.' },
+      { type: 'feature', text: 'Carbon-aware scheduling and TCO comparisons enforce hard operational constraints while starting no move, schedule, purchase or billing action.' },
+      { type: 'feature', text: 'KubeVirt capability discovery and normalized VM/VMI/migration inventory distinguish unsupported APIs from RBAC-obscured unknown evidence.' },
+      { type: 'feature', text: 'OpenShift Virtualization and Harvester views expose routes, projects, operators, RBAC, images, networks, backups and Longhorn state read-only.' },
+      { type: 'security', text: 'The VirtualMachine-only YAML editor blocks identity/status/inline secrets and provides diff plus server dryRun=All; no Apply endpoint exists.' },
+    ] },
     { version: '8.61.0', date: '2026-07-29', title: 'FinOps optimization and capacity', changes: [
       { type: 'feature', text: 'Budget threshold notifications and scoped cost anomalies use idempotent rating-run evidence, forecast context and confidence.' },
       { type: 'feature', text: 'Idle, oversized and zombie detectors include ownership, criticality, coverage, peak and protection guards and never remediate implicitly.' },

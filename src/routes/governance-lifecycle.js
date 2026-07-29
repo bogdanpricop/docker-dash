@@ -162,6 +162,7 @@ router.use('/assurance', require('./lifecycle-assurance'));
 
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
+router.use('/finops/sustainability', require('./finops-sustainability'));
 router.use('/finops/optimization', require('./finops-optimization'));
 router.use('/finops', require('./finops-foundation'));
 

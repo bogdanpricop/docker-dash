@@ -14,8 +14,9 @@
 //   dashboard for a Docker-first operator who happens to run a small
 //   k3s at home.
 // - Everything below is minimum viable: list + status.
-// - Anti-features (Helm, Ingress editing, RBAC editing, kubectl-in-
-//   browser, Secret viewing, CRD editing) are OUT permanently.
+// - Helm, Ingress/RBAC editing, kubectl-in-browser and Secret viewing stay
+//   out. The later KubeVirt surface permits only a VirtualMachine YAML
+//   schema/diff plus server dryRun=All; it exposes no Apply endpoint.
 //
 // TRANSPORT
 // Bearer-token auth over HTTPS. Kubernetes API server typically at
@@ -91,7 +92,7 @@ class KubernetesClient {
       },
       agent: this._agent,
     };
-    const bodyBuf = body ? Buffer.from(JSON.stringify(body)) : null;
+    const bodyBuf = body == null ? null : Buffer.from(opts.rawBody ? String(body) : JSON.stringify(body));
     if (bodyBuf) {
       // v8.9.8-alpha.1 — Kubernetes PATCH requests need a strategic-merge
       // patch content type; callers can override via opts.contentType.
@@ -152,6 +153,191 @@ class KubernetesClient {
    * connectivity pill on the frontend "connected/not connected" badge.
    */
   async version() { return this._request('GET', '/version'); }
+
+  // ─── v8.62.0 — KubeVirt / OpenShift Virtualization / Harvester ───
+
+  async _probe(method, path, body, opts) {
+    try { return { state: 'supported', value: await this._request(method, path, body, opts) }; }
+    catch (error) {
+      if (error.status === 403) return { state: 'unknown', reason: 'forbidden', status: 403 };
+      if (error.status === 404) return { state: 'unsupported', reason: 'not_found', status: 404 };
+      return { state: 'unknown', reason: 'request_failed', status: error.status || null,
+        message: String(error.message || 'request failed').slice(0, 300) };
+    }
+  }
+
+  async discoverVirtualizationCapabilities() {
+    const groupsResponse = await this._request('GET', '/apis');
+    const groups = new Map(((groupsResponse && groupsResponse.groups) || []).map(group => [group.name, group]));
+    const crdProbe = await this._probe('GET', '/apis/apiextensions.k8s.io/v1/customresourcedefinitions?limit=500');
+    const crdNames = new Set(((crdProbe.value && crdProbe.value.items) || [])
+      .map(item => item.metadata && item.metadata.name).filter(Boolean));
+    const capability = (group, crds = []) => {
+      const apiGroup = groups.get(group); const observedCrds = crds.filter(name => crdNames.has(name));
+      if (apiGroup || observedCrds.length) return { state: 'supported', group,
+        preferredVersion: apiGroup?.preferredVersion?.groupVersion || null, observedCrds };
+      if (crdProbe.state === 'unknown') return { state: 'unknown', group, reason: 'crd_discovery_forbidden', observedCrds: [] };
+      return { state: 'unsupported', group, reason: 'api_group_absent', observedCrds: [] };
+    };
+    const capabilities = {
+      virtualMachines: capability('kubevirt.io', ['virtualmachines.kubevirt.io', 'virtualmachineinstances.kubevirt.io']),
+      dataVolumes: capability('cdi.kubevirt.io', ['datavolumes.cdi.kubevirt.io']),
+      migrations: capability('kubevirt.io', ['virtualmachineinstancemigrations.kubevirt.io']),
+      snapshots: capability('snapshot.kubevirt.io', ['virtualmachinesnapshots.snapshot.kubevirt.io']),
+      consoles: capability('subresources.kubevirt.io', ['virtualmachineinstances.kubevirt.io']),
+      openshiftRoutes: capability('route.openshift.io', ['routes.route.openshift.io']),
+      openshiftProjects: capability('project.openshift.io', ['projects.project.openshift.io']),
+      operatorLifecycle: capability('operators.coreos.com', ['clusterserviceversions.operators.coreos.com']),
+      harvester: capability('harvesterhci.io', ['virtualmachineimages.harvesterhci.io', 'virtualmachinebackups.harvesterhci.io']),
+      longhorn: capability('longhorn.io', ['volumes.longhorn.io']),
+      networkAttachments: capability('k8s.cni.cncf.io', ['network-attachment-definitions.k8s.cni.cncf.io']),
+    };
+    const platform = capabilities.harvester.state === 'supported' ? 'harvester'
+      : capabilities.openshiftRoutes.state === 'supported' ? 'openshift-virtualization'
+        : capabilities.virtualMachines.state === 'supported' ? 'kubevirt' : 'kubernetes';
+    return { platform, capabilities, apiGroupsObserved: [...groups.keys()].sort(),
+      crdDiscovery: { state: crdProbe.state, count: crdNames.size, reason: crdProbe.reason || null },
+      observedAt: new Date().toISOString(), providerMutationsStarted: 0 };
+  }
+
+  async _listCustom(groupVersion, plural, namespace) {
+    const path = namespace
+      ? `/apis/${groupVersion}/namespaces/${encodeURIComponent(namespace)}/${plural}`
+      : `/apis/${groupVersion}/${plural}`;
+    const response = await this._request('GET', path);
+    return (response && response.items) || [];
+  }
+
+  async listKubeVirtVirtualMachines(namespace) {
+    return this._listCustom('kubevirt.io/v1', 'virtualmachines', namespace);
+  }
+
+  async listKubeVirtVirtualMachineInstances(namespace) {
+    return this._listCustom('kubevirt.io/v1', 'virtualmachineinstances', namespace);
+  }
+
+  async listKubeVirtMigrations(namespace) {
+    return this._listCustom('kubevirt.io/v1', 'virtualmachineinstancemigrations', namespace);
+  }
+
+  async kubeVirtInventory(namespace) {
+    const [vmProbe, vmiProbe, migrationProbe] = await Promise.all([
+      this._probe('GET', namespace
+        ? `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(namespace)}/virtualmachines`
+        : '/apis/kubevirt.io/v1/virtualmachines'),
+      this._probe('GET', namespace
+        ? `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(namespace)}/virtualmachineinstances`
+        : '/apis/kubevirt.io/v1/virtualmachineinstances'),
+      this._probe('GET', namespace
+        ? `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(namespace)}/virtualmachineinstancemigrations`
+        : '/apis/kubevirt.io/v1/virtualmachineinstancemigrations'),
+    ]);
+    const vms = (vmProbe.value?.items || []); const vmis = (vmiProbe.value?.items || []);
+    const migrations = (migrationProbe.value?.items || []);
+    const vmiByKey = new Map(vmis.map(item => [`${item.metadata?.namespace}/${item.metadata?.name}`, item]));
+    const migrationsByVmi = new Map();
+    for (const migration of migrations) {
+      const ns = migration.metadata?.namespace || ''; const name = migration.spec?.vmiName || '';
+      const key = `${ns}/${name}`; if (!migrationsByVmi.has(key)) migrationsByVmi.set(key, []);
+      migrationsByVmi.get(key).push({ uid: migration.metadata?.uid || null, name: migration.metadata?.name || null,
+        phase: migration.status?.phase || 'Unknown', sourceNode: migration.status?.migrationState?.sourceNode || null,
+        targetNode: migration.status?.migrationState?.targetNode || null,
+        startedAt: migration.status?.migrationState?.startTimestamp || null,
+        completedAt: migration.status?.migrationState?.endTimestamp || null });
+    }
+    const normalized = vms.map(vm => {
+      const metadata = vm.metadata || {}; const key = `${metadata.namespace || ''}/${metadata.name || ''}`;
+      const vmi = vmiByKey.get(key); const printable = vm.status?.printableStatus || null;
+      const ready = (vm.status?.conditions || []).find(condition => condition.type === 'Ready');
+      return { uid: metadata.uid || null, namespace: metadata.namespace || null, name: metadata.name || null,
+        resourceVersion: metadata.resourceVersion || null, createdAt: metadata.creationTimestamp || null,
+        desiredRunning: vm.spec?.runStrategy ? vm.spec.runStrategy !== 'Halted' : !!vm.spec?.running,
+        runStrategy: vm.spec?.runStrategy || (vm.spec?.running ? 'Always' : 'Halted'),
+        state: printable || vmi?.status?.phase || (vmi ? 'Unknown' : 'Stopped'), ready: ready?.status === 'True',
+        nodeName: vmi?.status?.nodeName || null, guestOsInfo: vmi?.status?.guestOSInfo || null,
+        interfaces: (vmi?.status?.interfaces || []).map(item => ({ name: item.name || null,
+          ipAddress: item.ipAddress || null, mac: item.mac || null })), migrations: migrationsByVmi.get(key) || [] };
+    });
+    return { namespace: namespace || null, virtualMachines: normalized,
+      orphanInstances: vmis.filter(item => !vms.some(vm => vm.metadata?.namespace === item.metadata?.namespace
+        && vm.metadata?.name === item.metadata?.name)).map(item => ({ uid: item.metadata?.uid || null,
+        namespace: item.metadata?.namespace || null, name: item.metadata?.name || null,
+        phase: item.status?.phase || 'Unknown', nodeName: item.status?.nodeName || null })),
+      migrations: migrations.map(item => ({ uid: item.metadata?.uid || null, namespace: item.metadata?.namespace || null,
+        name: item.metadata?.name || null, vmiName: item.spec?.vmiName || null, phase: item.status?.phase || 'Unknown' })),
+      coverage: { virtualMachines: vmProbe.state, instances: vmiProbe.state, migrations: migrationProbe.state },
+      providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async reviewNamespaceAccess(namespace = 'default') {
+    const probe = await this._probe('POST', '/apis/authorization.k8s.io/v1/selfsubjectrulesreviews', {
+      apiVersion: 'authorization.k8s.io/v1', kind: 'SelfSubjectRulesReview', spec: { namespace },
+    });
+    if (probe.state !== 'supported') return { state: probe.state, reason: probe.reason || 'unavailable', namespace };
+    const rules = probe.value?.status?.resourceRules || [];
+    const relevant = rules.filter(rule => (rule.apiGroups || []).some(group => ['kubevirt.io', 'cdi.kubevirt.io',
+      'route.openshift.io', 'project.openshift.io', 'harvesterhci.io', 'longhorn.io'].includes(group)));
+    return { state: probe.value?.status?.incomplete ? 'unknown' : 'supported', namespace,
+      incomplete: !!probe.value?.status?.incomplete, evaluationError: probe.value?.status?.evaluationError || null,
+      rules: relevant.map(rule => ({ apiGroups: rule.apiGroups || [], resources: rule.resources || [], verbs: rule.verbs || [] })) };
+  }
+
+  async openShiftVirtualizationOverview(namespace = 'default') {
+    const ns = encodeURIComponent(namespace);
+    const [discovery, projects, routes, operators, rbac] = await Promise.all([
+      this.discoverVirtualizationCapabilities(), this._probe('GET', '/apis/project.openshift.io/v1/projects'),
+      this._probe('GET', `/apis/route.openshift.io/v1/namespaces/${ns}/routes`),
+      this._probe('GET', '/apis/operators.coreos.com/v1alpha1/clusterserviceversions'),
+      this.reviewNamespaceAccess(namespace),
+    ]);
+    const operatorItems = (operators.value?.items || []).filter(item => /kubevirt|virtualization|hyperconverged|cnv/i
+      .test(`${item.metadata?.name || ''} ${item.spec?.displayName || ''}`));
+    return { platform: discovery.platform, namespace, projects: { state: projects.state,
+      count: projects.value?.items?.length ?? null }, routes: { state: routes.state,
+      items: (routes.value?.items || []).map(item => ({ name: item.metadata?.name || null,
+        host: item.spec?.host || null, admitted: (item.status?.ingress || []).some(ingress =>
+          (ingress.conditions || []).some(condition => condition.type === 'Admitted' && condition.status === 'True')) })) },
+    operators: { state: operators.state, items: operatorItems.map(item => ({ name: item.metadata?.name || null,
+      displayName: item.spec?.displayName || null, phase: item.status?.phase || 'Unknown',
+      conditions: (item.status?.conditions || []).map(condition => ({ phase: condition.phase || null,
+        reason: condition.reason || null, message: condition.message || null })) })) },
+    rbac, capabilities: discovery.capabilities, providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async harvesterOverview(namespace = 'default') {
+    const ns = encodeURIComponent(namespace);
+    const [discovery, images, networks, backups, longhornVolumes] = await Promise.all([
+      this.discoverVirtualizationCapabilities(),
+      this._probe('GET', `/apis/harvesterhci.io/v1beta1/namespaces/${ns}/virtualmachineimages`),
+      this._probe('GET', `/apis/k8s.cni.cncf.io/v1/namespaces/${ns}/network-attachment-definitions`),
+      this._probe('GET', `/apis/harvesterhci.io/v1beta1/namespaces/${ns}/virtualmachinebackups`),
+      this._probe('GET', '/apis/longhorn.io/v1beta2/volumes'),
+    ]);
+    const summarize = (probe, mapper) => ({ state: probe.state, reason: probe.reason || null,
+      items: (probe.value?.items || []).map(mapper) });
+    return { platform: discovery.platform, namespace,
+      images: summarize(images, item => ({ name: item.metadata?.name || null, displayName: item.spec?.displayName || null,
+        url: item.spec?.url || null, progress: item.status?.progress ?? null, state: item.status?.storageClassName ? 'ready' : 'pending' })),
+      networks: summarize(networks, item => ({ name: item.metadata?.name || null,
+        type: item.spec?.config ? 'cni' : 'unknown', annotations: item.metadata?.annotations || {} })),
+      backups: summarize(backups, item => ({ name: item.metadata?.name || null,
+        vmName: item.spec?.source?.name || null, state: item.status?.readyToUse ? 'ready' : 'pending',
+        createdAt: item.metadata?.creationTimestamp || null })),
+      longhornVolumes: summarize(longhornVolumes, item => ({ name: item.metadata?.name || null,
+        state: item.status?.state || 'unknown', robustness: item.status?.robustness || 'unknown',
+        size: item.spec?.size || null, nodeId: item.status?.currentNodeID || null })),
+      capabilities: discovery.capabilities, providerMutationsStarted: 0, observedAt: new Date().toISOString() };
+  }
+
+  async getKubeVirtVirtualMachine(namespace, name) {
+    return this._request('GET', `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(namespace)}/virtualmachines/${encodeURIComponent(name)}`);
+  }
+
+  async dryRunKubeVirtVirtualMachine(namespace, name, yamlText) {
+    const query = '?dryRun=All&fieldManager=docker-dash&force=false';
+    return this._request('PATCH', `/apis/kubevirt.io/v1/namespaces/${encodeURIComponent(namespace)}/virtualmachines/${encodeURIComponent(name)}${query}`,
+      yamlText, { rawBody: true, contentType: 'application/apply-patch+yaml' });
+  }
 
   // ─── Namespaces ─────────────────────────────────────────
 

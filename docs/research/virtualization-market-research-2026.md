@@ -988,11 +988,11 @@ categorii și pornesc zero provider mutations.
 | B293 | Cluster consolidation scenario | Simulează host removal fără SLA/HA breach. | Cost | L | Done |
 | B294 | Capacity purchase forecast | When/what capacity pe growth și failure tolerance. | Cost | L | Done |
 | B295 | Workload placement cost score | Cost+performance+resilience+compliance. | Cost | XL | Done |
-| B296 | Power/energy telemetry ingestion | BMC/vendor metrics normalizate per host. | Cost | L | Later |
-| B297 | Energy efficiency dashboard | Watt/VM, watt/workload și idle host waste. | Cost | L | Later |
-| B298 | Carbon factor configuration | Region/site/time carbon intensity și provenance. | Gov | M | Later |
-| B299 | Carbon-aware scheduling recommendation | Propune time/site fără a încălca SLA/data residency. | Cost | XL | Later |
-| B300 | TCO scenario comparator | Compară hardware/provider/licensing/migration assumptions. | Cost | XL | Later |
+| B296 | Power/energy telemetry ingestion | BMC/vendor metrics normalizate per host. | Cost | L | Done |
+| B297 | Energy efficiency dashboard | Watt/VM, watt/workload și idle host waste. | Cost | L | Done |
+| B298 | Carbon factor configuration | Region/site/time carbon intensity și provenance. | Gov | M | Done |
+| B299 | Carbon-aware scheduling recommendation | Propune time/site fără a încălca SLA/data residency. | Cost | XL | Done |
+| B300 | TCO scenario comparator | Compară hardware/provider/licensing/migration assumptions. | Cost | XL | Done |
 
 **Status implementare 2026-07-29:** B276–B285 au fost închise în V6.3a /
 v8.60.0. Ledger-ul păstrează separat allocation și usage pentru CPU, RAM,
@@ -1013,15 +1013,24 @@ legat de hash, durable operation, confirmare tipărită și adapter cu verify.
 Reserved-capacity, consolidarea N+1, purchase forecast și placement scoring sunt
 scenarii explicabile; nu cumpără, nu elimină hosturi și nu mută workload-uri.
 
+**Status implementare 2026-07-29:** B296–B300 au fost închise în V6.3c /
+v8.62.0. Telemetria normalizează watt și kWh per host/site cu interval, sursă și
+provenance. Dashboard-ul calculează W/VM, W/workload, idle waste, emisii și
+acoperirea factorilor de carbon. Factorii sunt versionați temporal și legați de
+surse HTTPS. Recomandările carbon-aware exclud explicit candidații care încalcă
+rezidența, SLA, latența sau capacitatea și nu programează/migrează workload-uri.
+Comparatorul TCO păstrează ipotezele hardware, provider, licențiere, energie,
+migrare, discount și risc și nu creează achiziții ori tranzacții de billing.
+
 ### M. Kubernetes și convergență VM–container (B301–B325)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B301 | KubeVirt capability discovery | Detectează CRDs, CDI, migrations, snapshots și console. | Ops | M | Now |
-| B302 | KubeVirt VM inventory | Normalizează VirtualMachine/Instance/InstanceMigration. | Ops | L | Now |
-| B303 | OpenShift Virtualization adapter | OCP routes, RBAC, projects și operator conditions. | Ops | L | Next |
-| B304 | Harvester adapter | Harvester CRDs, images, networks, backups și Longhorn state. | Ops | L | Next |
-| B305 | VM YAML editor | Schema-aware, diff și server dry-run pentru CRD. | DX | M | Next |
+| B301 | KubeVirt capability discovery | Detectează CRDs, CDI, migrations, snapshots și console. | Ops | M | Done |
+| B302 | KubeVirt VM inventory | Normalizează VirtualMachine/Instance/InstanceMigration. | Ops | L | Done |
+| B303 | OpenShift Virtualization adapter | OCP routes, RBAC, projects și operator conditions. | Ops | L | Done |
+| B304 | Harvester adapter | Harvester CRDs, images, networks, backups și Longhorn state. | Ops | L | Done |
+| B305 | VM YAML editor | Schema-aware, diff și server dry-run pentru CRD. | DX | M | Done |
 | B306 | DataVolume inventory | CDI sources, import/clone/upload și progress. | Ops | M | Next |
 | B307 | DataVolume creation wizard | HTTP/registry/PVC/upload source cu checksum. | DX | L | Next |
 | B308 | VM template/instancetype inventory | Templates, instancetypes și preferences. | DX | M | Next |
@@ -1042,6 +1051,16 @@ scenarii explicabile; nu cumpără, nu elimină hosturi și nu mută workload-ur
 | B323 | VM-to-container modernization map | App dependencies și staged migration checklist. | DX | L | Later |
 | B324 | Shared image provenance | OCI/VM image SBOM, signatures și source linkage. | Sig | XL | Later |
 | B325 | Unified application environment | Un singur view pentru stack Compose, VM și Kubernetes app. | DX | XL | Later |
+
+**Status implementare 2026-07-29:** B301–B305 au fost închise în V5.6a /
+v8.62.0. Discovery combină API groups și CRD evidence și raportează `unknown`
+când RBAC împiedică verdictul. Inventarul unește VirtualMachine, VMI și
+InstanceMigration prin identitate namespace/name, cu state, node, IP și
+migration history. Adaptoarele OpenShift și Harvester expun routes/projects,
+operator/RBAC, images, NAD networks, backups și Longhorn fără mutații. Editorul
+acceptă exclusiv `kubevirt.io/v1 VirtualMachine`, blochează identitatea/statusul
+și secretele inline, produce diff și trimite numai `dryRun=All`; nu există
+endpoint de apply.
 
 ### N. Edge, ROBO, disconnected și sovereign (B326–B350)
 

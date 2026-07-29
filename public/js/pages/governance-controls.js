@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -26,6 +26,7 @@ const GovernanceControlsPage = {
         Api.getLifecycleAssurance(),
         Api.getFinOpsFoundation(),
         Api.getFinOpsOptimization(),
+        Api.getFinOpsSustainability(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -33,7 +34,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -303,6 +304,7 @@ const GovernanceControlsPage = {
   _finops() {
     const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
     const optimization = this._data.finopsOptimization || { capabilities: {}, budgetAlertPolicies: [], budgetAlerts: [], anomalyPolicies: [], costAnomalies: [], assessments: [], schedules: [], executions: [], reservations: [], consolidation: [], forecasts: [], placementScores: [], summary: {} };
+    const sustainability = this._data.finopsSustainability || { capabilities: {}, telemetry: [], factors: [], recommendations: [], tcoScenarios: [], dashboard: {}, summary: {} };
     const latest = data.latestShowback; const currency = data.summary?.currency || 'USD';
     return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-finops-ledger"><i class="fas fa-list"></i> Usage entry</button>
       <button class="btn btn-secondary btn-sm" id="gc-finops-model"><i class="fas fa-calculator"></i> Cost model</button>
@@ -344,6 +346,26 @@ const GovernanceControlsPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Optimization candidates</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Assessment</th><th>State</th><th>Confidence</th></tr></thead><tbody>${(optimization.assessments || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.resourceType)} · ${Utils.escapeHtml(item.resourceRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.owner || 'no owner')} · ${Utils.escapeHtml(item.criticality || 'unknown')}</div></td><td>${Utils.escapeHtml(item.type)}</td><td><span class="badge ${item.state.endsWith('_candidate') ? 'badge-warning' : item.state === 'protected' ? 'badge-success' : 'badge-secondary'}">${Utils.escapeHtml(item.state)}</span></td><td>${item.confidence}<div class="text-xs text-muted">0 implicit mutations</div></td></tr>`).join('') || this._empty('No optimization assessments', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Savings schedules</h3></div><table class="data-table"><thead><tr><th>Resource</th><th>Window</th><th>Mode</th><th></th></tr></thead><tbody>${(optimization.schedules || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceRef)}</div></td><td>${item.offHoursStart}–${item.offHoursEnd}<div class="text-xs text-muted">${Utils.escapeHtml(item.timezone)} · ${item.weekdays.join(',')}</div></td><td><span class="badge ${item.mode === 'automate' ? 'badge-warning' : 'badge-secondary'}">${item.mode}</span></td><td><button class="action-btn" data-gc-finops-execute-schedule="${item.id}" title="Create recommendation / gated execution"><i class="fas fa-play"></i></button></td></tr>`).join('') || this._empty('No savings schedules', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Capacity &amp; placement scenarios</h3></div><table class="data-table"><thead><tr><th>Evidence</th><th>Scope / target</th><th>Result</th><th>Boundary</th></tr></thead><tbody>${(optimization.reservations || []).map(item => `<tr><td>reserved capacity</td><td>${Utils.escapeHtml(item.scopeRef)}</td><td>${Utils.escapeHtml(item.state)}</td><td>no purchase</td></tr>`).join('')}${(optimization.consolidation || []).map(item => `<tr><td>${Utils.escapeHtml(item.name)}</td><td>remove ${Utils.escapeHtml(item.removedHostRef)}</td><td><span class="badge ${item.state === 'safe' ? 'badge-success' : 'badge-danger'}">${item.state}</span></td><td>simulation only</td></tr>`).join('')}${(optimization.forecasts || []).map(item => `<tr><td>capacity forecast</td><td>${Utils.escapeHtml(item.scopeRef)}</td><td>${Utils.escapeHtml(item.recommendation)}</td><td>no purchase</td></tr>`).join('')}${(optimization.placementScores || []).map(item => `<tr><td>${Utils.escapeHtml(item.workloadRef)}</td><td>${Utils.escapeHtml(item.selectedTargetRef || 'no eligible target')}</td><td>${item.ranking.length} candidates</td><td>score only</td></tr>`).join('') || this._empty('No capacity or placement evidence', 4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="card-header"><div><h3>Energy, carbon &amp; TCO evidence</h3><p class="text-muted text-sm">Power data and carbon factors retain provenance. Carbon-aware and TCO results are recommendations only: no workload move, purchase or billing transaction is started.</p></div></div>
+        <div style="padding:12px;display:flex;gap:7px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" id="gc-finops-power"><i class="fas fa-bolt"></i> Power sample</button>
+          <button class="btn btn-secondary btn-sm" id="gc-finops-carbon-factor"><i class="fas fa-leaf"></i> Carbon factor</button>
+          <button class="btn btn-secondary btn-sm" id="gc-finops-carbon-recommend"><i class="fas fa-calendar-check"></i> Carbon recommendation</button>
+          <button class="btn btn-primary btn-sm" id="gc-finops-tco"><i class="fas fa-scale-balanced"></i> TCO comparison</button>
+        </div></div>
+      <div class="info-grid">
+        ${this._stat('fa-bolt', 'Energy kWh', Number(sustainability.dashboard?.totalEnergyKwh || 0).toFixed(2))}
+        ${this._stat('fa-server', 'Watt / VM', sustainability.dashboard?.wattPerVm == null ? '—' : Number(sustainability.dashboard.wattPerVm).toFixed(2))}
+        ${this._stat('fa-leaf', 'kg CO₂e', Number(sustainability.dashboard?.emissionsKgCo2e || 0).toFixed(2))}
+        ${this._stat('fa-chart-pie', 'Carbon coverage', `${Number(sustainability.dashboard?.carbonCoveragePercent || 0).toFixed(1)}%`)}
+        ${this._stat('fa-moon', 'Idle waste kWh', Number(sustainability.dashboard?.idleHostWasteKwh || 0).toFixed(2))}
+        ${this._stat('fa-scale-balanced', 'TCO scenarios', sustainability.summary?.tcoScenarios || 0)}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Power &amp; carbon evidence</h3></div><table class="data-table"><thead><tr><th>Host / site</th><th>Interval</th><th>Energy</th><th>Efficiency</th></tr></thead><tbody>${(sustainability.telemetry || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.hostRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.siteRef)} · ${Utils.escapeHtml(item.sourceKind)}</div></td><td>${new Date(item.intervalStart).toLocaleString()}<div class="text-xs text-muted">→ ${new Date(item.intervalEnd).toLocaleString()}</div></td><td>${Number(item.energyKwh).toFixed(3)} kWh<div class="text-xs text-muted">${Number(item.averageWatts).toFixed(0)} W avg · ${Number(item.peakWatts).toFixed(0)} W peak</div></td><td>${item.vmCount ? Number(item.averageWatts / item.vmCount).toFixed(1) + ' W/VM' : '—'}<div class="text-xs text-muted">CPU ${item.cpuUtilizationPercent ?? '—'}%</div></td></tr>`).join('') || this._empty('No power telemetry evidence', 4)}</tbody></table>
+          <div style="padding:12px;display:flex;gap:6px;flex-wrap:wrap">${(sustainability.factors || []).map(item => `<span class="badge badge-secondary" title="${Utils.escapeHtml(item.methodology)}">${Utils.escapeHtml(item.siteRef)} · ${item.gramsCo2ePerKwh} gCO₂e/kWh</span>`).join('') || '<span class="text-muted text-sm">No carbon factors</span>'}</div></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Carbon &amp; TCO recommendations</h3></div><table class="data-table"><thead><tr><th>Kind</th><th>Scope</th><th>Recommendation</th><th>Boundary</th></tr></thead><tbody>${(sustainability.recommendations || []).map(item => `<tr><td>carbon-aware</td><td>${Utils.escapeHtml(item.workloadRef)}</td><td><span class="badge ${item.state === 'recommended' ? 'badge-success' : 'badge-danger'}">${item.state}</span><div class="text-xs text-muted">${item.selected ? `${Utils.escapeHtml(item.selected.siteRef)} · ${item.selected.estimatedKgCo2e} kg` : Utils.escapeHtml(item.blockers.join(', '))}</div></td><td>no scheduling</td></tr>`).join('')}${(sustainability.tcoScenarios || []).map(item => `<tr><td>TCO · ${item.horizonMonths}m</td><td>${Utils.escapeHtml(item.name)}</td><td><strong>${Utils.escapeHtml(item.selectedOption || '—')}</strong><div class="text-xs text-muted">${item.ranking[0] ? `${item.currency} ${Number(item.ranking[0].total).toFixed(2)}` : 'no option'}</div></td><td>no purchase/billing</td></tr>`).join('') || this._empty('No sustainability recommendations or TCO scenarios', 4)}</tbody></table></div>
       </div>`;
   },
 
@@ -549,6 +571,10 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-finops-consolidation')?.addEventListener('click', () => this._finopsConsolidationDialog());
     this._container.querySelector('#gc-finops-forecast')?.addEventListener('click', () => this._finopsForecastDialog());
     this._container.querySelector('#gc-finops-placement')?.addEventListener('click', () => this._finopsPlacementDialog());
+    this._container.querySelector('#gc-finops-power')?.addEventListener('click', () => this._finopsPowerDialog());
+    this._container.querySelector('#gc-finops-carbon-factor')?.addEventListener('click', () => this._finopsCarbonFactorDialog());
+    this._container.querySelector('#gc-finops-carbon-recommend')?.addEventListener('click', () => this._finopsCarbonRecommendationDialog());
+    this._container.querySelector('#gc-finops-tco')?.addEventListener('click', () => this._finopsTcoDialog());
     this._container.querySelectorAll('[data-gc-finops-allocate]').forEach(button => button.addEventListener('click', async () => {
       try { const result = await Api.resolveFinOpsAllocation(button.dataset.gcFinopsAllocate); Toast.success(`Allocation: ${result.allocation.state}`); await this.render(this._container); } catch (error) { Toast.error(error.message); }
     }));
@@ -1818,6 +1844,71 @@ const GovernanceControlsPage = {
       minimumComplianceScore: Number(c.querySelector('#gc-fps-compliance').value), candidates: JSON.parse(c.querySelector('#gc-fps-candidates').value),
     })) });
     if (result) { Toast.success(`Placement recommendation: ${result.score.selectedTargetRef || 'no eligible target'}; no placement started`); await this.render(this._container); }
+  },
+
+  async _finopsPowerDialog() {
+    const end = new Date(); const start = new Date(end.getTime() - 3600000);
+    const result = await Modal.form(`<p class="text-muted text-sm">Normalize a BMC, vendor or meter observation. Energy is calculated from average watts when no meter kWh is supplied.</p>
+      <div class="form-row"><div class="form-group"><label>Host reference</label><input id="gc-fep-host" class="form-control mono" value="host-a"></div><div class="form-group"><label>Site</label><input id="gc-fep-site" class="form-control mono" value="site-a"></div><div class="form-group"><label>Source</label><select id="gc-fep-source" class="form-control"><option>bmc</option><option>vendor</option><option>meter</option><option>manual</option><option>import</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Start</label><input id="gc-fep-start" type="datetime-local" class="form-control" value="${start.toISOString().slice(0, 16)}"></div><div class="form-group"><label>End</label><input id="gc-fep-end" type="datetime-local" class="form-control" value="${end.toISOString().slice(0, 16)}"></div></div>
+      <div class="form-row"><div class="form-group"><label>Average watts</label><input id="gc-fep-avg" type="number" min="0" value="500" class="form-control"></div><div class="form-group"><label>Peak watts</label><input id="gc-fep-peak" type="number" min="0" value="800" class="form-control"></div><div class="form-group"><label>CPU utilization %</label><input id="gc-fep-cpu" type="number" min="0" max="100" value="20" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>VM count</label><input id="gc-fep-vms" type="number" min="0" value="10" class="form-control"></div><div class="form-group"><label>Workload count</label><input id="gc-fep-workloads" type="number" min="0" value="10" class="form-control"></div></div>`,
+    { title: 'Power / energy telemetry evidence', width: '900px', onSubmit: c => this._submit(() => Api.recordFinOpsPowerTelemetry({
+      hostRef: c.querySelector('#gc-fep-host').value, siteRef: c.querySelector('#gc-fep-site').value,
+      intervalStart: new Date(c.querySelector('#gc-fep-start').value).toISOString(),
+      intervalEnd: new Date(c.querySelector('#gc-fep-end').value).toISOString(),
+      averageWatts: Number(c.querySelector('#gc-fep-avg').value), peakWatts: Number(c.querySelector('#gc-fep-peak').value),
+      cpuUtilizationPercent: Number(c.querySelector('#gc-fep-cpu').value), vmCount: Number(c.querySelector('#gc-fep-vms').value),
+      workloadCount: Number(c.querySelector('#gc-fep-workloads').value), sourceKind: c.querySelector('#gc-fep-source').value,
+      provenance: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success(`Power evidence recorded: ${result.sample.energyKwh} kWh`); await this.render(this._container); }
+  },
+
+  async _finopsCarbonFactorDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Site</label><input id="gc-fcfactor-site" class="form-control mono" value="site-a"></div><div class="form-group"><label>Region</label><input id="gc-fcfactor-region" class="form-control" value="EU-RO"></div><div class="form-group"><label>gCO₂e / kWh</label><input id="gc-fcfactor-value" type="number" min="0" value="250" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Effective from</label><input id="gc-fcfactor-from" type="datetime-local" class="form-control" value="${new Date().toISOString().slice(0, 16)}"></div><div class="form-group"><label>Effective to (optional)</label><input id="gc-fcfactor-to" type="datetime-local" class="form-control"></div></div>
+      <div class="form-group"><label>Methodology</label><input id="gc-fcfactor-method" class="form-control" value="Location-based grid intensity"></div><div class="form-group"><label>Credential-free HTTPS source</label><input id="gc-fcfactor-url" class="form-control mono" value="https://carbon.example/factors"></div>`,
+    { title: 'Carbon intensity factor', width: '850px', onSubmit: c => this._submit(() => Api.saveFinOpsCarbonFactor({
+      siteRef: c.querySelector('#gc-fcfactor-site').value, region: c.querySelector('#gc-fcfactor-region').value,
+      gramsCo2ePerKwh: Number(c.querySelector('#gc-fcfactor-value').value),
+      effectiveFrom: new Date(c.querySelector('#gc-fcfactor-from').value).toISOString(),
+      effectiveTo: c.querySelector('#gc-fcfactor-to').value ? new Date(c.querySelector('#gc-fcfactor-to').value).toISOString() : undefined,
+      methodology: c.querySelector('#gc-fcfactor-method').value, sourceUrl: c.querySelector('#gc-fcfactor-url').value,
+      provenance: { enteredVia: 'governance-ui' },
+    })) });
+    if (result) { Toast.success('Carbon factor saved with provenance'); await this.render(this._container); }
+  },
+
+  async _finopsCarbonRecommendationDialog() {
+    const now = new Date(); const candidateTime = new Date(now.getTime() + 3600000).toISOString();
+    const candidates = [{ siteRef: 'site-a', startAt: candidateTime, available: true, latencyMs: 10, residencyTags: ['eu'] },
+      { siteRef: 'site-b', startAt: candidateTime, available: true, latencyMs: 20, residencyTags: ['eu'] }];
+    const result = await Modal.form(`<p class="text-muted text-sm">Candidates violating capacity, SLA, latency or data residency are excluded. The result never schedules or migrates a workload.</p>
+      <div class="form-row"><div class="form-group"><label>Workload</label><input id="gc-fcr-workload" class="form-control mono" value="batch-workload"></div><div class="form-group"><label>Current site</label><input id="gc-fcr-site" class="form-control mono" value="site-a"></div><div class="form-group"><label>Expected energy kWh</label><input id="gc-fcr-energy" type="number" min="0" value="10" class="form-control"></div></div>
+      <div class="form-group"><label>Constraints JSON</label><textarea id="gc-fcr-constraints" class="form-control mono" rows="6">${Utils.escapeHtml(JSON.stringify({ allowedSites: ['site-a','site-b'], requiredResidency: 'eu', latestStartAt: new Date(now.getTime() + 4 * 3600000).toISOString(), maxLatencyMs: 50 }, null, 2))}</textarea></div>
+      <div class="form-group"><label>Candidate site/time evidence JSON</label><textarea id="gc-fcr-candidates" class="form-control mono" rows="12">${Utils.escapeHtml(JSON.stringify(candidates, null, 2))}</textarea></div>`,
+    { title: 'Carbon-aware scheduling recommendation', width: '950px', onSubmit: c => this._submit(() => Api.recommendFinOpsCarbonSchedule({
+      workloadRef: c.querySelector('#gc-fcr-workload').value, energyKwh: Number(c.querySelector('#gc-fcr-energy').value),
+      currentSiteRef: c.querySelector('#gc-fcr-site').value, currentStartAt: now.toISOString(),
+      constraints: JSON.parse(c.querySelector('#gc-fcr-constraints').value), candidates: JSON.parse(c.querySelector('#gc-fcr-candidates').value),
+    })) });
+    if (result) { Toast.success(`Carbon recommendation: ${result.recommendation.state}; no scheduling started`); await this.render(this._container); }
+  },
+
+  async _finopsTcoDialog() {
+    const options = [{ name: 'on-prem', capex: 50000, migrationOneTime: 5000, residualValue: 5000,
+      monthlyCosts: { hardware: 500, software: 500, facility: 300, energy: 400, support: 300 }, riskContingencyPercent: 10 },
+    { name: 'cloud', capex: 0, migrationOneTime: 8000, monthlyCosts: { provider: 3500, network: 400, support: 200 },
+      discountRateAnnual: 0.05, annualEscalationPercent: 3 }];
+    const result = await Modal.form(`<p class="text-muted text-sm">The comparator includes CAPEX, recurring hardware/provider/licensing/energy costs, migration, residual value, discount and risk. It cannot create billing or purchase transactions.</p>
+      <div class="form-row"><div class="form-group"><label>Name</label><input id="gc-ftco-name" class="form-control" value="onprem-vs-cloud-${Date.now()}"></div><div class="form-group"><label>Horizon months</label><input id="gc-ftco-horizon" type="number" min="1" max="120" value="36" class="form-control"></div><div class="form-group"><label>Currency</label><input id="gc-ftco-currency" class="form-control mono" value="EUR"></div></div>
+      <div class="form-group"><label>Options and assumptions JSON</label><textarea id="gc-ftco-options" class="form-control mono" rows="18">${Utils.escapeHtml(JSON.stringify(options, null, 2))}</textarea></div>`,
+    { title: 'TCO scenario comparator', width: '950px', onSubmit: c => this._submit(() => Api.compareFinOpsTco({
+      name: c.querySelector('#gc-ftco-name').value, horizonMonths: Number(c.querySelector('#gc-ftco-horizon').value),
+      currency: c.querySelector('#gc-ftco-currency').value, options: JSON.parse(c.querySelector('#gc-ftco-options').value),
+    })) });
+    if (result) { Toast.success(`Lowest modeled TCO: ${result.scenario.selectedOption}; no purchase or billing started`); await this.render(this._container); }
   },
 
   async _assuranceRenewalDialog() {

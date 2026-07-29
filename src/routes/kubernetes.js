@@ -17,6 +17,7 @@
 const { Router } = require('express');
 const { getDb } = require('../db');
 const { fromHostRow, buildKubeconfig } = require('../services/kubernetes');
+const virtualization = require('../services/kubernetes-virtualization');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
@@ -38,6 +39,17 @@ function _getK8sHost(req, res) {
     return null;
   }
   return row;
+}
+
+function virtualizationRoute(handler) {
+  return async (req, res, next) => {
+    try { await handler(req, res); } catch (error) {
+      if (error.name === 'KubernetesVirtualizationError') {
+        return res.status(error.status || 400).json({ error: error.message, code: error.code, details: error.details });
+      }
+      next(error);
+    }
+  };
 }
 
 // ─── Health probe ───────────────────────────────────────────
@@ -221,6 +233,72 @@ router.get('/kubeconfig', requireAuth, asyncHandler(async (req, res) => {
   res.set('Content-Type', 'application/yaml');
   res.set('Content-Disposition', `attachment; filename="kubeconfig-${row.name || 'k8s'}.yaml"`);
   res.send(yaml);
+}));
+
+// ─── v8.62.0 — B301-B305: KubeVirt convergence ─────────────
+
+router.get('/virtualization/capabilities', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await virtualization.discover(row));
+}));
+
+router.post('/virtualization/capabilities/refresh', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const snapshot = await virtualization.refreshDiscovery(row, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_capability_snapshot', targetType: 'host', targetId: String(req.hostId),
+      details: { platform: snapshot.platform, evidenceHash: snapshot.evidenceHash, duplicate: snapshot.duplicate,
+        providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+  }));
+
+router.get('/virtualization/inventory', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await virtualization.inventory(row, req.query.namespace || undefined));
+}));
+
+router.post('/virtualization/inventory/refresh', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const snapshot = await virtualization.refreshInventory(row, req.body?.namespace || undefined, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_inventory_snapshot', targetType: 'host', targetId: String(req.hostId),
+      details: { namespace: snapshot.namespace, vmCount: snapshot.vmCount, migrationCount: snapshot.migrationCount,
+        evidenceHash: snapshot.evidenceHash, duplicate: snapshot.duplicate, providerMutationsStarted: 0 }, ip: getClientIp(req) });
+    res.status(snapshot.duplicate ? 200 : 201).json({ snapshot });
+  }));
+
+router.get('/virtualization/openshift', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await virtualization.openShiftOverview(row, req.query.namespace || 'default'));
+}));
+
+router.get('/virtualization/harvester', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await virtualization.harvesterOverview(row, req.query.namespace || 'default'));
+}));
+
+router.get('/virtualization/vms/:ns/:name/yaml', requireAuth, virtualizationRoute(async (req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(await virtualization.virtualMachineYaml(row, req.params.ns, req.params.name));
+}));
+
+router.post('/virtualization/vms/:ns/:name/dry-run', requireAuth, requireRole('admin'), writeable,
+  virtualizationRoute(async (req, res) => {
+    const row = _getK8sHost(req, res); if (!row) return;
+    const result = await virtualization.dryRunVirtualMachine(row, req.params.ns, req.params.name, req.body?.yaml, req.user);
+    auditService.log({ userId: req.user.id, username: req.user.username,
+      action: 'kubevirt_vm_yaml_dry_run', targetType: 'kubevirt_vm',
+      targetId: `${req.params.ns}/${req.params.name}`,
+      details: { hostId: req.hostId, status: result.status, originalHash: result.originalHash,
+        desiredHash: result.desiredHash, validationHash: result.validationHash, applied: false }, ip: getClientIp(req) });
+    res.status(result.duplicate ? 200 : 201).json({ validation: result });
+  }));
+
+router.get('/virtualization/evidence', requireAuth, requireRole('admin'), virtualizationRoute((req, res) => {
+  const row = _getK8sHost(req, res); if (!row) return;
+  res.json(virtualization.evidence(row.id, req.user));
 }));
 
 module.exports = router;

@@ -161,7 +161,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V5.3 | Nutanix Prism Central | B001–B075 | tasks, categories și AHV lifecycle |
 | V5.4 | OpenStack provider | B001–B150, B176–B200 | Keystone catalog + Nova/Cinder/Neutron/Glance |
 | V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
-| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | VM CRDs, DataVolumes, migration și consoles |
+| V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | V5.6a livrează B301–B305: discovery, VM/VMI/migration inventory, OpenShift/Harvester evidence și YAML server dry-run; B306–B316 rămân planificate |
 | V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
 | V5.8 | Provider plugin SDK | B401–B425 | signed manifest, permissions, sandbox și test kit |
 
@@ -173,7 +173,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 |---|---|---|---|
 | V6.1 | Unified application view | B301–B325, B351–B375 | VM+container+Kubernetes într-o singură aplicație |
 | V6.2 | Service catalog și request workflow | B351–B375 | templates, approvals, quotas și expiration |
-| V6.3 | FinOps/showback/capacity | B276–B300 | V6.3a livrează B276–B285; V6.3b livrează B286–B295 cu alerting, optimization, savings și capacity scenarios; B296–B300 rămân planificate |
+| V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | local cache, queued ops și reconciliation |
 | V6.6 | Accelerators/performance | B376–B400 | GPU/vGPU/SR-IOV/NUMA/hugepages capability-driven |
