@@ -67,6 +67,10 @@ describe('provider HA readiness', () => {
       hostCount: 3, onlineHostCount: 3, poweredOnVmCount: 2, protectedVmCount: 2,
     }));
     expect(first.domains[0].scenarios.map(item => item.state)).toEqual(['pass', 'pass']);
+    expect(first.domains[0].recoveryPlan).toEqual(expect.objectContaining({
+      state: 'advisory', mode: 'provider_priority_groups', confidence: 'low',
+      hasCompleteTimingEvidence: false,
+    }));
     const stored = db.prepare('SELECT snapshot_enc FROM provider_ha_snapshots').get().snapshot_enc;
     expect(stored).not.toContain('cluster:prod');
     expect(stored).not.toContain('node-a');
@@ -95,6 +99,65 @@ describe('provider HA readiness', () => {
     const unknown = readiness._internals._snapshot(db, host,
       { provider: { variant: 'pve' }, domains: [{ ...base, fencing: null }] }, { state: 'conditional' });
     expect(unknown.state).toBe('unknown');
+  });
+
+  it('builds an opaque dependency DAG with evidence-bound recovery times', () => {
+    const source = evidence();
+    source.domains[0].workloads = [
+      { ...source.domains[0].workloads[0], dependencyRefs: [], startOrder: 1,
+        startDelaySeconds: 20, estimatedReadySeconds: 60 },
+      { ...source.domains[0].workloads[1], dependencyRefs: ['qemu/101'], startOrder: 2,
+        startDelaySeconds: 10, estimatedReadySeconds: 30 },
+    ];
+    const snapshot = readiness._internals._snapshot(db, host, source, { state: 'conditional' });
+    const plan = snapshot.domains[0].recoveryPlan;
+    expect(plan).toEqual(expect.objectContaining({
+      state: 'advisory', mode: 'explicit_dependencies', confidence: 'high',
+      hasCompleteTimingEvidence: true, estimatedCompletionSeconds: 90,
+    }));
+    expect(plan.edges).toEqual([{ from: plan.waves[0].items[0], to: plan.waves[1].items[0], kind: 'depends_on' }]);
+    expect(plan.waves.map(wave => [wave.index, wave.startOffsetSeconds, wave.estimatedReadyAtSeconds]))
+      .toEqual([[1, 0, 60], [2, 60, 90]]);
+    expect(JSON.stringify(plan)).not.toContain('qemu/101');
+  });
+
+  it('consumes canonical relationship and typed timing evidence without native references', () => {
+    const first = readiness._internals._snapshot(db, host, evidence(), { state: 'conditional' });
+    const [databaseVm, applicationVm] = first.domains[0].recoveryPlan.nodes;
+    db.exec(`CREATE TABLE resource_relationship_graphs (
+      id INTEGER PRIMARY KEY, observed_at TEXT NOT NULL, edges_json TEXT NOT NULL
+    ); CREATE TABLE custom_metadata_values (
+      resource_key TEXT NOT NULL, schema_key TEXT NOT NULL, value_json TEXT NOT NULL
+    );`);
+    db.prepare('INSERT INTO resource_relationship_graphs VALUES (1, ?, ?)').run('2026-07-30T04:00:00Z', JSON.stringify([
+      { source: applicationVm.id, target: databaseVm.id, relationship: 'depends_on' },
+      { source: databaseVm.id, target: 'unrelated-resource', relationship: 'uses' },
+    ]));
+    const insert = db.prepare('INSERT INTO custom_metadata_values VALUES (?, ?, ?)');
+    insert.run(databaseVm.id, 'recovery.ready_seconds', '60');
+    insert.run(applicationVm.id, 'recovery.ready_seconds', '30');
+    insert.run(databaseVm.id, 'recovery.start_delay_seconds', '20');
+    insert.run(applicationVm.id, 'recovery.start_delay_seconds', '10');
+    const plan = readiness._internals._snapshot(db, host, evidence(), { state: 'conditional' }).domains[0].recoveryPlan;
+    expect(plan).toEqual(expect.objectContaining({ mode: 'explicit_dependencies', state: 'advisory',
+      hasCompleteTimingEvidence: true, estimatedCompletionSeconds: 90 }));
+    expect(plan.edges).toEqual([{ from: databaseVm.id, to: applicationVm.id, kind: 'depends_on' }]);
+    expect(JSON.stringify(plan)).not.toContain('qemu/');
+  });
+
+  it('blocks cyclic or unresolved recovery dependencies without inventing a schedule', () => {
+    const source = evidence();
+    source.domains[0].workloads = [
+      { ...source.domains[0].workloads[0], dependencyRefs: ['qemu/102'] },
+      { ...source.domains[0].workloads[1], dependencyRefs: ['qemu/101', 'missing-vm'] },
+    ];
+    const plan = readiness._internals._snapshot(db, host, source, { state: 'conditional' }).domains[0].recoveryPlan;
+    expect(plan.state).toBe('blocked');
+    expect(plan.waves).toHaveLength(0);
+    expect(plan.blockers.join(' ')).toMatch(/outside the recoverable workload set/);
+    expect(plan.blockers.join(' ')).toMatch(/cycle/);
+    expect(plan.estimatedCompletionSeconds).toBeNull();
+    expect(JSON.stringify(plan)).not.toContain('missing-vm');
   });
 
   it('returns an opaque unsupported envelope without invoking the collector', async () => {

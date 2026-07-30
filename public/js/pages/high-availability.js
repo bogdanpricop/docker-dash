@@ -28,6 +28,28 @@ const HighAvailabilityPage = {
       <td>${Utils.escapeHtml(signal.source || 'provider')} · ${Utils.escapeHtml(signal.confidence || 'unknown')}</td></tr>`;
   },
 
+  _recoveryPlanHtml(plan) {
+    if (!plan || plan.state === 'not_applicable') return '<div class="empty-msg">No protected running workload is eligible for recovery planning.</div>';
+    const nodes = new Map((plan.nodes || []).map(item => [item.id, item]));
+    const seconds = value => Number.isFinite(value) ? `${value}s` : 'evidence unavailable';
+    const rows = (plan.waves || []).map(wave => {
+      const items = (wave.items || []).map(id => nodes.get(id)).filter(Boolean);
+      const workloads = items.map(item => `<div><strong>${Utils.escapeHtml(item.displayName)}</strong>
+        <span class="text-muted text-sm">priority ${Utils.escapeHtml(item.priority || 'unknown')} · ready ${Utils.escapeHtml(seconds(item.estimatedReadySeconds))}</span></div>`).join('');
+      const dependencies = [...new Set(items.flatMap(item => item.dependencyIds || []).map(id => nodes.get(id)?.displayName).filter(Boolean))];
+      return `<tr><td>${this._count(wave.index)}</td><td>${Utils.escapeHtml(seconds(wave.startOffsetSeconds))}</td>
+        <td>${Utils.escapeHtml(seconds(wave.estimatedReadyAtSeconds))}</td><td>${workloads || '—'}</td>
+        <td>${dependencies.length ? dependencies.map(value => Utils.escapeHtml(value)).join(', ') : (wave.dependsOnWaveIds?.length ? Utils.escapeHtml(wave.dependsOnWaveIds.join(', ')) : 'none')}</td></tr>`;
+    }).join('');
+    const blockers = plan.blockers?.length ? `<div class="alert ${plan.state === 'blocked' ? 'alert-danger' : 'alert-info'}"><strong>Evidence limits</strong><ul>
+      ${plan.blockers.map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>` : '';
+    return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span class="badge ${this._badge(plan.state)}">${Utils.escapeHtml(this._stateText(plan.state))}</span>
+      <span class="text-muted text-sm">${Utils.escapeHtml(this._stateText(plan.mode))} · ${Utils.escapeHtml(plan.confidence || 'unknown')} confidence · ${this._count(plan.edges?.length)} explicit edge(s) · completion ${Utils.escapeHtml(seconds(plan.estimatedCompletionSeconds))}</span></div>
+      ${blockers}<div style="overflow:auto"><table class="data-table"><thead><tr><th>Wave</th><th>Estimated start</th><th>Estimated ready</th><th>Workloads</th><th>Depends on</th></tr></thead><tbody>
+      ${rows || '<tr><td colspan="5">No acyclic recovery waves could be produced.</td></tr>'}</tbody></table></div>`;
+  },
+
   _domainHtml(domain) {
     const score = Number.isFinite(domain.score) ? `${domain.score}/100` : '—';
     const domainId = /^ddr_cluster_[a-f0-9]{26}$/.test(String(domain.id || ''))
@@ -44,6 +66,7 @@ const HighAvailabilityPage = {
       <div style="padding:8px 0 0 16px">${group.items.map(item => `<div><i class="fas fa-desktop" aria-hidden="true"></i> ${Utils.escapeHtml(item.displayName)}
         <span class="text-muted text-sm">${item.poweredOn ? 'running' : 'stopped'} · ${item.protected === true ? 'protected' : (item.protected === false ? 'unprotected' : 'unknown')}</span></div>`).join('')}</div></details>`).join('')
       : '<div class="empty-msg">No provider restart-priority evidence is available.</div>';
+    const recoveryPlan = this._recoveryPlanHtml(domain.recoveryPlan);
     return `<section class="card" style="padding:16px;margin-bottom:16px" aria-labelledby="ha-domain-${domainId}">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
         <div><h2 id="ha-domain-${domainId}" style="margin:0 0 4px"><i class="fas fa-shield-alt" aria-hidden="true"></i> ${Utils.escapeHtml(domain.displayName)}</h2>
@@ -59,6 +82,7 @@ const HighAvailabilityPage = {
       ${domain.warnings?.length ? `<div class="alert alert-warning"><strong>Provider caveats</strong><ul>${domain.warnings.map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>` : ''}
       <h3>Readiness evidence</h3>${signals}
       <h3 style="margin-top:18px">Host-loss simulation</h3><p class="text-muted text-sm">Estimated scenarios do not prove CPU, network, storage, device or application compatibility.</p>${scenarios}
+      <h3 style="margin-top:18px">Recovery dependency DAG</h3><p class="text-muted text-sm">Waves use explicit dependencies or provider start-order evidence. Unknown readiness durations remain unknown.</p>${recoveryPlan}
       <h3 style="margin-top:18px">Recovery priority groups</h3><p class="text-muted text-sm">Priority groups are descriptive; they are not a guaranteed dependency-aware restart schedule.</p>${recovery}
     </section>`;
   },
@@ -89,7 +113,7 @@ const HighAvailabilityPage = {
     catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
     container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-shield-alt"></i> High Availability</h1>
-      <div class="text-muted text-sm">Provider-native HA facts, conservative readiness simulations and recovery priority evidence</div></div>
+      <div class="text-muted text-sm">Provider-native HA facts, conservative failure simulations and evidence-bound recovery waves</div></div>
       <div style="display:flex;gap:8px;align-items:center"><select id="ha-host" class="form-control" aria-label="Virtualization endpoint">
         ${this._hosts.map(host => `<option value="${host.id}">${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select>
         ${this._isAdmin() ? '<button class="btn btn-sm btn-secondary" id="ha-refresh"><i class="fas fa-sync"></i> Refresh evidence</button>' : ''}</div></div>

@@ -121,10 +121,10 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 |---|---|---|---|
 | V2.1 | Migration compatibility/preflight | B051–B056 | target candidates, blockers, estimated downtime |
 | V2.2 | Live/cold/storage migration | B053–B061 | job persistent, progress, cancel și reconcile |
-| V2.3 | Host maintenance orchestration | B062–B065 | drain/evacuate în waves, resume și post-check |
-| V2.4 | HA inventory și readiness | B066–B067, B074–B075 | quorum, protected VMs, shared storage, admission warnings |
-| V2.5 | Affinity și placement recommendations | B069, B071–B072, B201–B225 | read/recommend înainte de mutation |
-| V2.6 | Placement/HA mutation | B068, B070, B073 | approval, diff și rollback semantic |
+| V2.3 | Host maintenance orchestration | B062–B065 | Complet: drain/evacuate în waves, non-migratable policy, resume și post-check |
+| V2.4 | HA inventory și readiness | B066–B067, B074–B075 | Complet: quorum/readiness, host-loss simulation și recovery DAG evidence-bound |
+| V2.5 | Affinity și placement recommendations | B069, B071–B072, B201–B225 | Complet pentru B069/B071–B072: inventory, explainable scoring și bounded dry-run |
+| V2.6 | Placement/HA mutation | B068, B070, B073 | Complet: approval, diff, waves/auto-pause și rollback semantic |
 
 **Exit:** mentenanța unui host este repetabilă, observabilă și poate fi reluată fără pierderea stării.
 
@@ -145,7 +145,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
-| V4.1 | Volume lifecycle | B076–B090 | create/resize/attach/detach/move cu safety gates |
+| V4.1 | Volume lifecycle | B076–B090 | Complet pentru B077–B081: create/resize/attach/detach/move cu safety gates; restul continuă separat |
 | V4.2 | Storage health/policy/QoS | B091–B100 | policy compliance, multipath și capacity; V4.2a a livrat baseline-ul read-only, V4.2b B091 vSphere consolidation strict-gated, V4.2c corelează backing-uri shared, V4.2d oferă advisory de plasare, iar V4.2e evaluează policy compliance fără a persista sau aplica politica |
 | V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental; V4.3a–e oferă posture, policy, topologie, placement și baseline drift numai read-only, fără trafic sau mutații |
 | V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |

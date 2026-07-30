@@ -21,12 +21,21 @@ describe('high availability page', () => {
       protectionCoveragePercent: 0, observedFailureTolerance: null,
       signals: [{ key: '<signal>', state: 'warning', reason: '<reason>', source: '<source>', confidence: 'high' }],
       scenarios: [{ failures: 1, state: 'fail', source: 'estimated', reason: '<unsafe>' }],
+      recoveryPlan: { state: 'advisory', mode: 'explicit_dependencies', confidence: 'high',
+        estimatedCompletionSeconds: 90, blockers: ['<timing limit>'], edges: [{ from: 'a', to: 'b' }],
+        nodes: [{ id: 'a', displayName: '<database>', priority: 'highest', estimatedReadySeconds: 60, dependencyIds: [] },
+          { id: 'b', displayName: '<application>', priority: 'medium', estimatedReadySeconds: 30, dependencyIds: ['a'] }],
+        waves: [{ index: 1, startOffsetSeconds: 0, estimatedReadyAtSeconds: 60, items: ['a'], dependsOnWaveIds: [] },
+          { index: 2, startOffsetSeconds: 60, estimatedReadyAtSeconds: 90, items: ['b'], dependsOnWaveIds: ['wave-1'] }] },
       recoveryGroups: [{ priority: 'disabled', items: [{ displayName: '<vm>', poweredOn: true, protected: false }] }],
       warnings: ['<warning>'], nativeRef: 'OpaqueRef:secret',
     });
     expect(html).toContain('id="ha-domain-ddr_cluster_unknown"');
     expect(html).toContain('&lt;cluster&gt;');
     expect(html).toContain('&lt;unsafe&gt;');
+    expect(html).toContain('Recovery dependency DAG');
+    expect(html).toContain('&lt;database&gt;');
+    expect(html).toContain('&lt;timing limit&gt;');
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('OpaqueRef:secret');
   });

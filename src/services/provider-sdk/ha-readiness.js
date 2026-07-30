@@ -252,6 +252,7 @@ async function _collectXen(host) {
               hostRef: item.hostRef || item.hostId || null,
               poweredOn: String(item.powerState || '').toLowerCase() === 'running',
               memoryBytes: item.memoryBytes, protected: pool.haEnabled === true ? priority !== 'disabled' : false, priority,
+              startOrder: item.startOrder, startDelaySeconds: item.startDelaySeconds,
             };
           }),
           warnings: [
@@ -379,6 +380,140 @@ function _state(domain, signals, score, unsupported = false) {
   return score !== null && score >= 80 ? 'ready' : 'degraded';
 }
 
+function _recoveryPlan(workloads) {
+  const recoverable = workloads.filter(item => item.poweredOn && item.protected === true && item.priority !== 'disabled');
+  if (!recoverable.length) return {
+    state: 'not_applicable', mode: 'none', confidence: 'low', nodes: [], edges: [], waves: [],
+    blockers: [], excludedWorkloadCount: workloads.length,
+    estimatedCompletionSeconds: null, hasCompleteTimingEvidence: false,
+  };
+  const ids = new Set(recoverable.map(item => item.id));
+  const blockers = [];
+  const edges = [];
+  for (const item of recoverable) {
+    for (const dependencyId of item.dependencyIds || []) {
+      if (!ids.has(dependencyId)) blockers.push(`Dependency evidence for ${item.displayName} points outside the recoverable workload set`);
+      else if (dependencyId === item.id) blockers.push(`Recovery dependency for ${item.displayName} points to itself`);
+      else edges.push({ from: dependencyId, to: item.id, kind: 'depends_on' });
+    }
+  }
+  const uniqueBlockers = [...new Set(blockers)].slice(0, 32);
+  const explicit = edges.length > 0;
+  const hasStartOrder = recoverable.some(item => Number.isInteger(item.startOrder));
+  let mode = explicit ? 'explicit_dependencies' : (hasStartOrder ? 'provider_start_order' : 'provider_priority_groups');
+  let confidence = explicit ? 'high' : (hasStartOrder ? 'medium' : 'low');
+  let waveItems = [];
+
+  if (explicit) {
+    const remaining = new Map(recoverable.map(item => [item.id,
+      new Set(edges.filter(edge => edge.to === item.id).map(edge => edge.from))]));
+    const emitted = new Set();
+    while (emitted.size < recoverable.length) {
+      const ready = recoverable.filter(item => !emitted.has(item.id)
+        && [...(remaining.get(item.id) || [])].every(id => emitted.has(id)));
+      if (!ready.length) {
+        uniqueBlockers.push('Recovery dependency graph contains a cycle');
+        break;
+      }
+      waveItems.push(ready);
+      ready.forEach(item => emitted.add(item.id));
+    }
+  } else {
+    const groups = new Map();
+    for (const item of recoverable) {
+      const key = hasStartOrder
+        ? (Number.isInteger(item.startOrder) ? item.startOrder : Number.MAX_SAFE_INTEGER)
+        : PRIORITIES.indexOf(item.priority);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    waveItems = [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, items]) => items);
+  }
+
+  let nextStart = 0;
+  let timingComplete = true;
+  const waves = waveItems.map((items, index) => {
+    const startOffsetSeconds = timingComplete ? nextStart : null;
+    const readyDurations = items.map(item => item.estimatedReadySeconds);
+    const readyKnown = readyDurations.every(Number.isFinite);
+    const estimatedReadyAtSeconds = startOffsetSeconds !== null && readyKnown
+      ? startOffsetSeconds + Math.max(...readyDurations, 0) : null;
+    const delays = items.map(item => item.startDelaySeconds);
+    const delayKnown = delays.every(Number.isFinite);
+    if (explicit) {
+      if (estimatedReadyAtSeconds !== null) nextStart = estimatedReadyAtSeconds;
+      else timingComplete = false;
+    } else if (timingComplete && delayKnown) nextStart += Math.max(...delays, 0);
+    else timingComplete = false;
+    return {
+      id: `wave-${index + 1}`, index: index + 1,
+      startOffsetSeconds, estimatedReadyAtSeconds,
+      dependsOnWaveIds: index ? [`wave-${index}`] : [],
+      items: items.map(item => item.id),
+    };
+  });
+  const nodes = recoverable.map(item => ({
+    id: item.id, displayName: item.displayName, priority: item.priority,
+    startOrder: item.startOrder, startDelaySeconds: item.startDelaySeconds,
+    estimatedReadySeconds: item.estimatedReadySeconds,
+    dependencyIds: (item.dependencyIds || []).filter(id => ids.has(id)),
+  }));
+  const hasCompleteTimingEvidence = waves.length > 0 && waves.every(wave => wave.estimatedReadyAtSeconds !== null);
+  const estimatedCompletionSeconds = hasCompleteTimingEvidence
+    ? Math.max(...waves.map(wave => wave.estimatedReadyAtSeconds)) : null;
+  if (!explicit && !hasStartOrder) uniqueBlockers.push('Only provider restart-priority groups are available; application dependencies are not proven');
+  if (!hasCompleteTimingEvidence) uniqueBlockers.push('Complete workload readiness-duration evidence is unavailable');
+  if (uniqueBlockers.some(item => item.includes('cycle') || item.includes('outside') || item.includes('itself'))) {
+    mode = explicit ? mode : 'incomplete'; confidence = 'low';
+  }
+  return {
+    state: uniqueBlockers.some(item => item.includes('cycle') || item.includes('outside') || item.includes('itself')) ? 'blocked' : 'advisory',
+    mode, confidence, nodes, edges, waves, blockers: [...new Set(uniqueBlockers)].slice(0, 32),
+    excludedWorkloadCount: workloads.length - recoverable.length,
+    estimatedCompletionSeconds, hasCompleteTimingEvidence,
+  };
+}
+
+function _applyRecoveryEvidence(database, workloads) {
+  const byId = new Map(workloads.map(item => [item.id, {
+    ...item, dependencyIds: [...new Set(item.dependencyIds || [])],
+  }]));
+  const hasTable = name => Boolean(database.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get('table', name));
+  if (hasTable('resource_relationship_graphs')) {
+    const row = database.prepare('SELECT edges_json FROM resource_relationship_graphs ORDER BY observed_at DESC, id DESC LIMIT 1').get();
+    if (row) {
+      let edges = [];
+      try { edges = JSON.parse(row.edges_json); } catch { edges = []; }
+      for (const edge of Array.isArray(edges) ? edges.slice(0, 30000) : []) {
+        const relationship = String(edge?.relationship || '').toLowerCase();
+        let workloadId; let dependencyId;
+        if (['depends_on', 'requires', 'starts_after'].includes(relationship)) {
+          workloadId = String(edge.source || ''); dependencyId = String(edge.target || '');
+        } else if (relationship === 'required_by') {
+          workloadId = String(edge.target || ''); dependencyId = String(edge.source || '');
+        } else continue;
+        if (byId.has(workloadId) && byId.has(dependencyId)) byId.get(workloadId).dependencyIds.push(dependencyId);
+      }
+    }
+  }
+  if (hasTable('custom_metadata_values')) {
+    const rows = database.prepare(`SELECT resource_key, schema_key, value_json FROM custom_metadata_values
+      WHERE schema_key IN ('recovery.ready_seconds','recovery.start_order','recovery.start_delay_seconds')`).all();
+    for (const row of rows) {
+      const item = byId.get(String(row.resource_key));
+      if (!item) continue;
+      let value;
+      try { value = JSON.parse(row.value_json); } catch { continue; }
+      const number = _number(value, { min: 0, integer: true });
+      if (number === null) continue;
+      if (row.schema_key === 'recovery.ready_seconds') item.estimatedReadySeconds = number;
+      else if (row.schema_key === 'recovery.start_order') item.startOrder = number;
+      else item.startDelaySeconds = number;
+    }
+  }
+  return workloads.map(item => ({ ...byId.get(item.id), dependencyIds: [...new Set(byId.get(item.id).dependencyIds)] }));
+}
+
 function _normalizeDomain(database, host, raw, unsupported = false) {
   const domainId = _canonical(database, host, 'cluster', raw);
   const hostIdByNative = new Map();
@@ -389,17 +524,27 @@ function _normalizeDomain(database, host, raw, unsupported = false) {
       maintenance: item.maintenance === true, memoryBytes: _number(item.memoryBytes, { min: 0 }),
       memoryFreeBytes: _number(item.memoryFreeBytes, { min: 0 }) };
   });
-  const workloads = (raw.workloads || []).slice(0, MAX_WORKLOADS).map(item => ({
-    id: _canonical(database, host, 'virtualMachine', item), displayName: _text(item.name, 160) || 'VM',
+  const rawWorkloads = (raw.workloads || []).slice(0, MAX_WORKLOADS);
+  const workloadIdByNative = new Map(rawWorkloads.map(item => [String(item.nativeRef),
+    _canonical(database, host, 'virtualMachine', item)]));
+  let workloads = rawWorkloads.map(item => ({
+    id: workloadIdByNative.get(String(item.nativeRef)), displayName: _text(item.name, 160) || 'VM',
     hostId: item.hostRef ? hostIdByNative.get(String(item.hostRef)) || null : null,
     poweredOn: item.poweredOn === true, protected: item.protected === true ? true : (item.protected === false ? false : null),
     priority: _priority(item.priority), memoryBytes: _number(item.memoryBytes, { min: 0 }),
+    startOrder: _number(item.startOrder, { min: 0, integer: true }),
+    startDelaySeconds: _number(item.startDelaySeconds, { min: 0, integer: true }),
+    estimatedReadySeconds: _number(item.estimatedReadySeconds, { min: 0, integer: true }),
+    dependencyIds: (Array.isArray(item.dependencyRefs) ? item.dependencyRefs : []).slice(0, 64)
+      .map(ref => workloadIdByNative.get(String(ref)) || `missing:${sha256(String(ref)).slice(0, 16)}`),
   })).sort((a, b) => PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority)
     || a.displayName.localeCompare(b.displayName) || a.id.localeCompare(b.id));
+  workloads = _applyRecoveryEvidence(database, workloads);
   const scenarios = unsupported ? [] : _simulate(raw, hosts, workloads);
   const signals = unsupported ? [] : _signals(raw, hosts, workloads, scenarios);
   const score = unsupported ? null : _score(signals);
   const state = _state(raw, signals, score, unsupported);
+  const recoveryPlan = unsupported ? _recoveryPlan([]) : _recoveryPlan(workloads);
   const recoveryGroups = PRIORITIES.map(priority => ({
     priority, items: workloads.filter(item => item.priority === priority).map(item => ({
       id: item.id, displayName: item.displayName, poweredOn: item.poweredOn, protected: item.protected,
@@ -416,7 +561,7 @@ function _normalizeDomain(database, host, raw, unsupported = false) {
     configuredFailureTolerance: _number(raw.configuredFailureTolerance, { min: 0, integer: true }),
     observedFailureTolerance: _number(raw.nativePlanDepth, { min: 0, integer: true }),
     overcommitted: raw.overcommitted === true ? true : (raw.overcommitted === false ? false : null),
-    signals, scenarios, recoveryGroups,
+    signals, scenarios, recoveryGroups, recoveryPlan,
     hosts, warnings: (raw.warnings || []).slice(0, 32).map(value => _text(value, 240)).filter(Boolean),
   };
 }
@@ -435,7 +580,7 @@ function _snapshot(database, host, collected, capability) {
     displayName: `${_text(host.name, 140) || `Endpoint ${host.id}`} HA`, state: 'unsupported', score: null,
     configured: null, hostCount: 0, onlineHostCount: 0, poweredOnVmCount: 0, protectedVmCount: 0,
     protectionCoveragePercent: null, configuredFailureTolerance: null, observedFailureTolerance: null,
-    overcommitted: null, signals: [], scenarios: [], recoveryGroups: [], hosts: [], warnings: [],
+    overcommitted: null, signals: [], scenarios: [], recoveryGroups: [], recoveryPlan: _recoveryPlan([]), hosts: [], warnings: [],
   }] : (collected.domains || []).slice(0, 32).map(domain => _normalizeDomain(database, host, domain, false));
   const scores = domains.map(domain => domain.score).filter(Number.isFinite);
   const snapshot = {
@@ -576,5 +721,5 @@ async function captureAll(options = {}) {
 
 module.exports = {
   SCHEMA_VERSION, HaReadinessError, collectProvider, captureForHost, getForHost, historyForHost, captureAll,
-  _internals: { _text, _number, _boolean, _priority, _signal, _simulate, _signals, _score, _state, _snapshot, _persist, _combinations, _retrySqliteBusy },
+  _internals: { _text, _number, _boolean, _priority, _signal, _simulate, _signals, _score, _state, _recoveryPlan, _applyRecoveryEvidence, _snapshot, _persist, _combinations, _retrySqliteBusy },
 };

@@ -372,6 +372,7 @@ class XenOrchestraClient {
       'mainIpAddress', '$container', '$pool', '$snapshot_of', 'is_a_snapshot',
       'is_a_template', 'type', 'tags', 'current_operations',
       'allowed_operations', 'ha_restart_priority', 'ha_always_run',
+      'order', 'start_delay',
       'affinity', '$affinity', 'groups', '$groups',
     ]);
     return rows.filter(v => !v.is_a_template && !v.is_a_snapshot && v.type !== 'VM-snapshot' && !v.$snapshot_of)
@@ -383,6 +384,8 @@ class XenOrchestraClient {
         currentOperations: v.current_operations || {}, provider: 'xo',
         haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
         haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
+        startOrder: Number.isFinite(Number(v.order)) ? Number(v.order) : null,
+        startDelaySeconds: Number.isFinite(Number(v.start_delay)) ? Number(v.start_delay) : null,
         affinityRef: _idFrom(v.affinity || v.$affinity),
         groupRefs: (v.groups || v.$groups || []).map(_idFrom).filter(Boolean),
         allowedActions: _normalizedAllowedActions(v.allowed_operations),
@@ -1018,6 +1021,8 @@ class XapiClient {
       currentOperations: v.current_operations || {}, provider: 'xapi',
       haRestartPriority: typeof v.ha_restart_priority === 'string' ? v.ha_restart_priority : null,
       haAlwaysRun: typeof v.ha_always_run === 'boolean' ? v.ha_always_run : null,
+      startOrder: Number.isFinite(Number(v.order)) ? Number(v.order) : null,
+      startDelaySeconds: Number.isFinite(Number(v.start_delay)) ? Number(v.start_delay) : null,
       allowedActions: _normalizedAllowedActions(v.allowed_operations),
     }));
   }

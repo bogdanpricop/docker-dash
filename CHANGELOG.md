@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.77.0] - 2026-07-30 — Evidence-bound recovery and lifecycle closure
+
+This batch closes B064, B065, B068, B070–B075 and B077–B081 by reconciling the shipped
+maintenance, placement/HA and volume workflows with the research backlog and
+by completing the recovery start-order visualizer.
+
+- Host evacuation already provides capacity-aware waves, health gates,
+  pause/resume and explicit stop/defer/approval policy for workloads that
+  cannot migrate.
+- HA policy, affinity and rebalance changes remain capability-gated,
+  diff/approval/idempotency controlled and post-verified. Placement scoring and
+  dry-run recommendations remain explainable and bounded.
+- HA readiness now produces an opaque recovery dependency DAG. Explicit edges
+  are topologically layered; Xen start order/delay and then provider priority
+  groups are evidence-labeled fallbacks.
+- Cycles, missing dependencies and incomplete duration evidence stay visible.
+  The UI never invents start/readiness times and the visualizer performs no
+  provider mutation.
+- Volume create/attach, detach-retain, owned-volume delete guard, grow-only
+  expansion and datastore movement retain their live revalidation, durable
+  operation and post-read verification contracts.
+
 ## [8.76.0] - 2026-07-30 — Governed content and VM mobility
 
 This batch closes B041–B044, B047, B049 and B053–B061 by completing the

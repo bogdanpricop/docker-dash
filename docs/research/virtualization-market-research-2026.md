@@ -633,29 +633,29 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B061 | Migration rollback plan | Pași compensați și recovery instructions per failure stage. | Rez | L | Done |
 | B062 | Maintenance mode runbook | Disable/drain/patch/reboot/rejoin/validate. | Ops | L | Now |
 | B063 | Host evacuation planner | Destination plan, capacity și VM exceptions înainte de drain. | Rez | L | Now |
-| B064 | Batch evacuation | Wave-based migrations cu health gates și pause. | Rez | L | Next |
-| B065 | Non-migratable workload policy | Stop, defer sau require approval pentru passthrough/local disk. | Gov | M | Next |
+| B064 | Batch evacuation | Wave-based migrations cu health gates și pause. | Rez | L | Done |
+| B065 | Non-migratable workload policy | Stop, defer sau require approval pentru passthrough/local disk. | Gov | M | Done |
 | B066 | HA status dashboard | Quorum, heartbeat, fencing și protected VM coverage. | Rez | M | Now |
 | B067 | HA readiness checker | Shared storage/network/capacity/guest agility validation. | Rez | M | Now |
-| B068 | HA policy editor | Restart priority, order și failure tolerance. | Rez | L | Next |
+| B068 | HA policy editor | Restart priority, order și failure tolerance. | Rez | L | Done |
 | B069 | Affinity rule inventory | Vizualizează VM-host și VM-VM rules. | Ops | M | Now |
-| B070 | Affinity rule editor | Create/update/delete cu conflict analysis. | Ops | L | Next |
-| B071 | Placement recommendation | Scor CPU/RAM/NUMA/storage/network/policy cu explicații. | Cost | L | Next |
-| B072 | Automated rebalance plan | Dry-run cu migrations propuse și impact estimat. | Cost | L | Next |
-| B073 | Controlled rebalance apply | Waves, maintenance window și auto-pause. | Rez | XL | Later |
-| B074 | HA failure simulation | What-if pentru pierderea unuia sau mai multor hosturi. | Rez | L | Next |
-| B075 | Recovery start-order visualizer | Dependency DAG și timpi estimați după incident. | Rez | M | Next |
+| B070 | Affinity rule editor | Create/update/delete cu conflict analysis. | Ops | L | Done |
+| B071 | Placement recommendation | Scor CPU/RAM/NUMA/storage/network/policy cu explicații. | Cost | L | Done |
+| B072 | Automated rebalance plan | Dry-run cu migrations propuse și impact estimat. | Cost | L | Done |
+| B073 | Controlled rebalance apply | Waves, maintenance window și auto-pause. | Rez | XL | Done |
+| B074 | HA failure simulation | What-if pentru pierderea unuia sau mai multor hosturi. | Rez | L | Done |
+| B075 | Recovery start-order visualizer | Dependency DAG și timpi estimați după incident. | Rez | M | Done |
 
 ### D. Storage și volume (B076–B100)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
 | B076 | Unified VM disk inventory | Disks, bus, size, provisioning, backing și attachment. | Ops | M | Now |
-| B077 | Disk create/attach wizard | Plan storage policy, format, QoS și target VM. | DX | L | Next |
-| B078 | Safe disk detach | Guest/boot/shared checks și explicit keep/delete. | Sig | M | Next |
-| B079 | Disk delete guard | Backup/snapshot/attachment/replica dependency check. | Sig | M | Next |
-| B080 | Online disk expansion | Capability-gated resize plus guest follow-up guidance. | Ops | M | Next |
-| B081 | Disk move between datastores | Relocation cu progress și space reservation. | Ops | L | Next |
+| B077 | Disk create/attach wizard | Plan storage policy, format, QoS și target VM. | DX | L | Done |
+| B078 | Safe disk detach | Guest/boot/shared checks și explicit keep/delete. | Sig | M | Done |
+| B079 | Disk delete guard | Backup/snapshot/attachment/replica dependency check. | Sig | M | Done |
+| B080 | Online disk expansion | Capability-gated resize plus guest follow-up guidance. | Ops | M | Done |
+| B081 | Disk move between datastores | Relocation cu progress și space reservation. | Ops | L | Done |
 | B082 | Disk format conversion | VMDK/VHDX/QCOW2/RAW/VHD workflow verificabil. | DX | XL | Later |
 | B083 | Storage policy inventory | Classes/policies/offers și compliance state. | Gov | M | Next |
 | B084 | Storage policy assignment | Reconfigurare cu compatibility și migration plan. | Gov | L | Later |
@@ -1341,6 +1341,16 @@ B049 completează profilul noVNC/WebMKS/serial cu SPICE native handoff și audit
 B053–B055 leagă live/cold/storage controls de executorul durabil vm.migrate
 existent; B056–B061 adaugă cross-pool/provider evidence, bandwidth windows,
 weighted fair queue, native-state cancel/force-complete și rollback pe stadii.
+
+**Status implementare V2.3–V2.6 / V4.1 / v8.77.0:** B064–B065 sunt
+orchestrarea durabilă de evacuare în waves și politica explicită pentru
+workload-uri nemigrabile. B068 și B070–B073 reutilizează schimbări HA/affinity
+cu preflight, approval, diff, rollback și rebalance auto-pause; B074 păstrează
+simulări conservative de pierdere a hosturilor. B075 adaugă un recovery DAG
+cu waves topologice, start-order Xen și timpi numai când există evidence;
+ciclurile sau dependențele nerezolvate blochează planul. B077–B081 sunt
+lifecycle-ul de volume capability-gated: create/attach, detach-retain,
+owned-volume delete guard, grow-only și datastore move cu revalidare.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

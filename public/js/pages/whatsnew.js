@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.77.0', date: '2026-07-30', title: 'Evidence-bound recovery and lifecycle closure', changes: [
+      { type: 'feature', text: 'High Availability now visualizes opaque recovery dependency nodes, explicit edges and acyclic topological waves.' },
+      { type: 'improvement', text: 'Xen/XAPI start order and delay feed recovery timing; provider priority groups remain an explicitly low-confidence fallback.' },
+      { type: 'security', text: 'Cycles, self/missing dependencies and unavailable readiness durations block or qualify the plan instead of producing invented times.' },
+      { type: 'improvement', text: 'Research tracking now reflects shipped host evacuation, HA/affinity/placement and controlled rebalance workflows.' },
+      { type: 'feature', text: 'The lifecycle ledger now recognizes guarded create/attach, detach-retain, owned-volume delete, grow-only resize and datastore movement as delivered.' },
+    ] },
     { version: '8.76.0', date: '2026-07-30', title: 'Governed content and VM mobility', changes: [
       { type: 'feature', text: 'Image replication and immutable semantic template versions add digest, ownership, compatibility, capacity, progress and verification contracts.' },
       { type: 'security', text: 'Adjacent-stage template promotion, production approvals and owner-notified VM leases keep destructive stop/delete behavior explicit and separately approved.' },
