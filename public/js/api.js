@@ -1615,6 +1615,19 @@ const Api = {
   ingestVmMetrics(body) { return this.post('/governance/lifecycle/metrics/ingest', body); },
   recordVmMetricError(body) { return this.post('/governance/lifecycle/metrics/errors', body); },
 
+  // ─── Hardware and performance foundation (V6.6a) ────────
+  getHardwarePerformance() { return this.get('/governance/lifecycle/hardware'); },
+  recordHardwareSnapshot(body) { return this.post('/governance/lifecycle/hardware/snapshots', body); },
+  getHardwareCompatibility(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/compatibility`); },
+  getHardwareCpuBaseline(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-baseline`); },
+  saveHardwareCpuPolicy(clusterRef, body) { return this.put(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-policy`, body); },
+  getHardwareCpuPinning(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-pinning`); },
+  getHardwareNuma(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/numa`); },
+  getHardwareHugepages(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/hugepages`); },
+  getHardwareMemory(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/memory`); },
+  getHardwareVmNumaFit(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/numa-fit?hostId=${encodeURIComponent(hostId)}`); },
+  getHardwareRealtimeProfile(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/realtime-profile?hostId=${encodeURIComponent(hostId)}`); },
+
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
   getVmPerformance(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/performance?${query}`); },

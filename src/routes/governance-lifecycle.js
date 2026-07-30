@@ -160,6 +160,10 @@ router.use('/maintenance-lifecycle', require('./lifecycle-maintenance'));
 // drift/compliance, air-gap mirrors, support bundles and validation packs.
 router.use('/assurance', require('./lifecycle-assurance'));
 
+// V6.6a / B376-B385 — normalized host hardware, compatibility, NUMA,
+// pinning, hugepage and memory-pressure evidence. No provider apply routes.
+router.use('/hardware', require('./hardware-performance'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

@@ -1217,16 +1217,16 @@ nu face transmisii de rețea.
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B376 | Host hardware inventory | CPU/NUMA/RAM/NIC/HBA/disk/GPU/BMC normalized. | Ops | L | Next |
-| B377 | Hardware compatibility tags | Model/generation/feature baseline pentru migration/placement. | Rez | M | Next |
-| B378 | CPU feature baseline view | Common/extra/missing features per cluster. | Rez | M | Next |
-| B379 | CPU compatibility policy | EVC/compatibility mode inventory și editor adapter. | Rez | L | Later |
-| B380 | NUMA topology visualizer | Nodes, CPUs, memory, devices și VM placement. | Ops | L | Later |
-| B381 | VM NUMA fit analyzer | Warn remote-memory/oversize topology. | Ops | L | Later |
-| B382 | CPU pinning inventory | Dedicated/shared pools și conflicts. | Ops | M | Next |
-| B383 | Real-time workload profile | Pinning, isolation, hugepages și latency checks. | Ops | L | Later |
-| B384 | Hugepage capacity dashboard | Size/node/free/allocated și fragmentation. | Ops | M | Later |
-| B385 | Memory balloon/overcommit dashboard | Reserved/active/balloon/swap și risk. | Rez | L | Next |
+| B376 | Host hardware inventory | CPU/NUMA/RAM/NIC/HBA/disk/GPU/BMC normalized. | Ops | L | Done |
+| B377 | Hardware compatibility tags | Model/generation/feature baseline pentru migration/placement. | Rez | M | Done |
+| B378 | CPU feature baseline view | Common/extra/missing features per cluster. | Rez | M | Done |
+| B379 | CPU compatibility policy | EVC/compatibility mode inventory și editor adapter. | Rez | L | Done |
+| B380 | NUMA topology visualizer | Nodes, CPUs, memory, devices și VM placement. | Ops | L | Done |
+| B381 | VM NUMA fit analyzer | Warn remote-memory/oversize topology. | Ops | L | Done |
+| B382 | CPU pinning inventory | Dedicated/shared pools și conflicts. | Ops | M | Done |
+| B383 | Real-time workload profile | Pinning, isolation, hugepages și latency checks. | Ops | L | Done |
+| B384 | Hugepage capacity dashboard | Size/node/free/allocated și fragmentation. | Ops | M | Done |
+| B385 | Memory balloon/overcommit dashboard | Reserved/active/balloon/swap și risk. | Rez | L | Done |
 | B386 | Memory tiering visibility | DRAM/NVMe tiers, hit rate și workload impact. | Cost | L | Later |
 | B387 | PCI device inventory | IOMMU groups, allocation, reset și passthrough readiness. | Ops | L | Later |
 | B388 | PCI passthrough assignment | Safe attach/detach cu host placement constraints. | Ops | XL | Later |
@@ -1242,6 +1242,15 @@ nu face transmisii de rețea.
 | B398 | Noisy-neighbor detector | Correlate contention și colocated workloads. | Ops | XL | Later |
 | B399 | Performance regression detector | Before/after migration/upgrade/config change. | Ops | L | Later |
 | B400 | Workload performance profile | Batch/database/VDI/latency/AI policy presets. | DX | L | Later |
+
+**Status implementare 2026-07-30:** B376–B385 au fost închise în V6.6a /
+v8.70.0. Snapshot-urile normalizate păstrează proveniență bounded pentru
+CPU/NUMA/RAM/NIC/HBA/disk/GPU/BMC, tags de compatibilitate și placement VM.
+Cluster view calculează tag/CPU common-extra-missing, iar editorul CPU păstrează
+numai desired plan și blockers, fără apply. NUMA fit, pinning și real-time checks
+corelează CPUs, device locality, isolation, hugepages, balloon și swap.
+Dashboard-urile hugepage/memory sunt strict evidence-only; nu există endpoint
+pentru BIOS/EVC/device/pinning/memory mutation.
 
 ### Q. Integrații, extensibilitate și migration factory (B401–B425)
 

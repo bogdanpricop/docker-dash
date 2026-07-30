@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -27,6 +27,7 @@ const GovernanceControlsPage = {
         Api.getFinOpsFoundation(),
         Api.getFinOpsOptimization(),
         Api.getFinOpsSustainability(),
+        Api.getHardwarePerformance(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -34,7 +35,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -63,6 +64,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('automation', 'fa-code-branch', 'Automation & IaC')}
         ${this._tabButton('updates', 'fa-arrow-up-from-bracket', 'Lifecycle & updates')}
         ${this._tabButton('finops', 'fa-coins', 'FinOps')}
+        ${this._tabButton('hardware', 'fa-microchip', 'Hardware & performance')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -78,6 +80,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'automation') return this._automation();
     if (this._tab === 'updates') return this._updates();
     if (this._tab === 'finops') return this._finops();
+    if (this._tab === 'hardware') return this._hardware();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -301,6 +304,74 @@ const GovernanceControlsPage = {
       </div>`;
   },
 
+  _hardware() {
+    const data = this._data.hardwarePerformance || { capabilities: {}, safety: {}, snapshots: [], policies: [] };
+    const workloads = (data.snapshots || []).flatMap(host => (host.hardware?.vms || []).map(vm => ({ ...vm, hostId: host.hostId, hostRef: host.hostRef })));
+    const capabilityLabels = {
+      hostHardwareInventory: 'Host inventory', hardwareCompatibilityTags: 'Compatibility tags', cpuFeatureBaseline: 'CPU baseline',
+      cpuCompatibilityPolicyEditor: 'CPU policy editor', numaTopology: 'NUMA topology', vmNumaFit: 'VM NUMA fit',
+      cpuPinningInventory: 'CPU pinning', realtimeWorkloadProfile: 'Real-time profile', hugepageCapacity: 'Hugepages', memoryOvercommit: 'Memory overcommit',
+    };
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-hardware-cluster"><i class="fas fa-table-cells"></i> Cluster analysis</button>
+      <button class="btn btn-secondary btn-sm" id="gc-hardware-policy"><i class="fas fa-sliders"></i> CPU compatibility policy</button>
+      <button class="btn btn-primary btn-sm" id="gc-hardware-snapshot"><i class="fas fa-file-import"></i> Record snapshot</button>`) }
+      <div class="info-grid">
+        ${this._stat('fa-server', 'Observed hosts', data.snapshots.length)}
+        ${this._stat('fa-diagram-project', 'Clusters', new Set(data.snapshots.map(item => item.clusterRef)).size)}
+        ${this._stat('fa-desktop', 'Placed workloads', workloads.length)}
+        ${this._stat('fa-sliders', 'CPU policies', data.policies.length)}
+      </div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Hardware evidence boundary</h3><p class="text-muted text-sm">Normalized provider/API/SSH/import evidence only. CPU policy edits create a hash-bound desired plan; this surface exposes no BIOS, EVC, pinning, hugepage or memory apply endpoint.</p></div></div>
+        <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(capabilityLabels).map(([key,label]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}
+          <span class="badge badge-success"><i class="fas fa-shield" style="margin-right:4px"></i>${data.safety?.providerMutationsStarted || 0} provider mutations</span></div></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Latest normalized host inventory</h3></div>
+        <table class="data-table"><thead><tr><th>Host / cluster</th><th>CPU / NUMA</th><th>Memory</th><th>NIC/HBA/disk/GPU</th><th>Compatibility</th><th>Analysis</th></tr></thead><tbody>
+        ${(data.snapshots || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.hostRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.providerType)} · ${Utils.escapeHtml(item.clusterRef)}</div><div class="mono text-xs">${item.evidenceHash.slice(0, 12)}</div></td>
+          <td>${Utils.escapeHtml(item.hardware.cpu.vendor)} ${Utils.escapeHtml(item.hardware.cpu.model)}<div class="text-xs text-muted">${item.hardware.cpu.sockets} sockets · ${item.hardware.cpu.cores} cores · ${item.summary.numaNodes} NUMA</div></td>
+          <td>${Utils.formatBytes(item.hardware.memory.totalBytes)}<div class="text-xs text-muted">active ${Utils.formatBytes(item.hardware.memory.activeBytes)} · reserved ${Utils.formatBytes(item.hardware.memory.reservedBytes)}</div></td>
+          <td>${item.summary.nics}/${item.summary.hbas}/${item.summary.disks}/${item.summary.gpus}<div class="text-xs text-muted">${item.summary.vms} workloads</div></td>
+          <td>${item.compatibilityTags.slice(0, 4).map(value => `<span class="badge badge-secondary mono">${Utils.escapeHtml(value)}</span>`).join(' ')}</td>
+          <td><button class="action-btn" data-gc-hw-numa="${item.hostId}" title="NUMA topology"><i class="fas fa-diagram-project"></i></button><button class="action-btn" data-gc-hw-huge="${item.hostId}" title="Hugepage capacity"><i class="fas fa-table-cells-large"></i></button><button class="action-btn" data-gc-hw-memory="${item.hostId}" title="Memory overcommit"><i class="fas fa-memory"></i></button></td></tr>`).join('') || this._empty('No hardware observations. Record a bounded provider snapshot to begin.', 6)}</tbody></table></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>CPU compatibility policies</h3></div><table class="data-table"><thead><tr><th>Cluster</th><th>Mode / adapter</th><th>Baseline</th><th>State</th></tr></thead><tbody>${(data.policies || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.clusterRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.providerType)}</div></td><td>${Utils.escapeHtml(item.mode)}<div class="mono text-xs">${Utils.escapeHtml(item.changePlan.adapter)} · ${item.adapterState}</div></td><td>${item.baselineFeatures.length} features<div class="mono text-xs">${item.planHash.slice(0, 12)}</div></td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-danger'}">${item.state}</span><div class="text-xs text-muted">${item.blockers.length} blockers · no apply</div></td></tr>`).join('') || this._empty('No desired CPU compatibility policies', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Workload placement evidence</h3></div><table class="data-table"><thead><tr><th>Workload / host</th><th>CPU</th><th>Memory / hugepages</th><th>Checks</th></tr></thead><tbody>${workloads.map(vm => `<tr><td><strong>${Utils.escapeHtml(vm.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(vm.resourceKey)} · ${Utils.escapeHtml(vm.hostRef)}</div></td><td>${vm.vcpus} vCPU · ${vm.cpuPinning.length} pinned<div class="text-xs text-muted">${vm.dedicatedCpu ? 'dedicated' : 'shared'} · ${vm.latencySensitivity}</div></td><td>${Utils.formatBytes(vm.memoryBytes)}<div class="text-xs text-muted">${vm.hugepageSizeKb ? `${vm.hugepageSizeKb} KiB pages` : 'regular pages'} · balloon ${Utils.formatBytes(vm.balloonBytes)}</div></td><td><button class="action-btn" data-gc-hw-fit="${Utils.escapeHtml(vm.resourceKey)}" data-host-id="${vm.hostId}" title="NUMA fit"><i class="fas fa-puzzle-piece"></i></button><button class="action-btn" data-gc-hw-rt="${Utils.escapeHtml(vm.resourceKey)}" data-host-id="${vm.hostId}" title="Real-time profile"><i class="fas fa-stopwatch"></i></button></td></tr>`).join('') || this._empty('No workload placement evidence', 4)}</tbody></table></div>
+      </div>`;
+  },
+
+  async _hardwareSnapshotDialog() {
+    const sample = { hostId: 1, providerType: 'proxmox', clusterRef: 'cluster-a', hostRef: 'pve-a', model: 'Dell R760', generation: '16g',
+      observedAt: new Date().toISOString(), source: { kind: 'api', adapter: 'proxmox.nodes', version: '8.x', coverage: ['cpu','numa','memory'] },
+      cpu: { vendor: 'Intel', model: 'Xeon', sockets: 2, cores: 64, threads: 128, features: ['aes','avx2'], isolatedCpuIds: [0,1] },
+      memory: { totalBytes: 274877906944, reservedBytes: 17179869184, activeBytes: 68719476736, balloonBytes: 0, swapUsedBytes: 0 },
+      numaNodes: [{ id: 0, cpuIds: [0,1], memoryBytes: 137438953472, freeMemoryBytes: 68719476736, hugepages: [{ sizeKb: 2048, total: 1024, free: 900, reserved: 24 }] }],
+      nics: [], hbas: [], disks: [], gpus: [], bmc: { vendor: 'Dell', model: 'iDRAC9', firmware: '7.x' }, vms: [] };
+    const result = await Modal.form(`<div class="alert alert-info text-sm">Only bounded, credential-free observations are accepted. BMC network endpoints and raw provider payloads are intentionally excluded.</div><label for="gc-hw-json" class="form-label">Normalized snapshot JSON</label><textarea id="gc-hw-json" class="form-control mono" rows="20">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea>`,
+      { title: 'Record hardware observation', width: '920px', onSubmit: c => this._submit(() => Api.recordHardwareSnapshot(JSON.parse(c.querySelector('#gc-hw-json').value))) });
+    if (result) { Toast.success(result.duplicate ? 'Existing evidence reused' : 'Hardware snapshot recorded'); await this.render(this._container); }
+  },
+  _hardwareClusterOptions() { return [...new Set((this._data.hardwarePerformance?.snapshots || []).map(item => item.clusterRef))].map(value => `<option value="${Utils.escapeHtml(value)}">`).join(''); },
+  async _hardwareClusterDialog() {
+    const clusterRef = await Modal.form(`<label for="gc-hw-cluster" class="form-label">Cluster reference</label><input id="gc-hw-cluster" list="gc-hw-clusters" class="form-control"><datalist id="gc-hw-clusters">${this._hardwareClusterOptions()}</datalist>`,
+      { title: 'Compatibility, CPU baseline and pinning', confirmText: 'Analyze', onSubmit: c => c.querySelector('#gc-hw-cluster').value.trim() });
+    if (!clusterRef) return;
+    try { const [compatibility, cpu, pinning] = await Promise.all([Api.getHardwareCompatibility(clusterRef), Api.getHardwareCpuBaseline(clusterRef), Api.getHardwareCpuPinning(clusterRef)]); this._showHardwareResult(`Cluster ${clusterRef}`, { compatibility, cpu, pinning }); } catch (error) { Toast.error(error.message); }
+  },
+  async _hardwarePolicyDialog() {
+    const result = await Modal.form(`<label for="gc-hw-cluster" class="form-label">Cluster reference</label><input id="gc-hw-cluster" list="gc-hw-clusters" class="form-control"><datalist id="gc-hw-clusters">${this._hardwareClusterOptions()}</datalist><label for="gc-hw-mode" class="form-label">Desired mode</label><select id="gc-hw-mode" class="form-control"><option>cluster-baseline</option><option>host-passthrough</option><option>vendor-compatibility</option><option>custom</option></select><label for="gc-hw-features" class="form-label">Baseline features (comma-separated; blank uses cluster common set)</label><textarea id="gc-hw-features" rows="4" class="form-control mono"></textarea><div class="alert alert-warning text-sm" style="margin-top:12px">Save creates a desired plan and blockers only. No provider apply endpoint exists.</div>`,
+      { title: 'CPU compatibility policy', width: '760px', onSubmit: c => { const clusterRef = c.querySelector('#gc-hw-cluster').value.trim(); return this._submit(() => Api.saveHardwareCpuPolicy(clusterRef, { mode: c.querySelector('#gc-hw-mode').value, baselineFeatures: c.querySelector('#gc-hw-features').value.split(',').map(value => value.trim()).filter(Boolean) })); } });
+    if (result) { Toast.success(`Policy ${result.policy.state}; no provider mutation started`); await this.render(this._container); }
+  },
+  _showHardwareResult(title, result) {
+    Modal.open(`<div class="modal-header"><h3>${Utils.escapeHtml(title)}</h3><button class="modal-close-btn" id="gc-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><div class="alert alert-info text-sm">Evidence/analysis only · no provider mutation</div><pre class="mono text-xs" style="white-space:pre-wrap;max-height:65vh;overflow:auto">${Utils.escapeHtml(JSON.stringify(result, null, 2))}</pre></div>`, { width: '980px' });
+    Modal._content.querySelector('#gc-close').addEventListener('click', () => Modal.close());
+  },
+  async _hardwareHostAnalysis(kind, hostId) {
+    try { const result = kind === 'numa' ? await Api.getHardwareNuma(hostId) : kind === 'hugepages' ? await Api.getHardwareHugepages(hostId) : await Api.getHardwareMemory(hostId); this._showHardwareResult(`${kind} · host ${hostId}`, result); } catch (error) { Toast.error(error.message); }
+  },
+  async _hardwareVmAnalysis(kind, resourceKey, hostId) {
+    try { const result = kind === 'fit' ? await Api.getHardwareVmNumaFit(resourceKey, hostId) : await Api.getHardwareRealtimeProfile(resourceKey, hostId); this._showHardwareResult(`${kind === 'fit' ? 'NUMA fit' : 'Real-time profile'} · ${resourceKey}`, result); } catch (error) { Toast.error(error.message); }
+  },
+
   _finops() {
     const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
     const optimization = this._data.finopsOptimization || { capabilities: {}, budgetAlertPolicies: [], budgetAlerts: [], anomalyPolicies: [], costAnomalies: [], assessments: [], schedules: [], executions: [], reservations: [], consolidation: [], forecasts: [], placementScores: [], summary: {} };
@@ -477,6 +548,11 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-review')?.addEventListener('click', () => this._reviewDialog());
     this._container.querySelector('#gc-offboard')?.addEventListener('click', () => this._offboardingDialog());
     this._container.querySelector('#gc-metrics-policy')?.addEventListener('click', () => this._metricsPolicyDialog());
+    this._container.querySelector('#gc-hardware-snapshot')?.addEventListener('click', () => this._hardwareSnapshotDialog());
+    this._container.querySelector('#gc-hardware-cluster')?.addEventListener('click', () => this._hardwareClusterDialog());
+    this._container.querySelector('#gc-hardware-policy')?.addEventListener('click', () => this._hardwarePolicyDialog());
+    for (const kind of ['numa', 'huge', 'memory']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareHostAnalysis(kind === 'huge' ? 'hugepages' : kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`])));
+    for (const kind of ['fit', 'rt']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareVmAnalysis(kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`], button.dataset.hostId)));
     this._container.querySelector('#gc-performance-chart')?.addEventListener('click', () => this._performanceDialog());
     this._container.querySelector('#gc-event-ingest')?.addEventListener('click', () => this._eventDialog());
     this._container.querySelector('#gc-timeline')?.addEventListener('click', () => this._timelineDialog());

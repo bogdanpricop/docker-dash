@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.70.0] - 2026-07-30 — Hardware and performance evidence foundation
+
+The B376–B385 batch adds normalized hardware and workload-placement evidence
+without exposing a provider hardware mutation path.
+
+- Host snapshots normalize CPU/NUMA/RAM/NIC/HBA/disk/GPU/BMC models,
+  provenance and compatibility tags while rejecting credential-shaped fields.
+- Cluster comparison shows common/extra/missing hardware tags and CPU features.
+  CPU policy editing stores a provider-aware, hash-bound desired plan and
+  blockers; it has no apply endpoint.
+- NUMA topology joins CPUs, memory, devices and workload placement. VM fit
+  analysis warns on oversized layouts, cross-node pinning and remote devices.
+- CPU pinning inventory finds dedicated/shared conflicts. The real-time profile
+  evaluates complete pinning, isolated CPUs, hugepages, latency sensitivity,
+  ballooning and swap.
+- Hugepage and memory dashboards expose per-node capacity, fragmentation,
+  reserved/active/balloon/swap state and overcommit risk without remediation.
+
 ## [8.69.0] - 2026-07-30 — Accessible and explainable self-service experience
 
 The B366–B375 batch completes the self-service experience with bounded support,

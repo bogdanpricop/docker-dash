@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.70.0', date: '2026-07-30', title: 'Hardware and performance evidence foundation', changes: [
+      { type: 'feature', text: 'A normalized host inventory records CPU, NUMA, RAM, NIC, HBA, disk, GPU and BMC model evidence with bounded provenance and compatibility tags.' },
+      { type: 'feature', text: 'Cluster views compare hardware tags and CPU common/extra/missing features; the CPU policy editor produces a provider-aware, hash-bound desired plan with blockers and no apply endpoint.' },
+      { type: 'feature', text: 'NUMA topology links CPUs, memory, devices and workload placement, while per-VM fit analysis identifies oversized single-node layouts, cross-node pinning and remote devices.' },
+      { type: 'improvement', text: 'CPU pinning and real-time workload views expose dedicated/shared pools, conflicts, isolation, hugepages, latency sensitivity, ballooning and swap checks.' },
+      { type: 'security', text: 'Hugepage and memory-overcommit dashboards are evidence-only. Credential-shaped fields are rejected and no BIOS, EVC, device, pinning or memory provider mutation can be started.' },
+    ] },
     { version: '8.69.0', date: '2026-07-30', title: 'Accessible and explainable self-service experience', changes: [
       { type: 'feature', text: 'Project administrators can request time-bound quota increases through the existing approval workflow; approved limits become expiring grants and never bypass separation of duties.' },
       { type: 'feature', text: 'Organization/project branding and provider-version-action contextual guidance make the portal recognizable while keeping logos and help links same-origin or HTTPS-only.' },
