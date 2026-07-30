@@ -67,6 +67,7 @@ const App = {
     onboarding:       () => OnboardingPage,
     governance:       () => GovernancePage,
     'governance-controls': () => GovernanceControlsPage,
+    'self-service': () => SelfServicePage,
     'edge-platform': () => EdgePlatformPage,
   },
 
@@ -2348,8 +2349,11 @@ const App = {
       clearTimeout(this._cmdSearchTimer);
       this._cmdSearchTimer = setTimeout(async () => {
         try {
-          const data = await Api.globalSearch(query);
-          const hits = data.results || [];
+          const [data, selfService] = await Promise.all([
+            Api.globalSearch(query),
+            Api.searchSelfServicePalette(query).catch(() => ({ results: [] })),
+          ]);
+          const hits = [...(data.results || []), ...(selfService.results || [])];
           const sec = document.getElementById('cmd-search-section');
           if (!sec) return;
 
@@ -2362,8 +2366,8 @@ const App = {
             return;
           }
 
-          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'virtual-machine': 'fa-desktop', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list' };
-          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'virtual-machine': 'var(--cyan, #06b6d4)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)' };
+          const typeIcons = { host: 'fa-server', container: 'fa-cube', image: 'fa-layer-group', volume: 'fa-database', network: 'fa-network-wired', 'virtual-machine': 'fa-desktop', 'git-stack': 'fa-git-alt', audit: 'fa-clipboard-list', catalog: 'fa-store', project: 'fa-diagram-project', request: 'fa-timeline' };
+          const typeColors = { host: 'var(--accent)', container: 'var(--accent)', image: 'var(--green)', volume: 'var(--yellow)', network: 'var(--purple, #a855f7)', 'virtual-machine': 'var(--cyan, #06b6d4)', 'git-stack': 'var(--orange, #f97316)', audit: 'var(--text-dim)', catalog: 'var(--green)', project: 'var(--accent)', request: 'var(--yellow)' };
 
           // Group by type
           const grouped = {};
@@ -2395,7 +2399,7 @@ const App = {
               html += `<div class="cmd-palette-item ${isSelected ? 'selected' : ''}" data-idx="${globalIdx}" style="display:flex;align-items:center;gap:8px;padding:7px 12px">
                 <i class="fas ${icon}" style="color:${color};width:14px;text-align:center;flex-shrink:0"></i>
                 <span class="cmd-label" style="flex:1">${Utils.escapeHtml(r.name || r.id)}</span>
-                <span style="font-size:10px;color:var(--text-dim);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(r.detail || '')}</span>
+                <span style="font-size:10px;color:${r.action?.available === false ? 'var(--yellow)' : 'var(--text-dim)'};white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis">${r.action?.available === false ? '<i class="fas fa-lock" style="margin-right:4px"></i>' : ''}${Utils.escapeHtml(r.action?.available === false ? r.action.reason : (r.detail || ''))}</span>
               </div>`;
               globalIdx++;
             });

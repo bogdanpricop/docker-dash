@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.68.0', date: '2026-07-30', title: 'Infrastructure self-service catalog and request workflow', changes: [
+      { type: 'feature', text: 'The global command palette now searches permission-filtered projects, catalog offerings and requests, and explains unavailable safe actions; a server-persistent basket spans VM and container pages with compatibility preview.' },
+      { type: 'feature', text: 'A curated VM/application/cluster catalog adds owners, immutable version hashes, changelogs, compatibility metadata and explicit draft/published/deprecated/retired lifecycle.' },
+      { type: 'feature', text: 'Schema-driven conditional request forms validate bounded, secret-free inputs and show project quota impact plus an estimated cost before submission.' },
+      { type: 'security', text: 'The approval inbox binds risk, normalized diff, expiry, cost and requester context to the existing separation-of-duties approval engine; every state transition is retained in an ordered fulfillment timeline.' },
+      { type: 'feature', text: 'Project users can request catalog-scoped VM creation and policy-allowed power, snapshot or console actions without seeing fabric targets; approved work reuses provider preflight and the durable operation engine.' },
+    ] },
     { version: '8.67.0', date: '2026-07-29', title: 'Edge continuity and unified infrastructure experience', changes: [
       { type: 'security', text: 'Four-eyes disaster declarations freeze site mutations, queue bounded notifications and activate signed local assessment runbooks; resolution requires exact site confirmation and hashed evidence.' },
       { type: 'feature', text: 'Signed offline backup seed manifests support verified chunks and monotonic delta checkpoints, while fleet compliance exports only aggregate control states and withholds raw site evidence.' },

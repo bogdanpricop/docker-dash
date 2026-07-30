@@ -94,8 +94,11 @@ describe('V6.4b advanced VM observability operations (B216-B225)', () => {
   });
 
   test('capacity forecast selects the latest daily points and records confidence evidence', () => {
+    // Keep both fixtures on the same UTC day even when this suite runs near
+    // midnight; the production query deliberately groups by UTC date.
+    const anchor = new Date(); anchor.setUTCHours(12, 0, 0, 0);
     for (let day = 4; day >= 1; day -= 1) {
-      const at = new Date(Date.now() - day * 86400000).toISOString(); insertMetric('vm-disk', 'disk.used_bytes', (5 - day) * 10, at);
+      const at = new Date(anchor.getTime() - day * 86400000).toISOString(); insertMetric('vm-disk', 'disk.used_bytes', (5 - day) * 10, at);
       insertMetric('vm-disk', 'disk.used_bytes', 1, new Date(Date.parse(at) - 3600000).toISOString());
     }
     insertMetric('vm-disk', 'disk.provisioned_bytes', 100, new Date().toISOString());

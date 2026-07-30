@@ -179,6 +179,7 @@ app.use('/api/providers', apiLimiter, require('./routes/providers'));
 app.use('/api/provider-console', apiLimiter, require('./routes/provider-console'));
 app.use('/api/operations', apiLimiter, require('./routes/operations'));
 app.use('/api/experience', apiLimiter, require('./routes/infrastructure-experience'));
+app.use('/api/self-service', apiLimiter, require('./routes/self-service'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
 app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));

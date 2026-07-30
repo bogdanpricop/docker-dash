@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/edge'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/self-service', '/edge'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -1520,6 +1520,31 @@ const Api = {
   setGovernanceProjectQuotas(id, body) { return this.put(`/governance/projects/${id}/quotas`, body); },
   assignGovernanceProjectResource(id, body) { return this.post(`/governance/projects/${id}/resources`, body); },
   unassignGovernanceProjectResource(id, resourceId) { return this.delete(`/governance/projects/${id}/resources/${resourceId}`); },
+
+  // ─── Self-service catalog + project portal (v8.68.0 / V6.2a) ───
+  getSelfServiceCatalog(includeAll = false) { return this.get(`/self-service/catalog${includeAll ? '?includeAll=true' : ''}`); },
+  getSelfServiceCatalogItem(slug, versions = false) { return this.get(`/self-service/catalog/${encodeURIComponent(slug)}${versions ? '?versions=true' : ''}`); },
+  createSelfServiceCatalogItem(body) { return this.post('/self-service/catalog', body); },
+  updateSelfServiceCatalogItem(id, body) { return this.put(`/self-service/catalog/${id}`, body); },
+  createSelfServiceCatalogVersion(id, body) { return this.post(`/self-service/catalog/${id}/versions`, body); },
+  transitionSelfServiceCatalogVersion(id, versionId, state) { return this.post(`/self-service/catalog/${id}/versions/${versionId}/state`, { state }); },
+  getSelfServiceProjectPolicy(id) { return this.get(`/self-service/projects/${id}/policy`); },
+  saveSelfServiceProjectPolicy(id, body) { return this.put(`/self-service/projects/${id}/policy`, body); },
+  getSelfServiceProjectDashboard(id) { return this.get(`/self-service/projects/${id}/dashboard`); },
+  previewSelfServiceCatalogRequest(slug, body) { return this.post(`/self-service/catalog/${encodeURIComponent(slug)}/preview`, body); },
+  createSelfServiceCatalogRequest(slug, body) { return this.post(`/self-service/catalog/${encodeURIComponent(slug)}/requests`, body); },
+  createSelfServiceLifecycleRequest(projectId, resourceId, body) { return this.post(`/self-service/projects/${projectId}/resources/${resourceId}/lifecycle`, body); },
+  listSelfServiceRequests(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/self-service/requests${query ? `?${query}` : ''}`); },
+  getSelfServiceRequest(id) { return this.get(`/self-service/requests/${id}`); },
+  getSelfServiceApprovalInbox() { return this.get('/self-service/approval-inbox'); },
+  decideSelfServiceRequest(id, body) { return this.post(`/self-service/requests/${id}/decision`, body); },
+  preflightSelfServiceFulfillment(id) { return this.post(`/self-service/requests/${id}/fulfillment/preflight`, {}); },
+  fulfillSelfServiceRequest(id, body) { return this.post(`/self-service/requests/${id}/fulfillment`, body); },
+  getSelfServiceBasket() { return this.get('/self-service/basket'); },
+  addSelfServiceBasketItem(body) { return this.post('/self-service/basket', body); },
+  removeSelfServiceBasketItem(id) { return this.delete(`/self-service/basket/${id}`); },
+  clearSelfServiceBasket() { return this.delete('/self-service/basket'); },
+  searchSelfServicePalette(q) { return this.get(`/self-service/palette?q=${encodeURIComponent(q)}`); },
 
   // ─── Identity + policy governance (v8.50.0 / V4.6b) ─────
   getGovernanceControlsCatalog() { return this.get('/governance/controls/catalog'); },

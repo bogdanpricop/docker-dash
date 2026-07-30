@@ -587,12 +587,18 @@ const VirtualMachinesPage = {
           <span><i class="fas fa-network-wired"></i> ${Utils.escapeHtml(vm.status?.ipAddress || 'No IP')}</span>
           <span><i class="fas fa-clock"></i> ${Utils.escapeHtml(Utils.timeAgo(vm.observedAt))}</span>
         </div>
-        <div style="margin-top:12px"><a class="btn btn-sm btn-secondary" href="#/virtual-machines/${this._hostId}/${vm.id}">Open details</a></div>
+        <div style="margin-top:12px;display:flex;gap:7px"><a class="btn btn-sm btn-secondary" href="#/virtual-machines/${this._hostId}/${vm.id}">Open details</a><button class="btn btn-sm btn-secondary" data-vm-basket="${vm.id}" title="Add to persistent selection basket"><i class="fas fa-basket-shopping"></i> Basket</button></div>
       </div>`;
     }).join('')}</div>`;
     target.querySelectorAll('[data-vm-select]').forEach(input => input.addEventListener('change', () => {
       if (input.checked) this._selected.add(input.dataset.vmSelect); else this._selected.delete(input.dataset.vmSelect);
       this._updateBulkToolbar();
+    }));
+    target.querySelectorAll('[data-vm-basket]').forEach(button => button.addEventListener('click', async () => {
+      const vm = items.find(item => item.id === button.dataset.vmBasket);
+      if (!vm) return;
+      try { await SelectionBasket.add('virtual-machine', this._hostId, vm.id, vm.displayName, { providerType: this._hosts.find(host => host.id === this._hostId)?.daemonType || null }); }
+      catch (error) { Toast.error(error.message); }
     }));
     this._updateBulkToolbar();
   },

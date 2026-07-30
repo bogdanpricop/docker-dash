@@ -1162,16 +1162,16 @@ attestation și certificate fingerprint four-eyes fără private key central.
 | B353 | Consistent resource detail shell | Tabs/actions/tasks/events/audit identice între providers. | DX | M | Done |
 | B354 | Action availability explanation | Tooltip cu capability/policy/state/permission blocker. | DX | S | Done |
 | B355 | Long-task activity center | Persistent jobs, progress, cancel și deep links. | DX | M | Done |
-| B356 | Global command palette | Search/navigation/safe actions cu permissions. | DX | M | Next |
-| B357 | Bulk selection basket | Resurse cross-page cu preview și compatibility filter. | DX | M | Next |
-| B358 | Infrastructure service catalog | Curated VM/app/cluster offerings. | DX | L | Next |
-| B359 | Catalog item versioning | Owner, lifecycle, changelog, deprecation și compatibility. | Gov | M | Next |
-| B360 | Dynamic request forms | Conditional fields, validation și cost preview. | DX | L | Next |
-| B361 | Request approval inbox | Risk/context/diff/expiry și approve/reject comment. | Gov | M | Next |
-| B362 | Request fulfillment timeline | Requested→approved→running→validated state. | DX | M | Next |
-| B363 | Self-service project dashboard | Resources, quota, cost, alerts și requests. | DX | L | Next |
-| B364 | Self-service VM provisioning | Catalog-scoped create fără fabric details. | DX | XL | Next |
-| B365 | Self-service lifecycle actions | Power/snapshot/console within project policy. | DX | L | Next |
+| B356 | Global command palette | Search/navigation/safe actions cu permissions. | DX | M | Done |
+| B357 | Bulk selection basket | Resurse cross-page cu preview și compatibility filter. | DX | M | Done |
+| B358 | Infrastructure service catalog | Curated VM/app/cluster offerings. | DX | L | Done |
+| B359 | Catalog item versioning | Owner, lifecycle, changelog, deprecation și compatibility. | Gov | M | Done |
+| B360 | Dynamic request forms | Conditional fields, validation și cost preview. | DX | L | Done |
+| B361 | Request approval inbox | Risk/context/diff/expiry și approve/reject comment. | Gov | M | Done |
+| B362 | Request fulfillment timeline | Requested→approved→running→validated state. | DX | M | Done |
+| B363 | Self-service project dashboard | Resources, quota, cost, alerts și requests. | DX | L | Done |
+| B364 | Self-service VM provisioning | Catalog-scoped create fără fabric details. | DX | XL | Done |
+| B365 | Self-service lifecycle actions | Power/snapshot/console within project policy. | DX | L | Done |
 | B366 | Self-service quota increase | Time-bound request and approval. | DX | M | Later |
 | B367 | Portal branding | Logo/colors/help links per organization. | DX | M | Later |
 | B368 | Contextual documentation | Provider/version/action-specific guidance și caveats. | DX | M | Now |
@@ -1191,6 +1191,17 @@ explicit unhealthy. DetailShell normalizează Overview/Actions/Tasks/Events/Audi
 deciziile de acțiune separă blockers de capability/policy/state/permission, iar
 Activity Center oferă summary, progress, cancel availability și deep links
 canonice pentru operație și resursă.
+
+**Status implementare 2026-07-30:** B356–B365 au fost închise în V6.2a /
+v8.68.0. Command palette combină resursele cu proiecte, oferte și cereri și
+explică acțiunile indisponibile, iar basket-ul persistent calculează
+compatibilitatea cross-page. Catalogul VM/app/cluster este versionat și are
+owner, lifecycle, changelog, compatibilitate, formulare condiționale, validare
+și cost preview. Inbox-ul leagă risk/diff/expiry de aprobarea existentă, iar
+timeline-ul păstrează tranzițiile. Dashboard-ul de proiect oferă resources,
+quota alerts, cost boundary și requests. Provisioning-ul VM și lifecycle
+power/snapshot/console ascund fabric details și refolosesc preflight-ul și
+motorul persistent de operații după aprobarea separată.
 
 ### P. Hardware, acceleratoare și performanță (B376–B400)
 

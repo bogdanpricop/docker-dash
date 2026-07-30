@@ -1465,6 +1465,7 @@ const ContainersPage = {
         <td class="text-sm text-muted">${created}</td>
         <td>
           <div class="action-btns">
+            <button class="action-btn" data-basket-container="${c.id}" data-name="${Utils.escapeHtml(c.name)}" title="Add to persistent selection basket"><i class="fas fa-basket-shopping"></i></button>
             <button class="action-btn" data-action="edit-meta" data-id="${c.id}" data-name="${Utils.escapeHtml(c.name)}" title="${i18n.t('pages.containers.meta.edit')}"><i class="fas fa-tag"></i></button>
             ${running
               ? `<button class="action-btn" data-action="stop" data-id="${c.id}" title="${i18n.t('common.stop')}"><i class="fas fa-stop"></i></button>
@@ -3414,6 +3415,13 @@ const ContainersPage = {
 // Handle action button clicks via event delegation (containers only)
 const _containerActions = new Set(['start', 'stop', 'restart', 'pause', 'unpause', 'remove', 'edit-meta']);
 document.addEventListener('click', (e) => {
+  const basket = e.target.closest('[data-basket-container]');
+  if (basket) {
+    e.stopPropagation();
+    SelectionBasket.add('container', Api.getHostId() || null, basket.dataset.basketContainer, basket.dataset.name || basket.dataset.basketContainer)
+      .catch(error => Toast.error(error.message));
+    return;
+  }
   const btn = e.target.closest('[data-action][data-id]');
   if (!btn) return;
   const action = btn.dataset.action;
