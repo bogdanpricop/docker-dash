@@ -180,6 +180,10 @@ router.use('/migration-factory', require('./migration-factory'));
 // B038-B040 — normalized inventory/content contracts without implicit apply.
 router.use('/platform-foundation', require('./platform-foundation'));
 
+// V1.6b / V2.2b — content lifecycle, guest/console contracts and advanced
+// migration controls reusing the existing durable provider operation engine.
+router.use('/vm-content-mobility', require('./vm-content-mobility'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

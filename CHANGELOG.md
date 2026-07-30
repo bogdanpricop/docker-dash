@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.76.0] - 2026-07-30 — Governed content and VM mobility
+
+This batch closes B041–B044, B047, B049 and B053–B061 by completing the
+content lifecycle and the advanced controls around existing VM migration and
+console executors.
+
+- Digest-bound image replication plans include capacity/format blockers,
+  concurrency, progress and post-copy verification. Template releases are
+  immutable semantic versions with owners, compatibility and deprecation.
+- Dev→test→prod promotion enforces adjacent stages, checks and two approvals
+  for production. VM leases bind expiry, stop/delete intent, owner notification
+  and bounded extensions without silently scheduling destructive work.
+- Graceful shutdown/reboot/script plans require a healthy official guest agent;
+  scripts are immutable reference+digest contracts, never raw content. Console
+  profiles cover noVNC, WebMKS, serial and native SPICE handoff behind the
+  existing single-use, audited protected gateway.
+- Live, cold and storage migration plans bind state, capability, capacity,
+  preflight and post-validation to the existing durable `vm.migrate` engine.
+  Cross-pool/provider workflows add validated maps and evidence boundaries.
+- Bandwidth windows and weighted fair queues govern transfer pressure. Cancel
+  and force-complete require valid native state/evidence, while stage-aware
+  rollback remains a compensated, hash-bound plan with no implicit execution.
+
 ## [8.75.0] - 2026-07-30 — Platform inventory and image lifecycle contracts
 
 This batch closes B011, B012, B016, B017, B019, B020, B023, B034, B036,

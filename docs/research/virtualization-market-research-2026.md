@@ -605,15 +605,15 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B038 | Flavor/service offering mapper | Mapează profil comun la flavor/offering/vendor shape. | Gov | M | Done |
 | B039 | Image library aggregator | ISO/template/image inventory multi-provider cu provenance. | Ops | L | Done |
 | B040 | Image upload/import pipeline | Upload resumable, checksum și format conversion. | DX | L | Done |
-| B041 | Image replication | Distribuie imagini către site-uri/cluster-e cu progress. | Ops | L | Later |
-| B042 | Template versioning | Semver, deprecation, owners și compatibility notes. | Gov | M | Next |
-| B043 | Template promotion flow | Dev→test→prod cu approvals și immutable digest. | Gov | L | Later |
-| B044 | VM lease/TTL | Stop/delete automat cu owner notification și extensions. | Cost | M | Next |
+| B041 | Image replication | Distribuie imagini către site-uri/cluster-e cu progress. | Ops | L | Done |
+| B042 | Template versioning | Semver, deprecation, owners și compatibility notes. | Gov | M | Done |
+| B043 | Template promotion flow | Dev→test→prod cu approvals și immutable digest. | Gov | L | Done |
+| B044 | VM lease/TTL | Stop/delete automat cu owner notification și extensions. | Cost | M | Done |
 | B045 | Scheduled VM actions | Cron start/stop/reboot/snapshot cu blackout windows. | Ops | M | Now |
 | B046 | Guest tools status | Version, health, feature impact și upgrade recommendation. | Ops | M | Now |
-| B047 | Guest graceful command | Shutdown/reboot/script doar prin agentul oficial suportat. | Ops | L | Next |
+| B047 | Guest graceful command | Shutdown/reboot/script doar prin agentul oficial suportat. | Ops | L | Done |
 | B048 | VM console token broker | Token scurt, single-use și scope per VM. | Sig | L | Now |
-| B049 | Multi-protocol console gateway | noVNC/SPICE/WebMKS/serial adapters cu audit. | DX | XL | Next |
+| B049 | Multi-protocol console gateway | noVNC/SPICE/WebMKS/serial adapters cu audit. | DX | XL | Done |
 | B050 | Console emergency lock | Global/provider/VM deny și închiderea sesiunilor active. | Sig | M | Now |
 
 ### C. Migrare, placement, maintenance și HA (B051–B075)
@@ -622,15 +622,15 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 |---|---|---|---|---|---|
 | B051 | Migration capability matrix | Explică live/cold/storage/cross-pool per VM și target. | Ops | M | Now |
 | B052 | Migration compatibility preflight | CPU, devices, storage, network, HA și version checks. | Rez | L | Now |
-| B053 | Live migration action | Selectare/auto-target, progress și post-validation. | Ops | L | Next |
-| B054 | Cold migration action | Migrare orchestrată cu downtime estimate. | Ops | L | Next |
-| B055 | Storage live migration | Relocare disk fără oprire când providerul permite. | Ops | L | Next |
-| B056 | Cross-pool/cluster migration | Mapare storage/network și credential boundary. | Ops | XL | Later |
-| B057 | Cross-provider migration workflow | Export/convert/import plus cutover plan. | DX | XL | Later |
-| B058 | Migration bandwidth control | Throttle, compression și maintenance traffic network. | Ops | M | Next |
-| B059 | Migration queue | Prioritate, concurrency și fair scheduling per fabric. | Ops | L | Next |
-| B060 | Migration abort/force-complete | Acțiuni native gated după state și provider support. | Rez | M | Next |
-| B061 | Migration rollback plan | Pași compensați și recovery instructions per failure stage. | Rez | L | Next |
+| B053 | Live migration action | Selectare/auto-target, progress și post-validation. | Ops | L | Done |
+| B054 | Cold migration action | Migrare orchestrată cu downtime estimate. | Ops | L | Done |
+| B055 | Storage live migration | Relocare disk fără oprire când providerul permite. | Ops | L | Done |
+| B056 | Cross-pool/cluster migration | Mapare storage/network și credential boundary. | Ops | XL | Done |
+| B057 | Cross-provider migration workflow | Export/convert/import plus cutover plan. | DX | XL | Done |
+| B058 | Migration bandwidth control | Throttle, compression și maintenance traffic network. | Ops | M | Done |
+| B059 | Migration queue | Prioritate, concurrency și fair scheduling per fabric. | Ops | L | Done |
+| B060 | Migration abort/force-complete | Acțiuni native gated după state și provider support. | Rez | M | Done |
+| B061 | Migration rollback plan | Pași compensați și recovery instructions per failure stage. | Rez | L | Done |
 | B062 | Maintenance mode runbook | Disable/drain/patch/reboot/rejoin/validate. | Ops | L | Now |
 | B063 | Host evacuation planner | Destination plan, capacity și VM exceptions înainte de drain. | Rez | L | Now |
 | B064 | Batch evacuation | Wave-based migrations cu health gates și pause. | Rez | L | Next |
@@ -1332,6 +1332,15 @@ adaugă planuri linked-clone, profile guest immutable cu secret references și
 mapping de offerings. B039 agregă imagini după digest/provenance, iar B040
 păstrează resumable chunk/checksum receipts și planul de conversie; nu stochează
 bytes și nu pornește clone, cleanup, upload, import sau provider mutation.
+
+**Status implementare V1.6b / V2.2b / v8.76.0:** B041–B044 livrează
+replication plans cu progress/checksum, template semver immutable, promovare
+dev→test→prod și lease-uri VM cu owner notification/extensions. B047 acceptă
+shutdown/reboot sau script ref+digest numai prin agent oficial healthy, iar
+B049 completează profilul noVNC/WebMKS/serial cu SPICE native handoff și audit.
+B053–B055 leagă live/cold/storage controls de executorul durabil vm.migrate
+existent; B056–B061 adaugă cross-pool/provider evidence, bandwidth windows,
+weighted fair queue, native-state cancel/force-complete și rollback pe stadii.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

@@ -33,7 +33,7 @@ describe('GovernanceService (V4.6a)', () => {
   test('seeds the catalog and lets an inherited binding grant only its declared permission', () => {
     const catalog = governance.catalog(admin);
     expect(catalog).toEqual(expect.objectContaining({ globalAdmin: true }));
-    expect(catalog.permissions).toHaveLength(92);
+    expect(catalog.permissions).toHaveLength(95);
     expect(catalog.permissions).toEqual(expect.arrayContaining([
       expect.objectContaining({ permission_key: 'project.read', key: 'project.read' }),
       expect.objectContaining({ permission_key: 'catalog.manage', key: 'catalog.manage' }),
@@ -74,6 +74,9 @@ describe('GovernanceService (V4.6a)', () => {
       expect.objectContaining({ permission_key: 'platform_inventory.manage', key: 'platform_inventory.manage' }),
       expect.objectContaining({ permission_key: 'platform_metadata.manage', key: 'platform_metadata.manage' }),
       expect.objectContaining({ permission_key: 'platform_content.manage', key: 'platform_content.manage' }),
+      expect.objectContaining({ permission_key: 'content_lifecycle.manage', key: 'content_lifecycle.manage' }),
+      expect.objectContaining({ permission_key: 'vm_guest_commands.manage', key: 'vm_guest_commands.manage' }),
+      expect.objectContaining({ permission_key: 'migration_operations.manage', key: 'migration_operations.manage' }),
     ]));
     const site = governance.createScope({
       scopeType: 'site', scopeKey: 'bucharest', displayName: 'Bucharest', parentId: 1,

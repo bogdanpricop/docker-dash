@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.76.0', date: '2026-07-30', title: 'Governed content and VM mobility', changes: [
+      { type: 'feature', text: 'Image replication and immutable semantic template versions add digest, ownership, compatibility, capacity, progress and verification contracts.' },
+      { type: 'security', text: 'Adjacent-stage template promotion, production approvals and owner-notified VM leases keep destructive stop/delete behavior explicit and separately approved.' },
+      { type: 'feature', text: 'Official guest-agent commands use digest-only script references; console profiles cover noVNC, WebMKS, serial and native SPICE handoff through the protected gateway.' },
+      { type: 'feature', text: 'Live, cold and storage controls reuse durable vm.migrate, while cross-pool/provider plans bind mappings, identity boundaries and migration-factory evidence.' },
+      { type: 'improvement', text: 'Bandwidth windows, weighted fair queues, native-state cancel/force-complete gates and stage-aware rollback plans complete advanced migration operations.' },
+    ] },
     { version: '8.75.0', date: '2026-07-30', title: 'Platform inventory and image lifecycle contracts', changes: [
       { type: 'feature', text: 'Cursor-aware common events and strict delta inventory sync add deduplication, hash-only changes and explicit gap rejection across providers.' },
       { type: 'feature', text: 'Dynamic resource collections, typed/versioned metadata and relationship impact graphs add reusable inventory context with bounded selectors and optimistic concurrency.' },

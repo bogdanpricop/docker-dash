@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -34,6 +34,7 @@ const GovernanceControlsPage = {
         Api.getConnectorMarketplace(),
         Api.getMigrationFactory(),
         Api.getPlatformFoundation(),
+        Api.getVmContentMobility(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -41,7 +42,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -75,6 +76,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('connectors', 'fa-plug-circle-bolt', 'Connector marketplace')}
         ${this._tabButton('migration-factory', 'fa-truck-fast', 'Migration factory')}
         ${this._tabButton('platform-foundation', 'fa-cubes-stacked', 'Platform foundation')}
+        ${this._tabButton('vm-content-mobility', 'fa-arrows-left-right-to-line', 'Content & mobility')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -95,6 +97,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'connectors') return this._connectors();
     if (this._tab === 'migration-factory') return this._migrationFactory();
     if (this._tab === 'platform-foundation') return this._platformFoundation();
+    if (this._tab === 'vm-content-mobility') return this._vmContentMobility();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -365,6 +368,19 @@ const GovernanceControlsPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Image import control plane</h3></div><table class="data-table"><thead><tr><th>Session / file</th><th>Format</th><th>Size</th><th>State / plan</th></tr></thead><tbody>${(data.sessions || []).map(item => `<tr><td>#${item.id}<div class="text-xs text-muted">${Utils.escapeHtml(item.fileName)}</div></td><td>${Utils.escapeHtml(item.inputFormat)} → ${Utils.escapeHtml(item.targetFormat)}</td><td>${Utils.formatBytes(item.totalBytes)}</td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : item.state === 'blocked' ? 'badge-danger' : 'badge-secondary'}">${item.state}</span><div class="mono text-xs">${item.planHash ? item.planHash.slice(0, 14) : 'awaiting receipts'}</div></td></tr>`).join('') || this._empty('No image upload receipt sessions', 4)}</tbody></table></div>
       </div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Contract ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Execution boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([kind,count]) => `<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">versioned / hash-bound</span><div class="text-xs text-muted">data-plane execution requires a separately approved adapter</div></td></tr>`).join('') || this._empty('No platform foundation records', 3)}</tbody></table></div>`;
+  },
+
+  _vmContentMobility() {
+    const data = this._data.vmContentMobility || { capabilities: {}, safety: {}, summary: {}, templates: [], migrations: [] };
+    const labels = { imageReplication:'Image replication',templateVersioning:'Template versions',templatePromotion:'Promotion',vmLeaseTtl:'VM leases',guestGracefulCommand:'Guest commands',multiProtocolConsole:'Console protocols',liveMigration:'Live migration',coldMigration:'Cold migration',storageLiveMigration:'Storage migration',crossPoolMigration:'Cross-pool',crossProviderMigration:'Cross-provider',migrationBandwidth:'Bandwidth',migrationQueue:'Fair queue',migrationAbortForceComplete:'Cancel / reconcile',migrationRollback:'Rollback plans' };
+    const total=Object.values(data.summary||{}).reduce((sum,value)=>sum+Number(value||0),0);
+    return `<div class="info-grid">${this._stat('fa-photo-film','Template versions',data.summary?.templateVersions||0)}${this._stat('fa-arrows-left-right','Migration plans',Number(data.summary?.liveMigrations||0)+Number(data.summary?.coldMigrations||0)+Number(data.summary?.storageMigrations||0))}${this._stat('fa-list-ol','Queue policies',data.summary?.queuePolicies||0)}${this._stat('fa-database','Control-plane records',total)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Content and mobility execution boundary</h3><p class="text-muted text-sm">Version, promotion, lease, mapping, queue and rollback records are immutable control-plane evidence. Same-provider live/cold/storage submission reuses the established durable vm.migrate engine; console sessions reuse the protected gateway. Cross-pool/provider, image replication, promotion and rollback expose no implicit executor.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label])=>`<span class="badge ${data.capabilities?.[key]?'badge-success':'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>${data.safety?.providerMutationsStarted||0} implicit mutations</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Managed template versions</h3></div><table class="data-table"><thead><tr><th>Template</th><th>Version</th><th>Owner</th><th>Digest / state</th></tr></thead><tbody>${(data.templates||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.templateKey)}</strong></td><td class="mono">${Utils.escapeHtml(item.version)}</td><td>${Utils.escapeHtml(item.ownerRef)}</td><td class="mono text-xs">${item.digestSha256.slice(0,14)}<div><span class="badge ${item.deprecated?'badge-warning':'badge-success'}">${item.deprecated?'deprecated':'active'}</span></div></td></tr>`).join('')||this._empty('No managed template versions',4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Same-provider migration controls</h3></div><table class="data-table"><thead><tr><th>Mode / resource</th><th>Placement</th><th>State</th><th>Plan</th></tr></thead><tbody>${(data.migrations||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.mode)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceKey)}</div></td><td>${Utils.escapeHtml(item.sourceRef)} → ${Utils.escapeHtml(item.targetRef)}</td><td><span class="badge ${item.state==='ready'?'badge-success':'badge-danger'}">${item.state}</span></td><td class="mono text-xs">${item.planHash.slice(0,14)}</td></tr>`).join('')||this._empty('No migration control plans',4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Content and mobility ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary||{}).map(([kind,count])=>`<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">hash-bound / audited</span><div class="text-xs text-muted">existing executor or separately approved adapter only</div></td></tr>`).join('')||this._empty('No content or mobility evidence',3)}</tbody></table></div>`;
   },
 
   _hardware() {

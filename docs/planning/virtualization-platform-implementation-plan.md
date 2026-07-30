@@ -111,6 +111,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V1.7 | Cloud-init/guest customization | B035 structured subset; B036 foundation; C028/C029 | Proxmox, vSphere, Xen |
 | V1.8 | Console gateway | B048–B050 | noVNC/RFB, WebMKS și serial, token scurt, credential isolation și audit |
 | V1.9 | Disk și NIC inventory uniform | B076, B085–B086 (read model), B101 | detail live, topology și hot-plug capability evidence; mutațiile rămân în V4.1/V4.3 |
+| V1.6b / V2.2b | Content lifecycle și VM mobility controls | B041–B044, B047, B049, B053–B061 | Complet: image/template lifecycle, leases/guest/console și migration control contracts peste executorii existenți |
 
 **Exit:** cel puțin trei ecosisteme permit inspectare, power, snapshot, clone și provisioning controlat.
 
