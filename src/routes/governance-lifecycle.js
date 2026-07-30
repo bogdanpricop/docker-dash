@@ -168,6 +168,10 @@ router.use('/hardware', require('./hardware-performance'));
 // subprocess sandbox, compatibility gates and payload-free health telemetry.
 router.use('/plugins', require('./provider-plugins'));
 
+// V5.8b / B406-B415 — signed connector marketplace and secret-free CMDB,
+// ITSM, SIEM, secrets, IPAM/DNS, backup, monitoring, event-bus/OpenAPI plans.
+router.use('/connectors', require('./connector-marketplace'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

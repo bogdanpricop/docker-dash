@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.73.0] - 2026-07-30 — Signed connector marketplace and integration contracts
+
+The B406–B415 batch completes the provider connector backlog with a signed,
+secret-free and fail-closed integration control plane.
+
+- Connector marketplace manifests require canonical Ed25519 signatures and
+  declare publisher, support level, domains, products and exact HTTPS hosts.
+- CMDB plans enforce per-field ownership; ITSM links gate on approval and exact
+  change windows. SIEM events use a normalized schema and never store raw
+  payloads; secret managers retain provider-native references only.
+- IPAM/DNS lifecycle is ownership/version-bound and plan-only. Backup adapters
+  normalize job/recovery visibility, while monitoring targets require explicit
+  metric/label allowlists and a host signed into the manifest.
+- Kafka/NATS/AMQP/SNS/SQS publications are schema-bound plans. Generic OpenAPI
+  operations require exact host, method, path, risk and query/body allowlists;
+  prototypes return hashes and start no network call.
+- A dedicated governance tab exposes signed entries and the integration
+  contract ledger. Every accepted write is audited and external mutations,
+  publishes and network requests remain zero in this surface.
+
 ## [8.72.0] - 2026-07-30 — Advanced performance and signed provider plugins
 
 The B396–B405 batch completes performance evidence and establishes a

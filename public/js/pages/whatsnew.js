@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.73.0', date: '2026-07-30', title: 'Signed connector marketplace and integration contracts', changes: [
+      { type: 'security', text: 'Connector marketplace entries require canonical Ed25519 signatures and declare publisher, support level, domains, products and exact allowed HTTPS hosts.' },
+      { type: 'feature', text: 'CMDB ownership plans, ITSM approval/change-window gates, normalized SIEM events and provider-native secret references add bounded enterprise integration contracts.' },
+      { type: 'feature', text: 'IPAM/DNS lifecycle plans retain ownership and expected-version guards; backup adapters normalize job/recovery visibility and monitoring targets allowlist metrics and labels.' },
+      { type: 'security', text: 'Event-bus publications are schema-bound plans. Generic OpenAPI prototypes enforce signed host plus operation/query/body allowlists and start no network call.' },
+      { type: 'improvement', text: 'A dedicated Connector Marketplace governance tab exposes signed entries, domain coverage and a zero-implicit-execution contract ledger.' },
+    ] },
     { version: '8.72.0', date: '2026-07-30', title: 'Advanced performance and signed provider plugins', changes: [
       { type: 'feature', text: 'VM compatibility scans compare recorded CPU, memory and device requirements with target host and provider-version evidence without starting migration or placement.' },
       { type: 'feature', text: 'Controlled hardware benchmarks, colocated noisy-neighbor correlation and direction-aware before/after comparison add explicit evidence and regression thresholds.' },

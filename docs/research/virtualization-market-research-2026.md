@@ -1276,16 +1276,16 @@ nu pornesc migration, placement sau reconfigurare.
 | B403 | Plugin permission consent | Explicit read/write/secrets/network capabilities. | Gov | M | Done |
 | B404 | Plugin compatibility checker | Core/API/version/schema conformance before enable. | Rez | M | Done |
 | B405 | Plugin health and telemetry | Crashes/latency/rate/errors fără payload secrets. | Ops | M | Done |
-| B406 | Connector marketplace registry | Curated metadata, signatures și support level. | DX | L | Later |
-| B407 | CMDB connector | NetBox/ServiceNow/GLPI sync cu ownership rules. | Gov | L | Next |
-| B408 | ITSM change connector | Ticket/change-window/approval/evidence links. | Gov | L | Next |
-| B409 | SIEM connector pack | Splunk/Elastic/Sentinel/syslog normalized events. | Sig | L | Next |
-| B410 | Secrets manager connectors | Vault/Key Vault/Secrets Manager/1Password refs. | Sig | L | Next |
-| B411 | IPAM/DNS connector pack | NetBox/Infoblox/PowerDNS/Route53 lifecycle. | Ops | L | Next |
-| B412 | Backup vendor connector API | Veeam/Commvault/Rubrik/HYCU job/recovery visibility. | Rez | XL | Later |
-| B413 | Monitoring connector pack | Prometheus/Grafana/Datadog/Zabbix/PRTG. | Ops | L | Next |
-| B414 | Message/event bus integration | Kafka/NATS/AMQP/SNS/SQS publish with schema. | Ops | L | Later |
-| B415 | Generic OpenAPI connector | Read/action prototypes with strict allowlist. | DX | XL | Later |
+| B406 | Connector marketplace registry | Curated metadata, signatures și support level. | DX | L | Done |
+| B407 | CMDB connector | NetBox/ServiceNow/GLPI sync cu ownership rules. | Gov | L | Done |
+| B408 | ITSM change connector | Ticket/change-window/approval/evidence links. | Gov | L | Done |
+| B409 | SIEM connector pack | Splunk/Elastic/Sentinel/syslog normalized events. | Sig | L | Done |
+| B410 | Secrets manager connectors | Vault/Key Vault/Secrets Manager/1Password refs. | Sig | L | Done |
+| B411 | IPAM/DNS connector pack | NetBox/Infoblox/PowerDNS/Route53 lifecycle. | Ops | L | Done |
+| B412 | Backup vendor connector API | Veeam/Commvault/Rubrik/HYCU job/recovery visibility. | Rez | XL | Done |
+| B413 | Monitoring connector pack | Prometheus/Grafana/Datadog/Zabbix/PRTG. | Ops | L | Done |
+| B414 | Message/event bus integration | Kafka/NATS/AMQP/SNS/SQS publish with schema. | Ops | L | Done |
+| B415 | Generic OpenAPI connector | Read/action prototypes with strict allowlist. | DX | XL | Done |
 | B416 | Migration assessment scanner | Source inventory, dependencies, blockers și target candidates. | DX | XL | Next |
 | B417 | VM format conversion worker | Sandboxed qemu-img/virt-v2v with checksums. | DX | XL | Later |
 | B418 | Migration network mapper | VLAN/subnet/security/IP target translation. | Ops | L | Next |
@@ -1305,6 +1305,15 @@ worker JSON-RPC fix într-un proces separat, 32 MiB/2 secunde/16 KiB output,
 environment gol, fără plugin code/path/endpoint și fără payload în răspuns.
 Health telemetry acceptă exclusiv latency/request/error/crash aggregates și
 respinge câmpuri suplimentare sau credential-shaped.
+
+**Status implementare V5.8b / v8.73.0:** B406–B415 închid backlog-ul de
+conectori cu marketplace metadata semnată Ed25519 și support level explicit.
+CMDB păstrează ownership per field, ITSM leagă ticket/approval/window/evidence,
+SIEM normalizează fără raw payload, iar Vault/Key Vault/Secrets Manager/
+1Password păstrează exclusiv referințe. IPAM/DNS produce planuri legate de
+ownership token și expected version; backup și monitoring normalizează numai
+visibility/allowlist evidence. Event bus și OpenAPI sunt schema/operation/field
+allowlisted, persistă planuri hash-bound și pornesc zero request-uri externe.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

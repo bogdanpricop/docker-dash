@@ -163,7 +163,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
 | V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | Livrat: V5.6a B301–B305, V5.6b B306–B315 și V5.6c B316; discovery/inventory, guarded CDI/templates și topologie VM/pod |
 | V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
-| V5.8 | Provider plugin SDK & connectors | B401–B415 | V5.8a livrează B401–B405: Ed25519 manifest, consent, fixed-RPC subprocess sandbox, compatibility și payload-free health; B406–B415 rămân |
+| V5.8 | Provider plugin SDK & connectors | B401–B415 | Complet: V5.8a livrează signed manifests/sandbox/consent/compatibility/health, iar V5.8b marketplace și CMDB/ITSM/SIEM/secrets/IPAM/backup/monitoring/event-bus/OpenAPI contracts |
 
 **Exit:** providerii se adaugă prin contract și conformance, fără schimbări structurale în nucleu.
 

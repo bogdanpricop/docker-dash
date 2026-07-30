@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -31,6 +31,7 @@ const GovernanceControlsPage = {
         Api.getHardwareDevices(),
         Api.getHardwareAdvanced(),
         Api.getProviderPlugins(),
+        Api.getConnectorMarketplace(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -38,7 +39,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -69,6 +70,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('finops', 'fa-coins', 'FinOps')}
         ${this._tabButton('hardware', 'fa-microchip', 'Hardware & performance')}
         ${this._tabButton('plugins', 'fa-puzzle-piece', 'Provider plugins')}
+        ${this._tabButton('connectors', 'fa-plug-circle-bolt', 'Connector marketplace')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -86,6 +88,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'finops') return this._finops();
     if (this._tab === 'hardware') return this._hardware();
     if (this._tab === 'plugins') return this._plugins();
+    if (this._tab === 'connectors') return this._connectors();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -321,6 +324,19 @@ const GovernanceControlsPage = {
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Sandbox evidence</h3></div><table class="data-table"><thead><tr><th>Plugin / method</th><th>Status</th><th>Boundary</th><th>Evidence</th></tr></thead><tbody>${(data.runs || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.pluginKey)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.method)}</div></td><td><span class="badge ${item.status === 'passed' ? 'badge-success' : 'badge-danger'}">${item.status}</span><div class="text-xs text-muted">${item.durationMs} ms</div></td><td>fixed worker · no plugin code<div class="text-xs text-muted">payload returned: ${item.payloadReturned ? 'yes' : 'no'} · network endpoint: none</div></td><td class="mono text-xs">${item.requestHash.slice(0, 12)}${item.responseHash ? ` / ${item.responseHash.slice(0, 12)}` : ''}</td></tr>`).join('') || this._empty('No sandbox probe evidence', 4)}</tbody></table></div>`;
   },
 
+  _connectors() {
+    const data = this._data.connectorMarketplace || { capabilities: {}, contract: {}, entries: [], summary: {} };
+    const total = Object.values(data.summary || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    const actions = [['marketplace','Signed entry'],['cmdb','CMDB sync'],['itsm','ITSM change'],['siem','SIEM event'],['secrets','Secret ref'],['ipam','IPAM / DNS'],['backup','Backup evidence'],['monitoring','Monitoring target'],['eventbus','Event publication'],['openapi','OpenAPI allowlist'],['prototype','OpenAPI prototype']]
+      .map(([kind,label], index) => `<button class="btn ${index === 0 ? 'btn-primary' : 'btn-secondary'} btn-sm" data-gc-connector-action="${kind}"><i class="fas fa-${index === 0 ? 'signature' : 'file-code'}"></i> ${label}</button>`).join('');
+    const capabilityLabels = { connectorMarketplaceRegistry: 'Signed registry', cmdbConnector: 'CMDB', itsmChangeConnector: 'ITSM', siemConnectorPack: 'SIEM', secretsManagerConnectors: 'Secret refs', ipamDnsConnectorPack: 'IPAM / DNS', backupVendorConnectorApi: 'Backup', monitoringConnectorPack: 'Monitoring', eventBusIntegration: 'Event bus', genericOpenApiConnector: 'OpenAPI' };
+    return `${this._actions(actions)}
+      <div class="info-grid">${this._stat('fa-store', 'Signed entries', data.entries.length)}${this._stat('fa-diagram-project', 'Recorded contracts', total)}${this._stat('fa-key', 'Secret values stored', 0)}${this._stat('fa-network-wired', 'Network calls started', 0)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Connector marketplace safety boundary</h3><p class="text-muted text-sm">Marketplace metadata is Ed25519-signed. Endpoints must match an exact HTTPS host signed into the manifest. Secret managers store references only; CMDB, IPAM/DNS, monitoring, event-bus and OpenAPI actions create allowlisted, hash-bound control-plane plans and do not send traffic in this surface.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(capabilityLabels).map(([key,label]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-secondary mono">schema ${Utils.escapeHtml(data.contract?.schemaVersion || '—')} · ${Utils.escapeHtml(data.contract?.endpointPolicy || 'fail closed')}</span></div></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Curated connector entries</h3></div><table class="data-table"><thead><tr><th>Connector / publisher</th><th>Support</th><th>Domains</th><th>Products</th><th>Signed hosts / evidence</th></tr></thead><tbody>${(data.entries || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.connectorKey)}@${Utils.escapeHtml(item.version)} · ${Utils.escapeHtml(item.publisher)}</div></td><td><span class="badge ${item.supportLevel === 'official' ? 'badge-success' : item.supportLevel === 'partner' ? 'badge-warning' : 'badge-secondary'}">${Utils.escapeHtml(item.supportLevel)}</span></td><td>${item.domains.map(value => `<span class="badge badge-secondary">${Utils.escapeHtml(value)}</span>`).join(' ')}</td><td>${item.products.slice(0, 8).map(value => `<span class="badge badge-secondary">${Utils.escapeHtml(value)}</span>`).join(' ')}${item.products.length > 8 ? `<span class="text-xs text-muted"> +${item.products.length - 8}</span>` : ''}</td><td>${item.allowedHosts.map(Utils.escapeHtml).join(', ') || 'none'}<div class="mono text-xs">Ed25519 ${item.signatureState} · ${item.manifestHash.slice(0, 12)}</div></td></tr>`).join('') || this._empty('No signed connector entries. Register a reviewed manifest before creating an integration contract.', 5)}</tbody></table></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Integration contract ledger</h3></div><table class="data-table"><thead><tr><th>Domain</th><th>Records</th><th>Execution boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([domain,count]) => `<tr><td><strong>${Utils.escapeHtml(domain)}</strong></td><td>${count}</td><td><span class="badge badge-success">planned / evidence only</span><div class="text-xs text-muted">0 implicit network calls or external mutations</div></td></tr>`).join('') || this._empty('No connector contracts recorded', 3)}</tbody></table></div>`;
+  },
+
   _hardware() {
     const data = this._data.hardwarePerformance || { capabilities: {}, safety: {}, snapshots: [], policies: [] };
     const devices = this._data.hardwareDevices || { capabilities: {}, safety: {}, snapshots: [], allocations: [], metrics: [], reservations: [] };
@@ -508,6 +524,39 @@ const GovernanceControlsPage = {
   },
   async _pluginCheck(pluginKey) { try { this._showHardwareResult(`Plugin compatibility · ${pluginKey}`, await Api.getProviderPluginCompatibility(pluginKey)); } catch (error) { Toast.error(error.message); } },
   async _pluginToggle(pluginKey, enabled) { if (!await Modal.confirm(`${enabled ? 'Disable' : 'Enable'} ${pluginKey}? Enable is rejected until every signature, version, schema and consent check passes.`)) return; try { await Api.setProviderPluginEnabled(pluginKey, !enabled); Toast.success(`Plugin ${enabled ? 'disabled' : 'enabled'}`); await this.render(this._container); } catch (error) { Toast.error(error.message); } },
+  async _connectorActionDialog(kind) {
+    const now = new Date(); const start = new Date(now.getTime() - 60000).toISOString(); const end = new Date(now.getTime() + 3600000).toISOString(); const observed = now.toISOString();
+    const samples = {
+      marketplace: { manifest: { schemaVersion: '1.0', connectorKey: 'enterprise-connectors', name: 'Enterprise connector pack', version: '1.0.0', publisher: 'Example publisher', supportLevel: 'partner', domains: ['cmdb','itsm','siem','secrets','ipam_dns','backup','monitoring','event_bus','openapi'], products: ['netbox','servicenow','splunk','vault','infoblox','veeam','prometheus','kafka','generic_openapi'], allowedHosts: ['api.example.test','monitor.example.test'], docsUrl: 'https://docs.example.test/connectors' }, publicKeyPem: '', signatureBase64: '' },
+      cmdb: { connectorKey: 'enterprise-connectors', product: 'netbox', direction: 'bidirectional', resourceType: 'vm', resourceRef: 'vm-42', ownershipRules: { owner: 'cmdb', powerState: 'docker-dash' }, changes: [{ field: 'owner', operation: 'set', owner: 'cmdb', valueHash: '0'.repeat(64) }], conflicts: [] },
+      itsm: { connectorKey: 'enterprise-connectors', product: 'servicenow', ticketRef: 'CHG001', ticketUrl: 'https://itsm.example.test/change/CHG001', windowStart: start, windowEnd: end, approvalState: 'approved', evidenceLinks: ['https://evidence.example.test/change/CHG001'], evaluatedAt: observed },
+      siem: { connectorKey: 'enterprise-connectors', product: 'splunk', eventType: 'vm.policy.denied', occurredAt: observed, severity: 'warning', resourceRef: 'vm-42', correlationId: 'change-42', attributes: { policy: 'production-guard', result: 'denied' } },
+      secrets: { connectorKey: 'enterprise-connectors', product: 'vault', referenceUri: 'vault://kv/docker-dash/connector', purpose: 'connector_auth', scopes: ['inventory.read'] },
+      ipam: { connectorKey: 'enterprise-connectors', product: 'infoblox', action: 'create', resourceRef: 'vm-42', recordType: 'A', address: '10.20.30.42', fqdn: 'vm42.example.test', ownershipToken: 'reservation-42', expectedVersion: 'etag-1' },
+      backup: { connectorKey: 'enterprise-connectors', product: 'veeam', jobRef: 'job-42', workloadRef: 'vm-42', status: 'success', lastRunAt: observed, recoveryPoints: [{ id: 'rp-42', createdAt: observed, type: 'incremental', verified: true, sizeBytes: 0 }] },
+      monitoring: { connectorKey: 'enterprise-connectors', product: 'prometheus', endpointOrigin: 'https://monitor.example.test', mode: 'pull', metricAllowlist: ['vm_cpu_usage'], labelAllowlist: ['host_id'] },
+      eventbus: { connectorKey: 'enterprise-connectors', product: 'kafka', channel: 'docker-dash.events.v1', schemaRef: 'urn:docker-dash:event:1.0', event: { eventType: 'vm.changed', occurredAt: observed, subject: 'vm-42', data: { state: 'running' } } },
+      openapi: { connectorKey: 'enterprise-connectors', operationKey: 'vm_read', endpointOrigin: 'https://api.example.test', method: 'GET', path: '/v1/vms', risk: 'read', allowedQuery: ['id'], allowedBody: [], responseSchemaHash: '0'.repeat(64) },
+      prototype: { connectorKey: 'enterprise-connectors', operationKey: 'vm_read', query: { id: 'vm-42' }, body: {} },
+    };
+    const labels = { marketplace: 'Register signed marketplace entry', cmdb: 'CMDB ownership sync plan', itsm: 'ITSM change gate', siem: 'Normalized SIEM event', secrets: 'Secret manager reference', ipam: 'IPAM / DNS lifecycle plan', backup: 'Backup job visibility', monitoring: 'Monitoring target allowlist', eventbus: 'Schema-bound event publication', openapi: 'OpenAPI operation allowlist', prototype: 'OpenAPI request prototype' };
+    const calls = {
+      marketplace: value => Api.registerConnectorMarketplaceEntry(value),
+      cmdb: value => { const { connectorKey, ...body } = value; return Api.planConnectorCmdbSync(connectorKey, body); },
+      itsm: value => { const { connectorKey, ...body } = value; return Api.linkConnectorItsmChange(connectorKey, body); },
+      siem: value => { const { connectorKey, ...body } = value; return Api.normalizeConnectorSiemEvent(connectorKey, body); },
+      secrets: value => { const { connectorKey, ...body } = value; return Api.bindConnectorSecretReference(connectorKey, body); },
+      ipam: value => { const { connectorKey, ...body } = value; return Api.planConnectorIpamDns(connectorKey, body); },
+      backup: value => { const { connectorKey, ...body } = value; return Api.recordConnectorBackupObservation(connectorKey, body); },
+      monitoring: value => { const { connectorKey, ...body } = value; return Api.saveConnectorMonitoringTarget(connectorKey, body); },
+      eventbus: value => { const { connectorKey, ...body } = value; return Api.planConnectorEventPublication(connectorKey, body); },
+      openapi: value => { const { connectorKey, ...body } = value; return Api.saveConnectorOpenApiOperation(connectorKey, body); },
+      prototype: value => { const { connectorKey, operationKey, ...body } = value; return Api.prototypeConnectorOpenApiRequest(connectorKey, operationKey, body); },
+    };
+    const result = await Modal.form(`<div class="alert alert-info text-sm">No connector network request is performed by this control-plane batch. Metadata signatures, exact HTTPS hosts, ownership/version tokens and field allowlists are verified before the contract is stored.</div><label for="gc-connector-json" class="form-label">Contract JSON</label><textarea id="gc-connector-json" class="form-control mono" rows="22">${Utils.escapeHtml(JSON.stringify(samples[kind], null, 2))}</textarea>`,
+      { title: labels[kind], width: '980px', onSubmit: c => this._submit(() => calls[kind](JSON.parse(c.querySelector('#gc-connector-json').value))) });
+    if (result) { Toast.success(`${labels[kind]} recorded`); await this.render(this._container); }
+  },
 
   _finops() {
     const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
@@ -706,6 +755,7 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-plugin-health')?.addEventListener('click', () => this._pluginHealthDialog());
     this._container.querySelectorAll('[data-gc-plugin-check]').forEach(button => button.addEventListener('click', () => this._pluginCheck(button.dataset.gcPluginCheck)));
     this._container.querySelectorAll('[data-gc-plugin-enable]').forEach(button => button.addEventListener('click', () => this._pluginToggle(button.dataset.gcPluginEnable, button.dataset.enabled === 'true')));
+    this._container.querySelectorAll('[data-gc-connector-action]').forEach(button => button.addEventListener('click', () => this._connectorActionDialog(button.dataset.gcConnectorAction)));
     for (const kind of ['numa', 'huge', 'memory']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareHostAnalysis(kind === 'huge' ? 'hugepages' : kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`])));
     for (const kind of ['fit', 'rt']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareVmAnalysis(kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`], button.dataset.hostId)));
     this._container.querySelector('#gc-performance-chart')?.addEventListener('click', () => this._performanceDialog());

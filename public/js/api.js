@@ -1652,6 +1652,18 @@ const Api = {
   setProviderPluginEnabled(pluginKey, enabled) { return this.put(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/enabled`, { enabled }); },
   probeProviderPluginSandbox(pluginKey, body) { return this.post(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/sandbox-probes`, body); },
   recordProviderPluginHealth(pluginKey, body) { return this.post(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/health`, body); },
+  getConnectorMarketplace() { return this.get('/governance/lifecycle/connectors'); },
+  registerConnectorMarketplaceEntry(body) { return this.post('/governance/lifecycle/connectors/marketplace', body); },
+  planConnectorCmdbSync(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/cmdb-syncs`, body); },
+  linkConnectorItsmChange(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/itsm-changes`, body); },
+  normalizeConnectorSiemEvent(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/siem-events`, body); },
+  bindConnectorSecretReference(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/secret-references`, body); },
+  planConnectorIpamDns(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/ipam-dns-plans`, body); },
+  recordConnectorBackupObservation(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/backup-observations`, body); },
+  saveConnectorMonitoringTarget(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/monitoring-targets`, body); },
+  planConnectorEventPublication(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/event-publications`, body); },
+  saveConnectorOpenApiOperation(connectorKey, body) { return this.put(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations`, body); },
+  prototypeConnectorOpenApiRequest(connectorKey, operationKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations/${encodeURIComponent(operationKey)}/prototypes`, body); },
 
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
