@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -28,6 +28,7 @@ const GovernanceControlsPage = {
         Api.getFinOpsOptimization(),
         Api.getFinOpsSustainability(),
         Api.getHardwarePerformance(),
+        Api.getHardwareDevices(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -35,7 +36,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -306,13 +307,18 @@ const GovernanceControlsPage = {
 
   _hardware() {
     const data = this._data.hardwarePerformance || { capabilities: {}, safety: {}, snapshots: [], policies: [] };
+    const devices = this._data.hardwareDevices || { capabilities: {}, safety: {}, snapshots: [], allocations: [], metrics: [], reservations: [] };
     const workloads = (data.snapshots || []).flatMap(host => (host.hardware?.vms || []).map(vm => ({ ...vm, hostId: host.hostId, hostRef: host.hostRef })));
     const capabilityLabels = {
       hostHardwareInventory: 'Host inventory', hardwareCompatibilityTags: 'Compatibility tags', cpuFeatureBaseline: 'CPU baseline',
       cpuCompatibilityPolicyEditor: 'CPU policy editor', numaTopology: 'NUMA topology', vmNumaFit: 'VM NUMA fit',
       cpuPinningInventory: 'CPU pinning', realtimeWorkloadProfile: 'Real-time profile', hugepageCapacity: 'Hugepages', memoryOvercommit: 'Memory overcommit',
     };
-    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-hardware-cluster"><i class="fas fa-table-cells"></i> Cluster analysis</button>
+    return `${this._actions(`<button class="btn btn-secondary btn-sm" id="gc-device-allocation"><i class="fas fa-plug-circle-check"></i> Device allocation plan</button>
+      <button class="btn btn-secondary btn-sm" id="gc-device-metrics"><i class="fas fa-chart-line"></i> GPU metrics</button>
+      <button class="btn btn-secondary btn-sm" id="gc-device-reservation"><i class="fas fa-calendar-check"></i> Accelerator reservation</button>
+      <button class="btn btn-secondary btn-sm" id="gc-device-snapshot"><i class="fas fa-file-circle-plus"></i> Device snapshot</button>
+      <button class="btn btn-secondary btn-sm" id="gc-hardware-cluster"><i class="fas fa-table-cells"></i> Cluster analysis</button>
       <button class="btn btn-secondary btn-sm" id="gc-hardware-policy"><i class="fas fa-sliders"></i> CPU compatibility policy</button>
       <button class="btn btn-primary btn-sm" id="gc-hardware-snapshot"><i class="fas fa-file-import"></i> Record snapshot</button>`) }
       <div class="info-grid">
@@ -335,6 +341,15 @@ const GovernanceControlsPage = {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
         <div class="card" style="overflow:auto"><div class="card-header"><h3>CPU compatibility policies</h3></div><table class="data-table"><thead><tr><th>Cluster</th><th>Mode / adapter</th><th>Baseline</th><th>State</th></tr></thead><tbody>${(data.policies || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.clusterRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.providerType)}</div></td><td>${Utils.escapeHtml(item.mode)}<div class="mono text-xs">${Utils.escapeHtml(item.changePlan.adapter)} · ${item.adapterState}</div></td><td>${item.baselineFeatures.length} features<div class="mono text-xs">${item.planHash.slice(0, 12)}</div></td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-danger'}">${item.state}</span><div class="text-xs text-muted">${item.blockers.length} blockers · no apply</div></td></tr>`).join('') || this._empty('No desired CPU compatibility policies', 4)}</tbody></table></div>
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Workload placement evidence</h3></div><table class="data-table"><thead><tr><th>Workload / host</th><th>CPU</th><th>Memory / hugepages</th><th>Checks</th></tr></thead><tbody>${workloads.map(vm => `<tr><td><strong>${Utils.escapeHtml(vm.name)}</strong><div class="mono text-xs">${Utils.escapeHtml(vm.resourceKey)} · ${Utils.escapeHtml(vm.hostRef)}</div></td><td>${vm.vcpus} vCPU · ${vm.cpuPinning.length} pinned<div class="text-xs text-muted">${vm.dedicatedCpu ? 'dedicated' : 'shared'} · ${vm.latencySensitivity}</div></td><td>${Utils.formatBytes(vm.memoryBytes)}<div class="text-xs text-muted">${vm.hugepageSizeKb ? `${vm.hugepageSizeKb} KiB pages` : 'regular pages'} · balloon ${Utils.formatBytes(vm.balloonBytes)}</div></td><td><button class="action-btn" data-gc-hw-fit="${Utils.escapeHtml(vm.resourceKey)}" data-host-id="${vm.hostId}" title="NUMA fit"><i class="fas fa-puzzle-piece"></i></button><button class="action-btn" data-gc-hw-rt="${Utils.escapeHtml(vm.resourceKey)}" data-host-id="${vm.hostId}" title="Real-time profile"><i class="fas fa-stopwatch"></i></button></td></tr>`).join('') || this._empty('No workload placement evidence', 4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Devices &amp; accelerators evidence boundary</h3><p class="text-muted text-sm">PCI, SR-IOV, GPU/vGPU and USB observations are bounded and credential-free. Allocation and reservation actions persist conflict-checked control-plane plans only; provider attach/detach is deliberately unavailable.</p></div></div>
+        <div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries({ memoryTiering:'Memory tiering', pciInventory:'PCI inventory', pciPassthroughPlan:'PCI passthrough plan', sriovVfAllocator:'SR-IOV VF allocator', gpuInventory:'GPU inventory', gpuPassthroughPlan:'GPU plan', vgpuProfileAllocator:'vGPU profiles', gpuMetrics:'GPU metrics', acceleratorReservations:'Reservations', usbInventory:'USB inventory' }).map(([key,label]) => `<span class="badge ${devices.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}
+          <span class="badge badge-success"><i class="fas fa-shield" style="margin-right:4px"></i>${devices.safety?.providerMutationsStarted || 0} provider mutations</span></div></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Latest device inventory</h3></div><table class="data-table"><thead><tr><th>Host / evidence</th><th>Memory tiers</th><th>PCI / VF</th><th>GPU / profiles</th><th>USB</th><th>Inspect</th></tr></thead><tbody>${(devices.snapshots || []).map(item => { const inventory = item.inventory || {}; const vfs = (inventory.pciDevices || []).filter(device => device.kind === 'vf').length; const profiles = (inventory.gpus || []).reduce((sum, gpu) => sum + (gpu.profiles || []).length, 0); return `<tr><td><strong>Host #${item.hostId}</strong><div class="mono text-xs">${item.evidenceHash.slice(0, 12)}</div><div class="text-xs text-muted">${new Date(item.observedAt).toLocaleString()}</div></td><td>${(inventory.memoryTiers || []).length}</td><td>${(inventory.pciDevices || []).length}<div class="text-xs text-muted">${vfs} virtual functions</div></td><td>${(inventory.gpus || []).length}<div class="text-xs text-muted">${profiles} profiles</div></td><td>${(inventory.usbDevices || []).length}</td><td>${['memory','pci','gpus','usb'].map(kind => `<button class="action-btn" data-gc-device-${kind}="${item.hostId}" title="${kind}"><i class="fas ${kind === 'memory' ? 'fa-layer-group' : kind === 'pci' ? 'fa-microchip' : kind === 'gpus' ? 'fa-display' : 'fa-usb'}"></i></button>`).join('')}</td></tr>`; }).join('') || this._empty('No device snapshots recorded', 6)}</tbody></table></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Device allocation plans</h3></div><table class="data-table"><thead><tr><th>Device / profile</th><th>Target</th><th>State</th><th></th></tr></thead><tbody>${(devices.allocations || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.deviceRef)}</strong><div class="text-xs text-muted">${Utils.escapeHtml(item.kind)}${item.profileName ? ` · ${Utils.escapeHtml(item.profileName)}` : ''}</div></td><td class="mono text-xs">${Utils.escapeHtml(item.targetResourceKey)}</td><td><span class="badge ${item.state === 'planned' ? 'badge-warning' : 'badge-secondary'}">${item.state}</span><div class="mono text-xs">${item.planHash.slice(0, 12)} · no apply</div></td><td>${item.state === 'planned' ? `<button class="action-btn danger" data-gc-device-release="${item.id}" title="Release control-plane plan"><i class="fas fa-xmark"></i></button>` : ''}</td></tr>`).join('') || this._empty('No allocation plans', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Accelerator reservations</h3></div><table class="data-table"><thead><tr><th>Device / tenant</th><th>Window</th><th>Purpose</th></tr></thead><tbody>${(devices.reservations || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.deviceRef)}</strong><div class="text-xs text-muted">${item.profileName ? Utils.escapeHtml(item.profileName) : 'full device'} · tenant #${item.tenantId}</div></td><td>${new Date(item.startsAt).toLocaleString()}<div class="text-xs text-muted">→ ${new Date(item.endsAt).toLocaleString()}</div></td><td>${Utils.escapeHtml(item.purpose)}<div class="text-xs text-muted">reservation only · no provider mutation</div></td></tr>`).join('') || this._empty('No active reservations', 3)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Latest accelerator telemetry</h3></div><table class="data-table"><thead><tr><th>GPU / resource</th><th>Utilization</th><th>Health</th></tr></thead><tbody>${(devices.metrics || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.deviceRef)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceKey || 'unassigned')}</div></td><td>SM ${item.metrics.smPercent}% · memory ${item.metrics.memoryPercent}%<div class="text-xs text-muted">encoder ${item.metrics.encoderPercent}%</div></td><td>${item.metrics.eccErrors} ECC<div class="text-xs text-muted">${(item.metrics.throttleReasons || []).map(Utils.escapeHtml).join(', ') || 'no throttle reason'}</div></td></tr>`).join('') || this._empty('No accelerator metrics', 3)}</tbody></table></div>
       </div>`;
   },
 
@@ -370,6 +385,47 @@ const GovernanceControlsPage = {
   },
   async _hardwareVmAnalysis(kind, resourceKey, hostId) {
     try { const result = kind === 'fit' ? await Api.getHardwareVmNumaFit(resourceKey, hostId) : await Api.getHardwareRealtimeProfile(resourceKey, hostId); this._showHardwareResult(`${kind === 'fit' ? 'NUMA fit' : 'Real-time profile'} · ${resourceKey}`, result); } catch (error) { Toast.error(error.message); }
+  },
+  async _deviceSnapshotDialog() {
+    const sample = { hostId: 1, observedAt: new Date().toISOString(),
+      memoryTiers: [{ kind: 'dram', capacityBytes: 274877906944, usedBytes: 68719476736, hitRatePercent: 99.5, workloadImpact: 'primary memory' }],
+      pciDevices: [{ id: 'pci-gpu-0', address: '0000:65:00.0', vendor: 'NVIDIA', model: 'L40S', classCode: '0302', iommuGroup: 42, numaNode: 0, resetSupported: true, acsIsolated: true, kind: 'gpu', driver: 'vfio-pci', health: 'healthy' }],
+      gpus: [{ id: 'gpu-0', pciRef: 'pci-gpu-0', vendor: 'NVIDIA', model: 'L40S', memoryBytes: 51539607552, driverVersion: '550.90', health: 'healthy', migCapable: true, profiles: [{ name: '1g.12gb', total: 4, available: 2, memoryBytes: 12884901888, licenseState: 'licensed' }] }],
+      usbDevices: [{ id: 'usb-1-2', vendorId: '046d', productId: 'c534', vendor: 'Logitech', model: 'Receiver', busPath: '1-2', owner: 'workplace', mobility: 'remappable' }] };
+    const result = await Modal.form(`<div class="alert alert-info text-sm">Credential-shaped fields and payloads above 512 KiB are rejected. The snapshot is immutable evidence.</div><label for="gc-device-json" class="form-label">Normalized device snapshot JSON</label><textarea id="gc-device-json" class="form-control mono" rows="22">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea>`,
+      { title: 'Record device and accelerator evidence', width: '960px', onSubmit: c => this._submit(() => Api.recordHardwareDeviceSnapshot(JSON.parse(c.querySelector('#gc-device-json').value))) });
+    if (result) { Toast.success(result.snapshot.duplicate ? 'Existing device evidence reused' : 'Device snapshot recorded'); await this.render(this._container); }
+  },
+  async _deviceAllocationDialog() {
+    const result = await Modal.form(`<div class="alert alert-warning text-sm">This creates a conflict-checked plan only. It cannot attach, detach or reconfigure a provider device.</div>
+      <div class="form-row"><div class="form-group"><label>Host ID</label><input id="gc-da-host" type="number" min="1" value="1" class="form-control"></div><div class="form-group"><label>Kind</label><select id="gc-da-kind" class="form-control"><option>pci</option><option>sriov_vf</option><option>gpu</option><option>vgpu</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Device reference (blank permits VF auto-selection)</label><input id="gc-da-device" class="form-control mono" value="gpu-0"></div><div class="form-group"><label>vGPU profile (vGPU only)</label><input id="gc-da-profile" class="form-control mono" placeholder="1g.12gb"></div></div>
+      <div class="form-row"><div class="form-group"><label>Target resource key</label><input id="gc-da-target" class="form-control mono" value="ddr_vm_example"></div><div class="form-group"><label>Tenant ID (optional)</label><input id="gc-da-tenant" type="number" min="1" class="form-control"></div></div>`,
+    { title: 'Plan device allocation', onSubmit: c => this._submit(() => Api.planHardwareDeviceAllocation({ hostId: Number(c.querySelector('#gc-da-host').value), kind: c.querySelector('#gc-da-kind').value, deviceRef: c.querySelector('#gc-da-device').value || undefined, profileName: c.querySelector('#gc-da-profile').value || undefined, targetResourceKey: c.querySelector('#gc-da-target').value, tenantId: c.querySelector('#gc-da-tenant').value ? Number(c.querySelector('#gc-da-tenant').value) : undefined })) });
+    if (result) { Toast[result.allocation.state === 'planned' ? 'success' : 'warning'](`${result.allocation.state}: ${result.allocation.blockers.join(', ') || 'no provider mutation started'}`); await this.render(this._container); }
+  },
+  async _deviceMetricsDialog() {
+    const result = await Modal.form(`<div class="form-row"><div class="form-group"><label>Host ID</label><input id="gc-dm-host" type="number" min="1" value="1" class="form-control"></div><div class="form-group"><label>GPU reference</label><input id="gc-dm-device" class="form-control mono" value="gpu-0"></div><div class="form-group"><label>Resource key (optional)</label><input id="gc-dm-resource" class="form-control mono"></div></div>
+      <div class="form-row"><div class="form-group"><label>SM %</label><input id="gc-dm-sm" type="number" min="0" max="100" value="0" class="form-control"></div><div class="form-group"><label>Memory %</label><input id="gc-dm-memory" type="number" min="0" max="100" value="0" class="form-control"></div><div class="form-group"><label>Encoder %</label><input id="gc-dm-encoder" type="number" min="0" max="100" value="0" class="form-control"></div><div class="form-group"><label>ECC errors</label><input id="gc-dm-ecc" type="number" min="0" value="0" class="form-control"></div></div>
+      <label for="gc-dm-throttle" class="form-label">Throttle reasons (comma-separated)</label><input id="gc-dm-throttle" class="form-control" placeholder="thermal, power">`,
+    { title: 'Record accelerator metrics', onSubmit: c => this._submit(() => Api.recordHardwareAcceleratorMetrics({ hostId: Number(c.querySelector('#gc-dm-host').value), deviceRef: c.querySelector('#gc-dm-device').value, resourceKey: c.querySelector('#gc-dm-resource').value || undefined, observedAt: new Date().toISOString(), smPercent: Number(c.querySelector('#gc-dm-sm').value), memoryPercent: Number(c.querySelector('#gc-dm-memory').value), encoderPercent: Number(c.querySelector('#gc-dm-encoder').value), eccErrors: Number(c.querySelector('#gc-dm-ecc').value), throttleReasons: c.querySelector('#gc-dm-throttle').value.split(',').map(value => value.trim()).filter(Boolean) })) });
+    if (result) { Toast.success(result.metric.duplicate ? 'Existing metric evidence reused' : 'Accelerator metrics recorded'); await this.render(this._container); }
+  },
+  async _deviceReservationDialog() {
+    const starts = new Date(Date.now() + 3600000); const ends = new Date(starts.getTime() + 3600000);
+    const result = await Modal.form(`<div class="alert alert-warning text-sm">Reservations are scheduling evidence only and do not reserve capacity in the provider.</div>
+      <div class="form-row"><div class="form-group"><label>Host ID</label><input id="gc-dr-host" type="number" min="1" value="1" class="form-control"></div><div class="form-group"><label>GPU reference</label><input id="gc-dr-device" class="form-control mono" value="gpu-0"></div><div class="form-group"><label>Profile (blank = full GPU)</label><input id="gc-dr-profile" class="form-control mono"></div><div class="form-group"><label>Tenant ID</label><input id="gc-dr-tenant" type="number" min="1" value="1" class="form-control"></div></div>
+      <div class="form-row"><div class="form-group"><label>Starts</label><input id="gc-dr-start" type="datetime-local" value="${starts.toISOString().slice(0, 16)}" class="form-control"></div><div class="form-group"><label>Ends</label><input id="gc-dr-end" type="datetime-local" value="${ends.toISOString().slice(0, 16)}" class="form-control"></div></div>
+      <label for="gc-dr-purpose" class="form-label">Purpose</label><input id="gc-dr-purpose" class="form-control" value="Scheduled accelerator workload">`,
+    { title: 'Create accelerator reservation', onSubmit: c => this._submit(() => Api.createHardwareAcceleratorReservation({ hostId: Number(c.querySelector('#gc-dr-host').value), deviceRef: c.querySelector('#gc-dr-device').value, profileName: c.querySelector('#gc-dr-profile').value || undefined, tenantId: Number(c.querySelector('#gc-dr-tenant').value), startsAt: new Date(c.querySelector('#gc-dr-start').value).toISOString(), endsAt: new Date(c.querySelector('#gc-dr-end').value).toISOString(), purpose: c.querySelector('#gc-dr-purpose').value })) });
+    if (result) { Toast.success(result.reservation.duplicate ? 'Existing reservation reused' : 'Accelerator reservation created'); await this.render(this._container); }
+  },
+  async _deviceHostAnalysis(kind, hostId) {
+    try { const calls = { memory: Api.getHardwareMemoryTiers, pci: Api.getHardwarePci, gpus: Api.getHardwareGpus, usb: Api.getHardwareUsb }; const result = await calls[kind].call(Api, hostId); this._showHardwareResult(`${kind} · host ${hostId}`, result); } catch (error) { Toast.error(error.message); }
+  },
+  async _releaseDeviceAllocation(id) {
+    if (!await Modal.confirm('Release this control-plane allocation plan? No provider detach is performed.')) return;
+    try { await Api.releaseHardwareDeviceAllocation(id); Toast.success('Allocation plan released; infrastructure was not mutated'); await this.render(this._container); } catch (error) { Toast.error(error.message); }
   },
 
   _finops() {
@@ -551,6 +607,12 @@ const GovernanceControlsPage = {
     this._container.querySelector('#gc-hardware-snapshot')?.addEventListener('click', () => this._hardwareSnapshotDialog());
     this._container.querySelector('#gc-hardware-cluster')?.addEventListener('click', () => this._hardwareClusterDialog());
     this._container.querySelector('#gc-hardware-policy')?.addEventListener('click', () => this._hardwarePolicyDialog());
+    this._container.querySelector('#gc-device-snapshot')?.addEventListener('click', () => this._deviceSnapshotDialog());
+    this._container.querySelector('#gc-device-allocation')?.addEventListener('click', () => this._deviceAllocationDialog());
+    this._container.querySelector('#gc-device-metrics')?.addEventListener('click', () => this._deviceMetricsDialog());
+    this._container.querySelector('#gc-device-reservation')?.addEventListener('click', () => this._deviceReservationDialog());
+    for (const kind of ['memory', 'pci', 'gpus', 'usb']) this._container.querySelectorAll(`[data-gc-device-${kind}]`).forEach(button => button.addEventListener('click', () => this._deviceHostAnalysis(kind, button.dataset[`gcDevice${kind[0].toUpperCase()}${kind.slice(1)}`])));
+    this._container.querySelectorAll('[data-gc-device-release]').forEach(button => button.addEventListener('click', () => this._releaseDeviceAllocation(button.dataset.gcDeviceRelease)));
     for (const kind of ['numa', 'huge', 'memory']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareHostAnalysis(kind === 'huge' ? 'hugepages' : kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`])));
     for (const kind of ['fit', 'rt']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareVmAnalysis(kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`], button.dataset.hostId)));
     this._container.querySelector('#gc-performance-chart')?.addEventListener('click', () => this._performanceDialog());

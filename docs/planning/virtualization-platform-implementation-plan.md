@@ -176,7 +176,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | Complet: V6.5a livrează B326–B335, V6.5b B336–B345, iar V6.5c B346–B350: disaster freeze, backup seeding, compliance, fault domains și zero-touch enrollment |
-| V6.6 | Accelerators/performance | B376–B400 | V6.6a livrează B376–B385: hardware/CPU/NUMA/pinning/real-time/hugepage/memory evidence; B386–B400 rămân |
+| V6.6 | Accelerators/performance | B376–B400 | V6.6a livrează B376–B385; V6.6b livrează B386–B395: memory tiers, PCI/SR-IOV/GPU/vGPU/USB evidence, plans, metrics și reservations; B396–B400 rămân |
 | V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
 
 **Exit:** control plane-ul poate opera coerent workload-uri mixte în datacenter, edge și cloud hibrid.

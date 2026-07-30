@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.71.0] - 2026-07-30 — Hardware devices and accelerator control plane
+
+The B386–B395 batch extends hardware evidence into scarce-device inventory,
+telemetry, allocation planning and scheduling without exposing provider apply.
+
+- Memory-tier snapshots report DRAM/NVMe capacity, use, hit rate and workload
+  impact. PCI inventory reports IOMMU groups, reset/ACS readiness, PF/VF
+  relationships, drivers, health and current mappings.
+- PCI passthrough and SR-IOV actions create host-scoped, conflict-checked plans
+  with NUMA, migration and HA constraints. Releasing a plan never detaches a
+  provider device.
+- GPU inventory includes model, memory, driver, health, MIG capability and
+  licensed vGPU profile capacity. Full-GPU and vGPU plans prevent conflicting
+  or over-capacity assignments.
+- Bounded GPU metrics retain SM, memory, encoder, ECC and throttle evidence.
+  Host-scoped accelerator reservations reject overlapping full/profile windows
+  and expire automatically.
+- USB ownership, mappings and mobility caveats are visible in the operator UI.
+  Credential-shaped fields and oversized evidence fail closed; all writes are
+  audited and provider mutations remain zero.
+
 ## [8.70.0] - 2026-07-30 — Hardware and performance evidence foundation
 
 The B376–B385 batch adds normalized hardware and workload-placement evidence

@@ -1227,16 +1227,16 @@ nu face transmisii de rețea.
 | B383 | Real-time workload profile | Pinning, isolation, hugepages și latency checks. | Ops | L | Done |
 | B384 | Hugepage capacity dashboard | Size/node/free/allocated și fragmentation. | Ops | M | Done |
 | B385 | Memory balloon/overcommit dashboard | Reserved/active/balloon/swap și risk. | Rez | L | Done |
-| B386 | Memory tiering visibility | DRAM/NVMe tiers, hit rate și workload impact. | Cost | L | Later |
-| B387 | PCI device inventory | IOMMU groups, allocation, reset și passthrough readiness. | Ops | L | Later |
-| B388 | PCI passthrough assignment | Safe attach/detach cu host placement constraints. | Ops | XL | Later |
-| B389 | SR-IOV VF allocator | PF/VF pools, NUMA affinity și quota. | Ops | XL | Later |
-| B390 | GPU inventory | Vendor/model/memory/driver/profile/health. | Ops | L | Next |
-| B391 | GPU passthrough assignment | Device availability și migration/HA caveats. | Ops | XL | Later |
-| B392 | vGPU/GPU-P profile allocator | Shared profile capacity, licenses și placement. | Ops | XL | Later |
-| B393 | GPU utilization metrics | SM/memory/encoder/ECC/throttle per workload. | Cost | L | Later |
-| B394 | Accelerator reservation schedule | Time/project based scarce-device booking. | Gov | L | Later |
-| B395 | USB passthrough inventory | Device ownership, mappings și mobility caveats. | Ops | M | Later |
+| B386 | Memory tiering visibility | DRAM/NVMe tiers, hit rate și workload impact. | Cost | L | Done |
+| B387 | PCI device inventory | IOMMU groups, allocation, reset și passthrough readiness. | Ops | L | Done |
+| B388 | PCI passthrough assignment | Safe attach/detach cu host placement constraints. | Ops | XL | Done |
+| B389 | SR-IOV VF allocator | PF/VF pools, NUMA affinity și quota. | Ops | XL | Done |
+| B390 | GPU inventory | Vendor/model/memory/driver/profile/health. | Ops | L | Done |
+| B391 | GPU passthrough assignment | Device availability și migration/HA caveats. | Ops | XL | Done |
+| B392 | vGPU/GPU-P profile allocator | Shared profile capacity, licenses și placement. | Ops | XL | Done |
+| B393 | GPU utilization metrics | SM/memory/encoder/ECC/throttle per workload. | Cost | L | Done |
+| B394 | Accelerator reservation schedule | Time/project based scarce-device booking. | Gov | L | Done |
+| B395 | USB passthrough inventory | Device ownership, mappings și mobility caveats. | Ops | M | Done |
 | B396 | Virtual hardware compatibility scan | VM devices vs target host/provider/version. | Rez | L | Next |
 | B397 | Performance benchmark registry | Controlled baseline results și hardware metadata. | Ops | L | Later |
 | B398 | Noisy-neighbor detector | Correlate contention și colocated workloads. | Ops | XL | Later |
@@ -1251,6 +1251,14 @@ numai desired plan și blockers, fără apply. NUMA fit, pinning și real-time c
 corelează CPUs, device locality, isolation, hugepages, balloon și swap.
 Dashboard-urile hugepage/memory sunt strict evidence-only; nu există endpoint
 pentru BIOS/EVC/device/pinning/memory mutation.
+
+**Status implementare V6.6b / v8.71.0:** B386–B395 adaugă snapshots
+credential-free pentru memory tiers, PCI/IOMMU/PF/VF, GPU/profile și USB,
+analize de readiness și telemetry GPU. Alocările PCI, SR-IOV, GPU și vGPU sunt
+planuri control-plane conflict-checked, izolate per host, cu NUMA/migration/HA
+caveats și capacitate/licență vGPU. Rezervările temporale detectează overlap,
+dar nu rezervă în provider. Release-ul unui plan nu face detach, iar niciun
+endpoint din batch nu poate porni attach, detach sau provider apply.
 
 ### Q. Integrații, extensibilitate și migration factory (B401–B425)
 

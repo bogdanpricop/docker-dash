@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.71.0', date: '2026-07-30', title: 'Hardware devices and accelerator control plane', changes: [
+      { type: 'feature', text: 'Memory-tier and PCI inventory records DRAM/NVMe use and hit rate plus IOMMU groups, reset/ACS readiness, PF/VF relationships, drivers, health and mappings.' },
+      { type: 'feature', text: 'Host-scoped PCI and SR-IOV allocation plans include NUMA, migration and HA constraints; VF auto-selection avoids existing plans and release never performs provider detach.' },
+      { type: 'feature', text: 'GPU inventory, full-device plans and licensed vGPU profile allocation enforce physical-device conflicts and shared-profile capacity.' },
+      { type: 'improvement', text: 'Bounded GPU telemetry covers SM, memory, encoder, ECC and throttle evidence; accelerator reservations reject overlapping full/profile windows and expire automatically.' },
+      { type: 'security', text: 'USB ownership and mobility caveats remain evidence-only. Credential-shaped fields fail closed, every write is audited and no attach, detach or provider apply endpoint exists.' },
+    ] },
     { version: '8.70.0', date: '2026-07-30', title: 'Hardware and performance evidence foundation', changes: [
       { type: 'feature', text: 'A normalized host inventory records CPU, NUMA, RAM, NIC, HBA, disk, GPU and BMC model evidence with bounded provenance and compatibility tags.' },
       { type: 'feature', text: 'Cluster views compare hardware tags and CPU common/extra/missing features; the CPU policy editor produces a provider-aware, hash-bound desired plan with blockers and no apply endpoint.' },

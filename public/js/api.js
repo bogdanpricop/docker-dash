@@ -1615,7 +1615,7 @@ const Api = {
   ingestVmMetrics(body) { return this.post('/governance/lifecycle/metrics/ingest', body); },
   recordVmMetricError(body) { return this.post('/governance/lifecycle/metrics/errors', body); },
 
-  // ─── Hardware and performance foundation (V6.6a) ────────
+  // ─── Hardware, performance and device accelerators (V6.6a/V6.6b) ────────
   getHardwarePerformance() { return this.get('/governance/lifecycle/hardware'); },
   recordHardwareSnapshot(body) { return this.post('/governance/lifecycle/hardware/snapshots', body); },
   getHardwareCompatibility(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/compatibility`); },
@@ -1627,6 +1627,16 @@ const Api = {
   getHardwareMemory(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/memory`); },
   getHardwareVmNumaFit(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/numa-fit?hostId=${encodeURIComponent(hostId)}`); },
   getHardwareRealtimeProfile(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/realtime-profile?hostId=${encodeURIComponent(hostId)}`); },
+  getHardwareDevices() { return this.get('/governance/lifecycle/hardware/devices'); },
+  recordHardwareDeviceSnapshot(body) { return this.post('/governance/lifecycle/hardware/devices/snapshots', body); },
+  getHardwareMemoryTiers(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/memory-tiers`); },
+  getHardwarePci(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/pci`); },
+  getHardwareGpus(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/gpus`); },
+  getHardwareUsb(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/usb`); },
+  planHardwareDeviceAllocation(body) { return this.post('/governance/lifecycle/hardware/devices/allocations', body); },
+  releaseHardwareDeviceAllocation(id) { return this.post(`/governance/lifecycle/hardware/devices/allocations/${id}/release`, {}); },
+  recordHardwareAcceleratorMetrics(body) { return this.post('/governance/lifecycle/hardware/devices/metrics', body); },
+  createHardwareAcceleratorReservation(body) { return this.post('/governance/lifecycle/hardware/devices/reservations', body); },
 
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
