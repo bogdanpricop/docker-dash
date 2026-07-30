@@ -656,25 +656,32 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B079 | Disk delete guard | Backup/snapshot/attachment/replica dependency check. | Sig | M | Done |
 | B080 | Online disk expansion | Capability-gated resize plus guest follow-up guidance. | Ops | M | Done |
 | B081 | Disk move between datastores | Relocation cu progress și space reservation. | Ops | L | Done |
-| B082 | Disk format conversion | VMDK/VHDX/QCOW2/RAW/VHD workflow verificabil. | DX | XL | Later |
-| B083 | Storage policy inventory | Classes/policies/offers și compliance state. | Gov | M | Next |
-| B084 | Storage policy assignment | Reconfigurare cu compatibility și migration plan. | Gov | L | Later |
+| B082 | Disk format conversion | VMDK/VHDX/QCOW2/RAW/VHD workflow verificabil. | DX | XL | Done |
+| B083 | Storage policy inventory | Classes/policies/offers și compliance state. | Gov | M | Done |
+| B084 | Storage policy assignment | Reconfigurare cu compatibility și migration plan. | Gov | L | Done |
 | B085 | Datastore capacity dashboard | Used/free/provisioned/overcommit/growth forecast. | Cost | M | Now |
 | B086 | Thin overcommit monitor | Alertă pe logical vs physical și growth velocity. | Rez | M | Now |
-| B087 | Storage latency heatmap | VM/datastore/path latency correlation. | Ops | L | Next |
-| B088 | Storage path/multipath health | Detectează degraded paths și policy mismatch. | Rez | L | Next |
-| B089 | Orphan disk cleanup | Dry-run cu age, owner și restore window. | Cost | M | Next |
+| B087 | Storage latency heatmap | VM/datastore/path latency correlation. | Ops | L | Done |
+| B088 | Storage path/multipath health | Detectează degraded paths și policy mismatch. | Rez | L | Done |
+| B089 | Orphan disk cleanup | Dry-run cu age, owner și restore window. | Cost | M | Done |
 | B090 | Stale snapshot growth monitor | Chain depth, age, consolidation/coalesce risk. | Rez | M | Now |
-| B091 | Snapshot consolidation action | Preflight și native progress când suportat. | Ops | M | Next |
-| B092 | Storage QoS editor | IOPS/throughput limits per disk/volume. | Gov | L | Later |
-| B093 | Storage tiering recommendation | Plasare după latency, cost, resilience și workload. | Cost | L | Later |
-| B094 | Shared disk topology | Multi-attach consumers și cluster dependency view. | Ops | M | Next |
-| B095 | Object storage registry | S3-compatible endpoints și policy/capacity health. | Ops | M | Next |
+| B091 | Snapshot consolidation action | Preflight și native progress când suportat. | Ops | M | Done |
+| B092 | Storage QoS editor | IOPS/throughput limits per disk/volume. | Gov | L | Done |
+| B093 | Storage tiering recommendation | Plasare după latency, cost, resilience și workload. | Cost | L | Done |
+| B094 | Shared disk topology | Multi-attach consumers și cluster dependency view. | Ops | M | Done |
+| B095 | Object storage registry | S3-compatible endpoints și policy/capacity health. | Ops | M | Done |
 | B096 | NFS/SMB repository health | Mount reachability, auth, latency și write test safe. | Rez | M | Now |
-| B097 | Ceph health adapter | MON/OSD/PG/pool/replication summary pentru PVE/OpenStack. | Rez | L | Next |
-| B098 | Longhorn health adapter | Volume replicas, rebuild, degraded și backup target. | Rez | L | Next |
-| B099 | vSAN/S2D/AOS health adapters | Suite-specific capacity/resync/fault-domain summary. | Rez | XL | Later |
-| B100 | Storage change plan | Diff, blast radius, rollbackability și required downtime. | Gov | L | Next |
+| B097 | Ceph health adapter | MON/OSD/PG/pool/replication summary pentru PVE/OpenStack. | Rez | L | Done |
+| B098 | Longhorn health adapter | Volume replicas, rebuild, degraded și backup target. | Rez | L | Done |
+| B099 | vSAN/S2D/AOS health adapters | Suite-specific capacity/resync/fault-domain summary. | Rez | XL | Done |
+| B100 | Storage change plan | Diff, blast radius, rollbackability și required downtime. | Gov | L | Done |
+
+**Status implementare 2026-07-30:** B082–B084, B087–B089, B091–B095 și
+B097–B100 au fost închise în V4.2f / v8.78.0. Conversia, assignment-ul,
+cleanup-ul, QoS, tiering-ul și schimbările produc contracte hash-bound și nu
+expun apply implicit; health adapters consumă numai dovezi normalizate bounded.
+B091 reutilizează task-ul nativ vSphere deja livrat, iar B094 reutilizează
+topologia shared-disk cu identități opace. B096 rămâne separat și deschis.
 
 ### E. Networking și connectivity (B101–B125)
 

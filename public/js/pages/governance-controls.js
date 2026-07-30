@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -35,6 +35,7 @@ const GovernanceControlsPage = {
         Api.getMigrationFactory(),
         Api.getPlatformFoundation(),
         Api.getVmContentMobility(),
+        Api.getStorageAdvanced(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -42,7 +43,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -77,6 +78,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('migration-factory', 'fa-truck-fast', 'Migration factory')}
         ${this._tabButton('platform-foundation', 'fa-cubes-stacked', 'Platform foundation')}
         ${this._tabButton('vm-content-mobility', 'fa-arrows-left-right-to-line', 'Content & mobility')}
+        ${this._tabButton('storage-advanced', 'fa-hard-drive', 'Storage advanced')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -98,6 +100,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'migration-factory') return this._migrationFactory();
     if (this._tab === 'platform-foundation') return this._platformFoundation();
     if (this._tab === 'vm-content-mobility') return this._vmContentMobility();
+    if (this._tab === 'storage-advanced') return this._storageAdvanced();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -381,6 +384,20 @@ const GovernanceControlsPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Same-provider migration controls</h3></div><table class="data-table"><thead><tr><th>Mode / resource</th><th>Placement</th><th>State</th><th>Plan</th></tr></thead><tbody>${(data.migrations||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.mode)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceKey)}</div></td><td>${Utils.escapeHtml(item.sourceRef)} → ${Utils.escapeHtml(item.targetRef)}</td><td><span class="badge ${item.state==='ready'?'badge-success':'badge-danger'}">${item.state}</span></td><td class="mono text-xs">${item.planHash.slice(0,14)}</td></tr>`).join('')||this._empty('No migration control plans',4)}</tbody></table></div>
       </div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Content and mobility ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary||{}).map(([kind,count])=>`<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">hash-bound / audited</span><div class="text-xs text-muted">existing executor or separately approved adapter only</div></td></tr>`).join('')||this._empty('No content or mobility evidence',3)}</tbody></table></div>`;
+  },
+
+  _storageAdvanced() {
+    const data=this._data.storageAdvanced||{capabilities:{},safety:{},summary:{},suiteHealth:[],objectStores:[]};
+    const labels={diskFormatConversion:'Format conversion',storagePolicyInventory:'Policy inventory',storagePolicyAssignment:'Policy assignment',storageLatencyHeatmap:'Latency heatmap',storageMultipathHealth:'Multipath health',orphanDiskCleanup:'Orphan cleanup',snapshotConsolidation:'Snapshot consolidation',storageQosEditor:'QoS plans',storageTieringRecommendation:'Tiering recommendation',sharedDiskTopology:'Shared-disk topology',objectStorageRegistry:'Object storage',cephHealth:'Ceph health',longhornHealth:'Longhorn health',vsanS2dAosHealth:'vSAN / S2D / AOS',storageChangePlan:'Change planner'};
+    const total=Object.values(data.summary||{}).reduce((sum,value)=>sum+Number(value||0),0);
+    const healthBadge=state=>state==='healthy'?'badge-success':state==='degraded'?'badge-warning':state==='failed'||state==='unavailable'?'badge-danger':'badge-secondary';
+    return `<div class="info-grid">${this._stat('fa-wave-square','Health observations',data.summary?.suiteHealth||0)}${this._stat('fa-cloud','Object stores',data.summary?.objectStores||0)}${this._stat('fa-list-check','Change plans',data.summary?.changePlans||0)}${this._stat('fa-database','Control-plane records',total)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Advanced storage execution boundary</h3><p class="text-muted text-sm">Format, policy, cleanup, QoS, tiering and change operations persist hash-bound plans only. Health and topology are imported read-only evidence. Snapshot consolidation and shared-disk topology reuse their established guarded provider flows; this surface starts no provider mutation, cleanup, probe or network call.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label])=>`<span class="badge ${data.capabilities?.[key]?'badge-success':'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>${data.safety?.providerMutationsStarted||0} implicit mutations</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Storage suite health</h3></div><table class="data-table"><thead><tr><th>Suite / host</th><th>State</th><th>Components</th><th>Resync / evidence</th></tr></thead><tbody>${(data.suiteHealth||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.suite)}</strong><div class="text-xs text-muted">host #${item.providerHostId}</div></td><td><span class="badge ${healthBadge(item.summary?.state)}">${Utils.escapeHtml(item.summary?.state||'unknown')}</span><div class="text-xs text-muted">${item.summary?.usedPercent==null?'capacity unknown':`${item.summary.usedPercent}% used`}</div></td><td>${item.summary?.components||0}<div class="text-xs text-muted">${item.summary?.failed||0} failed · ${item.summary?.degraded||0} degraded · ${item.summary?.unknown||0} unknown</div></td><td>${Utils.formatBytes(item.summary?.resyncBytes||0)}<div class="mono text-xs">${item.observationHash.slice(0,14)}</div></td></tr>`).join('')||this._empty('No normalized Ceph, Longhorn, vSAN, S2D or AOS evidence',4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Object storage registry</h3></div><table class="data-table"><thead><tr><th>Endpoint</th><th>Provider / region</th><th>Health</th><th>Evidence</th></tr></thead><tbody>${(data.objectStores||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.endpointKey)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.origin)}</div></td><td>${Utils.escapeHtml(item.providerType)}<div class="text-xs text-muted">${Utils.escapeHtml(item.region||'global')}</div></td><td><span class="badge ${healthBadge(item.health?.state)}">${Utils.escapeHtml(item.health?.state||'unknown')}</span><div class="text-xs text-muted">policy ${Utils.escapeHtml(item.health?.policyState||'unknown')}</div></td><td class="mono text-xs">${item.registryHash.slice(0,14)}<div>no implicit probe</div></td></tr>`).join('')||this._empty('No object-storage endpoints registered',4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Advanced storage ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary||{}).map(([kind,count])=>`<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">bounded / hash-bound / audited</span><div class="text-xs text-muted">separately approved adapter or established guarded executor only</div></td></tr>`).join('')||this._empty('No advanced storage records',3)}</tbody></table></div>`;
   },
 
   _hardware() {

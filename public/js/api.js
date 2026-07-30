@@ -1710,6 +1710,20 @@ const Api = {
   planMigrationControlDecision(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/control-decisions', body); },
   planMigrationStageRollback(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/rollback-plans', body); },
 
+  // ─── Advanced storage control plane (V4.2f) ────────────
+  getStorageAdvanced() { return this.get('/governance/lifecycle/storage-advanced'); },
+  planStorageFormatConversion(body) { return this.post('/governance/lifecycle/storage-advanced/format-conversion-plans', body); },
+  recordStoragePolicyCatalog(body) { return this.post('/governance/lifecycle/storage-advanced/policy-observations', body); },
+  planStoragePolicyAssignment(body) { return this.post('/governance/lifecycle/storage-advanced/policy-assignment-plans', body); },
+  recordStorageLatencyHeatmap(body) { return this.post('/governance/lifecycle/storage-advanced/latency-heatmaps', body); },
+  recordStoragePathHealth(body) { return this.post('/governance/lifecycle/storage-advanced/path-health-observations', body); },
+  planStorageOrphanCleanup(body) { return this.post('/governance/lifecycle/storage-advanced/orphan-cleanup-plans', body); },
+  planStorageQosChange(body) { return this.post('/governance/lifecycle/storage-advanced/qos-change-plans', body); },
+  recommendStorageTier(body) { return this.post('/governance/lifecycle/storage-advanced/tiering-recommendations', body); },
+  registerStorageObjectStore(body) { return this.post('/governance/lifecycle/storage-advanced/object-stores', body); },
+  recordStorageSuiteHealth(body) { return this.post('/governance/lifecycle/storage-advanced/suite-health-observations', body); },
+  planStorageChange(body) { return this.post('/governance/lifecycle/storage-advanced/change-plans', body); },
+
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
   getVmPerformance(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/performance?${query}`); },

@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.78.0] - 2026-07-30 — Advanced storage control plane
+
+This batch closes B082–B084, B087–B089, B091–B095 and B097–B100 with a
+unified, evidence-bound storage surface.
+
+- Format conversion plans bind source/output digests, read-only source,
+  capacity, tool evidence and post-conversion checks across VMDK, VHDX, QCOW2,
+  RAW and VHD. No disk conversion or provider mutation starts implicitly.
+- Policy inventory and assignment plans expose compliance, compatibility,
+  capacity, downtime and semantic before/after evidence. Latency heatmaps and
+  multipath observations correlate bounded samples and fail closed on unknowns.
+- Orphan cleanup requires age, ownership, attachment, dependency and recovery
+  evidence before quarantine; QoS and tiering plans model capability, limits,
+  latency, resilience, cost and policy without applying a change.
+- The object-storage registry accepts HTTPS origins and secret-manager
+  references only. Ceph, Longhorn, vSAN, S2D and AOS adapters normalize
+  capacity, component, resync, replication and fault-domain health.
+- Storage change plans bind diff, blast radius, downtime, prechecks and
+  rollback. Existing guarded vSphere consolidation and opaque shared-disk
+  topology flows are reused. Governance displays all 15 capabilities and a
+  hash-bound ledger with zero implicit execution.
+
 ## [8.77.0] - 2026-07-30 — Evidence-bound recovery and lifecycle closure
 
 This batch closes B064, B065, B068, B070–B075 and B077–B081 by reconciling the shipped

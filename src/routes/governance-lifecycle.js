@@ -184,6 +184,10 @@ router.use('/platform-foundation', require('./platform-foundation'));
 // migration controls reusing the existing durable provider operation engine.
 router.use('/vm-content-mobility', require('./vm-content-mobility'));
 
+// V4.2f — format/policy/health/tiering/object-store/change contracts plus
+// references to the existing consolidation and shared-topology executors.
+router.use('/storage-advanced', require('./storage-advanced'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

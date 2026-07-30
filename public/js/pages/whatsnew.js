@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.78.0', date: '2026-07-30', title: 'Advanced storage control plane', changes: [
+      { type: 'feature', text: 'Digest-verified VMDK, VHDX, QCOW2, RAW and VHD conversion plans bind read-only source, capacity, tooling and validation evidence without starting disk I/O.' },
+      { type: 'feature', text: 'Storage policy inventory/assignment, latency heatmaps and multipath observations add compliance, compatibility, downtime and correlated health evidence.' },
+      { type: 'security', text: 'Orphan cleanup, QoS, tiering and general storage changes remain hash-bound plans with dependency, ownership, blast-radius, precheck and rollback gates.' },
+      { type: 'feature', text: 'HTTPS object-store registration uses secret-manager references; Ceph, Longhorn, vSAN, S2D and AOS health adapters normalize capacity, components, resync and fault domains.' },
+      { type: 'improvement', text: 'Governance exposes 15 storage capabilities and reuses guarded snapshot consolidation and shared-disk topology with zero implicit provider mutation.' },
+    ] },
     { version: '8.77.0', date: '2026-07-30', title: 'Evidence-bound recovery and lifecycle closure', changes: [
       { type: 'feature', text: 'High Availability now visualizes opaque recovery dependency nodes, explicit edges and acyclic topological waves.' },
       { type: 'improvement', text: 'Xen/XAPI start order and delay feed recovery timing; provider priority groups remain an explicitly low-confidence fallback.' },
