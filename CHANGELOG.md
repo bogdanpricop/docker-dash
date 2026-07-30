@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.74.0] - 2026-07-30 — Guarded migration factory
+
+The B416–B425 batch adds an evidence-first cross-provider migration factory
+without exposing an implicit conversion, clone, cutover or rollback executor.
+
+- Assessment normalizes source VM/dependency inventory, blockers and scored
+  target candidates. Network and storage mapping bind VLAN/CIDR/security/IP and
+  datastore/policy/tier/capacity translations into immutable plans.
+- A fixed, resource-bounded subprocess validates qemu-img/virt-v2v conversion
+  contracts using formats and input/output checksums only; it receives no path,
+  performs no disk I/O and has no network or inherited environment.
+- Isolated test-clone evidence gates dependency-aware waves with downtime and
+  business-window context. Cutover requires a validated clone, ready wave,
+  approval hash and exact typed confirmation.
+- Rollback plans restore source network/power and isolate/clean the target only
+  through a separately approved external adapter; this release provides no
+  execute endpoint. Evidence reports bind hashes, timings, tests and approvals.
+- The legacy Xen assistant inventories xm/xl/Xend evidence, highlights offline
+  capture/passthrough blockers and guides migration toward XAPI/XCP-ng.
+
 ## [8.73.0] - 2026-07-30 — Signed connector marketplace and integration contracts
 
 The B406–B415 batch completes the provider connector backlog with a signed,

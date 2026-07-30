@@ -172,6 +172,10 @@ router.use('/plugins', require('./provider-plugins'));
 // ITSM, SIEM, secrets, IPAM/DNS, backup, monitoring, event-bus/OpenAPI plans.
 router.use('/connectors', require('./connector-marketplace'));
 
+// V6.7 / B416-B425 — migration assessment/conversion/map/test-clone/wave,
+// cutover/rollback/report plans and legacy Xen guidance without implicit apply.
+router.use('/migration-factory', require('./migration-factory'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.74.0', date: '2026-07-30', title: 'Guarded migration factory', changes: [
+      { type: 'feature', text: 'Migration assessment normalizes source VMs, dependencies and blockers and ranks target candidates using capacity, compatibility, network and storage scores.' },
+      { type: 'security', text: 'The fixed conversion subprocess receives formats and checksums only, has no input path/network/environment, and does not execute qemu-img or virt-v2v or perform disk I/O.' },
+      { type: 'feature', text: 'Network and storage maps bind VLAN/CIDR/security/IP and datastore/policy/tier/capacity translations; isolated test-clone evidence gates dependency-aware waves.' },
+      { type: 'security', text: 'Cutover requires ready assessment/waves, validated clone, approval hash and exact confirmation. Rollback is preconditioned; neither exposes an execute endpoint.' },
+      { type: 'feature', text: 'Hash-bound evidence reports retain references, timings, tests and approvals, while the legacy Xen assistant guides xm/xl/Xend workloads toward XAPI/XCP-ng.' },
+    ] },
     { version: '8.73.0', date: '2026-07-30', title: 'Signed connector marketplace and integration contracts', changes: [
       { type: 'security', text: 'Connector marketplace entries require canonical Ed25519 signatures and declare publisher, support level, domains, products and exact allowed HTTPS hosts.' },
       { type: 'feature', text: 'CMDB ownership plans, ITSM approval/change-window gates, normalized SIEM events and provider-native secret references add bounded enterprise integration contracts.' },

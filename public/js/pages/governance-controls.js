@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -32,6 +32,7 @@ const GovernanceControlsPage = {
         Api.getHardwareAdvanced(),
         Api.getProviderPlugins(),
         Api.getConnectorMarketplace(),
+        Api.getMigrationFactory(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -39,7 +40,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -71,6 +72,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('hardware', 'fa-microchip', 'Hardware & performance')}
         ${this._tabButton('plugins', 'fa-puzzle-piece', 'Provider plugins')}
         ${this._tabButton('connectors', 'fa-plug-circle-bolt', 'Connector marketplace')}
+        ${this._tabButton('migration-factory', 'fa-truck-fast', 'Migration factory')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -89,6 +91,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'hardware') return this._hardware();
     if (this._tab === 'plugins') return this._plugins();
     if (this._tab === 'connectors') return this._connectors();
+    if (this._tab === 'migration-factory') return this._migrationFactory();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -337,6 +340,17 @@ const GovernanceControlsPage = {
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Integration contract ledger</h3></div><table class="data-table"><thead><tr><th>Domain</th><th>Records</th><th>Execution boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([domain,count]) => `<tr><td><strong>${Utils.escapeHtml(domain)}</strong></td><td>${count}</td><td><span class="badge badge-success">planned / evidence only</span><div class="text-xs text-muted">0 implicit network calls or external mutations</div></td></tr>`).join('') || this._empty('No connector contracts recorded', 3)}</tbody></table></div>`;
   },
 
+  _migrationFactory() {
+    const data = this._data.migrationFactory || { capabilities: {}, safety: {}, summary: {}, assessments: [] };
+    const actions = [['assessment','Assessment'],['conversion','Conversion'],['network','Network map'],['storage','Storage map'],['clone','Test clone'],['waves','Waves'],['cutover','Cutover plan'],['rollback','Rollback plan'],['report','Evidence report'],['xen','Legacy Xen']]
+      .map(([kind,label], index) => `<button class="btn ${index === 0 ? 'btn-primary' : 'btn-secondary'} btn-sm" data-gc-migration-action="${kind}"><i class="fas fa-${index === 0 ? 'magnifying-glass-chart' : 'route'}"></i> ${label}</button>`).join('');
+    const labels = { assessmentScanner: 'Assessment', sandboxedConversionContract: 'Conversion worker', networkMapper: 'Network map', storageMapper: 'Storage map', isolatedTestCloneEvidence: 'Test clone', wavePlanner: 'Waves', cutoverOrchestratorPlan: 'Cutover', rollbackOrchestratorPlan: 'Rollback', evidenceReport: 'Evidence report', legacyXenAssistant: 'Legacy Xen' };
+    return `${this._actions(actions)}<div class="info-grid">${this._stat('fa-magnifying-glass-chart', 'Assessments', data.summary?.assessments || 0)}${this._stat('fa-layer-group', 'Wave plans', data.summary?.wavePlans || 0)}${this._stat('fa-shield-halved', 'Validated clones', data.summary?.testClones || 0)}${this._stat('fa-play', 'Provider mutations', data.safety?.providerMutationsStarted || 0)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Migration factory execution boundary</h3><p class="text-muted text-sm">Assessment, mapping and reports use bounded evidence. The fixed conversion subprocess receives only formats and checksums, no paths, network or disk access. Test-clone results are imported evidence; cutover and rollback are approval/confirmation-bound plans with no execute endpoint.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>0 implicit apply</span></div></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Migration assessments</h3></div><table class="data-table"><thead><tr><th>ID</th><th>Source → target</th><th>State</th><th>Evidence</th><th>Created</th></tr></thead><tbody>${(data.assessments || []).map(item => `<tr><td>#${item.id}</td><td><strong>${Utils.escapeHtml(item.sourceProvider)}</strong> → <strong>${Utils.escapeHtml(item.targetProvider)}</strong></td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-danger'}">${item.state}</span></td><td class="mono text-xs">${item.assessmentHash.slice(0, 16)}</td><td>${new Date(item.createdAt).toLocaleString()}</td></tr>`).join('') || this._empty('No migration assessment evidence', 5)}</tbody></table></div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Migration factory ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([kind,count]) => `<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">hash-bound control plane</span><div class="text-xs text-muted">external execution requires a separately approved adapter</div></td></tr>`).join('') || this._empty('No migration factory records', 3)}</tbody></table></div>`;
+  },
+
   _hardware() {
     const data = this._data.hardwarePerformance || { capabilities: {}, safety: {}, snapshots: [], policies: [] };
     const devices = this._data.hardwareDevices || { capabilities: {}, safety: {}, snapshots: [], allocations: [], metrics: [], reservations: [] };
@@ -557,6 +571,36 @@ const GovernanceControlsPage = {
       { title: labels[kind], width: '980px', onSubmit: c => this._submit(() => calls[kind](JSON.parse(c.querySelector('#gc-connector-json').value))) });
     if (result) { Toast.success(`${labels[kind]} recorded`); await this.render(this._container); }
   },
+  async _migrationActionDialog(kind) {
+    const samples = {
+      assessment: { sourceProvider: 'vmware', targetProvider: 'proxmox', sourceInventory: { clusterRef: 'source-a', vms: [{ resourceKey: 'vm-app', name: 'Application', cpu: 2, memoryBytes: 4294967296, diskBytes: 53687091200, networks: ['prod'], diskFormats: ['vmdk'], devices: [], os: 'linux' }] }, dependencies: [], targetCandidates: [{ targetRef: 'pve-a', capacityScore: 90, compatibilityScore: 95, networkScore: 85, storageScore: 88, blockers: [] }] },
+      conversion: { assessmentId: 1, inputFormat: 'vmdk', outputFormat: 'qcow2', inputChecksumSha256: '0'.repeat(64), expectedOutputChecksumSha256: '1'.repeat(64), normalizeGuest: false },
+      network: { assessmentId: 1, mappings: [{ sourceNetwork: 'prod', targetNetwork: 'vmbr-prod', sourceVlan: 20, targetVlan: 20, sourceCidr: '10.20.0.0/24', targetCidr: '10.20.0.0/24', securityProfile: 'production', ipMode: 'preserve' }] },
+      storage: { assessmentId: 1, mappings: [{ diskRef: 'disk-app', sizeBytes: 53687091200, targetDatastore: 'ceph-prod', targetPolicy: 'replicated-3', targetTier: 'ssd', availableBytes: 1099511627776, thinProvisioned: true }] },
+      clone: { assessmentId: 1, networkMappingId: 1, storageMappingId: 1, targetRef: 'pve-a', isolationMode: 'isolated', checks: [{ name: 'boot', state: 'pass', evidenceHash: '2'.repeat(64) }, { name: 'app_health', state: 'pass', evidenceHash: '3'.repeat(64) }] },
+      waves: { assessmentId: 1, maxConcurrent: 1, workloads: [{ resourceKey: 'vm-app', application: 'app', dependencies: [], downtimeMinutes: 10, windowRef: 'mw-1' }] },
+      cutover: { assessmentId: 1, wavePlanId: 1, testCloneId: 1, targetRef: 'pve-a', approvalHash: '4'.repeat(64), confirmation: 'CUTOVER 1 pve-a' },
+      rollback: { cutoverPlanId: 1, triggerReason: 'Post-boot validation failed', sourceNetworkRestorable: true, sourcePowerRestorable: true, targetCleanupSupported: true },
+      report: { assessmentId: 1, conversionJobIds: [1], cutoverPlanId: 1, rollbackPlanId: 1, timings: { assessmentMs: 100, conversionMs: 1000 }, tests: { boot: 'pass', app: 'pass' }, approvals: { change: 'approved', fourEyes: true } },
+      xen: { hostRef: 'xen-legacy-1', toolstack: 'xend', version: '4.2', vms: [{ vmRef: 'legacy-vm', configHash: '5'.repeat(64), diskFormats: ['vhd'], networkRefs: ['xenbr0'], passthroughDevices: [] }], targetCandidates: ['xcp-ng','xapi'] },
+    };
+    const labels = { assessment: 'Migration assessment', conversion: 'Sandboxed conversion contract', network: 'Network translation map', storage: 'Storage translation map', clone: 'Isolated test-clone evidence', waves: 'Dependency-aware wave plan', cutover: 'Guarded cutover plan', rollback: 'Rollback plan', report: 'Migration evidence report', xen: 'Legacy Xen assistant' };
+    const calls = {
+      assessment: value => Api.createMigrationAssessment(value),
+      conversion: value => { const { assessmentId, ...body } = value; return Api.planMigrationConversion(assessmentId, body); },
+      network: value => { const { assessmentId, ...body } = value; return Api.mapMigrationNetworks(assessmentId, body); },
+      storage: value => { const { assessmentId, ...body } = value; return Api.mapMigrationStorage(assessmentId, body); },
+      clone: value => { const { assessmentId, ...body } = value; return Api.recordMigrationTestClone(assessmentId, body); },
+      waves: value => { const { assessmentId, ...body } = value; return Api.planMigrationWaves(assessmentId, body); },
+      cutover: value => { const { assessmentId, ...body } = value; return Api.planMigrationCutover(assessmentId, body); },
+      rollback: value => { const { cutoverPlanId, ...body } = value; return Api.planMigrationRollback(cutoverPlanId, body); },
+      report: value => { const { assessmentId, ...body } = value; return Api.createMigrationEvidenceReport(assessmentId, body); },
+      xen: value => Api.assessLegacyXenMigration(value),
+    };
+    const result = await Modal.form(`<div class="alert alert-warning text-sm">This surface records evidence and approved orchestration plans only. It cannot run qemu-img/virt-v2v, boot a clone, shut down a source, switch a network or execute cutover/rollback.</div><label for="gc-migration-json" class="form-label">Migration contract JSON</label><textarea id="gc-migration-json" class="form-control mono" rows="24">${Utils.escapeHtml(JSON.stringify(samples[kind], null, 2))}</textarea>`,
+      { title: labels[kind], width: '1000px', onSubmit: c => this._submit(() => calls[kind](JSON.parse(c.querySelector('#gc-migration-json').value))) });
+    if (result) { Toast.success(`${labels[kind]} recorded; no provider mutation started`); await this.render(this._container); }
+  },
 
   _finops() {
     const data = this._data.finopsFoundation || { capabilities: {}, ledger: [], costModels: [], allocationRules: [], allocations: [], ratingRuns: [], chargebackExports: [], budgets: [], latestShowback: null, summary: {} };
@@ -756,6 +800,7 @@ const GovernanceControlsPage = {
     this._container.querySelectorAll('[data-gc-plugin-check]').forEach(button => button.addEventListener('click', () => this._pluginCheck(button.dataset.gcPluginCheck)));
     this._container.querySelectorAll('[data-gc-plugin-enable]').forEach(button => button.addEventListener('click', () => this._pluginToggle(button.dataset.gcPluginEnable, button.dataset.enabled === 'true')));
     this._container.querySelectorAll('[data-gc-connector-action]').forEach(button => button.addEventListener('click', () => this._connectorActionDialog(button.dataset.gcConnectorAction)));
+    this._container.querySelectorAll('[data-gc-migration-action]').forEach(button => button.addEventListener('click', () => this._migrationActionDialog(button.dataset.gcMigrationAction)));
     for (const kind of ['numa', 'huge', 'memory']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareHostAnalysis(kind === 'huge' ? 'hugepages' : kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`])));
     for (const kind of ['fit', 'rt']) this._container.querySelectorAll(`[data-gc-hw-${kind}]`).forEach(button => button.addEventListener('click', () => this._hardwareVmAnalysis(kind, button.dataset[`gcHw${kind[0].toUpperCase()}${kind.slice(1)}`], button.dataset.hostId)));
     this._container.querySelector('#gc-performance-chart')?.addEventListener('click', () => this._performanceDialog());

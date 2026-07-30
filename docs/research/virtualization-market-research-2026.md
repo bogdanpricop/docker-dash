@@ -1286,16 +1286,16 @@ nu pornesc migration, placement sau reconfigurare.
 | B413 | Monitoring connector pack | Prometheus/Grafana/Datadog/Zabbix/PRTG. | Ops | L | Done |
 | B414 | Message/event bus integration | Kafka/NATS/AMQP/SNS/SQS publish with schema. | Ops | L | Done |
 | B415 | Generic OpenAPI connector | Read/action prototypes with strict allowlist. | DX | XL | Done |
-| B416 | Migration assessment scanner | Source inventory, dependencies, blockers și target candidates. | DX | XL | Next |
-| B417 | VM format conversion worker | Sandboxed qemu-img/virt-v2v with checksums. | DX | XL | Later |
-| B418 | Migration network mapper | VLAN/subnet/security/IP target translation. | Ops | L | Next |
-| B419 | Migration storage mapper | Datastore/policy/tier/capacity target translation. | Ops | L | Next |
-| B420 | Migration test clone | Isolated target boot fără source cutover. | Rez | XL | Later |
-| B421 | Migration wave planner | Apps/dependencies/downtime/business windows. | Gov | L | Later |
-| B422 | Cutover orchestrator | Final sync, shutdown, network switch, boot și validation. | Rez | XL | Later |
-| B423 | Migration rollback orchestrator | Restore source network/power și cleanup target safely. | Rez | XL | Later |
-| B424 | Migration evidence report | Source/target checksums, timings, tests și approvals. | Gov | M | Later |
-| B425 | Legacy Xen migration assistant | `xm`/`xl`/Xend discovery și guided move spre XAPI/XCP-ng. | DX | L | Next |
+| B416 | Migration assessment scanner | Source inventory, dependencies, blockers și target candidates. | DX | XL | Done |
+| B417 | VM format conversion worker | Sandboxed qemu-img/virt-v2v with checksums. | DX | XL | Done |
+| B418 | Migration network mapper | VLAN/subnet/security/IP target translation. | Ops | L | Done |
+| B419 | Migration storage mapper | Datastore/policy/tier/capacity target translation. | Ops | L | Done |
+| B420 | Migration test clone | Isolated target boot fără source cutover. | Rez | XL | Done |
+| B421 | Migration wave planner | Apps/dependencies/downtime/business windows. | Gov | L | Done |
+| B422 | Cutover orchestrator | Final sync, shutdown, network switch, boot și validation. | Rez | XL | Done |
+| B423 | Migration rollback orchestrator | Restore source network/power și cleanup target safely. | Rez | XL | Done |
+| B424 | Migration evidence report | Source/target checksums, timings, tests și approvals. | Gov | M | Done |
+| B425 | Legacy Xen migration assistant | `xm`/`xl`/Xend discovery și guided move spre XAPI/XCP-ng. | DX | L | Done |
 
 **Status implementare V5.8a / v8.72.0:** B401–B405 adaugă canonical Ed25519
 manifest verification, permisiuni explicite cu nivel de risc și consent legat
@@ -1314,6 +1314,15 @@ SIEM normalizează fără raw payload, iar Vault/Key Vault/Secrets Manager/
 ownership token și expected version; backup și monitoring normalizează numai
 visibility/allowlist evidence. Event bus și OpenAPI sunt schema/operation/field
 allowlisted, persistă planuri hash-bound și pornesc zero request-uri externe.
+
+**Status implementare V6.7 / v8.74.0:** B416–B425 adaugă assessment cu
+inventory/dependency/blocker/candidate scoring, mapări network/storage și
+test-clone evidence izolat. Workerul subprocess fix validează contracte
+qemu-img/virt-v2v numai cu formate și checksum-uri: nu primește path, nu face
+disk I/O și nu rulează binarul. Wave planner ordonează dependențe și ferestre;
+cutover/rollback sunt planuri approval/confirmation/precondition-bound fără
+execute endpoint. Raportul leagă checksum/timing/test/approval hashes, iar
+asistentul Xen identifică xm/xl/Xend și ghidează mutarea spre XAPI/XCP-ng.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

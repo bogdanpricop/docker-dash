@@ -1664,6 +1664,17 @@ const Api = {
   planConnectorEventPublication(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/event-publications`, body); },
   saveConnectorOpenApiOperation(connectorKey, body) { return this.put(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations`, body); },
   prototypeConnectorOpenApiRequest(connectorKey, operationKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations/${encodeURIComponent(operationKey)}/prototypes`, body); },
+  getMigrationFactory() { return this.get('/governance/lifecycle/migration-factory'); },
+  createMigrationAssessment(body) { return this.post('/governance/lifecycle/migration-factory/assessments', body); },
+  planMigrationConversion(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/conversions`, body); },
+  mapMigrationNetworks(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/network-mappings`, body); },
+  mapMigrationStorage(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/storage-mappings`, body); },
+  recordMigrationTestClone(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/test-clones`, body); },
+  planMigrationWaves(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/wave-plans`, body); },
+  planMigrationCutover(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/cutover-plans`, body); },
+  planMigrationRollback(cutoverPlanId, body) { return this.post(`/governance/lifecycle/migration-factory/cutover-plans/${cutoverPlanId}/rollback-plans`, body); },
+  createMigrationEvidenceReport(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/evidence-reports`, body); },
+  assessLegacyXenMigration(body) { return this.post('/governance/lifecycle/migration-factory/legacy-xen-assessments', body); },
 
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
