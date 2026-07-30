@@ -1,5 +1,9 @@
 'use strict';
 
+// Governance resolves team memberships through the application singleton.
+// Keep this unit suite on its explicit in-memory database on every platform.
+jest.mock('../services/teams', () => ({ teamsForUser: () => [] }));
+
 const Database = require('better-sqlite3');
 const migration124 = require('../db/migrations/124_governance_foundation');
 const migration125 = require('../db/migrations/125_governance_identity_policy');
