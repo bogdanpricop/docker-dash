@@ -147,8 +147,8 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 |---|---|---|---|
 | V4.1 | Volume lifecycle | B076–B090 | Complet pentru B077–B081: create/resize/attach/detach/move cu safety gates; restul continuă separat |
 | V4.2 | Storage health/policy/QoS | B082–B084, B087–B089, B091–B095, B097–B100 | Complet prin V4.2f: conversie, policy, heatmap, multipath, cleanup, QoS, tiering, object registry, suite health și change plans bounded/hash-bound; B091/B094 reutilizează fluxurile native existente |
-| V4.3 | NIC/network/VLAN lifecycle | B101–B113 | intent + diff, fără lockout accidental; V4.3a–e oferă posture, policy, topologie, placement și baseline drift numai read-only, fără trafic sau mutații |
-| V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | staged policy și connectivity verification |
+| V4.3 | NIC/network/VLAN lifecycle | B101–B113 | Complet prin V4.3f: posture/topologie/placement/drift plus NIC, mapping, VLAN/trunk/QinQ/VXLAN, VPC/subnet și IPAM/DHCP/DNS plans fără implicit apply |
+| V4.4 | IPAM, SG/firewall și microsegmentation | B114–B125 | V4.4d livrează B114–B117: SG diff/lockout, distributed firewall, staged microsegmentation și normalized flow logs; B118–B125 continuă separat |
 | V4.5 | Provider security posture packs | B151–B175 | TLS/certs, advisories, hardening, evidence |
 | V4.6 | Projects, quotas și approvals | B176–B200 | V4.6a a livrat B176–B185; V4.6b B186–B195; V4.6c închide B196–B200 cu leases, ownership completeness, SoD, access reviews și offboarding controlat și livrează fundația de metrici B201–B205 |
 

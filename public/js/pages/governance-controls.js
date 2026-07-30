@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced, networkAdvanced] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -36,6 +36,7 @@ const GovernanceControlsPage = {
         Api.getPlatformFoundation(),
         Api.getVmContentMobility(),
         Api.getStorageAdvanced(),
+        Api.getNetworkAdvanced(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -43,7 +44,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation, vmContentMobility, storageAdvanced, networkAdvanced };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -79,6 +80,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('platform-foundation', 'fa-cubes-stacked', 'Platform foundation')}
         ${this._tabButton('vm-content-mobility', 'fa-arrows-left-right-to-line', 'Content & mobility')}
         ${this._tabButton('storage-advanced', 'fa-hard-drive', 'Storage advanced')}
+        ${this._tabButton('network-advanced', 'fa-network-wired', 'Network advanced')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -101,6 +103,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'platform-foundation') return this._platformFoundation();
     if (this._tab === 'vm-content-mobility') return this._vmContentMobility();
     if (this._tab === 'storage-advanced') return this._storageAdvanced();
+    if (this._tab === 'network-advanced') return this._networkAdvanced();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -398,6 +401,19 @@ const GovernanceControlsPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Object storage registry</h3></div><table class="data-table"><thead><tr><th>Endpoint</th><th>Provider / region</th><th>Health</th><th>Evidence</th></tr></thead><tbody>${(data.objectStores||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.endpointKey)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.origin)}</div></td><td>${Utils.escapeHtml(item.providerType)}<div class="text-xs text-muted">${Utils.escapeHtml(item.region||'global')}</div></td><td><span class="badge ${healthBadge(item.health?.state)}">${Utils.escapeHtml(item.health?.state||'unknown')}</span><div class="text-xs text-muted">policy ${Utils.escapeHtml(item.health?.policyState||'unknown')}</div></td><td class="mono text-xs">${item.registryHash.slice(0,14)}<div>no implicit probe</div></td></tr>`).join('')||this._empty('No object-storage endpoints registered',4)}</tbody></table></div>
       </div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Advanced storage ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary||{}).map(([kind,count])=>`<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">bounded / hash-bound / audited</span><div class="text-xs text-muted">separately approved adapter or established guarded executor only</div></td></tr>`).join('')||this._empty('No advanced storage records',3)}</tbody></table></div>`;
+  },
+
+  _networkAdvanced() {
+    const data=this._data.networkAdvanced||{capabilities:{},safety:{},summary:{},distributedFirewalls:[],flowBatches:[]};
+    const labels={nicAttachWizard:'NIC attach',safeNicDetach:'Safe NIC detach',networkMappingProfiles:'Mapping profiles',vlanIntent:'VLAN intent',trunkQinqIntent:'Trunk / QinQ',vxlanIntent:'VXLAN intent',tenantVpcSubnetLifecycle:'VPC / subnet',ipamIntegration:'IPAM',dhcpReservation:'DHCP',dnsAutomation:'DNS',securityGroupInventory:'Security groups',securityGroupChangePlan:'SG change plan',distributedFirewallAdapters:'Distributed firewall',microsegmentationPolicy:'Microsegmentation',flowLogIngestion:'Flow logs'};
+    const total=Object.values(data.summary||{}).reduce((sum,value)=>sum+Number(value||0),0);
+    return `<div class="info-grid">${this._stat('fa-diagram-project','NIC / segment plans',Number(data.summary?.nicPlans||0)+Number(data.summary?.segmentPlans||0))}${this._stat('fa-shield-halved','Security evidence',Number(data.summary?.securityGroupObservations||0)+Number(data.summary?.distributedFirewallObservations||0))}${this._stat('fa-arrow-right-arrow-left','Flow batches',data.summary?.flowLogBatches||0)}${this._stat('fa-database','Control-plane records',total)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Advanced network execution boundary</h3><p class="text-muted text-sm">NIC, segment, tenant, address, security-group and microsegmentation changes are immutable validation plans. Provider firewall and signed IPAM/DNS connector flows are referenced but never started here. Distributed policy and five-tuple flows are normalized imported evidence; no traffic, raw payload, provider mutation or external call is produced implicitly.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label])=>`<span class="badge ${data.capabilities?.[key]?'badge-success':'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>${data.safety?.providerMutationsStarted||0} implicit mutations</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Distributed firewall evidence</h3></div><table class="data-table"><thead><tr><th>Provider / scope</th><th>State</th><th>Layers / groups / rules</th><th>Evidence</th></tr></thead><tbody>${(data.distributedFirewalls||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.providerType)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.scopeKey)} · host #${item.providerHostId}</div></td><td><span class="badge ${item.summary?.state==='observed'?'badge-success':'badge-secondary'}">${Utils.escapeHtml(item.summary?.state||'unknown')}</span></td><td>${item.summary?.layers||0} / ${item.summary?.groups||0} / ${item.summary?.rules||0}</td><td class="mono text-xs">${item.observationHash.slice(0,14)}<div>${new Date(item.observedAt).toLocaleString()}</div></td></tr>`).join('')||this._empty('No NSX, Flow, PVE, Neutron or OVN policy evidence',4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Normalized flow batches</h3></div><table class="data-table"><thead><tr><th>Source / host</th><th>Allow / deny</th><th>Traffic</th><th>Retention / evidence</th></tr></thead><tbody>${(data.flowBatches||[]).map(item=>`<tr><td><strong>${Utils.escapeHtml(item.source)}</strong><div class="text-xs text-muted">${item.providerHostId?`host #${item.providerHostId}`:'external evidence'}</div></td><td>${item.summary?.allowed||0} / ${item.summary?.denied||0}</td><td>${Utils.formatBytes(item.summary?.bytes||0)}<div class="text-xs text-muted">${item.summary?.packets||0} packets · no raw payload</div></td><td>${new Date(item.retentionUntil).toLocaleDateString()}<div class="mono text-xs">${item.batchHash.slice(0,14)}</div></td></tr>`).join('')||this._empty('No normalized flow evidence',4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Advanced network ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary||{}).map(([kind,count])=>`<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">bounded / hash-bound / audited</span><div class="text-xs text-muted">existing guarded executor or separately approved adapter only</div></td></tr>`).join('')||this._empty('No advanced network records',3)}</tbody></table></div>`;
   },
 
   _hardware() {

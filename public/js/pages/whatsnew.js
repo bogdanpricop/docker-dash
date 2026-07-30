@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.79.0', date: '2026-07-30', title: 'Guarded network and segmentation control plane', changes: [
+      { type: 'feature', text: 'NIC attach validates model, VLAN, MAC and IP evidence; detach blocks management, last-interface, boot and guest-dependent removal.' },
+      { type: 'feature', text: 'Immutable mapping profiles and VLAN, trunk, QinQ, VXLAN and tenant VPC/subnet plans add capability, version, MTU and blast-radius gates.' },
+      { type: 'security', text: 'IPAM, DHCP and DNS plans bind ownership, expected version and conflict state while reusing signed connector plans without external calls.' },
+      { type: 'security', text: 'Security-group changes require atomic capability, management lockout checks and rollback; NSX, Flow, PVE, Neutron and OVN evidence is normalized read-only.' },
+      { type: 'feature', text: 'Staged app/tag/identity microsegmentation and retained five-tuple flow batches add approvals and visibility without raw payloads or implicit enforcement.' },
+    ] },
     { version: '8.78.0', date: '2026-07-30', title: 'Advanced storage control plane', changes: [
       { type: 'feature', text: 'Digest-verified VMDK, VHDX, QCOW2, RAW and VHD conversion plans bind read-only source, capacity, tooling and validation evidence without starting disk I/O.' },
       { type: 'feature', text: 'Storage policy inventory/assignment, latency heatmaps and multipath observations add compliance, compatibility, downtime and correlated health evidence.' },

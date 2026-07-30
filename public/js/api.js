@@ -1724,6 +1724,20 @@ const Api = {
   recordStorageSuiteHealth(body) { return this.post('/governance/lifecycle/storage-advanced/suite-health-observations', body); },
   planStorageChange(body) { return this.post('/governance/lifecycle/storage-advanced/change-plans', body); },
 
+  // ─── Advanced network control plane (V4.3f / V4.4d) ─
+  getNetworkAdvanced() { return this.get('/governance/lifecycle/network-advanced'); },
+  planNetworkNicAttach(body) { return this.post('/governance/lifecycle/network-advanced/nic-attach-plans', body); },
+  planNetworkNicDetach(body) { return this.post('/governance/lifecycle/network-advanced/nic-detach-plans', body); },
+  saveNetworkMappingProfile(body) { return this.post('/governance/lifecycle/network-advanced/mapping-profiles', body); },
+  planNetworkSegment(body) { return this.post('/governance/lifecycle/network-advanced/segment-plans', body); },
+  planTenantNetworkChange(body) { return this.post('/governance/lifecycle/network-advanced/tenant-network-plans', body); },
+  planNetworkAddressChange(body) { return this.post('/governance/lifecycle/network-advanced/address-change-plans', body); },
+  recordSecurityGroupInventory(body) { return this.post('/governance/lifecycle/network-advanced/security-group-observations', body); },
+  planSecurityGroupChange(body) { return this.post('/governance/lifecycle/network-advanced/security-group-change-plans', body); },
+  recordDistributedFirewall(body) { return this.post('/governance/lifecycle/network-advanced/distributed-firewall-observations', body); },
+  saveMicrosegmentationPolicy(body) { return this.post('/governance/lifecycle/network-advanced/microsegmentation-policies', body); },
+  ingestNetworkFlowLogs(body) { return this.post('/governance/lifecycle/network-advanced/flow-log-batches', body); },
+
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
   getVmPerformance(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/performance?${query}`); },

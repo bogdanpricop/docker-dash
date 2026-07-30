@@ -188,6 +188,10 @@ router.use('/vm-content-mobility', require('./vm-content-mobility'));
 // references to the existing consolidation and shared-topology executors.
 router.use('/storage-advanced', require('./storage-advanced'));
 
+// V4.3f / V4.4d — NIC, segment, address, security-group, distributed
+// firewall, microsegmentation and flow evidence without implicit execution.
+router.use('/network-advanced', require('./network-advanced'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

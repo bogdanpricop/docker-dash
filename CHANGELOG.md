@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.79.0] - 2026-07-30 — Guarded network and segmentation control plane
+
+This batch closes B102, B103 and B105–B117 with a unified network lifecycle,
+security-policy and flow-evidence surface.
+
+- NIC attach plans validate network, model, VLAN, MAC, IP/gateway family and
+  provider capability. Detach plans block management, last-interface, boot and
+  guest-dependent removal while retaining explicit address-reservation intent.
+- Immutable mapping profiles support migration/clone reuse. VLAN, trunk, QinQ
+  and VXLAN plans validate tag membership, VNI, transport and MTU headroom;
+  tenant VPC/subnet changes add ownership, version and blast-radius gates.
+- IPAM, DHCP and DNS lifecycle plans bind resource ownership, expected version,
+  conflict state and A/AAAA family. Signed marketplace connector plans are
+  reused without starting an external call.
+- Security-group observations retain rules, attachments, effective-policy hash
+  and drift. Change plans require atomic capability, management-access checks
+  and rollback steps and reference the established guarded firewall executor.
+- NSX, Flow, PVE, Neutron and OVN evidence shares one fail-closed model.
+  Microsegmentation supports app/tag/identity selectors, staged enforcement,
+  expiring exceptions and two approvals. Five-tuple flow batches are bounded,
+  retained and payload-free.
+
 ## [8.78.0] - 2026-07-30 — Advanced storage control plane
 
 This batch closes B082–B084, B087–B089, B091–B095 and B097–B100 with a

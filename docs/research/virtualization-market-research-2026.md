@@ -688,22 +688,22 @@ topologia shared-disk cu identități opace. B096 rămâne separat și deschis.
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
 | B101 | Unified VM NIC inventory | MAC, network, model, IP, link și security state. | Ops | M | Now |
-| B102 | NIC add/attach wizard | Network/VLAN/IP/model selection cu validation. | DX | L | Next |
-| B103 | Safe NIC detach | Management/last-interface/guest dependency checks. | Sig | M | Next |
+| B102 | NIC add/attach wizard | Network/VLAN/IP/model selection cu validation. | DX | L | Done |
+| B103 | Safe NIC detach | Management/last-interface/guest dependency checks. | Sig | M | Done |
 | B104 | NIC connect/disconnect | Link state mutation și audit. | Ops | M | Now |
-| B105 | Network mapping profiles | Source→target mapping reutilizabil pentru clone/migration. | Ops | M | Next |
-| B106 | VLAN network creation | Provider-neutral intent cu dry-run. | Ops | L | Next |
-| B107 | Trunk and QinQ configuration | Capability-gated nested segmentation. | Ops | L | Later |
-| B108 | VXLAN/overlay creation | VNI, transport și MTU validation. | Ops | XL | Later |
-| B109 | VPC/subnet lifecycle | Tenant network create/update/delete. | DX | XL | Later |
-| B110 | IPAM integration | Allocate/release/reserve cu Infoblox/NetBox/native backends. | Ops | L | Next |
-| B111 | DHCP reservation workflow | MAC/IP/hostname ownership și conflict checks. | Ops | M | Next |
-| B112 | DNS record automation | A/AAAA/PTR lifecycle legat de VM. | DX | M | Next |
-| B113 | Security group inventory | Rules, attachments, effective policy și drift. | Sig | M | Next |
-| B114 | Security group editor | Plan/diff/lockout guard și atomic apply. | Sig | L | Next |
-| B115 | Distributed firewall adapter | NSX/Flow/PVE/Neutron/OVN policy abstraction. | Sig | XL | Later |
-| B116 | Microsegmentation policy model | App/tag/identity aware rules și staged enforcement. | Sig | XL | Later |
-| B117 | Flow log ingestion | Normalize allow/deny/bytes/5-tuple cu retention. | Sig | L | Next |
+| B105 | Network mapping profiles | Source→target mapping reutilizabil pentru clone/migration. | Ops | M | Done |
+| B106 | VLAN network creation | Provider-neutral intent cu dry-run. | Ops | L | Done |
+| B107 | Trunk and QinQ configuration | Capability-gated nested segmentation. | Ops | L | Done |
+| B108 | VXLAN/overlay creation | VNI, transport și MTU validation. | Ops | XL | Done |
+| B109 | VPC/subnet lifecycle | Tenant network create/update/delete. | DX | XL | Done |
+| B110 | IPAM integration | Allocate/release/reserve cu Infoblox/NetBox/native backends. | Ops | L | Done |
+| B111 | DHCP reservation workflow | MAC/IP/hostname ownership și conflict checks. | Ops | M | Done |
+| B112 | DNS record automation | A/AAAA/PTR lifecycle legat de VM. | DX | M | Done |
+| B113 | Security group inventory | Rules, attachments, effective policy și drift. | Sig | M | Done |
+| B114 | Security group editor | Plan/diff/lockout guard și atomic apply. | Sig | L | Done |
+| B115 | Distributed firewall adapter | NSX/Flow/PVE/Neutron/OVN policy abstraction. | Sig | XL | Done |
+| B116 | Microsegmentation policy model | App/tag/identity aware rules și staged enforcement. | Sig | XL | Done |
+| B117 | Flow log ingestion | Normalize allow/deny/bytes/5-tuple cu retention. | Sig | L | Done |
 | B118 | VM dependency map | Construiește relații din flows, DNS și metadata. | Ops | L | Next |
 | B119 | Network reachability test | Source/destination/port simulation sau probe controlat. | Ops | L | Next |
 | B120 | MTU mismatch detector | Path/overlay/storage/live-migration MTU checks. | Rez | M | Now |
@@ -712,6 +712,13 @@ topologia shared-disk cu identități opace. B096 rămâne separat și deschis.
 | B123 | Load balancer inventory | VIP, pools, members, health și provider links. | Ops | L | Later |
 | B124 | NAT/public IP lifecycle | Allocate, map, release și cost/ownership. | DX | L | Later |
 | B125 | Network intent validation | CIDR overlap, gateway, DNS, VLAN/VNI și route conflicts. | Sig | L | Next |
+
+**Status implementare 2026-07-30:** B102–B103 și B105–B117 au fost închise
+în V4.3f / V4.4d / v8.79.0. NIC, segment, VPC/subnet, address, security-group
+și microsegmentation changes sunt planuri hash-bound fără apply implicit.
+Firewall-ul guarded existent și connector marketplace IPAM/DNS sunt referite,
+nu duplicate; distributed firewall și flow logs acceptă doar dovezi normalizate
+bounded, fără trafic sau raw payload.
 
 ### F. Backup, restore și disaster recovery (B126–B150)
 
