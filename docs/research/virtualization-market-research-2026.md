@@ -570,19 +570,19 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B008 | Common datastore model | Capacity, backend, shared state, health și capabilities. | Ops | M | Now |
 | B009 | Common network model | Switch/network/VPC, CIDR, VLAN și provider metadata. | Ops | M | Now |
 | B010 | Common task model | State machine, progress, owner, cancelability și native link. | Ops | L | Now |
-| B011 | Common event model | Event envelope deduplicat cu cursor și severity. | Ops | L | Next |
-| B012 | Incremental inventory sync | Delta/cursor sync în loc de full polling. | Ops | L | Next |
+| B011 | Common event model | Event envelope deduplicat cu cursor și severity. | Ops | L | Done |
+| B012 | Incremental inventory sync | Delta/cursor sync în loc de full polling. | Ops | L | Done |
 | B013 | Inventory cache cu freshness | TTL, ETag/version, stale badge și refresh reason. | Ops | M | Now |
 | B014 | Cross-provider global search | Căutare VM/host/storage/network/tag în toată flota. | Ops | M | Now |
 | B015 | Saved inventory views | Filtre/coloane/sortare salvate per utilizator. | DX | S | Now |
-| B016 | Resource collections | Grupuri dinamice după tag, regex, provider, site sau state. | Ops | M | Next |
-| B017 | Custom metadata fields | Schema administrată pentru CMDB/business context. | Gov | M | Next |
+| B016 | Resource collections | Grupuri dinamice după tag, regex, provider, site sau state. | Ops | M | Done |
+| B017 | Custom metadata fields | Schema administrată pentru CMDB/business context. | Gov | M | Done |
 | B018 | Ownership și contacts | Owner, service, cost center, pager și runbook URL. | Gov | S | Now |
-| B019 | Resource relationship graph | VM–host–cluster–disk–network–backup dependency graph. | Ops | L | Next |
-| B020 | Duplicate/orphan detector | Resurse fără owner, disk-uri detașate, imagini nefolosite. | Cost | M | Next |
+| B019 | Resource relationship graph | VM–host–cluster–disk–network–backup dependency graph. | Ops | L | Done |
+| B020 | Duplicate/orphan detector | Resurse fără owner, disk-uri detașate, imagini nefolosite. | Cost | M | Done |
 | B021 | Provider health contract | Auth, reachability, latency, clock skew și API degradation. | Rez | M | Now |
 | B022 | Provider circuit breaker | Backoff, half-open probes și limitarea cascadei de erori. | Rez | M | Now |
-| B023 | Rate-limit budget manager | Adaptive concurrency pe endpoint/API. | Rez | M | Next |
+| B023 | Rate-limit budget manager | Adaptive concurrency pe endpoint/API. | Rez | M | Done |
 | B024 | Provider compatibility registry | Matrice testată de versiuni/ediții/drivere. | Gov | M | Now |
 | B025 | Provider conformance kit | Fixtures, contract tests și fake endpoints pentru pluginuri. | DX | L | Now |
 
@@ -598,13 +598,13 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B031 | VM create wizard | Plan de compute/storage/network/image înainte de apply. | DX | L | Now |
 | B032 | Create from template | Provisionare vendor-neutrală din golden image. | DX | L | Now |
 | B033 | Full VM clone | Clone cu alegere target cluster/storage/network. | DX | L | Now |
-| B034 | Linked/thin clone | Clone rapid când backend-ul îl permite. | Cost | M | Next |
+| B034 | Linked/thin clone | Clone rapid când backend-ul îl permite. | Cost | M | Done |
 | B035 | Cloud-init editor | User-data/meta-data/network-config cu schema și preview. | DX | M | Now |
-| B036 | Guest customization profiles | Sysprep/Linux settings reutilizabile și secret references. | DX | L | Next |
+| B036 | Guest customization profiles | Sysprep/Linux settings reutilizabile și secret references. | DX | L | Done |
 | B037 | VM hardware profile | Preset versionat pentru CPU/RAM/firmware/devices. | DX | M | Now |
-| B038 | Flavor/service offering mapper | Mapează profil comun la flavor/offering/vendor shape. | Gov | M | Next |
-| B039 | Image library aggregator | ISO/template/image inventory multi-provider cu provenance. | Ops | L | Next |
-| B040 | Image upload/import pipeline | Upload resumable, checksum și format conversion. | DX | L | Next |
+| B038 | Flavor/service offering mapper | Mapează profil comun la flavor/offering/vendor shape. | Gov | M | Done |
+| B039 | Image library aggregator | ISO/template/image inventory multi-provider cu provenance. | Ops | L | Done |
+| B040 | Image upload/import pipeline | Upload resumable, checksum și format conversion. | DX | L | Done |
 | B041 | Image replication | Distribuie imagini către site-uri/cluster-e cu progress. | Ops | L | Later |
 | B042 | Template versioning | Semver, deprecation, owners și compatibility notes. | Gov | M | Next |
 | B043 | Template promotion flow | Dev→test→prod cu approvals și immutable digest. | Gov | L | Later |
@@ -1323,6 +1323,15 @@ disk I/O și nu rulează binarul. Wave planner ordonează dependențe și ferest
 cutover/rollback sunt planuri approval/confirmation/precondition-bound fără
 execute endpoint. Raportul leagă checksum/timing/test/approval hashes, iar
 asistentul Xen identifică xm/xl/Xend și ghidează mutarea spre XAPI/XCP-ng.
+
+**Status implementare V0.2b / V1.5b / V1.7b / v8.75.0:** B011, B012,
+B016, B017, B019, B020 și B023 livrează evenimente deduplicate, delta sync cu
+cursor strict, colecții cu selectori siguri, metadata typed/versioned, graf de
+relații, hygiene advisory și bugete adaptive per endpoint. B034, B036 și B038
+adaugă planuri linked-clone, profile guest immutable cu secret references și
+mapping de offerings. B039 agregă imagini după digest/provenance, iar B040
+păstrează resumable chunk/checksum receipts și planul de conversie; nu stochează
+bytes și nu pornește clone, cleanup, upload, import sau provider mutation.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

@@ -176,6 +176,10 @@ router.use('/connectors', require('./connector-marketplace'));
 // cutover/rollback/report plans and legacy Xen guidance without implicit apply.
 router.use('/migration-factory', require('./migration-factory'));
 
+// V0.4a / B011-B012, B016-B017, B019-B020, B023, B034, B036,
+// B038-B040 — normalized inventory/content contracts without implicit apply.
+router.use('/platform-foundation', require('./platform-foundation'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

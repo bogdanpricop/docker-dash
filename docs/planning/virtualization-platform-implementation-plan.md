@@ -94,6 +94,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V0.3e | Lifecycle maintenance și compatibility operations | B256–B265 | maintenance waves, staged durable-operation campaigns, live patch/reboot evidence, firmware/driver matrix și certificate reminders |
 | V0.3f | Lifecycle assurance, content și support | B266–B275 | certificate renewal adapters, license assurance, redacted config drift/profile, signed mirrors, support bundles și validation packs |
 | V0.4 | Provider conformance kit | B018, B022–B025, B436–B450 | fixtures, fault injection și scorecard automat per provider |
+| V0.2b / V1.5b / V1.7b | Inventory extensibility și content lifecycle | B011–B012, B016–B017, B019–B020, B023, B034, B036, B038–B040 | Complet: events/delta sync, collections/metadata/graph/hygiene/rate budgets și clone/profile/flavor/image contracts fără implicit apply |
 
 **Exit:** niciun provider nou și nicio mutation nouă nu mai introduc contracte ad-hoc.
 

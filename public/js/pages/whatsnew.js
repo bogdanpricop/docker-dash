@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.75.0', date: '2026-07-30', title: 'Platform inventory and image lifecycle contracts', changes: [
+      { type: 'feature', text: 'Cursor-aware common events and strict delta inventory sync add deduplication, hash-only changes and explicit gap rejection across providers.' },
+      { type: 'feature', text: 'Dynamic resource collections, typed/versioned metadata and relationship impact graphs add reusable inventory context with bounded selectors and optimistic concurrency.' },
+      { type: 'improvement', text: 'Advisory hygiene scans detect missing owners, detached disks and unused images; endpoint rate budgets calculate adaptive concurrency without starting cleanup or provider work.' },
+      { type: 'feature', text: 'Linked clone plans, immutable guest customization profiles and scored flavor mappings close the remaining reusable provisioning contracts.' },
+      { type: 'security', text: 'The image library groups digest provenance, while resumable imports store chunk/checksum receipts and conversion plans only—no image bytes, provider mutation or implicit execution.' },
+    ] },
     { version: '8.74.0', date: '2026-07-30', title: 'Guarded migration factory', changes: [
       { type: 'feature', text: 'Migration assessment normalizes source VMs, dependencies and blockers and ranks target candidates using capacity, compatibility, network and storage scores.' },
       { type: 'security', text: 'The fixed conversion subprocess receives formats and checksums only, has no input path/network/environment, and does not execute qemu-img or virt-v2v or perform disk I/O.' },

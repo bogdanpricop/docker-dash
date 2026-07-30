@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.75.0] - 2026-07-30 — Platform inventory and image lifecycle contracts
+
+This batch closes B011, B012, B016, B017, B019, B020, B023, B034, B036,
+B038, B039 and B040 with provider-neutral, versioned control-plane contracts.
+
+- Common provider events are cursor-aware and deduplicated; incremental
+  inventory requires exact cursor continuity and accepts hash-only deltas.
+- Dynamic collections use bounded safe selectors. Typed metadata schemas and
+  values use optimistic concurrency, while relationship graphs expose bounded
+  downstream impact without provider reads.
+- Hygiene scans identify missing owners, detached disks and unused images but
+  never clean them up. Rate-budget observations derive adaptive per-endpoint
+  concurrency from remaining quota, latency, errors and current in-flight work.
+- Linked-clone plans validate provider capability, shared backing, chain depth,
+  storage and source state. Immutable semantic guest profiles keep only secret
+  references, and flavor mapping ranks compatible provider offerings.
+- The cross-provider image library groups digest replicas and provenance.
+  Resumable import sessions retain chunk/checksum receipts and conversion plans
+  only: zero image bytes and zero implicit provider/data-plane execution.
+
 ## [8.74.0] - 2026-07-30 — Guarded migration factory
 
 The B416–B425 batch adds an evidence-first cross-provider migration factory

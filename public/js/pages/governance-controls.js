@@ -13,7 +13,7 @@ const GovernanceControlsPage = {
       const [catalog, projects, approvals, policies, blackouts, realms, tokens, trusts,
         governanceCatalog, subjects, lifecycleCatalog, leases, sod, reviews, freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents, signalState, topology,
-        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory] = await Promise.all([
+        advancedObservability, sloReports, infrastructureAutomation, lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation] = await Promise.all([
         Api.getGovernanceControlsCatalog(), Api.listGovernanceProjects(), Api.listApprovalRequests(),
         Api.listApprovalPolicies(), Api.listBlackouts(), Api.listIdentityRealms(), Api.listServiceTokens(), Api.listWorkloadTrusts(),
         Api.getGovernanceCatalog(), Api.getGovernanceSubjects(), Api.getGovernanceLifecycleCatalog(), Api.listResourceLeases(),
@@ -33,6 +33,7 @@ const GovernanceControlsPage = {
         Api.getProviderPlugins(),
         Api.getConnectorMarketplace(),
         Api.getMigrationFactory(),
+        Api.getPlatformFoundation(),
       ]);
       this._data = { catalog, projects: projects.projects || [], approvals: approvals.requests || [],
         policies: policies.policies || [], blackouts: blackouts.windows || [], realms: realms.realms || [],
@@ -40,7 +41,7 @@ const GovernanceControlsPage = {
         lifecycleCatalog, leases: leases.leases || [], sod: sod.findings || [], reviews: reviews.campaigns || [], freshness,
         observabilityCatalog, contention, storagePerformance, networkPerformance, observedEvents: observedEvents.events || [],
         signalState, topology, advancedObservability, sloReports: sloReports.reports || [], infrastructureAutomation,
-        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory };
+        lifecycleUpdates, lifecycleMaintenance, lifecycleAssurance, finopsFoundation, finopsOptimization, finopsSustainability, hardwarePerformance, hardwareDevices, hardwareAdvanced, providerPlugins, connectorMarketplace, migrationFactory, platformFoundation };
       this._paint();
     } catch (error) {
       container.innerHTML = `<div class="empty-state"><i class="fas fa-shield-halved"></i><h3>Identity &amp; Policy Governance</h3><p>${Utils.escapeHtml(error.message)}</p></div>`;
@@ -73,6 +74,7 @@ const GovernanceControlsPage = {
         ${this._tabButton('plugins', 'fa-puzzle-piece', 'Provider plugins')}
         ${this._tabButton('connectors', 'fa-plug-circle-bolt', 'Connector marketplace')}
         ${this._tabButton('migration-factory', 'fa-truck-fast', 'Migration factory')}
+        ${this._tabButton('platform-foundation', 'fa-cubes-stacked', 'Platform foundation')}
       </div><div id="gc-content">${this._content()}</div>`;
     this._bind();
   },
@@ -92,6 +94,7 @@ const GovernanceControlsPage = {
     if (this._tab === 'plugins') return this._plugins();
     if (this._tab === 'connectors') return this._connectors();
     if (this._tab === 'migration-factory') return this._migrationFactory();
+    if (this._tab === 'platform-foundation') return this._platformFoundation();
     return this._capacity();
   },
   _actions(buttons) { return `<div style="display:flex;justify-content:flex-end;gap:7px;margin-bottom:12px;flex-wrap:wrap">${buttons}</div>`; },
@@ -349,6 +352,19 @@ const GovernanceControlsPage = {
       <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Migration factory execution boundary</h3><p class="text-muted text-sm">Assessment, mapping and reports use bounded evidence. The fixed conversion subprocess receives only formats and checksums, no paths, network or disk access. Test-clone results are imported evidence; cutover and rollback are approval/confirmation-bound plans with no execute endpoint.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>0 implicit apply</span></div></div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Migration assessments</h3></div><table class="data-table"><thead><tr><th>ID</th><th>Source → target</th><th>State</th><th>Evidence</th><th>Created</th></tr></thead><tbody>${(data.assessments || []).map(item => `<tr><td>#${item.id}</td><td><strong>${Utils.escapeHtml(item.sourceProvider)}</strong> → <strong>${Utils.escapeHtml(item.targetProvider)}</strong></td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : 'badge-danger'}">${item.state}</span></td><td class="mono text-xs">${item.assessmentHash.slice(0, 16)}</td><td>${new Date(item.createdAt).toLocaleString()}</td></tr>`).join('') || this._empty('No migration assessment evidence', 5)}</tbody></table></div>
       <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Migration factory ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([kind,count]) => `<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">hash-bound control plane</span><div class="text-xs text-muted">external execution requires a separately approved adapter</div></td></tr>`).join('') || this._empty('No migration factory records', 3)}</tbody></table></div>`;
+  },
+
+  _platformFoundation() {
+    const data = this._data.platformFoundation || { capabilities: {}, safety: {}, summary: {}, events: [], sessions: [] };
+    const labels = { commonEventModel: 'Common events', incrementalInventorySync: 'Delta inventory', resourceCollections: 'Collections', customMetadataFields: 'Typed metadata', resourceRelationshipGraph: 'Relationship graph', duplicateOrphanDetector: 'Hygiene scans', rateLimitBudgetManager: 'Rate budgets', linkedThinClonePlanner: 'Linked clone', guestCustomizationProfiles: 'Guest profiles', flavorOfferingMapper: 'Flavor mapping', imageLibraryAggregator: 'Image library', resumableImageImportReceipts: 'Resumable import' };
+    const total = Object.values(data.summary || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+    return `<div class="info-grid">${this._stat('fa-wave-square', 'Normalized events', data.summary?.events || 0)}${this._stat('fa-arrows-rotate', 'Inventory deltas', data.summary?.inventoryDeltas || 0)}${this._stat('fa-photo-film', 'Image observations', data.summary?.images || 0)}${this._stat('fa-database', 'Control-plane records', total)}</div>
+      <div class="card" style="margin-top:12px"><div class="card-header"><div><h3>Platform and content safety boundary</h3><p class="text-muted text-sm">Events, cursors, collections, metadata, relationships and image provenance use canonical bounded contracts. Clone and image-import workflows produce immutable plans or chunk receipts only; no image bytes are stored here and no provider mutation, cleanup, conversion or import is started implicitly.</p></div></div><div style="padding:15px;display:flex;gap:7px;flex-wrap:wrap">${Object.entries(labels).map(([key,label]) => `<span class="badge ${data.capabilities?.[key] ? 'badge-success' : 'badge-secondary'}"><i class="fas fa-check" style="margin-right:4px"></i>${label}</span>`).join('')}<span class="badge badge-success"><i class="fas fa-ban" style="margin-right:4px"></i>${data.safety?.providerMutationsStarted || 0} provider mutations</span></div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:12px;margin-top:12px">
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Latest normalized events</h3></div><table class="data-table"><thead><tr><th>Provider</th><th>Event / resource</th><th>Severity</th><th>Evidence</th></tr></thead><tbody>${(data.events || []).map(item => `<tr><td>#${item.providerHostId}<div class="text-xs text-muted">${Utils.escapeHtml(item.providerType)}</div></td><td><strong>${Utils.escapeHtml(item.eventType)}</strong><div class="mono text-xs">${Utils.escapeHtml(item.resourceKey || 'provider')}</div></td><td><span class="badge ${['error','critical'].includes(item.severity) ? 'badge-danger' : item.severity === 'warning' ? 'badge-warning' : 'badge-secondary'}">${item.severity}</span></td><td class="mono text-xs">${item.fingerprint.slice(0, 14)}<div>${new Date(item.occurredAt).toLocaleString()}</div></td></tr>`).join('') || this._empty('No normalized provider events', 4)}</tbody></table></div>
+        <div class="card" style="overflow:auto"><div class="card-header"><h3>Image import control plane</h3></div><table class="data-table"><thead><tr><th>Session / file</th><th>Format</th><th>Size</th><th>State / plan</th></tr></thead><tbody>${(data.sessions || []).map(item => `<tr><td>#${item.id}<div class="text-xs text-muted">${Utils.escapeHtml(item.fileName)}</div></td><td>${Utils.escapeHtml(item.inputFormat)} → ${Utils.escapeHtml(item.targetFormat)}</td><td>${Utils.formatBytes(item.totalBytes)}</td><td><span class="badge ${item.state === 'ready' ? 'badge-success' : item.state === 'blocked' ? 'badge-danger' : 'badge-secondary'}">${item.state}</span><div class="mono text-xs">${item.planHash ? item.planHash.slice(0, 14) : 'awaiting receipts'}</div></td></tr>`).join('') || this._empty('No image upload receipt sessions', 4)}</tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:12px;overflow:auto"><div class="card-header"><h3>Contract ledger</h3></div><table class="data-table"><thead><tr><th>Artifact</th><th>Records</th><th>Execution boundary</th></tr></thead><tbody>${Object.entries(data.summary || {}).map(([kind,count]) => `<tr><td><strong>${Utils.escapeHtml(kind)}</strong></td><td>${count}</td><td><span class="badge badge-success">versioned / hash-bound</span><div class="text-xs text-muted">data-plane execution requires a separately approved adapter</div></td></tr>`).join('') || this._empty('No platform foundation records', 3)}</tbody></table></div>`;
   },
 
   _hardware() {
