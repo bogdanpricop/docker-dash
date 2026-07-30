@@ -2,6 +2,7 @@
 
 const { Router } = require('express');
 const selfService = require('../services/self-service');
+const experience = require('../services/self-service-experience');
 const auditService = require('../services/audit');
 const { requireAuth, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
@@ -13,7 +14,8 @@ function route(handler) {
   return async (req, res, next) => {
     try { await handler(req, res); }
     catch (error) {
-      if (error instanceof selfService.SelfServiceError || (Number.isInteger(error?.status) && error.status < 500)) {
+      if (error instanceof selfService.SelfServiceError || error instanceof experience.SelfServiceExperienceError
+        || (Number.isInteger(error?.status) && error.status < 500)) {
         return res.status(error.status || 400).json({ error: error.message, code: error.code || 'SELF_SERVICE_ERROR', details: error.details || undefined });
       }
       return next(error);
@@ -93,5 +95,36 @@ router.post('/basket', writeable, route((req, res) => {
 router.delete('/basket/:id', writeable, route((req, res) => res.json(selfService.removeBasketItem(req.params.id, req.user))));
 router.delete('/basket', writeable, route((req, res) => res.json(selfService.clearBasket(req.user))));
 router.get('/palette', route((req, res) => res.json(selfService.commandPalette(req.query.q, req.user))));
+
+router.get('/experience/branding', route((req, res) => res.json(experience.getBranding(req.query.projectId, req.user))));
+router.put('/experience/branding', writeable, route((req, res) => {
+  const result = experience.saveBranding(req.body || {}, req.user);
+  audit(req, 'self_service_branding_update', 'portal_branding', result.branding.scope,
+    { projectId: result.branding.projectId, accentColor: result.branding.accentColor });
+  res.json(result);
+}));
+router.get('/experience/help', route((req, res) => res.json(experience.contextualHelp(req.query, req.user))));
+router.post('/experience/troubleshooting', writeable, route((req, res) => {
+  const result = experience.troubleshoot(req.body?.requestId, req.user);
+  audit(req, 'self_service_troubleshooting_bundle', 'self_service_request', result.session.requestId,
+    { sessionKey: result.session.key, bundleHash: result.session.bundleHash });
+  res.status(201).json(result);
+}));
+router.get('/experience/projects/:id/recommendations', route((req, res) => res.json(experience.recommendations(req.params.id, req.user))));
+router.get('/experience/incidents', route((req, res) => res.json(experience.listIncidents(req.user))));
+router.post('/experience/incidents/:key/actions', writeable, route((req, res) => {
+  const result = experience.updateIncident(req.params.key, req.body || {}, req.user);
+  audit(req, `self_service_incident_${result.action}`, 'portal_incident', req.params.key, { infrastructureMutated: false });
+  res.json(result);
+}));
+router.get('/experience/feedback/preference', route((req, res) => res.json(experience.feedbackPreference(req.user))));
+router.put('/experience/feedback/preference', writeable, route((req, res) => {
+  const result = experience.saveFeedbackPreference(req.body || {}, req.user);
+  audit(req, 'product_feedback_preference_update', 'product_feedback', req.user.id, { enabled: result.preference.enabled,
+    usageEnabled: result.preference.usageEnabled, failureEnabled: result.preference.failureEnabled });
+  res.json(result);
+}));
+router.post('/experience/feedback/events', writeable, route((req, res) => res.json(experience.recordFeedback(req.body || {}, req.user))));
+router.get('/experience/feedback/summary', route((req, res) => res.json(experience.feedbackSummary(req.user))));
 
 module.exports = router;

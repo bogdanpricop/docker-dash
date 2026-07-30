@@ -1931,5 +1931,12 @@ i18n.register('zh', '中文', "中文", {
     checkFailed: "检查失败",
     upToDate: "您使用的已是最新版本",
     refreshed: "更新检查已刷新"
-  }
+  },
+  selfService: {
+    title: '基础设施自助服务', requestQuota: '申请配额', acknowledge: '确认', pause: '暂停通知',
+    tabs: { catalog: '目录', project: '项目', requests: '请求', incidents: '事件', guidance: '指导' },
+    actions: { start: '启动', shutdown: '关机', reboot: '重启', snapshot: '快照', console: '控制台' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: '每项基础设施更改都需要单独的受保护确认。', mobile: '安全移动视图：' },
+  },
 });

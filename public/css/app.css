@@ -2977,3 +2977,55 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
   .wiz-progress { display: flex; }
   .wiz-body { padding: 18px 16px; }
 }
+
+/* ── Self-service experience, mobile incidents and WCAG contract (v8.69) ── */
+.self-service-portal { --ss-accent: var(--accent); }
+.self-service-portal .tab-btn.active { color: var(--ss-accent); border-color: var(--ss-accent); }
+.self-service-portal :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--ss-accent); outline-offset: 3px;
+}
+.ss-brand { display: flex; align-items: center; gap: 12px; }
+.ss-brand-icon { color: var(--ss-accent); font-size: 22px; }
+.ss-brand-logo { width: 42px; height: 42px; object-fit: contain; border-radius: 6px; }
+.ss-scroll { overflow: auto; }
+.ss-operation-group { display: flex; flex-wrap: wrap; gap: 4px; }
+.ss-recommendation-grid { display: grid; gap: 10px; }
+.ss-recommendation { padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.ss-recommendation h4, .ss-help-topic h4 { margin: 0 0 5px; }
+.ss-recommendation details { grid-column: 1 / -1; }
+.ss-incident-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.ss-incident { padding: 14px; display: grid; gap: 9px; border-left: 4px solid var(--border); }
+.ss-incident[data-severity="critical"] { border-left-color: var(--red); }
+.ss-incident[data-severity="warning"] { border-left-color: var(--yellow); }
+.ss-incident[data-severity="info"] { border-left-color: var(--accent); }
+.ss-incident-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ss-incident-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ss-guidance-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 12px; }
+.ss-guidance-form { padding: 14px; display: grid; grid-template-columns: auto minmax(140px, 1fr); align-items: center; gap: 8px; }
+.ss-guidance-form button { grid-column: 2; justify-self: start; }
+.ss-help-topic { margin: 12px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); }
+.ss-help-topic ul { padding-left: 20px; }
+.ss-payload-preview { margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ss-checklist li { margin-bottom: 8px; }
+.ss-checklist li[data-status="pass"]::marker { color: var(--green); }
+.ss-checklist li[data-status="attention"]::marker { color: var(--yellow); }
+
+@media (prefers-contrast: more) {
+  .self-service-portal .card, .self-service-portal .form-control { border-width: 2px; }
+  .self-service-portal .text-muted { color: var(--text); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .self-service-portal *, .self-service-portal *::before, .self-service-portal *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+  }
+}
+@media (max-width: 720px) {
+  .ss-guidance-grid, .ss-recommendation { grid-template-columns: 1fr; }
+  .ss-recommendation details { grid-column: 1; }
+  .ss-guidance-form { grid-template-columns: 1fr; }
+  .ss-guidance-form button { grid-column: 1; width: 100%; }
+  .ss-incident-grid { grid-template-columns: 1fr; }
+  .ss-incident-actions .btn { min-height: 44px; flex: 1; }
+  .self-service-portal .tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .self-service-portal .tab-btn { min-height: 44px; white-space: nowrap; }
+}

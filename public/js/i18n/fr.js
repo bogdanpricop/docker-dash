@@ -1931,5 +1931,12 @@ i18n.register('fr', 'FR', "Français", {
     checkFailed: "Échec de la vérification",
     upToDate: "Vous utilisez la dernière version",
     refreshed: "Vérification des mises à jour actualisée"
-  }
+  },
+  selfService: {
+    title: "Libre-service d'infrastructure", requestQuota: 'Demander un quota', acknowledge: 'Acquitter', pause: 'Suspendre les notifications',
+    tabs: { catalog: 'Catalogue', project: 'Projet', requests: 'Demandes', incidents: 'Incidents', guidance: 'Conseils' },
+    actions: { start: 'Démarrer', shutdown: 'Arrêter', reboot: 'Redémarrer', snapshot: 'Instantané', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: "Chaque changement d'infrastructure exige une confirmation protégée distincte.", mobile: 'Vue mobile sûre :' },
+  },
 });

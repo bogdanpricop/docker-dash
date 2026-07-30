@@ -1584,4 +1584,11 @@ i18n.register('en', 'EN', 'English', {
       },
     },
   },
+  selfService: {
+    title: 'Infrastructure Self-Service', requestQuota: 'Request quota', acknowledge: 'Acknowledge', pause: 'Pause notifications',
+    tabs: { catalog: 'Catalog', project: 'Project', requests: 'Requests', incidents: 'Incidents', guidance: 'Guidance' },
+    actions: { start: 'Start', shutdown: 'Shut down', reboot: 'Reboot', snapshot: 'Snapshot', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Every infrastructure change requires a separate guarded confirmation.', mobile: 'Safe mobile view:' },
+  },
 });

@@ -116,6 +116,12 @@ jobs:
             console.log('i18n validation passed');
           "
 
+      - name: Validate self-service localization safety copy
+        run: npm run check:self-service-i18n
+
+      - name: Validate self-service accessibility contract
+        run: npm run check:self-service-a11y
+
       - name: Summary
         if: always()
         run: |

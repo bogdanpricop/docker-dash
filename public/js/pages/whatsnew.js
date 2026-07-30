@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.69.0', date: '2026-07-30', title: 'Accessible and explainable self-service experience', changes: [
+      { type: 'feature', text: 'Project administrators can request time-bound quota increases through the existing approval workflow; approved limits become expiring grants and never bypass separation of duties.' },
+      { type: 'feature', text: 'Organization/project branding and provider-version-action contextual guidance make the portal recognizable while keeping logos and help links same-origin or HTTPS-only.' },
+      { type: 'security', text: 'Guided troubleshooting builds a hash-bound, redacted support bundle, an evidence checklist and a read-only next safe test without exposing request values, resource references or raw errors.' },
+      { type: 'improvement', text: 'Recommendations now explain reason, evidence, confidence, impact and undo; keyboard VM controls, mobile incident cards and acknowledge/pause-only actions improve safe operation across devices.' },
+      { type: 'feature', text: 'CI now gates 11-language safety copy and accessibility contracts. Optional feedback remains off by default and stores only allowlisted daily aggregates locally, with no network transmission.' },
+    ] },
     { version: '8.68.0', date: '2026-07-30', title: 'Infrastructure self-service catalog and request workflow', changes: [
       { type: 'feature', text: 'The global command palette now searches permission-filtered projects, catalog offerings and requests, and explains unavailable safe actions; a server-persistent basket spans VM and container pages with compatibility preview.' },
       { type: 'feature', text: 'A curated VM/application/cluster catalog adds owners, immutable version hashes, changelogs, compatibility metadata and explicit draft/published/deprecated/retired lifecycle.' },

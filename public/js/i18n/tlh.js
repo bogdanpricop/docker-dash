@@ -1931,5 +1931,12 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     checkFailed: "Sam lujpu'",
     upToDate: "SoH mI' chu' Qav Dalo'taH",
     refreshed: "chu'Ha'moH Sam chu'Ha'moHlu'pu'"
-  }
+  },
+  selfService: {
+    title: 'Infrastructure Self-Service', requestQuota: 'quota tlhob', acknowledge: 'luq', pause: 'QInvam mev',
+    tabs: { catalog: 'Catalog', project: 'Project', requests: 'Requests', incidents: 'Incidents', guidance: 'Guidance' },
+    actions: { start: 'tagh', shutdown: 'SoQmoH', reboot: 'qaStaHmoH', snapshot: 'Snapshot', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Infrastructure choH HochvaD latlh confirmation poQlu\'.', mobile: 'Safe mobile view:' },
+  },
 });

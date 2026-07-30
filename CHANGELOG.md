@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.69.0] - 2026-07-30 — Accessible and explainable self-service experience
+
+The B366–B375 batch completes the self-service experience with bounded support,
+accessibility and privacy controls.
+
+- Project administrators can request time-bound quota increases through the
+  existing approval workflow. Approved limits become expiring grants.
+- Organization/project branding accepts only same-origin or HTTPS assets and
+  help links. Contextual documentation is provider-, version- and action-aware.
+- Guided troubleshooting persists a hash-bound redacted support bundle, an
+  evidence checklist and a read-only next safe test. Recommendations disclose
+  reason, evidence, confidence, impact and undo and remain advisory-only.
+- Keyboard VM operations, live regions, focus/contrast/motion rules and mobile
+  incident cards add safe acknowledge/pause actions without destructive mobile
+  defaults. CI gates the critical copy in all 11 bundled languages.
+- Product feedback is disabled by default. After explicit opt-in, only an
+  allowlisted local daily aggregate is retained; no telemetry is transmitted.
+
 ## [8.67.0] - 2026-07-29 — Edge continuity and unified infrastructure experience
 
 The B346–B355 batch closes the edge backlog and starts the common operator

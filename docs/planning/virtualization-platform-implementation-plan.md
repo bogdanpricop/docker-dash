@@ -171,8 +171,8 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 
 | Batch | Scope | Backlog | Rezultat |
 |---|---|---|---|
-| V6.1 | Unified application view | B301–B325, B351–B375 | V6.1a livrează B317–B325; V6.1b livrează B351–B355; V6.2a livrează B356–B365: palette/basket, catalog/version/forms/approval/timeline/dashboard/provisioning/lifecycle; B366–B375 rămân |
-| V6.2 | Service catalog și request workflow | B351–B375 | V6.2a livrează B356–B365 cu catalog, formulare, approvals, timeline și execuție self-service peste motorul persistent existent |
+| V6.1 | Unified application view | B301–B325, B351–B375 | Complet: V6.1a livrează B317–B325, V6.1b B351–B355, V6.2a B356–B365 și V6.2b B366–B375 |
+| V6.2 | Service catalog și request workflow | B351–B375 | Complet: V6.2a catalog/formulare/approvals/execuție; V6.2b quota/branding/help/troubleshooting/explainability/accessibility/mobile/i18n/feedback |
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | Complet: V6.5a livrează B326–B335, V6.5b B336–B345, iar V6.5c B346–B350: disaster freeze, backup seeding, compliance, fault domains și zero-touch enrollment |

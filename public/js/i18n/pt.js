@@ -1931,5 +1931,12 @@ i18n.register('pt', 'PT', "Português", {
     checkFailed: "Verificação falhou",
     upToDate: "Está a usar a versão mais recente",
     refreshed: "Verificação de atualização atualizada"
-  }
+  },
+  selfService: {
+    title: 'Autosserviço de infraestrutura', requestQuota: 'Pedir quota', acknowledge: 'Reconhecer', pause: 'Pausar notificações',
+    tabs: { catalog: 'Catálogo', project: 'Projeto', requests: 'Pedidos', incidents: 'Incidentes', guidance: 'Orientação' },
+    actions: { start: 'Iniciar', shutdown: 'Encerrar', reboot: 'Reiniciar', snapshot: 'Snapshot', console: 'Consola' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Cada alteração de infraestrutura exige uma confirmação protegida separada.', mobile: 'Vista móvel segura:' },
+  },
 });

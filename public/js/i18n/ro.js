@@ -2044,5 +2044,12 @@ i18n.register('ro', 'RO', "Română", {
       promoteLoadBtn: "Încarcă și revizuiește",
       promoteNoStacks: "Niciun stack Compose single-host nu rulează pe acest host pentru a fi promovat."
     }
-  }
+  },
+  selfService: {
+    title: 'Self-Service Infrastructură', requestQuota: 'Solicită cotă', acknowledge: 'Confirmă primirea', pause: 'Pauză notificări',
+    tabs: { catalog: 'Catalog', project: 'Proiect', requests: 'Cereri', incidents: 'Incidente', guidance: 'Ghidare' },
+    actions: { start: 'Pornește', shutdown: 'Oprește controlat', reboot: 'Repornește', snapshot: 'Snapshot', console: 'Consolă' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Fiecare schimbare de infrastructură necesită o confirmare protejată separată.', mobile: 'Vizualizare mobilă sigură:' },
+  },
 });

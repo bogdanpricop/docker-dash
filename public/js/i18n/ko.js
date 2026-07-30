@@ -1931,5 +1931,12 @@ i18n.register('ko', 'KR', "한국어", {
     checkFailed: "확인 실패",
     upToDate: "최신 버전을 사용 중입니다",
     refreshed: "업데이트 확인을 새로고침했습니다"
-  }
+  },
+  selfService: {
+    title: '인프라 셀프서비스', requestQuota: '할당량 요청', acknowledge: '확인', pause: '알림 일시 중지',
+    tabs: { catalog: '카탈로그', project: '프로젝트', requests: '요청', incidents: '인시던트', guidance: '가이드' },
+    actions: { start: '시작', shutdown: '종료', reboot: '재부팅', snapshot: '스냅샷', console: '콘솔' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: '모든 인프라 변경에는 별도의 보호된 확인이 필요합니다.', mobile: '안전한 모바일 보기:' },
+  },
 });

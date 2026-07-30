@@ -1931,5 +1931,12 @@ i18n.register('de', 'DE', "Deutsch", {
     checkFailed: "Prüfung fehlgeschlagen",
     upToDate: "Sie verwenden die neueste Version",
     refreshed: "Update-Prüfung aktualisiert"
-  }
+  },
+  selfService: {
+    title: 'Infrastruktur-Self-Service', requestQuota: 'Kontingent anfordern', acknowledge: 'Bestätigen', pause: 'Benachrichtigungen pausieren',
+    tabs: { catalog: 'Katalog', project: 'Projekt', requests: 'Anfragen', incidents: 'Vorfälle', guidance: 'Anleitung' },
+    actions: { start: 'Starten', shutdown: 'Herunterfahren', reboot: 'Neu starten', snapshot: 'Snapshot', console: 'Konsole' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Jede Infrastrukturänderung erfordert eine separate geschützte Bestätigung.', mobile: 'Sichere mobile Ansicht:' },
+  },
 });

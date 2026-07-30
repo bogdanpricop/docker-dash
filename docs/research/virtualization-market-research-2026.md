@@ -1172,16 +1172,16 @@ attestation și certificate fingerprint four-eyes fără private key central.
 | B363 | Self-service project dashboard | Resources, quota, cost, alerts și requests. | DX | L | Done |
 | B364 | Self-service VM provisioning | Catalog-scoped create fără fabric details. | DX | XL | Done |
 | B365 | Self-service lifecycle actions | Power/snapshot/console within project policy. | DX | L | Done |
-| B366 | Self-service quota increase | Time-bound request and approval. | DX | M | Later |
-| B367 | Portal branding | Logo/colors/help links per organization. | DX | M | Later |
-| B368 | Contextual documentation | Provider/version/action-specific guidance și caveats. | DX | M | Now |
-| B369 | Guided troubleshooting | Evidence checklist, support bundle și next safe test. | Ops | L | Next |
-| B370 | Explainable recommendations | Reason, evidence, confidence, impact și undo. | DX | M | Next |
-| B371 | Keyboard-accessible VM operations | Full navigation/action/confirm accessibility. | DX | M | Now |
-| B372 | Mobile incident view | Read/ack/pause/job status fără destructive defaults. | Ops | M | Next |
-| B373 | Localization completeness gate | Provider/action strings și safety copy testate. | Gov | S | Now |
-| B374 | Accessibility conformance pack | WCAG focus, contrast, labels, live regions și tests. | Gov | M | Now |
-| B375 | Product feedback telemetry opt-in | Feature usage/failure funnels fără sensitive payloads. | DX | M | Next |
+| B366 | Self-service quota increase | Time-bound request and approval. | DX | M | Done |
+| B367 | Portal branding | Logo/colors/help links per organization. | DX | M | Done |
+| B368 | Contextual documentation | Provider/version/action-specific guidance și caveats. | DX | M | Done |
+| B369 | Guided troubleshooting | Evidence checklist, support bundle și next safe test. | Ops | L | Done |
+| B370 | Explainable recommendations | Reason, evidence, confidence, impact și undo. | DX | M | Done |
+| B371 | Keyboard-accessible VM operations | Full navigation/action/confirm accessibility. | DX | M | Done |
+| B372 | Mobile incident view | Read/ack/pause/job status fără destructive defaults. | Ops | M | Done |
+| B373 | Localization completeness gate | Provider/action strings și safety copy testate. | Gov | S | Done |
+| B374 | Accessibility conformance pack | WCAG focus, contrast, labels, live regions și tests. | Gov | M | Done |
+| B375 | Product feedback telemetry opt-in | Feature usage/failure funnels fără sensitive payloads. | DX | M | Done |
 
 **Status implementare 2026-07-29:** B351–B355 au fost închise în V6.1b /
 v8.67.0. Home-ul comun agregă doar endpointurile permise și evidența persistentă
@@ -1202,6 +1202,16 @@ timeline-ul păstrează tranzițiile. Dashboard-ul de proiect oferă resources,
 quota alerts, cost boundary și requests. Provisioning-ul VM și lifecycle
 power/snapshot/console ascund fabric details și refolosesc preflight-ul și
 motorul persistent de operații după aprobarea separată.
+
+**Status implementare 2026-07-30:** B366–B375 au fost închise în V6.2b /
+v8.69.0. Quota increase folosește aprobări și granturi temporare; branding-ul
+moștenit acceptă numai URL-uri same-origin/HTTPS. Ajutorul contextual și
+troubleshooting-ul sunt provider/version/action-aware, iar bundle-urile de
+suport sunt redacted și hash-bound. Recomandările sunt explicabile și strict
+advisory. Operațiile VM au navigare de tastatură, incident view-ul mobil oferă
+numai acknowledge/pause, iar gate-urile CI verifică safety copy în 11 limbi și
+contractele de accesibilitate. Feedback telemetry este opt-in, agregat local și
+nu face transmisii de rețea.
 
 ### P. Hardware, acceleratoare și performanță (B376–B400)
 

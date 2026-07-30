@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.68.0",
+  "version": "8.69.0",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "test:watch": "jest --watch",
     "build:novnc": "esbuild node_modules/@novnc/novnc/lib/rfb.js --bundle --minify --format=iife --global-name=NoVNC --banner:js=\"/*! noVNC 1.5.0 | MPL-2.0 | https://github.com/novnc/noVNC */\" --outfile=public/lib/novnc.min.js",
     "lint": "eslint src/",
+    "check:self-service-i18n": "node scripts/validate-self-service-i18n.js",
+    "check:self-service-a11y": "node scripts/validate-self-service-a11y.js",
     "lint:fix": "eslint src/ --fix",
     "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml"
   },

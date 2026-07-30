@@ -1545,6 +1545,17 @@ const Api = {
   removeSelfServiceBasketItem(id) { return this.delete(`/self-service/basket/${id}`); },
   clearSelfServiceBasket() { return this.delete('/self-service/basket'); },
   searchSelfServicePalette(q) { return this.get(`/self-service/palette?q=${encodeURIComponent(q)}`); },
+  getSelfServiceBranding(projectId = null) { return this.get(`/self-service/experience/branding${projectId == null ? '' : `?projectId=${encodeURIComponent(projectId)}`}`); },
+  saveSelfServiceBranding(body) { return this.put('/self-service/experience/branding', body); },
+  getSelfServiceContextualHelp(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/self-service/experience/help${query ? `?${query}` : ''}`); },
+  createSelfServiceTroubleshooting(requestId) { return this.post('/self-service/experience/troubleshooting', { requestId }); },
+  getSelfServiceRecommendations(projectId) { return this.get(`/self-service/experience/projects/${projectId}/recommendations`); },
+  getSelfServiceIncidents() { return this.get('/self-service/experience/incidents'); },
+  updateSelfServiceIncident(key, body) { return this.post(`/self-service/experience/incidents/${encodeURIComponent(key)}/actions`, body); },
+  getSelfServiceFeedbackPreference() { return this.get('/self-service/experience/feedback/preference'); },
+  saveSelfServiceFeedbackPreference(body) { return this.put('/self-service/experience/feedback/preference', body); },
+  recordSelfServiceFeedback(body) { return this.post('/self-service/experience/feedback/events', body); },
+  getSelfServiceFeedbackSummary() { return this.get('/self-service/experience/feedback/summary'); },
 
   // ─── Identity + policy governance (v8.50.0 / V4.6b) ─────
   getGovernanceControlsCatalog() { return this.get('/governance/controls/catalog'); },
