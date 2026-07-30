@@ -1237,11 +1237,11 @@ nu face transmisii de rețea.
 | B393 | GPU utilization metrics | SM/memory/encoder/ECC/throttle per workload. | Cost | L | Done |
 | B394 | Accelerator reservation schedule | Time/project based scarce-device booking. | Gov | L | Done |
 | B395 | USB passthrough inventory | Device ownership, mappings și mobility caveats. | Ops | M | Done |
-| B396 | Virtual hardware compatibility scan | VM devices vs target host/provider/version. | Rez | L | Next |
-| B397 | Performance benchmark registry | Controlled baseline results și hardware metadata. | Ops | L | Later |
-| B398 | Noisy-neighbor detector | Correlate contention și colocated workloads. | Ops | XL | Later |
-| B399 | Performance regression detector | Before/after migration/upgrade/config change. | Ops | L | Later |
-| B400 | Workload performance profile | Batch/database/VDI/latency/AI policy presets. | DX | L | Later |
+| B396 | Virtual hardware compatibility scan | VM devices vs target host/provider/version. | Rez | L | Done |
+| B397 | Performance benchmark registry | Controlled baseline results și hardware metadata. | Ops | L | Done |
+| B398 | Noisy-neighbor detector | Correlate contention și colocated workloads. | Ops | XL | Done |
+| B399 | Performance regression detector | Before/after migration/upgrade/config change. | Ops | L | Done |
+| B400 | Workload performance profile | Batch/database/VDI/latency/AI policy presets. | DX | L | Done |
 
 **Status implementare 2026-07-30:** B376–B385 au fost închise în V6.6a /
 v8.70.0. Snapshot-urile normalizate păstrează proveniență bounded pentru
@@ -1260,15 +1260,22 @@ caveats și capacitate/licență vGPU. Rezervările temporale detectează overla
 dar nu rezervă în provider. Release-ul unui plan nu face detach, iar niciun
 endpoint din batch nu poate porni attach, detach sau provider apply.
 
+**Status implementare V6.6c / v8.72.0:** B396–B400 închid hardware/performance
+cu scanări VM-target pentru CPU/memory/device/provider-version, baseline-uri
+controlate legate de hardware evidence, corelație temporală explicit
+non-cauzală pentru noisy neighbors și comparații direction-aware înainte/după
+schimbări. Preseturile batch/database/VDI/latency/AI sunt desired thresholds;
+nu pornesc migration, placement sau reconfigurare.
+
 ### Q. Integrații, extensibilitate și migration factory (B401–B425)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B401 | Signed provider plugin manifest | API version, permissions, capabilities și signature. | Sig | L | Next |
-| B402 | Out-of-process plugin sandbox | Resource/network/filesystem limits și RPC boundary. | Sig | XL | Later |
-| B403 | Plugin permission consent | Explicit read/write/secrets/network capabilities. | Gov | M | Next |
-| B404 | Plugin compatibility checker | Core/API/version/schema conformance before enable. | Rez | M | Next |
-| B405 | Plugin health and telemetry | Crashes/latency/rate/errors fără payload secrets. | Ops | M | Next |
+| B401 | Signed provider plugin manifest | API version, permissions, capabilities și signature. | Sig | L | Done |
+| B402 | Out-of-process plugin sandbox | Resource/network/filesystem limits și RPC boundary. | Sig | XL | Done |
+| B403 | Plugin permission consent | Explicit read/write/secrets/network capabilities. | Gov | M | Done |
+| B404 | Plugin compatibility checker | Core/API/version/schema conformance before enable. | Rez | M | Done |
+| B405 | Plugin health and telemetry | Crashes/latency/rate/errors fără payload secrets. | Ops | M | Done |
 | B406 | Connector marketplace registry | Curated metadata, signatures și support level. | DX | L | Later |
 | B407 | CMDB connector | NetBox/ServiceNow/GLPI sync cu ownership rules. | Gov | L | Next |
 | B408 | ITSM change connector | Ticket/change-window/approval/evidence links. | Gov | L | Next |
@@ -1289,6 +1296,15 @@ endpoint din batch nu poate porni attach, detach sau provider apply.
 | B423 | Migration rollback orchestrator | Restore source network/power și cleanup target safely. | Rez | XL | Later |
 | B424 | Migration evidence report | Source/target checksums, timings, tests și approvals. | Gov | M | Later |
 | B425 | Legacy Xen migration assistant | `xm`/`xl`/Xend discovery și guided move spre XAPI/XCP-ng. | DX | L | Next |
+
+**Status implementare V5.8a / v8.72.0:** B401–B405 adaugă canonical Ed25519
+manifest verification, permisiuni explicite cu nivel de risc și consent legat
+de exact manifest hash. Enable rămâne blocat până când signature, core/API,
+schema/capabilities și toate consimțămintele trec. Sandbox probe folosește un
+worker JSON-RPC fix într-un proces separat, 32 MiB/2 secunde/16 KiB output,
+environment gol, fără plugin code/path/endpoint și fără payload în răspuns.
+Health telemetry acceptă exclusiv latency/request/error/crash aggregates și
+respinge câmpuri suplimentare sau credential-shaped.
 
 ### R. Reliability, testare și control operațional (B426–B450)
 

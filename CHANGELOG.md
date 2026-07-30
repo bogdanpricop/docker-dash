@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.72.0] - 2026-07-30 — Advanced performance and signed provider plugins
+
+The B396–B405 batch completes performance evidence and establishes a
+fail-closed provider plugin trust boundary.
+
+- VM compatibility scans compare recorded CPU, memory and device requirements
+  with target host/provider-version evidence without starting migration or
+  placement.
+- Controlled benchmark baselines retain normalized hardware metadata. Noisy
+  neighbor analysis correlates colocated pressure without claiming causation;
+  direction-aware before/after comparison detects regressions.
+- Batch, database, VDI, latency and AI profiles define desired thresholds and
+  evaluate the latest workload sample without provider reconfiguration.
+- Provider plugin manifests require valid canonical Ed25519 signatures and a
+  known API/schema/capability contract. Explicit risk-aware permission consent
+  is bound to the exact manifest hash and gates enablement.
+- The sandbox probe runs only a fixed JSON-RPC worker in a separate process with
+  memory/time/output limits, empty environment, no plugin code/path/network
+  endpoint and no returned payload. Health stores aggregates only.
+
 ## [8.71.0] - 2026-07-30 — Hardware devices and accelerator control plane
 
 The B386–B395 batch extends hardware evidence into scarce-device inventory,

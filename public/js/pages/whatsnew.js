@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.72.0', date: '2026-07-30', title: 'Advanced performance and signed provider plugins', changes: [
+      { type: 'feature', text: 'VM compatibility scans compare recorded CPU, memory and device requirements with target host and provider-version evidence without starting migration or placement.' },
+      { type: 'feature', text: 'Controlled hardware benchmarks, colocated noisy-neighbor correlation and direction-aware before/after comparison add explicit evidence and regression thresholds.' },
+      { type: 'improvement', text: 'Batch, database, VDI, latency and AI workload profiles evaluate desired performance thresholds against the latest bounded sample with no reconfiguration.' },
+      { type: 'security', text: 'Provider plugin manifests require canonical Ed25519 verification; exact-hash, risk-aware permission consent and core/API/schema/capability checks gate enablement.' },
+      { type: 'security', text: 'Sandbox probes use a fixed, resource-bounded JSON-RPC subprocess that loads no plugin code or endpoint and returns no payload; health telemetry accepts aggregates only.' },
+    ] },
     { version: '8.71.0', date: '2026-07-30', title: 'Hardware devices and accelerator control plane', changes: [
       { type: 'feature', text: 'Memory-tier and PCI inventory records DRAM/NVMe use and hit rate plus IOMMU groups, reset/ACS readiness, PF/VF relationships, drivers, health and mappings.' },
       { type: 'feature', text: 'Host-scoped PCI and SR-IOV allocation plans include NUMA, migration and HA constraints; VF auto-selection avoids existing plans and release never performs provider detach.' },

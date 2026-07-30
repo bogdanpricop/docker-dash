@@ -164,6 +164,10 @@ router.use('/assurance', require('./lifecycle-assurance'));
 // pinning, hugepage and memory-pressure evidence. No provider apply routes.
 router.use('/hardware', require('./hardware-performance'));
 
+// V5.8a / B401-B405 — signed provider plugins, explicit consent, fixed RPC
+// subprocess sandbox, compatibility gates and payload-free health telemetry.
+router.use('/plugins', require('./provider-plugins'));
+
 // V6.3a / B276-B285 — immutable resource ledger, versioned infrastructure
 // rates, tag allocation, showback, chargeback exports and scoped budgets.
 router.use('/finops/sustainability', require('./finops-sustainability'));

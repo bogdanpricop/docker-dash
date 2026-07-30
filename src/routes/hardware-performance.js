@@ -4,12 +4,13 @@ const { Router } = require('express');
 const { writeable } = require('../middleware/auth');
 const hardware = require('../services/hardware-performance');
 const devices = require('../services/hardware-devices');
+const advanced = require('../services/hardware-advanced');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
 
 const router = Router();
 function route(handler) { return async (req, res, next) => { try { await handler(req, res); } catch (error) {
-  if (['HardwarePerformanceError', 'HardwareDeviceError'].includes(error.name)) return res.status(error.status || 400)
+  if (['HardwarePerformanceError', 'HardwareDeviceError', 'HardwareAdvancedError'].includes(error.name)) return res.status(error.status || 400)
     .json({ error: error.message, code: error.code, details: error.details });
   next(error);
 } }; }
@@ -75,5 +76,39 @@ router.post('/devices/reservations', writeable, route((req, res) => {
     { reservationHash: reservation.reservationHash, duplicate: reservation.duplicate, providerMutationsStarted: 0 });
   res.status(reservation.duplicate ? 200 : 201).json({ reservation });
 }));
+
+router.get('/advanced', route((req, res) => res.json(advanced.overview(req.user))));
+router.post('/advanced/compatibility-scans', writeable, route((req, res) => {
+  const scan = advanced.compatibilityScan(req.body || {}, req.user);
+  audit(req, 'virtual_hardware_compatibility_scan', 'provider_resource', scan.resourceKey,
+    { targetHostId: scan.targetHostId, state: scan.state, evidenceHash: scan.evidenceHash, providerMutationsStarted: 0 });
+  res.status(scan.duplicate ? 200 : 201).json({ scan });
+}));
+router.post('/advanced/benchmarks', writeable, route((req, res) => {
+  const benchmark = advanced.recordBenchmark(req.body || {}, req.user);
+  audit(req, 'hardware_benchmark_record', 'docker_host', benchmark.hostId,
+    { suite: benchmark.suite, metric: benchmark.metric, evidenceHash: benchmark.evidenceHash });
+  res.status(benchmark.duplicate ? 200 : 201).json({ benchmark });
+}));
+router.post('/advanced/samples', writeable, route((req, res) => {
+  const sample = advanced.recordSample(req.body || {}, req.user);
+  audit(req, 'workload_performance_sample_record', 'provider_resource', sample.resourceKey,
+    { hostId: sample.hostId, evidenceHash: sample.evidenceHash });
+  res.status(sample.duplicate ? 200 : 201).json({ sample });
+}));
+router.get('/advanced/resources/:resourceKey/noisy-neighbors', route((req, res) => res.json(advanced.noisyNeighbors(req.params.resourceKey, req.query, req.user))));
+router.post('/advanced/regressions', writeable, route((req, res) => {
+  const assessment = advanced.compareBenchmarks(req.body || {}, req.user);
+  audit(req, 'performance_regression_assess', 'performance_change', assessment.changeRef,
+    { state: assessment.state, regressionPercent: assessment.regressionPercent, assessmentHash: assessment.assessmentHash });
+  res.status(assessment.duplicate ? 200 : 201).json({ assessment });
+}));
+router.put('/advanced/profiles/:resourceKey', writeable, route((req, res) => {
+  const profile = advanced.saveProfile(req.params.resourceKey, req.body || {}, req.user);
+  audit(req, 'workload_performance_profile_save', 'provider_resource', profile.resourceKey,
+    { preset: profile.preset, profileHash: profile.profileHash, providerMutationsStarted: 0 });
+  res.json({ profile });
+}));
+router.get('/advanced/profiles/:resourceKey/evaluation', route((req, res) => res.json(advanced.evaluateProfile(req.params.resourceKey, req.user))));
 
 module.exports = router;

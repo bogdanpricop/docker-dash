@@ -163,7 +163,7 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V5.5 | CloudStack provider | B001–B150, B176–B200 | zones, offerings, projects, async jobs |
 | V5.6 | KubeVirt/OpenShift Virtualization | B301–B316 | Livrat: V5.6a B301–B305, V5.6b B306–B315 și V5.6c B316; discovery/inventory, guarded CDI/templates și topologie VM/pod |
 | V5.7 | Harvester depth | B301–B325 | Longhorn, networks, images, backup și migrations |
-| V5.8 | Provider plugin SDK | B401–B425 | signed manifest, permissions, sandbox și test kit |
+| V5.8 | Provider plugin SDK & connectors | B401–B415 | V5.8a livrează B401–B405: Ed25519 manifest, consent, fixed-RPC subprocess sandbox, compatibility și payload-free health; B406–B415 rămân |
 
 **Exit:** providerii se adaugă prin contract și conformance, fără schimbări structurale în nucleu.
 
@@ -176,8 +176,8 @@ Deploy-ul nu va dezactiva verificarea cheii SSH. O schimbare de host fingerprint
 | V6.3 | FinOps/showback/capacity | B276–B300 | Complet: V6.3a cost foundation, V6.3b optimization/capacity și V6.3c energy, carbon și TCO |
 | V6.4 | Observability/events/AIOps advisory | B206–B225 | Complet: V6.4a livrează charts/events/correlation, iar V6.4b baseline, suppression, forecast, triage/runbooks, exports, SLO și privacy controls |
 | V6.5 | Edge/disconnected/sovereign | B326–B350 | Complet: V6.5a livrează B326–B335, V6.5b B336–B345, iar V6.5c B346–B350: disaster freeze, backup seeding, compliance, fault domains și zero-touch enrollment |
-| V6.6 | Accelerators/performance | B376–B400 | V6.6a livrează B376–B385; V6.6b livrează B386–B395: memory tiers, PCI/SR-IOV/GPU/vGPU/USB evidence, plans, metrics și reservations; B396–B400 rămân |
-| V6.7 | Migration factory | B401–B425 | discovery, waves, conversion, validation și evidence |
+| V6.6 | Accelerators/performance | B376–B400 | Complet: V6.6a livrează B376–B385, V6.6b B386–B395, iar V6.6c B396–B400: VM compatibility, benchmarks, noisy-neighbor/regression evidence și workload profiles |
+| V6.7 | Migration factory | B416–B425 | discovery, waves, conversion, validation și evidence |
 
 **Exit:** control plane-ul poate opera coerent workload-uri mixte în datacenter, edge și cloud hibrid.
 
