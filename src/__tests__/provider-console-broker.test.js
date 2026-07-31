@@ -68,6 +68,25 @@ describe('provider VM console broker and emergency locks', () => {
     expect(() => broker.consume(launch.token, userId, { database })).toThrow(/invalid or expired/i);
   });
 
+  it('records session metadata by default and gates optional screen recording on consent and policy', async () => {
+    const metadata = await broker.createForHost(host, resource.id, {
+      database, registry, canOperate: true, userId,
+    });
+    expect(metadata.recording).toEqual(expect.objectContaining({
+      policy: 'metadata', state: 'metadata_only', mediaStored: false,
+    }));
+    expect(database.prepare('SELECT recording_policy,recording_state FROM provider_console_sessions WHERE id=?')
+      .get(metadata.id)).toEqual({ recording_policy: 'metadata', recording_state: 'metadata_only' });
+
+    await expect(broker.createForHost(host, resource.id, { database, registry, canOperate: true,
+      userId, recording: { policy: 'screen', policyRef: 'legal:remote-v1' } }))
+      .rejects.toMatchObject({ code: 'SCREEN_RECORDING_CONSENT_REQUIRED' });
+    const screen = await broker.createForHost(host, resource.id, { database, registry, canOperate: true,
+      userId, recording: { policy: 'screen', policyRef: 'legal:remote-v1', consent: true } });
+    expect(screen.recording).toEqual(expect.objectContaining({ policy: 'screen',
+      state: 'screen_requested', consentAt: expect.any(String), mediaStored: false }));
+  });
+
   it('fails closed for release flag, permissions, VM state and locks', async () => {
     config.features.providerVmConsole = false;
     const disabled = await broker.preflightForHost(host, resource.id, { database, registry, canOperate: false });

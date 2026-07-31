@@ -58,7 +58,7 @@ Prioritățile sunt:
 | R3 | B090, B096 Storage operational monitors | P0 | L | `In progress` | snapshot/storage evidence | B090 și nucleul B096 implementate local; adaptorul B096 și validările de release rămân. |
 | R4 | B104, B118–B125 Network closure | P0/P1 | XL | `In progress` | v8.79 network plans, provider SDK | B104 și B118–B125 au implementări locale; browser/provider/canary/release, probele active B119 și apply-ul R8 pentru B124 rămân. |
 | R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; adaptoarele XO/vSphere și DR mutation/canary rămân. |
-| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B158 au assurance importat, KMS registry și confidential preflight; colectarea nativă, B159–B175 și remediation rămân. |
+| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
 | R9 | Compose blueprint catalog | P3 | L | `Not started` | OCI Compose, signatures | Catalog semnat, pinned și operabil prin wizard. |
@@ -397,15 +397,25 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 
 ### R6c — privileged access și compliance
 
-**Features:** B169–B175.
+**Features noi în depth:** B169–B175. **Batch de release exact:** B169–B178,
+unde B176–B178 erau deja `Done` și sunt revalidate ca fundație integrată, nu
+reclamate ca implementări noi.
 
-- step-up MFA/JIT grants cu TTL și scope;
-- break-glass four-eyes, notification și review obligatoriu;
-- session metadata recording implicit; screen recording doar opt-in legal/policy;
-- data classification propagată în export/backup/telemetry policy;
-- signed compliance bundle și mapping CIS/NIST/ISO/SOC2/DORA;
-- ransomware posture din immutability, isolation, restore tests și credential
-  separation.
+- [x] step-up TOTP local/JIT grants cu TTL, scope, rate limit, four-eyes și
+  token claim o singură dată;
+- [x] break-glass four-eyes cu notification references, activare, închidere și
+  review independent obligatoriu;
+- [x] session metadata recording implicit; screen policy numai cu consent și
+  policy reference, fără recorder/media storage;
+- [x] data classification proiectată în export/backup/telemetry policy;
+- [x] signed JSON/PDF bundle cu redaction și mappings organizaționale
+  CIS/NIST/ISO/SOC2/DORA fără finding duplicat;
+- [x] ransomware posture din immutability, isolation, restore tests și
+  credential separation;
+- [x] integrarea celor zece permisiuni cu custom roles și scope hierarchy
+  provider-bound B176–B178;
+- [ ] external notification dispatcher, standalone temporary account,
+  provider-native enforcement, media recorder și public-key attestation.
 
 ## 12. Batch R7 — provider expansion
 
@@ -627,3 +637,6 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 10. R6a/R6b/B159–B168: provider-native hardware/transport/certificate/exposure
     collectors și certificate/remediation adapters; executorul low-risk poate fi
     canary-uit numai pe un provider disposable, cu rollback și post-read verify.
+11. R6c/B169–B175: conectarea JIT la operațiile critice rămase, step-up pentru
+    SSO/WebAuthn, dispatcher extern de notificări, media recorder aprobat legal,
+    enforcement provider-native pentru classification și public-key attestation.

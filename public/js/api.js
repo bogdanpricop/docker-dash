@@ -626,6 +626,48 @@ const Api = {
   validateProviderSecretReferences(hostId, body) {
     return this.post(`/providers/${hostId}/security-lifecycle/secret-references/validate`, body);
   },
+  getProviderPrivilegedCompliance(hostId) {
+    return this.get(`/providers/${hostId}/privileged-compliance`);
+  },
+  requestProviderElevation(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations`, body);
+  },
+  approveProviderElevation(hostId, grantId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}/approve`, { confirmation });
+  },
+  claimProviderElevation(hostId, grantId) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}/claim`, {});
+  },
+  revokeProviderElevation(hostId, grantId) {
+    return this.delete(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}`);
+  },
+  requestProviderBreakGlass(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass`, body);
+  },
+  approveProviderBreakGlass(hostId, requestId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/approve`, { confirmation });
+  },
+  activateProviderBreakGlass(hostId, requestId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/activate`, { confirmation });
+  },
+  closeProviderBreakGlass(hostId, requestId) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/close`, {});
+  },
+  reviewProviderBreakGlass(hostId, requestId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/review`, body);
+  },
+  saveProviderDataClassification(hostId, body) {
+    return this.put(`/providers/${hostId}/privileged-compliance/classifications`, body);
+  },
+  importProviderComplianceMappings(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/mappings`, body);
+  },
+  recordProviderRansomwarePosture(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/ransomware-posture`, body);
+  },
+  exportProviderComplianceEvidence(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/exports`, body);
+  },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);
@@ -851,11 +893,11 @@ const Api = {
   planProviderPlacementRollback(hostId, changeId, body = {}) {
     return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/rollback/plan`, body);
   },
-  preflightProviderVMConsole(hostId, resourceId) {
-    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, {});
+  preflightProviderVMConsole(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, body);
   },
-  launchProviderVMConsole(hostId, resourceId) {
-    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console`, {});
+  launchProviderVMConsole(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console`, body);
   },
   preflightProviderVMPower(hostId, resourceId, action) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power/preflight`, { action });

@@ -26,6 +26,7 @@ const providerEndpointTransportPosture = require('../services/provider-sdk/endpo
 const providerSecurityPosture = require('../services/provider-sdk/security-posture');
 const providerSecurityAssurance = require('../services/provider-sdk/security-assurance');
 const providerSecurityLifecycle = require('../services/provider-sdk/security-lifecycle');
+const providerPrivilegedCompliance = require('../services/provider-sdk/privileged-compliance');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -340,6 +341,27 @@ function _securityLifecycleAudit(req, action, targetType, targetId, details = {}
     action: `provider_security_lifecycle_${action}`, targetType, targetId,
     details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false,
       networkCallsStarted: 0, ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
+function _privilegedComplianceError(res, err) {
+  const trusted = err?.name === 'PrivilegedComplianceError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Privileged access and compliance request failed' : err.message,
+    code: trusted ? err.code : 'PRIVILEGED_COMPLIANCE_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _privilegedComplianceAudit(req, action, targetType, targetId, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_privileged_compliance_${action}`, targetType, targetId,
+    details: { hostId: Number(req.params.hostId), providerMutationsStarted: 0,
+      secretMaterialStored: false, ...details },
     ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
@@ -1245,7 +1267,9 @@ router.post('/:hostId/virtual-machines/:resourceId/console/preflight', requireAu
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
     try {
-      res.json(await providerConsole.preflightForHost(resolved.host, req.params.resourceId, { canOperate: true }));
+      res.json(await providerConsole.preflightForHost(resolved.host, req.params.resourceId, {
+        canOperate: true, recording: req.body?.recording || {},
+      }));
     } catch (err) {
       res.status(err.status || 500).json({
         error: err.status && err.status < 500 ? err.message : 'Provider VM console preflight failed',
@@ -1261,7 +1285,7 @@ router.post('/:hostId/virtual-machines/:resourceId/console', requireAuth,
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
     try {
       const launch = await providerConsole.createForHost(resolved.host, req.params.resourceId, {
-        canOperate: true, userId: req.user.id,
+        canOperate: true, userId: req.user.id, recording: req.body?.recording || {},
       });
       auditService.log({
         userId: req.user.id, username: req.user.username,
@@ -1271,6 +1295,8 @@ router.post('/:hostId/virtual-machines/:resourceId/console', requireAuth,
           sessionId: launch.id, hostId: resolved.host.id,
           provider: resolved.host.daemon_type, expiresAt: launch.expiresAt,
           singleUse: true, credentialIsolation: 'server-side',
+          recordingPolicy: launch.recording.policy, recordingState: launch.recording.state,
+          recordingConsentAt: launch.recording.consentAt, screenContentStored: false,
         }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
       });
       res.status(201).json({
@@ -2498,6 +2524,221 @@ router.post('/:hostId/security-lifecycle/secret-references/validate', requireAut
           state: result.state, referenceCount: result.referenceCount, documentStored: false });
       res.status(result.state === 'valid' ? 200 : 422).json(result);
     } catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.get('/:hostId/privileged-compliance', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(providerPrivilegedCompliance.overview(resolved.host, req.user)); }
+    catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/elevations', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.requestElevation(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'jit_requested', 'privileged_elevation', result.grant.id, {
+        scopeId: result.grant.scopeId, permissionKey: result.grant.permissionKey,
+        grantHash: result.grant.grantHash, mfaVerifiedAt: result.grant.mfaVerifiedAt,
+        expiresAt: result.grant.expiresAt, tokenStored: false,
+      });
+      res.status(201).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/elevations/:grantId/approve', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.approveElevation(
+        resolved.host, req.params.grantId, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'jit_approved', 'privileged_elevation', result.grant.id, {
+        scopeId: result.grant.scopeId, permissionKey: result.grant.permissionKey,
+        approvedBy: result.grant.approvedBy, tokenIssued: false,
+      });
+      res.json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/elevations/:grantId/claim', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.claimElevation(
+        resolved.host, req.params.grantId, req.user);
+      _privilegedComplianceAudit(req, 'jit_claimed', 'privileged_elevation', result.grant.id, {
+        scopeId: result.grant.scopeId, permissionKey: result.grant.permissionKey,
+        tokenShownOnce: true, tokenStoredRaw: false,
+      });
+      res.json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.delete('/:hostId/privileged-compliance/elevations/:grantId', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const grant = providerPrivilegedCompliance.revokeElevation(
+        resolved.host, req.params.grantId, req.user);
+      _privilegedComplianceAudit(req, 'jit_revoked', 'privileged_elevation', grant.id, {
+        scopeId: grant.scopeId, permissionKey: grant.permissionKey,
+      });
+      res.json({ grant });
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/break-glass', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.requestBreakGlass(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'break_glass_requested', 'break_glass', result.request.id, {
+        scopeId: result.request.scopeId, ticketRef: result.request.ticketRef,
+        notificationRefs: result.request.notificationRefs,
+        recordingPolicy: result.request.recordingPolicy,
+        recordingPolicyRef: result.request.recordingPolicyRef,
+        recordingConsentAt: result.request.recordingConsentAt,
+        expiresAt: result.request.expiresAt,
+        notificationsDispatched: false,
+      });
+      res.status(201).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/break-glass/:requestId/approve', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.approveBreakGlass(
+        resolved.host, req.params.requestId, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'break_glass_approved', 'break_glass', result.request.id, {
+        scopeId: result.request.scopeId, approvedBy: result.request.approvedBy,
+        activationIssued: false,
+      });
+      res.json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/break-glass/:requestId/activate', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.activateBreakGlass(
+        resolved.host, req.params.requestId, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'break_glass_activated', 'break_glass', result.request.id, {
+        scopeId: result.request.scopeId, temporaryIdentity: result.request.temporaryIdentity,
+        tokenShownOnce: true, temporaryAccountCreated: false,
+      });
+      res.json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/break-glass/:requestId/close', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const request = providerPrivilegedCompliance.closeBreakGlass(
+        resolved.host, req.params.requestId, req.user);
+      _privilegedComplianceAudit(req, 'break_glass_closed', 'break_glass', request.id, {
+        scopeId: request.scopeId, reviewRequired: true,
+      });
+      res.json({ request });
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/break-glass/:requestId/review', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const request = providerPrivilegedCompliance.reviewBreakGlass(
+        resolved.host, req.params.requestId, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'break_glass_reviewed', 'break_glass', request.id, {
+        scopeId: request.scopeId, outcome: request.reviewOutcome, reviewedBy: request.reviewedBy,
+      });
+      res.json({ request });
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.put('/:hostId/privileged-compliance/classifications', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.upsertClassification(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, result.created ? 'classification_created' : 'classification_updated',
+        result.classification.resourceKind, result.classification.resourceId, {
+          scopeId: result.classification.scopeId,
+          classification: result.classification.classification,
+          classificationHash: result.classification.classificationHash,
+        });
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/mappings', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.importMappings(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'mappings_imported', 'provider_host', String(resolved.host.id), {
+        scopeId: Number(req.body?.scopeId), mappingCount: result.count,
+        duplicatedFindingsCreated: 0,
+      });
+      res.status(201).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/ransomware-posture', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.recordRansomwarePosture(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'ransomware_posture_recorded', 'ransomware_posture',
+        result.posture.id, { scopeId: result.posture.scopeId, score: result.posture.score,
+          confidence: result.posture.confidence, evidenceHash: result.posture.evidenceHash });
+      res.status(201).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
+  });
+
+router.post('/:hostId/privileged-compliance/exports', requireAuth,
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerPrivilegedCompliance.createComplianceExport(
+        resolved.host, req.body || {}, req.user);
+      _privilegedComplianceAudit(req, 'evidence_exported', 'compliance_export', result.export.id, {
+        scopeId: result.export.scopeId, format: result.export.format,
+        classification: result.export.classification, bundleHash: result.export.bundleHash,
+        signatureAlgorithm: result.export.signatureAlgorithm, bundleStored: false,
+      });
+      if (result.export.format === 'pdf') {
+        res.set('Content-Type', result.contentType);
+        res.set('Content-Disposition', `attachment; filename="docker-dash-compliance-${result.export.id}.pdf"`);
+        res.set('X-Docker-Dash-Bundle-Hash', result.export.bundleHash);
+        res.set('X-Docker-Dash-Signature', result.export.signature);
+        return res.status(201).send(result.content);
+      }
+      res.status(201).json(result);
+    } catch (err) { _privilegedComplianceError(res, err); }
   });
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

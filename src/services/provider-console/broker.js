@@ -10,6 +10,7 @@ const identityStore = require('../provider-sdk/identity-store');
 const access = require('./access');
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+const RECORDING_POLICY_REF = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,299}$/;
 
 class ProviderConsoleError extends Error {
   constructor(message, code = 'PROVIDER_CONSOLE_ERROR', status = 400) {
@@ -22,6 +23,23 @@ class ProviderConsoleError extends Error {
 
 function _blocker(type, reason, evidence = null) {
   return { type, reason: String(reason || 'Console is unavailable').slice(0, 500), evidence };
+}
+
+function _recording(input = {}) {
+  const policy = input.policy === 'screen' ? 'screen' : 'metadata';
+  if (policy === 'screen') {
+    if (input.consent !== true) throw new ProviderConsoleError(
+      'Screen recording requires explicit legal/policy consent',
+      'SCREEN_RECORDING_CONSENT_REQUIRED', 409);
+    const policyRef = String(input.policyRef || '').trim();
+    if (!RECORDING_POLICY_REF.test(policyRef)) throw new ProviderConsoleError(
+      'Screen recording requires a bounded policy reference',
+      'SCREEN_RECORDING_POLICY_REQUIRED', 400);
+    return { policy, policyRef, consentAt: new Date().toISOString(), state: 'screen_requested',
+      mediaStored: false };
+  }
+  return { policy: 'metadata', policyRef: null, consentAt: null, state: 'metadata_only',
+    mediaStored: false };
 }
 
 async function preflightForHost(host, resourceId, options = {}) {
@@ -70,6 +88,7 @@ async function preflightForHost(host, resourceId, options = {}) {
       source: lock.source,
     }));
   }
+  const recording = _recording(options.recording || {});
   return {
     schemaVersion: '1.0', ready: blockers.length === 0,
     provider: { type: host.daemon_type, endpointId: Number(host.id) },
@@ -78,7 +97,7 @@ async function preflightForHost(host, resourceId, options = {}) {
       ttlSeconds: config.providerConsole.tokenTtlSeconds,
       singleUse: true, transport: 'same-origin-websocket', credentialIsolation: 'server-side',
     },
-    capability: evidence || null, lock, blockers,
+    capability: evidence || null, lock, recording, blockers,
   };
 }
 
@@ -106,14 +125,25 @@ async function createForHost(host, resourceId, options = {}) {
   const token = randomBytes(32).toString('base64url');
   const sessionId = randomUUID();
   const expiresAt = new Date(Date.now() + config.providerConsole.tokenTtlSeconds * 1000).toISOString();
-  database.prepare(`INSERT INTO provider_console_sessions
-    (id, token_hash, host_id, resource_id, provider_type, user_id, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    sessionId, sha256(token), Number(host.id), plan.resource.id, String(host.daemon_type), userId, expiresAt
-  );
+  const columns = new Set(database.prepare('PRAGMA table_info(provider_console_sessions)').all().map(row => row.name));
+  if (columns.has('recording_policy')) {
+    database.prepare(`INSERT INTO provider_console_sessions
+      (id, token_hash, host_id, resource_id, provider_type, user_id, expires_at,
+       recording_policy, recording_policy_ref, recording_consent_at, recording_state)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      sessionId, sha256(token), Number(host.id), plan.resource.id, String(host.daemon_type), userId, expiresAt,
+      plan.recording.policy, plan.recording.policyRef, plan.recording.consentAt, plan.recording.state
+    );
+  } else {
+    database.prepare(`INSERT INTO provider_console_sessions
+      (id, token_hash, host_id, resource_id, provider_type, user_id, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      sessionId, sha256(token), Number(host.id), plan.resource.id, String(host.daemon_type), userId, expiresAt
+    );
+  }
   return {
     schemaVersion: '1.0', id: sessionId, token, expiresAt,
-    resource: plan.resource, provider: plan.provider,
+    resource: plan.resource, provider: plan.provider, recording: plan.recording,
   };
 }
 
@@ -167,7 +197,7 @@ function markClosed(id, code, database = getDb()) {
 }
 
 module.exports = {
-  ProviderConsoleError, TOKEN_RE, preflightForHost, createForHost, consume,
+  ProviderConsoleError, TOKEN_RE, RECORDING_POLICY_REF, preflightForHost, createForHost, consume,
   markConnected, markClosed,
-  _internals: { _blocker, _cleanup },
+  _internals: { _blocker, _cleanup, _recording },
 };

@@ -128,6 +128,20 @@ const mockSecurityExceptionRevoke = jest.fn();
 const mockSecurityRemediationPlan = jest.fn();
 const mockSecurityRemediationExecute = jest.fn();
 const mockSecretReferenceValidate = jest.fn();
+const mockPrivilegedComplianceOverview = jest.fn();
+const mockElevationRequest = jest.fn();
+const mockElevationApprove = jest.fn();
+const mockElevationClaim = jest.fn();
+const mockElevationRevoke = jest.fn();
+const mockBreakGlassRequest = jest.fn();
+const mockBreakGlassApprove = jest.fn();
+const mockBreakGlassActivate = jest.fn();
+const mockBreakGlassClose = jest.fn();
+const mockBreakGlassReview = jest.fn();
+const mockClassificationUpsert = jest.fn();
+const mockComplianceMappings = jest.fn();
+const mockRansomwarePosture = jest.fn();
+const mockComplianceExport = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -139,6 +153,7 @@ jest.mock('../config', () => {
     providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
     providerRestoreReplicationDepth: true,
     providerSecurityAssurance: true, providerSecurityLifecycle: true,
+    providerPrivilegedCompliance: true,
     providerVmActionSchedules: true } };
 });
 
@@ -396,6 +411,31 @@ jest.mock('../services/provider-sdk/security-lifecycle', () => {
     planRemediation: (...args) => mockSecurityRemediationPlan(...args),
     executeLowRisk: (...args) => mockSecurityRemediationExecute(...args),
     validateSecretReferences: (...args) => mockSecretReferenceValidate(...args),
+  };
+});
+jest.mock('../services/provider-sdk/privileged-compliance', () => {
+  class PrivilegedComplianceError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'PrivilegedComplianceError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    PrivilegedComplianceError,
+    overview: (...args) => mockPrivilegedComplianceOverview(...args),
+    requestElevation: (...args) => mockElevationRequest(...args),
+    approveElevation: (...args) => mockElevationApprove(...args),
+    claimElevation: (...args) => mockElevationClaim(...args),
+    revokeElevation: (...args) => mockElevationRevoke(...args),
+    requestBreakGlass: (...args) => mockBreakGlassRequest(...args),
+    approveBreakGlass: (...args) => mockBreakGlassApprove(...args),
+    activateBreakGlass: (...args) => mockBreakGlassActivate(...args),
+    closeBreakGlass: (...args) => mockBreakGlassClose(...args),
+    reviewBreakGlass: (...args) => mockBreakGlassReview(...args),
+    upsertClassification: (...args) => mockClassificationUpsert(...args),
+    importMappings: (...args) => mockComplianceMappings(...args),
+    recordRansomwarePosture: (...args) => mockRansomwarePosture(...args),
+    createComplianceExport: (...args) => mockComplianceExport(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -727,6 +767,38 @@ describe('Provider SDK routes', () => {
     mockSecretReferenceValidate.mockReturnValue({ id: `psrv_${'5'.repeat(26)}`,
       documentHash: '5'.repeat(64), state: 'invalid', referenceCount: 0,
       documentStored: false, findings: [{ code: 'INLINE_SECRET_FIELD' }] });
+    const grant = { id: `pegr_${'6'.repeat(26)}`, scopeId: 1,
+      permissionKey: 'compliance.evidence.export', grantHash: '6'.repeat(64),
+      mfaVerifiedAt: '2026-07-31T10:00:00Z', expiresAt: '2026-07-31T10:10:00Z' };
+    mockPrivilegedComplianceOverview.mockReturnValue({ schemaVersion: '1.0',
+      capabilities: { privilegedElevation: 'partial' }, elevations: [grant] });
+    mockElevationRequest.mockReturnValue({ tokenIssued: false, grant: { ...grant, state: 'pending' } });
+    mockElevationApprove.mockReturnValue({ tokenIssued: false,
+      grant: { ...grant, state: 'active', approvedBy: 2 } });
+    mockElevationClaim.mockReturnValue({ token: 'sensitive-jit-token', tokenShownOnce: true,
+      grant: { ...grant, state: 'active' } });
+    mockElevationRevoke.mockReturnValue({ ...grant, state: 'revoked' });
+    const breakGlass = { id: `pbgr_${'7'.repeat(26)}`, scopeId: 1, state: 'pending',
+      ticketRef: 'INC-2026-0042', notificationRefs: ['oncall:security'], recordingPolicy: 'metadata',
+      expiresAt: '2026-07-31T10:10:00Z', temporaryIdentity: 'break-glass:1' };
+    mockBreakGlassRequest.mockReturnValue({ notificationsDispatched: false, request: breakGlass });
+    mockBreakGlassApprove.mockReturnValue({ activationIssued: false,
+      request: { ...breakGlass, state: 'approved', approvedBy: 2 } });
+    mockBreakGlassActivate.mockReturnValue({ token: 'sensitive-break-glass-token',
+      request: { ...breakGlass, state: 'active' } });
+    mockBreakGlassClose.mockReturnValue({ ...breakGlass, state: 'closed' });
+    mockBreakGlassReview.mockReturnValue({ ...breakGlass, state: 'reviewed',
+      reviewOutcome: 'expected', reviewedBy: 2 });
+    mockClassificationUpsert.mockReturnValue({ created: true, classification: {
+      id: `prcl_${'8'.repeat(26)}`, scopeId: 1, resourceKind: 'endpoint', resourceId: 'endpoint:7',
+      classification: 'confidential', classificationHash: '8'.repeat(64) } });
+    mockComplianceMappings.mockReturnValue({ count: 1, duplicatedFindingsCreated: 0, mappings: [] });
+    mockRansomwarePosture.mockReturnValue({ posture: { id: `prpo_${'9'.repeat(26)}`,
+      scopeId: 1, score: 75, confidence: 'medium', evidenceHash: '9'.repeat(64) } });
+    mockComplianceExport.mockReturnValue({ export: { id: `pcex_${'a'.repeat(26)}`,
+      scopeId: 1, format: 'json', classification: 'confidential', bundleHash: 'a'.repeat(64),
+      signature: 'b'.repeat(64), signatureAlgorithm: 'HMAC-SHA256' },
+    bundle: { exportMode: 'redacted' } });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -1429,6 +1501,45 @@ describe('Provider SDK routes', () => {
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
       action: 'provider_security_lifecycle_secret_references_validated',
       details: expect.objectContaining({ documentStored: false, state: 'invalid' }),
+    }));
+  });
+
+  it('routes privileged access and signed compliance evidence without auditing raw credentials', async () => {
+    const overview = await request(app).get('/api/providers/7/privileged-compliance')
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(overview.status).toBe(200);
+    expect(mockPrivilegedComplianceOverview).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ id: 1, role: 'viewer' }));
+
+    const elevationBody = { scopeId: 1, permissionKey: 'compliance.evidence.export',
+      reason: 'Quarterly evidence', ttlSeconds: 600, totpCode: '123456' };
+    const elevation = await request(app).post('/api/providers/7/privileged-compliance/elevations')
+      .set('x-test-host-access', 'operate').send(elevationBody);
+    expect(elevation.status).toBe(201);
+    expect(mockElevationRequest).toHaveBeenCalledWith(mockHost, elevationBody,
+      expect.objectContaining({ id: 1 }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_jit_requested',
+      details: expect.not.objectContaining({ totpCode: expect.anything() }),
+    }));
+
+    const grantId = elevation.body.grant.id;
+    const claimed = await request(app)
+      .post(`/api/providers/7/privileged-compliance/elevations/${grantId}/claim`)
+      .set('x-test-host-access', 'operate');
+    expect(claimed.status).toBe(200); expect(claimed.body.token).toBe('sensitive-jit-token');
+    const claimAudit = mockAudit.mock.calls.map(call => call[0]).find(entry =>
+      entry.action === 'provider_privileged_compliance_jit_claimed');
+    expect(claimAudit.details).not.toHaveProperty('token');
+    expect(claimAudit.details).toEqual(expect.objectContaining({ tokenShownOnce: true,
+      tokenStoredRaw: false, secretMaterialStored: false }));
+
+    const exported = await request(app).post('/api/providers/7/privileged-compliance/exports')
+      .set('x-test-host-access', 'operate').send({ scopeId: 1, format: 'json' });
+    expect(exported.status).toBe(201); expect(exported.body.bundle.exportMode).toBe('redacted');
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_evidence_exported',
+      details: expect.objectContaining({ bundleStored: false, secretMaterialStored: false }),
     }));
   });
 

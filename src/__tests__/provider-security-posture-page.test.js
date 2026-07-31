@@ -39,4 +39,32 @@ describe('provider security posture page', () => {
     expect(html).toContain('&lt;img src=x>');
     expect(html).toContain('No advisory fetch or provider mutation is started by this view');
   });
+  it('escapes privileged compliance evidence and exposes the B169-B178 safety boundaries', () => {
+    global.App = { user: { id: 9, role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;'),
+      timeAgo: value => value };
+    const html = page._privilegedComplianceHtml({ counts: { activeGrants: 1, activeBreakGlass: 0,
+      remoteSessions: 1, classifications: 1, mappings: 1, exports: 1 },
+    governanceIntegration: { permissionCount: 10 }, ransomwarePostures: [{ score: 75, confidence: 'medium' }],
+    grants: [{ id: 'ppjg_aaaaaaaaaaaaaaaaaaaaaaaaaa', scopeId: 1,
+      permissionKey: '<img src=x>', state: 'active', expiresAt: '2026-08-01T00:00:00Z',
+      requestedBy: 9, claimed: true }],
+    breakGlass: [], classifications: [{ resourceId: '<script>alert(1)</script>',
+      resourceKind: 'endpoint', classification: 'restricted',
+      policy: { backup: 'immutable_encrypted_required', evidenceExport: 'hashes_only' } }] });
+    expect(html).not.toContain('<img src=x>'); expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;img src=x>'); expect(html).toContain('installation-signed evidence');
+    expect(html).toContain('Catalog permissions');
+  });
+  it('renders only the governed controls assigned to a custom role', () => {
+    global.App = { user: { id: 9, role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };
+    const html = page._privilegedComplianceHtml({ counts: {}, grants: [], breakGlass: [],
+      classifications: [], ransomwarePostures: [],
+      governanceIntegration: { permissionCount: 10,
+        actorPermissions: ['compliance.evidence.export'] } });
+    expect(html).toContain('pc-export');
+    expect(html).not.toContain('pc-classify');
+    expect(html).not.toContain('pc-request-break-glass');
+  });
 });

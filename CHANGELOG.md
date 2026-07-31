@@ -2,6 +2,35 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.84.0] - 2026-07-31 — Privileged access and compliance controls
+
+This exact B169–B178 batch adds security/compliance depth and exercises the
+already-shipped B176–B178 governance foundation without relabeling it as new.
+
+- Local-TOTP step-up creates rate-limited, TTL-bound JIT requests. Independent
+  typed approval precedes a requester-only, one-time token claim; only token
+  hashes are stored and validation is permission/user/scope/endpoint bound.
+- Break-glass adds ticketed four-eyes approval, one-time activation, expiry,
+  closure and independent review. It creates a scoped authorization envelope,
+  not a standalone account, and retains notification references without
+  claiming that an external notification was sent.
+- Console sessions record metadata by default. Screen policy requires explicit
+  consent plus a policy reference, but no screen/audio content recorder or
+  media storage ships in this release.
+- Resource classification projects public/internal/confidential/restricted
+  backup, evidence-export and telemetry policies. Compliance JSON/PDF exports
+  apply that redaction, persist no raw bundle and use installation-local
+  HMAC-SHA256 rather than claiming public attestation.
+- Organization-authored CIS/NIST/ISO27001/SOC2/DORA references attach to one
+  evidence subject without duplicating findings; they are not normative
+  mappings or a certification verdict.
+- Ransomware posture scores immutability, isolation, restore-test and credential-
+  separation evidence with explicit confidence and starts no provider action.
+- Migration 169 adds privileged/compliance evidence tables, session-recording
+  metadata and ten permissions integrated with custom roles and provider-bound
+  scope hierarchy. The entire surface is default-off behind
+  `DD_PROVIDER_PRIVILEGED_COMPLIANCE=false`.
+
 ## [8.83.0] - 2026-07-31 — Provider security lifecycle
 
 This batch advances exactly B159–B168 while keeping native collection and

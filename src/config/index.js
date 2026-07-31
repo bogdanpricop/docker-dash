@@ -130,6 +130,9 @@ module.exports = {
     // Separate kill switch for allowlisted low-risk adapter execution. A current
     // plan, canary, typed confirmation and post-read verification remain required.
     providerSecurityLowRiskRemediation: bool('DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION', false),
+    // MFA/four-eyes JIT, break-glass, classification, signed evidence and
+    // ransomware posture control plane. Provider/media mutation stays absent.
+    providerPrivilegedCompliance: bool('DD_PROVIDER_PRIVILEGED_COMPLIANCE', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
     // NIC link mutation is released independently per provider. A global flag

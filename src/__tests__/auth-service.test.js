@@ -310,6 +310,21 @@ describe('AuthService — MFA / TOTP setup flow', () => {
     expect(row.mfa_enrolled_at).toBeTruthy();
   });
 
+  it('verifyStepUpMfa validates enrolled local TOTP without creating a session', () => {
+    const setup = authService.mfaSetup(mfaUserId);
+    const validCode = totp.generateTOTP(setup.secret);
+    expect(authService.mfaEnable(mfaUserId, validCode).success).toBe(true);
+    const sessionsBefore = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
+      .get(mfaUserId).count;
+    expect(authService.verifyStepUpMfa(mfaUserId, validCode)).toEqual(expect.objectContaining({
+      success: true, verifiedAt: expect.any(String),
+    }));
+    expect(authService.verifyStepUpMfa(mfaUserId, 'not-a-code')).toEqual({ error: 'Invalid TOTP code' });
+    const sessionsAfter = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
+      .get(mfaUserId).count;
+    expect(sessionsAfter).toBe(sessionsBefore);
+  });
+
   // v8.7.11 — recovery-code lookup is now constant-time (was vulnerable to
   // a timing attack via Array.indexOf short-circuit equality). Functional
   // tests pin the behavior; the constant-time loop is documented inline in

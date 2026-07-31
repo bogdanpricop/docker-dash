@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.84.0', date: '2026-07-31', title: 'Privileged access and compliance controls', changes: [
+      { type: 'security', text: 'B169–B178 add rate-limited local-TOTP step-up, four-eyes JIT and one-time permission/user/scope-bound tokens.' },
+      { type: 'security', text: 'Ticketed break-glass uses independent approval, activation, expiry, closure and review while remaining a scoped envelope rather than a temporary login account.' },
+      { type: 'security', text: 'Console metadata recording is implicit; screen policy records consent and a policy reference but stores no screen or audio media.' },
+      { type: 'feature', text: 'Classification-aware JSON/PDF evidence is installation-signed, redacted by policy and stored only as hash/signature/summary.' },
+      { type: 'improvement', text: 'Ten explicit permissions integrate the existing custom-role and scope hierarchy with mappings and ransomware-recovery evidence.' },
+    ] },
     { version: '8.83.0', date: '2026-07-31', title: 'Provider security lifecycle', changes: [
       { type: 'security', text: 'B159–B168 add closed-schema virtual-hardware, protocol, certificate-trust and exposure evidence without implicit provider scans.' },
       { type: 'feature', text: 'Exact version/build matches from the official advisory catalog create CVE findings with severity, exposure-based priority and confidence.' },
