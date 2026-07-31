@@ -66,6 +66,23 @@ describe('provider security posture page', () => {
     expect(html).toContain('bubble_network_and_clone_executor');
     expect(html).toContain('starts no provider mutation');
   });
+  it('renders security lifecycle qualification with plan and adapter boundaries', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'd'.repeat(64),
+      batch: { key: 'security-lifecycle', label: 'B157–B166' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B166', name: 'Remediation plan/dry-run', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1, releaseFlags: [
+          { name: 'DD_PROVIDER_SECURITY_LIFECYCLE', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.89.0' },
+      validation: { outstanding: ['production_remediation_adapter', 'browser_smoke'] } }] });
+    expect(html).toContain('B157–B166 operational qualification');
+    expect(html).toContain('DD_PROVIDER_SECURITY_LIFECYCLE');
+    expect(html).toContain('default-off');
+    expect(html).toContain('production_remediation_adapter');
+    expect(html).toContain('Browser smoke recorded');
+  });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
     global.App = { user: { role: 'viewer' } };
     global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };

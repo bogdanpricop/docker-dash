@@ -23,6 +23,10 @@ const DR_SECURITY_FEATURE_IDS = Object.freeze([
   'B147', 'B148', 'B149', 'B150', 'B151',
   'B152', 'B153', 'B154', 'B155', 'B156',
 ]);
+const SECURITY_LIFECYCLE_FEATURE_IDS = Object.freeze([
+  'B157', 'B158', 'B159', 'B160', 'B161',
+  'B162', 'B163', 'B164', 'B165', 'B166',
+]);
 const FEATURE_IDS = FOUNDATION_FEATURE_IDS;
 const BATCHES = Object.freeze({
   foundation: Object.freeze({ key: 'foundation',
@@ -33,6 +37,8 @@ const BATCHES = Object.freeze({
     label: 'B137–B146', featureIds: RECOVERY_DEPTH_FEATURE_IDS }),
   'dr-security': Object.freeze({ key: 'dr-security',
     label: 'B147–B156', featureIds: DR_SECURITY_FEATURE_IDS }),
+  'security-lifecycle': Object.freeze({ key: 'security-lifecycle',
+    label: 'B157–B166', featureIds: SECURITY_LIFECYCLE_FEATURE_IDS }),
 });
 
 const DEFINITIONS = Object.freeze({
@@ -276,6 +282,73 @@ const DEFINITIONS = Object.freeze({
     columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
     outstanding: ['provider_native_confidential_compute_collector', 'browser_smoke', 'provider_canary'],
   }),
+  B157: Object.freeze({
+    name: 'Confidential VM provisioning', mode: 'plan-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_confidential_provisioning_plans'],
+    columns: { provider_confidential_provisioning_plans: ['confidential_mode', 'plan_hash',
+      'allowed', 'expires_at'] },
+    outstanding: ['guarded_confidential_vm_create_executor', 'attestation_canary', 'browser_smoke'],
+  }),
+  B158: Object.freeze({
+    name: 'Host hardening baseline', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_hardening_collector', 'baseline_canary', 'browser_smoke'],
+  }),
+  B159: Object.freeze({
+    name: 'VM virtual hardware baseline', mode: 'evidence-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_virtual_hardware_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B160: Object.freeze({
+    name: 'Insecure protocol detector', mode: 'evidence-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_protocol_collector', 'live_tls_probe_policy', 'browser_smoke'],
+  }),
+  B161: Object.freeze({
+    name: 'Certificate trust dashboard', mode: 'evidence-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_certificate_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B162: Object.freeze({
+    name: 'Certificate rotation workflow', mode: 'guarded-mutation', implementationRelease: 'v8.83.0',
+    tables: ['tracked_certificates', 'lifecycle_certificate_ownership',
+      'lifecycle_certificate_renewal_jobs'],
+    columns: { tracked_certificates: ['host_id', 'fingerprint_sha256', 'not_after'],
+      lifecycle_certificate_ownership: ['certificate_id', 'owner', 'environment'],
+      lifecycle_certificate_renewal_jobs: ['ownership_id', 'state', 'plan_hash', 'rollback_on_failure'] },
+    outstanding: ['production_certificate_adapter', 'rotation_canary', 'browser_smoke'],
+  }),
+  B163: Object.freeze({
+    name: 'CVE/advisory correlator', mode: 'evidence-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_findings', 'lifecycle_version_inventory', 'lifecycle_update_catalog'],
+    columns: { provider_security_findings: ['advisory_id', 'cve_ids_json', 'match_evidence_json',
+      'evidence_hash'] },
+    outstanding: ['provider_native_version_collector', 'official_catalog_refresh_canary', 'browser_smoke'],
+  }),
+  B164: Object.freeze({
+    name: 'Exposure-based patch priority', mode: 'evidence-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_findings'],
+    columns: { provider_security_findings: ['severity', 'priority_score', 'confidence', 'exposure_json'] },
+    outstanding: ['provider_native_exposure_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B165: Object.freeze({
+    name: 'Security finding exceptions', mode: 'control-plane', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_findings', 'provider_security_finding_exceptions'],
+    columns: { provider_security_finding_exceptions: ['owner', 'expires_at',
+      'compensating_controls_json', 'revoked_at'] },
+    outstanding: ['external_exception_notification', 'browser_smoke', 'expiry_scheduler_canary'],
+  }),
+  B166: Object.freeze({
+    name: 'Remediation plan/dry-run', mode: 'plan-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_findings', 'provider_security_remediation_plans'],
+    columns: { provider_security_remediation_plans: ['steps_json', 'dependencies_json',
+      'rollback_json', 'dry_run_json', 'plan_hash', 'allowed'] },
+    outstanding: ['production_remediation_adapter', 'disposable_provider_canary', 'browser_smoke'],
+  }),
 });
 
 class OperationalQualificationError extends Error {
@@ -471,7 +544,8 @@ function _securityAssuranceRuntime(database, featureId, context) {
       lastEvidenceAt: provider.last_evidence_at || null, releaseFlags };
   }
   const factPath = { B152: '$.secureBoot', B153: '$.vtpm', B154: '$.encryption',
-    B156: '$.confidential' }[featureId];
+    B156: '$.confidential', B158: '$.hardening', B159: '$.virtualHardware',
+    B160: '$.transport', B161: '$.certificateTrust' }[featureId];
   const evidence = factPath
     ? _row(database, `SELECT
       SUM(CASE WHEN json_valid(facts_json) AND json_type(facts_json, ?) IS NOT NULL THEN 1 ELSE 0 END) evidence_count,
@@ -485,6 +559,71 @@ function _securityAssuranceRuntime(database, featureId, context) {
     providerReportedCount: _number(evidence.provider_reported_count),
     importedCount: _number(evidence.imported_count), lastEvidenceAt: evidence.last_evidence_at || null,
     factPath: factPath || null, releaseFlags };
+}
+
+function _confidentialPlanRuntime(database, context) {
+  const plan = _row(database, `SELECT COUNT(*) plan_count,MAX(created_at) last_evidence_at,
+    SUM(CASE WHEN allowed=1 THEN 1 ELSE 0 END) allowed_count
+    FROM provider_confidential_provisioning_plans WHERE host_id=?`, [context.hostId]);
+  return { recordCount: _number(plan.plan_count), planCount: _number(plan.plan_count),
+    allowedCount: _number(plan.allowed_count), lastEvidenceAt: plan.last_evidence_at || null,
+    releaseFlags: [{ name: 'DD_PROVIDER_SECURITY_ASSURANCE',
+      enabled: config.features?.providerSecurityAssurance === true }] };
+}
+
+function _certificateRotationRuntime(database, context) {
+  const certificate = _row(database, `SELECT COUNT(*) certificate_count,MAX(updated_at) last_evidence_at
+    FROM tracked_certificates WHERE host_id=?`, [context.hostId]);
+  const ownership = _row(database, `SELECT COUNT(*) ownership_count,MAX(o.updated_at) last_evidence_at
+    FROM lifecycle_certificate_ownership o JOIN tracked_certificates c ON c.id=o.certificate_id
+    WHERE c.host_id=?`, [context.hostId]);
+  const renewal = _row(database, `SELECT COUNT(*) renewal_count,MAX(j.updated_at) last_evidence_at,
+    SUM(CASE WHEN j.state='succeeded' THEN 1 ELSE 0 END) succeeded_count,
+    SUM(CASE WHEN j.state IN ('failed','rollback_required') THEN 1 ELSE 0 END) failed_count
+    FROM lifecycle_certificate_renewal_jobs j JOIN lifecycle_certificate_ownership o ON o.id=j.ownership_id
+    JOIN tracked_certificates c ON c.id=o.certificate_id WHERE c.host_id=?`, [context.hostId]);
+  const certificateCount = _number(certificate.certificate_count);
+  const ownershipCount = _number(ownership.ownership_count); const renewalCount = _number(renewal.renewal_count);
+  return { recordCount: certificateCount + ownershipCount + renewalCount, certificateCount,
+    ownershipCount, renewalCount, succeededCount: _number(renewal.succeeded_count),
+    failedCount: _number(renewal.failed_count), lastEvidenceAt: _latest(certificate.last_evidence_at,
+      ownership.last_evidence_at, renewal.last_evidence_at),
+    releaseFlags: [{ name: 'DD_PROVIDER_SECURITY_LIFECYCLE',
+      enabled: config.features?.providerSecurityLifecycle === true }] };
+}
+
+function _securityLifecycleRuntime(database, featureId, context) {
+  const releaseFlags = [{ name: 'DD_PROVIDER_SECURITY_LIFECYCLE',
+    enabled: config.features?.providerSecurityLifecycle === true }];
+  if (featureId === 'B165') {
+    const exception = _row(database, `SELECT COUNT(*) exception_count,MAX(e.created_at) last_evidence_at
+      FROM provider_security_finding_exceptions e JOIN provider_security_findings f ON f.id=e.finding_id
+      WHERE f.host_id=? AND e.revoked_at IS NULL AND datetime(e.expires_at)>datetime('now')`,
+    [context.hostId]);
+    return { recordCount: _number(exception.exception_count),
+      activeExceptionCount: _number(exception.exception_count),
+      lastEvidenceAt: exception.last_evidence_at || null, releaseFlags };
+  }
+  if (featureId === 'B166') {
+    const plan = _row(database, `SELECT COUNT(*) plan_count,MAX(p.created_at) last_evidence_at,
+      SUM(CASE WHEN p.allowed=1 THEN 1 ELSE 0 END) allowed_count,
+      SUM(CASE WHEN p.state='blocked' THEN 1 ELSE 0 END) blocked_count
+      FROM provider_security_remediation_plans p JOIN provider_security_findings f ON f.id=p.finding_id
+      WHERE f.host_id=?`, [context.hostId]);
+    return { recordCount: _number(plan.plan_count), planCount: _number(plan.plan_count),
+      allowedCount: _number(plan.allowed_count), blockedCount: _number(plan.blocked_count),
+      lastEvidenceAt: plan.last_evidence_at || null, releaseFlags };
+  }
+  const finding = _row(database, `SELECT COUNT(*) finding_count,MAX(updated_at) last_evidence_at,
+    SUM(CASE WHEN json_valid(cve_ids_json) AND json_array_length(cve_ids_json)>0 THEN 1 ELSE 0 END) cve_count,
+    MAX(priority_score) max_priority_score,
+    SUM(CASE WHEN confidence='high' THEN 1 ELSE 0 END) high_confidence_count
+    FROM provider_security_findings WHERE host_id=?`, [context.hostId]);
+  const recordCount = featureId === 'B163' ? _number(finding.cve_count) : _number(finding.finding_count);
+  return { recordCount, findingCount: _number(finding.finding_count), cveFindingCount: _number(finding.cve_count),
+    maxPriorityScore: finding.max_priority_score === null || finding.max_priority_score === undefined
+      ? null : _number(finding.max_priority_score), highConfidenceCount: _number(finding.high_confidence_count),
+    lastEvidenceAt: finding.last_evidence_at || null, releaseFlags };
 }
 
 function _runtime(database, featureId, context) {
@@ -576,6 +715,14 @@ function _runtime(database, featureId, context) {
   if (['B151', 'B152', 'B153', 'B154', 'B155', 'B156'].includes(featureId)) {
     return _securityAssuranceRuntime(database, featureId, context);
   }
+  if (featureId === 'B157') return _confidentialPlanRuntime(database, context);
+  if (['B158', 'B159', 'B160', 'B161'].includes(featureId)) {
+    return _securityAssuranceRuntime(database, featureId, context);
+  }
+  if (featureId === 'B162') return _certificateRotationRuntime(database, context);
+  if (['B163', 'B164', 'B165', 'B166'].includes(featureId)) {
+    return _securityLifecycleRuntime(database, featureId, context);
+  }
   const table = { B120: 'network_mtu_assessments', B121: 'network_bond_health_observations',
     B123: 'network_load_balancer_observations' }[featureId];
   const time = featureId === 'B120' ? 'assessed_at' : 'observed_at';
@@ -628,7 +775,7 @@ function qualificationForHost(host, options = {}) {
   });
   const implementationReleases = [...new Set(items.map(item => item.delivery.implementationRelease))];
   const evidence = {
-    schemaVersion: '1.3', batch: { key: batch.key, label: batch.label },
+    schemaVersion: '1.4', batch: { key: batch.key, label: batch.label },
     hostId, providerType: context.providerType,
     applicationVersion: version,
     implementationRelease: implementationReleases.length === 1 ? implementationReleases[0] : null,
@@ -656,9 +803,11 @@ function qualificationForHost(host, options = {}) {
 }
 
 module.exports = {
-  FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, RECOVERY_DEPTH_FEATURE_IDS, DR_SECURITY_FEATURE_IDS, BATCHES,
+  FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, RECOVERY_DEPTH_FEATURE_IDS, DR_SECURITY_FEATURE_IDS,
+  SECURITY_LIFECYCLE_FEATURE_IDS, BATCHES,
   OperationalQualificationError, qualificationForHost,
   _internals: { DEFINITIONS, _canonical, _hash, _passiveRuntime, _tableExists, _columnExists,
     _backupRuntime, _backupFacetRuntime, _restoreDrillRuntime, _restoreDepthRuntime, _drRuntime,
-    _drFacetRuntime, _securityAssuranceRuntime },
+    _drFacetRuntime, _securityAssuranceRuntime, _confidentialPlanRuntime,
+    _certificateRotationRuntime, _securityLifecycleRuntime },
 };

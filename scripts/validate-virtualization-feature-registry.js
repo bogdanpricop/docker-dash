@@ -330,10 +330,14 @@ function evidenceFor(feature, status) {
       type: 'test', reference: 'v8.88 DR/security qualification tests',
       path: 'src/__tests__/provider-operational-qualification.test.js',
     });
+    if (featureNumber >= 157) evidence.push({
+      type: 'test', reference: 'v8.89 security-lifecycle qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
     return evidence;
   }
   if (featureNumber >= 159 && featureNumber <= 168) {
-    return [
+    const evidence = [
       {
         type: 'test',
         reference: 'R6b provider security lifecycle focused tests',
@@ -345,6 +349,11 @@ function evidenceFor(feature, status) {
         path: 'docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md',
       },
     ];
+    if (featureNumber <= 166) evidence.push({
+      type: 'test', reference: 'v8.89 security-lifecycle qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
+    return evidence;
   }
   return [{
     type: 'release',
@@ -427,6 +436,12 @@ function limitationsFor(feature, status, deliveryLevel) {
   }
   if (status === 'Partial' && number >= 151 && number <= 156) {
     return ['Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 157 && number <= 158) {
+    return ['Released in v8.82.0 and read-only qualified in v8.89.0; guarded confidential provisioning, provider-native hardening collection, browser smoke and provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 159 && number <= 166) {
+    return ['Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 129 && number <= 150) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];

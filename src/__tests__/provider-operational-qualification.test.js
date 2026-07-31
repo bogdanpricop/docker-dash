@@ -9,6 +9,20 @@ function database() {
     CREATE TABLE provider_vm_snapshots (canonical_id TEXT PRIMARY KEY);
     CREATE TABLE users (id INTEGER PRIMARY KEY);
     CREATE TABLE docker_hosts (id INTEGER PRIMARY KEY);
+    CREATE TABLE lifecycle_version_inventory (id INTEGER PRIMARY KEY);
+    CREATE TABLE lifecycle_update_catalog (id INTEGER PRIMARY KEY);
+    CREATE TABLE tracked_certificates (
+      id INTEGER PRIMARY KEY,host_id INTEGER,fingerprint_sha256 TEXT,not_after TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE lifecycle_certificate_ownership (
+      id INTEGER PRIMARY KEY,certificate_id INTEGER,owner TEXT,environment TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE lifecycle_certificate_renewal_jobs (
+      id INTEGER PRIMARY KEY,ownership_id INTEGER,state TEXT,plan_hash TEXT,
+      rollback_on_failure INTEGER,updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
   require('../db/migrations/106_provider_resource_identities').up(db);
   require('../db/migrations/112_provider_artifact_catalog').up(db);
@@ -33,6 +47,7 @@ function database() {
   require('../db/migrations/165_provider_backup_control_plane').up(db);
   require('../db/migrations/166_provider_restore_replication_depth').up(db);
   require('../db/migrations/167_provider_security_assurance').up(db);
+  require('../db/migrations/168_provider_security_lifecycle').up(db);
   return db;
 }
 
@@ -284,6 +299,93 @@ describe('provider operational qualification', () => {
       expect.objectContaining({ evidenceCount: 1, importedCount: 1 }));
     expect(first.items.find(item => item.featureId === 'B155').runtime).toEqual(
       expect.objectContaining({ configuredCount: 1, healthyCount: 1 }));
+    expect(first.items.every(item => Object.values(item.qualificationSafety)
+      .every(value => value === 0))).toBe(true);
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+  });
+
+  it('qualifies exactly B157-B166 with strict planning and lifecycle evidence facets', () => {
+    db = database();
+    db.exec(`INSERT INTO users(id) VALUES (9); INSERT INTO docker_hosts(id) VALUES (7);
+      INSERT INTO lifecycle_version_inventory(id) VALUES (1);
+      INSERT INTO lifecycle_update_catalog(id) VALUES (2);`);
+    const hostResourceId = `ddr_host_${'b'.repeat(26)}`;
+    const artifactId = `dda_art_${'c'.repeat(26)}`;
+    db.prepare(`INSERT INTO provider_resource_identities
+      (canonical_id,host_id,provider_type,resource_kind,native_ref_hash,native_ref_enc,identity_stability)
+      VALUES (?,?,?,?,?,?,?)`).run(hostResourceId, 7, 'proxmox', 'host', '1'.repeat(64),
+      'encrypted', 'stable');
+    db.prepare(`INSERT INTO provider_artifact_catalog
+      (canonical_id,host_id,provider_type,artifact_kind,native_ref_hash,native_ref_enc,
+       display_name,artifact_json,observed_at) VALUES (?,?,?,?,?,?,?,?,?)`).run(artifactId, 7,
+      'proxmox', 'vmTemplate', '2'.repeat(64), 'encrypted', 'trusted-template', '{}',
+      '2026-08-01T10:00:00.000Z');
+    db.prepare(`INSERT INTO provider_confidential_provisioning_plans
+      (id,host_id,artifact_id,target_host_id,confidential_mode,request_json,evidence_json,
+       plan_hash,allowed,created_by,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('pcvp_aaaaaaaa', 7, artifactId, hostResourceId, 'sev_snp', '{}', '{}',
+        '3'.repeat(64), 0, 9, '2026-08-01T10:05:00.000Z');
+    db.prepare(`INSERT INTO provider_security_evidence
+      (id,host_id,resource_kind,resource_id,resource_name,pack_key,pack_version,source,
+       facts_json,evidence_hash,observed_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('psec_bbbbbbbb', 7, 'endpoint', 'endpoint:7', 'pve-primary', 'proxmox-security',
+        '1.0.0', 'imported_evidence', JSON.stringify({
+          hardening: { baselineKey: 'cis-pve-v1', baselineVersion: '1.0.0',
+            checks: [], summary: { pass: 1, fail: 0, unknown: 0 } },
+          virtualHardware: { baselineKey: 'vm-security-v1', baselineVersion: '1.0.0',
+            firmware: 'uefi', bootOrder: ['disk'], legacySettings: [], devices: [],
+            summary: { compliant: 1, noncompliant: 0, unknown: 0, unsafeLegacySettingCount: 0 } },
+          transport: { services: [] },
+          certificateTrust: { certificates: [] },
+        }), '4'.repeat(64), '2026-08-01T10:00:00.000Z', 9);
+    db.exec(`INSERT INTO tracked_certificates
+      (id,host_id,fingerprint_sha256,not_after) VALUES (1,7,'${'5'.repeat(64)}','2027-08-01T00:00:00Z');
+      INSERT INTO lifecycle_certificate_ownership
+      (id,certificate_id,owner,environment) VALUES (2,1,'platform','production');
+      INSERT INTO lifecycle_certificate_renewal_jobs
+      (id,ownership_id,state,plan_hash,rollback_on_failure) VALUES (3,2,'succeeded','${'6'.repeat(64)}',1);`);
+    db.prepare(`INSERT INTO provider_security_findings
+      (id,host_id,inventory_id,advisory_catalog_id,resource_kind,resource_id,resource_name,
+       advisory_id,cve_ids_json,severity,priority_score,confidence,exposure_json,
+       match_evidence_json,evidence_hash,state,observed_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('psfd_cccccccc', 7, 1, 2, 'endpoint',
+      'endpoint:7', 'pve-primary', 'ADV-2026-001', '["CVE-2026-12345"]', 'critical', 95,
+      'high', '{}', '{}', '7'.repeat(64), 'planned', '2026-08-01T10:00:00.000Z', 9);
+    db.prepare(`INSERT INTO provider_security_finding_exceptions
+      (id,finding_id,owner,reason,expires_at,compensating_controls_json,exception_hash,created_by)
+      VALUES (?,?,?,?,?,?,?,?)`).run('psfx_dddddddd', 'psfd_cccccccc', 'security', 'Change freeze',
+      '2099-08-01T00:00:00.000Z', '["segmentation"]', '8'.repeat(64), 9);
+    db.prepare(`INSERT INTO provider_security_remediation_plans
+      (id,finding_id,action_key,risk,steps_json,downtime_seconds,dependencies_json,rollback_json,
+       dry_run_json,plan_hash,allowed,state,expires_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('psrp_eeeeeeee', 'psfd_cccccccc',
+      'apply_security_update', 'moderate', '[]', 60, '[]', '{}', '{"state":"pass"}',
+      '9'.repeat(64), 1, 'planned', '2099-08-01T00:00:00.000Z', 9);
+
+    const first = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'security-lifecycle' });
+    const second = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'security-lifecycle' });
+
+    expect(first.batch).toEqual({ key: 'security-lifecycle', label: 'B157–B166' });
+    expect(first.items.map(item => item.featureId)).toEqual([
+      'B157', 'B158', 'B159', 'B160', 'B161', 'B162', 'B163', 'B164', 'B165', 'B166',
+    ]);
+    expect(first.implementationRelease).toBeNull();
+    expect(first.implementationReleases).toEqual(['v8.82.0', 'v8.83.0']);
+    expect(first.summary).toEqual(expect.objectContaining({ featureCount: 10, schemaReady: 10,
+      runtimeObserved: 10, browserSmokeRecorded: 0 }));
+    expect(first.items.find(item => item.featureId === 'B157').runtime).toEqual(
+      expect.objectContaining({ planCount: 1, allowedCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B162').runtime).toEqual(
+      expect.objectContaining({ certificateCount: 1, ownershipCount: 1, renewalCount: 1,
+        succeededCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B163').runtime).toEqual(
+      expect.objectContaining({ recordCount: 1, cveFindingCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B165').runtime).toEqual(
+      expect.objectContaining({ activeExceptionCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B166').runtime).toEqual(
+      expect.objectContaining({ planCount: 1, allowedCount: 1 }));
     expect(first.items.every(item => Object.values(item.qualificationSafety)
       .every(value => value === 0))).toBe(true);
     expect(first.evidenceHash).toBe(second.evidenceHash);

@@ -5517,10 +5517,15 @@
           "type": "working-tree",
           "reference": "R5c/R6a DR objectives and security assurance",
           "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.89.0; guarded confidential provisioning, provider-native hardening collection, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5555,10 +5560,15 @@
           "type": "working-tree",
           "reference": "R5c/R6a DR objectives and security assurance",
           "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.89.0; guarded confidential provisioning, provider-native hardening collection, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5593,10 +5603,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5631,10 +5646,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5669,10 +5689,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5707,10 +5732,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5745,10 +5775,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5783,10 +5818,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5821,10 +5861,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5859,10 +5904,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.89 security-lifecycle qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",

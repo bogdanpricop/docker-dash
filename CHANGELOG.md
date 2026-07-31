@@ -2,6 +2,25 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.89.0] - 2026-08-01 — Security lifecycle operational qualification
+
+This exact batch advances B157–B166 without interpreting persisted plans or
+release flags as provider execution.
+
+- `batch=security-lifecycle` adds the fifth provider-scoped qualification
+  envelope and keeps every earlier selector backward-compatible.
+- B157 reports confidential provisioning plans and allowed counts while
+  retaining `executionAuthorized:false` as an external contract boundary.
+- B158–B161 count only their exact hardening, virtual-hardware, transport and
+  certificate-trust JSON evidence domains.
+- B162 separates tracked certificates, ownership and renewal jobs, including
+  succeeded and failed/rollback-required counts.
+- B163–B166 separate CVE-bearing findings, priority/confidence, active
+  exceptions and remediation dry-run plans.
+- Mixed implementation releases are explicit: B157–B158 came from v8.82.0 and
+  B159–B166 from v8.83.0. Native collectors/adapters, canaries and browser
+  smoke remain outstanding.
+
 ## [8.88.0] - 2026-08-01 — DR and security operational qualification
 
 This exact batch advances B147–B156 without interpreting configuration flags,

@@ -58,7 +58,7 @@ Prioritățile sunt:
 | R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
 | R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică B104/B118–B121/B123, iar v8.86 califică B124/B125. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
 | R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; v8.86 califică B129–B136, v8.87 B137–B146, iar v8.88 B147–B150. Adaptoarele XO/vSphere și DR mutation/canary rămân. |
-| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
+| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156, iar v8.89 B157–B166. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
 | R9 | Compose blueprint catalog | P3 | L | `Not started` | OCI Compose, signatures | Catalog semnat, pinned și operabil prin wizard. |
@@ -391,6 +391,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] B151–B156 calificate read-only în v8.88.0;
 - [x] CIS/STIG/vendor host baseline evidence closed-schema;
 - [x] VM virtual-hardware baseline B159 ca evidence closed-schema;
+- [x] B157–B159 calificate read-only în v8.89.0;
 - [ ] colectoare provider-native pentru toate domeniile de trust.
 
 ### R6b — advisories și remediation controlată
@@ -409,6 +410,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] certificate rotation reutilizează lifecycle assurance existent;
 - [x] manifests/jobs/templates resping credentialele inline și păstrează numai
   document/reference hashes.
+- [x] B160–B166 calificate read-only în v8.89.0;
 
 ### R6c — privileged access și compliance
 
@@ -641,6 +643,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-01 | Release 8.86.0 / B124, B125, B129–B136 | `Partial` | `84122da` / `v8.86.0` | 313 suite / 3344 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build-uri PR/tag verzi; health intern/extern `8.86.0` pe LAN și VPS; SQLite integrity `ok` | Calificarea read-only batch-aware verifică exact 10 ID-uri deja incluse în v8.80. Schema este 10/10 pe ambele ținte, runtime observat 0, iar invocarea pornește 0 provider/network/external work. LAN păstrează cele 2 flag-uri backup deja active, VPS 0. Backupurile `predeploy-v8.86.0-84122da.db` sunt păstrate; browserul integrat nu expune runtime, iar canary-urile și adaptoarele lipsă rămân deschise. |
 | 2026-08-01 | Release 8.87.0 / B137–B146 | `Released` | `de61d4a`, tag/release `v8.87.0`, CI + Docker green, LAN/VPS healthy | calificare recovery-depth read-only; release-uri mixte per feature, schema/coloane, runtime și flag-uri distincte; 313 suite / 3.346 teste pass; rollout verificat | Exact 10 ID-uri deja incluse în v8.80/v8.81. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar adaptoarele, fencing-ul și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.88.0 / B147–B156 | `Released` | `635df3b`, tag/release `v8.88.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.348 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.81/v8.82. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar executorii, colectorii și canary-urile rămân deschise. |
+| 2026-08-01 | Release 8.89.0 / B157–B166 | `In progress` | working tree local | calificare security-lifecycle read-only; planuri, evidence domains, rotație, findings, excepții și dry-run distincte | Exact 10 ID-uri deja incluse în v8.82/v8.83. Calificarea nu pornește provider/network/external work; colectorii, adaptoarele production, canary și browserul rămân deschise. |
 
 ## 20. Următoarele acțiuni
 
