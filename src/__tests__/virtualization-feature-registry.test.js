@@ -31,7 +31,7 @@ describe('virtualization market-research registry', () => {
     }));
     expect(registry.features.find(feature => feature.featureId === 'B045')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', marketHorizon: null,
-      limitations: ['Local scheduler is complete; browser smoke, real-provider canary and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and a real-provider canary remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B090')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
@@ -41,27 +41,27 @@ describe('virtualization market-research registry', () => {
     }));
     expect(registry.features.find(feature => feature.featureId === 'B104')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local link-only mutation is complete and default-off per provider; browser smoke, disposable-provider canary and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; link mutation stays default-off pending browser smoke and a disposable-provider canary.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B118')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local read-only dependency map is complete; browser smoke, provider evidence adapters and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B119')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local control-plane simulation is complete with zero network calls; provider simulation adapters, browser smoke, release inclusion and any approved allowlisted active-probe runner remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0 with zero qualification network calls; provider simulation adapters, browser smoke and any approved allowlisted active-probe runner remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B120')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local passive MTU detector is complete; browser smoke, provider evidence adapters and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B121')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local passive Bond/LAG health analyzer is complete; browser smoke, provider collectors and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B123')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local read-only load balancer inventory is complete; browser smoke, provider collectors and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B124')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],

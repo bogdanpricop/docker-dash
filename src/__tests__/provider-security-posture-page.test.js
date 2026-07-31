@@ -16,6 +16,21 @@ describe('provider security posture page', () => {
     expect(page._consoleHtml({ consoleExposure: { state: 'conditional',
       singleUseToken: true } })).toContain('not proof of a live console');
   });
+  it('renders ten-feature operational evidence without implying browser or provider validation', () => {
+    global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;') };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'a'.repeat(64),
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B015', name: '<saved>', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1 },
+        delivery: { qualificationRelease: 'v8.85.0' },
+        validation: { outstanding: ['browser_smoke'] } }] });
+    expect(html).not.toContain('<saved>');
+    expect(html).toContain('&lt;saved>');
+    expect(html).toContain('starts no provider mutation');
+    expect(html).toContain('browser_smoke');
+    expect(html).toContain('0</div><div class="stat-label">Browser smoke recorded');
+  });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
     global.App = { user: { role: 'viewer' } };
     global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };

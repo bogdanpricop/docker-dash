@@ -589,8 +589,9 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 **Status implementare locală 2026-07-30:** B015 are migrare, service, API și UI
 pentru view-uri personale pe inventarul VM, inclusiv host, filtre, coloane,
 sortare și default per utilizator. Testele route/migration/ownership/frontend și
-regresiile provider sunt verzi; rămâne browser smoke și includerea într-un
-release înainte ca rândul să fie promovat la `Done`.
+regresiile provider sunt verzi și implementarea a intrat în v8.80.0. v8.85.0
+adaugă o calificare read-only; browser smoke rămâne înainte ca rândul să poată
+fi promovat la `Done`.
 
 ### B. VM lifecycle și provisioning (B026–B050)
 
@@ -689,11 +690,13 @@ expun apply implicit; health adapters consumă numai dovezi normalizate bounded.
 B091 reutilizează task-ul nativ vSphere deja livrat, iar B094 reutilizează
 topologia shared-disk cu identități opace. B090 are implementarea locală
 read-only în V4.2g (migration, provider evidence, policy/API, job leader-only,
-UI și teste); browser smoke și includerea într-un release sunt încă restante.
+UI și teste); implementarea a intrat în v8.80.0 și este calificată read-only în
+v8.85.0, iar browser smoke rămâne restant.
 B096 are în V4.2h registry-ul local, secret references, probe DNS/TCP reale,
 istoric, freshness, alerte și contractul opt-in de write/cleanup. Auth/list și
 write-test rămân explicit necunoscute fără un adaptor data-plane aprobat;
-browser smoke și includerea într-un release sunt încă restante.
+implementarea a intrat în v8.80.0 și este calificată read-only în v8.85.0;
+browser smoke rămâne restant.
 
 ### E. Networking și connectivity (B101–B125)
 
@@ -741,8 +744,8 @@ B118 are implementarea locală V4.4e read-only: observații normalizate IP/DNS,
 corelare cu flow batches, metadata și relationship graphs, snapshots imutabile,
 freshness/confidence/evidence per edge și impact bounded exclusiv pe relațiile
 declarate. Flow-only candidates rămân explicit non-cauzale. Browser smoke,
-adaptoarele de evidence provider-native și includerea într-un release rămân
-restante.
+adaptoarele de evidence provider-native rămân restante. Implementarea este în
+v8.80.0 și are calificare read-only în v8.85.0.
 
 B119 are implementarea locală V4.4f simulation-only: evaluează tuple explicite
 source/destination/TCP/UDP/ICMP din route, policy, attachment și provider
@@ -750,26 +753,29 @@ simulation evidence cu freshness individual, corelează DNS și flow logs
 normalizate și persistă `pass/fail/unknown` imutabil. `pass` este etichetat ca
 predicție control-plane, nu dovadă data-plane; flow-ul istoric nu promovează
 evidence incompletă. Nu există probe, DNS lookup, socket sau provider mutation.
-Browser smoke, adaptoarele provider-native, release-ul și orice runner activ
+Browser smoke, adaptoarele provider-native și orice runner activ
 allowlisted cu source ownership/destination policy rămân restante.
+Implementarea este în v8.80.0 și are calificare read-only în v8.85.0.
 
 B120 are implementarea locală V4.4g pasivă: evaluează paths workload, overlay,
 storage și live-migration, calculează overhead-ul cumulativ per segment, păstrează
 DF ca evidence explicit și produce `pass/fail/unknown` cu bottleneck și deficit.
 Nu pornește trafic sau remediere. Colectarea automată provider-native, browser
-smoke și includerea într-un release rămân restante.
+smoke rămân restante; implementarea este în v8.80.0 și are calificare read-only
+în v8.85.0.
 
 B121 are implementarea locală V4.4h pasivă: normalizează bond/team/LAG members,
 rol activ/standby/LACP, link/admin/speed/duplex, partner keys, delte de trafic,
 errors/drops/flaps și failover evidence. Quorum-ul, partner mismatch și imbalance
 sunt evaluate fail-closed; zero trafic rămâne `not_observed`. Colectoarele
-provider-native, browser smoke și includerea într-un release rămân restante.
+provider-native și browser smoke rămân restante; implementarea este în v8.80.0
+și are calificare read-only în v8.85.0.
 
 B123 are implementarea locală V4.4i read-only: inventar normalizat pentru VIP,
 listeners, pools, members, algoritm, admin/provider health și legături canonice
 network/resource. Dangling pool refs și native/sensitive refs sunt respinse; nu
-pornește health probes. Colectoarele NSX/Octavia/cloud, browser smoke și release-ul
-rămân restante.
+pornește health probes. Colectoarele NSX/Octavia/cloud și browser smoke rămân
+restante; implementarea este în v8.80.0 și are calificare read-only în v8.85.0.
 
 B124 are implementarea locală V4.4j plan-only: allocate/map/unmap/release leagă
 ownership token, tenant/owner, quota, cost în micros, conflict/current state,
@@ -783,8 +789,8 @@ guards, operație durabilă connect/disconnect, post-read și rollback manual.
 Proxmox schimbă doar `link_down`, vSphere doar starea `connected`, iar XenAPI
 folosește `VIF.plug/unplug`; attach/detach/delete/remap nu sunt expuse. Cele
 trei flag-uri provider sunt default-off. Browser smoke, canary pe provideri
-disposable și includerea într-un release rămân restante; Xen Orchestra/raw Xen
-nu declară mutația ca suportată.
+disposable rămân restante; implementarea este în v8.80.0 și are calificare
+read-only în v8.85.0. Xen Orchestra/raw Xen nu declară mutația ca suportată.
 
 **Status reconciliat 2026-07-30:** B101 și B122 reutilizează inventory-ul comun
 NIC, respectiv evidence-ul PF/VF și constrângerile de migrare livrate în v8.71.0.
@@ -1499,8 +1505,9 @@ B049 completează profilul noVNC/WebMKS/serial cu SPICE native handoff și audit
 scheduler VM durabil pentru start/guest shutdown/reboot/snapshot, cron în fus
 orar IANA, politici DST first/second/skip, holiday și blackout suppression,
 deduplicare per slot, child idempotency, reconciliere `unknown`, auto-disable,
-API/UI/RBAC/audit și job leader-only. Browser smoke, canary pe provideri reali și
-includerea într-un release rămân restante, deci feature-ul este `Partial`.
+API/UI/RBAC/audit și job leader-only. Implementarea este în v8.80.0 și are
+calificare read-only în v8.85.0. Browser smoke și canary pe provideri reali
+rămân restante, deci feature-ul este `Partial`.
 B053–B055 leagă live/cold/storage controls de executorul durabil vm.migrate
 existent; B056–B061 adaugă cross-pool/provider evidence, bandwidth windows,
 weighted fair queue, native-state cancel/force-complete și rollback pe stadii.

@@ -127,6 +127,12 @@ class StorageRepositoryHealthService {
   }
 
   _db(database) { return database || this._dbProvider(); }
+  adapterCapabilities() {
+    return {
+      read: typeof this._adapter?.probeRead === 'function',
+      write: typeof this._adapter?.probeWrite === 'function',
+    };
+  }
   _actor(actor, admin = false) {
     if (!actor?.id) fail('Authentication required', 'AUTHENTICATION_REQUIRED', 401);
     if (admin && actor.role !== 'admin' && !actor.roles?.includes('admin')) fail('Administrator required', 'ADMIN_REQUIRED', 403);

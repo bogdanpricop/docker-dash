@@ -24,6 +24,7 @@ const providerIpConflictCandidates = require('../services/provider-sdk/ip-confli
 const providerGuestNetworkReadiness = require('../services/provider-sdk/guest-network-readiness');
 const providerEndpointTransportPosture = require('../services/provider-sdk/endpoint-transport-posture');
 const providerSecurityPosture = require('../services/provider-sdk/security-posture');
+const providerOperationalQualification = require('../services/provider-sdk/operational-qualification');
 const providerSecurityAssurance = require('../services/provider-sdk/security-assurance');
 const providerSecurityLifecycle = require('../services/provider-sdk/security-lifecycle');
 const providerPrivilegedCompliance = require('../services/provider-sdk/privileged-compliance');
@@ -2338,6 +2339,22 @@ router.get('/:hostId/security-posture', requireAuth, requireHostAccess('view', {
   try { res.json(await providerSecurityPosture.postureForHost(resolved.host)); }
   catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider security posture failed' : err.message, code: err?.code || 'PROVIDER_SECURITY_POSTURE_ERROR' }); }
 }));
+
+router.get('/:hostId/operational-qualification', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      res.json(providerOperationalQualification.qualificationForHost(resolved.host,
+        { actorId: req.user.id }));
+    } catch (err) {
+      const status = Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 ? 'Provider operational qualification failed' : err.message,
+        code: err?.code || 'OPERATIONAL_QUALIFICATION_ERROR',
+      });
+    }
+  });
 
 router.get('/:hostId/security-assurance', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

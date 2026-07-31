@@ -53,10 +53,10 @@ Prioritățile sunt:
 | Batch | Feature-uri | Prioritate | Efort | Status | Dependențe | Rezultat de închidere |
 |---|---|---:|---:|---|---|---|
 | R0 | Reconcilierea catalogului și gate automat | P0 | S | `Done` | — | 450 ID-uri validate; status curent 391 Done, 59 Partial, 0 Open; gate CI determinist. |
-| R1 | B015 Saved inventory views | P0 | M | `In progress` | Provider VM inventory | View-uri personale cu filtre, coloane și sortare persistente. |
-| R2 | B045 Scheduled VM actions | P0 | L | `In progress` | operation core, blackout windows | Implementare locală completă pentru start/stop/reboot/snapshot; browser/canary/release rămân. |
-| R3 | B090, B096 Storage operational monitors | P0 | L | `In progress` | snapshot/storage evidence | B090 și nucleul B096 implementate local; adaptorul B096 și validările de release rămân. |
-| R4 | B104, B118–B125 Network closure | P0/P1 | XL | `In progress` | v8.79 network plans, provider SDK | B104 și B118–B125 au implementări locale; browser/provider/canary/release, probele active B119 și apply-ul R8 pentru B124 rămân. |
+| R1 | B015 Saved inventory views | P0 | M | `Partial` | Provider VM inventory | Livrat în v8.80 și calificat read-only în v8.85; browser smoke rămâne. |
+| R2 | B045 Scheduled VM actions | P0 | L | `Partial` | operation core, blackout windows | Livrat în v8.80 și calificat read-only în v8.85; browser/canary rămân. |
+| R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
+| R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică exact B104/B118–B121/B123. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
 | R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; adaptoarele XO/vSphere și DR mutation/canary rămân. |
 | R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
@@ -254,7 +254,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] snapshots imutabile/deduplicate și impact upstream/downstream bounded,
   cycle-safe, doar pe relații declarate;
 - [x] API admin, audit actions, UI și teste focused;
-- [ ] browser smoke, adaptoare provider-native de evidence și includere în release.
+- [x] includere în v8.80.0 și calificare operațională read-only în v8.85.0;
+- [ ] browser smoke și adaptoare provider-native de evidence.
 
 ### R4b — B119 reachability + B120 MTU
 
@@ -266,14 +267,16 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   - [ ] simulation adapter când providerul oferă native trace/diagnostic;
   - [ ] probe active numai dintr-un runner allowlisted, cu source ownership;
   - [ ] rate limit, timeout, destination allowlist și audit;
-  - [ ] browser smoke și includere în release;
+  - [x] includere în v8.80.0 și calificare read-only în v8.85.0;
+  - [ ] browser smoke;
 - B120 MTU:
   - [x] contract pasiv pentru paths workload/overlay/storage/live-migration;
   - [x] overhead cumulativ per segment și DF evidence explicit;
   - [x] `pass/fail/unknown`, bottleneck/deficit și fail-closed pe evidence
     missing/incomplete/expired;
   - [x] assessment imutabil/deduplicat, API admin auditat, UI și teste;
-  - [ ] browser smoke, adaptoare provider-native și includere în release.
+  - [x] includere în v8.80.0 și calificare read-only în v8.85.0;
+  - [ ] browser smoke și adaptoare provider-native.
 
 ### R4c — B121 Bond/LAG și reconciliere B122 SR-IOV
 
@@ -282,7 +285,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   failover evidence;
 - [x] imbalance din delte bounded; zero trafic este `not_observed`;
 - [x] observație imutabilă/deduplicată, API admin auditat, UI și teste;
-- [ ] colectoare read-only provider-native, browser smoke și release;
+- [x] includere în v8.80.0 și calificare read-only în v8.85.0;
+- [ ] colectoare read-only provider-native și browser smoke;
 - [x] B122 rămâne închis prin reutilizarea PF/VF din v8.71; nu se introduce un
   al doilea store SR-IOV.
 
@@ -292,7 +296,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   - [x] inventory normalizat pentru VIP/listener/pool/member/algorithm/health;
   - [x] provider/network/resource canonical links fără native refs;
   - [x] observations imutabile/deduplicate, API admin auditat, UI și teste;
-  - [ ] colectoare NSX/Octavia/cloud, browser smoke și release;
+  - [x] includere în v8.80.0 și calificare read-only în v8.85.0;
+  - [ ] colectoare NSX/Octavia/cloud și browser smoke;
 - B124:
   - [x] NAT/public IP plan cu ownership, quota, cost, conflicts și release guard;
   - [x] plans imutabile/deduplicate, API admin auditat, UI și teste;
@@ -312,6 +317,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] task durabil per provider, post-read și rollback manual cu preflight nou;
 - [x] feature flags separate, default-off, pentru Proxmox/vSphere/XenAPI;
 - [x] declarație admin expirabilă, persistată și legată de fingerprint-ul NIC;
+- [x] includere în v8.80.0 și calificare read-only în v8.85.0;
 - [ ] browser smoke, canary pe provideri disposable și release gradual.
 
 ## 10. Batch R5 — backup, restore și DR depth
@@ -622,14 +628,15 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-07-31 | Release 8.82.0 / B149–B158 | `Partial` | `902bd85` / `v8.82.0` | 310 suite / 3317 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + 2 build-uri verzi; health extern `8.82.0` pe LAN și VPS; migrarea 167 + SQLite integrity `ok` | Lot exact de 10: DR test readiness și RPO/RTO aggregates plus packs Secure Boot/vTPM/encryption/confidential/hardening, KMS registry și confidential preflight. Flag-ul metadata-only este activ pe cele două ținte; colectoarele și provider mutations rămân fail-closed. Backupurile `predeploy-v8.82.0-902bd85.db` sunt păstrate; Docker/browser local indisponibil. |
 | 2026-07-31 | Release 8.83.0 / B159–B168 | `Partial` | `2a45db4` / `v8.83.0` | 311 suite / 3326 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build PR/tag verzi; health intern/extern `8.83.0` pe LAN și VPS; migrarea 168 + SQLite integrity `ok` | Lot exact de 10: virtual hardware/protocol/certificate/exposure evidence, exact advisory correlation, priority, excepții, dry-run/low-risk remediation contract, certificate renewal projection și no-storage secret validation. Lifecycle control-plane este activ; executorul low-risk rămâne explicit false și fără adaptor production. Backupurile `predeploy-v8.83.0-2a45db4.db` sunt păstrate; Docker/browser local indisponibil. |
 | 2026-07-31 | Release 8.84.0 / B169–B178 | `Partial` | `85f030b` / `v8.84.0` | 312 suite / 3338 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build PR/tag verzi; health intern/extern `8.84.0` pe LAN și VPS; migrarea 169 + SQLite integrity `ok` | Lot exact de 10: B169–B175 primesc TOTP/JIT, break-glass, session metadata, classification, signed evidence, mappings și ransomware posture; B176–B178 erau deja Done și sunt revalidate ca permission/custom-role/scope foundation. Flagul este activ pe ambele ținte; contul temporar standalone, dispatcherul extern, media recorderul, public attestation și enforcement-ul provider-native rămân absente. Backupurile `predeploy-v8.84.0-85f030b.db` sunt păstrate; Docker/browser local indisponibil. |
+| 2026-08-01 | Release 8.85.0 / B015, B045, B090, B096, B104, B118–B121, B123 | `Partial` | working tree / `v8.85.0` | 313 suite / 3342 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; i18n/a11y/syntax/whitespace verzi | Calificarea read-only separă schema livrată, evidența runtime și blocajele reale pentru exact primele 10 ID-uri Partial. Implementările sunt în v8.80.0; lipsa browserului, adaptoarelor/collectorilor și canary-urilor rămâne explicită. Zero provider mutations/network calls/external commands sunt pornite de calificare. |
 
 ## 20. Următoarele acțiuni
 
 1. UX control-plane: browser smoke pentru Governance, Self-Service, Identity & Policy și Edge, inclusiv tab keyboard navigation și cel puțin un dialog modal pe rută.
-2. R1/B015: browser smoke pe un endpoint local și apoi release/docs.
-3. R2/B045: canary pe provider disposable și reconciliere browser/release când runtime-ul devine disponibil.
+2. R1/B015: browser smoke pe un endpoint local; includerea în v8.80 și calificarea v8.85 sunt deja înregistrate.
+3. R2/B045: canary pe provider disposable și reconciliere browser când runtime-ul devine disponibil; execute rămâne default-off.
 4. R4a/B118: browser smoke și conectarea adaptoarelor read-only de evidence când runtime/provider fixtures devin disponibile.
-5. R4f/B104: browser smoke, canary per provider disposable și release gradual al flag-urilor independente.
+5. R4f/B104: browser smoke, canary per provider disposable și release gradual al flag-urilor independente; calificarea nu le activează.
 6. R4b/B119: browser/provider simulation adapters și decizie separată pentru probe active privind runner-ul allowlisted, source ownership, destination policy, egress și rate limits.
 7. R5a/B129–B138: canary Proxmox/PBS, apoi adaptor XO pentru un schedule/job task-aware descoperit explicit; vSphere intră numai prin VADP/VDDK sau backup vendor cu data mover.
 8. R5b/R5c/B139–B148: adaptoare task-aware pentru file/instant/differential/copy și replication configure; failover/failback real numai după fencing, isolated networking, data-authority reversal și post-read verification.

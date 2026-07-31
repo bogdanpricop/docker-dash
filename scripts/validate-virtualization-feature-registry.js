@@ -308,34 +308,34 @@ function limitationsFor(feature, status, deliveryLevel) {
     return [`Outstanding implementation scope is tracked in batch ${batch}.`];
   }
   if (feature.featureId === 'B015') {
-    return ['Local implementation is complete; browser smoke and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke remains outstanding.'];
   }
   if (feature.featureId === 'B045') {
-    return ['Local scheduler is complete; browser smoke, real-provider canary and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and a real-provider canary remain outstanding.'];
   }
   if (feature.featureId === 'B090') {
-    return ['Local read-only monitor is complete; browser smoke and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke remains outstanding.'];
   }
   if (feature.featureId === 'B096') {
-    return ['Local network monitor is complete; protocol auth/list adapter, browser smoke and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; a protocol auth/list adapter and browser smoke remain outstanding.'];
   }
   if (feature.featureId === 'B104') {
-    return ['Local link-only mutation is complete and default-off per provider; browser smoke, disposable-provider canary and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; link mutation stays default-off pending browser smoke and a disposable-provider canary.'];
   }
   if (feature.featureId === 'B118') {
-    return ['Local read-only dependency map is complete; browser smoke, provider evidence adapters and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'];
   }
   if (feature.featureId === 'B119') {
-    return ['Local control-plane simulation is complete with zero network calls; provider simulation adapters, browser smoke, release inclusion and any approved allowlisted active-probe runner remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0 with zero qualification network calls; provider simulation adapters, browser smoke and any approved allowlisted active-probe runner remain outstanding.'];
   }
   if (feature.featureId === 'B120') {
-    return ['Local passive MTU detector is complete; browser smoke, provider evidence adapters and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'];
   }
   if (feature.featureId === 'B121') {
-    return ['Local passive Bond/LAG health analyzer is complete; browser smoke, provider collectors and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'];
   }
   if (feature.featureId === 'B123') {
-    return ['Local read-only load balancer inventory is complete; browser smoke, provider collectors and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'];
   }
   if (feature.featureId === 'B124') {
     return ['Local public-IP lifecycle planning is complete; browser smoke, provider adapters, canary, controlled apply and release inclusion remain outstanding.'];

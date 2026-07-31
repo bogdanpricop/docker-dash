@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.85.0] - 2026-08-01 — Operational qualification for ten Partial features
+
+This exact batch advances B015, B045, B090, B096, B104, B118, B119, B120,
+B121 and B123 without relabeling missing browser/provider evidence as success.
+
+- A new provider-scoped read-only qualification endpoint reports required
+  schema, bounded runtime counts, evidence freshness, release inclusion and a
+  deterministic SHA-256 evidence hash for the exact ten IDs.
+- B015 evidence is scoped to the current user; provider/global scopes are
+  explicit for storage and network records.
+- B045 and B104 expose their execute-flag boundary. Both stay default-off unless
+  the operator explicitly enables the existing mutation flags.
+- B096 exposes whether approved read/write data-plane adapter methods exist,
+  without resolving credentials or opening a repository connection.
+- Passive/simulation network records retain their persisted zero-call and
+  zero-mutation counters; absence remains `not_observed`.
+- Provider Security renders the ten results and the still-open browser, adapter,
+  collector, active-runner and disposable-canary requirements.
+- The implementations were already included in v8.80.0. v8.85.0 removes the
+  stale release-inclusion blocker but keeps every genuinely unproven item
+  `Partial`; the qualification itself starts no provider/network/external work.
+
 ## [8.84.0] - 2026-07-31 — Privileged access and compliance controls
 
 This exact B169–B178 batch adds security/compliance depth and exercises the
