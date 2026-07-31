@@ -81,6 +81,7 @@ const FEATURE_CATALOG = Object.freeze({
   'backup.restore.instant': 'Start an instant or live restore',
   'backup.restore.differential': 'Restore by reusing a provider base chain',
   'backup.restore.drill': 'Run an isolated automated restore drill',
+  'backup.copy.cross_site': 'Copy a recovery point to another backup site',
   'replication.read': 'Read workload replication state',
   'replication.configure': 'Configure workload replication',
   'dr.failover': 'Execute an orchestrated disaster failover',

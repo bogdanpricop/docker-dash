@@ -9,6 +9,7 @@ const NOT_IMPLEMENTED = [
   'task.cancel', 'task.cleanup', 'event.stream',
   'backup.restore.disk', 'backup.restore.file',
   'backup.restore.instant', 'backup.restore.differential',
+  'backup.copy.cross_site',
 ];
 
 function declared() {

@@ -50,7 +50,9 @@ const RecoveryPointsPage = {
       <td><span class="badge ${this._badge(item.verification?.state)}">${Utils.escapeHtml(item.verification?.state || 'unknown')}</span>${item.verification?.checkedAt ? `<div class="text-muted text-sm">${Utils.escapeHtml(this._date(item.verification.checkedAt))}</div>` : ''}</td>
       <td>${item.backup?.protected === true ? '<span class="badge badge-success">protected</span>' : item.backup?.protected === false ? '<span class="badge badge-warning">not protected</span>' : '<span class="badge badge-secondary">unknown</span>'}</td>
       <td style="white-space:nowrap">${this._data?.restoreFeatureEnabled ? `<button class="btn btn-sm btn-primary recovery-restore" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-rotate-left"></i> Restore</button>` : '<span class="text-muted text-sm">release disabled</span>'}
-        ${this._data?.restoreDrillFeatureEnabled ? `<button class="btn btn-sm btn-secondary recovery-drill" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-vial"></i> Drill</button>` : ''}</td>
+        ${this._data?.restoreDrillFeatureEnabled ? `<button class="btn btn-sm btn-secondary recovery-drill" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-vial"></i> Drill</button>` : ''}
+        ${this._data?.restoreDepthFeatureEnabled ? `<button class="btn btn-sm btn-secondary recovery-files" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-folder-tree"></i> Files</button>
+          <button class="btn btn-sm btn-secondary recovery-depth" data-point-id="${Utils.escapeHtml(item.id)}"><i class="fas fa-diagram-project"></i> Advanced plan</button>` : ''}</td>
     </tr>`).join('');
     return `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Workload</th><th>Repository</th><th>Created</th><th>Backup</th><th>Verification</th><th>Retention protection</th><th>Restore</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   },
@@ -89,6 +91,60 @@ const RecoveryPointsPage = {
       const point = data.items.find(item => item.id === button.dataset.pointId);
       if (point) this._drill(point);
     }));
+    target.querySelectorAll('.recovery-files').forEach(button => button.addEventListener('click', () => {
+      const point = data.items.find(item => item.id === button.dataset.pointId);
+      if (point) this._browseFiles(point);
+    }));
+    target.querySelectorAll('.recovery-depth').forEach(button => button.addEventListener('click', () => {
+      const point = data.items.find(item => item.id === button.dataset.pointId);
+      if (point) this._depthPlan(point);
+    }));
+  },
+
+  async _browseFiles(point) {
+    const query = window.prompt('Search the bounded file-catalog evidence (leave empty for the root):');
+    if (query === null) return;
+    try {
+      const result = await Api.getProviderRecoveryFiles(this._hostId, point.id,
+        { query: query.trim(), parent: query.trim() ? null : '/', limit: 200 });
+      const rows = (result.items || []).map(item => `<tr><td><span class="badge badge-secondary">${Utils.escapeHtml(item.type)}</span></td>
+        <td><code>${Utils.escapeHtml(item.path)}</code></td><td>${this._bytes(item.sizeBytes)}</td>
+        <td>${Utils.escapeHtml(item.modifiedAt || 'not reported')}</td><td><code>${Utils.escapeHtml(item.checksum || 'not reported')}</code></td></tr>`).join('');
+      Modal.open(`<div class="modal-header"><h3>Recovery file evidence</h3><button class="modal-close-btn" id="recovery-files-close"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body"><div class="alert alert-info">Metadata evidence only. Docker Dash does not store or serve backup file content.</div>
+        <p><strong>${Number(result.count || 0)}</strong> entries · catalog ${Utils.escapeHtml(result.catalog?.state || 'not available')}</p>
+        <div style="overflow:auto;max-height:60vh"><table class="data-table"><thead><tr><th>Type</th><th>Path</th><th>Size</th><th>Modified</th><th>Checksum</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No catalog evidence matches.</td></tr>'}</tbody></table></div></div>`,
+      { width: '1000px' });
+      Modal._content.querySelector('#recovery-files-close')?.addEventListener('click', () => Modal.close());
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _depthPlan(point) {
+    const choice = window.prompt('Advanced plan type:\n1. Instant/live restore\n2. Differential restore\n3. Cross-site backup copy\n\nEnter 1, 2 or 3:');
+    if (choice === null) return;
+    let input;
+    if (choice === '1') input = { kind: 'instant', networkIsolation: true };
+    else if (choice === '2') {
+      const baseRecoveryPointId = window.prompt('Canonical base recovery-point ID:'); if (!baseRecoveryPointId) return;
+      const baseChecksum = window.prompt('Verified base checksum:'); if (!baseChecksum) return;
+      input = { kind: 'differential', baseRecoveryPointId, baseChecksum, targetIsolated: true };
+    } else if (choice === '3') {
+      const targets = this._hosts.filter(host => Number(host.id) !== Number(this._hostId));
+      const target = this._pick(targets.map(host => ({ id: host.id,
+        displayName: `${host.name} · ${host.daemonType}` })), 'Cross-site target endpoint');
+      if (!target) return;
+      input = { kind: 'cross_site_copy', targetHostId: Number(target.id),
+        bandwidthLimitMbps: 100, resume: true, verifyChecksum: true };
+    } else { Toast.error('Choose 1, 2 or 3'); return; }
+    try {
+      const plan = await Api.preflightProviderRestoreDepth(this._hostId, point.id, input);
+      const findings = (plan.blockers || []).map(item => `<li><strong>${Utils.escapeHtml(item.code)}</strong> — ${Utils.escapeHtml(item.reason)}</li>`).join('');
+      Modal.open(`<div class="modal-header"><h3>Advanced restore plan</h3><button class="modal-close-btn" id="recovery-depth-close"><i class="fas fa-times"></i></button></div>
+        <div class="modal-body"><div class="alert alert-warning"><strong>Plan only; provider mutation is not authorized.</strong></div>
+        <p>Kind: <strong>${Utils.escapeHtml(plan.request?.kind || '')}</strong></p><p>Plan hash: <code>${Utils.escapeHtml(plan.planHash)}</code></p>
+        <ul>${findings}</ul></div>`, { width: '760px' });
+      Modal._content.querySelector('#recovery-depth-close')?.addEventListener('click', () => Modal.close());
+    } catch (err) { Toast.error(err.message); }
   },
 
   _pick(items, title) {

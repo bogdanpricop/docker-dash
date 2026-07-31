@@ -109,6 +109,12 @@ const mockDrGroupRemove = jest.fn();
 const mockDrPreflight = jest.fn();
 const mockDrRehearse = jest.fn();
 const mockDrRuns = jest.fn();
+const mockRestoreDepthFileList = jest.fn();
+const mockRestoreDepthFileImport = jest.fn();
+const mockRestoreDepthPreflight = jest.fn();
+const mockReplicationPolicyList = jest.fn();
+const mockReplicationPolicyUpsert = jest.fn();
+const mockReplicationPolicyRemove = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -118,6 +124,7 @@ jest.mock('../config', () => {
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
     providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
+    providerRestoreReplicationDepth: true,
     providerVmActionSchedules: true } };
 });
 
@@ -323,6 +330,23 @@ jest.mock('../services/provider-operations/dr-runbooks', () => {
     preflightForHost: (...args) => mockDrPreflight(...args),
     rehearseForHost: (...args) => mockDrRehearse(...args),
     listRuns: (...args) => mockDrRuns(...args),
+  };
+});
+jest.mock('../services/provider-operations/restore-replication-depth', () => {
+  class RestoreReplicationDepthError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RestoreReplicationDepthError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    RestoreReplicationDepthError,
+    listFileEntries: (...args) => mockRestoreDepthFileList(...args),
+    importFileCatalog: (...args) => mockRestoreDepthFileImport(...args),
+    preflightDepthForHost: (...args) => mockRestoreDepthPreflight(...args),
+    listReplicationPolicies: (...args) => mockReplicationPolicyList(...args),
+    upsertReplicationPolicy: (...args) => mockReplicationPolicyUpsert(...args),
+    removeReplicationPolicy: (...args) => mockReplicationPolicyRemove(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -608,6 +632,19 @@ describe('Provider SDK routes', () => {
     mockDrPreflight.mockResolvedValue(drPlan);
     mockDrRehearse.mockResolvedValue({ plan: drPlan, run: drRun });
     mockDrRuns.mockReturnValue([drRun]);
+    const fileCatalog = { id: `prfc_${'a'.repeat(26)}`, entryCount: 1,
+      manifestHash: 'a'.repeat(64), state: 'complete' };
+    mockRestoreDepthFileList.mockReturnValue({ schemaVersion: '1.0', catalog: fileCatalog,
+      count: 1, items: [{ path: '/etc/app.conf', type: 'file' }] });
+    mockRestoreDepthFileImport.mockReturnValue({ created: true, catalog: fileCatalog });
+    mockRestoreDepthPreflight.mockResolvedValue({ schemaVersion: '1.0', id: `prdp_${'b'.repeat(26)}`,
+      request: { kind: 'instant' }, planHash: 'b'.repeat(64), allowed: false,
+      blockers: [{ code: 'EXECUTION_ADAPTER_UNAVAILABLE', reason: 'adapter missing' }] });
+    const replicationPolicy = { id: `prpl_${'c'.repeat(26)}`, targetHostId: 8,
+      mode: 'async', enabled: false, policyHash: 'c'.repeat(64) };
+    mockReplicationPolicyList.mockReturnValue([replicationPolicy]);
+    mockReplicationPolicyUpsert.mockResolvedValue({ created: true, policy: replicationPolicy });
+    mockReplicationPolicyRemove.mockReturnValue(replicationPolicy);
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -1175,6 +1212,46 @@ describe('Provider SDK routes', () => {
       action: 'provider_recovery_restore_submitted', targetType: 'recovery_point', targetId: pointId,
       details: expect.objectContaining({ targetVmid: 9123, overwrite: false,
         startAfterRestore: false, automaticCleanupAuthorized: false }),
+    }));
+  });
+
+  it('scopes file evidence, advanced restore plans and replication policy drafts', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const files = await request(app).get(`/api/providers/7/recovery-points/${pointId}/files?parent=%2F&limit=20`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(files.status).toBe(200); expect(files.body.count).toBe(1);
+    expect(mockRestoreDepthFileList).toHaveBeenCalledWith(7, pointId,
+      { limit: '20', query: undefined, parent: '/' });
+    expect((await request(app).put(`/api/providers/7/recovery-points/${pointId}/files`)
+      .set('x-test-role', 'viewer').send({ entries: [] })).status).toBe(403);
+    const imported = await request(app).put(`/api/providers/7/recovery-points/${pointId}/files`)
+      .send({ entries: [{ path: '/etc/app.conf', type: 'file' }] });
+    expect(imported.status).toBe(201);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_depth_catalog_created', targetType: 'recovery_point', targetId: pointId,
+    }));
+    const plan = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore-depth/preflight`)
+      .send({ kind: 'instant', networkIsolation: true });
+    expect(plan.status).toBe(200); expect(plan.body.allowed).toBe(false);
+    expect(mockRestoreDepthPreflight).toHaveBeenCalledWith(mockHost, pointId,
+      { kind: 'instant', networkIsolation: true }, { canOperate: true, createdBy: 1 });
+
+    const policies = await request(app).get('/api/providers/7/dr/replication-policies?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(policies.status).toBe(200); expect(policies.body.executionAuthorized).toBe(false);
+    expect(mockReplicationPolicyList).toHaveBeenCalledWith(7, { limit: 25 });
+    const policyBody = { name: 'DR draft', targetHostId: 8, mode: 'async',
+      rpoTargetSeconds: 900, workloadIds: [`ddr_vm_${'a'.repeat(26)}`], enabled: false };
+    expect((await request(app).post('/api/providers/7/dr/replication-policies')
+      .set('x-test-role', 'viewer').send(policyBody)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/dr/replication-policies').send(policyBody);
+    expect(created.status).toBe(201);
+    const policyId = created.body.policy.id;
+    expect((await request(app).delete(`/api/providers/7/dr/replication-policies/${policyId}`)).status).toBe(200);
+    expect(mockReplicationPolicyRemove).toHaveBeenCalledWith(7, policyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_depth_replication_policy_deleted',
+      details: expect.objectContaining({ providerMutationAuthorized: false }),
     }));
   });
 

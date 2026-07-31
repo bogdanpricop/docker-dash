@@ -2,6 +2,28 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.81.0] - 2026-07-31 — Restore and replication depth control plane
+
+This batch advances exactly B139–B148 while keeping every unproven provider
+mutation fail-closed and default-off.
+
+- Automated restore drills and their scheduler remain task-backed on Proxmox;
+  success-only cleanup preserves every failed or ambiguous target.
+- A bounded file-level recovery catalog adds escaped search/browse UI, absolute
+  POSIX path validation, checksums and manifest hashes without storing or
+  serving backup file content.
+- File download/restore, instant/live, differential and cross-site copy
+  preflights persist deterministic plan hashes, capability evidence, isolated
+  target constraints, resumability, checksum and bandwidth intent.
+- Draft VM replication policies support async, near-sync and sync contracts,
+  RPO/schedule/bandwidth settings, canonical workload/storage mappings and
+  versioned hashes. Enabling provider mutation is explicitly rejected.
+- Existing DR protection groups, dependency-ordered failover/failback plans and
+  immutable rehearsals are integrated into the same UI/API evidence boundary.
+- Migration 166 adds file catalogs, advanced restore plans and replication
+  policy tables; the feature remains gated by
+  `DD_PROVIDER_RESTORE_REPLICATION_DEPTH=false`.
+
 ## [8.80.0] - 2026-07-31 — Virtualization operations and backup control plane
 
 - Saved VM inventory views persist per-user filters, columns and sorting with

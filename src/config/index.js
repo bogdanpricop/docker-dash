@@ -118,6 +118,9 @@ module.exports = {
     providerRecoveryRestore: bool('DD_PROVIDER_RECOVERY_RESTORE', false),
     providerRestoreDrills: bool('DD_PROVIDER_RESTORE_DRILLS', false),
     providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
+    // File-catalog evidence, plan-only restore depth and draft replication
+    // policies. Provider mutations remain unavailable behind this flag.
+    providerRestoreReplicationDepth: bool('DD_PROVIDER_RESTORE_REPLICATION_DEPTH', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
     // NIC link mutation is released independently per provider. A global flag

@@ -3,7 +3,7 @@
 
 const DisasterRecoveryPage = {
   _container: null, _hosts: [], _hostId: null, _overview: null, _groups: [],
-  _replications: [], _runs: [], _workloads: [], _nodes: [], _storages: [], _editing: null,
+  _replications: [], _replicationPolicies: [], _runs: [], _workloads: [], _nodes: [], _storages: [], _editing: null,
 
   _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _escape(value) { return Utils.escapeHtml(value === null || value === undefined ? '' : String(value)); },
@@ -69,6 +69,47 @@ const DisasterRecoveryPage = {
       <td>${this._escape(item.mode)} · ${this._escape(item.scope)}</td><td>${this._escape(item.schedule || 'provider default')}</td>
       <td>${this._duration(item.rpoAgeSeconds)}</td><td>${this._escape(item.lastSyncAt ? Utils.timeAgo(item.lastSyncAt) : 'unknown')}</td></tr>`).join('');
     return `<div style="overflow:auto" class="card"><table class="data-table"><thead><tr><th>Workload</th><th>Health</th><th>Mode / scope</th><th>Schedule</th><th>RPO age</th><th>Last sync</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  _replicationPoliciesHtml() {
+    const controls = this._isAdmin() ? '<button id="dr-new-replication-policy" class="btn btn-sm btn-primary"><i class="fas fa-plus"></i> New draft policy</button>' : '';
+    if (!this._replicationPolicies.length) return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><div class="empty-msg" style="flex:1">No draft replication policy is defined.</div>${controls}</div>`;
+    const rows = this._replicationPolicies.map(item => `<tr><td><strong>${this._escape(item.name)}</strong><div class="text-muted text-sm">revision ${Number(item.revision)}</div></td>
+      <td>${this._escape(this._state(item.mode))}</td><td>${this._duration(item.rpoTargetSeconds)}</td>
+      <td>${Number(item.workloadIds?.length || 0)}</td><td>${this._escape(item.schedule || 'provider default')}</td>
+      <td><span class="badge badge-secondary">draft only</span></td><td>${this._isAdmin() ? `<button class="btn btn-sm btn-danger" data-dr-policy-delete="${this._escape(item.id)}"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`).join('');
+    return `<div style="display:flex;justify-content:flex-end;margin-bottom:8px">${controls}</div><div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Policy</th><th>Mode</th><th>RPO</th><th>Workloads</th><th>Schedule</th><th>Execution</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  async _newReplicationPolicy() {
+    const targets = this._hosts;
+    if (!targets.length || !this._workloads.length) { Toast.error('An endpoint and at least one workload are required'); return; }
+    const result = await Modal.form(`<div class="alert alert-info">Draft-only control plane. Saving never configures provider replication.</div>
+      <label>Name<input id="dr-rp-name" class="form-control" maxlength="100" value="Production replication"></label>
+      <label>Target endpoint<select id="dr-rp-target" class="form-control">${targets.map(host => `<option value="${Number(host.id)}">${this._escape(host.name)} · ${this._escape(host.daemonType)}</option>`).join('')}</select></label>
+      <label>Mode<select id="dr-rp-mode" class="form-control"><option value="async">async</option><option value="near_sync">near sync</option><option value="sync">sync</option></select></label>
+      <label>RPO target (seconds)<input id="dr-rp-rpo" class="form-control" type="number" min="5" max="31536000" value="3600"></label>
+      <label>Bandwidth limit (Mbps)<input id="dr-rp-bandwidth" class="form-control" type="number" min="1" max="1000000" value="100"></label>
+      <label>Workloads<select id="dr-rp-workloads" class="form-control" multiple size="8">${this._workloads.map(vm => `<option value="${this._escape(vm.id)}">${this._escape(vm.displayName)}</option>`).join('')}</select></label>`, {
+      title: 'New replication policy draft', confirmText: 'Save draft', width: '620px',
+      onSubmit: content => ({ name: content.querySelector('#dr-rp-name').value.trim(),
+        targetHostId: Number(content.querySelector('#dr-rp-target').value),
+        mode: content.querySelector('#dr-rp-mode').value,
+        rpoTargetSeconds: Number(content.querySelector('#dr-rp-rpo').value),
+        bandwidthLimitMbps: Number(content.querySelector('#dr-rp-bandwidth').value),
+        workloadIds: [...content.querySelector('#dr-rp-workloads').selectedOptions].map(option => option.value),
+        storageMappings: [], enabled: false }),
+    });
+    if (!result) return;
+    try { await Api.saveProviderReplicationPolicy(this._hostId, result); Toast.success('Replication policy draft saved'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+
+  async _deleteReplicationPolicy(policyId) {
+    const policy = this._replicationPolicies.find(item => item.id === policyId);
+    if (!policy || !await Modal.confirm(`Delete replication policy draft “${policy.name}”?`, { danger: true })) return;
+    try { await Api.deleteProviderReplicationPolicy(this._hostId, policyId); Toast.success('Replication policy draft deleted'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
   },
 
   _runsHtml() {
@@ -185,13 +226,17 @@ const DisasterRecoveryPage = {
       else if (plan) this._plan(plan.dataset.drPlan); else if (rehearse) this._rehearse(rehearse.dataset.drRehearse);
       else if (remove) this._delete(remove.dataset.drDelete);
     });
+    this._container.querySelector('#dr-new-replication-policy')?.addEventListener('click', () => this._newReplicationPolicy());
+    this._container.querySelectorAll('[data-dr-policy-delete]').forEach(button => button.addEventListener('click', () =>
+      this._deleteReplicationPolicy(button.dataset.drPolicyDelete)));
   },
   _renderContent() {
     const content = this._container?.querySelector('#dr-content'); if (!content) return;
     content.innerHTML = `${this._summaryHtml()}${this._editorHtml()}
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Protection posture</h2>
         ${this._isAdmin() ? '<div style="display:flex;gap:8px;flex-wrap:wrap"><label>Runbook mode <select id="dr-mode" class="form-control"><option value="test">isolated test</option><option value="planned_failover">planned failover</option><option value="unplanned_failover">unplanned failover</option><option value="failback">failback</option></select></label><label>Incident reason (unplanned only)<input id="dr-incident-reason" maxlength="500" class="form-control" placeholder="bounded incident declaration"></label></div>' : ''}</div>
-      ${this._groupsHtml()}<h2 style="margin-top:24px">Provider replication inventory</h2>${this._replicationsHtml()}
+      ${this._groupsHtml()}<h2 style="margin-top:24px">Replication policy drafts</h2>${this._replicationPoliciesHtml()}
+      <h2 style="margin-top:24px">Provider replication inventory</h2>${this._replicationsHtml()}
       <h2 style="margin-top:24px">Immutable rehearsal history</h2>${this._runsHtml()}`;
     this._wire();
   },
@@ -201,13 +246,15 @@ const DisasterRecoveryPage = {
     if (!this._hostId) { content.innerHTML = '<div class="empty-msg">Add a Proxmox VE, vSphere or Xen endpoint first.</div>'; return; }
     content.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting DR evidence and durable rehearsals…</div>';
     try {
-      const [overview, groups, replications, runs, workloads, nodes, storages] = await Promise.all([
+      const [overview, groups, replications, replicationPolicies, runs, workloads, nodes, storages] = await Promise.all([
         Api.getProviderDrOverview(this._hostId), Api.getProviderDrProtectionGroups(this._hostId, 100),
         Api.getProviderDrReplications(this._hostId).catch(() => ({ items: [] })),
+        Api.getProviderReplicationPolicies(this._hostId, 100).catch(() => ({ items: [] })),
         Api.getProviderDrRuns(this._hostId, { limit: 50 }), Api.getProviderVMs(this._hostId, 500),
         Api.getProviderHosts(this._hostId, 64), Api.getProviderStorages(this._hostId, 500),
       ]);
       this._overview = overview; this._groups = groups.items || []; this._replications = replications.items || [];
+      this._replicationPolicies = replicationPolicies.items || [];
       this._runs = runs.items || []; this._workloads = workloads.items || []; this._nodes = nodes.items || [];
       this._storages = storages.items || []; this._renderContent();
     } catch (err) { content.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${this._escape(err.message)}</div>`; }
@@ -226,7 +273,7 @@ const DisasterRecoveryPage = {
     await this._load();
   },
   destroy() { this._container = null; this._overview = null; this._groups = []; this._replications = [];
-    this._runs = []; this._workloads = []; this._nodes = []; this._storages = []; this._editing = null; },
+    this._replicationPolicies = []; this._runs = []; this._workloads = []; this._nodes = []; this._storages = []; this._editing = null; },
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = DisasterRecoveryPage;

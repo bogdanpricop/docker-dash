@@ -612,6 +612,18 @@ const Api = {
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       });
   },
+  getProviderRecoveryFiles(hostId, recoveryPointId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 200 });
+    if (filters.query) qs.set('q', filters.query);
+    if (filters.parent) qs.set('parent', filters.parent);
+    return this.get(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/files?${qs}`);
+  },
+  importProviderRecoveryFileCatalog(hostId, recoveryPointId, body) {
+    return this.put(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/files`, body);
+  },
+  preflightProviderRestoreDepth(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore-depth/preflight`, body);
+  },
   preflightProviderRestoreDrill(hostId, recoveryPointId, body) {
     return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/drill/preflight`, body);
   },
@@ -645,6 +657,17 @@ const Api = {
   },
   getProviderDrReplications(hostId) {
     return this.get(`/providers/${hostId}/dr/replications`);
+  },
+  getProviderReplicationPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/dr/replication-policies?limit=${limit}`);
+  },
+  saveProviderReplicationPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/dr/replication-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/dr/replication-policies`, body);
+  },
+  deleteProviderReplicationPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/dr/replication-policies/${encodeURIComponent(policyId)}`);
   },
   getProviderDrProtectionGroups(hostId, limit = 100) {
     return this.get(`/providers/${hostId}/dr/protection-groups?limit=${limit}`);

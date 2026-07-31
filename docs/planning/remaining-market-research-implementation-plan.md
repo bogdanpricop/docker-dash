@@ -333,21 +333,24 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 
 **Features:** B139–B144.
 
-- file-level browse/download/restore cu path safety și audit;
-- instant/live restore capability-gated;
-- differential restore cu base checksum și target isolation;
-- cross-site copy resumable, cu bandwidth policy și checksum;
-- restore drill extins dincolo de Proxmox.
+- [x] file-level catalog/search cu path safety, RBAC, audit și metadata-only UI;
+- [ ] file download/restore real după adaptor task-aware și content streaming;
+- [x] instant/live restore plan capability-gated și cu network isolation;
+- [x] differential restore plan cu base checksum și target isolation;
+- [x] cross-site copy plan resumable, cu bandwidth policy și checksum;
+- [ ] restore drill executabil extins dincolo de Proxmox.
 
 ### R5c — replication și DR execution
 
 **Features:** B145–B150.
 
-- provider-native replication policy adapters;
-- protection group cu network/storage maps versionate;
-- failover/failback task-backed, approval și typed confirmation;
-- bubble-network DR test cu cleanup ownership;
-- RPO/RTO dashboard consumă rezultate reale, nu numai rehearsal plans.
+- [x] politici de replicare async/near-sync/sync versionate, draft-only;
+- [ ] provider-native replication mutation adapters;
+- [x] protection group cu network/placement maps și dependency graph versionat;
+- [x] failover/failback deterministic preflight și rehearsal evidence;
+- [ ] failover/failback provider mutation task-backed, approval și typed confirmation;
+- [ ] bubble-network DR test cu cleanup ownership;
+- [ ] RPO/RTO dashboard alimentat din execuții reale, nu numai rehearsal plans.
 
 ### Release gate R5
 

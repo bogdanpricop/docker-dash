@@ -838,6 +838,17 @@ un schedule/job task-aware descoperit, iar vSphere un adaptor VADP/VDDK/vendor c
 data mover. Din acest motiv B129–B138 rămân `Partial` până la canary și al doilea
 adaptor executabil.
 
+**Status implementare R5b/R5c / working tree 2026-07-31:** B139–B148 au acum
+un traseu comun în UI/API: drill automat și scheduler Proxmox, catalog de
+fișiere metadata-only cu path safety, planuri persistente pentru file,
+instant, differential și cross-site copy, politici de replicare versionate
+draft-only, protection groups și runbook-uri failover/failback cu rehearsal
+evidence. Hash-urile leagă recovery point-ul, capabilitatea și constrângerile
+de siguranță. Niciun transfer sau provider mutation nou nu este pretins:
+file content, instant/differential/copy, replication configure și failover/
+failback rămân fail-closed până la adaptor task-aware, reconciliation și
+post-read verification. Din acest motiv B139–B148 rămân `Partial`.
+
 ### G. Security, confidential computing și compliance (B151–B175)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |

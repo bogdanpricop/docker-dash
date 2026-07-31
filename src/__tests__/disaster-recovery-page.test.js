@@ -40,6 +40,8 @@ describe('disaster recovery page', () => {
     expect(rehearse).toContain('rehearseProviderDrRunbook');
     expect(rehearse).toContain('REHEARSE');
     expect(save).toContain('saveProviderDrProtectionGroup');
+    expect(load).toContain('getProviderReplicationPolicies');
+    expect(page._newReplicationPolicy.toString()).toContain('saveProviderReplicationPolicy');
     expect(`${plan}${rehearse}${save}`).not.toContain('failoverProvider');
   });
 

@@ -53,4 +53,13 @@ describe('recovery points page', () => {
     expect(drill).toContain('cleanupConfirmText');
     expect(drill).toContain("guestAgent: guestType === 'lxc'");
   });
+
+  it('renders escaped file evidence and exposes advanced planning without a submit path', () => {
+    const browse = page._browseFiles.toString(); const depth = page._depthPlan.toString();
+    expect(browse).toContain('getProviderRecoveryFiles');
+    expect(browse).toContain('Utils.escapeHtml(item.path)');
+    expect(depth).toContain('preflightProviderRestoreDepth');
+    expect(depth).toContain('cross_site_copy');
+    expect(`${browse}${depth}`).not.toContain('submitProviderRestoreDepth');
+  });
 });

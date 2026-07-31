@@ -35,6 +35,7 @@ const providerBackupExecutions = require('../services/provider-operations/backup
 const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
 const providerRestoreDrills = require('../services/provider-operations/restore-drills');
 const providerDrRunbooks = require('../services/provider-operations/dr-runbooks');
+const providerRestoreReplicationDepth = require('../services/provider-operations/restore-replication-depth');
 const providerVmDisks = require('../services/provider-operations/vm-disks');
 const providerVmNics = require('../services/provider-operations/vm-nics');
 const providerConsole = require('../services/provider-console/broker');
@@ -279,6 +280,26 @@ function _drRunbookAudit(req, action, targetId, details = {}) {
   });
 }
 
+function _restoreReplicationDepthError(res, err) {
+  const trusted = err?.name === 'RestoreReplicationDepthError'
+    && /^(?:RESTORE_|RECOVERY_|REPLICATION_|INVALID_|UNSAFE_|PROVIDER_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider restore and replication depth request failed' : err.message,
+    code: trusted ? err.code : 'RESTORE_REPLICATION_DEPTH_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _restoreReplicationDepthAudit(req, action, targetType, targetId, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_restore_depth_${action}`, targetType, targetId,
+    details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false, ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
 function _restoreDrillAudit(req, action, details = {}) {
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -517,7 +538,8 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
       from: req.query.from, to: req.query.to,
     });
     res.json({ ...envelope, restoreFeatureEnabled: config.features.providerRecoveryRestore,
-      restoreDrillFeatureEnabled: config.features.providerRestoreDrills });
+      restoreDrillFeatureEnabled: config.features.providerRestoreDrills,
+      restoreDepthFeatureEnabled: config.features.providerRestoreReplicationDepth });
   } catch (err) {
     const trusted = err?.name === 'ProviderAdapterError'
       && /^(?:PROVIDER_|RECOVERY_|INVALID_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
@@ -528,6 +550,48 @@ router.get('/:hostId/recovery-points', requireAuth, requireHostAccess('view', { 
     });
   }
 }));
+
+router.get('/:hostId/recovery-points/:pointId/files', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerRestoreReplicationDepth.listFileEntries(resolved.host.id, req.params.pointId, {
+        limit: req.query.limit, query: req.query.q, parent: req.query.parent,
+      });
+      res.json(result);
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  });
+
+router.put('/:hostId/recovery-points/:pointId/files', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerRestoreReplicationDepth.importFileCatalog(resolved.host,
+        req.params.pointId, req.body || {}, { createdBy: req.user.id });
+      _restoreReplicationDepthAudit(req, result.created ? 'catalog_created' : 'catalog_updated',
+        'recovery_point', req.params.pointId, { catalogId: result.catalog.id,
+          entryCount: result.catalog.entryCount, manifestHash: result.catalog.manifestHash });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  });
+
+router.post('/:hostId/recovery-points/:pointId/restore-depth/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerRestoreReplicationDepth.preflightDepthForHost(resolved.host,
+        req.params.pointId, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _restoreReplicationDepthAudit(req, 'preflight', 'recovery_point', req.params.pointId, {
+        planId: plan.id, kind: plan.request.kind, planHash: plan.planHash,
+        allowed: plan.allowed, blockerCount: plan.blockers.length,
+      });
+      res.json(plan);
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  }));
 
 router.post('/:hostId/recovery-points/:pointId/restore/preflight', requireAuth,
   requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
@@ -702,6 +766,58 @@ router.get('/:hostId/dr/replications', requireAuth,
       res.json(await providerDrRunbooks.listReplicationsForHost(resolved.host));
     } catch (err) { _drRunbookError(res, err); }
   }));
+
+router.get('/:hostId/dr/replication-policies', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const items = providerRestoreReplicationDepth.listReplicationPolicies(resolved.host.id,
+        { limit: req.query.limit === undefined ? 100 : Number(req.query.limit) });
+      res.json({ schemaVersion: '1.0', count: items.length, executionAuthorized: false, items });
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  });
+
+router.post('/:hostId/dr/replication-policies', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRestoreReplicationDepth.upsertReplicationPolicy(
+        resolved.host, req.body || {}, { createdBy: req.user.id });
+      _restoreReplicationDepthAudit(req, result.created ? 'replication_policy_created' : 'replication_policy_updated',
+        'provider_replication_policy', result.policy.id, { targetHostId: result.policy.targetHostId,
+          mode: result.policy.mode, enabled: false, policyHash: result.policy.policyHash });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  }));
+
+router.put('/:hostId/dr/replication-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerRestoreReplicationDepth.upsertReplicationPolicy(resolved.host,
+        { ...(req.body || {}), id: req.params.policyId }, { createdBy: req.user.id });
+      _restoreReplicationDepthAudit(req, 'replication_policy_updated', 'provider_replication_policy',
+        result.policy.id, { targetHostId: result.policy.targetHostId, mode: result.policy.mode,
+          enabled: false, policyHash: result.policy.policyHash });
+      res.json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  }));
+
+router.delete('/:hostId/dr/replication-policies/:policyId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const policy = providerRestoreReplicationDepth.removeReplicationPolicy(
+        resolved.host.id, req.params.policyId);
+      _restoreReplicationDepthAudit(req, 'replication_policy_deleted', 'provider_replication_policy',
+        policy.id, { targetHostId: policy.targetHostId, enabled: false });
+      res.json({ ok: true, policyId: policy.id });
+    } catch (err) { _restoreReplicationDepthError(res, err); }
+  });
 
 router.get('/:hostId/dr/protection-groups', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), (req, res) => {

@@ -145,6 +145,8 @@ function _fromCapabilities(capabilities = {}) {
       ? 'Xen Orchestra differential restore transport' : 'Xen'),
     'backup.restore.drill': adapterNotImplemented(capabilities.provider === 'xo'
       ? 'Xen Orchestra health-check mutation transport' : 'Xen'),
+    'backup.copy.cross_site': adapterNotImplemented(capabilities.provider === 'xo'
+      ? 'Xen Orchestra cross-site backup-copy transport' : 'Xen'),
     'replication.read': adapterNotImplemented(capabilities.provider === 'xo'
       ? 'Xen Orchestra replication-job inventory transport' : 'Xen'),
     'replication.configure': adapterNotImplemented(capabilities.provider === 'xo'

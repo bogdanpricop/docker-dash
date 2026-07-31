@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.81.0', date: '2026-07-31', title: 'Restore and replication depth control plane', changes: [
+      { type: 'feature', text: 'B139–B148 now share one recovery surface spanning scheduled restore drills, advanced restore evidence, replication policy drafts and DR runbooks.' },
+      { type: 'security', text: 'File catalogs accept metadata only, reject traversal and bind every manifest to a canonical recovery point without storing or serving backup content.' },
+      { type: 'feature', text: 'File, instant, differential and cross-site copy preflights persist capability evidence, safety constraints, expiry and deterministic plan hashes.' },
+      { type: 'security', text: 'Replication policies are versioned drafts with canonical workload/storage scope; provider configuration and real failover/failback remain explicitly unavailable.' },
+      { type: 'improvement', text: 'Protection groups, dependency-ordered runbooks and immutable rehearsal evidence remain integrated while every new control stays default-off.' },
+    ] },
     { version: '8.80.0', date: '2026-07-31', title: 'Virtualization operations and backup control plane', changes: [
       { type: 'feature', text: 'Saved VM inventory views and scheduled provider actions add per-user persistence, cron/timezone/blackout awareness and durable operation dispatch.' },
       { type: 'feature', text: 'Snapshot-growth and repository-health monitoring add freshness, transition alerts and bounded probes with explicit data-plane boundaries.' },
