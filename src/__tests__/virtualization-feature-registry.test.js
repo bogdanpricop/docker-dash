@@ -65,17 +65,18 @@ describe('virtualization market-research registry', () => {
     }));
     expect(registry.features.find(feature => feature.featureId === 'B124')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Local public-IP lifecycle planning is complete; browser smoke, provider adapters, canary, controlled apply and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.86.0; browser smoke, provider adapters, canary and controlled apply remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B125')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.86.0; browser smoke and the first executor hash binding remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B129')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'partial', providers: ['proxmox', 'vsphere', 'xen'],
       evidence: expect.arrayContaining([expect.objectContaining({
         path: 'src/__tests__/provider-backup-control-plane.test.js',
       })]),
-      limitations: ['Local control-plane depth is complete and Proxmox remains the only real executor; XO/vSphere adapters, browser smoke, canary and release inclusion remain outstanding.'],
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.86.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B041')).toEqual(expect.objectContaining({
       status: 'Done', deliveryLevel: 'control-plane',

@@ -56,8 +56,8 @@ Prioritățile sunt:
 | R1 | B015 Saved inventory views | P0 | M | `Partial` | Provider VM inventory | Livrat în v8.80 și calificat read-only în v8.85; browser smoke rămâne. |
 | R2 | B045 Scheduled VM actions | P0 | L | `Partial` | operation core, blackout windows | Livrat în v8.80 și calificat read-only în v8.85; browser/canary rămân. |
 | R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
-| R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică exact B104/B118–B121/B123. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
-| R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; adaptoarele XO/vSphere și DR mutation/canary rămân. |
+| R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică B104/B118–B121/B123, iar v8.86 califică B124/B125. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
+| R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; v8.86 califică read-only B129–B136. Adaptoarele XO/vSphere și DR mutation/canary rămân. |
 | R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
@@ -301,6 +301,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - B124:
   - [x] NAT/public IP plan cu ownership, quota, cost, conflicts și release guard;
   - [x] plans imutabile/deduplicate, API admin auditat, UI și teste;
+  - [x] includere în v8.80.0 și calificare read-only în v8.86.0;
   - [ ] apply intră în R8 numai după provider adapter și canary aprobate.
 
 ### R4e — B125 network intent validation
@@ -309,6 +310,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - overlap și shadow/conflict checks cross-resource;
 - validează intentul din v8.79 înainte ca orice executor să-l poată accepta;
 - verdict `pass/fail/unknown`, niciodată `pass` pe evidence incompletă.
+- [x] includere în v8.80.0 și calificare read-only în v8.86.0;
+- [ ] browser smoke și primul executor legat de hash-ul intentului.
 
 ### R4f — B104 NIC connect/disconnect
 
@@ -333,7 +336,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   transportul nativ poate fi verificat;
 - [x] integrity verification separată de simpla existență a recovery point-ului;
 - [x] contract/plan/admission/integrity hashes persistente și UI de authoring;
-- [ ] browser smoke, Proxmox/PBS canary și includere în release.
+- [x] includere în v8.80.0; B129–B136 au calificare read-only în v8.86.0;
+- [ ] browser smoke și Proxmox/PBS canary.
 
 ### R5b — restore modes
 
@@ -629,6 +633,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-07-31 | Release 8.83.0 / B159–B168 | `Partial` | `2a45db4` / `v8.83.0` | 311 suite / 3326 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build PR/tag verzi; health intern/extern `8.83.0` pe LAN și VPS; migrarea 168 + SQLite integrity `ok` | Lot exact de 10: virtual hardware/protocol/certificate/exposure evidence, exact advisory correlation, priority, excepții, dry-run/low-risk remediation contract, certificate renewal projection și no-storage secret validation. Lifecycle control-plane este activ; executorul low-risk rămâne explicit false și fără adaptor production. Backupurile `predeploy-v8.83.0-2a45db4.db` sunt păstrate; Docker/browser local indisponibil. |
 | 2026-07-31 | Release 8.84.0 / B169–B178 | `Partial` | `85f030b` / `v8.84.0` | 312 suite / 3338 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build PR/tag verzi; health intern/extern `8.84.0` pe LAN și VPS; migrarea 169 + SQLite integrity `ok` | Lot exact de 10: B169–B175 primesc TOTP/JIT, break-glass, session metadata, classification, signed evidence, mappings și ransomware posture; B176–B178 erau deja Done și sunt revalidate ca permission/custom-role/scope foundation. Flagul este activ pe ambele ținte; contul temporar standalone, dispatcherul extern, media recorderul, public attestation și enforcement-ul provider-native rămân absente. Backupurile `predeploy-v8.84.0-85f030b.db` sunt păstrate; Docker/browser local indisponibil. |
 | 2026-08-01 | Release 8.85.0 / B015, B045, B090, B096, B104, B118–B121, B123 | `Partial` | `43c05ea` / `v8.85.0` | 313 suite / 3342 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI rerun + build-uri PR/tag verzi; health intern/extern `8.85.0` pe LAN și VPS; SQLite integrity `ok` | Calificarea read-only separă schema livrată, evidența runtime și blocajele reale pentru exact primele 10 ID-uri Partial. LAN: vSphere real, schema 10/10, runtime 1; VPS fără provider activ: verificare explicit sintetică, schema 10/10, runtime 0. B045/B104 rămân false. Backupurile `predeploy-v8.85.0-43c05ea.db` sunt păstrate; browserul integrat, adaptoarele/collectorii și canary-urile rămân indisponibile. |
+| 2026-08-01 | Release 8.86.0 / B124, B125, B129–B136 | `In progress` | working tree local | calificare read-only batch-aware; schema+tabele/coloane, dovezi runtime și flag-uri distincte; teste focused | Exact 10 ID-uri deja incluse în v8.80. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar canary-urile și adaptoarele lipsă rămân deschise. |
 
 ## 20. Următoarele acțiuni
 

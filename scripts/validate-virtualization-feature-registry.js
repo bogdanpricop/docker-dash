@@ -247,6 +247,11 @@ function evidenceFor(feature, status) {
         reference: 'R4d/B124 local implementation',
         path: 'docs/planning/virtualization-platform/V4.4j-public-ip-lifecycle-plan-feature-spec.md',
       },
+      {
+        type: 'test',
+        reference: 'v8.86 network/backup qualification tests',
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      },
     ];
   }
   if (feature.featureId === 'B125') {
@@ -261,11 +266,16 @@ function evidenceFor(feature, status) {
         reference: 'R4e/B125 local implementation',
         path: 'docs/planning/virtualization-platform/V4.5i-network-intent-validation-feature-spec.md',
       },
+      {
+        type: 'test',
+        reference: 'v8.86 network/backup qualification tests',
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      },
     ];
   }
   const featureNumber = Number(feature.featureId.slice(1));
   if (featureNumber >= 129 && featureNumber <= 138) {
-    return [
+    const evidence = [
       {
         type: 'test',
         reference: 'R5a backup control-plane focused tests',
@@ -277,6 +287,12 @@ function evidenceFor(feature, status) {
         path: 'docs/planning/virtualization-platform/V3.3b-backup-control-plane-depth-feature-spec.md',
       },
     ];
+    if (featureNumber <= 136) evidence.push({
+      type: 'test',
+      reference: 'v8.86 network/backup qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
+    return evidence;
   }
   if (featureNumber >= 159 && featureNumber <= 168) {
     return [
@@ -338,14 +354,17 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'];
   }
   if (feature.featureId === 'B124') {
-    return ['Local public-IP lifecycle planning is complete; browser smoke, provider adapters, canary, controlled apply and release inclusion remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.86.0; browser smoke, provider adapters, canary and controlled apply remain outstanding.'];
   }
   if (feature.featureId === 'B125') {
-    return ['Local validator is complete; browser smoke, release inclusion and first executor binding remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.86.0; browser smoke and the first executor hash binding remain outstanding.'];
   }
   const number = Number(feature.featureId.slice(1));
-  if (status === 'Partial' && number >= 129 && number <= 138) {
-    return ['Local control-plane depth is complete and Proxmox remains the only real executor; XO/vSphere adapters, browser smoke, canary and release inclusion remain outstanding.'];
+  if (status === 'Partial' && number >= 129 && number <= 136) {
+    return ['Released in v8.80.0 and read-only qualified in v8.86.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 137 && number <= 138) {
+    return ['Released in v8.80.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 129 && number <= 150) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];

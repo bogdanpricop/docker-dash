@@ -7,10 +7,21 @@ const version = require('../../version');
 const repositoryHealth = require('../storage-repository-health');
 
 const IMPLEMENTATION_RELEASE = 'v8.80.0';
-const FEATURE_IDS = Object.freeze([
+const FOUNDATION_FEATURE_IDS = Object.freeze([
   'B015', 'B045', 'B090', 'B096', 'B104',
   'B118', 'B119', 'B120', 'B121', 'B123',
 ]);
+const NETWORK_BACKUP_FEATURE_IDS = Object.freeze([
+  'B124', 'B125', 'B129', 'B130', 'B131',
+  'B132', 'B133', 'B134', 'B135', 'B136',
+]);
+const FEATURE_IDS = FOUNDATION_FEATURE_IDS;
+const BATCHES = Object.freeze({
+  foundation: Object.freeze({ key: 'foundation',
+    label: 'B015/B045/B090/B096/B104/B118–B121/B123', featureIds: FOUNDATION_FEATURE_IDS }),
+  'network-backup': Object.freeze({ key: 'network-backup',
+    label: 'B124/B125/B129–B136', featureIds: NETWORK_BACKUP_FEATURE_IDS }),
+});
 
 const DEFINITIONS = Object.freeze({
   B015: Object.freeze({
@@ -63,6 +74,66 @@ const DEFINITIONS = Object.freeze({
     tables: ['network_load_balancer_observations'],
     outstanding: ['provider_native_collector', 'browser_smoke'],
   }),
+  B124: Object.freeze({
+    name: 'Public IP lifecycle planning', mode: 'plan-only',
+    tables: ['network_public_ip_lifecycle_plans'],
+    columns: { network_public_ip_lifecycle_plans: ['provider_mutations_started', 'external_mutations_started'] },
+    outstanding: ['provider_adapter', 'disposable_provider_canary', 'controlled_apply', 'browser_smoke'],
+  }),
+  B125: Object.freeze({
+    name: 'Network intent validation', mode: 'read-only',
+    tables: ['network_intent_validations'],
+    columns: { network_intent_validations: ['provider_mutations_started'] },
+    outstanding: ['first_executor_hash_binding', 'browser_smoke'],
+  }),
+  B129: Object.freeze({
+    name: 'Backup mode contract', mode: 'guarded-mutation',
+    tables: ['provider_backup_policies', 'provider_backup_policy_runs', 'provider_backup_executions'],
+    columns: { provider_backup_executions: ['contract_json'] },
+    outstanding: ['second_provider_executor', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B130: Object.freeze({
+    name: 'Smart backup selection', mode: 'control-plane',
+    tables: ['provider_backup_policies', 'provider_backup_policy_runs'],
+    columns: { provider_backup_policies: ['scope_json'] },
+    outstanding: ['second_provider_executor', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B131: Object.freeze({
+    name: 'Backup exclusions', mode: 'control-plane',
+    tables: ['provider_backup_policies', 'provider_backup_policy_runs'],
+    columns: { provider_backup_policies: ['scope_json'] },
+    outstanding: ['provider_native_disk_path_translation', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B132: Object.freeze({
+    name: 'Application-consistent backup orchestration', mode: 'guarded-mutation',
+    tables: ['provider_backup_policies', 'provider_backup_executions'],
+    columns: { provider_backup_policies: ['consistency_json'], provider_backup_executions: ['contract_json'] },
+    outstanding: ['provider_native_hook_adapter', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B133: Object.freeze({
+    name: 'Concurrent backup admission', mode: 'guarded-mutation',
+    tables: ['provider_backup_policies', 'provider_backup_execution_items'],
+    columns: { provider_backup_policies: ['controls_json'], provider_backup_execution_items: ['admission_json'] },
+    outstanding: ['restart_concurrency_canary', 'second_provider_executor', 'browser_smoke'],
+  }),
+  B134: Object.freeze({
+    name: 'Backup bandwidth windows', mode: 'guarded-mutation',
+    tables: ['provider_backup_policies', 'provider_backup_execution_items'],
+    columns: { provider_backup_policies: ['controls_json'], provider_backup_execution_items: ['admission_json'] },
+    outstanding: ['provider_native_throttle_adapter', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B135: Object.freeze({
+    name: 'GFS retention planning', mode: 'plan-only',
+    tables: ['provider_backup_policies', 'provider_backup_policy_runs'],
+    columns: { provider_backup_policies: ['retention_json'], provider_backup_policy_runs: ['plan_json'] },
+    outstanding: ['retention_mutation_authorization', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B136: Object.freeze({
+    name: 'Immutable backup evidence', mode: 'evidence-only',
+    tables: ['provider_backup_policies', 'provider_recovery_points', 'provider_backup_integrity_evidence'],
+    columns: { provider_backup_policies: ['protection_json'], provider_backup_integrity_evidence: ['protection_json'] },
+    outstanding: ['provider_native_lock_enforcement', 'disposable_provider_canary', 'browser_smoke'],
+  }),
 });
 
 class OperationalQualificationError extends Error {
@@ -87,11 +158,54 @@ function _tableExists(database, table) {
   return Boolean(database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table));
 }
 
+function _columnExists(database, table, column) {
+  if (!_tableExists(database, table)) return false;
+  try { return database.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column); }
+  catch { return false; }
+}
+
 function _row(database, sql, params = []) {
   try { return database.prepare(sql).get(...params) || {}; } catch { return {}; }
 }
 
 function _number(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
+
+function _latest(...values) {
+  return values.filter(Boolean).sort().at(-1) || null;
+}
+
+function _backupRuntime(database, context) {
+  const policy = _row(database, `SELECT COUNT(*) configured_count,MAX(updated_at) last_evidence_at
+    FROM provider_backup_policies WHERE host_id=? AND deleted_at IS NULL`, [context.hostId]);
+  const plan = _row(database, `SELECT COUNT(*) planned_count,MAX(r.created_at) last_evidence_at
+    FROM provider_backup_policy_runs r JOIN provider_backup_policies p ON p.id=r.policy_id
+    WHERE p.host_id=?`, [context.hostId]);
+  const execution = _row(database, `SELECT COUNT(*) execution_count,MAX(e.updated_at) last_evidence_at
+    FROM provider_backup_executions e JOIN provider_backup_policies p ON p.id=e.policy_id
+    WHERE p.host_id=?`, [context.hostId]);
+  const item = _row(database, `SELECT COUNT(*) execution_item_count,MAX(i.updated_at) last_evidence_at
+    FROM provider_backup_execution_items i JOIN provider_backup_executions e ON e.id=i.execution_id
+    JOIN provider_backup_policies p ON p.id=e.policy_id WHERE p.host_id=?`, [context.hostId]);
+  const integrity = _row(database, `SELECT COUNT(*) integrity_evidence_count,MAX(v.observed_at) last_evidence_at
+    FROM provider_backup_integrity_evidence v JOIN provider_backup_execution_items i ON i.id=v.execution_item_id
+    JOIN provider_backup_executions e ON e.id=i.execution_id
+    JOIN provider_backup_policies p ON p.id=e.policy_id WHERE p.host_id=?`, [context.hostId]);
+  const configuredCount = _number(policy.configured_count);
+  const plannedCount = _number(plan.planned_count);
+  const executionCount = _number(execution.execution_count);
+  const executionItemCount = _number(item.execution_item_count);
+  const integrityEvidenceCount = _number(integrity.integrity_evidence_count);
+  return {
+    recordCount: configuredCount + plannedCount + executionCount + integrityEvidenceCount,
+    configuredCount, plannedCount, executionCount, executionItemCount, integrityEvidenceCount,
+    lastEvidenceAt: _latest(policy.last_evidence_at, plan.last_evidence_at,
+      execution.last_evidence_at, item.last_evidence_at, integrity.last_evidence_at),
+    releaseFlags: [
+      { name: 'DD_PROVIDER_BACKUP_POLICIES', enabled: config.features?.providerBackupPolicies === true },
+      { name: 'DD_PROVIDER_BACKUP_EXECUTION', enabled: config.features?.providerBackupExecution === true },
+    ],
+  };
+}
 
 function _runtime(database, featureId, context) {
   const hostId = context.hostId; const actorId = context.actorId;
@@ -154,6 +268,20 @@ function _runtime(database, featureId, context) {
       FROM network_reachability_assessments WHERE scope_key IN (?,?)`, [`provider:${hostId}`, 'global']);
     return _passiveRuntime(result);
   }
+  if (featureId === 'B124') {
+    const result = _row(database, `SELECT COUNT(*) record_count,MAX(created_at) last_evidence_at,
+      COALESCE(SUM(provider_mutations_started),0) provider_mutations_started,
+      COALESCE(SUM(external_mutations_started),0) external_mutations_started
+      FROM network_public_ip_lifecycle_plans WHERE scope_key IN (?,?)`, [`provider:${hostId}`, 'global']);
+    return { ..._passiveRuntime(result), externalMutationsStarted: _number(result.external_mutations_started) };
+  }
+  if (featureId === 'B125') {
+    const result = _row(database, `SELECT COUNT(*) record_count,MAX(created_at) last_evidence_at,
+      COALESCE(SUM(provider_mutations_started),0) provider_mutations_started
+      FROM network_intent_validations WHERE scope_key IN (?,?)`, [`provider:${hostId}`, 'global']);
+    return _passiveRuntime(result);
+  }
+  if (NETWORK_BACKUP_FEATURE_IDS.includes(featureId)) return _backupRuntime(database, context);
   const table = { B120: 'network_mtu_assessments', B121: 'network_bond_health_observations',
     B123: 'network_load_balancer_observations' }[featureId];
   const time = featureId === 'B120' ? 'assessed_at' : 'observed_at';
@@ -179,18 +307,25 @@ function qualificationForHost(host, options = {}) {
     throw new OperationalQualificationError('Valid actor required', 'INVALID_ACTOR', 401);
   }
   const database = options.database || getDb();
+  const batchKey = options.batch === undefined || options.batch === null || options.batch === ''
+    ? 'foundation' : String(options.batch);
+  const batch = BATCHES[batchKey];
+  if (!batch) throw new OperationalQualificationError('Unknown qualification batch',
+    'INVALID_QUALIFICATION_BATCH');
   const context = { hostId, actorId, providerType: String(host.daemon_type || host.daemonType || 'unknown') };
-  const items = FEATURE_IDS.map(featureId => {
+  const items = batch.featureIds.map(featureId => {
     const definition = DEFINITIONS[featureId];
     const tables = definition.tables.map(name => ({ name, available: _tableExists(database, name) }));
-    const schemaReady = tables.every(table => table.available);
+    const columns = Object.entries(definition.columns || {}).flatMap(([table, names]) =>
+      names.map(name => ({ table, name, available: _columnExists(database, table, name) })));
+    const schemaReady = tables.every(table => table.available) && columns.every(column => column.available);
     const runtime = schemaReady ? _runtime(database, featureId, context)
       : { recordCount: 0, lastEvidenceAt: null };
     return {
       featureId, name: definition.name, mode: definition.mode,
       delivery: { implementationRelease: IMPLEMENTATION_RELEASE,
         qualificationRelease: `v${version}`, included: true },
-      schema: { state: schemaReady ? 'ready' : 'missing', tables },
+      schema: { state: schemaReady ? 'ready' : 'missing', tables, columns },
       runtime: { state: runtime.recordCount > 0 ? 'observed' : 'not_observed', ...runtime },
       qualificationSafety: { providerMutationsStarted: 0, networkCallsStarted: 0,
         externalCommandsStarted: 0 },
@@ -198,16 +333,21 @@ function qualificationForHost(host, options = {}) {
     };
   });
   const evidence = {
-    schemaVersion: '1.0', hostId, providerType: context.providerType,
+    schemaVersion: '1.1', batch: { key: batch.key, label: batch.label },
+    hostId, providerType: context.providerType,
     applicationVersion: version, implementationRelease: IMPLEMENTATION_RELEASE, items,
   };
+  const enabledFlagNames = new Set(items.flatMap(item => {
+    const flags = item.runtime.releaseFlags || (item.runtime.executeFlag ? [item.runtime.executeFlag] : []);
+    return flags.filter(flag => flag.enabled === true).map(flag => flag.name);
+  }));
   return {
     ...evidence, generatedAt: new Date().toISOString(), evidenceHash: _hash(evidence),
     summary: {
       featureCount: items.length,
       schemaReady: items.filter(item => item.schema.state === 'ready').length,
       runtimeObserved: items.filter(item => item.runtime.state === 'observed').length,
-      executeFlagsEnabled: items.filter(item => item.runtime.executeFlag?.enabled === true).length,
+      executeFlagsEnabled: enabledFlagNames.size,
       browserSmokeRecorded: 0,
     },
     limitations: [
@@ -219,6 +359,7 @@ function qualificationForHost(host, options = {}) {
 }
 
 module.exports = {
-  FEATURE_IDS, OperationalQualificationError, qualificationForHost,
-  _internals: { DEFINITIONS, _canonical, _hash, _passiveRuntime, _tableExists },
+  FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, BATCHES, OperationalQualificationError, qualificationForHost,
+  _internals: { DEFINITIONS, _canonical, _hash, _passiveRuntime, _tableExists, _columnExists,
+    _backupRuntime },
 };

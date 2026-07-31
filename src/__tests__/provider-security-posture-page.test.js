@@ -19,6 +19,7 @@ describe('provider security posture page', () => {
   it('renders ten-feature operational evidence without implying browser or provider validation', () => {
     global.Utils = { escapeHtml: value => String(value).replaceAll('<', '&lt;') };
     const html = page._operationalQualificationHtml({ evidenceHash: 'a'.repeat(64),
+      batch: { key: 'network-backup', label: 'B124/B125/B129–B136' },
       summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
         executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
       items: [{ featureId: 'B015', name: '<saved>', schema: { state: 'ready' },
@@ -29,6 +30,7 @@ describe('provider security posture page', () => {
     expect(html).toContain('&lt;saved>');
     expect(html).toContain('starts no provider mutation');
     expect(html).toContain('browser_smoke');
+    expect(html).toContain('B124/B125/B129–B136 operational qualification');
     expect(html).toContain('0</div><div class="stat-label">Browser smoke recorded');
   });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {

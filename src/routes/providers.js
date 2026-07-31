@@ -2346,7 +2346,7 @@ router.get('/:hostId/operational-qualification', requireAuth,
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
     try {
       res.json(providerOperationalQualification.qualificationForHost(resolved.host,
-        { actorId: req.user.id }));
+        { actorId: req.user.id, batch: req.query.batch }));
     } catch (err) {
       const status = Number.isInteger(err?.status) ? err.status : 500;
       res.status(status).json({

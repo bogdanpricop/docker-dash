@@ -2,6 +2,25 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.86.0] - 2026-08-01 — Network and backup operational qualification
+
+This exact batch advances B124, B125 and B129–B136 without relabeling absent
+provider, canary or browser evidence as success.
+
+- The existing provider qualification endpoint accepts the additive
+  `batch=network-backup` selector while preserving the v8.85 default response.
+- B124/B125 report scoped immutable plan/validation counts and persisted zero
+  mutation counters without invoking an executor.
+- B129–B136 report provider-scoped policy, plan, execution, child and integrity
+  evidence plus the distinct backup policy/execution release flags.
+- Required additive columns are checked alongside tables; absent schema or
+  runtime remains `missing`/`not_observed`.
+- Provider Security renders both exact ten-feature batches and continues to
+  label browser smoke as unrecorded.
+- All ten implementations were already included in v8.80.0. Public-IP apply,
+  the first intent-bound executor, XO/vSphere backup adapters and provider
+  canaries remain outstanding; qualification starts no external work.
+
 ## [8.85.0] - 2026-08-01 — Operational qualification for ten Partial features
 
 This exact batch advances B015, B045, B090, B096, B104, B118, B119, B120,

@@ -587,7 +587,7 @@ const Api = {
   getProviderGuestNetworkReadiness(hostId) { return this.get(`/providers/${hostId}/guest-network-readiness`); },
   getProviderEndpointTransportPosture(hostId) { return this.get(`/providers/${hostId}/endpoint-transport-posture`); },
   getProviderSecurityPosture(hostId) { return this.get(`/providers/${hostId}/security-posture`); },
-  getProviderOperationalQualification(hostId) { return this.get(`/providers/${hostId}/operational-qualification`); },
+  getProviderOperationalQualification(hostId, batch = null) { const query = batch ? `?batch=${encodeURIComponent(batch)}` : ''; return this.get(`/providers/${hostId}/operational-qualification${query}`); },
   getProviderSecurityAssurance(hostId) { return this.get(`/providers/${hostId}/security-assurance`); },
   importProviderSecurityEvidence(hostId, body) {
     return this.put(`/providers/${hostId}/security-assurance/evidence`, body);
