@@ -312,6 +312,24 @@ function evidenceFor(feature, status) {
       type: 'test', reference: 'v8.87 recovery-depth qualification tests',
       path: 'src/__tests__/provider-operational-qualification.test.js',
     });
+    if (featureNumber >= 147) evidence.push({
+      type: 'test', reference: 'v8.88 DR/security qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
+    return evidence;
+  }
+  if (featureNumber >= 149 && featureNumber <= 158) {
+    const evidence = [
+      { type: 'test', reference: 'R5c/R6a DR and security assurance focused tests',
+        path: featureNumber <= 150 ? 'src/__tests__/provider-dr-runbooks.test.js'
+          : 'src/__tests__/provider-security-assurance.test.js' },
+      { type: 'working-tree', reference: 'R5c/R6a DR objectives and security assurance',
+        path: 'docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md' },
+    ];
+    if (featureNumber <= 156) evidence.push({
+      type: 'test', reference: 'v8.88 DR/security qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
     return evidence;
   }
   if (featureNumber >= 159 && featureNumber <= 168) {
@@ -402,7 +420,13 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.81.0 and read-only qualified in v8.87.0; provider fencing, network cutover, data-authority reversal, browser smoke and a disposable-provider canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 147 && number <= 148) {
-    return ['Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding.'];
+    return ['Released in v8.81.0 and read-only qualified in v8.88.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 149 && number <= 150) {
+    return ['Released in v8.82.0 and read-only qualified in v8.88.0; provider-native DR test/failover execution, isolated-network canary and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 151 && number <= 156) {
+    return ['Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 129 && number <= 150) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];

@@ -11,6 +11,7 @@ function database() {
     CREATE TABLE docker_hosts (id INTEGER PRIMARY KEY);
   `);
   require('../db/migrations/106_provider_resource_identities').up(db);
+  require('../db/migrations/112_provider_artifact_catalog').up(db);
   require('../db/migrations/107_provider_operations').up(db);
   require('../db/migrations/117_provider_recovery_points').up(db);
   require('../db/migrations/118_provider_backup_policies').up(db);
@@ -31,6 +32,7 @@ function database() {
   require('../db/migrations/162_network_public_ip_plans').up(db);
   require('../db/migrations/165_provider_backup_control_plane').up(db);
   require('../db/migrations/166_provider_restore_replication_depth').up(db);
+  require('../db/migrations/167_provider_security_assurance').up(db);
   return db;
 }
 
@@ -209,6 +211,79 @@ describe('provider operational qualification', () => {
       expect.objectContaining({ configuredCount: 1, enabledCount: 0 }));
     expect(first.items.find(item => item.featureId === 'B146').runtime).toEqual(
       expect.objectContaining({ configuredCount: 1, enabledCount: 0, runCount: 0 }));
+    expect(first.items.every(item => Object.values(item.qualificationSafety)
+      .every(value => value === 0))).toBe(true);
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+  });
+
+  it('qualifies exactly B147-B156 with strict DR and security evidence facets', () => {
+    db = database();
+    db.exec('INSERT INTO users(id) VALUES (9); INSERT INTO docker_hosts(id) VALUES (7),(8);');
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    db.prepare(`INSERT INTO provider_resource_identities
+      (canonical_id,host_id,provider_type,resource_kind,native_ref_hash,native_ref_enc,identity_stability)
+      VALUES (?,?,?,?,?,?,?)`).run(vmId, 7, 'proxmox', 'virtualMachine', '1'.repeat(64),
+      'encrypted', 'stable');
+    db.prepare(`INSERT INTO provider_dr_protection_groups
+      (id,primary_host_id,recovery_host_id,name,strategy,enabled,rpo_target_seconds,
+       rto_target_seconds,created_by) VALUES (?,?,?,?,?,?,?,?,?)`).run('pdrg_bbbbbbbb', 7, 8,
+      'Payments DR', 'backup_restore', 0, 3600, 900, 9);
+    db.prepare(`INSERT INTO provider_dr_group_members
+      (group_id,sequence,vm_id,vm_name,boot_stage,depends_on_json,recovery_source,recovery_target_json)
+      VALUES (?,?,?,?,?,?,?,?)`).run('pdrg_bbbbbbbb', 0, vmId, 'payments', 1, '[]',
+      'backup', '{}');
+    const insertRun = db.prepare(`INSERT INTO provider_dr_runs
+      (id,group_id,primary_host_id,group_revision,runbook_mode,state,plan_hash,evidence_json,
+       evidence_hash,compliance,rpo_max_seconds,rto_max_seconds,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    for (const [index, mode] of ['planned_failover', 'failback', 'test'].entries()) {
+      insertRun.run(`pdrun_${String(index + 2).repeat(8)}`, 'pdrg_bbbbbbbb', 7, 1, mode,
+        'succeeded', String(index + 3).repeat(64), '{}', String(index + 6).repeat(64),
+        'met', 300 + index, 120 + index, 9);
+    }
+    db.prepare(`INSERT INTO provider_security_evidence
+      (id,host_id,resource_kind,resource_id,resource_name,pack_key,pack_version,source,
+       facts_json,evidence_hash,observed_at,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('psec_cccccccc', 7, 'endpoint', 'endpoint:7', 'pve-primary', 'proxmox-security',
+        '1.0.0', 'imported_evidence', JSON.stringify({
+          secureBoot: { capable: true, enabled: true },
+          vtpm: { present: true, version: '2.0', state: 'ready' },
+          encryption: { disks: { state: 'full', total: 1, encrypted: 1 },
+            migration: 'encrypted', backups: 'encrypted', savedState: 'encrypted' },
+          confidential: { enabled: false, supportedModes: ['sev_snp'] },
+        }), '9'.repeat(64), '2026-08-01T10:00:00.000Z', 9);
+    db.prepare(`INSERT INTO provider_key_providers
+      (id,host_id,name,provider_kind,endpoint_origin,secret_ref,health_state,health_observed_at,
+       affected_resource_ids_json,evidence_hash,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('pkpr_dddddddd', 7, 'Primary KMS', 'external_kms', 'https://kms.example.test',
+        'vault://virtualization/kms', 'healthy', '2026-08-01T10:00:00.000Z', '[]',
+        'a'.repeat(64), 9);
+
+    const first = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'dr-security' });
+    const second = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'dr-security' });
+
+    expect(first.batch).toEqual({ key: 'dr-security', label: 'B147–B156' });
+    expect(first.items.map(item => item.featureId)).toEqual([
+      'B147', 'B148', 'B149', 'B150', 'B151', 'B152', 'B153', 'B154', 'B155', 'B156',
+    ]);
+    expect(first.implementationRelease).toBeNull();
+    expect(first.implementationReleases).toEqual(['v8.81.0', 'v8.82.0']);
+    expect(first.summary).toEqual(expect.objectContaining({ featureCount: 10, schemaReady: 10,
+      runtimeObserved: 10, browserSmokeRecorded: 0 }));
+    expect(first.items.find(item => item.featureId === 'B147').runtime).toEqual(
+      expect.objectContaining({ configuredCount: 1, runCount: 1, succeededCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B148').runtime).toEqual(
+      expect.objectContaining({ recordCount: 1, modes: ['failback'] }));
+    expect(first.items.find(item => item.featureId === 'B149').runtime).toEqual(
+      expect.objectContaining({ recordCount: 1, modes: ['test'] }));
+    expect(first.items.find(item => item.featureId === 'B150').runtime).toEqual(
+      expect.objectContaining({ objectiveCount: 3, metCount: 3 }));
+    expect(first.items.find(item => item.featureId === 'B151').runtime).toEqual(
+      expect.objectContaining({ evidenceCount: 1, importedCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B155').runtime).toEqual(
+      expect.objectContaining({ configuredCount: 1, healthyCount: 1 }));
     expect(first.items.every(item => Object.values(item.qualificationSafety)
       .every(value => value === 0))).toBe(true);
     expect(first.evidenceHash).toBe(second.evidenceHash);

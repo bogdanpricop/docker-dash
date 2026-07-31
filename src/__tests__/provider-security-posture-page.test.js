@@ -49,6 +49,23 @@ describe('provider security posture page', () => {
     expect(html).toContain('default-off');
     expect(html).toContain('disposable_provider_canary');
   });
+  it('renders DR and security evidence without claiming provider execution', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'c'.repeat(64),
+      batch: { key: 'dr-security', label: 'B147–B156' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 2,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B149', name: 'Non-disruptive DR test', schema: { state: 'ready' },
+        runtime: { state: 'observed', recordCount: 1, releaseFlags: [
+          { name: 'DD_PROVIDER_DR_RUNBOOKS', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.88.0' },
+      validation: { outstanding: ['bubble_network_and_clone_executor', 'browser_smoke'] } }] });
+    expect(html).toContain('B147–B156 operational qualification');
+    expect(html).toContain('DD_PROVIDER_DR_RUNBOOKS');
+    expect(html).toContain('default-off');
+    expect(html).toContain('bubble_network_and_clone_executor');
+    expect(html).toContain('starts no provider mutation');
+  });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
     global.App = { user: { role: 'viewer' } };
     global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };

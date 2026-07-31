@@ -99,12 +99,31 @@ describe('virtualization market-research registry', () => {
       })]),
       limitations: ['Released in v8.81.0 and read-only qualified in v8.87.0; provider fencing, network cutover, data-authority reversal, browser smoke and a disposable-provider canary remain outstanding.'],
     }));
+    expect(registry.features.find(feature => feature.featureId === 'B147')).toEqual(expect.objectContaining({
+      status: 'Partial', deliveryLevel: 'partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      })]),
+      limitations: ['Released in v8.81.0 and read-only qualified in v8.88.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B150')).toEqual(expect.objectContaining({
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-dr-runbooks.test.js',
+      })]),
+      limitations: ['Released in v8.82.0 and read-only qualified in v8.88.0; provider-native DR test/failover execution, isolated-network canary and browser smoke remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B156')).toEqual(expect.objectContaining({
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-security-assurance.test.js',
+      })]),
+      limitations: ['Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding.'],
+    }));
     expect(registry.features.find(feature => feature.featureId === 'B041')).toEqual(expect.objectContaining({
       status: 'Done', deliveryLevel: 'control-plane',
       limitations: ['No implicit provider or external apply path is claimed by this delivery level.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B122').status).toBe('Done');
-    expect(registry.features.find(feature => feature.featureId === 'B150').status).toBe('Partial');
+    expect(registry.features.find(feature => feature.featureId === 'B157').status).toBe('Partial');
   });
 
   test('rejects Done entries without release, commit or test evidence', () => {

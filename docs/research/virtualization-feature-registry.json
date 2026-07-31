@@ -5087,10 +5087,15 @@
           "type": "working-tree",
           "reference": "R5b/R5c restore and replication depth",
           "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
+        "Released in v8.81.0 and read-only qualified in v8.88.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5125,10 +5130,15 @@
           "type": "working-tree",
           "reference": "R5b/R5c restore and replication depth",
           "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
+        "Released in v8.81.0 and read-only qualified in v8.88.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5155,13 +5165,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-dr-runbooks.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native DR test/failover execution, isolated-network canary and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5188,13 +5208,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-dr-runbooks.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native DR test/failover execution, isolated-network canary and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5221,13 +5251,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5254,13 +5294,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5287,13 +5337,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5320,13 +5380,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5353,13 +5423,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5386,13 +5466,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.88 DR/security qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.82.0 and read-only qualified in v8.88.0; provider-native security collectors, browser smoke and provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5419,9 +5509,14 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
         }
       ],
       "limitations": [
@@ -5452,9 +5547,14 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5c/R6a DR and security assurance focused tests",
+          "path": "src/__tests__/provider-security-assurance.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5c/R6a DR objectives and security assurance",
+          "path": "docs/planning/virtualization-platform/V3.8-security-assurance-feature-spec.md"
         }
       ],
       "limitations": [

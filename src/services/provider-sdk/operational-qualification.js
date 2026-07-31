@@ -19,6 +19,10 @@ const RECOVERY_DEPTH_FEATURE_IDS = Object.freeze([
   'B137', 'B138', 'B139', 'B140', 'B141',
   'B142', 'B143', 'B144', 'B145', 'B146',
 ]);
+const DR_SECURITY_FEATURE_IDS = Object.freeze([
+  'B147', 'B148', 'B149', 'B150', 'B151',
+  'B152', 'B153', 'B154', 'B155', 'B156',
+]);
 const FEATURE_IDS = FOUNDATION_FEATURE_IDS;
 const BATCHES = Object.freeze({
   foundation: Object.freeze({ key: 'foundation',
@@ -27,6 +31,8 @@ const BATCHES = Object.freeze({
     label: 'B124/B125/B129–B136', featureIds: NETWORK_BACKUP_FEATURE_IDS }),
   'recovery-depth': Object.freeze({ key: 'recovery-depth',
     label: 'B137–B146', featureIds: RECOVERY_DEPTH_FEATURE_IDS }),
+  'dr-security': Object.freeze({ key: 'dr-security',
+    label: 'B147–B156', featureIds: DR_SECURITY_FEATURE_IDS }),
 });
 
 const DEFINITIONS = Object.freeze({
@@ -206,6 +212,70 @@ const DEFINITIONS = Object.freeze({
     outstanding: ['provider_fencing_and_network_cutover', 'data_authority_reversal',
       'disposable_provider_canary', 'browser_smoke'],
   }),
+  B147: Object.freeze({
+    name: 'Failover plan/runbook', mode: 'rehearsal-only', implementationRelease: 'v8.81.0',
+    tables: ['provider_dr_protection_groups', 'provider_dr_group_members', 'provider_dr_runs'],
+    columns: { provider_dr_runs: ['runbook_mode', 'execution_type', 'plan_hash', 'evidence_hash'] },
+    outstanding: ['provider_native_failover_executor', 'provider_fencing_and_network_cutover',
+      'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B148: Object.freeze({
+    name: 'Failback workflow', mode: 'rehearsal-only', implementationRelease: 'v8.81.0',
+    tables: ['provider_dr_protection_groups', 'provider_dr_runs'],
+    columns: { provider_dr_runs: ['runbook_mode', 'execution_type', 'plan_hash', 'evidence_hash'] },
+    outstanding: ['provider_native_failback_executor', 'data_authority_reversal',
+      'reprotection_canary', 'browser_smoke'],
+  }),
+  B149: Object.freeze({
+    name: 'Non-disruptive DR test', mode: 'rehearsal-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_dr_protection_groups', 'provider_dr_group_members', 'provider_dr_runs'],
+    columns: { provider_dr_group_members: ['recovery_target_json'],
+      provider_dr_runs: ['runbook_mode', 'execution_type', 'evidence_json', 'evidence_hash'] },
+    outstanding: ['bubble_network_and_clone_executor', 'cleanup_ownership_canary', 'browser_smoke'],
+  }),
+  B150: Object.freeze({
+    name: 'RPO/RTO compliance dashboard', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_dr_protection_groups', 'provider_dr_runs'],
+    columns: { provider_dr_protection_groups: ['rpo_target_seconds', 'rto_target_seconds'],
+      provider_dr_runs: ['compliance', 'rpo_max_seconds', 'rto_max_seconds'] },
+    outstanding: ['provider_native_replication_evidence', 'successful_restore_canary', 'browser_smoke'],
+  }),
+  B151: Object.freeze({
+    name: 'Provider security posture packs', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['pack_key', 'pack_version', 'source', 'facts_json', 'evidence_hash'] },
+    outstanding: ['provider_native_security_collectors', 'controlled_remediation', 'browser_smoke'],
+  }),
+  B152: Object.freeze({
+    name: 'Secure Boot inventory', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_secure_boot_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B153: Object.freeze({
+    name: 'vTPM inventory', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_vtpm_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B154: Object.freeze({
+    name: 'Encryption inventory', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_encryption_collector', 'browser_smoke', 'provider_canary'],
+  }),
+  B155: Object.freeze({
+    name: 'KMS/key-provider registry', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_key_providers'],
+    columns: { provider_key_providers: ['secret_ref', 'health_state', 'evidence_hash', 'deleted_at'] },
+    outstanding: ['provider_native_kms_health_collector', 'certificate_canary', 'browser_smoke'],
+  }),
+  B156: Object.freeze({
+    name: 'Shielded/confidential VM detector', mode: 'evidence-only', implementationRelease: 'v8.82.0',
+    tables: ['provider_security_evidence'],
+    columns: { provider_security_evidence: ['facts_json', 'observed_at'] },
+    outstanding: ['provider_native_confidential_compute_collector', 'browser_smoke', 'provider_canary'],
+  }),
 });
 
 class OperationalQualificationError extends Error {
@@ -358,6 +428,65 @@ function _drRuntime(database, context) {
     releaseFlags: [{ name: 'DD_PROVIDER_DR_RUNBOOKS', enabled: config.features?.providerDrRunbooks === true }] };
 }
 
+function _drFacetRuntime(database, featureId, context) {
+  const releaseFlags = [{ name: 'DD_PROVIDER_DR_RUNBOOKS',
+    enabled: config.features?.providerDrRunbooks === true }];
+  const group = _row(database, `SELECT COUNT(*) configured_count,MAX(updated_at) last_evidence_at
+    FROM provider_dr_protection_groups WHERE primary_host_id=? AND deleted_at IS NULL`, [context.hostId]);
+  if (featureId === 'B150') {
+    const objective = _row(database, `SELECT
+      SUM(CASE WHEN rpo_max_seconds IS NOT NULL OR rto_max_seconds IS NOT NULL THEN 1 ELSE 0 END) objective_count,
+      SUM(CASE WHEN compliance='met' THEN 1 ELSE 0 END) met_count,
+      SUM(CASE WHEN compliance='breached' THEN 1 ELSE 0 END) breached_count,
+      SUM(CASE WHEN compliance IN ('unknown','never_tested') THEN 1 ELSE 0 END) unknown_count,
+      MAX(created_at) last_evidence_at FROM provider_dr_runs WHERE primary_host_id=?`, [context.hostId]);
+    return { recordCount: _number(objective.objective_count), configuredCount: _number(group.configured_count),
+      objectiveCount: _number(objective.objective_count), metCount: _number(objective.met_count),
+      breachedCount: _number(objective.breached_count), unknownCount: _number(objective.unknown_count),
+      lastEvidenceAt: _latest(group.last_evidence_at, objective.last_evidence_at), releaseFlags };
+  }
+  const modes = featureId === 'B147' ? ['planned_failover', 'unplanned_failover']
+    : featureId === 'B148' ? ['failback'] : ['test'];
+  const placeholders = modes.map(() => '?').join(',');
+  const run = _row(database, `SELECT COUNT(*) run_count,MAX(created_at) last_evidence_at,
+    SUM(CASE WHEN state='succeeded' THEN 1 ELSE 0 END) succeeded_count
+    FROM provider_dr_runs WHERE primary_host_id=? AND runbook_mode IN (${placeholders})`,
+  [context.hostId, ...modes]);
+  const configuredCount = _number(group.configured_count); const runCount = _number(run.run_count);
+  return { recordCount: featureId === 'B147' ? configuredCount + runCount : runCount,
+    configuredCount, runCount, succeededCount: _number(run.succeeded_count), modes,
+    lastEvidenceAt: _latest(group.last_evidence_at, run.last_evidence_at), releaseFlags };
+}
+
+function _securityAssuranceRuntime(database, featureId, context) {
+  const releaseFlags = [{ name: 'DD_PROVIDER_SECURITY_ASSURANCE',
+    enabled: config.features?.providerSecurityAssurance === true }];
+  if (featureId === 'B155') {
+    const provider = _row(database, `SELECT COUNT(*) configured_count,MAX(updated_at) last_evidence_at,
+      SUM(CASE WHEN health_state='healthy' THEN 1 ELSE 0 END) healthy_count,
+      SUM(CASE WHEN health_state IN ('degraded','unavailable') THEN 1 ELSE 0 END) unhealthy_count
+      FROM provider_key_providers WHERE host_id=? AND deleted_at IS NULL`, [context.hostId]);
+    return { recordCount: _number(provider.configured_count), configuredCount: _number(provider.configured_count),
+      healthyCount: _number(provider.healthy_count), unhealthyCount: _number(provider.unhealthy_count),
+      lastEvidenceAt: provider.last_evidence_at || null, releaseFlags };
+  }
+  const factPath = { B152: '$.secureBoot', B153: '$.vtpm', B154: '$.encryption',
+    B156: '$.confidential' }[featureId];
+  const evidence = factPath
+    ? _row(database, `SELECT
+      SUM(CASE WHEN json_valid(facts_json) AND json_type(facts_json, ?) IS NOT NULL THEN 1 ELSE 0 END) evidence_count,
+      MAX(CASE WHEN json_valid(facts_json) AND json_type(facts_json, ?) IS NOT NULL THEN observed_at END) last_evidence_at
+      FROM provider_security_evidence WHERE host_id=?`, [factPath, factPath, context.hostId])
+    : _row(database, `SELECT COUNT(*) evidence_count,MAX(observed_at) last_evidence_at,
+      SUM(CASE WHEN source='provider' THEN 1 ELSE 0 END) provider_reported_count,
+      SUM(CASE WHEN source='imported_evidence' THEN 1 ELSE 0 END) imported_count
+      FROM provider_security_evidence WHERE host_id=?`, [context.hostId]);
+  return { recordCount: _number(evidence.evidence_count), evidenceCount: _number(evidence.evidence_count),
+    providerReportedCount: _number(evidence.provider_reported_count),
+    importedCount: _number(evidence.imported_count), lastEvidenceAt: evidence.last_evidence_at || null,
+    factPath: factPath || null, releaseFlags };
+}
+
 function _runtime(database, featureId, context) {
   const hostId = context.hostId; const actorId = context.actorId;
   if (featureId === 'B015') {
@@ -441,6 +570,12 @@ function _runtime(database, featureId, context) {
     return _restoreDepthRuntime(database, featureId, context);
   }
   if (featureId === 'B146') return _drRuntime(database, context);
+  if (['B147', 'B148', 'B149', 'B150'].includes(featureId)) {
+    return _drFacetRuntime(database, featureId, context);
+  }
+  if (['B151', 'B152', 'B153', 'B154', 'B155', 'B156'].includes(featureId)) {
+    return _securityAssuranceRuntime(database, featureId, context);
+  }
   const table = { B120: 'network_mtu_assessments', B121: 'network_bond_health_observations',
     B123: 'network_load_balancer_observations' }[featureId];
   const time = featureId === 'B120' ? 'assessed_at' : 'observed_at';
@@ -493,7 +628,7 @@ function qualificationForHost(host, options = {}) {
   });
   const implementationReleases = [...new Set(items.map(item => item.delivery.implementationRelease))];
   const evidence = {
-    schemaVersion: '1.2', batch: { key: batch.key, label: batch.label },
+    schemaVersion: '1.3', batch: { key: batch.key, label: batch.label },
     hostId, providerType: context.providerType,
     applicationVersion: version,
     implementationRelease: implementationReleases.length === 1 ? implementationReleases[0] : null,
@@ -521,8 +656,9 @@ function qualificationForHost(host, options = {}) {
 }
 
 module.exports = {
-  FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, RECOVERY_DEPTH_FEATURE_IDS, BATCHES,
+  FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, RECOVERY_DEPTH_FEATURE_IDS, DR_SECURITY_FEATURE_IDS, BATCHES,
   OperationalQualificationError, qualificationForHost,
   _internals: { DEFINITIONS, _canonical, _hash, _passiveRuntime, _tableExists, _columnExists,
-    _backupRuntime, _backupFacetRuntime, _restoreDrillRuntime, _restoreDepthRuntime, _drRuntime },
+    _backupRuntime, _backupFacetRuntime, _restoreDrillRuntime, _restoreDepthRuntime, _drRuntime,
+    _drFacetRuntime, _securityAssuranceRuntime },
 };

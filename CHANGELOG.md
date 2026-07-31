@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.88.0] - 2026-08-01 — DR and security operational qualification
+
+This exact batch advances B147–B156 without interpreting configuration flags,
+plans or imported metadata as proof of provider-native execution.
+
+- `batch=dr-security` adds the fourth provider-scoped qualification envelope
+  while preserving all earlier batch contracts.
+- B147–B150 report strict failover/failback/test rehearsal and persisted
+  RPO/RTO evidence; only B147 treats a configured protection group as observed.
+- B151–B156 separate security-pack, Secure Boot, vTPM, encryption,
+  key-provider and confidential-compute evidence instead of sharing one broad
+  count.
+- JSON security facts are counted only when their exact closed-schema domain is
+  present; missing evidence stays `not_observed`.
+- Mixed implementation releases remain explicit: B147–B148 came from v8.81.0
+  and B149–B156 from v8.82.0.
+- Provider Security renders the fourth exact ten-feature batch. Native DR
+  executors, fencing/cutover, security collectors, browser smoke and provider
+  canaries remain outstanding.
+
 ## [8.87.0] - 2026-08-01 — Recovery-depth operational qualification
 
 This exact batch advances B137–B146 without treating plan, metadata or
