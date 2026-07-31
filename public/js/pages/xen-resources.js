@@ -20,7 +20,7 @@ const XenResourcesPage = {
     } catch { this._hosts = []; }
 
     if (!this._hosts.length) {
-      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-cloud"></i> Xen / XCP-ng / XenServer</h1></div>
+      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-cloud"></i> ${i18n.t('nav.xen-resources')}</h1></div>
         <div class="empty-msg"><i class="fas fa-cloud" style="font-size:32px;opacity:.3;display:block;margin-bottom:8px"></i>
           No Xen endpoint registered. Add Xen Orchestra, XAPI, or raw libxl from <a href="#/hosts">Hosts → Non-Docker host</a>.</div>`;
       return;
@@ -39,7 +39,7 @@ const XenResourcesPage = {
 
     container.innerHTML = `
       <div class="page-header">
-        <h1><i class="fas fa-cloud"></i> Xen / XCP-ng / XenServer</h1>
+        <h1><i class="fas fa-cloud"></i> ${i18n.t('nav.xen-resources')}</h1>
         <div style="display:flex;gap:8px;align-items:center">${selector}
           <button class="btn btn-sm btn-secondary" id="xen-reconnect"><i class="fas fa-plug"></i> Reconnect</button>
           <button class="btn btn-sm btn-secondary" id="xen-refresh"><i class="fas fa-sync"></i> Refresh</button>

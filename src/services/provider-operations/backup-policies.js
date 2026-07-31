@@ -7,7 +7,7 @@ const log = require('../../utils/logger')('provider-backup-policies');
 const audit = require('../audit');
 const registrySingleton = require('../provider-sdk/registry');
 
-const SCHEMA_VERSION = '1.0';
+const SCHEMA_VERSION = '1.1';
 const SAFE_POLICY_ID = /^pbp_[a-f0-9]{26}$/;
 const SAFE_RUN_ID = /^pbpr_[a-f0-9]{26}$/;
 const SAFE_REPOSITORY_ID = /^ddr_repo_[a-f0-9]{26}$/;
@@ -18,6 +18,9 @@ const FREQUENCIES = new Set(['hourly', 'daily', 'weekly', 'monthly']);
 const POWER_STATES = new Set(['running', 'stopped', 'paused', 'suspended', 'unknown']);
 const CONSISTENCY = new Set(['application', 'filesystem', 'crash']);
 const REQUIREMENTS = new Set(['none', 'preferred', 'required']);
+const BACKUP_MODES = new Set(['provider', 'full', 'incremental']);
+const ENCRYPTION_ALGORITHMS = new Set(['provider-native', 'aes-256-gcm']);
+const INTEGRITY_METHODS = new Set(['provider', 'metadata', 'checksum', 'chain']);
 const MAX_POLICIES_PER_TICK = 20;
 
 class BackupPolicyError extends Error {
@@ -80,6 +83,21 @@ function _labels(value, label) {
   return Object.fromEntries(Object.entries(output).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+function _values(value, maxItems, label) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new BackupPolicyError(`${label} must contain at most ${maxItems} values`, 'INVALID_BACKUP_POLICY');
+  }
+  const output = [];
+  for (const raw of value) {
+    const text = _text(raw, 80);
+    if (!text || text.length > 80) throw new BackupPolicyError(`${label} contains an invalid value`, 'INVALID_BACKUP_POLICY');
+    const normalized = text.toLowerCase();
+    if (!output.includes(normalized)) output.push(normalized);
+  }
+  return output.sort();
+}
+
 function _timezone(value) {
   const zone = _text(value || 'UTC', 80);
   try { new Intl.DateTimeFormat('en-US', { timeZone: zone }).format(new Date()); }
@@ -108,14 +126,26 @@ function _scope(input = {}, previous = {}) {
   if (powerStates.some(state => !POWER_STATES.has(state))) throw new BackupPolicyError('Scope contains an invalid power state', 'INVALID_BACKUP_POLICY');
   const match = String(selectorsInput.match ?? 'all');
   if (!['all', 'any'].includes(match)) throw new BackupPolicyError('Selector match must be all or any', 'INVALID_BACKUP_POLICY');
-  const diskSelectors = exclusionsInput.diskSelectors === undefined ? [] : exclusionsInput.diskSelectors;
+  const diskSelectors = exclusionsInput.diskSelectors === undefined
+    ? (previous.exclusions?.diskSelectors || []) : exclusionsInput.diskSelectors;
   if (!Array.isArray(diskSelectors) || diskSelectors.length > 32) {
     throw new BackupPolicyError('Disk exclusions must contain at most 32 selectors', 'INVALID_BACKUP_POLICY');
+  }
+  const pathSelectors = exclusionsInput.pathSelectors === undefined
+    ? (previous.exclusions?.pathSelectors || []) : exclusionsInput.pathSelectors;
+  if (!Array.isArray(pathSelectors) || pathSelectors.length > 32) {
+    throw new BackupPolicyError('Path exclusions must contain at most 32 selectors', 'INVALID_BACKUP_POLICY');
   }
   return {
     includeAll: input.includeAll === undefined ? previous.includeAll === true : input.includeAll === true,
     workloadIds: _uniqueStrings(input.workloadIds ?? previous.workloadIds ?? [], SAFE_WORKLOAD_ID, 500, 'Workload scope'),
-    selectors: { match, labels: _labels(selectorsInput.labels, 'Scope selectors'), powerStates },
+    selectors: {
+      match, labels: _labels(selectorsInput.labels, 'Scope selectors'), powerStates,
+      sites: _values(selectorsInput.sites ?? previous.selectors?.sites, 32, 'Site selectors'),
+      owners: _values(selectorsInput.owners ?? previous.selectors?.owners, 32, 'Owner selectors'),
+      classifications: _values(selectorsInput.classifications ?? previous.selectors?.classifications,
+        16, 'Classification selectors'),
+    },
     exclusions: {
       workloadIds: _uniqueStrings(exclusionsInput.workloadIds || [], SAFE_WORKLOAD_ID, 500, 'Workload exclusions'),
       labels: _labels(exclusionsInput.labels, 'Exclusion selectors'),
@@ -124,6 +154,18 @@ function _scope(input = {}, previous = {}) {
         const workloadId = String(item.workloadId || ''); const selector = _text(item.selector, 160);
         if (!SAFE_WORKLOAD_ID.test(workloadId) || !selector) throw new BackupPolicyError(`Disk exclusion ${index + 1} is invalid`, 'INVALID_BACKUP_POLICY');
         return { workloadId, selector };
+      }),
+      pathSelectors: pathSelectors.map((item, index) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          throw new BackupPolicyError('Path exclusion is invalid', 'INVALID_BACKUP_POLICY');
+        }
+        const workloadId = String(item.workloadId || ''); const path = _text(item.path, 240);
+        const absolute = /^\//.test(path || '') || /^[A-Za-z]:[\\/]/.test(path || '');
+        const traversal = String(path || '').split(/[\\/]+/).includes('..');
+        if (!SAFE_WORKLOAD_ID.test(workloadId) || !absolute || traversal) {
+          throw new BackupPolicyError(`Path exclusion ${index + 1} is invalid`, 'INVALID_BACKUP_POLICY');
+        }
+        return { workloadId, path };
       }),
     },
   };
@@ -135,8 +177,17 @@ function _consistency(input = {}, previous = {}) {
   if (!CONSISTENCY.has(requested) || !new Set(['fail', 'filesystem', 'crash']).has(fallback)) {
     throw new BackupPolicyError('Consistency or fallback mode is invalid', 'INVALID_BACKUP_POLICY');
   }
+  const hook = (value, label) => {
+    const reference = _text(value, 120);
+    if (reference && !SAFE_KEY_REFERENCE.test(reference)) {
+      throw new BackupPolicyError(`${label} must be an allowlisted script reference, never inline code`, 'INVALID_BACKUP_POLICY');
+    }
+    return reference;
+  };
   return { requested, fallback, guestToolsRequired: input.guestToolsRequired === undefined
-    ? previous.guestToolsRequired === true : input.guestToolsRequired === true };
+    ? previous.guestToolsRequired === true : input.guestToolsRequired === true,
+  preFreezeHookRef: hook(input.preFreezeHookRef ?? previous.preFreezeHookRef, 'Pre-freeze hook'),
+  postThawHookRef: hook(input.postThawHookRef ?? previous.postThawHookRef, 'Post-thaw hook') };
 }
 
 function _retention(input = {}, previous = {}) {
@@ -164,7 +215,13 @@ function _protection(input = {}, previous = {}) {
   const encryption = {
     mode: _requirement(encryptionInput, previous.encryption, 'Encryption'),
     keyReference: _text(encryptionInput.keyReference ?? previous.encryption?.keyReference, 120),
+    algorithm: String(encryptionInput.algorithm ?? previous.encryption?.algorithm ?? 'provider-native'),
+    maximumKeyAgeDays: _integer(encryptionInput.maximumKeyAgeDays, 0, 36500,
+      previous.encryption?.maximumKeyAgeDays ?? 0, 'Maximum encryption-key age'),
   };
+  if (!ENCRYPTION_ALGORITHMS.has(encryption.algorithm)) {
+    throw new BackupPolicyError('Encryption algorithm is not allowlisted', 'INVALID_BACKUP_POLICY');
+  }
   if (encryption.keyReference && !SAFE_KEY_REFERENCE.test(encryption.keyReference)) {
     throw new BackupPolicyError('Encryption key reference must be an alias or vault path, never key material', 'INVALID_BACKUP_POLICY');
   }
@@ -192,21 +249,62 @@ function _controls(input = {}, previous = {}) {
     const days = _uniqueStrings((windowInput.days || []).map(String), /^[0-6]$/, 7, 'Backup-window weekdays').map(Number);
     window = { start, end, days, timezone: _timezone(windowInput.timezone || 'UTC') };
   }
+  const limitsInput = input.limits || previous.limits || {};
+  const windowsInput = input.bandwidthWindows ?? previous.bandwidthWindows ?? [];
+  if (!Array.isArray(windowsInput) || windowsInput.length > 16) {
+    throw new BackupPolicyError('Bandwidth windows must contain at most 16 entries', 'INVALID_BACKUP_POLICY');
+  }
+  const bandwidthWindows = windowsInput.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new BackupPolicyError(`Bandwidth window ${index + 1} is invalid`, 'INVALID_BACKUP_POLICY');
+    }
+    const start = _text(item.start, 5); const end = _text(item.end, 5);
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(start || '') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end || '')) {
+      throw new BackupPolicyError('Bandwidth window times must use HH:MM', 'INVALID_BACKUP_POLICY');
+    }
+    const limitMbps = _integer(item.limitMbps, 1, 100000, null, 'Bandwidth-window limit');
+    if (limitMbps === null) {
+      throw new BackupPolicyError(`Bandwidth window ${index + 1} requires a limit`, 'INVALID_BACKUP_POLICY');
+    }
+    return {
+      site: _text(item.site, 80)?.toLowerCase() || null,
+      link: _text(item.link, 80)?.toLowerCase() || null,
+      start, end,
+      days: _uniqueStrings((item.days || []).map(String), /^[0-6]$/, 7,
+        'Bandwidth-window weekdays').map(Number),
+      timezone: _timezone(item.timezone || 'UTC'),
+      limitMbps,
+    };
+  });
   return {
     maxConcurrent: _integer(input.maxConcurrent, 1, 32, previous.maxConcurrent ?? 1, 'Maximum concurrency'),
     bandwidthLimitMbps: _nullableInteger(input.bandwidthLimitMbps, 1, 100000,
       previous.bandwidthLimitMbps ?? null, 'Bandwidth limit'),
     window,
+    limits: {
+      global: _integer(limitsInput.global, 1, 256, previous.limits?.global ?? 16, 'Global backup concurrency'),
+      provider: _integer(limitsInput.provider, 1, 128, previous.limits?.provider ?? 8, 'Provider backup concurrency'),
+      host: _integer(limitsInput.host, 1, 64, previous.limits?.host ?? 4, 'Host backup concurrency'),
+      repository: _integer(limitsInput.repository, 1, 32,
+        previous.limits?.repository ?? 2, 'Repository backup concurrency'),
+    },
+    bandwidthWindows,
   };
 }
 
 function _verification(input = {}, previous = {}) {
+  const requiredMethods = _uniqueStrings(input.requiredMethods ?? previous.requiredMethods ?? ['provider'],
+    /^[a-z]+$/, 4, 'Integrity verification methods');
+  if (!requiredMethods.length || requiredMethods.some(method => !INTEGRITY_METHODS.has(method))) {
+    throw new BackupPolicyError('Integrity verification methods must use provider, metadata, checksum or chain', 'INVALID_BACKUP_POLICY');
+  }
   return {
     afterBackup: input.afterBackup === undefined ? previous.afterBackup !== false : input.afterBackup === true,
     maximumUnverifiedHours: _integer(input.maximumUnverifiedHours, 1, 8760,
       previous.maximumUnverifiedHours ?? 24, 'Maximum unverified age'),
     restoreDrillRequired: input.restoreDrillRequired === undefined
       ? previous.restoreDrillRequired === true : input.restoreDrillRequired === true,
+    requiredMethods,
   };
 }
 
@@ -219,20 +317,26 @@ function validatePolicy(input = {}, existing = null) {
   if (!SAFE_REPOSITORY_ID.test(repositoryId)) throw new BackupPolicyError('A canonical backup repository is required', 'INVALID_BACKUP_POLICY');
   const mode = String(input.mode ?? previous.mode ?? 'plan_only');
   if (mode !== 'plan_only') throw new BackupPolicyError('Backup execution is not available until the execution batch is enabled', 'BACKUP_EXECUTION_DISABLED', 409);
+  const backupMode = String(input.backupMode ?? previous.backupMode ?? previous.controls?.backupMode ?? 'provider');
+  if (!BACKUP_MODES.has(backupMode)) throw new BackupPolicyError('Backup mode must be provider, full or incremental', 'INVALID_BACKUP_POLICY');
+  const controls = _controls(input.controls || {}, previous.controls);
+  controls.backupMode = backupMode;
   const policy = {
     schemaVersion: SCHEMA_VERSION, name, description: _text(input.description ?? previous.description, 500),
     enabled: input.enabled === undefined ? previous.enabled === true : input.enabled === true,
-    mode, repositoryId,
+    mode, repositoryId, backupMode,
     schedule: _schedule(input.schedule || {}, previous.schedule),
     scope: _scope(input.scope || {}, previous.scope),
     consistency: _consistency(input.consistency || {}, previous.consistency),
     retention: _retention(input.retention || {}, previous.retention),
     protection: _protection(input.protection || {}, previous.protection),
-    controls: _controls(input.controls || {}, previous.controls),
+    controls,
     verification: _verification(input.verification || {}, previous.verification),
   };
   if (!policy.scope.includeAll && !policy.scope.workloadIds.length
-    && !Object.keys(policy.scope.selectors.labels).length && !policy.scope.selectors.powerStates.length) {
+    && !Object.keys(policy.scope.selectors.labels).length && !policy.scope.selectors.powerStates.length
+    && !policy.scope.selectors.sites.length && !policy.scope.selectors.owners.length
+    && !policy.scope.selectors.classifications.length) {
     throw new BackupPolicyError('Backup scope must explicitly select at least one workload or selector', 'INVALID_BACKUP_POLICY');
   }
   return policy;
@@ -251,12 +355,14 @@ function _policyHash(policy) {
 
 function _publicPolicy(row) {
   if (!row) return null;
+  const controls = _parseJson(row.controls_json, {});
   return {
     schemaVersion: SCHEMA_VERSION, id: row.id, hostId: Number(row.host_id), repositoryId: row.repository_id,
     name: row.name, description: row.description || null, enabled: !!row.enabled, mode: row.mode,
+    backupMode: controls.backupMode || 'provider',
     schedule: _parseJson(row.schedule_json, {}), scope: _parseJson(row.scope_json, {}),
     consistency: _parseJson(row.consistency_json, {}), retention: _parseJson(row.retention_json, {}),
-    protection: _parseJson(row.protection_json, {}), controls: _parseJson(row.controls_json, {}),
+    protection: _parseJson(row.protection_json, {}), controls,
     verification: _parseJson(row.verification_json, {}), policyHash: row.policy_hash,
     execution: {
       mode: row.execution_mode || 'disabled',
@@ -328,7 +434,16 @@ function selectWorkloads(resources, scope) {
     const state = String(resource.status?.powerState || 'unknown');
     const labelMatch = _matchesLabels(resource, scope.selectors.labels, scope.selectors.match);
     const stateMatch = scope.selectors.powerStates.length ? scope.selectors.powerStates.includes(state) : null;
-    const predicates = [labelMatch, stateMatch].filter(value => value !== null);
+    const site = String(resource.placement?.site || resource.labels?.site || '').toLowerCase() || null;
+    const owner = String(resource.ownership?.owner || resource.labels?.owner || '').toLowerCase() || null;
+    const classification = String(resource.governance?.classification
+      || resource.labels?.classification || '').toLowerCase() || null;
+    const siteMatch = scope.selectors.sites?.length ? scope.selectors.sites.includes(site) : null;
+    const ownerMatch = scope.selectors.owners?.length ? scope.selectors.owners.includes(owner) : null;
+    const classificationMatch = scope.selectors.classifications?.length
+      ? scope.selectors.classifications.includes(classification) : null;
+    const predicates = [labelMatch, stateMatch, siteMatch, ownerMatch, classificationMatch]
+      .filter(value => value !== null);
     const selectorMatch = predicates.length
       ? (scope.selectors.match === 'any' ? predicates.some(Boolean) : predicates.every(Boolean)) : false;
     const included = scope.includeAll || explicit.has(resource.id) || selectorMatch;
@@ -336,7 +451,7 @@ function selectWorkloads(resources, scope) {
     if (!included || excluded.has(resource.id) || labelExcluded) continue;
     if (resource.identity?.stability === 'transient') { transient.push(resource.id); continue; }
     selected.push({ id: resource.id, displayName: resource.displayName, powerState: state,
-      identityStability: resource.identity?.stability || 'unknown' });
+      identityStability: resource.identity?.stability || 'unknown', site, owner, classification });
   }
   return { selected: selected.sort((a, b) => a.id.localeCompare(b.id)), transient };
 }
@@ -481,12 +596,28 @@ async function preflightForHost(host, input = {}, options = {}) {
   const missingExplicit = policy.scope.workloadIds.filter(id => !(resources.items || []).some(item => item.id === id));
   if (missingExplicit.length) findings.push(_finding('warning', 'EXPLICIT_WORKLOADS_MISSING', `${missingExplicit.length} explicitly selected workloads are absent from current inventory`));
   if (policy.scope.exclusions.diskSelectors.length) findings.push(_finding('warning', 'DISK_EXCLUSIONS_EXECUTION_PENDING', 'Disk exclusions are recorded but require provider-native resolution during execution'));
+  if (policy.scope.exclusions.pathSelectors.length) findings.push(_finding('warning', 'PATH_EXCLUSIONS_EXECUTION_PENDING', 'Path exclusions are recorded but require a provider-native file-aware backup adapter'));
   if (host.daemon_type === 'xen' && ['daily', 'weekly', 'monthly', 'yearly'].some(tier => policy.retention[tier] > 0)) {
     findings.push(_finding('warning', 'PROVIDER_GFS_SEMANTICS_DIFFER', 'Portable preview keeps the newest point per bucket; Xen Orchestra native GFS preserves the oldest point per period'));
   }
   if (policy.consistency.requested !== 'crash') findings.push(_finding('warning', 'CONSISTENCY_EXECUTION_EVIDENCE_PENDING', 'Guest-consistency support will be revalidated per workload before execution'));
-  if (policy.controls.bandwidthLimitMbps !== null || policy.controls.window) findings.push(_finding('warning', 'EXECUTION_CONTROLS_PENDING', 'Bandwidth and window controls require provider-native translation during execution'));
+  if (policy.consistency.preFreezeHookRef || policy.consistency.postThawHookRef) findings.push(_finding('warning', 'CONSISTENCY_HOOK_TRANSLATION_PENDING', 'Consistency hook references require an allowlisted provider-native job adapter'));
+  if (policy.backupMode !== 'provider') findings.push(_finding('warning', 'BACKUP_MODE_TRANSLATION_REQUIRED', `${policy.backupMode} mode must be proven by the selected provider adapter at execution time`));
+  if (policy.controls.bandwidthLimitMbps !== null || policy.controls.window || policy.controls.bandwidthWindows.length) findings.push(_finding('warning', 'EXECUTION_CONTROLS_REVALIDATED', 'Concurrency, bandwidth and windows are revalidated by the common admission controller and provider adapter'));
   if (policy.protection.encryption.mode === 'preferred' && !policy.protection.encryption.keyReference) findings.push(_finding('warning', 'ENCRYPTION_KEY_REFERENCE_MISSING', 'Preferred encryption has no key reference'));
+  const integrityCapabilities = {
+    provider: repository?.capabilities?.verification,
+    metadata: true,
+    checksum: repository?.capabilities?.checksumVerification,
+    chain: repository?.capabilities?.chainVerification,
+  };
+  if (policy.verification.afterBackup) {
+    for (const method of policy.verification.requiredMethods) {
+      if (integrityCapabilities[method] !== true) findings.push(_finding('blocker',
+        `BACKUP_${method.toUpperCase()}_VERIFICATION_UNPROVEN`,
+        `${method} integrity evidence is required but the repository does not advertise it`, repository?.id || policy.repositoryId));
+    }
+  }
   if (policy.verification.restoreDrillRequired) {
     const drillTable = database.prepare(`SELECT 1 FROM sqlite_master
       WHERE type='table' AND name='provider_restore_drill_policies'`).get();
@@ -504,7 +635,8 @@ async function preflightForHost(host, input = {}, options = {}) {
   const planCore = {
     schemaVersion: SCHEMA_VERSION, kind: 'providerBackupPolicyPlan', policyId: existing?.id || null,
     policyHash: _policyHash(policy), provider: { type: String(host.daemon_type), endpointId: Number(host.id) },
-    mode: 'plan_only', repository: repository ? { id: repository.id, displayName: repository.displayName,
+    mode: 'plan_only', backupMode: policy.backupMode,
+    repository: repository ? { id: repository.id, displayName: repository.displayName,
       repositoryType: repository.repositoryType, observedAt: repository.observedAt,
       status: repository.status || {}, capabilities: repository.capabilities || {} } : { id: policy.repositoryId, unavailable: true },
     scope: { selectedCount: selection.selected.length, workloads: selection.selected,

@@ -31,7 +31,7 @@ const ActivityCenterPage = {
     this._container = container;
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); }
     catch { this._hosts = []; }
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-tasks"></i> Activity Center</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-tasks"></i> ${i18n.t('nav.activity')}</h1>
       <div class="text-muted text-sm">Durable virtualization tasks, retries, reconciliation, and outcomes</div></div>
       <button class="btn btn-sm btn-secondary" id="activity-refresh"><i class="fas fa-sync"></i> Refresh</button></div>
       <div class="card" style="padding:12px;margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap">

@@ -23,6 +23,9 @@ const mockMaintenanceReconcile = jest.fn();
 const mockHaGet = jest.fn();
 const mockHaHistory = jest.fn();
 const mockStoragePosture = jest.fn();
+const mockSnapshotRiskAssess = jest.fn();
+const mockSnapshotRiskRefresh = jest.fn();
+const mockSnapshotRiskUpdatePolicy = jest.fn();
 const mockStorageTopology = jest.fn();
 const mockStoragePlacementAdvisory = jest.fn();
 const mockStoragePolicyAdvisory = jest.fn();
@@ -57,6 +60,10 @@ const mockSnapshotSubmit = jest.fn();
 const mockDiskInventory = jest.fn();
 const mockDiskPreflight = jest.fn();
 const mockDiskSubmit = jest.fn();
+const mockNicInventory = jest.fn();
+const mockNicSafety = jest.fn();
+const mockNicPreflight = jest.fn();
+const mockNicSubmit = jest.fn();
 const mockManagedVolumeList = jest.fn();
 const mockManagedDeletePreflight = jest.fn();
 const mockManagedDeleteSubmit = jest.fn();
@@ -66,6 +73,12 @@ const mockSnapshotPolicyUpsert = jest.fn();
 const mockSnapshotPolicyRemove = jest.fn();
 const mockSnapshotPolicyPreview = jest.fn();
 const mockSnapshotPolicyRun = jest.fn();
+const mockActionScheduleList = jest.fn();
+const mockActionScheduleCreate = jest.fn();
+const mockActionScheduleUpdate = jest.fn();
+const mockActionScheduleRemove = jest.fn();
+const mockActionScheduleRuns = jest.fn();
+const mockActionScheduleRun = jest.fn();
 const mockBackupPolicyList = jest.fn();
 const mockBackupPolicyRuns = jest.fn();
 const mockBackupPolicyPreflight = jest.fn();
@@ -104,7 +117,8 @@ jest.mock('../config', () => {
   const actual = jest.requireActual('../config');
   return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
-    providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true } };
+    providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
+    providerVmActionSchedules: true } };
 });
 
 jest.mock('../db', () => ({
@@ -143,6 +157,11 @@ jest.mock('../services/provider-sdk/ha-readiness', () => ({
 }));
 jest.mock('../services/provider-sdk/storage-posture', () => ({
   postureForHost: (...args) => mockStoragePosture(...args),
+}));
+jest.mock('../services/provider-sdk/snapshot-risk', () => ({
+  assessHost: (...args) => mockSnapshotRiskAssess(...args),
+  refreshHost: (...args) => mockSnapshotRiskRefresh(...args),
+  updatePolicy: (...args) => mockSnapshotRiskUpdatePolicy(...args),
 }));
 jest.mock('../services/provider-sdk/storage-topology', () => ({
   topologyForHost: (...args) => mockStorageTopology(...args),
@@ -196,6 +215,12 @@ jest.mock('../services/provider-operations/vm-disks', () => ({
   preflightDeleteForHost: (...args) => mockManagedDeletePreflight(...args),
   submitDeleteForHost: (...args) => mockManagedDeleteSubmit(...args),
 }));
+jest.mock('../services/provider-operations/vm-nics', () => ({
+  inventoryForHost: (...args) => mockNicInventory(...args),
+  declareSafetyForHost: (...args) => mockNicSafety(...args),
+  preflightForHost: (...args) => mockNicPreflight(...args),
+  submitForHost: (...args) => mockNicSubmit(...args),
+}));
 jest.mock('../services/provider-operations/snapshot-policies', () => ({
   getForVm: (...args) => mockSnapshotPolicyGet(...args),
   listRuns: (...args) => mockSnapshotPolicyRuns(...args),
@@ -204,6 +229,22 @@ jest.mock('../services/provider-operations/snapshot-policies', () => ({
   previewForHost: (...args) => mockSnapshotPolicyPreview(...args),
   runForHost: (...args) => mockSnapshotPolicyRun(...args),
 }));
+jest.mock('../services/provider-operations/vm-action-schedules', () => {
+  class VmActionScheduleError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'VmActionScheduleError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    VmActionScheduleError,
+    listForVm: (...args) => mockActionScheduleList(...args),
+    createForHost: (...args) => mockActionScheduleCreate(...args),
+    updateForHost: (...args) => mockActionScheduleUpdate(...args),
+    removeForVm: (...args) => mockActionScheduleRemove(...args),
+    listRuns: (...args) => mockActionScheduleRuns(...args),
+    runNow: (...args) => mockActionScheduleRun(...args),
+  };
+});
 jest.mock('../services/provider-operations/backup-policies', () => {
   class BackupPolicyError extends Error {
     constructor(message, code, status, details = null) {
@@ -345,6 +386,15 @@ describe('Provider SDK routes', () => {
     mockDiskInventory.mockResolvedValue({ schemaVersion: '1.0', disks: [], managedVolumes: [] });
     mockDiskPreflight.mockResolvedValue(diskPlan);
     mockDiskSubmit.mockResolvedValue({ plan: diskPlan, operation: { id: `op_${'4'.repeat(26)}` } });
+    const nicPlan = {
+      schemaVersion: '1.0', providerType: 'xen', action: 'disconnect', allowed: true,
+      planHash: '6'.repeat(64), vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      nic: { id: `ddh_nic_${'b'.repeat(26)}`, label: 'NIC 0' }, safety: { state: 'valid' },
+    };
+    mockNicInventory.mockResolvedValue({ schemaVersion: '1.0', nics: [], release: { enabled: false } });
+    mockNicSafety.mockResolvedValue({ vm: nicPlan.vm, nic: nicPlan.nic, safety: nicPlan.safety });
+    mockNicPreflight.mockResolvedValue(nicPlan);
+    mockNicSubmit.mockResolvedValue({ plan: nicPlan, operation: { id: `op_${'6'.repeat(26)}` } });
     mockManagedVolumeList.mockReturnValue([]);
     const volumePlan = { ...diskPlan, action: 'delete', disk: null,
       managedVolume: { id: `ddv_vol_${'f'.repeat(26)}`, label: 'data' }, storage: null };
@@ -477,6 +527,18 @@ describe('Provider SDK routes', () => {
       id: `vspr_${'a'.repeat(26)}`, policyId: `vmsp_${'a'.repeat(26)}`,
       state: 'previewed', currentOperationId: null,
     });
+    const actionSchedule = {
+      id: `vmas_${'c'.repeat(26)}`, hostId: 7, vmId: `ddr_vm_${'a'.repeat(26)}`,
+      vmDisplayName: 'vm-a', name: 'weekday-start', action: 'start', cron: '0 7 * * 1-5',
+      timezone: 'Europe/Bucharest', dstPolicy: 'first', mode: 'dry_run', enabled: true,
+      version: 1, failureThreshold: 3, consecutiveFailures: 0,
+    };
+    mockActionScheduleList.mockReturnValue([actionSchedule]);
+    mockActionScheduleCreate.mockResolvedValue(actionSchedule);
+    mockActionScheduleUpdate.mockResolvedValue({ ...actionSchedule, version: 2 });
+    mockActionScheduleRemove.mockReturnValue(actionSchedule);
+    mockActionScheduleRuns.mockReturnValue([{ id: `vmar_${'d'.repeat(26)}`, state: 'previewed' }]);
+    mockActionScheduleRun.mockResolvedValue({ id: `vmar_${'e'.repeat(26)}`, state: 'previewed', operationId: null });
     const backupPolicy = {
       id: `pbp_${'a'.repeat(26)}`, hostId: 7, repositoryId: `ddr_repo_${'a'.repeat(26)}`,
       name: 'Production GFS', enabled: false, mode: 'plan_only', policyHash: '1'.repeat(64),
@@ -555,6 +617,13 @@ describe('Provider SDK routes', () => {
       evidenceHash: 'f'.repeat(64), checks: [],
     });
     mockStoragePosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass' }, storages: [] });
+    const snapshotRisk = { schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      summary: { state: 'warning', snapshotCount: 2 }, coverage: { collection: { attemptedVms: 1, failedVms: 0 } },
+      policy: { version: 0 }, items: [], history: [], transitions: [] };
+    mockSnapshotRiskAssess.mockReturnValue(snapshotRisk);
+    mockSnapshotRiskRefresh.mockResolvedValue(snapshotRisk);
+    mockSnapshotRiskUpdatePolicy.mockReturnValue({ version: 1, warningAgeDays: 7, criticalAgeDays: 30,
+      warningChainDepth: 3, criticalChainDepth: 8, warningGrowthPercent: 20, criticalGrowthPercent: 50 });
     mockStoragePlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, storages: [] });
     mockStoragePolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, storages: [] });
     mockNetworkPosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass', networkCount: 1 }, networks: [] });
@@ -605,6 +674,39 @@ describe('Provider SDK routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.summary.state).toBe('pass');
     expect(mockStoragePosture).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('returns cached snapshot risk to endpoint viewers', async () => {
+    const response = await request(app).get('/api/providers/7/snapshot-risk').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.state).toBe('warning');
+    expect(mockSnapshotRiskAssess).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('restricts snapshot-risk refresh and policy updates to admins and audits bounded evidence', async () => {
+    expect((await request(app).post('/api/providers/7/snapshot-risk/refresh').set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).post('/api/providers/7/snapshot-risk/refresh');
+    expect(refreshed.status).toBe(200);
+    expect(mockSnapshotRiskRefresh).toHaveBeenCalledWith(mockHost, { actor: expect.objectContaining({ id: 1 }) });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_snapshot_risk_refresh', targetId: '7',
+      details: expect.objectContaining({ snapshotCount: 2, transitionCount: 0 }),
+    }));
+
+    const policy = { warningAgeDays: 7, criticalAgeDays: 30, warningChainDepth: 3,
+      criticalChainDepth: 8, warningGrowthPercent: 20, criticalGrowthPercent: 50, version: 0 };
+    expect((await request(app).put('/api/providers/7/snapshot-risk/policy').set('x-test-role', 'viewer').send(policy)).status).toBe(403);
+    expect((await request(app).put('/api/providers/7/snapshot-risk/policy').send(policy)).status).toBe(200);
+    expect(mockSnapshotRiskUpdatePolicy).toHaveBeenCalledWith(mockHost, policy, expect.objectContaining({ id: 1 }));
+  });
+
+  it('does not expose raw provider errors from snapshot-risk refresh', async () => {
+    mockSnapshotRiskRefresh.mockRejectedValueOnce(new Error('connect https://root:secret@provider.invalid failed'));
+    const response = await request(app).post('/api/providers/7/snapshot-risk/refresh');
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Provider snapshot risk refresh failed', code: 'SNAPSHOT_RISK_PROVIDER_ERROR' });
+    expect(JSON.stringify(response.body)).not.toContain('provider.invalid');
+    expect(JSON.stringify(response.body)).not.toContain('secret');
   });
 
   it('returns a bounded read-only storage placement advisory', async () => {
@@ -973,6 +1075,40 @@ describe('Provider SDK routes', () => {
     expect(mockSnapshotPolicyRemove).toHaveBeenCalledWith(7, vmId);
   });
 
+  it('host-scopes scheduled VM action CRUD, history and manual runs with admin mutation gates', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const scheduleId = `vmas_${'c'.repeat(26)}`;
+    const base = `/api/providers/7/virtual-machines/${vmId}/action-schedules`;
+    const listed = await request(app).get(base).set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200);
+    expect(listed.body.automation).toEqual(expect.objectContaining({ executeEnabled: true }));
+    expect(mockActionScheduleList).toHaveBeenCalledWith(7, vmId);
+
+    expect((await request(app).post(base).set('x-test-role', 'operator').send({})).status).toBe(403);
+    const body = { name: 'weekday-start', action: 'start', cron: '0 7 * * 1-5',
+      timezone: 'Europe/Bucharest', enabled: true, mode: 'dry_run' };
+    const created = await request(app).post(base).send(body);
+    expect(created.status).toBe(201);
+    expect(mockActionScheduleCreate).toHaveBeenCalledWith(mockHost, vmId, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_action_schedule_create' }));
+
+    const updated = await request(app).put(`${base}/${scheduleId}`).send({ ...body, version: 1 });
+    expect(updated.status).toBe(200);
+    expect(mockActionScheduleUpdate).toHaveBeenCalledWith(mockHost, vmId, scheduleId,
+      { ...body, version: 1 }, { createdBy: 1 });
+    const history = await request(app).get(`${base}/${scheduleId}/runs?limit=20`).set('x-test-role', 'viewer');
+    expect(history.status).toBe(200); expect(history.body.count).toBe(1);
+    expect(mockActionScheduleRuns).toHaveBeenCalledWith(scheduleId, { limit: '20' });
+
+    const run = await request(app).post(`${base}/${scheduleId}/run`).send({});
+    expect(run.status).toBe(200);
+    expect(mockActionScheduleRun).toHaveBeenCalledWith(scheduleId, {}, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_action_schedule_run',
+      details: expect.objectContaining({ emergencyOverrideUsed: false }) }));
+    expect((await request(app).delete(`${base}/${scheduleId}`)).status).toBe(200);
+    expect(mockActionScheduleRemove).toHaveBeenCalledWith(7, vmId, scheduleId);
+  });
+
   it('publishes provider manifests and an evidence-backed scorecard', async () => {
     const manifests = await request(app).get('/api/providers/manifests');
     expect(manifests.status).toBe(200);
@@ -1256,6 +1392,32 @@ describe('Provider SDK routes', () => {
     expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/${diskId}/preflight`)
       .send({ action: 'resize', sizeBytes: 2147483648 })).status).toBe(200);
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_disk_create_submit' }));
+  });
+
+  it('exposes NIC inventory while admin-gating safety declarations and link mutation', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const nicId = `ddh_nic_${'b'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${vmId}/nics`)
+      .set('x-test-role', 'viewer')).status).toBe(200);
+    expect(mockNicInventory).toHaveBeenCalledWith(mockHost, vmId);
+    const safety = { managementRole: 'non_management', bootDependency: 'not_required',
+      guestDependency: 'not_required', validForHours: 1, reason: 'Reviewed workload dependencies' };
+    expect((await request(app).put(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/safety`)
+      .set('x-test-role', 'operator').send(safety)).status).toBe(403);
+    expect((await request(app).put(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/safety`)
+      .send(safety)).status).toBe(200);
+    expect(mockNicSafety).toHaveBeenCalledWith(mockHost, vmId, nicId, safety,
+      { canOperate: true, createdBy: 1 });
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/preflight`)
+      .send({ action: 'disconnect' })).status).toBe(200);
+    const submitted = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/actions`)
+      .set('Idempotency-Key', 'nic-disconnect-route-1')
+      .send({ action: 'disconnect', planHash: '6'.repeat(64), confirm: true, confirmText: 'vm-a/NIC 0' });
+    expect(submitted.status).toBe(202);
+    expect(mockNicSubmit).toHaveBeenCalledWith(mockHost, vmId, nicId,
+      expect.objectContaining({ idempotencyKey: 'nic-disconnect-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_nic_disconnect_submit' }));
   });
 
   it('separately admin-gates permanent managed-volume deletion', async () => {

@@ -95,6 +95,15 @@ function _fromCapabilities(capabilities = {}) {
     'vm.nic.hotplug': capabilities.nicHotplug
       ? conditional('VIF allowed operations are evaluated per device', { perResource: true, evidenceOnly: true })
       : unsupported('NIC hot-plug is not safely advertised by this Xen provider'),
+    'vm.nic.connect': capabilities.provider === 'xapi' && capabilities.nicHotplug
+      ? conditional('XenAPI VIF.plug is submitted as a durable task and post-read verified', {
+        perResource: true, durableTask: true, existingDeviceOnly: true, detach: false, postVerify: true,
+      }) : unsupported('NIC link mutation requires a conformance-tested XenAPI endpoint'),
+    'vm.nic.disconnect': capabilities.provider === 'xapi' && capabilities.nicHotplug
+      ? conditional('XenAPI VIF.unplug requires a current Docker Dash safety declaration and post-read verification', {
+        perResource: true, durableTask: true, existingDeviceOnly: true, detach: false,
+        safetyDeclaration: true, postVerify: true,
+      }) : unsupported('NIC link mutation requires a conformance-tested XenAPI endpoint'),
     'cluster.ha.read': capabilities.pools
       ? conditional('HA evidence depends on pool configuration and shared storage', { requiresPool: true })
       : unsupported('HA is unavailable for standalone raw Xen'),

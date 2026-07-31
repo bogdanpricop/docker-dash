@@ -244,8 +244,8 @@ const HostsPage = {
                 <tr><td>API</td><td>${na(info.apiVersion)}</td></tr>
                 <tr><td>Kernel</td><td>${na(info.kernelVersion)}</td></tr>
                 <tr><td>CPUs</td><td>${info.cpus || 0}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.memory')}</td><td>${Utils.formatBytes(info.memTotal || 0)}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.containers')}</td><td>${info.containersRunning || 0}/${info.containers || 0}</td></tr>
+                <tr><td>${i18n.t('pages.containers.memory')}</td><td>${Utils.formatBytes(info.memTotal || 0)}</td></tr>
+                <tr><td>${i18n.t('nav.containers')}</td><td>${info.containersRunning || 0}/${info.containers || 0}</td></tr>
                 <tr><td>${i18n.t('nav.images')}</td><td>${info.images || 0}</td></tr>
                 <tr><td>Storage</td><td>${na(info.storageDriver)}</td></tr>
               </table>`;

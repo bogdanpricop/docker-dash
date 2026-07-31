@@ -201,7 +201,7 @@ const RecoveryPointsPage = {
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'xen'].includes(host.daemonType)); }
     catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-box-archive"></i> Recovery Points</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-box-archive"></i> ${i18n.t('nav.recovery-points')}</h1>
       <div class="text-muted text-sm">Backup evidence and guarded create-only restore planning</div></div>
       <select id="recovery-host" class="form-control" aria-label="Virtualization endpoint">${this._hosts.map(host => `<option value="${Number(host.id)}">${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select></div>
       <div class="alert alert-warning"><strong>Snapshots are not backups.</strong> This page lists provider-reported backup recovery points only. “Unknown” means Docker Dash received no proof; it never implies success.</div>

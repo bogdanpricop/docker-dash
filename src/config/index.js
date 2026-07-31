@@ -93,6 +93,9 @@ module.exports = {
     // operations because it can generate material provider-storage I/O.
     providerVmSnapshotConsolidation: bool('DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION', false),
     providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
+    // Durable start/stop/reboot/snapshot schedules. Authoring and dry-run
+    // evidence remain available while execute mode is closed by default.
+    providerVmActionSchedules: bool('DD_PROVIDER_VM_ACTION_SCHEDULES', false),
     providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
     providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
     providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
@@ -117,6 +120,11 @@ module.exports = {
     providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
+    // NIC link mutation is released independently per provider. A global flag
+    // would make an untested adapter reachable when enabling a tested one.
+    providerVmNicLinkProxmox: bool('DD_PROVIDER_VM_NIC_LINK_PROXMOX', false),
+    providerVmNicLinkVsphere: bool('DD_PROVIDER_VM_NIC_LINK_VSPHERE', false),
+    providerVmNicLinkXen: bool('DD_PROVIDER_VM_NIC_LINK_XEN', false),
     // V4.6a — additive governance control plane. This gates only the new
     // governance API/UI; existing host/stack/provider RBAC remains independent.
     governance: bool('DD_GOVERNANCE_ENABLED', true),
@@ -135,6 +143,12 @@ module.exports = {
       Math.max(0, int('DD_PROVIDER_VM_DISK_HEADROOM_PERCENT', 10))),
     deletionRecoveryMaxAgeHours: Math.min(24 * 365,
       Math.max(1, int('DD_PROVIDER_VM_DISK_DELETE_RECOVERY_MAX_AGE_HOURS', 24))),
+  },
+  providerVmNics: {
+    safetyDeclarationMaxHours: Math.min(24,
+      Math.max(1, int('DD_PROVIDER_VM_NIC_SAFETY_MAX_HOURS', 4))),
+    verifyTimeoutMs: Math.min(10 * 60 * 1000,
+      Math.max(30_000, int('DD_PROVIDER_VM_NIC_VERIFY_TIMEOUT_MS', 120_000))),
   },
   providerHostMaintenance: {
     pollLimit: Math.min(100, Math.max(1, int('DD_PROVIDER_HOST_MAINTENANCE_POLL_LIMIT', 20))),

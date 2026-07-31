@@ -39,7 +39,7 @@ const GovernancePage = {
     const customRoles = (this._catalog.roles || []).filter(role => !role.isBuiltin).length;
     const siteScopes = this._scopes.filter(scope => scope.type === 'site').length;
     const canCreateProject = this._catalog.globalAdmin || this._scopes.some(scope => scope.effectivePermissions?.includes('project.create'));
-    this._container.innerHTML = `
+    this._container.innerHTML = `<div class="control-surface">
       <div class="page-header" style="align-items:flex-start">
         <div>
           <h1 class="page-title"><i class="fas fa-building-shield" style="color:var(--accent);margin-right:10px"></i>${i18n.t('pages.governance.title')}</h1>
@@ -55,12 +55,12 @@ const GovernancePage = {
         ${this._stat('fa-user-shield', i18n.t('pages.governance.customRoles'), customRoles)}
         ${this._stat('fa-sitemap', i18n.t('pages.governance.sitesAndScopes'), `${siteScopes} / ${this._scopes.length}`)}
       </div>
-      <div class="tabs" role="tablist" style="margin-bottom:16px">
+      <div class="tabs control-tabs" role="tablist" aria-label="${Utils.escapeHtml(i18n.t('pages.governance.title'))}">
         ${this._tabButton('projects', 'fa-folder-tree', i18n.t('pages.governance.projects'))}
         ${this._tabButton('roles', 'fa-user-shield', i18n.t('pages.governance.roles'))}
         ${this._tabButton('scopes', 'fa-sitemap', i18n.t('pages.governance.scopes'))}
       </div>
-      <div id="gov-tab-content">${this._tabContent()}</div>`;
+      <div id="gov-tab-content" role="tabpanel" tabindex="0">${this._tabContent()}</div></div>`;
     this._bind();
   },
 
@@ -69,7 +69,8 @@ const GovernancePage = {
   },
 
   _tabButton(tab, icon, label) {
-    return `<button class="tab-btn ${this._tab === tab ? 'active' : ''}" data-gov-tab="${tab}" role="tab"><i class="fas ${icon}"></i> ${label}</button>`;
+    const active = this._tab === tab;
+    return `<button type="button" class="tab ${active ? 'active' : ''}" data-gov-tab="${tab}" role="tab" aria-selected="${active}" tabindex="${active ? 0 : -1}"><i class="fas ${icon}" aria-hidden="true"></i> ${label}</button>`;
   },
 
   _tabContent() {

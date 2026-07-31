@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.79.0",
+  "version": "8.80.0",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -12,6 +12,8 @@
     "lint": "eslint src/",
     "check:self-service-i18n": "node scripts/validate-self-service-i18n.js",
     "check:self-service-a11y": "node scripts/validate-self-service-a11y.js",
+    "check:virtualization-research": "node scripts/validate-virtualization-feature-registry.js",
+    "generate:virtualization-research": "node scripts/validate-virtualization-feature-registry.js --write",
     "lint:fix": "eslint src/ --fix",
     "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml"
   },

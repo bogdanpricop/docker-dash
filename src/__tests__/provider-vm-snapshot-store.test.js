@@ -6,6 +6,7 @@ jest.mock('../db', () => ({ getDb: jest.fn(() => { throw new Error('test must pr
 const Database = require('better-sqlite3');
 const identitiesMigration = require('../db/migrations/106_provider_resource_identities');
 const snapshotsMigration = require('../db/migrations/110_provider_vm_snapshots');
+const riskMigration = require('../db/migrations/154_provider_snapshot_risk');
 const identityStore = require('../services/provider-sdk/identity-store');
 const snapshots = require('../services/provider-sdk/vm-snapshot-store');
 const { decrypt } = require('../utils/crypto');
@@ -17,6 +18,7 @@ function database() {
     INSERT INTO docker_hosts (id, name) VALUES (7, 'pool-a'), (8, 'pool-b')`);
   identitiesMigration.up(db);
   snapshotsMigration.up(db);
+  riskMigration.up(db);
   return db;
 }
 
@@ -36,12 +38,13 @@ describe('common provider VM snapshot store', () => {
     const vm = rememberVm(db);
     const items = snapshots.rememberMany({ hostId: 7, vmId: vm.id, providerType: 'vsphere' }, [
       { nativeRef: 'snapshot-secret-child', name: 'child', parentRef: 'snapshot-secret-root', createdAt: '2026-07-02T00:00:00Z' },
-      { nativeRef: 'snapshot-secret-root', name: 'root', createdAt: '2026-07-01T00:00:00Z', consistency: 'crash' },
+      { nativeRef: 'snapshot-secret-root', name: 'root', createdAt: '2026-07-01T00:00:00Z', consistency: 'crash', sizeBytes: 4096 },
     ], db);
     const root = items.find(item => item.name === 'root');
     const child = items.find(item => item.name === 'child');
     expect(child.parentId).toBe(root.id);
     expect(root.childCount).toBe(1);
+    expect(root.sizeBytes).toBe(4096);
     expect(items.every(item => item.integrity.state === 'valid')).toBe(true);
     const rows = db.prepare('SELECT native_ref_enc FROM provider_vm_snapshots').all();
     expect(JSON.stringify(rows)).not.toContain('snapshot-secret');

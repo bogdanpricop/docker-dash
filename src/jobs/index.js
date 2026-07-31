@@ -521,6 +521,13 @@ function startAll() {
     return require('../services/provider-operations/snapshot-policies').runDue();
   })));
 
+  // B045 uses cron only as a leader-gated minute wake-up. Local timezone/DST
+  // evaluation, blackout suppression, due-slot dedupe and child idempotency are
+  // persisted by the service before any provider operation is submitted.
+  jobs.push(cron.schedule('* * * * *', _m('provider-vm-action-schedules', () => {
+    return require('../services/provider-operations/vm-action-schedules').runDue();
+  })));
+
   // Backup policies are deliberately plan-only in V3.2. The leader-gated
   // scheduler persists due-slot evidence and never invokes a provider mutation.
   jobs.push(cron.schedule('* * * * *', _m('provider-backup-policy-plan', () => {
@@ -555,6 +562,21 @@ function startAll() {
   // provider load in multi-replica deployments.
   jobs.push(cron.schedule('*/15 * * * *', _m('provider-ha-readiness', () => {
     return require('../services/provider-sdk/ha-readiness').captureAll();
+  })));
+
+  // Read-only B090 snapshot-risk evidence. Inventory calls are bounded in the
+  // service, daily trend rows are upserted, and state transitions are deduped.
+  // No snapshot deletion, consolidation or retention mutation is reachable.
+  jobs.push(cron.schedule('23 */6 * * *', _m('provider-snapshot-risk', () => {
+    return require('../services/provider-sdk/snapshot-risk').captureAll();
+  })));
+
+  // B096 repository health is network-read-only by default. The service
+  // enforces each endpoint interval, bounds the fleet, and never schedules an
+  // opt-in write test. Protocol auth/list remains unknown without an approved
+  // adapter instead of being inferred from an open TCP port.
+  jobs.push(cron.schedule('37 * * * *', _m('storage-repository-health', () => {
+    return require('../services/storage-repository-health').captureAll();
   })));
 
   // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each

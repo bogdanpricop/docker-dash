@@ -43,7 +43,29 @@ function _verification(raw) {
   else if (/^(?:error|failed|failure|invalid|corrupt)$/.test(value)) state = 'failed';
   else if (value === 'stale') state = 'stale';
   else if (/^(?:none|never|unverified)$/.test(value)) state = 'unverified';
-  return { state, checkedAt: _timestamp(source?.checkedAt ?? source?.timestamp ?? source?.lastVerifiedAt) };
+  const methodValue = valueInput => {
+    if (valueInput === true) return 'verified';
+    if (valueInput === false) return 'failed';
+    const text = String(valueInput?.state ?? valueInput?.status ?? valueInput ?? '').toLowerCase();
+    if (/^(?:ok|success|verified|passed|valid)$/.test(text)) return 'verified';
+    if (/^(?:error|failed|failure|invalid|corrupt)$/.test(text)) return 'failed';
+    if (/^(?:pending|running|queued|unverified|stale)$/.test(text)) return 'pending';
+    return 'unknown';
+  };
+  const methodSource = source?.methods && typeof source.methods === 'object' && !Array.isArray(source.methods)
+    ? source.methods : {};
+  const methods = {
+    checksum: methodValue(methodSource.checksum ?? source?.checksum),
+    chain: methodValue(methodSource.chain ?? source?.chain),
+  };
+  const observedMethods = Object.fromEntries(Object.entries(methods).filter(([, methodState]) => methodState !== 'unknown'));
+  if (state === 'unknown' && Object.values(observedMethods).length) {
+    state = Object.values(observedMethods).includes('failed') ? 'failed'
+      : Object.values(observedMethods).every(methodState => methodState === 'verified') ? 'verified' : 'unverified';
+  }
+  const result = { state, checkedAt: _timestamp(source?.checkedAt ?? source?.timestamp ?? source?.lastVerifiedAt) };
+  if (Object.keys(observedMethods).length) result.methods = observedMethods;
+  return result;
 }
 
 function _repositoryType(value) {
@@ -105,6 +127,8 @@ function normalizeRepositoryAndRemember(input) {
     },
     capabilities: {
       verification: _bool(raw.supportsVerification),
+      checksumVerification: _bool(raw.supportsChecksumVerification),
+      chainVerification: _bool(raw.supportsChainVerification),
       clientSideEncryption: _bool(raw.supportsClientSideEncryption),
       immutableRetention: _bool(raw.supportsImmutableRetention),
     },
@@ -161,6 +185,8 @@ function normalizeRecoveryPointAndRemember(input) {
       consistency: ['application', 'filesystem', 'crash', 'unknown'].includes(String(raw.consistency || '').toLowerCase())
         ? String(raw.consistency).toLowerCase() : 'unknown',
       includesMemory: _bool(raw.includesMemory), protected: _bool(raw.protected), encrypted: _bool(raw.encrypted),
+      encryptionAlgorithm: _text(raw.encryptionAlgorithm, 40),
+      encryptionKeyRotatedAt: _timestamp(raw.encryptionKeyRotatedAt),
     },
     verification,
     retention: {

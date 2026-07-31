@@ -106,6 +106,52 @@ describe('provider backup policies', () => {
     expect(result.transient).toEqual([transientId]);
   });
 
+  it('normalizes the R5a full/incremental, smart-scope, exclusion, consistency and control contract', () => {
+    const value = policies.validatePolicy(draft({
+      backupMode: 'incremental',
+      scope: { includeAll: false, workloadIds: [], selectors: { match: 'all', labels: {}, powerStates: [],
+        sites: ['DC-A'], owners: ['Payments'], classifications: ['Critical'] },
+      exclusions: { workloadIds: [], labels: { backup: 'disabled' },
+        diskSelectors: [{ workloadId: VM_A, selector: 'scsi1' }],
+        pathSelectors: [{ workloadId: VM_A, path: '/var/cache' }] } },
+      consistency: { requested: 'application', fallback: 'fail', guestToolsRequired: true,
+        preFreezeHookRef: 'scripts/db-freeze-v1', postThawHookRef: 'scripts/db-thaw-v1' },
+      protection: { encryption: { mode: 'required', algorithm: 'aes-256-gcm',
+        keyReference: 'vault/backup/xo-a', maximumKeyAgeDays: 90 },
+      immutability: { mode: 'required', minimumLockDays: 30 } },
+      controls: { maxConcurrent: 2, bandwidthLimitMbps: 100,
+        limits: { global: 16, provider: 8, host: 4, repository: 2 },
+        bandwidthWindows: [{ site: 'DC-A', start: '22:00', end: '06:00', days: [1, 2, 3, 4, 5],
+          timezone: 'Europe/Bucharest', limitMbps: 25 }] },
+      verification: { afterBackup: true, maximumUnverifiedHours: 12,
+        requiredMethods: ['metadata', 'checksum', 'chain'] },
+    }));
+    expect(value.backupMode).toBe('incremental');
+    expect(value.scope.selectors).toEqual(expect.objectContaining({ sites: ['dc-a'], owners: ['payments'],
+      classifications: ['critical'] }));
+    expect(value.scope.exclusions.pathSelectors).toEqual([{ workloadId: VM_A, path: '/var/cache' }]);
+    expect(value.consistency).toEqual(expect.objectContaining({ preFreezeHookRef: 'scripts/db-freeze-v1' }));
+    expect(value.controls).toEqual(expect.objectContaining({ backupMode: 'incremental',
+      limits: { global: 16, provider: 8, host: 4, repository: 2 } }));
+    expect(value.verification.requiredMethods).toEqual(['chain', 'checksum', 'metadata']);
+    const selection = policies.selectWorkloads([
+      vm(VM_A, 'payments-01', { site: 'dc-a', owner: 'payments', classification: 'critical' }),
+      vm(VM_B, 'dev-01', { site: 'dc-a', owner: 'platform', classification: 'internal' }),
+    ], value.scope);
+    expect(selection.selected.map(item => item.id)).toEqual([VM_A]);
+    expect(selection.selected[0]).toEqual(expect.objectContaining({ site: 'dc-a', owner: 'payments',
+      classification: 'critical' }));
+  });
+
+  it('rejects traversal paths, inline consistency hooks and unknown integrity methods', () => {
+    expect(() => policies.validatePolicy(draft({ scope: { includeAll: true, workloadIds: [], selectors: {},
+      exclusions: { pathSelectors: [{ workloadId: VM_A, path: '/srv/../etc' }] } } }))).toThrow(/Path exclusion/);
+    expect(() => policies.validatePolicy(draft({ consistency: { requested: 'crash', fallback: 'fail',
+      preFreezeHookRef: 'echo secret && freeze' } }))).toThrow(/allowlisted script reference/);
+    expect(() => policies.validatePolicy(draft({ verification: { requiredMethods: ['magic'] } })))
+      .toThrow(/provider, metadata, checksum or chain/);
+  });
+
   it('fails required tri-state protection evidence closed and marks truncated previews', async () => {
     const unknownRepository = { ...REPOSITORY, capabilities: {}, provider: { type: 'xen', endpointId: 7 } };
     const plan = await policies.preflightForHost(host, draft(), { database,

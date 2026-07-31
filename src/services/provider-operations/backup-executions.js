@@ -8,8 +8,9 @@ const audit = require('../audit');
 const registry = require('../provider-sdk/registry');
 const engineSingleton = require('./index');
 const policies = require('./backup-policies');
+const backupControl = require('./backup-control-plane');
 
-const SCHEMA_VERSION = '1.0';
+const SCHEMA_VERSION = '1.1';
 const SAFE_EXECUTION_ID = /^pbex_[a-f0-9]{26}$/;
 const SAFE_ITEM_ID = /^pbei_[a-f0-9]{26}$/;
 const SAFE_POLICY_ID = /^pbp_[a-f0-9]{26}$/;
@@ -41,6 +42,7 @@ function _publicItem(row) {
     workloadId: row.workload_id, operationId: row.operation_id || null,
     state: row.state, recoveryPointId: row.recovery_point_id || null,
     verificationState: row.verification_state, errorCode: row.error_code || null,
+    admission: _parse(row.admission_json, {}), integrity: _parse(row.integrity_json, {}),
     createdAt: row.created_at, startedAt: row.started_at || null,
     completedAt: row.completed_at || null, updatedAt: row.updated_at,
   };
@@ -52,6 +54,7 @@ function _publicExecution(row, database, withItems = true) {
     schemaVersion: SCHEMA_VERSION, id: row.id, policyId: row.policy_id,
     planRunId: row.plan_run_id, trigger: row.trigger_type, state: row.state,
     planHash: row.plan_hash, summary: _parse(row.summary_json, {}),
+    contract: _parse(row.contract_json, {}),
     createdBy: row.created_by || null, createdAt: row.created_at,
     startedAt: row.started_at || null, completedAt: row.completed_at || null,
     updatedAt: row.updated_at,
@@ -133,13 +136,38 @@ async function _executionPreflight(host, policy, plan, options = {}) {
   const evidence = capabilities.features?.['backup.run'];
   if (!['supported', 'conditional'].includes(evidence?.state)) blockers.push({ code: 'BACKUP_PROVIDER_UNSUPPORTED', message: evidence?.reason || 'Provider backup mutation is unavailable' });
   if (host.daemon_type !== 'proxmox') blockers.push({ code: 'BACKUP_PROVIDER_UNSUPPORTED', message: 'Only the conformance-tested Proxmox vzdump mutation path is enabled' });
+  if (policy.backupMode === 'incremental' && plan.repository?.repositoryType !== 'proxmox-backup-server') {
+    blockers.push({ code: 'BACKUP_MODE_UNSUPPORTED', message: 'Incremental execution requires a Proxmox Backup Server repository' });
+  }
+  if (policy.backupMode === 'full' && plan.repository?.repositoryType === 'proxmox-backup-server') {
+    blockers.push({ code: 'BACKUP_MODE_UNSUPPORTED', message: 'PBS controls chunk reuse and cannot prove a forced-full execution through vzdump' });
+  }
   if (policy.consistency.requested !== 'crash') blockers.push({ code: 'BACKUP_CONSISTENCY_UNSUPPORTED', message: 'Proxmox execution currently requires crash-consistent policy semantics' });
   if (policy.scope.exclusions.diskSelectors.length) blockers.push({ code: 'BACKUP_DISK_EXCLUSIONS_UNSUPPORTED', message: 'Disk exclusions cannot be translated safely to vzdump' });
+  if (policy.scope.exclusions.pathSelectors?.length) blockers.push({ code: 'BACKUP_PATH_EXCLUSIONS_UNSUPPORTED', message: 'File-path exclusions require a file-aware provider backup adapter' });
+  if (policy.consistency.preFreezeHookRef || policy.consistency.postThawHookRef) {
+    blockers.push({ code: 'BACKUP_CONSISTENCY_HOOKS_UNSUPPORTED', message: 'Inline execution of consistency hooks is not supported by the vzdump adapter' });
+  }
   if (!_windowAllows(policy.controls.window, options.now || new Date())) blockers.push({ code: 'BACKUP_WINDOW_CLOSED', message: 'Current time is outside the authorized backup window' });
   if (policy.verification.afterBackup && plan.repository?.capabilities?.verification !== true) {
     blockers.push({ code: 'BACKUP_VERIFICATION_UNPROVEN', message: 'Required post-backup verification is not supported by the selected repository' });
   }
-  return { allowed: plan.allowed && blockers.length === 0, blockers, capability: evidence || null };
+  const verificationCapabilities = {
+    provider: plan.repository?.capabilities?.verification,
+    metadata: true,
+    checksum: plan.repository?.capabilities?.checksumVerification,
+    chain: plan.repository?.capabilities?.chainVerification,
+  };
+  if (policy.verification.afterBackup) {
+    for (const method of policy.verification.requiredMethods || ['provider']) {
+      if (verificationCapabilities[method] !== true) blockers.push({
+        code: `BACKUP_${method.toUpperCase()}_VERIFICATION_UNPROVEN`,
+        message: `${method} integrity verification is not proven by the selected repository`,
+      });
+    }
+  }
+  const contract = backupControl.buildContract(host, policy, plan, { capability: evidence || null });
+  return { allowed: plan.allowed && blockers.length === 0, blockers, capability: evidence || null, contract };
 }
 
 function _existing(policyId, key, requestHash, database) {
@@ -193,9 +221,9 @@ async function createForHost(host, policyIdInput, input = {}, options = {}) {
     recoveryPointsObserved: 0, retentionMutationAuthorized: false };
   database.transaction(() => {
     database.prepare(`INSERT INTO provider_backup_executions
-      (id,policy_id,plan_run_id,trigger_type,state,plan_hash,idempotency_key_hash,request_hash,summary_json,created_by)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(executionId, policy.id, run.id, trigger, 'queued', run.plan_hash,
-      duplicate.keyHash, requestHash, JSON.stringify(summary), options.createdBy || null);
+      (id,policy_id,plan_run_id,trigger_type,state,plan_hash,idempotency_key_hash,request_hash,summary_json,contract_json,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(executionId, policy.id, run.id, trigger, 'queued', run.plan_hash,
+      duplicate.keyHash, requestHash, JSON.stringify(summary), JSON.stringify(executionPreflight.contract), options.createdBy || null);
     const insert = database.prepare(`INSERT INTO provider_backup_execution_items
       (id,execution_id,workload_id,baseline_point_ids_json,baseline_hash) VALUES (?,?,?,?,?)`);
     for (const workload of currentPlan.scope.workloads) {
@@ -208,11 +236,13 @@ async function createForHost(host, policyIdInput, input = {}, options = {}) {
 }
 
 function _dispatch(execution, policy, database, engine) {
-  const active = execution.items.filter(item => item.state === 'running').length;
-  let capacity = Math.max(0, policy.controls.maxConcurrent - active);
   for (const item of execution.items.filter(value => value.state === 'queued')) {
-    if (capacity-- <= 0) break;
+    const host = database.prepare('SELECT daemon_type FROM docker_hosts WHERE id=?').get(policy.hostId);
+    const admission = backupControl.admission(database, { ...policy, providerType: host?.daemon_type });
+    if (!admission.allowed) break;
     const row = database.prepare('SELECT baseline_point_ids_json FROM provider_backup_execution_items WHERE id=?').get(item.id);
+    const workload = execution.contract?.selection?.selected?.find(value => value.id === item.workloadId) || {};
+    const bandwidth = backupControl.bandwidth(policy, workload);
     const operation = engine.create({
       type: 'vm.backup', providerType: 'proxmox', hostId: policy.hostId,
       resourceKind: 'virtualMachine', resourceId: item.workloadId, action: 'create',
@@ -220,16 +250,21 @@ function _dispatch(execution, policy, database, engine) {
       request: {
         executionId: execution.id, policyId: policy.id, repositoryId: policy.repositoryId,
         planHash: execution.planHash, baselinePointIds: _parse(row.baseline_point_ids_json, []),
+        backupMode: policy.backupMode || 'provider',
         consistency: policy.consistency.requested,
-        bandwidthLimitMbps: policy.controls.bandwidthLimitMbps,
+        exclusions: policy.scope.exclusions,
+        protection: policy.protection,
+        verification: policy.verification,
+        bandwidthLimitMbps: bandwidth.limitMbps,
+        bandwidthEvidence: bandwidth,
         verificationRequired: policy.verification.afterBackup,
       },
       lockScopes: [`resource:${item.workloadId}`, `repository:${policy.repositoryId}`],
       createdBy: execution.createdBy,
     });
-    database.prepare(`UPDATE provider_backup_execution_items SET operation_id=?, state='running',
+    database.prepare(`UPDATE provider_backup_execution_items SET operation_id=?, state='running',admission_json=?,
       started_at=COALESCE(started_at,datetime('now')),updated_at=datetime('now') WHERE id=? AND state='queued'`)
-      .run(operation.id, item.id);
+      .run(operation.id, JSON.stringify(admission), item.id);
   }
 }
 
@@ -249,11 +284,14 @@ async function _refreshVerification(host, execution, policy, database, registryS
   const points = new Map(inventory.items.map(point => [point.id, point]));
   const deadline = Date.parse(execution.createdAt) + policy.verification.maximumUnverifiedHours * 3600_000;
   for (const item of pending) {
-    const state = points.get(item.recoveryPointId)?.verification?.state || 'unknown';
-    if (state === 'verified') database.prepare(`UPDATE provider_backup_execution_items SET state='succeeded',verification_state='verified',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(item.id);
-    else if (state === 'failed') database.prepare(`UPDATE provider_backup_execution_items SET state='failed',verification_state='failed',error_code='BACKUP_VERIFICATION_FAILED',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(item.id);
-    else if (Date.now() >= deadline) database.prepare(`UPDATE provider_backup_execution_items SET state='unknown',verification_state=?,error_code='BACKUP_VERIFICATION_TIMEOUT',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(state, item.id);
-    else database.prepare(`UPDATE provider_backup_execution_items SET verification_state=?,updated_at=datetime('now') WHERE id=?`).run(state, item.id);
+    const point = points.get(item.recoveryPointId);
+    const evidence = backupControl.evaluateIntegrity(point, policy);
+    backupControl.rememberIntegrity(database, item.id, evidence);
+    const reportedState = point?.verification?.state || 'unknown';
+    if (evidence.state === 'verified') database.prepare(`UPDATE provider_backup_execution_items SET state='succeeded',verification_state='verified',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(item.id);
+    else if (evidence.state === 'failed') database.prepare(`UPDATE provider_backup_execution_items SET state='failed',verification_state='failed',error_code='BACKUP_INTEGRITY_FAILED',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(item.id);
+    else if (Date.now() >= deadline) database.prepare(`UPDATE provider_backup_execution_items SET state='unknown',verification_state=?,error_code='BACKUP_VERIFICATION_TIMEOUT',completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`).run(reportedState, item.id);
+    else database.prepare(`UPDATE provider_backup_execution_items SET verification_state=?,updated_at=datetime('now') WHERE id=?`).run(reportedState, item.id);
   }
 }
 
@@ -264,14 +302,16 @@ function _syncOperations(execution, policy, database, engine) {
     if (operation.state === 'succeeded') {
       const result = operation.result || {}; const verification = result.verificationState || 'unknown';
       const recoveryPointProven = /^ddr_rp_[a-f0-9]{26}$/.test(String(result.recoveryPointId || ''));
+      const requiresEvidence = policy.verification.afterBackup
+        || policy.protection?.encryption?.mode === 'required'
+        || policy.protection?.immutability?.mode === 'required';
       const state = !recoveryPointProven ? 'unknown'
-        : policy.verification.afterBackup ? (verification === 'verified' ? 'succeeded'
-          : verification === 'failed' ? 'failed' : 'verification_pending') : 'succeeded';
+        : requiresEvidence ? 'verification_pending' : 'succeeded';
       database.prepare(`UPDATE provider_backup_execution_items SET state=?,recovery_point_id=?,verification_state=?,
         error_code=?,completed_at=CASE WHEN ?='verification_pending' THEN NULL ELSE datetime('now') END,updated_at=datetime('now') WHERE id=?`)
         .run(state, recoveryPointProven ? result.recoveryPointId : null, verification,
           !recoveryPointProven ? 'BACKUP_RECOVERY_POINT_UNPROVEN'
-            : verification === 'failed' ? 'BACKUP_VERIFICATION_FAILED' : null, state, item.id);
+            : null, state, item.id);
     } else {
       database.prepare(`UPDATE provider_backup_execution_items SET state=?,error_code=?,completed_at=datetime('now'),updated_at=datetime('now') WHERE id=?`)
         .run(operation.state, operation.error?.code || `BACKUP_OPERATION_${operation.state.toUpperCase()}`, item.id);

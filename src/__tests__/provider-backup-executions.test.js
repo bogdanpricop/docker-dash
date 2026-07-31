@@ -17,6 +17,7 @@ const operationMigration = require('../db/migrations/107_provider_operations');
 const recoveryMigration = require('../db/migrations/117_provider_recovery_points');
 const policyMigration = require('../db/migrations/118_provider_backup_policies');
 const executionMigration = require('../db/migrations/119_provider_backup_execution');
+const controlPlaneMigration = require('../db/migrations/165_provider_backup_control_plane');
 const identityStore = require('../services/provider-sdk/identity-store');
 const recoveryCatalog = require('../services/provider-sdk/recovery-point-catalog');
 const registry = require('../services/provider-sdk/registry');
@@ -35,6 +36,7 @@ describe('provider backup executions', () => {
       CREATE TABLE docker_hosts (id INTEGER PRIMARY KEY,name TEXT,daemon_type TEXT,is_active INTEGER);
       INSERT INTO docker_hosts VALUES (7,'pve-a','proxmox',1);`);
     identityMigration.up(db); operationMigration.up(db); recoveryMigration.up(db); policyMigration.up(db); executionMigration.up(db);
+    controlPlaneMigration.up(db);
     vmId = identityStore.remember({ hostId: 7, providerType: 'proxmox', kind: 'virtualMachine',
       uuid: 'vm-101', nativeRef: 'qemu/101', stability: 'stable' }, db).id;
     repository = recoveryCatalog.normalizeRepositoryAndRemember({ host, providerType: 'proxmox', database: db,
@@ -76,10 +78,14 @@ describe('provider backup executions', () => {
     });
     expect(first.deduplicated).toBe(false);
     expect(first.execution).toEqual(expect.objectContaining({ state: 'running',
-      summary: expect.objectContaining({ total: 1, retentionMutationAuthorized: false }) }));
+      summary: expect.objectContaining({ total: 1, retentionMutationAuthorized: false }),
+      contract: expect.objectContaining({ contractHash: expect.stringMatching(/^[a-f0-9]{64}$/) }) }));
+    expect(first.execution.items[0].admission).toEqual(expect.objectContaining({ allowed: true,
+      constrainedBy: expect.any(Array) }));
     expect(engine.create).toHaveBeenCalledWith(expect.objectContaining({
       type: 'vm.backup', lockScopes: [`resource:${vmId}`, `repository:${repository.id}`],
-      request: expect.objectContaining({ consistency: 'crash', verificationRequired: false }),
+      request: expect.objectContaining({ backupMode: 'provider', consistency: 'crash',
+        verificationRequired: false, protection: expect.any(Object) }),
     }));
     const duplicate = await executions.createForHost(host, policy.id, { confirmName: policy.name }, {
       database: db, engine, registry, createdBy: 9, idempotencyKey: 'manual-run-0001',
@@ -118,6 +124,30 @@ describe('provider backup executions', () => {
     const check = await executions._internals._executionPreflight(host, strict, plan, { registry });
     expect(check.allowed).toBe(false);
     expect(check.blockers.map(item => item.code)).toContain('BACKUP_VERIFICATION_UNPROVEN');
+  });
+
+  it('persists structural integrity evidence before completing a strict execution', async () => {
+    db.prepare(`UPDATE provider_backup_policies SET verification_json=? WHERE id=?`).run(JSON.stringify({
+      afterBackup: true, maximumUnverifiedHours: 24, restoreDrillRequired: false,
+      requiredMethods: ['metadata'],
+    }), policy.id);
+    const started = await executions.createForHost(host, policy.id, { confirmName: policy.name }, {
+      database: db, engine, registry, createdBy: 9, idempotencyKey: 'manual-run-integrity',
+    });
+    const point = recoveryCatalog.normalizeRecoveryPointAndRemember({ host, providerType: 'proxmox', database: db,
+      repository, observedAt: '2026-07-26T10:06:00Z', raw: { nativeRef: 'pbs-prod:integrity-point',
+        repositoryRef: 'pbs-prod', workloadRef: 'qemu/101', workloadUuid: 'vm-101',
+        createdAt: '2026-07-26T10:05:00Z', verification: null } });
+    registry.recoveryPointsForHost.mockResolvedValue({ truncated: false, repositories: [repository], items: [point] });
+    const item = started.execution.items[0];
+    operations.set(item.operationId, { id: item.operationId, state: 'succeeded', error: null,
+      result: { recoveryPointId: point.id, verificationState: 'unknown', retentionMutationAuthorized: false } });
+    await executions.reconcile({ database: db, engine, registry, executionId: started.execution.id });
+    const completed = executions.get(started.execution.id, { database: db });
+    expect(completed.state).toBe('succeeded');
+    expect(completed.items[0].integrity).toEqual(expect.objectContaining({ state: 'verified',
+      methods: { metadata: 'verified' }, evidenceHash: expect.stringMatching(/^[a-f0-9]{64}$/) }));
+    expect(db.prepare('SELECT COUNT(*) AS count FROM provider_backup_integrity_evidence').get().count).toBe(1);
   });
 
   it('cancels active children durably without authorizing recovery-point deletion', async () => {

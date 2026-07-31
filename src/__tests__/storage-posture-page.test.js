@@ -38,4 +38,42 @@ describe('Storage posture presentation helpers', () => {
     expect(html).toContain('Noncompliant');
     expect(html).toContain('not persisted');
   });
+
+  it('renders snapshot risk as monitor-only and never as inferred byte coverage', () => {
+    global.App = { user: { role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'), formatBytes: value => value === null ? '—' : `${value} B`, timeAgo: value => value };
+    page._hostId = 7;
+    const html = page._snapshotRiskHtml({
+      summary: { state: 'warning', snapshotCount: 2, states: { critical: 0, warning: 1 }, oldestAgeDays: 10, maxChainDepth: 2, estimatedBytesKnownCount: 0 },
+      coverage: { evidenceFreshness: 'fresh', lastCaptureAt: '2026-07-30T00:00:00Z' },
+      policy: { warningAgeDays: 7, criticalAgeDays: 30, warningChainDepth: 3, criticalChainDepth: 8, warningGrowthPercent: 20, criticalGrowthPercent: 50 },
+      items: [{ snapshotId: `dds_snap_${'a'.repeat(26)}`, vm: { id: `ddr_vm_${'b'.repeat(26)}`, displayName: '<vm>' }, name: '<snap>', state: 'warning', ageDays: 10, chainDepth: 2, estimatedBytes: null, growthPercent: null, reasons: [{ code: 'AGE_WARNING' }] }],
+      history: [],
+    });
+    expect(html).toContain('Monitor only');
+    expect(html).toContain('0/2');
+    expect(html).toContain('&lt;vm&gt;');
+    expect(html).not.toContain('<vm>');
+    delete global.App;
+  });
+
+  it('keeps network-only repository evidence unknown and escapes endpoint content', () => {
+    global.App = { user: { role: 'viewer' } };
+    global.Utils = { escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'), formatBytes: value => `${value} B` };
+    const html = page._repositoryHealthHtml({
+      summary: { total: 1, states: { healthy: 0, unknown: 1, degraded: 0, unavailable: 0, critical: 0 } },
+      coverage: { dataPlaneAdapterAvailable: false },
+      limitations: ['Auth and list require an adapter.'],
+      repositories: [{ id: 1, name: '<NAS>', protocol: 'smb', hostname: '<host>', port: 445,
+        repositoryPath: 'backups', credentialConfigured: true, freshness: 'fresh', latest: {
+          observedAt: '2026-07-30T10:00:00Z', state: 'unknown', latencyMs: 10,
+          stages: { dns: { state: 'pass' }, tcp: { state: 'pass' }, auth: { state: 'unknown' }, list: { state: 'unknown' } },
+        }, history: [] }],
+    });
+    expect(html).toContain('An open port alone is never reported as healthy');
+    expect(html).toContain('&lt;NAS&gt;');
+    expect(html).not.toContain('<NAS>');
+    expect(html).toContain('auth: unknown');
+    delete global.App;
+  });
 });

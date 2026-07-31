@@ -6,6 +6,9 @@ const VirtualMachinesPage = {
   _hostId: null,
   _shell: null,
   _selected: new Set(),
+  _views: [],
+  _activeViewId: null,
+  _viewState: null,
 
   _powerActions: Object.freeze([
     { action: 'start', label: 'Start', icon: 'fa-play' },
@@ -44,6 +47,145 @@ const VirtualMachinesPage = {
 
   _powerLabel(action) {
     return this._powerActions.find(item => item.action === action)?.label || action;
+  },
+
+  _defaultViewState() {
+    return {
+      providerHostId: null,
+      query: '',
+      powerState: 'all',
+      columns: ['name', 'powerState', 'cpu', 'memory', 'ipAddress', 'observedAt'],
+      sort: { field: 'name', direction: 'asc' },
+    };
+  },
+
+  _stateFromView(view) {
+    const fallback = this._defaultViewState();
+    if (!view) return fallback;
+    return {
+      providerHostId: view.providerHostId || null,
+      query: view.filters?.query || '',
+      powerState: view.filters?.powerState || 'all',
+      columns: Array.isArray(view.columns) && view.columns.includes('name') ? [...view.columns] : fallback.columns,
+      sort: view.sort?.field && view.sort?.direction ? { ...view.sort } : fallback.sort,
+    };
+  },
+
+  _viewPayload(name, isDefault, version) {
+    const state = this._viewState || this._defaultViewState();
+    return {
+      name,
+      resourceType: 'virtual-machines',
+      providerHostId: state.providerHostId || null,
+      filters: { query: state.query || '', powerState: state.powerState || 'all' },
+      columns: [...state.columns],
+      sort: { ...state.sort },
+      isDefault: Boolean(isDefault),
+      ...(version ? { version } : {}),
+    };
+  },
+
+  _inventorySortValue(vm, field) {
+    if (field === 'name') return String(vm.displayName || '').toLowerCase();
+    if (field === 'powerState') return String(vm.status?.powerState || 'unknown').toLowerCase();
+    if (field === 'cpu') return vm.spec?.cpuCount ?? null;
+    if (field === 'memory') return vm.spec?.memoryBytes ?? null;
+    if (field === 'ipAddress') return String(vm.status?.ipAddress || '').toLowerCase();
+    if (field === 'observedAt') return Number.isFinite(Date.parse(vm.observedAt)) ? Date.parse(vm.observedAt) : null;
+    return null;
+  },
+
+  _sortInventory(items, sort = { field: 'name', direction: 'asc' }) {
+    const direction = sort.direction === 'desc' ? -1 : 1;
+    return [...items].sort((left, right) => {
+      const a = this._inventorySortValue(left, sort.field);
+      const b = this._inventorySortValue(right, sort.field);
+      if (a === b) return String(left.displayName || '').localeCompare(String(right.displayName || ''));
+      if (a === null || a === '') return 1;
+      if (b === null || b === '') return -1;
+      return (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b))) * direction;
+    });
+  },
+
+  _syncViewStateFromControls() {
+    if (!this._viewState) this._viewState = this._defaultViewState();
+    this._viewState.providerHostId = this._hostId;
+    this._viewState.query = document.getElementById('common-vm-search')?.value || '';
+    this._viewState.powerState = document.getElementById('common-vm-state')?.value || 'all';
+    this._viewState.sort = {
+      field: document.getElementById('common-vm-sort')?.value || 'name',
+      direction: document.getElementById('common-vm-sort-direction')?.value || 'asc',
+    };
+    const checked = [...document.querySelectorAll('[data-vm-column]:checked')].map(input => input.dataset.vmColumn);
+    this._viewState.columns = checked.includes('name') ? checked : ['name', ...checked];
+  },
+
+  async _reloadInventoryViews() {
+    const response = await Api.getProviderInventoryViews('virtual-machines');
+    this._views = response.views || [];
+  },
+
+  async _saveInventoryView(mode, container) {
+    this._syncViewStateFromControls();
+    const current = this._views.find(view => view.id === this._activeViewId);
+    try {
+      if (mode === 'create') {
+        const input = await Modal.form(`
+          <label class="form-label" for="common-vm-view-name">View name</label>
+          <input id="common-vm-view-name" class="form-control" maxlength="80" autocomplete="off" placeholder="Production VMs">
+          <label style="display:flex;gap:8px;align-items:center;margin-top:14px"><input id="common-vm-view-default" type="checkbox"> Use as my default VM view</label>`, {
+          title: 'Save inventory view', submitLabel: 'Save view',
+          onSubmit: root => {
+            const name = root.querySelector('#common-vm-view-name').value.trim();
+            if (!name) { Toast.error('View name is required'); return false; }
+            return { name, isDefault: root.querySelector('#common-vm-view-default').checked };
+          },
+        });
+        if (!input) return;
+        const result = await Api.createProviderInventoryView(this._viewPayload(input.name, input.isDefault));
+        this._activeViewId = result.view.id;
+        Toast.success(`Saved inventory view ${result.view.name}`);
+      } else {
+        if (!current) return Toast.warning('Select a saved view first');
+        const result = await Api.updateProviderInventoryView(current.id,
+          this._viewPayload(current.name, current.isDefault, current.version));
+        this._activeViewId = result.view.id;
+        Toast.success(`Updated inventory view ${result.view.name}`);
+      }
+      await this._reloadInventoryViews();
+      await this._renderHome(container);
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _setDefaultInventoryView(container) {
+    this._syncViewStateFromControls();
+    const current = this._views.find(view => view.id === this._activeViewId);
+    if (!current) return Toast.warning('Select a saved view first');
+    try {
+      const result = await Api.updateProviderInventoryView(current.id,
+        this._viewPayload(current.name, true, current.version));
+      this._activeViewId = result.view.id;
+      await this._reloadInventoryViews();
+      Toast.success(`${result.view.name} is now the default VM view`);
+      await this._renderHome(container);
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _deleteInventoryView(container) {
+    const current = this._views.find(view => view.id === this._activeViewId);
+    if (!current) return Toast.warning('Select a saved view first');
+    const confirmed = await Modal.confirm(`Delete the personal inventory view “${Utils.escapeHtml(current.name)}”?`, {
+      title: 'Delete inventory view', confirmText: 'Delete view', danger: true, html: true,
+    });
+    if (!confirmed) return;
+    try {
+      await Api.deleteProviderInventoryView(current.id);
+      this._activeViewId = null;
+      this._viewState = this._defaultViewState();
+      await this._reloadInventoryViews();
+      Toast.success(`Deleted inventory view ${current.name}`);
+      await this._renderHome(container);
+    } catch (error) { Toast.error(error.message); }
   },
 
   _preflightHtml(plans) {
@@ -127,6 +269,133 @@ const VirtualMachinesPage = {
       Toast.success(`${result.count} VM power operation(s) queued`);
       location.hash = '#/activity';
     } catch (err) { Toast.error(err.message); }
+  },
+
+  async _editActionSchedule(host, vm, existing = null) {
+    const value = existing || {
+      name: 'weekday-start', action: 'start', cron: '0 7 * * 1-5', timezone: 'Europe/Bucharest',
+      dstPolicy: 'first', mode: 'dry_run', enabled: false, failureThreshold: 3,
+      holidays: [], blackoutWindows: [], snapshot: { consistency: 'crash', namePrefix: 'dd-scheduled', description: '' },
+      environment: 'production', scopeId: null,
+    };
+    const result = await Modal.form(`<div class="alert alert-info text-sm">Five-field cron is evaluated in the selected IANA timezone. New schedules are disabled dry-runs; execute mode always reuses live provider preflight.</div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px">
+        <label class="form-label">Name<input id="vm-action-schedule-name" class="form-control" maxlength="80" value="${Utils.escapeHtml(value.name)}"></label>
+        <label class="form-label">Action<select id="vm-action-schedule-action" class="form-control">${[['start','Start'],['stop','Stop (guest shutdown)'],['reboot','Reboot'],['snapshot','Create snapshot']].map(([key,label]) => `<option value="${key}"${value.action === key ? ' selected' : ''}>${label}</option>`).join('')}</select></label>
+        <label class="form-label">Cron<input id="vm-action-schedule-cron" class="form-control" maxlength="100" value="${Utils.escapeHtml(value.cron)}" placeholder="0 7 * * 1-5"></label>
+        <label class="form-label">IANA timezone<input id="vm-action-schedule-timezone" class="form-control" maxlength="100" value="${Utils.escapeHtml(value.timezone)}" placeholder="Europe/Bucharest"></label>
+        <label class="form-label">DST ambiguity<select id="vm-action-schedule-dst" class="form-control"><option value="first"${value.dstPolicy === 'first' ? ' selected' : ''}>First occurrence</option><option value="second"${value.dstPolicy === 'second' ? ' selected' : ''}>Second occurrence</option><option value="skip"${value.dstPolicy === 'skip' ? ' selected' : ''}>Skip ambiguous minute</option></select></label>
+        <label class="form-label">Mode<select id="vm-action-schedule-mode" class="form-control"><option value="dry_run"${value.mode === 'dry_run' ? ' selected' : ''}>Dry run</option><option value="execute"${value.mode === 'execute' ? ' selected' : ''}>Execute</option></select></label>
+        <label class="form-label">Environment<select id="vm-action-schedule-environment" class="form-control"><option value="production"${value.environment === 'production' ? ' selected' : ''}>Production</option><option value="nonproduction"${value.environment === 'nonproduction' ? ' selected' : ''}>Non-production</option></select></label>
+        <label class="form-label">Disable after failures<input id="vm-action-schedule-failures" class="form-control" type="number" min="1" max="20" value="${value.failureThreshold}"></label>
+        <label class="form-label" style="grid-column:1/-1">Holiday dates (comma-separated)<input id="vm-action-schedule-holidays" class="form-control" value="${Utils.escapeHtml((value.holidays || []).join(', '))}" placeholder="2026-12-25, 2027-01-01"></label>
+        <label class="form-label">Snapshot prefix<input id="vm-action-schedule-prefix" class="form-control" maxlength="48" value="${Utils.escapeHtml(value.snapshot?.namePrefix || 'dd-scheduled')}"></label>
+        <label class="form-label">Snapshot consistency<select id="vm-action-schedule-consistency" class="form-control"><option value="crash"${value.snapshot?.consistency === 'crash' ? ' selected' : ''}>Crash</option><option value="quiesced"${value.snapshot?.consistency === 'quiesced' ? ' selected' : ''}>Quiesced</option></select></label>
+        <label class="form-label" style="grid-column:1/-1">Recurring blackout windows (JSON array)<textarea id="vm-action-schedule-blackouts" class="form-control" rows="4" spellcheck="false">${Utils.escapeHtml(JSON.stringify(value.blackoutWindows || [], null, 2))}</textarea></label>
+        <label class="form-label" style="display:flex;align-items:center;gap:8px"><input id="vm-action-schedule-enabled" type="checkbox" ${value.enabled ? 'checked' : ''}> Enabled</label>
+      </div>
+      <div class="alert alert-warning text-sm" style="margin-top:12px">Stop is a graceful guest shutdown, never forced power-off. Scheduled snapshots do not imply backup or retention.</div>`, {
+      title: `${existing ? 'Edit' : 'Create'} VM action schedule`, submitLabel: existing ? 'Save schedule' : 'Create schedule', width: '760px',
+      onSubmit: root => {
+        let blackoutWindows;
+        try { blackoutWindows = JSON.parse(root.querySelector('#vm-action-schedule-blackouts').value || '[]'); }
+        catch { Toast.error('Blackout windows must be valid JSON'); return false; }
+        if (!Array.isArray(blackoutWindows)) { Toast.error('Blackout windows must be a JSON array'); return false; }
+        return {
+          ...(existing ? { version: existing.version } : {}),
+          name: root.querySelector('#vm-action-schedule-name').value.trim(),
+          action: root.querySelector('#vm-action-schedule-action').value,
+          cron: root.querySelector('#vm-action-schedule-cron').value.trim(),
+          timezone: root.querySelector('#vm-action-schedule-timezone').value.trim(),
+          dstPolicy: root.querySelector('#vm-action-schedule-dst').value,
+          mode: root.querySelector('#vm-action-schedule-mode').value,
+          environment: root.querySelector('#vm-action-schedule-environment').value,
+          failureThreshold: Number(root.querySelector('#vm-action-schedule-failures').value),
+          enabled: root.querySelector('#vm-action-schedule-enabled').checked,
+          holidays: root.querySelector('#vm-action-schedule-holidays').value.split(',').map(item => item.trim()).filter(Boolean),
+          blackoutWindows,
+          snapshot: { namePrefix: root.querySelector('#vm-action-schedule-prefix').value.trim(),
+            consistency: root.querySelector('#vm-action-schedule-consistency').value },
+        };
+      },
+    });
+    if (!result) return false;
+    if (result.enabled && result.mode === 'execute') {
+      const confirmed = await Modal.confirm(`Authorize scheduled ${Utils.escapeHtml(result.action)} operations for <strong>${Utils.escapeHtml(vm.displayName)}</strong>? Provider preflight and blackout checks still run for every slot.`, {
+        title: 'Authorize scheduled execution', confirmText: 'Enable execution', danger: true,
+        typeToConfirm: vm.displayName, html: true,
+      });
+      if (!confirmed) return false;
+      result.confirm = true; result.confirmName = vm.displayName;
+    }
+    try {
+      if (existing) await Api.updateProviderVMActionSchedule(host.id, vm.id, existing.id, result);
+      else await Api.createProviderVMActionSchedule(host.id, vm.id, result);
+      Toast.success(`Action schedule ${existing ? 'updated' : 'created'}`); return true;
+    } catch (error) { Toast.error(error.message); return false; }
+  },
+
+  async _showActionScheduleRuns(host, vm, schedule) {
+    try {
+      const history = await Api.getProviderVMActionScheduleRuns(host.id, vm.id, schedule.id, 50);
+      const rows = (history.items || []).map(run => `<tr><td>${Utils.escapeHtml(Utils.formatDate(run.scheduledFor))}<div class="text-muted text-sm">${Utils.escapeHtml(run.localTime)} ${Utils.escapeHtml(schedule.timezone)}</div></td>
+        <td>${Utils.escapeHtml(run.trigger)}</td><td><span class="badge ${Utils.statusBadgeClass(run.state)}">${Utils.escapeHtml(run.state)}</span><div class="text-muted text-sm">${Utils.escapeHtml(run.decision)}</div></td>
+        <td>${run.reason ? `<code>${Utils.escapeHtml(run.reason.code)}</code><div class="text-muted text-sm">${Utils.escapeHtml(run.reason.message)}</div>` : '—'}</td>
+        <td>${run.operationId ? `<a href="#/activity/${Utils.escapeHtml(run.operationId)}"><code>${Utils.escapeHtml(run.operationId)}</code></a>` : '—'}</td></tr>`).join('');
+      await Modal.confirm(`<div style="overflow:auto"><table class="data-table"><thead><tr><th>Scheduled / local</th><th>Trigger</th><th>Outcome</th><th>Reason</th><th>Operation</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="text-muted">No run evidence yet.</td></tr>'}</tbody></table></div>`, {
+        title: `${schedule.name} history`, confirmText: 'Close', html: true, width: '900px',
+      });
+    } catch (error) { Toast.error(error.message); }
+  },
+
+  async _loadActionSchedules(root, host, vm) {
+    if (!root) return;
+    root.innerHTML = '<div class="text-muted text-sm"><i class="fas fa-spinner fa-spin"></i> Loading action schedules…</div>';
+    try {
+      const envelope = await Api.getProviderVMActionSchedules(host.id, vm.id);
+      const admin = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
+      const rows = (envelope.items || []).map(schedule => `<tr><td><strong>${Utils.escapeHtml(schedule.name)}</strong><div class="text-muted text-sm">${Utils.escapeHtml(schedule.cron)} · ${Utils.escapeHtml(schedule.timezone)} · DST ${Utils.escapeHtml(schedule.dstPolicy)}</div></td>
+        <td>${Utils.escapeHtml(schedule.action)}</td><td><span class="badge ${schedule.enabled ? (schedule.mode === 'execute' ? 'badge-warning' : 'badge-info') : 'badge-secondary'}">${schedule.enabled ? Utils.escapeHtml(schedule.mode) : 'disabled'}</span></td>
+        <td>${schedule.consecutiveFailures}/${schedule.failureThreshold}</td><td>${schedule.lastRunStatus ? `<span class="badge ${Utils.statusBadgeClass(schedule.lastRunStatus)}">${Utils.escapeHtml(schedule.lastRunStatus)}</span>` : '—'}</td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" data-action-schedule-history="${schedule.id}">History</button>${admin ? `<button class="btn btn-sm btn-secondary" data-action-schedule-run="${schedule.id}">Run now</button><button class="btn btn-sm btn-secondary" data-action-schedule-edit="${schedule.id}">Edit</button><button class="btn btn-sm btn-danger" data-action-schedule-delete="${schedule.id}">Delete</button>` : ''}</td></tr>`).join('');
+      root.innerHTML = `<div class="card" style="padding:16px;margin-top:16px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h3 style="margin:0"><i class="fas fa-clock"></i> Scheduled VM actions</h3><div class="text-muted text-sm">Durable local-time cron · DST policy · blackout-aware provider preflight</div></div>${admin ? '<button class="btn btn-sm btn-primary" id="vm-action-schedule-create"><i class="fas fa-plus"></i> Add schedule</button>' : ''}</div>
+        ${!envelope.automation.executeEnabled ? '<div class="alert alert-warning text-sm" style="margin-top:12px">Execute automation is disabled by release policy. Dry-run schedules and previews remain available.</div>' : ''}
+        <div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Schedule</th><th>Action</th><th>Mode</th><th>Failures</th><th>Last outcome</th><th>Actions</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-muted">No action schedules configured.</td></tr>'}</tbody></table></div></div>`;
+      const reload = () => this._loadActionSchedules(root, host, vm);
+      root.querySelector('#vm-action-schedule-create')?.addEventListener('click', async () => { if (await this._editActionSchedule(host, vm)) reload(); });
+      root.querySelectorAll('[data-action-schedule-history]').forEach(button => button.addEventListener('click', () => {
+        const schedule = envelope.items.find(item => item.id === button.dataset.actionScheduleHistory);
+        if (schedule) this._showActionScheduleRuns(host, vm, schedule);
+      }));
+      root.querySelectorAll('[data-action-schedule-edit]').forEach(button => button.addEventListener('click', async () => {
+        const schedule = envelope.items.find(item => item.id === button.dataset.actionScheduleEdit);
+        if (schedule && await this._editActionSchedule(host, vm, schedule)) reload();
+      }));
+      root.querySelectorAll('[data-action-schedule-run]').forEach(button => button.addEventListener('click', async () => {
+        const schedule = envelope.items.find(item => item.id === button.dataset.actionScheduleRun); if (!schedule) return;
+        const execute = schedule.mode === 'execute';
+        const confirmed = await Modal.confirm(execute ? `Run ${Utils.escapeHtml(schedule.action)} now?` : 'Record a live dry-run preview now?', {
+          title: `Run ${schedule.name}`, confirmText: execute ? 'Run schedule' : 'Run dry-run', danger: execute,
+          typeToConfirm: execute ? vm.displayName : null,
+        });
+        if (!confirmed) return;
+        try {
+          const result = await Api.runProviderVMActionSchedule(host.id, vm.id, schedule.id,
+            execute ? { confirm: true, confirmName: vm.displayName } : {});
+          Toast.success(`Schedule run ${result.run?.state || 'recorded'}`);
+          if (result.run?.operationId) location.hash = `#/activity/${result.run.operationId}`; else reload();
+        } catch (error) { Toast.error(error.message); }
+      }));
+      root.querySelectorAll('[data-action-schedule-delete]').forEach(button => button.addEventListener('click', async () => {
+        const schedule = envelope.items.find(item => item.id === button.dataset.actionScheduleDelete); if (!schedule) return;
+        const confirmed = await Modal.confirm(`Delete schedule ${Utils.escapeHtml(schedule.name)}? Run evidence is retained until the schedule record is purged.`, {
+          title: 'Delete VM action schedule', confirmText: 'Delete schedule', danger: true,
+        });
+        if (!confirmed) return;
+        try { await Api.deleteProviderVMActionSchedule(host.id, vm.id, schedule.id); Toast.success('Action schedule deleted'); reload(); }
+        catch (error) { Toast.error(error.message); }
+      }));
+    } catch (error) { root.innerHTML = `<div class="alert alert-danger text-sm">${Utils.escapeHtml(error.message)}</div>`; }
   },
 
   _snapshotPlanHtml(plan) {
@@ -485,24 +754,35 @@ const VirtualMachinesPage = {
     } catch { this._hosts = []; }
     const route = this._parseRoute(params.id);
     if (route) return this._renderDetail(container, route);
+    try { await this._reloadInventoryViews(); } catch { this._views = []; }
+    const defaultView = this._views.find(view => view.isDefault) || null;
+    this._activeViewId = defaultView?.id || null;
+    this._viewState = this._stateFromView(defaultView);
+    if (this._viewState.providerHostId && !this._hosts.some(host => host.id === this._viewState.providerHostId)) {
+      this._viewState.providerHostId = null;
+    }
     return this._renderHome(container);
   },
 
   async _renderHome(container) {
     if (!this._hosts.length) {
-      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-desktop"></i> Virtual Machines</h1></div>
+      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-desktop"></i> ${i18n.t('nav.virtual-machines')}</h1></div>
         <div class="empty-msg"><i class="fas fa-desktop"></i>No supported virtualization endpoint is available.<br>
         Add Proxmox, vSphere, or Xen from <a href="#/hosts">Hosts</a>.</div>`;
       return;
     }
     this._selected.clear();
-    const selected = Api.getHostId();
+    const selected = this._viewState?.providerHostId || Api.getHostId();
     if (this._hosts.some(host => host.id === selected)) this._hostId = selected;
     if (!this._hosts.some(host => host.id === this._hostId)) this._hostId = this._hosts[0].id;
+    if (!this._viewState) this._viewState = this._defaultViewState();
+    this._viewState.providerHostId = this._hostId;
     const host = this._hosts.find(item => item.id === this._hostId);
+    const activeView = this._views.find(view => view.id === this._activeViewId) || null;
+    const columns = new Set(this._viewState.columns || this._defaultViewState().columns);
     container.innerHTML = `
       <div class="page-header">
-        <div><h1><i class="fas fa-desktop"></i> Virtual Machines</h1>
+        <div><h1><i class="fas fa-desktop"></i> ${i18n.t('nav.virtual-machines')}</h1>
           <div class="text-muted text-sm">Unified, provider-neutral inventory</div></div>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="common-vm-host" class="form-control" style="width:auto">
@@ -515,13 +795,28 @@ const VirtualMachinesPage = {
           <button class="btn btn-sm btn-secondary" id="common-vm-refresh"><i class="fas fa-sync"></i> Refresh</button>
         </div>
       </div>
-      <div class="card" style="padding:12px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <input id="common-vm-search" class="form-control" style="max-width:360px" placeholder="Filter virtual machines">
-        <select id="common-vm-state" class="form-control" style="width:auto">
-          <option value="all">All power states</option><option value="running">Running</option>
-          <option value="stopped">Stopped</option><option value="paused">Paused / suspended</option>
-          <option value="unknown">Unknown</option>
+      <div class="card" style="padding:12px;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="common-vm-view" class="form-control" style="width:auto;max-width:260px" aria-label="Saved inventory view">
+          <option value="">Built-in view</option>
+          ${this._views.map(view => `<option value="${view.id}"${view.id === this._activeViewId ? ' selected' : ''}>${Utils.escapeHtml(view.name)}${view.isDefault ? ' · default' : ''}</option>`).join('')}
         </select>
+        <button class="btn btn-sm btn-secondary" id="common-vm-view-save"><i class="fas fa-bookmark"></i> Save as</button>
+        <button class="btn btn-sm btn-secondary" id="common-vm-view-update"${activeView ? '' : ' disabled'}><i class="fas fa-save"></i> Update</button>
+        <button class="btn btn-sm btn-secondary" id="common-vm-view-default"${activeView || this._activeViewId ? '' : ' disabled'}><i class="fas fa-star"></i> Set default</button>
+        <button class="btn btn-sm btn-danger" id="common-vm-view-delete"${activeView ? '' : ' disabled'}><i class="fas fa-trash"></i> Delete</button>
+      </div>
+      <div class="card" style="padding:12px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <input id="common-vm-search" class="form-control" style="max-width:320px" placeholder="Filter virtual machines" value="${Utils.escapeHtml(this._viewState.query || '')}">
+        <select id="common-vm-state" class="form-control" style="width:auto">
+          ${[['all','All power states'],['running','Running'],['stopped','Stopped'],['paused','Paused / suspended'],['unknown','Unknown']].map(([value,label]) => `<option value="${value}"${this._viewState.powerState === value ? ' selected' : ''}>${label}</option>`).join('')}
+        </select>
+        <select id="common-vm-sort" class="form-control" style="width:auto" aria-label="Sort field">
+          ${[['name','Name'],['powerState','Power state'],['cpu','CPU'],['memory','Memory'],['ipAddress','IP address'],['observedAt','Observed time']].map(([value,label]) => `<option value="${value}"${this._viewState.sort.field === value ? ' selected' : ''}>Sort: ${label}</option>`).join('')}
+        </select>
+        <select id="common-vm-sort-direction" class="form-control" style="width:auto" aria-label="Sort direction"><option value="asc"${this._viewState.sort.direction === 'asc' ? ' selected' : ''}>Ascending</option><option value="desc"${this._viewState.sort.direction === 'desc' ? ' selected' : ''}>Descending</option></select>
+        <details><summary class="btn btn-sm btn-secondary" style="cursor:pointer">Columns</summary><div class="card" style="position:absolute;z-index:20;padding:10px;display:grid;gap:7px;margin-top:5px">
+          ${[['name','Name'],['powerState','Power state'],['cpu','CPU'],['memory','Memory'],['ipAddress','IP address'],['observedAt','Observed time']].map(([value,label]) => `<label style="display:flex;gap:7px;white-space:nowrap"><input type="checkbox" data-vm-column="${value}"${columns.has(value) ? ' checked' : ''}${value === 'name' ? ' disabled' : ''}> ${label}</label>`).join('')}
+        </div></details>
         <span class="text-muted text-sm" id="common-vm-count"></span>
       </div>
       <div class="card hidden" id="common-vm-bulk" style="padding:12px;margin-bottom:16px;gap:8px;align-items:center;flex-wrap:wrap">
@@ -531,13 +826,27 @@ const VirtualMachinesPage = {
       </div>
       <div id="common-vm-content"><div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Loading inventory…</div></div>`;
     container.querySelector('#common-vm-host').addEventListener('change', event => {
-      this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._renderHome(container);
+      this._syncViewStateFromControls(); this._hostId = Number(event.target.value); this._viewState.providerHostId = this._hostId; Api.setHost(this._hostId); this._renderHome(container);
     });
+    container.querySelector('#common-vm-view').addEventListener('change', event => {
+      const view = this._views.find(item => item.id === Number(event.target.value)) || null;
+      this._activeViewId = view?.id || null;
+      this._viewState = this._stateFromView(view);
+      if (!this._hosts.some(item => item.id === this._viewState.providerHostId)) this._viewState.providerHostId = this._hostId;
+      this._renderHome(container);
+    });
+    container.querySelector('#common-vm-view-save').addEventListener('click', () => this._saveInventoryView('create', container));
+    container.querySelector('#common-vm-view-update').addEventListener('click', () => this._saveInventoryView('update', container));
+    container.querySelector('#common-vm-view-default').addEventListener('click', () => this._setDefaultInventoryView(container));
+    container.querySelector('#common-vm-view-delete').addEventListener('click', () => this._deleteInventoryView(container));
     container.querySelector('#common-vm-refresh').addEventListener('click', () => this._loadInventory());
     container.querySelector('#common-host-maintenance-plan')?.addEventListener('click', () => this._planHostMaintenance(host));
     container.querySelector('#common-host-maintenance-runs')?.addEventListener('click', () => this._manageHostMaintenance(host));
-    container.querySelector('#common-vm-search').addEventListener('input', () => this._renderInventory());
-    container.querySelector('#common-vm-state').addEventListener('change', () => this._renderInventory());
+    container.querySelector('#common-vm-search').addEventListener('input', () => { this._syncViewStateFromControls(); this._renderInventory(); });
+    container.querySelector('#common-vm-state').addEventListener('change', () => { this._syncViewStateFromControls(); this._renderInventory(); });
+    container.querySelector('#common-vm-sort').addEventListener('change', () => { this._syncViewStateFromControls(); this._renderInventory(); });
+    container.querySelector('#common-vm-sort-direction').addEventListener('change', () => { this._syncViewStateFromControls(); this._renderInventory(); });
+    container.querySelectorAll('[data-vm-column]').forEach(input => input.addEventListener('change', () => { this._syncViewStateFromControls(); this._renderInventory(); }));
     container.querySelectorAll('[data-vm-bulk-action]').forEach(button => button.addEventListener('click', () => this._runBulkPower(button.dataset.vmBulkAction)));
     container.querySelector('#common-vm-clear-selection').addEventListener('click', () => { this._selected.clear(); this._renderInventory(); });
     await this._loadInventory();
@@ -561,12 +870,13 @@ const VirtualMachinesPage = {
     if (!target) return;
     const query = (document.getElementById('common-vm-search')?.value || '').trim().toLowerCase();
     const stateFilter = document.getElementById('common-vm-state')?.value || 'all';
-    const items = (this._inventory || []).filter(vm => {
+    const items = this._sortInventory((this._inventory || []).filter(vm => {
       const state = vm.status?.powerState || 'unknown';
       const stateMatches = stateFilter === 'all' || state === stateFilter
         || (stateFilter === 'paused' && state === 'suspended');
       return stateMatches && (!query || `${vm.displayName} ${vm.spec?.guestOS || ''} ${vm.status?.ipAddress || ''}`.toLowerCase().includes(query));
-    });
+    }), this._viewState?.sort);
+    const columns = new Set(this._viewState?.columns || this._defaultViewState().columns);
     const count = document.getElementById('common-vm-count');
     if (count) count.textContent = `${items.length} of ${(this._inventory || []).length} VM(s)`;
     if (!items.length) {
@@ -579,14 +889,14 @@ const VirtualMachinesPage = {
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <label style="display:flex;gap:9px;align-items:flex-start;min-width:0"><input type="checkbox" data-vm-select="${vm.id}" ${this._selected.has(vm.id) ? 'checked' : ''} aria-label="Select ${Utils.escapeHtml(vm.displayName)}">
             <a href="#/virtual-machines/${this._hostId}/${vm.id}" style="text-decoration:none;color:inherit;overflow-wrap:anywhere"><strong><i class="fas fa-desktop" style="color:var(--accent);margin-right:7px"></i>${Utils.escapeHtml(vm.displayName)}</strong></a></label>
-          <span class="badge ${Utils.statusBadgeClass(state)}">${Utils.escapeHtml(state)}</span>
+          ${columns.has('powerState') ? `<span class="badge ${Utils.statusBadgeClass(state)}">${Utils.escapeHtml(state)}</span>` : ''}
         </div>
-        <div class="text-muted text-sm" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px">
-          <span><i class="fas fa-microchip"></i> ${vm.spec?.cpuCount ?? '—'} vCPU</span>
-          <span><i class="fas fa-memory"></i> ${vm.spec?.memoryBytes != null ? Utils.formatBytes(vm.spec.memoryBytes) : '—'}</span>
-          <span><i class="fas fa-network-wired"></i> ${Utils.escapeHtml(vm.status?.ipAddress || 'No IP')}</span>
-          <span><i class="fas fa-clock"></i> ${Utils.escapeHtml(Utils.timeAgo(vm.observedAt))}</span>
-        </div>
+        ${columns.size > (columns.has('name') ? 1 : 0) + (columns.has('powerState') ? 1 : 0) ? `<div class="text-muted text-sm" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:7px">
+          ${columns.has('cpu') ? `<span><i class="fas fa-microchip"></i> ${vm.spec?.cpuCount ?? '—'} vCPU</span>` : ''}
+          ${columns.has('memory') ? `<span><i class="fas fa-memory"></i> ${vm.spec?.memoryBytes != null ? Utils.formatBytes(vm.spec.memoryBytes) : '—'}</span>` : ''}
+          ${columns.has('ipAddress') ? `<span><i class="fas fa-network-wired"></i> ${Utils.escapeHtml(vm.status?.ipAddress || 'No IP')}</span>` : ''}
+          ${columns.has('observedAt') ? `<span><i class="fas fa-clock"></i> ${Utils.escapeHtml(Utils.timeAgo(vm.observedAt))}</span>` : ''}
+        </div>` : ''}
         <div style="margin-top:12px;display:flex;gap:7px"><a class="btn btn-sm btn-secondary" href="#/virtual-machines/${this._hostId}/${vm.id}">Open details</a><button class="btn btn-sm btn-secondary" data-vm-basket="${vm.id}" title="Add to persistent selection basket"><i class="fas fa-basket-shopping"></i> Basket</button></div>
       </div>`;
     }).join('')}</div>`;
@@ -703,7 +1013,8 @@ const VirtualMachinesPage = {
             return `<div style="display:flex;justify-content:space-between;gap:16px;padding:10px;background:var(--surface2);border-radius:var(--radius)">
               <strong>${Utils.escapeHtml(decision.label || decision.action)}</strong>
               <span class="${decision.available ? 'text-success' : 'text-muted'}" title="${Utils.escapeHtml(explanation)}">${decision.available ? 'Available' : Utils.escapeHtml(explanation)}</span></div>`;
-          }).join('') || '<div class="empty-msg">No actions are exposed by this provider.</div>'}</div></div>`;
+          }).join('') || '<div class="empty-msg">No actions are exposed by this provider.</div>'}</div></div><div id="common-vm-action-schedules"></div>`;
+        this._loadActionSchedules(panel.querySelector('#common-vm-action-schedules'), host, vm);
       } },
       { key: 'hardware', label: 'Hardware', icon: 'fa-microchip', render: panel => {
         const value = detail.sections.hardware.data;
@@ -715,7 +1026,9 @@ const VirtualMachinesPage = {
         ]);
       } },
       { key: 'disks', label: 'Disks', icon: 'fa-hdd', render: panel => { this._mountDisks(panel, detail.sections.disks, host, vm); } },
-      { key: 'network', label: 'Network', icon: 'fa-network-wired', render: panel => { panel.innerHTML = networkSection(detail.sections.network); } },
+      { key: 'network', label: 'Network', icon: 'fa-network-wired', render: panel => {
+        this._mountNics(panel, detail.sections.network, host, vm, networkSection);
+      } },
       { key: 'migration', label: 'Migration', icon: 'fa-exchange-alt', render: panel => { this._mountMigrationPreflight(panel, host, vm); } },
       { key: 'events', label: 'Events', icon: 'fa-stream', render: panel => { panel.innerHTML = unavailable(detail.sections.events); } },
       { key: 'snapshots', label: 'Snapshots', icon: 'fa-camera', render: panel => { this._mountSnapshots(panel, detail.sections.snapshots, host, vm); } },
@@ -895,6 +1208,109 @@ const VirtualMachinesPage = {
     } catch (err) { Toast.error(err.message); if (panel?.isConnected) this._mountDisks(panel, {}, host, vm); }
   },
 
+  _nicPlanHtml(plan) {
+    const blockers = plan.blockers || [];
+    const warnings = plan.warnings || [];
+    return `<div class="text-sm">
+      ${blockers.length ? `<div class="alert alert-danger"><strong>NIC link operation blocked</strong><ul style="margin:8px 0 0 18px">${blockers.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="card" style="padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
+        <div><strong>VM</strong><br>${Utils.escapeHtml(plan.vm?.displayName || '—')}</div>
+        <div><strong>Interface</strong><br>${Utils.escapeHtml(plan.nic?.label || '—')}</div>
+        <div><strong>Action</strong><br>${Utils.escapeHtml(plan.action || '—')}</div>
+        <div><strong>Network</strong><br>${Utils.escapeHtml(plan.nic?.network?.name || plan.nic?.network?.bridge || plan.nic?.network?.id || '—')}</div>
+        <div><strong>Current / desired</strong><br>${Utils.escapeHtml(String(plan.nic?.currentConnected))} → ${Utils.escapeHtml(String(plan.expectedConnected))}</div>
+        <div><strong>Safety declaration</strong><br>${Utils.escapeHtml(plan.safety?.state || 'not required')}</div>
+      </div>
+      ${warnings.length ? `<div class="alert alert-warning" style="margin-top:12px"><strong>Warnings</strong><ul style="margin:8px 0 0 18px">${warnings.map(item => `<li>${Utils.escapeHtml(item.reason)}</li>`).join('')}</ul></div>` : ''}
+      <div class="alert alert-info" style="margin-top:12px">Only the link state is changed. This workflow cannot attach, detach, delete or remap the NIC. Rollback is never automatic and requires a fresh preflight.</div>
+    </div>`;
+  },
+
+  async _mountNics(panel, fallbackSection, host, vm, fallbackRenderer) {
+    panel.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Loading live NIC link state…</div>';
+    try {
+      const data = await Api.getProviderVMNics(host.id, vm.id);
+      if (!panel.isConnected) return;
+      const admin = App.user?.role === 'admin' || (App.user?.roles || []).includes('admin');
+      const canMutate = admin && data.release?.enabled === true;
+      const rows = (data.nics || []).map(nic => {
+        const connected = nic.attachment?.connected;
+        const action = connected === true ? 'disconnect' : connected === false ? 'connect' : '';
+        const safetyState = nic.safety?.state || 'missing';
+        const safetyClass = nic.safety?.valid ? 'badge-success'
+          : ['expired', 'hardware_changed', 'unsafe'].includes(safetyState) ? 'badge-warning' : 'badge-secondary';
+        const actionable = canMutate && action && nic.capabilities?.connectDisconnect === true;
+        return `<tr>
+          <td><strong>${Utils.escapeHtml(nic.label || nic.device || 'NIC')}</strong><div class="text-muted text-sm">MTU ${Utils.escapeHtml(nic.mtu ?? '—')}</div></td>
+          <td><code>${Utils.escapeHtml(nic.macAddress || '—')}</code><div class="text-muted text-sm">${Utils.escapeHtml(nic.model || '—')}</div></td>
+          <td>${Utils.escapeHtml(nic.network?.name || nic.network?.bridge || nic.network?.id || '—')}<div class="text-muted text-sm">${nic.network?.vlanId == null ? '' : `VLAN ${Utils.escapeHtml(nic.network.vlanId)}`}</div></td>
+          <td><span class="badge ${connected === true ? 'badge-success' : connected === false ? 'badge-secondary' : 'badge-warning'}">${connected === true ? 'connected' : connected === false ? 'disconnected' : 'unknown'}</span></td>
+          <td><span class="badge ${safetyClass}" title="${Utils.escapeHtml(nic.safety?.reason || 'No current declaration')}">${Utils.escapeHtml(safetyState)}</span>${nic.safety?.expiresAt ? `<div class="text-muted text-sm">${Utils.escapeHtml(Utils.timeAgo(nic.safety.expiresAt))}</div>` : ''}</td>
+          <td>${admin ? `<button class="btn btn-xs btn-secondary" data-nic-safety="${Utils.escapeHtml(nic.id)}">Declare safety</button>
+            <button class="btn btn-xs ${action === 'disconnect' ? 'btn-danger' : 'btn-primary'}" data-nic-link="${Utils.escapeHtml(nic.id)}" data-nic-action="${Utils.escapeHtml(action)}" ${actionable ? '' : 'disabled'} title="${Utils.escapeHtml(actionable ? `Review ${action} preflight` : data.release?.enabled ? 'Provider capability or link state is unknown' : `${data.release?.flag || 'Provider flag'} is disabled`)}">${Utils.escapeHtml(action || 'Unavailable')}</button>` : 'View only'}</td>
+        </tr>`;
+      }).join('');
+      panel.innerHTML = `<div class="alert alert-info" style="margin-bottom:12px"><strong>Link-only control.</strong> Disconnect is fail-closed on last NIC, management role, boot dependency, guest dependency, policy and provider evidence.</div>
+        ${rows ? `<div class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Interface</th><th>MAC / model</th><th>Network</th><th>Link</th><th>Safety</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : '<div class="empty-msg"><i class="fas fa-network-wired"></i>No network interfaces are configured for this VM.</div>'}`;
+      panel.querySelectorAll('[data-nic-safety]').forEach(button => button.addEventListener('click', () => {
+        const nic = (data.nics || []).find(item => item.id === button.dataset.nicSafety);
+        if (nic) this._declareNicSafety(host, vm, nic, panel);
+      }));
+      panel.querySelectorAll('[data-nic-link]').forEach(button => button.addEventListener('click', () => {
+        const nic = (data.nics || []).find(item => item.id === button.dataset.nicLink);
+        if (nic && button.dataset.nicAction) this._runNicLink(host, vm, nic, button.dataset.nicAction, panel);
+      }));
+    } catch (err) {
+      if (fallbackSection?.available && typeof fallbackRenderer === 'function') {
+        panel.innerHTML = `<div class="alert alert-warning">Live NIC controls are unavailable: ${Utils.escapeHtml(err.message)}</div>${fallbackRenderer(fallbackSection)}`;
+      } else panel.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  async _declareNicSafety(host, vm, nic, panel) {
+    try {
+      const input = await Modal.form(`<div class="alert alert-warning text-sm">This is a time-limited operator declaration, not provider-discovered truth. Select each value explicitly after checking the workload and runbook.</div>
+        <label class="form-label" for="nic-management">Management role</label><select id="nic-management" class="form-control"><option value="">Select…</option><option value="non_management">Not a management NIC</option><option value="management">Management NIC</option></select>
+        <label class="form-label" for="nic-boot" style="margin-top:12px">Boot dependency</label><select id="nic-boot" class="form-control"><option value="">Select…</option><option value="not_required">Not required for boot</option><option value="required">Required for boot</option></select>
+        <label class="form-label" for="nic-guest" style="margin-top:12px">Guest/service dependency</label><select id="nic-guest" class="form-control"><option value="">Select…</option><option value="not_required">No known dependency</option><option value="required">Required by guest/service</option></select>
+        <label class="form-label" for="nic-valid" style="margin-top:12px">Validity (hours)</label><input id="nic-valid" class="form-control" type="number" min="1" max="4" value="1">
+        <label class="form-label" for="nic-reason" style="margin-top:12px">Evidence / change reason</label><textarea id="nic-reason" class="form-control" minlength="8" maxlength="500" rows="3"></textarea>`, {
+        title: `NIC safety · ${nic.label || nic.device || 'interface'}`, submitLabel: 'Save declaration', width: '650px',
+        onSubmit: root => ({
+          managementRole: root.querySelector('#nic-management').value,
+          bootDependency: root.querySelector('#nic-boot').value,
+          guestDependency: root.querySelector('#nic-guest').value,
+          validForHours: Number(root.querySelector('#nic-valid').value),
+          reason: root.querySelector('#nic-reason').value.trim(),
+        }),
+      });
+      if (!input) return;
+      const result = await Api.declareProviderVMNicSafety(host.id, vm.id, nic.id, input);
+      Toast.success(`NIC safety declaration saved (${result.safety.state})`);
+      if (panel?.isConnected) this._mountNics(panel, {}, host, vm);
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async _runNicLink(host, vm, nic, action, panel) {
+    try {
+      const plan = await Api.preflightProviderVMNicLink(host.id, vm.id, nic.id, action);
+      if (!plan.allowed) return Modal.confirm(this._nicPlanHtml(plan), {
+        title: `NIC ${action} preflight`, confirmText: 'Close', html: true, width: '700px',
+      });
+      const confirmed = await Modal.confirm(this._nicPlanHtml(plan), {
+        title: `${action} ${nic.label || 'NIC'} · ${vm.displayName}`, confirmText: `Queue ${action}`,
+        danger: action === 'disconnect', typeToConfirm: plan.confirmation.expected, html: true, width: '700px',
+      });
+      if (!confirmed) return;
+      const result = await Api.submitProviderVMNicLink(host.id, vm.id, nic.id, {
+        action, planHash: plan.planHash, confirm: true, confirmText: plan.confirmation.expected,
+      }, this._idempotencyKey(`vm-nic-${action}`));
+      Toast.success(`NIC ${action} queued for ${vm.displayName}`);
+      location.hash = `#/activity/${result.operation.id}`;
+    } catch (err) { Toast.error(err.message); if (panel?.isConnected) this._mountNics(panel, {}, host, vm); }
+  },
+
   async _mountMigrationPreflight(panel, host, vm) {
     panel.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Evaluating migration targets…</div>';
     try {
@@ -1027,6 +1443,9 @@ const VirtualMachinesPage = {
     this._shell = null;
     this._inventory = [];
     this._selected.clear();
+    this._views = [];
+    this._activeViewId = null;
+    this._viewState = null;
   },
 };
 

@@ -342,6 +342,33 @@ class VSphereClient {
     return { taskRef, provider: 'vsphere' };
   }
 
+  async setVmNicLinkState(vmMoref, nic = {}, connected) {
+    const key = Number(nic.nativeRef);
+    const deviceType = String(nic.deviceType || '');
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))
+      || !Number.isSafeInteger(key)
+      || !/^Virtual(?:Vmxnet\d*|E1000e?|PCNet\d*|SriovEthernetCard|EthernetCard)$/.test(deviceType)
+      || typeof connected !== 'boolean') {
+      throw Object.assign(new Error('Invalid vSphere NIC link request'), {
+        code: 'INVALID_VM_NIC_LINK_REQUEST', status: 400,
+      });
+    }
+    const attachment = nic.attachment || {};
+    if (attachment.connected === connected) {
+      return { synchronous: true, unchanged: true, provider: 'vsphere' };
+    }
+    const optional = [
+      typeof attachment.startConnected === 'boolean'
+        ? `<startConnected>${attachment.startConnected}</startConnected>` : '',
+      typeof attachment.allowGuestControl === 'boolean'
+        ? `<allowGuestControl>${attachment.allowGuestControl}</allowGuestControl>` : '',
+    ].join('');
+    const change = `<operation>edit</operation><device xsi:type="${deviceType}"><key>${key}</key>`
+      + `<connectable>${optional}<connected>${connected}</connected></connectable></device>`;
+    const result = await this._reconfigureVmDisk(vmMoref, change);
+    return { ...result, unchanged: false };
+  }
+
   async createVmDisk(vmMoref, options = {}) {
     const controllerKey = Number(options.controllerKey);
     const unit = Number(options.unit);
@@ -1741,7 +1768,8 @@ function _parseVmHardware(deviceXml, guestNetXml) {
       const switchUuid = _extractTag(item.xml, 'switchUuid');
       const connectable = /<(?:\w+:)?connectable\b/.test(item.xml);
       nics.push({
-        nativeRef: key, label, device: label, model: item.type.replace(/^Virtual/, ''), macAddress,
+        nativeRef: key, deviceType: item.type, label, device: label,
+        model: item.type.replace(/^Virtual/, ''), macAddress,
         network: {
           id: portgroup || networkRef,
           name: guest?.network || _extractTag(item.xml, 'deviceName'), bridge: null,
@@ -1751,6 +1779,7 @@ function _parseVmHardware(deviceXml, guestNetXml) {
         attachment: {
           connected: guest?.connected ?? _tagBool(item.xml, 'connected'),
           startConnected: _tagBool(item.xml, 'startConnected'),
+          allowGuestControl: _tagBool(item.xml, 'allowGuestControl'),
         },
         security: {}, qos: {
           reservationMbps: (() => { const value = _tagNumber(item.xml, 'reservation'); return value === null ? null : value / 1000; })(),

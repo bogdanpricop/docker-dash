@@ -152,7 +152,7 @@ const VirtualizationCatalogPage = {
       this._hosts = ((await Api.getHosts()) || []).filter(host => host.isActive && ['proxmox', 'vsphere', 'xen'].includes(host.daemonType));
     } catch { this._hosts = []; }
     if (!this._hosts.length) {
-      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-images"></i> VM Catalog</h1></div>
+      container.innerHTML = `<div class="page-header"><h1><i class="fas fa-images"></i> ${i18n.t('nav.virtualization-catalog')}</h1></div>
         <div class="empty-msg"><i class="fas fa-images"></i>No supported virtualization endpoint is available.</div>`;
       return;
     }
@@ -160,7 +160,7 @@ const VirtualizationCatalogPage = {
     if (this._hosts.some(host => host.id === selected)) this._hostId = selected;
     if (!this._hosts.some(host => host.id === this._hostId)) this._hostId = this._hosts[0].id;
     container.innerHTML = `<div class="page-header">
-      <div><h1><i class="fas fa-images"></i> VM Catalog</h1><div class="text-muted text-sm">Provider-neutral templates, installation media and safety-gated VM creation</div></div>
+      <div><h1><i class="fas fa-images"></i> ${i18n.t('nav.virtualization-catalog')}</h1><div class="text-muted text-sm">Provider-neutral templates, installation media and safety-gated VM creation</div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="artifact-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(this._providerLabel(host.daemonType))}</option>`).join('')}</select>
         <button id="artifact-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Refresh</button>

@@ -112,7 +112,7 @@ const HighAvailabilityPage = {
       && Number.isInteger(Number(host.id)) && Number(host.id) > 0); }
     catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-shield-alt"></i> High Availability</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-shield-alt"></i> ${i18n.t('nav.high-availability')}</h1>
       <div class="text-muted text-sm">Provider-native HA facts, conservative failure simulations and evidence-bound recovery waves</div></div>
       <div style="display:flex;gap:8px;align-items:center"><select id="ha-host" class="form-control" aria-label="Virtualization endpoint">
         ${this._hosts.map(host => `<option value="${host.id}">${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select>

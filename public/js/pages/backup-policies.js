@@ -23,6 +23,7 @@ const BackupPoliciesPage = {
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:12px">
         <div><span class="text-muted text-sm">Schedule</span><br>${this._escape(policy.schedule?.frequency)} · ${this._escape(policy.schedule?.timezone)}</div>
+        <div><span class="text-muted text-sm">Backup mode</span><br>${this._escape(policy.backupMode || 'provider')}</div>
         <div><span class="text-muted text-sm">Scope</span><br>${this._escape(selected)}</div>
         <div><span class="text-muted text-sm">GFS</span><br>L${Number(retention.keepLast || 0)} D${Number(retention.daily || 0)} W${Number(retention.weekly || 0)} M${Number(retention.monthly || 0)} Y${Number(retention.yearly || 0)}</div>
         <div><span class="text-muted text-sm">Last plan</span><br><span class="badge ${policy.lastPlanStatus === 'blocked' ? 'badge-danger' : policy.lastPlanStatus === 'planned' ? 'badge-success' : 'badge-secondary'}">${this._escape(policy.lastPlanStatus || 'none')}</span> ${this._escape(this._date(policy.lastPlanAt))}</div>
@@ -62,10 +63,12 @@ const BackupPoliciesPage = {
       <td>${this._escape(this._policies.find(policy => policy.id === execution.policyId)?.name || execution.policyId)}</td>
       <td>${this._escape(execution.trigger)}</td><td><span class="badge ${execution.state === 'succeeded' ? 'badge-success' : ['failed', 'unknown'].includes(execution.state) ? 'badge-danger' : 'badge-warning'}">${this._escape(execution.state)}</span></td>
       <td>${Number(execution.summary?.succeeded || 0)}/${Number(execution.summary?.total || 0)}</td>
-      <td>${Number(execution.summary?.verificationPending || 0)}</td><td><strong>blocked</strong></td>
+      <td>${Number(execution.summary?.verificationPending || 0)}</td>
+      <td><code title="${this._escape(execution.contract?.contractHash || '')}">${this._escape(String(execution.contract?.contractHash || '').slice(0, 10) || '—')}</code></td>
+      <td><strong>blocked</strong></td>
       <td>${this._isAdmin() && ['queued', 'running', 'verification_pending'].includes(execution.state)
         ? `<button class="btn btn-sm btn-danger" data-execution-cancel="${this._escape(execution.id)}">Cancel</button>` : ''}</td></tr>`).join('');
-    return `<div id="backup-execution-list" class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Started</th><th>Policy</th><th>Trigger</th><th>State</th><th>Succeeded</th><th>Verification pending</th><th>Retention mutation</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<div id="backup-execution-list" class="card" style="overflow:auto"><table class="data-table"><thead><tr><th>Started</th><th>Policy</th><th>Trigger</th><th>State</th><th>Succeeded</th><th>Verification pending</th><th>Contract</th><th>Retention mutation</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   },
 
   _drillPoliciesHtml() {
@@ -94,6 +97,7 @@ const BackupPoliciesPage = {
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
         <label>Name<input id="bp-name" maxlength="120" class="form-control" value="Production GFS"></label>
         <label>Repository<select id="bp-repository" class="form-control">${repositories}</select></label>
+        <label>Backup mode<select id="bp-backup-mode" class="form-control"><option value="provider">provider native</option><option value="full">full</option><option value="incremental">incremental</option></select></label>
         <label>Frequency<select id="bp-frequency" class="form-control"><option>daily</option><option>hourly</option><option>weekly</option><option>monthly</option></select></label>
         <label>Timezone<input id="bp-timezone" maxlength="80" class="form-control" value="${this._escape(browserZone)}"></label>
         <label>Hour<input id="bp-hour" type="number" min="0" max="23" class="form-control" value="2"></label>
@@ -106,7 +110,16 @@ const BackupPoliciesPage = {
         <label>Explicit workloads<select id="bp-workloads" class="form-control" multiple size="5">${workloads}</select></label>
         <div><label>Label key<input id="bp-label-key" maxlength="64" class="form-control" placeholder="environment"></label>
           <label>Label value<input id="bp-label-value" maxlength="240" class="form-control" placeholder="production"></label></div>
+        <div><label>Sites (comma separated)<input id="bp-sites" maxlength="500" class="form-control" placeholder="bucharest, cluj"></label>
+          <label>Owners (comma separated)<input id="bp-owners" maxlength="500" class="form-control" placeholder="payments, platform"></label>
+          <label>Classifications<input id="bp-classifications" maxlength="300" class="form-control" placeholder="critical, confidential"></label></div>
         <label>Exclude workloads<select id="bp-exclusions" class="form-control" multiple size="5">${workloads}</select></label>
+        <div><label>Excluded label key<input id="bp-ex-label-key" maxlength="64" class="form-control" placeholder="backup"></label>
+          <label>Excluded label value<input id="bp-ex-label-value" maxlength="240" class="form-control" placeholder="disabled"></label></div>
+        <div><label>Disk exclusion workload<select id="bp-disk-workload" class="form-control"><option value="">none</option>${workloads}</select></label>
+          <label>Disk selector<input id="bp-disk-selector" maxlength="160" class="form-control" placeholder="scsi1 or [NOBAK]"></label></div>
+        <div><label>Path exclusion workload<select id="bp-path-workload" class="form-control"><option value="">none</option>${workloads}</select></label>
+          <label>Absolute path<input id="bp-path-selector" maxlength="240" class="form-control" placeholder="/var/cache"></label></div>
       </div>
       <h3>Retention and protection intent</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
@@ -118,12 +131,25 @@ const BackupPoliciesPage = {
         <label>Yearly<input id="bp-yearly" type="number" min="0" max="100" class="form-control" value="3"></label>
         <label>Consistency<select id="bp-consistency" class="form-control"><option value="crash">crash</option><option value="filesystem">filesystem</option><option value="application">application</option></select></label>
         <label>Fallback<select id="bp-fallback" class="form-control"><option value="fail">fail closed</option><option value="crash">crash</option><option value="filesystem">filesystem</option></select></label>
+        <label>Pre-freeze hook reference<input id="bp-pre-freeze" maxlength="120" class="form-control" placeholder="scripts/db-freeze-v1"></label>
+        <label>Post-thaw hook reference<input id="bp-post-thaw" maxlength="120" class="form-control" placeholder="scripts/db-thaw-v1"></label>
         <label>Encryption<select id="bp-encryption" class="form-control"><option>none</option><option>preferred</option><option>required</option></select></label>
+        <label>Encryption algorithm<select id="bp-encryption-algorithm" class="form-control"><option value="provider-native">provider native</option><option value="aes-256-gcm">AES-256-GCM</option></select></label>
         <label>Key reference (never key material)<input id="bp-key-ref" maxlength="120" class="form-control" placeholder="vault-key-alias"></label>
+        <label>Maximum key age days<input id="bp-key-age" type="number" min="0" max="36500" class="form-control" value="0"></label>
         <label>Immutability<select id="bp-immutability" class="form-control"><option>none</option><option>preferred</option><option>required</option></select></label>
         <label>Minimum lock days<input id="bp-lock-days" type="number" min="0" max="36500" class="form-control" value="0"></label>
         <label>Max concurrent<input id="bp-concurrency" type="number" min="1" max="32" class="form-control" value="1"></label>
+        <label>Global concurrent<input id="bp-limit-global" type="number" min="1" max="256" class="form-control" value="16"></label>
+        <label>Provider concurrent<input id="bp-limit-provider" type="number" min="1" max="128" class="form-control" value="8"></label>
+        <label>Host concurrent<input id="bp-limit-host" type="number" min="1" max="64" class="form-control" value="4"></label>
+        <label>Repository concurrent<input id="bp-limit-repository" type="number" min="1" max="32" class="form-control" value="2"></label>
         <label>Bandwidth Mbps<input id="bp-bandwidth" type="number" min="1" max="100000" class="form-control" placeholder="unlimited"></label>
+        <label>Bandwidth window start<input id="bp-bandwidth-start" type="time" class="form-control"></label>
+        <label>Bandwidth window end<input id="bp-bandwidth-end" type="time" class="form-control"></label>
+        <label>Window limit Mbps<input id="bp-bandwidth-window-limit" type="number" min="1" max="100000" class="form-control" placeholder="none"></label>
+        <label>Window site<input id="bp-bandwidth-site" maxlength="80" class="form-control" placeholder="optional"></label>
+        <label>Integrity evidence<select id="bp-integrity-methods" class="form-control" multiple size="4"><option value="provider" selected>provider verification</option><option value="metadata">catalog metadata</option><option value="checksum">checksum</option><option value="chain">incremental chain</option></select></label>
       </div>
       <div style="display:flex;gap:14px;align-items:center;margin-top:12px;flex-wrap:wrap">
         <label><input id="bp-enabled" type="checkbox"> Schedule plan generation</label>
@@ -136,35 +162,64 @@ const BackupPoliciesPage = {
 
   _number(id) { return Number(this._container.querySelector(`#${id}`)?.value); },
   _selected(id) { return [...(this._container.querySelector(`#${id}`)?.selectedOptions || [])].map(option => option.value); },
+  _csv(id) { return String(this._container.querySelector(`#${id}`)?.value || '').split(',').map(value => value.trim()).filter(Boolean); },
   _payload() {
     const key = this._container.querySelector('#bp-label-key')?.value.trim();
     const value = this._container.querySelector('#bp-label-value')?.value.trim();
+    const exclusionKey = this._container.querySelector('#bp-ex-label-key')?.value.trim();
+    const exclusionValue = this._container.querySelector('#bp-ex-label-value')?.value.trim();
+    const diskWorkload = this._container.querySelector('#bp-disk-workload')?.value;
+    const diskSelector = this._container.querySelector('#bp-disk-selector')?.value.trim();
+    const pathWorkload = this._container.querySelector('#bp-path-workload')?.value;
+    const pathSelector = this._container.querySelector('#bp-path-selector')?.value.trim();
     const bandwidth = this._container.querySelector('#bp-bandwidth')?.value;
+    const bandwidthStart = this._container.querySelector('#bp-bandwidth-start')?.value;
+    const bandwidthEnd = this._container.querySelector('#bp-bandwidth-end')?.value;
+    const bandwidthWindowLimit = this._container.querySelector('#bp-bandwidth-window-limit')?.value;
     return {
       ...(this._editing ? { id: this._editing } : {}),
       name: this._container.querySelector('#bp-name')?.value,
       repositoryId: this._container.querySelector('#bp-repository')?.value,
+      backupMode: this._container.querySelector('#bp-backup-mode')?.value,
       enabled: this._container.querySelector('#bp-enabled')?.checked === true, mode: 'plan_only',
       schedule: { frequency: this._container.querySelector('#bp-frequency')?.value,
         timezone: this._container.querySelector('#bp-timezone')?.value, hour: this._number('bp-hour'),
         minute: this._number('bp-minute'), weekday: this._number('bp-weekday'), dayOfMonth: this._number('bp-monthday') },
       scope: { includeAll: this._container.querySelector('#bp-all')?.checked === true,
-        workloadIds: this._selected('bp-workloads'), selectors: { match: 'all', labels: key && value ? { [key]: value } : {}, powerStates: [] },
-        exclusions: { workloadIds: this._selected('bp-exclusions'), labels: {}, diskSelectors: [] } },
+        workloadIds: this._selected('bp-workloads'), selectors: { match: 'all',
+          labels: key && value ? { [key]: value } : {}, powerStates: [], sites: this._csv('bp-sites'),
+          owners: this._csv('bp-owners'), classifications: this._csv('bp-classifications') },
+        exclusions: { workloadIds: this._selected('bp-exclusions'),
+          labels: exclusionKey && exclusionValue ? { [exclusionKey]: exclusionValue } : {},
+          diskSelectors: diskWorkload && diskSelector ? [{ workloadId: diskWorkload, selector: diskSelector }] : [],
+          pathSelectors: pathWorkload && pathSelector ? [{ workloadId: pathWorkload, path: pathSelector }] : [] } },
       consistency: { requested: this._container.querySelector('#bp-consistency')?.value,
-        fallback: this._container.querySelector('#bp-fallback')?.value, guestToolsRequired: false },
+        fallback: this._container.querySelector('#bp-fallback')?.value, guestToolsRequired: false,
+        preFreezeHookRef: this._container.querySelector('#bp-pre-freeze')?.value || null,
+        postThawHookRef: this._container.querySelector('#bp-post-thaw')?.value || null },
       retention: { keepLast: this._number('bp-keep-last'), hourly: this._number('bp-hourly'),
         daily: this._number('bp-daily'), weekly: this._number('bp-weekly'), monthly: this._number('bp-monthly'),
         yearly: this._number('bp-yearly'), weekStartsOn: 1 },
       protection: { encryption: { mode: this._container.querySelector('#bp-encryption')?.value,
-        keyReference: this._container.querySelector('#bp-key-ref')?.value || null },
+        algorithm: this._container.querySelector('#bp-encryption-algorithm')?.value,
+        keyReference: this._container.querySelector('#bp-key-ref')?.value || null,
+        maximumKeyAgeDays: this._number('bp-key-age') },
       immutability: { mode: this._container.querySelector('#bp-immutability')?.value,
         minimumLockDays: this._number('bp-lock-days') } },
       controls: { maxConcurrent: this._number('bp-concurrency'),
-        bandwidthLimitMbps: bandwidth ? Number(bandwidth) : null, window: null },
+        limits: { global: this._number('bp-limit-global'), provider: this._number('bp-limit-provider'),
+          host: this._number('bp-limit-host'), repository: this._number('bp-limit-repository') },
+        bandwidthLimitMbps: bandwidth ? Number(bandwidth) : null, window: null,
+        bandwidthWindows: bandwidthStart && bandwidthEnd && bandwidthWindowLimit ? [{
+          site: this._container.querySelector('#bp-bandwidth-site')?.value || null,
+          link: null, start: bandwidthStart, end: bandwidthEnd, days: [],
+          timezone: this._container.querySelector('#bp-timezone')?.value,
+          limitMbps: Number(bandwidthWindowLimit),
+        }] : [] },
       verification: { afterBackup: this._container.querySelector('#bp-verify')?.checked === true,
         maximumUnverifiedHours: 24,
-        restoreDrillRequired: this._container.querySelector('#bp-restore-drill')?.checked === true },
+        restoreDrillRequired: this._container.querySelector('#bp-restore-drill')?.checked === true,
+        requiredMethods: this._selected('bp-integrity-methods') },
     };
   },
 
@@ -195,6 +250,7 @@ const BackupPoliciesPage = {
     const policy = this._policies.find(item => item.id === policyId); if (!policy) return;
     this._editing = policy.id; this._container.querySelector('#backup-editor-title').textContent = `Edit ${policy.name}`;
     this._set('bp-name', policy.name); this._set('bp-repository', policy.repositoryId);
+    this._set('bp-backup-mode', policy.backupMode || 'provider');
     this._set('bp-frequency', policy.schedule.frequency); this._set('bp-timezone', policy.schedule.timezone);
     this._set('bp-hour', policy.schedule.hour); this._set('bp-minute', policy.schedule.minute);
     this._set('bp-weekday', policy.schedule.weekday); this._set('bp-monthday', policy.schedule.dayOfMonth);
@@ -202,11 +258,29 @@ const BackupPoliciesPage = {
     this._selectMany('bp-exclusions', policy.scope.exclusions?.workloadIds);
     const firstLabel = Object.entries(policy.scope.selectors?.labels || {})[0] || ['', ''];
     this._set('bp-label-key', firstLabel[0]); this._set('bp-label-value', firstLabel[1]);
+    this._set('bp-sites', (policy.scope.selectors?.sites || []).join(', '));
+    this._set('bp-owners', (policy.scope.selectors?.owners || []).join(', '));
+    this._set('bp-classifications', (policy.scope.selectors?.classifications || []).join(', '));
+    const firstExcludedLabel = Object.entries(policy.scope.exclusions?.labels || {})[0] || ['', ''];
+    this._set('bp-ex-label-key', firstExcludedLabel[0]); this._set('bp-ex-label-value', firstExcludedLabel[1]);
+    const diskExclusion = policy.scope.exclusions?.diskSelectors?.[0] || {};
+    this._set('bp-disk-workload', diskExclusion.workloadId || ''); this._set('bp-disk-selector', diskExclusion.selector || '');
+    const pathExclusion = policy.scope.exclusions?.pathSelectors?.[0] || {};
+    this._set('bp-path-workload', pathExclusion.workloadId || ''); this._set('bp-path-selector', pathExclusion.path || '');
     for (const key of ['keepLast', 'hourly', 'daily', 'weekly', 'monthly', 'yearly']) this._set(`bp-${key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`, policy.retention[key]);
     this._set('bp-consistency', policy.consistency.requested); this._set('bp-fallback', policy.consistency.fallback);
+    this._set('bp-pre-freeze', policy.consistency.preFreezeHookRef || ''); this._set('bp-post-thaw', policy.consistency.postThawHookRef || '');
     this._set('bp-encryption', policy.protection.encryption.mode); this._set('bp-key-ref', policy.protection.encryption.keyReference || '');
+    this._set('bp-encryption-algorithm', policy.protection.encryption.algorithm || 'provider-native');
+    this._set('bp-key-age', policy.protection.encryption.maximumKeyAgeDays || 0);
     this._set('bp-immutability', policy.protection.immutability.mode); this._set('bp-lock-days', policy.protection.immutability.minimumLockDays);
     this._set('bp-concurrency', policy.controls.maxConcurrent); this._set('bp-bandwidth', policy.controls.bandwidthLimitMbps || '');
+    this._set('bp-limit-global', policy.controls.limits?.global || 16); this._set('bp-limit-provider', policy.controls.limits?.provider || 8);
+    this._set('bp-limit-host', policy.controls.limits?.host || 4); this._set('bp-limit-repository', policy.controls.limits?.repository || 2);
+    const bandwidthWindow = policy.controls.bandwidthWindows?.[0] || {};
+    this._set('bp-bandwidth-start', bandwidthWindow.start || ''); this._set('bp-bandwidth-end', bandwidthWindow.end || '');
+    this._set('bp-bandwidth-window-limit', bandwidthWindow.limitMbps || ''); this._set('bp-bandwidth-site', bandwidthWindow.site || '');
+    this._selectMany('bp-integrity-methods', policy.verification.requiredMethods || ['provider']);
     this._check('bp-enabled', policy.enabled); this._check('bp-verify', policy.verification.afterBackup);
     this._check('bp-restore-drill', policy.verification.restoreDrillRequired);
     this._container.querySelector('#backup-editor-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -390,7 +464,7 @@ const BackupPoliciesPage = {
     this._container = container;
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'xen'].includes(host.daemonType)); } catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-calendar-check"></i> Backup Policies</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-calendar-check"></i> ${i18n.t('nav.backup-policies')}</h1>
       <div class="text-muted text-sm">Portable scope, schedule, GFS and protection intent with immutable plan evidence</div></div>
       <select id="backup-host" class="form-control" aria-label="Virtualization endpoint">${this._hosts.map(host => `<option value="${Number(host.id)}">${this._escape(host.name)} · ${this._escape(host.daemonType)}</option>`).join('')}</select></div>
       <div class="alert alert-warning"><strong>Snapshots are not backups.</strong> Policy plans target provider-reported backup repositories. Unknown capability evidence fails closed for required encryption or immutability.</div>

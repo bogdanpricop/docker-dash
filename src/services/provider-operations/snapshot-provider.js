@@ -25,24 +25,42 @@ function _nativeVmTarget(target, row) {
     ? target.identity.uuid : target.identity.nativeRef };
 }
 
-async function open(host, vmId, database) {
-  const identity = identityStore.resolveCanonical(vmId, { hostId: Number(host.id), kind: 'virtualMachine' }, database);
-  if (!identity || identity.providerType !== host.daemon_type || identity.stability === 'transient') {
-    throw Object.assign(new Error('Stable provider VM identity was not found'), { code: 'INVALID_OPERATION_RESOURCE' });
-  }
+function _clientForHost(host) {
   let client;
   if (host.daemon_type === 'proxmox') client = proxmox.fromHostRow(host);
   else if (host.daemon_type === 'vsphere') client = vsphere.fromHostRow(host);
   else if (host.daemon_type === 'xen') client = xen.clientForHost(host);
   else throw Object.assign(new Error('Provider does not support common VM snapshots'), { code: 'PROVIDER_ACTION_UNAVAILABLE' });
-  const target = { host, identity, client, vmId };
+  return client;
+}
+
+async function openHost(host) {
+  const session = { host, client: _clientForHost(host), rows: [] };
   try {
-    const rows = await client.listVMs();
-    target.row = rows.find(item => _matches(item, identity));
-    if (!target.row) throw Object.assign(new Error('Provider VM was not found'), { code: 'PROVIDER_VM_NOT_FOUND' });
-    target.native = _nativeVmTarget(target, target.row);
-    return target;
-  } catch (err) { await close(target); throw err; }
+    session.rows = await session.client.listVMs();
+    if (!Array.isArray(session.rows)) throw Object.assign(new Error('Provider returned invalid VM inventory'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    return session;
+  } catch (err) { await close(session); throw err; }
+}
+
+function targetFromSession(session, vmId, database) {
+  const identity = identityStore.resolveCanonical(vmId, {
+    hostId: Number(session?.host?.id), kind: 'virtualMachine',
+  }, database);
+  if (!identity || identity.providerType !== session?.host?.daemon_type || identity.stability === 'transient') {
+    throw Object.assign(new Error('Stable provider VM identity was not found'), { code: 'INVALID_OPERATION_RESOURCE' });
+  }
+  const target = { host: session.host, identity, client: session.client, vmId };
+  target.row = session.rows.find(item => _matches(item, identity));
+  if (!target.row) throw Object.assign(new Error('Provider VM was not found'), { code: 'PROVIDER_VM_NOT_FOUND' });
+  target.native = _nativeVmTarget(target, target.row);
+  return target;
+}
+
+async function open(host, vmId, database) {
+  const session = await openHost(host);
+  try { return targetFromSession(session, vmId, database); }
+  catch (err) { await close(session); throw err; }
 }
 
 async function close(target) {
@@ -66,6 +84,7 @@ async function list(target) {
     nativeRef: String(row.nativeRef ?? row.ref ?? row.id ?? ''),
     uuid: row.uuid || null, name: row.name || row.name_label || null,
     description: row.description || null, createdAt: row.createdAt || row.snapshot_time || null,
+    sizeBytes: row.sizeBytes ?? null,
     parentRef: row.parentRef || null, isCurrent: row.isCurrent === true,
     consistency: row.consistency || 'unknown',
   }));
@@ -134,6 +153,6 @@ async function cancelTask(target, task) {
 }
 
 module.exports = {
-  open, close, list, mutate, consolidationNeeded, taskStatus, cancelTask,
-  _internals: { _matches, _nativeVmTarget, _allowsCreate },
+  open, openHost, targetFromSession, close, list, mutate, consolidationNeeded, taskStatus, cancelTask,
+  _internals: { _matches, _nativeVmTarget, _allowsCreate, _clientForHost },
 };

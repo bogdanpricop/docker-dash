@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.80.0', date: '2026-07-31', title: 'Virtualization operations and backup control plane', changes: [
+      { type: 'feature', text: 'Saved VM inventory views and scheduled provider actions add per-user persistence, cron/timezone/blackout awareness and durable operation dispatch.' },
+      { type: 'feature', text: 'Snapshot-growth and repository-health monitoring add freshness, transition alerts and bounded probes with explicit data-plane boundaries.' },
+      { type: 'feature', text: 'Dependency, reachability, MTU, bond/LAG, load-balancer, public-IP and intent controls add evidence-bound analysis and planning; guarded NIC link control stays default-off.' },
+      { type: 'security', text: 'B129–B138 backup execution contracts bind scope, concurrency, bandwidth, encryption, immutability and integrity evidence; only Proxmox has a real executor.' },
+      { type: 'improvement', text: 'The 450-feature virtualization registry is now CI-gated, while shared control-plane navigation and dialogs improve keyboard and accessibility behavior.' },
+    ] },
     { version: '8.79.0', date: '2026-07-30', title: 'Guarded network and segmentation control plane', changes: [
       { type: 'feature', text: 'NIC attach validates model, VLAN, MAC and IP evidence; detach blocks management, last-interface, boot and guest-dependent removal.' },
       { type: 'feature', text: 'Immutable mapping profiles and VLAN, trunk, QinQ, VXLAN and tenant VPC/subnet plans add capability, version, MTU and blast-radius gates.' },

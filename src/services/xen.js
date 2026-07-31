@@ -1182,6 +1182,29 @@ class XapiClient {
     return { synchronous: true, provider: 'xapi', backingRef: record.VDI };
   }
 
+  async setVmNicLinkState(vifRef, connected) {
+    const ref = String(vifRef || '');
+    if (!/^OpaqueRef:[A-Za-z0-9._:-]{1,512}$/.test(ref) || typeof connected !== 'boolean') {
+      throw new XenError('Invalid XAPI VIF link request', {
+        code: 'INVALID_VM_NIC_LINK_REQUEST', status: 400, provider: 'xapi',
+      });
+    }
+    const record = await this._call('VIF.get_record', [ref]);
+    if (record.currently_attached === connected) {
+      return { synchronous: true, unchanged: true, provider: 'xapi' };
+    }
+    const operation = connected ? 'plug' : 'unplug';
+    if (!_hasOperation(record.allowed_operations, [operation])) {
+      throw new XenError(`XAPI VIF ${operation} is not currently allowed`, {
+        code: 'VM_NIC_LINK_ACTION_BLOCKED', status: 409, provider: 'xapi',
+      });
+    }
+    return {
+      taskRef: await this._call(`Async.VIF.${operation}`, [ref]),
+      provider: 'xapi', unchanged: false,
+    };
+  }
+
   async resizeVmDisk(vdiRef, sizeBytes) {
     const ref = String(vdiRef || '');
     const bytes = Number(sizeBytes);

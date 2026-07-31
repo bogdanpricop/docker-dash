@@ -373,6 +373,36 @@ class ProxmoxClient {
     return _parseProxmoxHardware(config || {}, type, interfaces);
   }
 
+  async setVmNicLinkState(node, vmid, guestType, device, connected) {
+    const base = this._guestPath(node, vmid, guestType);
+    const key = String(device || '');
+    if (!['qemu', 'lxc'].includes(String(guestType)) || !/^net\d{1,2}$/.test(key)
+      || typeof connected !== 'boolean') {
+      throw Object.assign(new Error('Invalid Proxmox NIC link request'), {
+        code: 'INVALID_VM_NIC_LINK_REQUEST', status: 400,
+      });
+    }
+    const config = await this._request('GET', `${base}/config`);
+    if (typeof config?.[key] !== 'string') {
+      throw Object.assign(new Error('Proxmox NIC is no longer attached'), {
+        code: 'PROVIDER_VM_NIC_NOT_FOUND', status: 404,
+      });
+    }
+    const parts = String(config[key]).split(',').map(value => value.trim()).filter(Boolean);
+    const current = !parts.some(value => /^link_down=(?:1|on|yes|true)$/i.test(value));
+    if (current === connected) return { synchronous: true, unchanged: true, provider: 'proxmox' };
+    const body = {
+      [key]: [...parts.filter(value => !/^link_down=/i.test(value)), `link_down=${connected ? 0 : 1}`].join(','),
+    };
+    if (typeof config.digest === 'string' && /^[a-f0-9]{40,128}$/i.test(config.digest)) body.digest = config.digest;
+    const taskRef = await this._request('PUT', `${base}/config`, body);
+    return {
+      ...(typeof taskRef === 'string' && taskRef.startsWith('UPID:')
+        ? { taskRef, node: String(node) } : { synchronous: true }),
+      provider: 'proxmox', unchanged: false,
+    };
+  }
+
   async createVmDisk(node, vmid, guestType, options = {}) {
     const base = this._guestPath(node, vmid, guestType);
     const device = String(options.device || '');

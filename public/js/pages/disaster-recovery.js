@@ -216,7 +216,7 @@ const DisasterRecoveryPage = {
     this._container = container;
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); } catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-house-medical-circle-check"></i> Disaster Recovery</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-house-medical-circle-check"></i> ${i18n.t('nav.disaster-recovery')}</h1>
       <div class="text-muted text-sm">Protection groups, RPO/RTO evidence, deterministic runbooks and non-mutating rehearsals</div></div>
       <select id="dr-host" class="form-control" aria-label="Virtualization endpoint">${this._hosts.map(host => `<option value="${Number(host.id)}">${this._escape(host.name)} · ${this._escape(host.daemonType)}</option>`).join('')}</select></div>
       <div class="alert alert-warning"><strong>No automatic failover is authorized.</strong> Real provider mutations require a future provider-specific transport with fencing, isolated networking, native task evidence and reprotection.</div><div id="dr-content"></div>`;

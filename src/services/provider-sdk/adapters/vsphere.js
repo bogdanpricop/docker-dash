@@ -81,6 +81,13 @@ function declared() {
     'network.ipInventory.read': conditional('VMware Tools network-address observations are collected read-only when available', { readOnly: true, bounded: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Virtual NICs are correlated with VMware Tools guest-network observations when available', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('Connect/disconnect evidence is derived from VirtualDeviceConnectInfo', { perResource: true, evidenceOnly: true }),
+    'vm.nic.connect': conditional('VirtualDeviceConnectInfo.connected is edited with ReconfigVM_Task and post-read verification', {
+      perResource: true, durableTask: true, existingDeviceOnly: true, detach: false, postVerify: true,
+    }),
+    'vm.nic.disconnect': conditional('VirtualDeviceConnectInfo.connected is edited only after a current Docker Dash safety declaration', {
+      perResource: true, durableTask: true, existingDeviceOnly: true, detach: false,
+      safetyDeclaration: true, postVerify: true,
+    }),
     'vm.clone': conditional('Full clone requires a valid folder, resource pool and datastore placement', { fromTemplate: true, modes: ['full'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template uses CloneVM_Task with live placement revalidation', { fromTemplate: true, durableTask: true, confirmation: true }),
     'vm.guestCustomize': conditional('LinuxPrep is checked against the source template before CloneVM_Task and applies on first boot', {

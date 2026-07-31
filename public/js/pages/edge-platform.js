@@ -4,18 +4,45 @@
 const EdgePlatformPage = {
   _container: null,
   _data: null,
+  _actionTab: 'site',
+
+  _actionGroups() {
+    return [
+      { key: 'site', icon: 'fa-location-dot', label: 'Site & connectivity', description: 'Register sites, local agents, connectivity evidence and air-gap content.', actions: [
+        ['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['agent','Agent'],['heartbeat','Heartbeat'],['bootstrap','Bootstrap'],['mirror','Mirror'],['enrollment-token','Enrollment token'],['enrollment-approve','Approve enrollment'],
+      ] },
+      { key: 'sync', icon: 'fa-arrows-rotate', label: 'Sync & updates', description: 'Manage bounded offline intents, store-and-forward synchronization and signed updates.', actions: [
+        ['intent','Offline intent'],['revalidate','Revalidate'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],
+      ] },
+      { key: 'security', icon: 'fa-shield-halved', label: 'Security & residency', description: 'Configure fail-closed residency, disconnected identity and locally resolved secrets.', actions: [
+        ['residency-policy','Residency policy'],['residency-check','Residency check'],['identity-policy','Identity policy'],['identity-grant','Identity grant'],['identity-activate','Activate grant'],['vault','Local vault'],['secret-plan','Secret plan'],['console','Console'],['remote-hands','Remote hands'],['remote-authorize','Authorize hands'],
+      ] },
+      { key: 'resilience', icon: 'fa-life-ring', label: 'Resilience & recovery', description: 'Assess small clusters and prepare independently approved recovery evidence.', actions: [
+        ['single-profile','Single-node'],['single-assess','Single assess'],['quorum','Quorum'],['reservation-policy','Reservations'],['reservation-assess','Reserve assess'],['bmc','BMC endpoint'],['bmc-inventory','BMC inventory'],['bmc-recovery','BMC recovery'],['bmc-authorize','Authorize BMC'],['disaster','Declare disaster'],['disaster-resolve','Resolve disaster'],['backup-seed','Backup seed'],['backup-checkpoint','Seed checkpoint'],
+      ] },
+      { key: 'compliance', icon: 'fa-clipboard-check', label: 'Compliance & topology', description: 'Record bounded compliance evidence and assess physical fault domains.', actions: [
+        ['compliance-profile','Compliance profile'],['compliance-snapshot','Compliance snapshot'],['fault-domain','Fault domain'],['fault-assess','Assess domains'],
+      ] },
+    ];
+  },
+
+  _actionLabel(action) {
+    return this._actionGroups().flatMap(group => group.actions).find(([key]) => key === action)?.[1] || action;
+  },
 
   async render(container) {
     this._container = container; container.innerHTML = '<div class="page-loading"><i class="fas fa-spinner fa-spin"></i></div>';
     try { this._data = await Api.getEdgeOverview(); this._paint(); }
-    catch (error) { container.innerHTML = `<div class="empty-state"><i class="fas fa-tower-broadcast"></i><h3>Edge &amp; disconnected</h3><p>${Utils.escapeHtml(error.message)}</p></div>`; }
+    catch (error) { container.innerHTML = `<div class="empty-state"><i class="fas fa-tower-broadcast"></i><h3>${i18n.t('nav.edge-platform')}</h3><p>${Utils.escapeHtml(error.message)}</p></div>`; }
   },
 
   _paint() {
     const data = this._data || {}; const summary = data.summary || {}; const sites = data.sites || [];
     const stateBadge = state => ['healthy','ready','active','allowed','compliant','acknowledged','ready_for_agent','ready_for_edge_agent','ready_for_local_operator'].includes(state) ? 'badge-success'
       : ['blocked','offline','expired','revalidation_required','non_compliant','at_risk','disaster'].includes(state) ? 'badge-danger' : 'badge-warning';
-    this._container.innerHTML = `<div class="page-header"><div><h1 class="page-title"><i class="fas fa-tower-broadcast" style="color:var(--accent);margin-right:10px"></i>Edge &amp; disconnected</h1>
+    const actionGroups = this._actionGroups();
+    const activeActionGroup = actionGroups.find(group => group.key === this._actionTab) || actionGroups[0];
+    this._container.innerHTML = `<div class="control-surface"><div class="page-header"><div><h1 class="page-title"><i class="fas fa-tower-broadcast" style="color:var(--accent);margin-right:10px"></i>${i18n.t('nav.edge-platform')}</h1>
       <p class="page-subtitle">Sovereign, resilient operations for ROBO, low-bandwidth and air-gapped sites.</p></div>
       <button class="btn btn-secondary" id="edge-refresh"><i class="fas fa-rotate"></i> Refresh</button></div>
       <div class="alert alert-info">Central execution remains disabled. Residency is fail-closed; cached identity returns no token; secrets resolve only at the edge. Remote-hands and BMC recovery require independent approval and create local JIT envelopes.</div>
@@ -30,9 +57,13 @@ const EdgePlatformPage = {
         ${this._stat('fa-clipboard-check','Non-compliant sites',summary.nonCompliantSites || 0)}${this._stat('fa-network-wired','Topology risks',summary.atRiskFaultDomains || 0)}
         ${this._stat('fa-certificate','Pending enrollments',summary.pendingEnrollments || 0)}
       </div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0">
-        ${[['site','Site'],['connectivity','Connectivity'],['cache','Cache evidence'],['intent','Offline intent'],['revalidate','Revalidate'],['agent','Agent'],['heartbeat','Heartbeat'],['sync-policy','Sync policy'],['events','Buffer events'],['sync-plan','Sync plan'],['ack','Acknowledge'],['runbook','Runbook envelope'],['update','Update plan'],['bootstrap','Bootstrap'],['mirror','Mirror'],['residency-policy','Residency policy'],['residency-check','Residency check'],['identity-policy','Identity policy'],['identity-grant','Identity grant'],['identity-activate','Activate grant'],['vault','Local vault'],['secret-plan','Secret plan'],['single-profile','Single-node'],['single-assess','Single assess'],['quorum','Quorum'],['reservation-policy','Reservations'],['reservation-assess','Reserve assess'],['console','Console'],['remote-hands','Remote hands'],['remote-authorize','Authorize hands'],['bmc','BMC endpoint'],['bmc-inventory','BMC inventory'],['bmc-recovery','BMC recovery'],['bmc-authorize','Authorize BMC'],['disaster','Declare disaster'],['disaster-resolve','Resolve disaster'],['backup-seed','Backup seed'],['backup-checkpoint','Seed checkpoint'],['compliance-profile','Compliance profile'],['compliance-snapshot','Compliance snapshot'],['fault-domain','Fault domain'],['fault-assess','Assess domains'],['enrollment-token','Enrollment token'],['enrollment-approve','Approve enrollment']].map(([key,label], index) => `<button class="btn btn-sm ${index === 0 ? 'btn-primary' : 'btn-secondary'}" data-edge-action="${key}">${label}</button>`).join('')}
+      <div class="tabs control-tabs" role="tablist" aria-label="Edge operation categories">
+        ${actionGroups.map(group => { const active = group.key === activeActionGroup.key; return `<button type="button" class="tab ${active ? 'active' : ''}" role="tab" aria-selected="${active}" tabindex="${active ? 0 : -1}" data-edge-tab="${group.key}"><i class="fas ${group.icon}" aria-hidden="true"></i>${group.label}<span class="badge badge-secondary">${group.actions.length}</span></button>`; }).join('')}
       </div>
+      <section class="card control-action-panel" role="tabpanel" tabindex="0">
+        <div class="card-header"><div><h3>${activeActionGroup.label}</h3><p class="text-muted text-sm">${activeActionGroup.description}</p></div></div>
+        <div class="card-body control-action-grid">${activeActionGroup.actions.map(([key,label]) => `<button type="button" class="btn btn-secondary btn-sm" data-edge-action="${key}"><i class="fas fa-arrow-right" aria-hidden="true"></i>${label}</button>`).join('')}</div>
+      </section>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px">
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Sites &amp; connectivity</h3></div><table class="data-table"><thead><tr><th>Site</th><th>Region / owner</th><th>Connectivity</th><th>Health</th></tr></thead><tbody>
           ${sites.map(site => `<tr><td><strong>${Utils.escapeHtml(site.name)}</strong><div class="mono text-xs">#${site.id} · ${Utils.escapeHtml(site.slug)} · ${Utils.escapeHtml(site.timezone)}</div></td><td>${Utils.escapeHtml(site.region)} / ${Utils.escapeHtml(site.localOwner)}<div class="text-xs text-muted">${site.hosts.length} hosts · ${Utils.escapeHtml(site.jurisdiction)}</div></td><td>${Utils.escapeHtml(site.connectivity?.mode || 'unknown')}<div class="text-xs text-muted">cache ${site.connectivity?.cacheTtlSeconds || '—'}s · mutations ${site.connectivity?.mutationMode || 'deny'}</div></td><td><span class="badge ${stateBadge(site.health)}">${Utils.escapeHtml(site.health)}</span><div class="text-xs text-muted">${site.heartbeat ? `${site.heartbeat.ageSeconds}s · seq ${site.heartbeat.sequence}` : 'no heartbeat'}</div></td></tr>`).join('') || this._empty('No edge sites', 4)}
@@ -80,8 +111,13 @@ const EdgePlatformPage = {
         <div class="card" style="overflow:auto"><div class="card-header"><h3>Zero-touch enrollment attestations</h3></div><table class="data-table"><thead><tr><th>Agent</th><th>Hardware identity</th><th>State</th></tr></thead><tbody>
           ${(data.enrollments || []).map(item => `<tr><td>${Utils.escapeHtml(item.agentId)}<div class="mono text-xs">attestation #${item.id} · site #${item.siteId}</div></td><td>${Utils.escapeHtml(item.hardwareClaims?.manufacturer || '')} ${Utils.escapeHtml(item.hardwareClaims?.model || '')}<div class="text-xs text-muted">${Utils.escapeHtml(item.hardwareClaims?.serialNumber || '')}</div></td><td><span class="badge ${stateBadge(item.state)}">${Utils.escapeHtml(item.state)}</span></td></tr>`).join('') || this._empty('No enrollment attestations', 3)}
         </tbody></table><div class="card-body text-sm text-muted">Tokens are single-use; agents generate their own key pair and only public fingerprints are retained.</div></div>
-      </div>`;
+      </div></div>`;
     this._container.querySelector('#edge-refresh')?.addEventListener('click', () => this.render(this._container));
+    this._container.querySelectorAll('[data-edge-tab]').forEach(button => button.addEventListener('click', () => {
+      this._actionTab = button.dataset.edgeTab;
+      this._paint();
+      this._container.querySelector(`[data-edge-tab="${this._actionTab}"]`)?.focus();
+    }));
     this._container.querySelectorAll('[data-edge-action]').forEach(button => button.addEventListener('click', () => this._dialog(button.dataset.edgeAction)));
   },
 
@@ -136,8 +172,9 @@ const EdgePlatformPage = {
       'enrollment-token': { siteId: 1, expectedHardware: { manufacturer: 'Dell', model: 'R650', serialNumber: 'ABC123', tpmEkHash: digestA }, runbookAllowlist: ['collect_inventory','network_diagnostics'], updateRing: 'canary', ttlSeconds: 600 },
       'enrollment-approve': { attestationId: 1, attestationHash: 'copy exact attestationHash', confirmation: 'edge-node-a', certificateFingerprint: digestA },
     };
-    const result = await Modal.form(`<p class="text-muted text-sm">Only references and bounded evidence are accepted. Inline credentials/private keys are rejected.</p><textarea id="edge-action-json" class="form-control mono" rows="24">${Utils.escapeHtml(JSON.stringify(examples[action], null, 2))}</textarea>`, {
-      title: `Edge platform · ${action}`, width: '900px', confirmText: action === 'ack' ? 'Acknowledge exact plan' : 'Validate and save',
+    const actionLabel = this._actionLabel(action);
+    const result = await Modal.form(`<div class="alert alert-info text-sm">Only references and bounded evidence are accepted. Inline credentials and private keys are rejected.</div><label for="edge-action-json" class="form-label">${Utils.escapeHtml(actionLabel)} payload (JSON)</label><textarea id="edge-action-json" class="form-control mono" rows="24" aria-describedby="edge-action-help">${Utils.escapeHtml(JSON.stringify(examples[action], null, 2))}</textarea><p class="form-help" id="edge-action-help">Review the example carefully. Validation is performed before any evidence is saved.</p>`, {
+      title: `Edge platform · ${actionLabel}`, width: '900px', confirmText: action === 'ack' ? 'Acknowledge exact plan' : 'Validate and save',
       onSubmit: async content => {
         let body; try { body = JSON.parse(content.querySelector('#edge-action-json').value); } catch { Toast.error('JSON is invalid'); return false; }
         try {

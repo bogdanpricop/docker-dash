@@ -59,6 +59,18 @@ describe('common virtual machines page routing', () => {
     expect(source).not.toContain('nativeRef');
   });
 
+  it('wires blackout-aware scheduled VM actions with typed execute authorization', () => {
+    const loader = page._loadActionSchedules.toString();
+    const editor = page._editActionSchedule.toString();
+    expect(loader).toContain('getProviderVMActionSchedules');
+    expect(loader).toContain('runProviderVMActionSchedule');
+    expect(loader).toContain('consecutiveFailures');
+    expect(editor).toContain('dstPolicy');
+    expect(editor).toContain('blackoutWindows');
+    expect(editor).toContain('typeToConfirm: vm.displayName');
+    expect(editor).toContain('Stop is a graceful guest shutdown');
+  });
+
   it('renders safe host-maintenance plan/run evidence and wires persistent controls', () => {
     global.Utils = {
       escapeHtml: value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
@@ -80,5 +92,49 @@ describe('common virtual machines page routing', () => {
     expect(controls).toContain('controlProviderHostMaintenance');
     expect(controls).toContain('Completed migrations stay on their targets');
     delete global.Utils;
+  });
+
+  it('normalizes saved inventory view state without sharing mutable arrays', () => {
+    const view = {
+      providerHostId: 7,
+      filters: { query: 'prod', powerState: 'running' },
+      columns: ['name', 'cpu'],
+      sort: { field: 'cpu', direction: 'desc' },
+    };
+    const state = page._stateFromView(view);
+    expect(state).toEqual({
+      providerHostId: 7, query: 'prod', powerState: 'running',
+      columns: ['name', 'cpu'], sort: { field: 'cpu', direction: 'desc' },
+    });
+    state.columns.push('memory');
+    state.sort.direction = 'asc';
+    expect(view.columns).toEqual(['name', 'cpu']);
+    expect(view.sort.direction).toBe('desc');
+  });
+
+  it('builds the persisted VM view contract and includes versions only for updates', () => {
+    page._viewState = {
+      providerHostId: 4, query: 'db', powerState: 'stopped',
+      columns: ['name', 'memory'], sort: { field: 'memory', direction: 'asc' },
+    };
+    expect(page._viewPayload('Databases', false)).toEqual({
+      name: 'Databases', resourceType: 'virtual-machines', providerHostId: 4,
+      filters: { query: 'db', powerState: 'stopped' },
+      columns: ['name', 'memory'], sort: { field: 'memory', direction: 'asc' },
+      isDefault: false,
+    });
+    expect(page._viewPayload('Databases', true, 3)).toEqual(expect.objectContaining({ version: 3, isDefault: true }));
+    page._viewState = null;
+  });
+
+  it('sorts a copy of inventory deterministically and puts missing values last', () => {
+    const items = [
+      { displayName: 'small', spec: { cpuCount: 2 } },
+      { displayName: 'unknown', spec: {} },
+      { displayName: 'large', spec: { cpuCount: 8 } },
+    ];
+    expect(page._sortInventory(items, { field: 'cpu', direction: 'desc' }).map(item => item.displayName))
+      .toEqual(['large', 'small', 'unknown']);
+    expect(items.map(item => item.displayName)).toEqual(['small', 'unknown', 'large']);
   });
 });

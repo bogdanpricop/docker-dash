@@ -2,6 +2,35 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.80.0] - 2026-07-31 — Virtualization operations and backup control plane
+
+- Saved VM inventory views persist per-user filters, columns and sorting with
+  ownership, bounded count and default-view enforcement.
+- Scheduled VM actions add cron/timezone/blackout-aware start, shutdown,
+  reboot and snapshot dispatch through the durable operation core.
+- Snapshot-growth and repository-health monitors add freshness, transition
+  alerts, bounded DNS/TCP probes and explicit opt-in data-plane contracts.
+- Dependency, reachability, MTU, bond/LAG, load-balancer, public-IP and network
+  intent surfaces add evidence-bound analysis and planning. VM NIC link control
+  is guarded, provider-specific and disabled by default.
+- Governance, Self-Service, Identity & Policy and Edge use consistent tabs,
+  keyboard behavior and accessible modal handling across the new controls.
+- The virtualization research registry now validates all 450 feature IDs in CI
+  and distinguishes local, partial and provider-backed delivery evidence.
+
+- Added a persistent, hash-bound execution contract for B129–B138 covering
+  provider/full/incremental intent, dynamic site/owner/classification scope,
+  explicit exclusions and consistency hook references.
+- Backup admission now applies the strictest global, provider, host, repository
+  and policy concurrency limit. Site/link/timezone bandwidth windows are
+  selected deterministically before child dispatch.
+- Encryption algorithm/key-reference/key-age, immutable lock duration and
+  provider/metadata/checksum/chain integrity requirements are evaluated
+  fail-closed. Evidence is hashed and deduplicated per execution item.
+- GFS remains advisory and every execution still records
+  `retentionMutationAuthorized:false`. Proxmox is the only real executor;
+  XO and vSphere remain blocked until a task-aware job or data mover exists.
+
 ## [8.79.0] - 2026-07-30 — Guarded network and segmentation control plane
 
 This batch closes B102, B103 and B105–B117 with a unified network lifecycle,

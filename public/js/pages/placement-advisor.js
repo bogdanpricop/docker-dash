@@ -81,7 +81,7 @@ const PlacementAdvisorPage = {
     try { this._hosts = (await Api.getHosts()).filter(host => ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); }
     catch { this._hosts = []; }
     this._hostId = this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-balance-scale"></i> Placement Advisor</h1>
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-balance-scale"></i> ${i18n.t('nav.placement-advisor')}</h1>
       <div class="text-muted text-sm">Affinity-aware planning with four-eyes approval, durable execution, auto-pause and semantic rollback</div></div>
       <select id="placement-host" class="form-control" aria-label="Virtualization endpoint">${this._hosts.map(host => `<option value="${Number(host.id)}">${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select></div>
       <div id="placement-affinity"></div><section class="card" style="padding:14px;margin-top:18px"><h2 style="margin-top:0">VM recommendation</h2>

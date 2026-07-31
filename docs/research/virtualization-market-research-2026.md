@@ -554,54 +554,60 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 
 ## 7. Catalog agregat și deduplicat — 450 feature-uri candidate
 
-**Coloane:** `Val.` = valoare dominantă (`Ops`, `Sig` securitate, `Rez` reziliență, `DX`, `Cost`, `Gov`); `Ef.` = efort relativ (`S`, `M`, `L`, `XL`); `Oriz.` = `Now` (0–6 luni), `Next` (6–15 luni), `Later` (15+ luni). Prioritatea este orientativă și presupune validare cu utilizatori și endpoint-uri reale.
+**Coloane:** `Val.` = valoare dominantă (`Ops`, `Sig` securitate, `Rez` reziliență, `DX`, `Cost`, `Gov`); `Ef.` = efort relativ (`S`, `M`, `L`, `XL`); `Oriz.` păstrează `Now` (0–6 luni), `Next` (6–15 luni), `Later` (15+ luni) pentru itemii deschiși, iar `Partial` și `Done` reprezintă starea de livrare reconciliată. Prioritatea este orientativă și presupune validare cu utilizatori și endpoint-uri reale. Proiecția machine-readable și limitările nivelului de livrare sunt în [`virtualization-feature-registry.json`](virtualization-feature-registry.json).
 
 ### A. Provider platform și inventar (B001–B025)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B001 | Provider SDK v2 | Interfață versionată pentru inventory/actions/tasks/events. | DX | L | Now |
-| B002 | Capability schema versionată | Contract typed cu suport, condiții și motive de indisponibilitate. | Ops | M | Now |
-| B003 | Capability discovery live | Detectare per endpoint/edition/version/backend, cu cache invalidabil. | Ops | M | Now |
-| B004 | Resource ID canonic | UUID stabil plus native reference intern și mapping istoric. | Ops | M | Now |
-| B005 | Common VM model | Normalizare state, hardware, guest, placement și ownership. | Ops | L | Now |
-| B006 | Common host model | Health, maintenance, capacity, hardware și version. | Ops | M | Now |
-| B007 | Common cluster/pool model | HA state, quorum, capacity și coordinator. | Ops | M | Now |
-| B008 | Common datastore model | Capacity, backend, shared state, health și capabilities. | Ops | M | Now |
-| B009 | Common network model | Switch/network/VPC, CIDR, VLAN și provider metadata. | Ops | M | Now |
-| B010 | Common task model | State machine, progress, owner, cancelability și native link. | Ops | L | Now |
+| B001 | Provider SDK v2 | Interfață versionată pentru inventory/actions/tasks/events. | DX | L | Done |
+| B002 | Capability schema versionată | Contract typed cu suport, condiții și motive de indisponibilitate. | Ops | M | Done |
+| B003 | Capability discovery live | Detectare per endpoint/edition/version/backend, cu cache invalidabil. | Ops | M | Done |
+| B004 | Resource ID canonic | UUID stabil plus native reference intern și mapping istoric. | Ops | M | Done |
+| B005 | Common VM model | Normalizare state, hardware, guest, placement și ownership. | Ops | L | Done |
+| B006 | Common host model | Health, maintenance, capacity, hardware și version. | Ops | M | Done |
+| B007 | Common cluster/pool model | HA state, quorum, capacity și coordinator. | Ops | M | Done |
+| B008 | Common datastore model | Capacity, backend, shared state, health și capabilities. | Ops | M | Done |
+| B009 | Common network model | Switch/network/VPC, CIDR, VLAN și provider metadata. | Ops | M | Done |
+| B010 | Common task model | State machine, progress, owner, cancelability și native link. | Ops | L | Done |
 | B011 | Common event model | Event envelope deduplicat cu cursor și severity. | Ops | L | Done |
 | B012 | Incremental inventory sync | Delta/cursor sync în loc de full polling. | Ops | L | Done |
-| B013 | Inventory cache cu freshness | TTL, ETag/version, stale badge și refresh reason. | Ops | M | Now |
-| B014 | Cross-provider global search | Căutare VM/host/storage/network/tag în toată flota. | Ops | M | Now |
-| B015 | Saved inventory views | Filtre/coloane/sortare salvate per utilizator. | DX | S | Now |
+| B013 | Inventory cache cu freshness | TTL, ETag/version, stale badge și refresh reason. | Ops | M | Done |
+| B014 | Cross-provider global search | Căutare VM/host/storage/network/tag în toată flota. | Ops | M | Done |
+| B015 | Saved inventory views | Filtre/coloane/sortare salvate per utilizator. | DX | S | Partial |
 | B016 | Resource collections | Grupuri dinamice după tag, regex, provider, site sau state. | Ops | M | Done |
 | B017 | Custom metadata fields | Schema administrată pentru CMDB/business context. | Gov | M | Done |
-| B018 | Ownership și contacts | Owner, service, cost center, pager și runbook URL. | Gov | S | Now |
+| B018 | Ownership și contacts | Owner, service, cost center, pager și runbook URL. | Gov | S | Done |
 | B019 | Resource relationship graph | VM–host–cluster–disk–network–backup dependency graph. | Ops | L | Done |
 | B020 | Duplicate/orphan detector | Resurse fără owner, disk-uri detașate, imagini nefolosite. | Cost | M | Done |
-| B021 | Provider health contract | Auth, reachability, latency, clock skew și API degradation. | Rez | M | Now |
-| B022 | Provider circuit breaker | Backoff, half-open probes și limitarea cascadei de erori. | Rez | M | Now |
+| B021 | Provider health contract | Auth, reachability, latency, clock skew și API degradation. | Rez | M | Done |
+| B022 | Provider circuit breaker | Backoff, half-open probes și limitarea cascadei de erori. | Rez | M | Done |
 | B023 | Rate-limit budget manager | Adaptive concurrency pe endpoint/API. | Rez | M | Done |
-| B024 | Provider compatibility registry | Matrice testată de versiuni/ediții/drivere. | Gov | M | Now |
-| B025 | Provider conformance kit | Fixtures, contract tests și fake endpoints pentru pluginuri. | DX | L | Now |
+| B024 | Provider compatibility registry | Matrice testată de versiuni/ediții/drivere. | Gov | M | Done |
+| B025 | Provider conformance kit | Fixtures, contract tests și fake endpoints pentru pluginuri. | DX | L | Done |
+
+**Status implementare locală 2026-07-30:** B015 are migrare, service, API și UI
+pentru view-uri personale pe inventarul VM, inclusiv host, filtre, coloane,
+sortare și default per utilizator. Testele route/migration/ownership/frontend și
+regresiile provider sunt verzi; rămâne browser smoke și includerea într-un
+release înainte ca rândul să fie promovat la `Done`.
 
 ### B. VM lifecycle și provisioning (B026–B050)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B026 | Unified VM detail shell | Overview/hardware/disks/NICs/snapshots/tasks/events într-un UI comun. | Ops | M | Now |
-| B027 | Safe power actions | Start/shutdown/reboot/pause/suspend cu capability și policy gates. | Ops | M | Now |
-| B028 | Bulk VM power actions | Selecție multiplă, concurrency cap și rezultat per VM. | Ops | M | Now |
-| B029 | VM action preflight | Verifică state, tools, locks, HA și task-uri conflictuale. | Rez | M | Now |
-| B030 | Typed destructive confirmation | Confirmare cu numele VM și blast-radius preview. | Sig | S | Now |
-| B031 | VM create wizard | Plan de compute/storage/network/image înainte de apply. | DX | L | Now |
-| B032 | Create from template | Provisionare vendor-neutrală din golden image. | DX | L | Now |
-| B033 | Full VM clone | Clone cu alegere target cluster/storage/network. | DX | L | Now |
+| B026 | Unified VM detail shell | Overview/hardware/disks/NICs/snapshots/tasks/events într-un UI comun. | Ops | M | Done |
+| B027 | Safe power actions | Start/shutdown/reboot/pause/suspend cu capability și policy gates. | Ops | M | Done |
+| B028 | Bulk VM power actions | Selecție multiplă, concurrency cap și rezultat per VM. | Ops | M | Done |
+| B029 | VM action preflight | Verifică state, tools, locks, HA și task-uri conflictuale. | Rez | M | Done |
+| B030 | Typed destructive confirmation | Confirmare cu numele VM și blast-radius preview. | Sig | S | Done |
+| B031 | VM create wizard | Plan de compute/storage/network/image înainte de apply. | DX | L | Done |
+| B032 | Create from template | Provisionare vendor-neutrală din golden image. | DX | L | Done |
+| B033 | Full VM clone | Clone cu alegere target cluster/storage/network. | DX | L | Done |
 | B034 | Linked/thin clone | Clone rapid când backend-ul îl permite. | Cost | M | Done |
-| B035 | Cloud-init editor | User-data/meta-data/network-config cu schema și preview. | DX | M | Now |
+| B035 | Cloud-init editor | User-data/meta-data/network-config cu schema și preview. | DX | M | Done |
 | B036 | Guest customization profiles | Sysprep/Linux settings reutilizabile și secret references. | DX | L | Done |
-| B037 | VM hardware profile | Preset versionat pentru CPU/RAM/firmware/devices. | DX | M | Now |
+| B037 | VM hardware profile | Preset versionat pentru CPU/RAM/firmware/devices. | DX | M | Done |
 | B038 | Flavor/service offering mapper | Mapează profil comun la flavor/offering/vendor shape. | Gov | M | Done |
 | B039 | Image library aggregator | ISO/template/image inventory multi-provider cu provenance. | Ops | L | Done |
 | B040 | Image upload/import pipeline | Upload resumable, checksum și format conversion. | DX | L | Done |
@@ -609,19 +615,19 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B042 | Template versioning | Semver, deprecation, owners și compatibility notes. | Gov | M | Done |
 | B043 | Template promotion flow | Dev→test→prod cu approvals și immutable digest. | Gov | L | Done |
 | B044 | VM lease/TTL | Stop/delete automat cu owner notification și extensions. | Cost | M | Done |
-| B045 | Scheduled VM actions | Cron start/stop/reboot/snapshot cu blackout windows. | Ops | M | Now |
-| B046 | Guest tools status | Version, health, feature impact și upgrade recommendation. | Ops | M | Now |
+| B045 | Scheduled VM actions | Cron start/stop/reboot/snapshot cu blackout windows. | Ops | M | Partial |
+| B046 | Guest tools status | Version, health, feature impact și upgrade recommendation. | Ops | M | Done |
 | B047 | Guest graceful command | Shutdown/reboot/script doar prin agentul oficial suportat. | Ops | L | Done |
-| B048 | VM console token broker | Token scurt, single-use și scope per VM. | Sig | L | Now |
+| B048 | VM console token broker | Token scurt, single-use și scope per VM. | Sig | L | Done |
 | B049 | Multi-protocol console gateway | noVNC/SPICE/WebMKS/serial adapters cu audit. | DX | XL | Done |
-| B050 | Console emergency lock | Global/provider/VM deny și închiderea sesiunilor active. | Sig | M | Now |
+| B050 | Console emergency lock | Global/provider/VM deny și închiderea sesiunilor active. | Sig | M | Done |
 
 ### C. Migrare, placement, maintenance și HA (B051–B075)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B051 | Migration capability matrix | Explică live/cold/storage/cross-pool per VM și target. | Ops | M | Now |
-| B052 | Migration compatibility preflight | CPU, devices, storage, network, HA și version checks. | Rez | L | Now |
+| B051 | Migration capability matrix | Explică live/cold/storage/cross-pool per VM și target. | Ops | M | Done |
+| B052 | Migration compatibility preflight | CPU, devices, storage, network, HA și version checks. | Rez | L | Done |
 | B053 | Live migration action | Selectare/auto-target, progress și post-validation. | Ops | L | Done |
 | B054 | Cold migration action | Migrare orchestrată cu downtime estimate. | Ops | L | Done |
 | B055 | Storage live migration | Relocare disk fără oprire când providerul permite. | Ops | L | Done |
@@ -631,14 +637,14 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B059 | Migration queue | Prioritate, concurrency și fair scheduling per fabric. | Ops | L | Done |
 | B060 | Migration abort/force-complete | Acțiuni native gated după state și provider support. | Rez | M | Done |
 | B061 | Migration rollback plan | Pași compensați și recovery instructions per failure stage. | Rez | L | Done |
-| B062 | Maintenance mode runbook | Disable/drain/patch/reboot/rejoin/validate. | Ops | L | Now |
-| B063 | Host evacuation planner | Destination plan, capacity și VM exceptions înainte de drain. | Rez | L | Now |
+| B062 | Maintenance mode runbook | Disable/drain/patch/reboot/rejoin/validate. | Ops | L | Done |
+| B063 | Host evacuation planner | Destination plan, capacity și VM exceptions înainte de drain. | Rez | L | Done |
 | B064 | Batch evacuation | Wave-based migrations cu health gates și pause. | Rez | L | Done |
 | B065 | Non-migratable workload policy | Stop, defer sau require approval pentru passthrough/local disk. | Gov | M | Done |
-| B066 | HA status dashboard | Quorum, heartbeat, fencing și protected VM coverage. | Rez | M | Now |
-| B067 | HA readiness checker | Shared storage/network/capacity/guest agility validation. | Rez | M | Now |
+| B066 | HA status dashboard | Quorum, heartbeat, fencing și protected VM coverage. | Rez | M | Done |
+| B067 | HA readiness checker | Shared storage/network/capacity/guest agility validation. | Rez | M | Done |
 | B068 | HA policy editor | Restart priority, order și failure tolerance. | Rez | L | Done |
-| B069 | Affinity rule inventory | Vizualizează VM-host și VM-VM rules. | Ops | M | Now |
+| B069 | Affinity rule inventory | Vizualizează VM-host și VM-VM rules. | Ops | M | Done |
 | B070 | Affinity rule editor | Create/update/delete cu conflict analysis. | Ops | L | Done |
 | B071 | Placement recommendation | Scor CPU/RAM/NUMA/storage/network/policy cu explicații. | Cost | L | Done |
 | B072 | Automated rebalance plan | Dry-run cu migrations propuse și impact estimat. | Cost | L | Done |
@@ -650,7 +656,7 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B076 | Unified VM disk inventory | Disks, bus, size, provisioning, backing și attachment. | Ops | M | Now |
+| B076 | Unified VM disk inventory | Disks, bus, size, provisioning, backing și attachment. | Ops | M | Done |
 | B077 | Disk create/attach wizard | Plan storage policy, format, QoS și target VM. | DX | L | Done |
 | B078 | Safe disk detach | Guest/boot/shared checks și explicit keep/delete. | Sig | M | Done |
 | B079 | Disk delete guard | Backup/snapshot/attachment/replica dependency check. | Sig | M | Done |
@@ -659,18 +665,18 @@ Docker Dash are deja elemente pe care multe UI-uri hypervisor le tratează separ
 | B082 | Disk format conversion | VMDK/VHDX/QCOW2/RAW/VHD workflow verificabil. | DX | XL | Done |
 | B083 | Storage policy inventory | Classes/policies/offers și compliance state. | Gov | M | Done |
 | B084 | Storage policy assignment | Reconfigurare cu compatibility și migration plan. | Gov | L | Done |
-| B085 | Datastore capacity dashboard | Used/free/provisioned/overcommit/growth forecast. | Cost | M | Now |
-| B086 | Thin overcommit monitor | Alertă pe logical vs physical și growth velocity. | Rez | M | Now |
+| B085 | Datastore capacity dashboard | Used/free/provisioned/overcommit/growth forecast. | Cost | M | Done |
+| B086 | Thin overcommit monitor | Alertă pe logical vs physical și growth velocity. | Rez | M | Done |
 | B087 | Storage latency heatmap | VM/datastore/path latency correlation. | Ops | L | Done |
 | B088 | Storage path/multipath health | Detectează degraded paths și policy mismatch. | Rez | L | Done |
 | B089 | Orphan disk cleanup | Dry-run cu age, owner și restore window. | Cost | M | Done |
-| B090 | Stale snapshot growth monitor | Chain depth, age, consolidation/coalesce risk. | Rez | M | Now |
+| B090 | Stale snapshot growth monitor | Chain depth, age, consolidation/coalesce risk. | Rez | M | Partial |
 | B091 | Snapshot consolidation action | Preflight și native progress când suportat. | Ops | M | Done |
 | B092 | Storage QoS editor | IOPS/throughput limits per disk/volume. | Gov | L | Done |
 | B093 | Storage tiering recommendation | Plasare după latency, cost, resilience și workload. | Cost | L | Done |
 | B094 | Shared disk topology | Multi-attach consumers și cluster dependency view. | Ops | M | Done |
 | B095 | Object storage registry | S3-compatible endpoints și policy/capacity health. | Ops | M | Done |
-| B096 | NFS/SMB repository health | Mount reachability, auth, latency și write test safe. | Rez | M | Now |
+| B096 | NFS/SMB repository health | Mount reachability, auth, latency și write test safe. | Rez | M | Partial |
 | B097 | Ceph health adapter | MON/OSD/PG/pool/replication summary pentru PVE/OpenStack. | Rez | L | Done |
 | B098 | Longhorn health adapter | Volume replicas, rebuild, degraded și backup target. | Rez | L | Done |
 | B099 | vSAN/S2D/AOS health adapters | Suite-specific capacity/resync/fault-domain summary. | Rez | XL | Done |
@@ -681,16 +687,22 @@ B097–B100 au fost închise în V4.2f / v8.78.0. Conversia, assignment-ul,
 cleanup-ul, QoS, tiering-ul și schimbările produc contracte hash-bound și nu
 expun apply implicit; health adapters consumă numai dovezi normalizate bounded.
 B091 reutilizează task-ul nativ vSphere deja livrat, iar B094 reutilizează
-topologia shared-disk cu identități opace. B096 rămâne separat și deschis.
+topologia shared-disk cu identități opace. B090 are implementarea locală
+read-only în V4.2g (migration, provider evidence, policy/API, job leader-only,
+UI și teste); browser smoke și includerea într-un release sunt încă restante.
+B096 are în V4.2h registry-ul local, secret references, probe DNS/TCP reale,
+istoric, freshness, alerte și contractul opt-in de write/cleanup. Auth/list și
+write-test rămân explicit necunoscute fără un adaptor data-plane aprobat;
+browser smoke și includerea într-un release sunt încă restante.
 
 ### E. Networking și connectivity (B101–B125)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B101 | Unified VM NIC inventory | MAC, network, model, IP, link și security state. | Ops | M | Now |
+| B101 | Unified VM NIC inventory | MAC, network, model, IP, link și security state. | Ops | M | Done |
 | B102 | NIC add/attach wizard | Network/VLAN/IP/model selection cu validation. | DX | L | Done |
 | B103 | Safe NIC detach | Management/last-interface/guest dependency checks. | Sig | M | Done |
-| B104 | NIC connect/disconnect | Link state mutation și audit. | Ops | M | Now |
+| B104 | NIC connect/disconnect | Link state mutation și audit. | Ops | M | Partial |
 | B105 | Network mapping profiles | Source→target mapping reutilizabil pentru clone/migration. | Ops | M | Done |
 | B106 | VLAN network creation | Provider-neutral intent cu dry-run. | Ops | L | Done |
 | B107 | Trunk and QinQ configuration | Capability-gated nested segmentation. | Ops | L | Done |
@@ -704,14 +716,14 @@ topologia shared-disk cu identități opace. B096 rămâne separat și deschis.
 | B115 | Distributed firewall adapter | NSX/Flow/PVE/Neutron/OVN policy abstraction. | Sig | XL | Done |
 | B116 | Microsegmentation policy model | App/tag/identity aware rules și staged enforcement. | Sig | XL | Done |
 | B117 | Flow log ingestion | Normalize allow/deny/bytes/5-tuple cu retention. | Sig | L | Done |
-| B118 | VM dependency map | Construiește relații din flows, DNS și metadata. | Ops | L | Next |
-| B119 | Network reachability test | Source/destination/port simulation sau probe controlat. | Ops | L | Next |
-| B120 | MTU mismatch detector | Path/overlay/storage/live-migration MTU checks. | Rez | M | Now |
-| B121 | Bond/LAG health | Members, mode, link, imbalance și failover state. | Rez | M | Next |
-| B122 | SR-IOV inventory | PF/VF capacity, allocations și migration constraints. | Ops | M | Next |
-| B123 | Load balancer inventory | VIP, pools, members, health și provider links. | Ops | L | Later |
-| B124 | NAT/public IP lifecycle | Allocate, map, release și cost/ownership. | DX | L | Later |
-| B125 | Network intent validation | CIDR overlap, gateway, DNS, VLAN/VNI și route conflicts. | Sig | L | Next |
+| B118 | VM dependency map | Construiește relații din flows, DNS și metadata. | Ops | L | Partial |
+| B119 | Network reachability test | Source/destination/port simulation sau probe controlat. | Ops | L | Partial |
+| B120 | MTU mismatch detector | Path/overlay/storage/live-migration MTU checks. | Rez | M | Partial |
+| B121 | Bond/LAG health | Members, mode, link, imbalance și failover state. | Rez | M | Partial |
+| B122 | SR-IOV inventory | PF/VF capacity, allocations și migration constraints. | Ops | M | Done |
+| B123 | Load balancer inventory | VIP, pools, members, health și provider links. | Ops | L | Partial |
+| B124 | NAT/public IP lifecycle | Allocate, map, release și cost/ownership. | DX | L | Partial |
+| B125 | Network intent validation | CIDR overlap, gateway, DNS, VLAN/VNI și route conflicts. | Sig | L | Partial |
 
 **Status implementare 2026-07-30:** B102–B103 și B105–B117 au fost închise
 în V4.3f / V4.4d / v8.79.0. NIC, segment, VPC/subnet, address, security-group
@@ -720,80 +732,160 @@ Firewall-ul guarded existent și connector marketplace IPAM/DNS sunt referite,
 nu duplicate; distributed firewall și flow logs acceptă doar dovezi normalizate
 bounded, fără trafic sau raw payload.
 
+B125 are implementarea locală V4.5i: parser/canonicalizare IPv4/IPv6,
+overlap-uri cross-resource, gateway/DNS/route și coliziuni VLAN/VNI, verdict
+`pass/fail/unknown`, hash-uri imutabile, API/UI și teste. Browser smoke,
+release-ul și legarea primului executor de validation hash rămân restante.
+
+B118 are implementarea locală V4.4e read-only: observații normalizate IP/DNS,
+corelare cu flow batches, metadata și relationship graphs, snapshots imutabile,
+freshness/confidence/evidence per edge și impact bounded exclusiv pe relațiile
+declarate. Flow-only candidates rămân explicit non-cauzale. Browser smoke,
+adaptoarele de evidence provider-native și includerea într-un release rămân
+restante.
+
+B119 are implementarea locală V4.4f simulation-only: evaluează tuple explicite
+source/destination/TCP/UDP/ICMP din route, policy, attachment și provider
+simulation evidence cu freshness individual, corelează DNS și flow logs
+normalizate și persistă `pass/fail/unknown` imutabil. `pass` este etichetat ca
+predicție control-plane, nu dovadă data-plane; flow-ul istoric nu promovează
+evidence incompletă. Nu există probe, DNS lookup, socket sau provider mutation.
+Browser smoke, adaptoarele provider-native, release-ul și orice runner activ
+allowlisted cu source ownership/destination policy rămân restante.
+
+B120 are implementarea locală V4.4g pasivă: evaluează paths workload, overlay,
+storage și live-migration, calculează overhead-ul cumulativ per segment, păstrează
+DF ca evidence explicit și produce `pass/fail/unknown` cu bottleneck și deficit.
+Nu pornește trafic sau remediere. Colectarea automată provider-native, browser
+smoke și includerea într-un release rămân restante.
+
+B121 are implementarea locală V4.4h pasivă: normalizează bond/team/LAG members,
+rol activ/standby/LACP, link/admin/speed/duplex, partner keys, delte de trafic,
+errors/drops/flaps și failover evidence. Quorum-ul, partner mismatch și imbalance
+sunt evaluate fail-closed; zero trafic rămâne `not_observed`. Colectoarele
+provider-native, browser smoke și includerea într-un release rămân restante.
+
+B123 are implementarea locală V4.4i read-only: inventar normalizat pentru VIP,
+listeners, pools, members, algoritm, admin/provider health și legături canonice
+network/resource. Dangling pool refs și native/sensitive refs sunt respinse; nu
+pornește health probes. Colectoarele NSX/Octavia/cloud, browser smoke și release-ul
+rămân restante.
+
+B124 are implementarea locală V4.4j plan-only: allocate/map/unmap/release leagă
+ownership token, tenant/owner, quota, cost în micros, conflict/current state,
+expected version, mappings/dependencies, capability și checks. Release-ul extern
+sau dependent este blocat și nu există apply endpoint. Browser smoke, adaptoarele
+provider-native, canary și execuția controlată din R8 rămân restante.
+
+B104 are implementarea locală V4.4k: inventar live, declarație admin
+expirabilă și legată de fingerprint, preflight cu last/management/boot/guest
+guards, operație durabilă connect/disconnect, post-read și rollback manual.
+Proxmox schimbă doar `link_down`, vSphere doar starea `connected`, iar XenAPI
+folosește `VIF.plug/unplug`; attach/detach/delete/remap nu sunt expuse. Cele
+trei flag-uri provider sunt default-off. Browser smoke, canary pe provideri
+disposable și includerea într-un release rămân restante; Xen Orchestra/raw Xen
+nu declară mutația ca suportată.
+
+**Status reconciliat 2026-07-30:** B101 și B122 reutilizează inventory-ul comun
+NIC, respectiv evidence-ul PF/VF și constrângerile de migrare livrate în v8.71.0.
+Nu mai există un feature `Open` în catalog; B119 rămâne `Partial` până la
+adaptoarele provider-native, decizia de active runner și validările de release.
+Niciun plan din B102–B117 nu este promovat implicit la executor provider-native.
+
 ### F. Backup, restore și disaster recovery (B126–B150)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B126 | VM snapshot policy | Schedule, retention, quiesce și max-chain. | Rez | M | Now |
-| B127 | Snapshot vs backup guardrail | UI explică failure domain și blochează falsa protecție. | Sig | S | Now |
-| B128 | Unified backup inventory | Recovery points, type, repository, size și verification. | Rez | L | Now |
-| B129 | Backup job orchestrator | Full/incremental schedules per provider/VM group. | Rez | XL | Next |
-| B130 | Smart backup selection | Dinamic după tag/site/state/owner/classification. | Ops | M | Next |
-| B131 | Backup exclusion policy | Disk/tag/path exclusions cu warning și audit. | Gov | M | Next |
-| B132 | Application-consistency policy | Guest agent/VSS/scripts, fallback și evidence. | Rez | L | Next |
-| B133 | Backup concurrency controller | Global/provider/repository/host IO limits. | Rez | M | Next |
-| B134 | Backup bandwidth windows | Rate limit și schedule după site/link. | Ops | M | Next |
-| B135 | GFS retention engine | Daily/weekly/monthly/yearly policy normalizată. | Gov | M | Next |
-| B136 | Immutable retention adapter | Object lock/WORM/immutable host capabilities. | Sig | L | Next |
-| B137 | Backup encryption policy | Key reference, algorithm, rotation constraints și compliance. | Sig | L | Next |
-| B138 | Backup integrity verification | Hash/metadata/chain validation fără full restore. | Rez | L | Next |
-| B139 | Automated restore drill | Isolated restore, boot/agent/app check și cleanup. | Rez | XL | Next |
-| B140 | Restore drill scheduler | Sample-based weekly/monthly verification cu SLA. | Rez | M | Next |
-| B141 | File-level restore browser | Search/download/restore gated pe backup compatibil. | Ops | XL | Later |
-| B142 | Instant/live restore adapter | Start workload înainte de hidratarea completă. | Rez | XL | Later |
-| B143 | Differential restore adapter | Refolosește baza locală cu integrity safeguards. | Rez | XL | Later |
-| B144 | Cross-site backup copy | Copy/mirror cu resumability și bandwidth policy. | Rez | L | Next |
-| B145 | VM replication policy | Async/near-sync/sync capability and RPO. | Rez | XL | Later |
-| B146 | DR protection groups | Grupe app-consistente cu boot order/network maps. | Rez | XL | Later |
-| B147 | Failover plan/runbook | Precheck, isolate, promote, validate și notify. | Rez | XL | Later |
-| B148 | Failback workflow | Reverse sync, planned cutback și validation. | Rez | XL | Later |
-| B149 | Non-disruptive DR test | Bubble network și temporary clones fără production impact. | Rez | XL | Later |
-| B150 | RPO/RTO compliance dashboard | Target vs actual recovery point și test duration. | Gov | L | Next |
+| B126 | VM snapshot policy | Schedule, retention, quiesce și max-chain. | Rez | M | Done |
+| B127 | Snapshot vs backup guardrail | UI explică failure domain și blochează falsa protecție. | Sig | S | Done |
+| B128 | Unified backup inventory | Recovery points, type, repository, size și verification. | Rez | L | Done |
+| B129 | Backup job orchestrator | Full/incremental schedules per provider/VM group. | Rez | XL | Partial |
+| B130 | Smart backup selection | Dinamic după tag/site/state/owner/classification. | Ops | M | Partial |
+| B131 | Backup exclusion policy | Disk/tag/path exclusions cu warning și audit. | Gov | M | Partial |
+| B132 | Application-consistency policy | Guest agent/VSS/scripts, fallback și evidence. | Rez | L | Partial |
+| B133 | Backup concurrency controller | Global/provider/repository/host IO limits. | Rez | M | Partial |
+| B134 | Backup bandwidth windows | Rate limit și schedule după site/link. | Ops | M | Partial |
+| B135 | GFS retention engine | Daily/weekly/monthly/yearly policy normalizată. | Gov | M | Partial |
+| B136 | Immutable retention adapter | Object lock/WORM/immutable host capabilities. | Sig | L | Partial |
+| B137 | Backup encryption policy | Key reference, algorithm, rotation constraints și compliance. | Sig | L | Partial |
+| B138 | Backup integrity verification | Hash/metadata/chain validation fără full restore. | Rez | L | Partial |
+| B139 | Automated restore drill | Isolated restore, boot/agent/app check și cleanup. | Rez | XL | Partial |
+| B140 | Restore drill scheduler | Sample-based weekly/monthly verification cu SLA. | Rez | M | Partial |
+| B141 | File-level restore browser | Search/download/restore gated pe backup compatibil. | Ops | XL | Partial |
+| B142 | Instant/live restore adapter | Start workload înainte de hidratarea completă. | Rez | XL | Partial |
+| B143 | Differential restore adapter | Refolosește baza locală cu integrity safeguards. | Rez | XL | Partial |
+| B144 | Cross-site backup copy | Copy/mirror cu resumability și bandwidth policy. | Rez | L | Partial |
+| B145 | VM replication policy | Async/near-sync/sync capability and RPO. | Rez | XL | Partial |
+| B146 | DR protection groups | Grupe app-consistente cu boot order/network maps. | Rez | XL | Partial |
+| B147 | Failover plan/runbook | Precheck, isolate, promote, validate și notify. | Rez | XL | Partial |
+| B148 | Failback workflow | Reverse sync, planned cutback și validation. | Rez | XL | Partial |
+| B149 | Non-disruptive DR test | Bubble network și temporary clones fără production impact. | Rez | XL | Partial |
+| B150 | RPO/RTO compliance dashboard | Target vs actual recovery point și test duration. | Gov | L | Partial |
+
+**Status reconciliat 2026-07-30:** B126–B128 sunt livrate în scope-ul declarat.
+B129–B150 au fundație, contracte ori execuție pe un subset de provideri, dar
+rămân `Partial` până când backup/restore/DR este executabil și verificabil pe
+providerii declarați în batch-ul R5.
+
+**Status implementare R5a / working tree 2026-07-30:** B129–B138 au acum un
+contract de execuție v1.1 persistent și hash-bound: mod provider/full/incremental,
+selecție dinamică tag/site/state/owner/classification, excluderi explicite,
+consistență și hook references, admission global/provider/host/repository/policy,
+ferestre bandwidth, GFS fără prune authority, cerințe encryption/immutability și
+evidence separată provider/metadata/checksum/chain. Proxmox `vzdump` rămâne
+singurul executor real și este fail-closed pentru traduceri nedovedite. XO cere
+un schedule/job task-aware descoperit, iar vSphere un adaptor VADP/VDDK/vendor cu
+data mover. Din acest motiv B129–B138 rămân `Partial` până la canary și al doilea
+adaptor executabil.
 
 ### G. Security, confidential computing și compliance (B151–B175)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B151 | Provider security posture packs | Checks versionate per VMware/Hyper-V/Nutanix/PVE/Xen/KubeVirt. | Sig | L | Now |
-| B152 | Secure Boot inventory | Host și VM enabled/capable/noncompliant. | Sig | M | Now |
-| B153 | vTPM inventory | Presence, version, state și migration/clone constraints. | Sig | M | Now |
-| B154 | Encryption inventory | VM disks, saved state, migration și backup coverage. | Sig | L | Next |
-| B155 | KMS/key-provider registry | Endpoint health, certificate expiry și affected resources. | Sig | L | Next |
-| B156 | Shielded/confidential VM detector | Identifică HGS/SEV/TDX și special constraints. | Sig | M | Next |
-| B157 | Confidential VM provisioning | Policy-based compatible host/image/flavor selection. | Sig | XL | Later |
-| B158 | Host hardening baseline | CIS/STIG/vendor guidance evidence și drift. | Sig | L | Next |
-| B159 | VM virtual hardware baseline | Firmware, devices, boot, TPM și unsafe legacy settings. | Sig | M | Next |
-| B160 | Insecure protocol detector | HTTP, weak TLS, password SSH, legacy APIs și expired certs. | Sig | M | Now |
-| B161 | Certificate trust dashboard | Chain, SAN, expiry, algorithm și renewal owner. | Sig | M | Now |
-| B162 | Certificate rotation workflow | CSR/import/validate/rollback per provider. | Sig | XL | Later |
-| B163 | CVE/advisory correlator | Mapează version/build la advisories oficiale și severity. | Sig | L | Next |
-| B164 | Exposure-based patch priority | Combină CVE, workload criticality și reachability. | Sig | L | Next |
-| B165 | Security finding exceptions | Owner, reason, expiry și compensating controls. | Gov | M | Next |
-| B166 | Remediation plan/dry-run | Pași, downtime, dependencies și rollback înainte de fix. | Sig | L | Next |
-| B167 | Automated low-risk remediation | Config fixes allowlisted cu canary și verification. | Sig | XL | Later |
-| B168 | Secrets reference enforcement | Interzice credențiale inline în manifests/jobs/templates. | Sig | M | Now |
-| B169 | Privileged action elevation | Step-up MFA/JIT grant pentru operații critice. | Sig | L | Next |
-| B170 | Break-glass workflow | Cont temporar, approval, session recording și review. | Sig | L | Next |
-| B171 | Console/remote-session recording | Metadata și opțional recording conform policy/consent. | Gov | XL | Later |
-| B172 | Data classification tags | Public/internal/confidential/restricted propagate în policy. | Gov | M | Next |
-| B173 | Compliance evidence export | Signed JSON/PDF bundle cu checks, configs și audit links. | Gov | L | Next |
-| B174 | Control-framework mapping | CIS/NIST/ISO/SOC2/DORA mappings fără duplicarea finding-ului. | Gov | L | Later |
-| B175 | Ransomware recovery posture | Immutability, isolation, test restore și credential separation score. | Sig | L | Next |
+| B151 | Provider security posture packs | Checks versionate per VMware/Hyper-V/Nutanix/PVE/Xen/KubeVirt. | Sig | L | Partial |
+| B152 | Secure Boot inventory | Host și VM enabled/capable/noncompliant. | Sig | M | Partial |
+| B153 | vTPM inventory | Presence, version, state și migration/clone constraints. | Sig | M | Partial |
+| B154 | Encryption inventory | VM disks, saved state, migration și backup coverage. | Sig | L | Partial |
+| B155 | KMS/key-provider registry | Endpoint health, certificate expiry și affected resources. | Sig | L | Partial |
+| B156 | Shielded/confidential VM detector | Identifică HGS/SEV/TDX și special constraints. | Sig | M | Partial |
+| B157 | Confidential VM provisioning | Policy-based compatible host/image/flavor selection. | Sig | XL | Partial |
+| B158 | Host hardening baseline | CIS/STIG/vendor guidance evidence și drift. | Sig | L | Partial |
+| B159 | VM virtual hardware baseline | Firmware, devices, boot, TPM și unsafe legacy settings. | Sig | M | Partial |
+| B160 | Insecure protocol detector | HTTP, weak TLS, password SSH, legacy APIs și expired certs. | Sig | M | Partial |
+| B161 | Certificate trust dashboard | Chain, SAN, expiry, algorithm și renewal owner. | Sig | M | Partial |
+| B162 | Certificate rotation workflow | CSR/import/validate/rollback per provider. | Sig | XL | Partial |
+| B163 | CVE/advisory correlator | Mapează version/build la advisories oficiale și severity. | Sig | L | Partial |
+| B164 | Exposure-based patch priority | Combină CVE, workload criticality și reachability. | Sig | L | Partial |
+| B165 | Security finding exceptions | Owner, reason, expiry și compensating controls. | Gov | M | Partial |
+| B166 | Remediation plan/dry-run | Pași, downtime, dependencies și rollback înainte de fix. | Sig | L | Partial |
+| B167 | Automated low-risk remediation | Config fixes allowlisted cu canary și verification. | Sig | XL | Partial |
+| B168 | Secrets reference enforcement | Interzice credențiale inline în manifests/jobs/templates. | Sig | M | Partial |
+| B169 | Privileged action elevation | Step-up MFA/JIT grant pentru operații critice. | Sig | L | Partial |
+| B170 | Break-glass workflow | Cont temporar, approval, session recording și review. | Sig | L | Partial |
+| B171 | Console/remote-session recording | Metadata și opțional recording conform policy/consent. | Gov | XL | Partial |
+| B172 | Data classification tags | Public/internal/confidential/restricted propagate în policy. | Gov | M | Partial |
+| B173 | Compliance evidence export | Signed JSON/PDF bundle cu checks, configs și audit links. | Gov | L | Partial |
+| B174 | Control-framework mapping | CIS/NIST/ISO/SOC2/DORA mappings fără duplicarea finding-ului. | Gov | L | Partial |
+| B175 | Ransomware recovery posture | Immutability, isolation, test restore și credential separation score. | Sig | L | Partial |
+
+**Status reconciliat 2026-07-30:** B151–B175 rămân `Partial`. Există posture,
+guardrails, inventory și contracte de control, însă provider-native evidence,
+remediation controlată și exportul complet de compliance sunt urmărite în R6.
 
 ### H. Identity, multi-tenancy și guvernanță (B176–B200)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B176 | Fine-grained permission catalog | Verbe explicite pe resource type și scope. | Gov | L | Now |
-| B177 | Custom roles | Compoziție de permissions cu safe defaults. | Gov | M | Next |
-| B178 | Scope hierarchy | Organization/site/provider/cluster/project/resource. | Gov | L | Next |
-| B179 | Delegated site admin | Admin doar pe site/fabric atribuit. | Gov | M | Next |
-| B180 | Project/tenant model | Membri, owners, resources, quota și lifecycle. | Gov | XL | Next |
-| B181 | Project invitations | Invitație, acceptare, expiry și domain restriction. | DX | M | Later |
-| B182 | Project ownership transfer | Transfer controlat fără orphan resources. | Gov | M | Later |
-| B183 | CPU quota | Hard/soft quota și current usage. | Gov | M | Next |
-| B184 | Memory quota | Hard/soft quota și reservation accounting. | Gov | M | Next |
-| B185 | Storage quota | Logical/physical/backup usage și limits. | Gov | L | Next |
+| B176 | Fine-grained permission catalog | Verbe explicite pe resource type și scope. | Gov | L | Done |
+| B177 | Custom roles | Compoziție de permissions cu safe defaults. | Gov | M | Done |
+| B178 | Scope hierarchy | Organization/site/provider/cluster/project/resource. | Gov | L | Done |
+| B179 | Delegated site admin | Admin doar pe site/fabric atribuit. | Gov | M | Done |
+| B180 | Project/tenant model | Membri, owners, resources, quota și lifecycle. | Gov | XL | Done |
+| B181 | Project invitations | Invitație, acceptare, expiry și domain restriction. | DX | M | Done |
+| B182 | Project ownership transfer | Transfer controlat fără orphan resources. | Gov | M | Done |
+| B183 | CPU quota | Hard/soft quota și current usage. | Gov | M | Done |
+| B184 | Memory quota | Hard/soft quota și reservation accounting. | Gov | M | Done |
+| B185 | Storage quota | Logical/physical/backup usage și limits. | Gov | L | Done |
 | B186 | Network/public-IP quota | NIC/network/IP/security-group limits. | Gov | M | Done |
 | B187 | Snapshot/backup quota | Count și bytes per project/policy. | Gov | M | Done |
 | B188 | GPU/device quota | Profile/count/time allocation pentru acceleratoare. | Gov | L | Done |
@@ -1352,6 +1444,13 @@ replication plans cu progress/checksum, template semver immutable, promovare
 dev→test→prod și lease-uri VM cu owner notification/extensions. B047 acceptă
 shutdown/reboot sau script ref+digest numai prin agent oficial healthy, iar
 B049 completează profilul noVNC/WebMKS/serial cu SPICE native handoff și audit.
+
+**Status implementare V2.1c / working tree 2026-07-30:** B045 are local un
+scheduler VM durabil pentru start/guest shutdown/reboot/snapshot, cron în fus
+orar IANA, politici DST first/second/skip, holiday și blackout suppression,
+deduplicare per slot, child idempotency, reconciliere `unknown`, auto-disable,
+API/UI/RBAC/audit și job leader-only. Browser smoke, canary pe provideri reali și
+includerea într-un release rămân restante, deci feature-ul este `Partial`.
 B053–B055 leagă live/cold/storage controls de executorul durabil vm.migrate
 existent; B056–B061 adaugă cross-pool/provider evidence, bandwidth windows,
 weighted fair queue, native-state cancel/force-complete și rollback pe stadii.
@@ -1370,31 +1469,31 @@ owned-volume delete guard, grow-only și datastore move cu revalidare.
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
 |---|---|---|---|---|---|
-| B426 | Operation risk classifier | Read/low/medium/high/critical după blast radius. | Gov | M | Now |
-| B427 | Policy-driven confirmation | Confirm/typed/MFA/approval după risk și environment. | Sig | M | Now |
-| B428 | Read-only global mode | Blochează toate mutations inclusiv automation/plugins. | Sig | S | Now |
-| B429 | Provider emergency stop | Oprește noi mutations și încearcă cancel safe. | Rez | M | Now |
-| B430 | Maintenance freeze calendar | Windows globale/site/app și emergency override. | Gov | M | Now |
-| B431 | Operation timeout policy | Per provider/action/phase cu safe terminal states. | Rez | M | Now |
-| B432 | Retry policy catalog | Transient-only, jitter, caps și idempotency requirements. | Rez | M | Now |
-| B433 | Reconciliation after unknown result | Read-after-timeout pentru a decide success/failure/unknown. | Rez | L | Now |
-| B434 | Unknown-state operator workflow | Evidence, retry guard și manual resolution. | Rez | M | Now |
-| B435 | Audit correlation ID | Request→job→provider task→event→notification chain. | Gov | M | Now |
-| B436 | Tamper-evident job evidence | Hashes pentru plan/input/output/status transitions. | Gov | L | Next |
-| B437 | Disaster recovery for Docker Dash | DB/config/secrets/keys/runbook și tested restore. | Rez | L | Now |
-| B438 | HA leader-safe scheduler | Exactly-once-ish leases și failover recovery. | Rez | L | Now |
-| B439 | Chaos test provider fakes | Timeout, partial response, session expiry, redirect, task loss. | Rez | L | Now |
-| B440 | Contract test corpus | Official/sanitized fixtures across versions/editions. | DX | L | Now |
-| B441 | Live endpoint certification suite | Read-only probes plus opt-in disposable mutation tests. | Gov | L | Next |
-| B442 | Canary operation mode | Apply to small cohort și health gate. | Rez | M | Next |
-| B443 | Wave rollout for infrastructure changes | Fixed/exponential waves cu pause/rollback. | Rez | L | Next |
-| B444 | Automatic post-action verification | State, metrics, events și guest health assertions. | Rez | L | Now |
-| B445 | SLO for control-plane operations | Success/latency/unknown-state budgets per provider. | Gov | M | Next |
-| B446 | Data retention controls | Metrics/events/audit/jobs/consoles per policy. | Gov | M | Next |
-| B447 | Backup/export portability | Open JSON/YAML formats și documented encryption envelope. | Gov | L | Next |
-| B448 | Feature-flag/ring delivery | Internal/canary/beta/GA și per-provider rollout. | Rez | M | Now |
-| B449 | Deprecation lifecycle | Warning, telemetry, migration path și removal gate. | Gov | M | Next |
-| B450 | Product capability scorecard | Shipped/partial/planned/evidence per provider, actualizat automat. | Gov | M | Now |
+| B426 | Operation risk classifier | Read/low/medium/high/critical după blast radius. | Gov | M | Done |
+| B427 | Policy-driven confirmation | Confirm/typed/MFA/approval după risk și environment. | Sig | M | Done |
+| B428 | Read-only global mode | Blochează toate mutations inclusiv automation/plugins. | Sig | S | Done |
+| B429 | Provider emergency stop | Oprește noi mutations și încearcă cancel safe. | Rez | M | Done |
+| B430 | Maintenance freeze calendar | Windows globale/site/app și emergency override. | Gov | M | Done |
+| B431 | Operation timeout policy | Per provider/action/phase cu safe terminal states. | Rez | M | Done |
+| B432 | Retry policy catalog | Transient-only, jitter, caps și idempotency requirements. | Rez | M | Done |
+| B433 | Reconciliation after unknown result | Read-after-timeout pentru a decide success/failure/unknown. | Rez | L | Done |
+| B434 | Unknown-state operator workflow | Evidence, retry guard și manual resolution. | Rez | M | Done |
+| B435 | Audit correlation ID | Request→job→provider task→event→notification chain. | Gov | M | Done |
+| B436 | Tamper-evident job evidence | Hashes pentru plan/input/output/status transitions. | Gov | L | Done |
+| B437 | Disaster recovery for Docker Dash | DB/config/secrets/keys/runbook și tested restore. | Rez | L | Done |
+| B438 | HA leader-safe scheduler | Exactly-once-ish leases și failover recovery. | Rez | L | Done |
+| B439 | Chaos test provider fakes | Timeout, partial response, session expiry, redirect, task loss. | Rez | L | Done |
+| B440 | Contract test corpus | Official/sanitized fixtures across versions/editions. | DX | L | Done |
+| B441 | Live endpoint certification suite | Read-only probes plus opt-in disposable mutation tests. | Gov | L | Done |
+| B442 | Canary operation mode | Apply to small cohort și health gate. | Rez | M | Done |
+| B443 | Wave rollout for infrastructure changes | Fixed/exponential waves cu pause/rollback. | Rez | L | Done |
+| B444 | Automatic post-action verification | State, metrics, events și guest health assertions. | Rez | L | Done |
+| B445 | SLO for control-plane operations | Success/latency/unknown-state budgets per provider. | Gov | M | Done |
+| B446 | Data retention controls | Metrics/events/audit/jobs/consoles per policy. | Gov | M | Done |
+| B447 | Backup/export portability | Open JSON/YAML formats și documented encryption envelope. | Gov | L | Done |
+| B448 | Feature-flag/ring delivery | Internal/canary/beta/GA și per-provider rollout. | Rez | M | Done |
+| B449 | Deprecation lifecycle | Warning, telemetry, migration path și removal gate. | Gov | M | Done |
+| B450 | Product capability scorecard | Shipped/partial/planned/evidence per provider, actualizat automat. | Gov | M | Done |
 
 ## 8. Roadmap recomandat
 

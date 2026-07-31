@@ -84,6 +84,12 @@ function declared() {
     'network.ipInventory.read': conditional('Configured or QEMU guest-agent NIC addresses are collected read-only when available', { readOnly: true, bounded: true, evidenceOnly: true }),
     'vm.nic.read': conditional('Configured NICs are read live; guest IP addresses require the QEMU guest agent', { perResource: true, readOnly: true }),
     'vm.nic.hotplug': conditional('The VM hotplug configuration determines availability', { perResource: true, evidenceOnly: true }),
+    'vm.nic.connect': conditional('An existing QEMU or LXC NIC link_down value is changed with a configuration digest and post-read verification', {
+      perResource: true, existingDeviceOnly: true, detach: false, postVerify: true,
+    }),
+    'vm.nic.disconnect': conditional('Disconnect changes only link_down and requires a current Docker Dash safety declaration', {
+      perResource: true, existingDeviceOnly: true, detach: false, safetyDeclaration: true, postVerify: true,
+    }),
     'vm.clone': conditional('VM templates support full and storage-dependent linked clones', { fromTemplate: true, modes: ['full', 'linked'], durableTask: true, confirmation: true }),
     'vm.create': conditional('Create-from-template is revalidated against node and storage placement', { fromTemplate: true, durableTask: true, confirmation: true }),
     'vm.guestCustomize': conditional('Cloud-Init settings require a compatible QEMU template and are verified on the cloned VM config', {

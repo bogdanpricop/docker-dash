@@ -37,6 +37,14 @@ function _request(context) {
       code: 'BACKUP_CONSISTENCY_UNSUPPORTED',
     });
   }
+  if (!['provider', 'full', 'incremental'].includes(String(request.backupMode || 'provider'))) {
+    throw Object.assign(new Error('Backup mode is invalid'), { code: 'INVALID_BACKUP_EXECUTION' });
+  }
+  if ((request.exclusions?.diskSelectors || []).length || (request.exclusions?.pathSelectors || []).length) {
+    throw Object.assign(new Error('The Proxmox executor cannot safely translate disk or path exclusions'), {
+      code: 'BACKUP_EXCLUSIONS_UNSUPPORTED',
+    });
+  }
   return request;
 }
 
@@ -145,6 +153,17 @@ async function execute(context, options = {}) {
     const rawRepository = inventory.repositories.find(item => String(item.nativeRef) === target.repository.nativeRef);
     if (!rawRepository || rawRepository.enabled === false || rawRepository.accessible === false) {
       throw Object.assign(new Error('Backup repository is not currently accessible'), { code: 'BACKUP_REPOSITORY_UNAVAILABLE' });
+    }
+    const repositoryType = String(target.repository.repository?.repositoryType || '').toLowerCase();
+    if (request.backupMode === 'incremental' && repositoryType !== 'proxmox-backup-server') {
+      throw Object.assign(new Error('Incremental backup requires a Proxmox Backup Server repository'), {
+        code: 'BACKUP_MODE_UNSUPPORTED',
+      });
+    }
+    if (request.backupMode === 'full' && repositoryType === 'proxmox-backup-server') {
+      throw Object.assign(new Error('PBS does not expose a forced-full vzdump contract'), {
+        code: 'BACKUP_MODE_UNSUPPORTED',
+      });
     }
     const storage = _storageForNode(target.repository.nativeRef, String(vm.node));
     context.reportProgress(20, 'pre-submit', 'Workload and repository were revalidated against live Proxmox inventory');

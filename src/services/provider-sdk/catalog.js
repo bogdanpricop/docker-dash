@@ -38,6 +38,8 @@ const FEATURE_CATALOG = Object.freeze({
   'network.ipInventory.read': 'Read bounded provider-visible virtual-machine IP evidence',
   'vm.nic.read': 'Virtual machine network-interface inventory',
   'vm.nic.hotplug': 'Virtual machine network-interface hot-plug evidence',
+  'vm.nic.connect': 'Connect an existing virtual machine network interface',
+  'vm.nic.disconnect': 'Disconnect an existing virtual machine network interface',
   'vm.power.start': 'Start virtual machine',
   'vm.power.shutdown': 'Graceful virtual machine shutdown',
   'vm.power.force': 'Forced virtual machine power operation',

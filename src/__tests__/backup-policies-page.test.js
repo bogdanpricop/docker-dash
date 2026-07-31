@@ -34,6 +34,12 @@ describe('backup policies page', () => {
     expect(source).toContain('authorizeProviderBackupExecution');
     expect(source).toContain('executeProviderBackupPolicy');
     expect(page._executionsHtml()).toContain('disabled by the release gate');
+    const editor = page._editorHtml();
+    expect(editor).toContain('bp-backup-mode');
+    expect(editor).toContain('bp-limit-repository');
+    expect(editor).toContain('bp-integrity-methods');
+    expect(page._payload.toString()).toContain('bandwidthWindows');
+    expect(page._payload.toString()).toContain('pathSelectors');
   });
 
   it('keeps restore-drill authorization separate and links it only to opted-in backup policies', () => {

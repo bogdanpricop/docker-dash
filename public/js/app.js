@@ -1017,7 +1017,7 @@ const App = {
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
         { label: 'Operations',  items: ['system', 'procedures', 'workflows'] },
-        { label: 'Admin',       items: ['hosts', 'onboarding', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
+        { label: 'Admin',       items: ['hosts', 'onboarding', 'governance', 'self-service', 'governance-controls', 'edge-platform', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
 
       // Build enterprise nav HTML
@@ -1045,7 +1045,12 @@ const App = {
       item.classList.toggle('active', item.getAttribute('data-page') === currentPage);
       const page = item.getAttribute('data-page');
       const span = item.querySelector('span');
-      if (span && page) span.textContent = i18n.t('nav.' + page);
+      const key = 'nav.' + page;
+      const label = page ? i18n.t(key) : key;
+      // Keep the human-readable label from index.html when a locale has not
+      // caught up yet. Showing `nav.some-page` makes the primary navigation
+      // look broken and is less useful than the documented English fallback.
+      if (span && page && label !== key) span.textContent = label;
     });
     const simpleMore = nav.querySelector('.nav-simple-more');
     if (simpleMore?.querySelector('.nav-item.active')) simpleMore.open = true;
@@ -1227,7 +1232,9 @@ const App = {
     document.querySelectorAll('.nav-item[data-page]').forEach(item => {
       const page = item.dataset.page;
       const span = item.querySelector('span');
-      if (span && page) span.textContent = i18n.t('nav.' + page);
+      const key = 'nav.' + page;
+      const label = page ? i18n.t(key) : key;
+      if (span && page && label !== key) span.textContent = label;
     });
     // Sidebar section labels — handle both standard and enterprise modes
     document.querySelectorAll('.nav-section-label').forEach(label => {
@@ -2077,25 +2084,31 @@ const App = {
       { icon: 'fa-info-circle', label: i18n.t('nav.about'), action: () => this.navigate('/about'), section: 'nav' },
       { icon: 'fa-cog', label: i18n.t('nav.settings'), action: () => this.navigate('/settings'), section: 'nav' },
       { icon: 'fa-user-circle', label: i18n.t('nav.profile'), action: () => this.navigate('/profile'), section: 'nav' },
-      { icon: 'fa-bell', label: 'Notifications', action: () => this.navigate('/notifications'), section: 'nav' },
-      { icon: 'fa-layer-group', label: 'Stacks', action: () => this.navigate('/stacks'), section: 'nav' },
-      { icon: 'fa-flask', label: 'API Playground', action: () => this.navigate('/api-playground'), section: 'nav' },
-      { icon: 'fa-dollar-sign', label: 'Cost Optimizer', action: () => this.navigate('/cost-optimizer'), section: 'nav' },
-      { icon: 'fa-project-diagram', label: 'Dependency Map', action: () => this.navigate('/dependency-map'), section: 'nav' },
-      { icon: 'fa-book', label: 'How-To Guides', action: () => this.navigate('/howto'), section: 'nav' },
-      { icon: 'fa-history', label: 'Event Timeline', action: () => this.navigate('/timeline'), section: 'nav' },
-      { icon: 'fa-file-alt', label: 'Log Explorer', action: () => this.navigate('/logs'), section: 'nav' },
-      { icon: 'fa-globe', label: 'Multi-Host Overview', action: () => this.navigate('/multi-host'), section: 'nav' },
-      { icon: 'fa-desktop', label: 'Virtual Machines', action: () => this.navigate('/virtual-machines'), section: 'nav' },
-      { icon: 'fa-shield-alt', label: 'High Availability', action: () => this.navigate('/high-availability'), section: 'nav' },
-      { icon: 'fa-database', label: 'Storage Posture', action: () => this.navigate('/storage-posture'), section: 'nav' },
-      { icon: 'fa-network-wired', label: 'Network Posture', action: () => this.navigate('/network-posture'), section: 'nav' },
-      { icon: 'fa-balance-scale', label: 'Placement Advisor', action: () => this.navigate('/placement-advisor'), section: 'nav' },
-      { icon: 'fa-box-archive', label: 'Recovery Points', action: () => this.navigate('/recovery-points'), section: 'nav' },
-      { icon: 'fa-calendar-check', label: 'Backup Policies', action: () => this.navigate('/backup-policies'), section: 'nav' },
-      { icon: 'fa-house-medical-circle-check', label: 'Disaster Recovery', action: () => this.navigate('/disaster-recovery'), section: 'nav' },
-      { icon: 'fa-images', label: 'VM Catalog', action: () => this.navigate('/virtualization-catalog'), section: 'nav' },
-      { icon: 'fa-tasks', label: 'Activity Center', action: () => this.navigate('/activity'), section: 'nav' },
+      { icon: 'fa-bell', label: i18n.t('nav.notifications'), action: () => this.navigate('/notifications'), section: 'nav' },
+      { icon: 'fa-layer-group', label: i18n.t('nav.stacks'), action: () => this.navigate('/stacks'), section: 'nav' },
+      { icon: 'fa-flask', label: i18n.t('nav.api-playground'), action: () => this.navigate('/api-playground'), section: 'nav' },
+      { icon: 'fa-dollar-sign', label: i18n.t('nav.cost-optimizer'), action: () => this.navigate('/cost-optimizer'), section: 'nav' },
+      { icon: 'fa-project-diagram', label: i18n.t('nav.dependency-map'), action: () => this.navigate('/dependency-map'), section: 'nav' },
+      { icon: 'fa-book', label: i18n.t('nav.howto'), action: () => this.navigate('/howto'), section: 'nav' },
+      { icon: 'fa-history', label: i18n.t('nav.timeline'), action: () => this.navigate('/timeline'), section: 'nav' },
+      { icon: 'fa-file-alt', label: i18n.t('nav.logs'), action: () => this.navigate('/logs'), section: 'nav' },
+      { icon: 'fa-globe', label: i18n.t('nav.multi-host'), action: () => this.navigate('/multi-host'), section: 'nav' },
+      { icon: 'fa-desktop', label: i18n.t('nav.virtual-machines'), action: () => this.navigate('/virtual-machines'), section: 'nav' },
+      { icon: 'fa-shield-alt', label: i18n.t('nav.high-availability'), action: () => this.navigate('/high-availability'), section: 'nav' },
+      { icon: 'fa-database', label: i18n.t('nav.storage-posture'), action: () => this.navigate('/storage-posture'), section: 'nav' },
+      { icon: 'fa-network-wired', label: i18n.t('nav.network-posture'), action: () => this.navigate('/network-posture'), section: 'nav' },
+      { icon: 'fa-shield-alt', label: i18n.t('nav.provider-security-posture'), action: () => this.navigate('/provider-security-posture'), section: 'nav' },
+      { icon: 'fa-balance-scale', label: i18n.t('nav.placement-advisor'), action: () => this.navigate('/placement-advisor'), section: 'nav' },
+      { icon: 'fa-box-archive', label: i18n.t('nav.recovery-points'), action: () => this.navigate('/recovery-points'), section: 'nav' },
+      { icon: 'fa-calendar-check', label: i18n.t('nav.backup-policies'), action: () => this.navigate('/backup-policies'), section: 'nav' },
+      { icon: 'fa-house-medical-circle-check', label: i18n.t('nav.disaster-recovery'), action: () => this.navigate('/disaster-recovery'), section: 'nav' },
+      { icon: 'fa-images', label: i18n.t('nav.virtualization-catalog'), action: () => this.navigate('/virtualization-catalog'), section: 'nav' },
+      { icon: 'fa-tasks', label: i18n.t('nav.activity'), action: () => this.navigate('/activity'), section: 'nav' },
+      { icon: 'fa-cloud', label: i18n.t('nav.xen-resources'), action: () => this.navigate('/xen-resources'), section: 'nav' },
+      { icon: 'fa-building-shield', label: i18n.t('nav.governance'), action: () => this.navigate('/governance'), section: 'nav' },
+      { icon: 'fa-store', label: i18n.t('nav.self-service'), action: () => this.navigate('/self-service'), section: 'nav' },
+      { icon: 'fa-shield-halved', label: i18n.t('nav.governance-controls'), action: () => this.navigate('/governance-controls'), section: 'nav' },
+      { icon: 'fa-tower-broadcast', label: i18n.t('nav.edge-platform'), action: () => this.navigate('/edge-platform'), section: 'nav' },
       // Docker tools
       { icon: 'fa-terminal', label: 'docker run → Compose', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
       { icon: 'fa-tags', label: 'Reverse Proxy Labels (Traefik/Caddy)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },

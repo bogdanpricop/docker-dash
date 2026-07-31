@@ -176,6 +176,7 @@ app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
 app.use('/api/providers', apiLimiter, require('./routes/providers'));
+app.use('/api/storage-repositories', apiLimiter, require('./routes/storage-repositories'));
 app.use('/api/provider-console', apiLimiter, require('./routes/provider-console'));
 app.use('/api/operations', apiLimiter, require('./routes/operations'));
 app.use('/api/experience', apiLimiter, require('./routes/infrastructure-experience'));

@@ -20,6 +20,12 @@ function _timestamp(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function _sizeBytes(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
+
 function _input(context, raw, observedAt) {
   const nativeRef = _text(raw?.nativeRef ?? raw?.ref ?? raw?.id, 2048);
   const name = _text(raw?.name, 160);
@@ -31,6 +37,7 @@ function _input(context, raw, observedAt) {
     canonicalId: `dds_snap_${sha256(`${context.hostId}|${context.vmId}|${stableIdentity}`).slice(0, 26)}`,
     nativeRef, nativeRefHash, uuid, name,
     description: _text(raw?.description, 1000), createdAt: _timestamp(raw?.createdAt),
+    sizeBytes: _sizeBytes(raw?.sizeBytes),
     parentRef: _text(raw?.parentRef, 2048), isCurrent: raw?.isCurrent === true,
     consistency: CONSISTENCIES.has(raw?.consistency) ? raw.consistency : 'unknown',
     observedAt,
@@ -89,13 +96,14 @@ function rememberMany(contextInput, rawItems, database) {
   const upsert = db.prepare(`INSERT INTO provider_vm_snapshots
     (canonical_id, host_id, vm_id, provider_type, native_ref_hash, native_ref_enc,
      snapshot_uuid, snapshot_name, description, created_at, parent_id, is_current,
-     consistency, integrity_state, is_present, observed_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, ?)
+     consistency, integrity_state, is_present, observed_at, size_bytes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, ?, ?)
     ON CONFLICT(canonical_id) DO UPDATE SET
       provider_type=excluded.provider_type, native_ref_hash=excluded.native_ref_hash,
       native_ref_enc=excluded.native_ref_enc, snapshot_uuid=COALESCE(excluded.snapshot_uuid, snapshot_uuid),
       snapshot_name=excluded.snapshot_name, description=excluded.description,
       created_at=COALESCE(excluded.created_at, created_at), parent_id=NULL,
+      size_bytes=excluded.size_bytes,
       is_current=excluded.is_current, consistency=excluded.consistency,
       integrity_state=excluded.integrity_state, is_present=1, observed_at=excluded.observed_at,
       updated_at=datetime('now')`);
@@ -107,7 +115,7 @@ function rememberMany(contextInput, rawItems, database) {
       upsert.run(item.canonicalId, context.hostId, context.vmId, context.providerType,
         item.nativeRefHash, encrypt(item.nativeRef), item.uuid, item.name, item.description,
         item.createdAt, item.isCurrent ? 1 : 0,
-        item.consistency, integrity.get(item.canonicalId) || 'unknown', item.observedAt);
+        item.consistency, integrity.get(item.canonicalId) || 'unknown', item.observedAt, item.sizeBytes);
     }
     // Provider APIs do not guarantee parent-before-child ordering. Insert the
     // complete inventory first, then attach edges so immediate SQLite foreign
@@ -126,6 +134,7 @@ function _public(row) {
     schemaVersion: '1.0', id: row.canonical_id, vmId: row.vm_id,
     provider: { type: row.provider_type, endpointId: row.host_id },
     name: row.snapshot_name, description: row.description || null,
+    sizeBytes: row.size_bytes ?? null,
     createdAt: row.created_at || null, parentId: row.parent_id || null,
     childCount: Number(row.child_count || 0), isCurrent: !!row.is_current,
     consistency: row.consistency, integrity: { state: row.integrity_state },
@@ -162,5 +171,5 @@ function resolve(snapshotIdInput, scope = {}, database) {
 
 module.exports = {
   rememberMany, list, resolve, MAX_SNAPSHOTS,
-  _internals: { SAFE_SNAPSHOT_ID, _text, _timestamp, _input, _integrity, _public },
+  _internals: { SAFE_SNAPSHOT_ID, _text, _timestamp, _sizeBytes, _input, _integrity, _public },
 };

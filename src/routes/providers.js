@@ -10,6 +10,7 @@ const providerVmMigration = require('../services/provider-operations/vm-migratio
 const providerHostMaintenance = require('../services/provider-operations/host-maintenance');
 const providerHaReadiness = require('../services/provider-sdk/ha-readiness');
 const providerStoragePosture = require('../services/provider-sdk/storage-posture');
+const providerSnapshotRisk = require('../services/provider-sdk/snapshot-risk');
 const providerStorageTopology = require('../services/provider-sdk/storage-topology');
 const providerStoragePlacementAdvisory = require('../services/provider-sdk/storage-placement-advisory');
 const providerStoragePolicyAdvisory = require('../services/provider-sdk/storage-policy-advisory');
@@ -28,12 +29,14 @@ const providerPlacementChanges = require('../services/provider-operations/placem
 const providerVmPower = require('../services/provider-operations/vm-power');
 const providerVmSnapshots = require('../services/provider-operations/vm-snapshots');
 const providerVmSnapshotPolicies = require('../services/provider-operations/snapshot-policies');
+const providerVmActionSchedules = require('../services/provider-operations/vm-action-schedules');
 const providerBackupPolicies = require('../services/provider-operations/backup-policies');
 const providerBackupExecutions = require('../services/provider-operations/backup-executions');
 const providerRecoveryRestore = require('../services/provider-operations/recovery-restore');
 const providerRestoreDrills = require('../services/provider-operations/restore-drills');
 const providerDrRunbooks = require('../services/provider-operations/dr-runbooks');
 const providerVmDisks = require('../services/provider-operations/vm-disks');
+const providerVmNics = require('../services/provider-operations/vm-nics');
 const providerConsole = require('../services/provider-console/broker');
 const providerVmProvision = require('../services/provider-operations/vm-provision');
 const conformance = require('../services/provider-conformance');
@@ -47,6 +50,7 @@ const router = Router();
 
 router.use((req, res, next) => config.features.providerSdkV2
   ? next() : res.status(404).json({ error: 'Provider SDK v2 is disabled' }));
+router.use('/inventory-views', require('./provider-inventory-views'));
 
 function _isAdmin(user) {
   return user?.role === 'admin' || (Array.isArray(user?.roles) && user.roles.includes('admin'));
@@ -114,12 +118,57 @@ function _diskAudit(req, action, plan, operation = null) {
   });
 }
 
+function _nicError(res, err) {
+  const trusted = err?.name === 'VmNicError'
+    && /^(?:VM_NIC_|PROVIDER_|INVALID_|UNSTABLE_|CAPABILITY_|OPERATION_|POLICY_|PERMISSION_|LAST_)[A-Z0-9_]{0,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM NIC link request failed' : err.message,
+    code: trusted ? err.code : 'VM_NIC_LINK_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _nicAudit(req, action, plan, operation = null) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_vm_nic_${action}`, targetType: 'virtualMachine', targetId: plan.vm.id,
+    details: {
+      hostId: Number(req.params.hostId), provider: plan.providerType,
+      vmId: plan.vm.id, nicId: plan.nic.id, linkAction: plan.action || null,
+      operationId: operation?.id || null, planHash: plan.planHash || null,
+      safetyState: plan.safety?.state || null, noDetachDelete: true,
+    }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
 function _snapshotPolicyError(res, err) {
   const status = Number.isInteger(err?.status) ? err.status : 500;
   res.status(status).json({
     error: status >= 500 ? 'Provider VM snapshot policy request failed' : err.message,
     code: err?.code || 'VM_SNAPSHOT_POLICY_ERROR',
     ...(status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _vmActionScheduleError(res, err) {
+  const trusted = err?.name === 'VmActionScheduleError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider VM action schedule request failed' : err.message,
+    code: trusted ? err.code : 'VM_ACTION_SCHEDULE_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _snapshotRiskError(res, err, fallback) {
+  const trusted = err?.name === 'SnapshotRiskError'
+    && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 502;
+  return res.status(status).json({
+    error: trusted ? err.message : fallback,
+    code: trusted ? err.code : 'SNAPSHOT_RISK_PROVIDER_ERROR',
   });
 }
 
@@ -1077,6 +1126,62 @@ router.post('/:hostId/virtual-machines/:resourceId/console', requireAuth,
     }
   }));
 
+router.get('/:hostId/virtual-machines/:resourceId/nics', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerVmNics.inventoryForHost(resolved.host, req.params.resourceId)); }
+    catch (err) { _nicError(res, err); }
+  }));
+
+router.put('/:hostId/virtual-machines/:resourceId/nics/:nicId/safety', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmNics.declareSafetyForHost(resolved.host, req.params.resourceId,
+        req.params.nicId, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_nic_safety_declare', targetType: 'virtualMachine', targetId: result.vm.id,
+        details: {
+          provider: resolved.host.daemon_type, hostId: resolved.host.id, nicId: result.nic.id,
+          state: result.safety.state, managementRole: result.safety.managementRole,
+          bootDependency: result.safety.bootDependency, guestDependency: result.safety.guestDependency,
+          expiresAt: result.safety.expiresAt,
+        }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+      });
+      res.json(result);
+    } catch (err) { _nicError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/nics/:nicId/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerVmNics.preflightForHost(resolved.host, req.params.resourceId,
+        req.params.nicId, req.body?.action, { canOperate: true });
+      _nicAudit(req, `${plan.action}_preflight`, plan);
+      res.json(plan);
+    } catch (err) { _nicError(res, err); }
+  }));
+
+router.post('/:hostId/virtual-machines/:resourceId/nics/:nicId/actions', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerVmNics.submitForHost(resolved.host, req.params.resourceId,
+        req.params.nicId, { ...req.body, idempotencyKey: req.get('Idempotency-Key') },
+        { canOperate: true, createdBy: req.user.id });
+      _nicAudit(req, `${result.plan.action}_submit`, result.plan, result.operation);
+      res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
+    } catch (err) { _nicError(res, err); }
+  }));
+
 router.get('/:hostId/virtual-machines/:resourceId/disks', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
@@ -1178,6 +1283,103 @@ router.delete('/:hostId/managed-volumes/:volumeId', requireAuth,
       _diskAudit(req, 'delete_submit', result.plan, result.operation);
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
     } catch (err) { _diskError(res, err); }
+  }));
+
+router.get('/:hostId/virtual-machines/:resourceId/action-schedules', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const items = providerVmActionSchedules.listForVm(resolved.host.id, req.params.resourceId);
+      res.json({ schemaVersion: '1.0', automation: { executeEnabled: config.features.providerVmActionSchedules === true,
+        underlyingPowerEnabled: config.features.providerVmPower === true,
+        underlyingSnapshotEnabled: config.features.providerVmSnapshots === true }, count: items.length, items });
+    } catch (err) { _vmActionScheduleError(res, err); }
+  });
+
+router.post('/:hostId/virtual-machines/:resourceId/action-schedules', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const schedule = await providerVmActionSchedules.createForHost(
+        resolved.host, req.params.resourceId, req.body || {}, { createdBy: req.user.id }
+      );
+      auditService.log({ userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_action_schedule_create', targetType: 'virtualMachine', targetId: schedule.vmId,
+        details: { hostId: schedule.hostId, scheduleId: schedule.id, action: schedule.action,
+          mode: schedule.mode, enabled: schedule.enabled, timezone: schedule.timezone, cron: schedule.cron },
+        ip: getClientIp(req), userAgent: req.headers['user-agent'] });
+      res.status(201).json({ schemaVersion: '1.0', schedule });
+    } catch (err) { _vmActionScheduleError(res, err); }
+  }));
+
+router.put('/:hostId/virtual-machines/:resourceId/action-schedules/:scheduleId', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const schedule = await providerVmActionSchedules.updateForHost(
+        resolved.host, req.params.resourceId, req.params.scheduleId, req.body || {}, { createdBy: req.user.id }
+      );
+      auditService.log({ userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_action_schedule_update', targetType: 'virtualMachine', targetId: schedule.vmId,
+        details: { hostId: schedule.hostId, scheduleId: schedule.id, version: schedule.version,
+          action: schedule.action, mode: schedule.mode, enabled: schedule.enabled,
+          timezone: schedule.timezone, cron: schedule.cron }, ip: getClientIp(req), userAgent: req.headers['user-agent'] });
+      res.json({ schemaVersion: '1.0', schedule });
+    } catch (err) { _vmActionScheduleError(res, err); }
+  }));
+
+router.delete('/:hostId/virtual-machines/:resourceId/action-schedules/:scheduleId', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const schedule = providerVmActionSchedules.removeForVm(
+        resolved.host.id, req.params.resourceId, req.params.scheduleId
+      );
+      auditService.log({ userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_action_schedule_delete', targetType: 'virtualMachine', targetId: schedule.vmId,
+        details: { hostId: schedule.hostId, scheduleId: schedule.id, action: schedule.action },
+        ip: getClientIp(req), userAgent: req.headers['user-agent'] });
+      res.json({ ok: true, scheduleId: schedule.id });
+    } catch (err) { _vmActionScheduleError(res, err); }
+  });
+
+router.get('/:hostId/virtual-machines/:resourceId/action-schedules/:scheduleId/runs', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const items = providerVmActionSchedules.listRuns(req.params.scheduleId, { limit: req.query.limit });
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _vmActionScheduleError(res, err); }
+  });
+
+router.post('/:hostId/virtual-machines/:resourceId/action-schedules/:scheduleId/run', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const schedules = providerVmActionSchedules.listForVm(resolved.host.id, req.params.resourceId);
+      const schedule = schedules.find(item => item.id === req.params.scheduleId);
+      if (!schedule) throw new providerVmActionSchedules.VmActionScheduleError(
+        'VM action schedule was not found', 'VM_ACTION_SCHEDULE_NOT_FOUND', 404
+      );
+      const run = await providerVmActionSchedules.runNow(req.params.scheduleId, req.body || {}, { createdBy: req.user.id });
+      auditService.log({ userId: req.user.id, username: req.user.username,
+        action: 'provider_vm_action_schedule_run', targetType: 'virtualMachine', targetId: schedule.vmId,
+        details: { hostId: schedule.hostId, scheduleId: schedule.id, runId: run?.id || null,
+          action: schedule.action, mode: schedule.mode, state: run?.state || null,
+          operationId: run?.operationId || null, emergencyOverrideUsed: false },
+        ip: getClientIp(req), userAgent: req.headers['user-agent'] });
+      res.status(run?.state === 'queued' || run?.state === 'running' ? 202 : 200)
+        .json({ schemaVersion: '1.0', run });
+    } catch (err) { _vmActionScheduleError(res, err); }
   }));
 
 router.get('/:hostId/virtual-machines/:resourceId/snapshot-policy', requireAuth,
@@ -1770,6 +1972,52 @@ router.get('/:hostId/storage-posture', requireAuth,
       });
     }
   }));
+
+router.get('/:hostId/snapshot-risk', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { return res.json(providerSnapshotRisk.assessHost(resolved.host)); }
+    catch (err) { return _snapshotRiskError(res, err, 'Provider snapshot risk assessment failed'); }
+  });
+
+router.post('/:hostId/snapshot-risk/refresh', requireAuth, requireRole('admin'),
+  requireHostAccess('view', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerSnapshotRisk.refreshHost(resolved.host, { actor: req.user });
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_snapshot_risk_refresh', targetType: 'providerHost', targetId: String(resolved.host.id),
+        details: { provider: resolved.host.daemon_type, state: result.summary.state,
+          snapshotCount: result.summary.snapshotCount, transitionCount: result.transitions.length,
+          attemptedVms: result.coverage.collection?.attemptedVms || 0,
+          failedVms: result.coverage.collection?.failedVms || 0 },
+        ip: getClientIp(req),
+      });
+      res.json(result);
+    } catch (err) { _snapshotRiskError(res, err, 'Provider snapshot risk refresh failed'); }
+  }));
+
+router.put('/:hostId/snapshot-risk/policy', requireAuth, requireRole('admin'),
+  requireHostAccess('view', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const policy = providerSnapshotRisk.updatePolicy(resolved.host, req.body || {}, req.user);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_snapshot_risk_policy_update', targetType: 'providerHost', targetId: String(resolved.host.id),
+        details: { provider: resolved.host.daemon_type, version: policy.version,
+          warningAgeDays: policy.warningAgeDays, criticalAgeDays: policy.criticalAgeDays,
+          warningChainDepth: policy.warningChainDepth, criticalChainDepth: policy.criticalChainDepth,
+          warningGrowthPercent: policy.warningGrowthPercent, criticalGrowthPercent: policy.criticalGrowthPercent },
+        ip: getClientIp(req),
+      });
+      return res.json({ policy });
+    } catch (err) { return _snapshotRiskError(res, err, 'Provider snapshot risk policy update failed'); }
+  });
 
 router.get('/:hostId/storage-topology', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

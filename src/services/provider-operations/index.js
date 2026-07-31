@@ -14,6 +14,7 @@ require('./handlers/vm-backup').register(engine);
 require('./handlers/vm-restore').register(engine);
 require('./handlers/recovery-drill').register(engine);
 require('./handlers/vm-disk').register(engine);
+require('./handlers/vm-nic-link').register(engine);
 
 module.exports = engine;
 module.exports.policy = policy;

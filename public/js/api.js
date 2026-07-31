@@ -556,10 +556,23 @@ const Api = {
   getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
   getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
+  getProviderInventoryViews(resourceType = 'virtual-machines') { return this.get(`/providers/inventory-views?resourceType=${encodeURIComponent(resourceType)}`); },
+  createProviderInventoryView(body) { return this.post('/providers/inventory-views', body); },
+  updateProviderInventoryView(id, body) { return this.put(`/providers/inventory-views/${encodeURIComponent(id)}`, body); },
+  deleteProviderInventoryView(id) { return this.delete(`/providers/inventory-views/${encodeURIComponent(id)}`); },
   getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
   getProviderClusters(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/clusters?limit=${limit}`); },
   getProviderStorages(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/storages?limit=${limit}`); },
   getProviderStoragePosture(hostId) { return this.get(`/providers/${hostId}/storage-posture`); },
+  getProviderSnapshotRisk(hostId) { return this.get(`/providers/${hostId}/snapshot-risk`); },
+  refreshProviderSnapshotRisk(hostId) { return this.post(`/providers/${hostId}/snapshot-risk/refresh`, {}); },
+  updateProviderSnapshotRiskPolicy(hostId, body) { return this.put(`/providers/${hostId}/snapshot-risk/policy`, body); },
+  getStorageRepositories(historyLimit = 30) { return this.get(`/storage-repositories?historyLimit=${encodeURIComponent(historyLimit)}`); },
+  createStorageRepository(body) { return this.post('/storage-repositories', body); },
+  updateStorageRepository(id, body) { return this.put(`/storage-repositories/${encodeURIComponent(id)}`, body); },
+  deleteStorageRepository(id) { return this.delete(`/storage-repositories/${encodeURIComponent(id)}`); },
+  probeStorageRepository(id) { return this.post(`/storage-repositories/${encodeURIComponent(id)}/probe`, {}); },
+  writeTestStorageRepository(id, confirmation) { return this.post(`/storage-repositories/${encodeURIComponent(id)}/write-test`, { confirmation }); },
   getProviderStorageTopology(hostId) { return this.get(`/providers/${hostId}/storage-topology`); },
   getProviderStoragePlacementAdvisory(hostId, requiredBytes) { return this.get(`/providers/${hostId}/storage-placement-advisory?requiredBytes=${encodeURIComponent(requiredBytes)}`); },
   getProviderStoragePolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minFreeBytes !== null && options.minFreeBytes !== undefined) query.set('minFreeBytes', options.minFreeBytes); if (options.requireShared === true) query.set('requireShared', 'true'); return this.get(`/providers/${hostId}/storage-policy-advisory?${query}`); },
@@ -798,6 +811,20 @@ const Api = {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     });
   },
+  getProviderVMNics(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics`);
+  },
+  declareProviderVMNicSafety(hostId, resourceId, nicId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/safety`, body);
+  },
+  preflightProviderVMNicLink(hostId, resourceId, nicId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/preflight`, { action });
+  },
+  submitProviderVMNicLink(hostId, resourceId, nicId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/actions`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
   getProviderVMDisks(hostId, resourceId) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks`);
   },
@@ -872,6 +899,24 @@ const Api = {
   },
   getProviderVMSnapshotPolicyRuns(hostId, resourceId, limit = 20) {
     return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/runs?limit=${limit}`);
+  },
+  getProviderVMActionSchedules(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules`);
+  },
+  createProviderVMActionSchedule(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules`, body);
+  },
+  updateProviderVMActionSchedule(hostId, resourceId, scheduleId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}`, body);
+  },
+  deleteProviderVMActionSchedule(hostId, resourceId, scheduleId) {
+    return this.delete(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}`);
+  },
+  getProviderVMActionScheduleRuns(hostId, resourceId, scheduleId, limit = 20) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}/runs?limit=${limit}`);
+  },
+  runProviderVMActionSchedule(hostId, resourceId, scheduleId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}/run`, body);
   },
   getProviderOperations(filters = {}) {
     const qs = new URLSearchParams();
@@ -1724,7 +1769,7 @@ const Api = {
   recordStorageSuiteHealth(body) { return this.post('/governance/lifecycle/storage-advanced/suite-health-observations', body); },
   planStorageChange(body) { return this.post('/governance/lifecycle/storage-advanced/change-plans', body); },
 
-  // ─── Advanced network control plane (V4.3f / V4.4d) ─
+  // ─── Advanced network control plane (V4.3f / V4.4j) ─
   getNetworkAdvanced() { return this.get('/governance/lifecycle/network-advanced'); },
   planNetworkNicAttach(body) { return this.post('/governance/lifecycle/network-advanced/nic-attach-plans', body); },
   planNetworkNicDetach(body) { return this.post('/governance/lifecycle/network-advanced/nic-detach-plans', body); },
@@ -1737,6 +1782,16 @@ const Api = {
   recordDistributedFirewall(body) { return this.post('/governance/lifecycle/network-advanced/distributed-firewall-observations', body); },
   saveMicrosegmentationPolicy(body) { return this.post('/governance/lifecycle/network-advanced/microsegmentation-policies', body); },
   ingestNetworkFlowLogs(body) { return this.post('/governance/lifecycle/network-advanced/flow-log-batches', body); },
+  validateNetworkIntent(body) { return this.post('/governance/lifecycle/network-advanced/intent-validations', body); },
+  recordNetworkDependencyAddresses(body) { return this.post('/governance/lifecycle/network-advanced/dependency-address-observations', body); },
+  recordNetworkDependencyDns(body) { return this.post('/governance/lifecycle/network-advanced/dependency-dns-observations', body); },
+  buildNetworkDependencyMap(body) { return this.post('/governance/lifecycle/network-advanced/dependency-snapshots', body); },
+  assessNetworkReachability(body) { return this.post('/governance/lifecycle/network-advanced/reachability-assessments', body); },
+  getNetworkDependencyImpact(snapshotId, resourceKey, maxDepth = 5) { return this.get(`/governance/lifecycle/network-advanced/dependency-snapshots/${encodeURIComponent(snapshotId)}/impact?resourceKey=${encodeURIComponent(resourceKey)}&maxDepth=${encodeURIComponent(maxDepth)}`); },
+  assessNetworkMtu(body) { return this.post('/governance/lifecycle/network-advanced/mtu-assessments', body); },
+  recordNetworkBondHealth(body) { return this.post('/governance/lifecycle/network-advanced/bond-health-observations', body); },
+  recordNetworkLoadBalancerInventory(body) { return this.post('/governance/lifecycle/network-advanced/load-balancer-observations', body); },
+  planNetworkPublicIp(body) { return this.post('/governance/lifecycle/network-advanced/public-ip-plans', body); },
 
   // ─── VM observability, events and multi-signal correlation (V6.4a) ───
   getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },

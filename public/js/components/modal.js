@@ -124,7 +124,7 @@ const Modal = {
       const markup = `
         <div class="modal-header">
           <h3>${Utils.escapeHtml(title)}</h3>
-          <button class="modal-close-btn" id="modal-x">
+          <button type="button" class="modal-close-btn" id="modal-x" aria-label="Close dialog">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -133,8 +133,8 @@ const Modal = {
           ${typeBlock}
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
-          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-ok" ${typeToConfirm ? 'disabled' : ''}>
+          <button type="button" class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
+          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-ok" ${typeToConfirm ? 'disabled' : ''}>
             ${Utils.escapeHtml(confirmText)}
           </button>
         </div>
@@ -165,14 +165,14 @@ const Modal = {
     const wrapper = `
       <div class="modal-header">
         <h3>${Utils.escapeHtml(title)}</h3>
-        <button class="modal-close-btn" id="modal-x">
+        <button type="button" class="modal-close-btn" id="modal-x" aria-label="Close dialog">
           <i class="fas fa-times"></i>
         </button>
       </div>
-      <div class="modal-body">${html}</div>
+      <div class="modal-body modal-form-body">${html}</div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
-        <button class="btn btn-primary" id="modal-submit">${Utils.escapeHtml(submitText)}</button>
+        <button type="button" class="btn btn-secondary" id="modal-cancel">${i18n.t('common.cancel')}</button>
+        <button type="button" class="btn btn-primary" id="modal-submit">${Utils.escapeHtml(submitText)}</button>
       </div>
     `;
     return new Promise((resolve) => {
