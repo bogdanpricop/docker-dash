@@ -9,7 +9,7 @@ const DisasterRecoveryPage = {
   _escape(value) { return Utils.escapeHtml(value === null || value === undefined ? '' : String(value)); },
   _state(value) { return String(value || 'unknown').replaceAll('_', ' '); },
   _badge(value) {
-    return ({ met: 'badge-success', healthy: 'badge-success', succeeded: 'badge-success',
+    return ({ met: 'badge-success', ready: 'badge-success', healthy: 'badge-success', succeeded: 'badge-success',
       breached: 'badge-warning', never_tested: 'badge-warning', blocked: 'badge-danger',
       failed: 'badge-danger', unknown: 'badge-secondary', unsupported: 'badge-secondary',
       conditional: 'badge-info', supported: 'badge-success' })[value] || 'badge-secondary';
@@ -31,6 +31,8 @@ const DisasterRecoveryPage = {
       <div class="stat-card"><div class="stat-value">${Number(counts.met || 0)}</div><div class="stat-label">Objectives met</div></div>
       <div class="stat-card"><div class="stat-value">${Number(counts.breached || 0) + Number(counts.failed || 0)}</div><div class="stat-label">Breached / failed</div></div>
       <div class="stat-card"><div class="stat-value">${Number(counts.never_tested || 0) + Number(counts.unknown || 0)}</div><div class="stat-label">Untested / unknown</div></div>
+      <div class="stat-card"><div class="stat-value">${Number(this._overview?.objectives?.rpo?.met || 0)} / ${Number(this._overview?.objectives?.rto?.met || 0)}</div><div class="stat-label">RPO / RTO workloads met</div></div>
+      <div class="stat-card"><div class="stat-value">${Number(this._overview?.testReadiness?.ready || 0)}</div><div class="stat-label">Isolated tests ready</div></div>
       <div class="stat-card"><div class="stat-value">${Number(this._overview?.replication?.count || 0)}</div><div class="stat-label">Observed replications</div></div>
     </div><div class="alert alert-info"><strong>Replication evidence:</strong>
       <span class="badge ${this._badge(capability.state)}">${this._escape(this._state(capability.state))}</span>
@@ -52,6 +54,7 @@ const DisasterRecoveryPage = {
           <div><span class="text-muted text-sm">RPO target / observed</span><br>${this._duration(group.rpoTargetSeconds)} / ${this._duration(item.rpoMaxSeconds)}</div>
           <div><span class="text-muted text-sm">RTO target / measured</span><br>${this._duration(group.rtoTargetSeconds)} / ${this._duration(item.rtoMaxSeconds)}</div>
           <div><span class="text-muted text-sm">Findings</span><br>${Number(item.blockerCount || 0)} blockers · ${Number(item.warningCount || 0)} warnings</div>
+          <div><span class="text-muted text-sm">Non-disruptive test</span><br><span class="badge ${this._badge(item.testReadiness?.state)}">${this._escape(this._state(item.testReadiness?.state))}</span> · ${Number(item.testReadiness?.isolatedNetworkMappings || 0)}/${Number(item.testReadiness?.networkMappingCount || 0)} bubble mappings · ${Number(item.testReadiness?.temporaryCloneCount || 0)} temporary clones</div>
           <div><span class="text-muted text-sm">Latest rehearsal</span><br>${item.lastRun ? `<span class="badge ${this._badge(item.lastRun.state)}">${this._escape(item.lastRun.state)}</span> ${this._escape(Utils.timeAgo(item.lastRun.completedAt || item.lastRun.createdAt))}` : 'never'}</div>
         </div>${this._isAdmin() ? `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:12px">
           <button class="btn btn-sm btn-secondary" data-dr-edit="${this._escape(group.id)}"><i class="fas fa-pen"></i> Edit</button>

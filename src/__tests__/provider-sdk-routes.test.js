@@ -115,6 +115,12 @@ const mockRestoreDepthPreflight = jest.fn();
 const mockReplicationPolicyList = jest.fn();
 const mockReplicationPolicyUpsert = jest.fn();
 const mockReplicationPolicyRemove = jest.fn();
+const mockSecurityAssuranceGet = jest.fn();
+const mockSecurityEvidenceUpsert = jest.fn();
+const mockKeyProviderList = jest.fn();
+const mockKeyProviderUpsert = jest.fn();
+const mockKeyProviderRemove = jest.fn();
+const mockConfidentialPreflight = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -125,6 +131,7 @@ jest.mock('../config', () => {
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
     providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
     providerRestoreReplicationDepth: true,
+    providerSecurityAssurance: true,
     providerVmActionSchedules: true } };
 });
 
@@ -347,6 +354,23 @@ jest.mock('../services/provider-operations/restore-replication-depth', () => {
     listReplicationPolicies: (...args) => mockReplicationPolicyList(...args),
     upsertReplicationPolicy: (...args) => mockReplicationPolicyUpsert(...args),
     removeReplicationPolicy: (...args) => mockReplicationPolicyRemove(...args),
+  };
+});
+jest.mock('../services/provider-sdk/security-assurance', () => {
+  class ProviderSecurityAssuranceError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'ProviderSecurityAssuranceError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    ProviderSecurityAssuranceError,
+    assuranceForHost: (...args) => mockSecurityAssuranceGet(...args),
+    upsertEvidence: (...args) => mockSecurityEvidenceUpsert(...args),
+    listKeyProviders: (...args) => mockKeyProviderList(...args),
+    upsertKeyProvider: (...args) => mockKeyProviderUpsert(...args),
+    removeKeyProvider: (...args) => mockKeyProviderRemove(...args),
+    preflightConfidentialProvisioning: (...args) => mockConfidentialPreflight(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -645,6 +669,21 @@ describe('Provider SDK routes', () => {
     mockReplicationPolicyList.mockReturnValue([replicationPolicy]);
     mockReplicationPolicyUpsert.mockResolvedValue({ created: true, policy: replicationPolicy });
     mockReplicationPolicyRemove.mockReturnValue(replicationPolicy);
+    const securityEvidence = { id: `psec_${'d'.repeat(26)}`, resourceKind: 'endpoint',
+      resourceId: 'endpoint:7', pack: { key: 'xen-security' }, source: 'imported_evidence',
+      evidenceHash: 'd'.repeat(64) };
+    const keyProvider = { id: `pkpr_${'e'.repeat(26)}`, providerKind: 'external_kms',
+      evidenceHash: 'e'.repeat(64), health: { state: 'healthy' } };
+    mockSecurityAssuranceGet.mockResolvedValue({ schemaVersion: '1.0', evidenceCount: 1,
+      items: [securityEvidence], keyProviders: [keyProvider] });
+    mockSecurityEvidenceUpsert.mockReturnValue({ created: true, evidence: securityEvidence,
+      networkCallsStarted: 0 });
+    mockKeyProviderList.mockReturnValue([keyProvider]);
+    mockKeyProviderUpsert.mockReturnValue({ created: true, keyProvider, networkCallsStarted: 0 });
+    mockKeyProviderRemove.mockReturnValue(keyProvider);
+    mockConfidentialPreflight.mockResolvedValue({ id: `pcvp_${'f'.repeat(26)}`,
+      request: { mode: 'sev_snp' }, planHash: 'f'.repeat(64), allowed: false,
+      blockers: [{ code: 'HOST_CONFIDENTIAL_MODE_UNSUPPORTED' }], executionAuthorized: false });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -1252,6 +1291,57 @@ describe('Provider SDK routes', () => {
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
       action: 'provider_restore_depth_replication_policy_deleted',
       details: expect.objectContaining({ providerMutationAuthorized: false }),
+    }));
+  });
+
+  it('scopes and audits security evidence, key providers and confidential compatibility plans', async () => {
+    const assurance = await request(app).get('/api/providers/7/security-assurance')
+      .set('x-test-role', 'viewer');
+    expect(assurance.status).toBe(200); expect(assurance.body.evidenceCount).toBe(1);
+    expect(mockSecurityAssuranceGet).toHaveBeenCalledWith(mockHost);
+    const evidenceBody = { resourceKind: 'endpoint', facts: {
+      hardening: { baselineKey: 'baseline-v1', checks: [{ id: 'tls', state: 'unknown' }] },
+    } };
+    expect((await request(app).put('/api/providers/7/security-assurance/evidence')
+      .set('x-test-role', 'viewer').send(evidenceBody)).status).toBe(403);
+    const evidence = await request(app).put('/api/providers/7/security-assurance/evidence')
+      .send(evidenceBody);
+    expect(evidence.status).toBe(201);
+    expect(mockSecurityEvidenceUpsert).toHaveBeenCalledWith(mockHost, evidenceBody, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_evidence_created', targetType: 'endpoint',
+      targetId: 'endpoint:7', details: expect.objectContaining({
+        providerMutationAuthorized: false, networkCallsStarted: 0,
+      }),
+    }));
+
+    const keys = await request(app).get('/api/providers/7/security-assurance/key-providers')
+      .set('x-test-role', 'viewer');
+    expect(keys.status).toBe(200); expect(keys.body.count).toBe(1);
+    const keyBody = { name: 'Primary KMS', providerKind: 'external_kms',
+      endpointOrigin: 'https://kms.example.test', secretRef: 'vault://virtualization/kms/client' };
+    const key = await request(app).post('/api/providers/7/security-assurance/key-providers').send(keyBody);
+    expect(key.status).toBe(201);
+    const keyId = key.body.keyProvider.id;
+    expect((await request(app).delete(`/api/providers/7/security-assurance/key-providers/${keyId}`)).status)
+      .toBe(200);
+    expect(mockKeyProviderRemove).toHaveBeenCalledWith(7, keyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_key_provider_deleted',
+      details: expect.objectContaining({ providerMutationAuthorized: false }),
+    }));
+
+    const planBody = { artifactId: `dda_art_${'a'.repeat(26)}`,
+      targetHostId: `ddr_host_${'b'.repeat(26)}`, mode: 'sev_snp' };
+    const plan = await request(app)
+      .post('/api/providers/7/security-assurance/confidential-provisioning/preflight')
+      .send(planBody);
+    expect(plan.status).toBe(200); expect(plan.body.executionAuthorized).toBe(false);
+    expect(mockConfidentialPreflight).toHaveBeenCalledWith(mockHost, planBody,
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_confidential_preflight',
+      details: expect.objectContaining({ executionAuthorized: false }),
     }));
   });
 

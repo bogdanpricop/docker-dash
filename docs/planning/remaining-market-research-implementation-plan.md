@@ -349,8 +349,10 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] protection group cu network/placement maps și dependency graph versionat;
 - [x] failover/failback deterministic preflight și rehearsal evidence;
 - [ ] failover/failback provider mutation task-backed, approval și typed confirmation;
-- [ ] bubble-network DR test cu cleanup ownership;
-- [ ] RPO/RTO dashboard alimentat din execuții reale, nu numai rehearsal plans.
+- [x] bubble-network DR test compiler/readiness cu temporary clones, source
+  isolation și cleanup ownership; executorul provider rămâne nereleased;
+- [x] RPO/RTO dashboard alimentat din recovery points/replication și durate de
+  restore drill reușite, cu `unknown` păstrat explicit.
 
 ### Release gate R5
 
@@ -365,11 +367,15 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 
 **Features:** B151–B159.
 
-- packs versionate Proxmox/vSphere/Xen/KubeVirt;
-- Secure Boot, vTPM, disk/state/migration/backup encryption;
-- KMS/key-provider health, certificate expiry și affected resources;
-- confidential VM detection; provisioning numai după inventory stabil;
-- CIS/STIG/vendor host și VM hardware baselines.
+- [x] packs versionate Proxmox/vSphere/Xen/KubeVirt plus Hyper-V/Nutanix;
+- [x] Secure Boot, vTPM, disk/state/migration/backup encryption ca evidence
+  importată/provider-reported, fără scan implicit;
+- [x] KMS/key-provider health, certificate expiry și affected resources cu
+  secret references simbolice și zero network calls;
+- [x] confidential VM detection și compatibility preflight persistent;
+  provisioning-ul real rămâne separat și neautorizat;
+- [x] CIS/STIG/vendor host baseline evidence closed-schema;
+- [ ] VM virtual-hardware baseline B159 și colectoare provider-native.
 
 ### R6b — advisories și remediation controlată
 
@@ -608,3 +614,5 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 6. R4b/B119: browser/provider simulation adapters și decizie separată pentru probe active privind runner-ul allowlisted, source ownership, destination policy, egress și rate limits.
 7. R5a/B129–B138: canary Proxmox/PBS, apoi adaptor XO pentru un schedule/job task-aware descoperit explicit; vSphere intră numai prin VADP/VDDK sau backup vendor cu data mover.
 8. R5b/R5c/B139–B148: adaptoare task-aware pentru file/instant/differential/copy și replication configure; failover/failback real numai după fencing, isolated networking, data-authority reversal și post-read verification.
+9. R5c/R6a/B149–B158: provider-native DR test executor și security collectors;
+   confidential VM create numai după canary, task identity și post-read verify.

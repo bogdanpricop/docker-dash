@@ -157,6 +157,13 @@ function _fromCapabilities(capabilities = {}) {
       ? 'Xen Orchestra reverse-protection transport' : 'Xen'),
     'dr.test': adapterNotImplemented(capabilities.provider === 'xo'
       ? 'Xen Orchestra isolated multi-workload test transport' : 'Xen'),
+    'security.secureBoot.read': adapterNotImplemented('Xen Secure Boot evidence'),
+    'security.vtpm.read': adapterNotImplemented('Xen virtual TPM evidence'),
+    'security.encryption.read': adapterNotImplemented('Xen encryption evidence'),
+    'security.kms.read': adapterNotImplemented('Xen key-provider evidence'),
+    'security.confidentialVm.read': adapterNotImplemented('Xen confidential VM evidence'),
+    'security.confidentialVm.plan': adapterNotImplemented('Xen confidential VM compatibility planning'),
+    'security.hardening.read': adapterNotImplemented('Xen host hardening evidence'),
   };
 
   const actions = new Set(capabilities.vmActions || []);

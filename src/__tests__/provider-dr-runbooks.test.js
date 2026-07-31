@@ -127,6 +127,21 @@ describe('provider DR protection groups and rehearsals', () => {
     expect(result.run.evidence.steps.some(step => step.mutation && step.verdict === 'not_executed')).toBe(true);
   });
 
+  it('publishes workload RPO/RTO compliance and isolated-test readiness aggregates', async () => {
+    service.upsertGroup(host, body(), { database: db, createdBy: 9 });
+    const result = await service.overviewForHost(host,
+      { database: db, registry, proxmoxClient, enabled: true });
+    expect(result.objectives).toEqual({
+      rpo: { met: 2, breached: 0, unknown: 0 },
+      rto: { met: 2, breached: 0, unknown: 0 },
+    });
+    expect(result.testReadiness).toEqual({ ready: 1, blocked: 0 });
+    expect(result.items[0].testReadiness).toEqual(expect.objectContaining({
+      state: 'ready', temporaryCloneCount: 2, sourceIsolationRequired: true,
+      ownershipMarkedCleanupRequired: true, executorReleased: false,
+    }));
+  });
+
   it('rejects cycles and stale rehearsal hashes without persisting a run', async () => {
     expect(() => service.upsertGroup(host, body({ members: [
       { vmId: vmA, bootStage: 1, dependsOn: [vmB], recoverySource: 'backup' },

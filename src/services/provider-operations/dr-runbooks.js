@@ -757,17 +757,49 @@ async function overviewForHost(host, options = {}) {
     const evidence = await _collectEvidence(host, group, { ...options, database, replications });
     const lastRun = database.prepare(`SELECT * FROM provider_dr_runs
       WHERE group_id = ? ORDER BY created_at DESC LIMIT 1`).get(group.id);
+    const testBlockers = [...evidence.blockers];
+    if (!group.enabled) testBlockers.push({ code: 'DR_GROUP_DISABLED', memberId: null,
+      reason: 'Protection group is disabled' });
+    const isolatedMappings = group.networkMappings.filter(mapping => mapping.testNetworkId).length;
+    if (isolatedMappings !== group.networkMappings.length) testBlockers.push({
+      code: 'DR_TEST_NETWORK_MISSING', memberId: null,
+      reason: 'Every production network mapping requires an isolated test network',
+    });
+    const objectiveStatus = member => member === null ? 'unknown'
+      : member.actual <= member.target ? 'met' : 'breached';
+    const rpoObjectives = evidence.members.map(member => ({ actual: member.rpoAgeSeconds,
+      target: member.rpoTargetSeconds }));
+    const rtoObjectives = evidence.members.map(member => ({ actual: member.rtoSeconds,
+      target: member.rtoTargetSeconds }));
     items.push({ group, compliance: evidence.compliance,
       rpoMaxSeconds: evidence.rpoMaxSeconds, rtoMaxSeconds: evidence.rtoMaxSeconds,
       blockerCount: evidence.blockers.length, warningCount: evidence.warnings.length,
+      objectives: {
+        rpo: Object.fromEntries(['met', 'breached', 'unknown'].map(state => [state,
+          rpoObjectives.filter(item => objectiveStatus(item.actual === null ? null : item) === state).length])),
+        rto: Object.fromEntries(['met', 'breached', 'unknown'].map(state => [state,
+          rtoObjectives.filter(item => objectiveStatus(item.actual === null ? null : item) === state).length])),
+      },
+      testReadiness: {
+        state: testBlockers.length ? 'blocked' : 'ready', blockers: testBlockers,
+        isolatedNetworkMappings: isolatedMappings, networkMappingCount: group.networkMappings.length,
+        temporaryCloneCount: group.members.length, sourceIsolationRequired: true,
+        ownershipMarkedCleanupRequired: true, executorReleased: false,
+      },
       memberStates: Object.fromEntries(['met', 'breached', 'failed', 'unknown', 'never_tested']
         .map(state => [state, evidence.members.filter(member => member.compliance === state).length])),
       lastRun: _publicRun(lastRun) });
   }
   const counts = Object.fromEntries(['met', 'breached', 'failed', 'unknown', 'never_tested']
     .map(state => [state, items.filter(item => item.compliance === state).length]));
+  const objectives = Object.fromEntries(['rpo', 'rto'].map(kind => [kind,
+    Object.fromEntries(['met', 'breached', 'unknown'].map(state => [state,
+      items.reduce((total, item) => total + item.objectives[kind][state], 0)]))]));
+  const testReadiness = Object.fromEntries(['ready', 'blocked'].map(state => [state,
+    items.filter(item => item.testReadiness.state === state).length]));
   return { schemaVersion: SCHEMA_VERSION, generatedAt: _now(), count: items.length,
-    counts, replication: { capability: replications.capability, count: replications.items.length }, items };
+    counts, objectives, testReadiness,
+    replication: { capability: replications.capability, count: replications.items.length }, items };
 }
 
 module.exports = {

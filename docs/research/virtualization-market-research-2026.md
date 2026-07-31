@@ -849,6 +849,13 @@ file content, instant/differential/copy, replication configure și failover/
 failback rămân fail-closed până la adaptor task-aware, reconciliation și
 post-read verification. Din acest motiv B139–B148 rămân `Partial`.
 
+**Status implementare R5c / working tree 2026-07-31:** B149–B150 publică acum
+readiness explicit pentru test DR non-disruptiv (bubble mappings, temporary
+clones, source isolation și ownership-marked cleanup) și agregate per workload
+pentru RPO/RTO `met`/`breached`/`unknown`. Sursele sunt recovery points
+verificate, replication evidence și durate de restore drill reușite. Executorul
+provider pentru test DR rămâne nereleased, astfel B149–B150 rămân `Partial`.
+
 ### G. Security, confidential computing și compliance (B151–B175)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |
@@ -882,6 +889,15 @@ post-read verification. Din acest motiv B139–B148 rămân `Partial`.
 **Status reconciliat 2026-07-30:** B151–B175 rămân `Partial`. Există posture,
 guardrails, inventory și contracte de control, însă provider-native evidence,
 remediation controlată și exportul complet de compliance sunt urmărite în R6.
+
+**Status implementare R6a / working tree 2026-07-31:** B151–B158 au acum packs
+versionate și un model closed-schema pentru Secure Boot, vTPM, encryption,
+KMS, confidential compute și host hardening. Evidența este exclusiv importată
+sau provider-reported; absența rămâne `unknown`. KMS păstrează HTTPS origin și
+secret reference simbolic fără a-l returna, iar confidential provisioning este
+numai un preflight hash-bound cu `executionAuthorized:false`. Colectoarele
+provider-native, drift live și provisioning-ul real lipsesc intenționat, deci
+B151–B158 rămân `Partial`.
 
 ### H. Identity, multi-tenancy și guvernanță (B176–B200)
 

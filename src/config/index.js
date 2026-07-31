@@ -121,6 +121,9 @@ module.exports = {
     // File-catalog evidence, plan-only restore depth and draft replication
     // policies. Provider mutations remain unavailable behind this flag.
     providerRestoreReplicationDepth: bool('DD_PROVIDER_RESTORE_REPLICATION_DEPTH', false),
+    // Versioned security evidence packs, key-provider registry and
+    // confidential-VM compatibility plans. No provider probing or mutation.
+    providerSecurityAssurance: bool('DD_PROVIDER_SECURITY_ASSURANCE', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
     // NIC link mutation is released independently per provider. A global flag

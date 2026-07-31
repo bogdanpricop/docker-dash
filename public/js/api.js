@@ -587,6 +587,24 @@ const Api = {
   getProviderGuestNetworkReadiness(hostId) { return this.get(`/providers/${hostId}/guest-network-readiness`); },
   getProviderEndpointTransportPosture(hostId) { return this.get(`/providers/${hostId}/endpoint-transport-posture`); },
   getProviderSecurityPosture(hostId) { return this.get(`/providers/${hostId}/security-posture`); },
+  getProviderSecurityAssurance(hostId) { return this.get(`/providers/${hostId}/security-assurance`); },
+  importProviderSecurityEvidence(hostId, body) {
+    return this.put(`/providers/${hostId}/security-assurance/evidence`, body);
+  },
+  getProviderKeyProviders(hostId) {
+    return this.get(`/providers/${hostId}/security-assurance/key-providers`);
+  },
+  saveProviderKeyProvider(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/security-assurance/key-providers/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/security-assurance/key-providers`, body);
+  },
+  deleteProviderKeyProvider(hostId, id) {
+    return this.delete(`/providers/${hostId}/security-assurance/key-providers/${encodeURIComponent(id)}`);
+  },
+  preflightProviderConfidentialProvisioning(hostId, body) {
+    return this.post(`/providers/${hostId}/security-assurance/confidential-provisioning/preflight`, body);
+  },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

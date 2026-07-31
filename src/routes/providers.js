@@ -24,6 +24,7 @@ const providerIpConflictCandidates = require('../services/provider-sdk/ip-confli
 const providerGuestNetworkReadiness = require('../services/provider-sdk/guest-network-readiness');
 const providerEndpointTransportPosture = require('../services/provider-sdk/endpoint-transport-posture');
 const providerSecurityPosture = require('../services/provider-sdk/security-posture');
+const providerSecurityAssurance = require('../services/provider-sdk/security-assurance');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -296,6 +297,27 @@ function _restoreReplicationDepthAudit(req, action, targetType, targetId, detail
     userId: req.user.id, username: req.user.username,
     action: `provider_restore_depth_${action}`, targetType, targetId,
     details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false, ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
+function _securityAssuranceError(res, err) {
+  const trusted = err?.name === 'ProviderSecurityAssuranceError'
+    && /^(?:PROVIDER_|INVALID_|SECURITY_|KEY_|CONFIDENTIAL_|PERMISSION_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider security assurance request failed' : err.message,
+    code: trusted ? err.code : 'PROVIDER_SECURITY_ASSURANCE_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _securityAssuranceAudit(req, action, targetType, targetId, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_security_assurance_${action}`, targetType, targetId,
+    details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false,
+      networkCallsStarted: 0, ...details },
     ip: getClientIp(req), userAgent: req.headers['user-agent'],
   });
 }
@@ -2268,6 +2290,98 @@ router.get('/:hostId/security-posture', requireAuth, requireHostAccess('view', {
   try { res.json(await providerSecurityPosture.postureForHost(resolved.host)); }
   catch (err) { const status = Number.isInteger(err?.status) ? err.status : 500; res.status(status).json({ error: status >= 500 ? 'Provider security posture failed' : err.message, code: err?.code || 'PROVIDER_SECURITY_POSTURE_ERROR' }); }
 }));
+
+router.get('/:hostId/security-assurance', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(await providerSecurityAssurance.assuranceForHost(resolved.host)); }
+    catch (err) { _securityAssuranceError(res, err); }
+  }));
+
+router.put('/:hostId/security-assurance/evidence', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerSecurityAssurance.upsertEvidence(resolved.host, req.body || {},
+        { createdBy: req.user.id });
+      _securityAssuranceAudit(req, result.created ? 'evidence_created' : 'evidence_updated',
+        result.evidence.resourceKind, result.evidence.resourceId, {
+          evidenceId: result.evidence.id, evidenceHash: result.evidence.evidenceHash,
+          packKey: result.evidence.pack.key, source: result.evidence.source,
+        });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _securityAssuranceError(res, err); }
+  });
+
+router.get('/:hostId/security-assurance/key-providers', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const items = providerSecurityAssurance.listKeyProviders(resolved.host.id);
+      res.json({ schemaVersion: '1.0', count: items.length, items });
+    } catch (err) { _securityAssuranceError(res, err); }
+  });
+
+router.post('/:hostId/security-assurance/key-providers', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerSecurityAssurance.upsertKeyProvider(resolved.host, req.body || {},
+        { createdBy: req.user.id });
+      _securityAssuranceAudit(req, result.created ? 'key_provider_created' : 'key_provider_updated',
+        'provider_key_provider', result.keyProvider.id, {
+          providerKind: result.keyProvider.providerKind, evidenceHash: result.keyProvider.evidenceHash,
+          healthState: result.keyProvider.health.state,
+        });
+      res.status(result.created ? 201 : 200).json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _securityAssuranceError(res, err); }
+  });
+
+router.put('/:hostId/security-assurance/key-providers/:keyProviderId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerSecurityAssurance.upsertKeyProvider(resolved.host,
+        { ...(req.body || {}), id: req.params.keyProviderId }, { createdBy: req.user.id });
+      _securityAssuranceAudit(req, 'key_provider_updated', 'provider_key_provider',
+        result.keyProvider.id, { providerKind: result.keyProvider.providerKind,
+          evidenceHash: result.keyProvider.evidenceHash, healthState: result.keyProvider.health.state });
+      res.json({ schemaVersion: '1.0', ...result });
+    } catch (err) { _securityAssuranceError(res, err); }
+  });
+
+router.delete('/:hostId/security-assurance/key-providers/:keyProviderId', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const item = providerSecurityAssurance.removeKeyProvider(resolved.host.id, req.params.keyProviderId);
+      _securityAssuranceAudit(req, 'key_provider_deleted', 'provider_key_provider', item.id,
+        { providerKind: item.providerKind, evidenceHash: item.evidenceHash });
+      res.json({ ok: true, keyProviderId: item.id });
+    } catch (err) { _securityAssuranceError(res, err); }
+  });
+
+router.post('/:hostId/security-assurance/confidential-provisioning/preflight', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = await providerSecurityAssurance.preflightConfidentialProvisioning(
+        resolved.host, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _securityAssuranceAudit(req, 'confidential_preflight', 'provider_host', String(resolved.host.id), {
+        planId: plan.id, planHash: plan.planHash, mode: plan.request.mode,
+        allowed: plan.allowed, blockerCount: plan.blockers.length, executionAuthorized: false,
+      });
+      res.json(plan);
+    } catch (err) { _securityAssuranceError(res, err); }
+  }));
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
   if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });

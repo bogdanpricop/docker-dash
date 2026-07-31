@@ -2,6 +2,29 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.82.0] - 2026-07-31 — DR objectives and provider security assurance
+
+This batch advances exactly B149–B158 without introducing an implicit scan,
+KMS connection, DR action or VM creation.
+
+- DR protection-group overview now aggregates workload RPO/RTO outcomes and
+  exposes non-disruptive test readiness for bubble-network mappings, temporary
+  clones, source isolation and ownership-marked cleanup.
+- Versioned provider packs normalize imported/provider-reported Secure Boot,
+  vTPM, encryption, confidential-compute and host-hardening evidence. Missing
+  facts remain `unknown` rather than compliant.
+- The key-provider registry accepts only credential-free HTTPS origins and
+  symbolic secret-manager references; public responses never return the
+  reference and the registry performs no network calls.
+- Confidential-VM compatibility preflights require fresh image/host evidence,
+  encrypted storage/migration and a healthy key provider, then persist an
+  expiring hash-bound plan with `executionAuthorized:false`.
+- New API/UI surfaces are endpoint-scoped, admin-gated for writes, escaped and
+  audited without credential/native-reference disclosure.
+- Migration 167 adds security evidence, key-provider and confidential-plan
+  tables; assurance remains default-off behind
+  `DD_PROVIDER_SECURITY_ASSURANCE=false`.
+
 ## [8.81.0] - 2026-07-31 — Restore and replication depth control plane
 
 This batch advances exactly B139–B148 while keeping every unproven provider

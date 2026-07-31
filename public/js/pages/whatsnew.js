@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.82.0', date: '2026-07-31', title: 'DR objectives and provider security assurance', changes: [
+      { type: 'feature', text: 'B149–B158 add workload RPO/RTO outcomes, isolated DR-test readiness and versioned provider security assurance packs.' },
+      { type: 'security', text: 'Secure Boot, vTPM, encryption, confidential-compute and hardening facts are closed-schema evidence; absence remains unknown, never compliant.' },
+      { type: 'security', text: 'The KMS registry stores credential-free HTTPS origins and symbolic secret references without returning credentials or starting a network probe.' },
+      { type: 'feature', text: 'Confidential-VM preflight binds fresh image, host, encryption and key-provider evidence to an expiring plan that cannot authorize VM creation.' },
+      { type: 'improvement', text: 'Security evidence and registry writes are endpoint-scoped, administrator-only, escaped and audited; new provider collection remains fail-closed.' },
+    ] },
     { version: '8.81.0', date: '2026-07-31', title: 'Restore and replication depth control plane', changes: [
       { type: 'feature', text: 'B139–B148 now share one recovery surface spanning scheduled restore drills, advanced restore evidence, replication policy drafts and DR runbooks.' },
       { type: 'security', text: 'File catalogs accept metadata only, reject traversal and bind every manifest to a canonical recovery point without storing or serving backup content.' },

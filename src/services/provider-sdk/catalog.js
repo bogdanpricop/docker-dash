@@ -87,6 +87,13 @@ const FEATURE_CATALOG = Object.freeze({
   'dr.failover': 'Execute an orchestrated disaster failover',
   'dr.failback': 'Execute an orchestrated disaster failback',
   'dr.test': 'Run a non-disruptive disaster-recovery test',
+  'security.secureBoot.read': 'Read provider-reported Secure Boot evidence',
+  'security.vtpm.read': 'Read provider-reported virtual TPM evidence',
+  'security.encryption.read': 'Read provider-reported encryption evidence',
+  'security.kms.read': 'Read provider-reported key-provider evidence',
+  'security.confidentialVm.read': 'Read provider-reported confidential VM evidence',
+  'security.confidentialVm.plan': 'Plan confidential VM compatibility',
+  'security.hardening.read': 'Read provider-reported host hardening evidence',
 });
 
 const FEATURE_KEYS = Object.freeze(Object.keys(FEATURE_CATALOG));

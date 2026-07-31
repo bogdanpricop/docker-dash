@@ -2,7 +2,8 @@
 'use strict';
 
 const ProviderSecurityPosturePage = {
-  _hosts: [], _hostId: null, _container: null,
+  _hosts: [], _hostId: null, _container: null, _assurance: null,
+  _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _badge(state) { return { supported: 'badge-success', conditional: 'badge-warning', unsupported: 'badge-secondary' }[state] || 'badge-secondary'; },
   _coverageHtml(result) {
     const s = result.coverage?.states || {};
@@ -17,6 +18,68 @@ const ProviderSecurityPosturePage = {
   _gapsHtml(result) { const s = result.gapRegister || {}; return `<details class="card" style="padding:16px;margin-bottom:16px"><summary style="cursor:pointer"><strong>Unsupported capability gap register</strong> <span class="badge badge-secondary">${s.unsupportedCount ?? 0}</span></summary><div class="text-muted text-sm" style="margin-top:10px">Declared unsupported is an explicit safety boundary; no compatibility fallback is attempted.</div><ul style="margin:12px 0 0 18px;display:grid;gap:6px">${(s.entries || []).map(entry => `<li><code>${Utils.escapeHtml(entry.key)}</code> — ${Utils.escapeHtml(entry.reason)}</li>`).join('') || '<li>No unsupported capability declaration was returned.</li>'}</ul></details>`; },
   _freshnessHtml(result) { const s = result.freshness || {}; const age = Number.isFinite(s.ageMs) ? `${Math.floor(s.ageMs / 1000)}s` : '—'; return `<div class="card" style="padding:16px;margin-bottom:16px"><strong>Posture evidence freshness</strong><div class="text-muted text-sm">Age of the capability evidence returned for this view; refresh may still be incomplete or conditional.</div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${Utils.escapeHtml(s.state || 'unknown')}</div><div class="stat-label">Freshness</div></div><div class="stat-card"><div class="stat-value">${Utils.escapeHtml(age)}</div><div class="stat-label">Evidence age</div></div><div class="stat-card"><div class="stat-value">${Utils.escapeHtml(s.probeStatus || 'unknown')}</div><div class="stat-label">Probe state</div></div></div></div>`; },
   _dashboardHtml(result) { const c = result.coverage || {}; const s = c.states || {}; return `<div class="card" style="padding:16px;margin-bottom:16px;border-left:4px solid var(--accent)"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><strong><i class="fas fa-shield-alt" aria-hidden="true"></i> Consolidated provider security evidence</strong><div class="text-muted text-sm">One read-only orientation view of the declared SDK contract. It is not a security rating, compliance certification, or vulnerability assessment.</div></div><span class="badge badge-secondary">${Utils.escapeHtml(result.freshness?.state || 'unknown')}</span></div><div class="stats-grid" style="margin-top:14px"><div class="stat-card"><div class="stat-value">${s.supported ?? 0}</div><div class="stat-label">Supported</div></div><div class="stat-card"><div class="stat-value">${s.conditional ?? 0}</div><div class="stat-label">Conditional</div></div><div class="stat-card"><div class="stat-value">${s.unsupported ?? 0}</div><div class="stat-label">Unsupported</div></div><div class="stat-card"><div class="stat-value">${result.safeguards?.declaredPrivilegedFeatureCount ?? 0}</div><div class="stat-label">Guarded operations</div></div><div class="stat-card"><div class="stat-value">${result.gapRegister?.unsupportedCount ?? 0}</div><div class="stat-label">Registered gaps</div></div></div></div>`; },
+  _assuranceHtml(result) {
+    if (!result) return '<div class="alert alert-secondary"><strong>Security assurance packs are disabled.</strong> Enable the release flag to import provider-reported evidence.</div>';
+    const badge = state => ({ pass: 'badge-success', fail: 'badge-danger', healthy: 'badge-success',
+      degraded: 'badge-warning', unavailable: 'badge-danger' }[state] || 'badge-secondary');
+    const evidenceRows = (result.items || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.resourceName)}</strong><div class="text-muted text-sm"><code>${Utils.escapeHtml(item.resourceId)}</code></div></td><td>${Utils.escapeHtml(item.resourceKind)}</td><td>${(item.controls || []).map(control => `<span class="badge ${badge(control.state)}" style="margin:2px">${Utils.escapeHtml(control.id)}: ${Utils.escapeHtml(control.state)}</span>`).join('') || '<span class="badge badge-secondary">unknown</span>'}</td><td>${Utils.escapeHtml(Utils.timeAgo(item.observedAt))}</td><td><code>${Utils.escapeHtml(String(item.evidenceHash || '').slice(0, 12))}</code></td></tr>`).join('');
+    const keyRows = (result.keyProviders || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-muted text-sm">${Utils.escapeHtml(item.providerKind)}</div></td><td>${Utils.escapeHtml(item.endpointOrigin)}</td><td><span class="badge ${badge(item.health?.state)}">${Utils.escapeHtml(item.health?.state || 'unknown')}</span></td><td>${Number(item.affectedResourceIds?.length || 0)}</td><td>${this._isAdmin() ? `<button class="btn btn-xs btn-danger" data-security-key-delete="${Utils.escapeHtml(item.id)}"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`).join('');
+    const controls = this._isAdmin() ? '<div style="display:flex;gap:7px;flex-wrap:wrap"><button id="security-import-evidence" class="btn btn-sm btn-secondary"><i class="fas fa-file-import"></i> Import evidence</button><button id="security-new-key-provider" class="btn btn-sm btn-secondary"><i class="fas fa-key"></i> Register key provider</button><button id="security-confidential-plan" class="btn btn-sm btn-primary"><i class="fas fa-user-shield"></i> Plan confidential VM</button></div>' : '';
+    return `<div class="card" style="padding:16px;margin-bottom:16px;border-left:4px solid var(--yellow)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><strong>Versioned provider security assurance</strong><div class="text-muted text-sm">${Utils.escapeHtml(result.pack?.title || 'Generic security posture')} · pack ${Utils.escapeHtml(result.pack?.version || 'unknown')}. Absence is unknown; this view starts no probe or provider mutation.</div></div>${controls}</div><div class="stats-grid" style="margin-top:14px">${['pass', 'fail', 'unknown', 'not_applicable'].map(state => `<div class="stat-card"><div class="stat-value">${Number(result.counts?.[state] || 0)}</div><div class="stat-label">${Utils.escapeHtml(state.replace('_', ' '))}</div></div>`).join('')}<div class="stat-card"><div class="stat-value">${Number(result.keyProviders?.length || 0)}</div><div class="stat-label">Key providers</div></div></div></div>
+      <details class="card" style="padding:16px;margin-bottom:16px" open><summary><strong>Secure Boot, vTPM, encryption, confidential VM and hardening evidence</strong> <span class="badge badge-secondary">${Number(result.evidenceCount || 0)}</span></summary><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Resource</th><th>Kind</th><th>Controls</th><th>Observed</th><th>Evidence</th></tr></thead><tbody>${evidenceRows || '<tr><td colspan="5" class="text-muted">No evidence imported. All assurance domains remain unknown.</td></tr>'}</tbody></table></div></details>
+      <details class="card" style="padding:16px;margin-bottom:16px"><summary><strong>KMS and key-provider registry</strong> <span class="badge badge-secondary">${Number(result.keyProviders?.length || 0)}</span></summary><div class="text-muted text-sm" style="margin-top:8px">Credentials are symbolic secret-manager references and are never returned by the API.</div><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Provider</th><th>HTTPS origin</th><th>Health</th><th>Affected resources</th><th></th></tr></thead><tbody>${keyRows || '<tr><td colspan="5" class="text-muted">No key provider is registered.</td></tr>'}</tbody></table></div></details>`;
+  },
+  async _importEvidence() {
+    const sample = { resourceKind: 'endpoint', source: 'imported_evidence', observedAt: new Date().toISOString(),
+      facts: { hardening: { baselineKey: 'organization-host-v1', baselineVersion: '1.0.0',
+        checks: [{ id: 'management_tls', state: 'unknown', evidence: 'Import bounded provider evidence' }] } } };
+    const result = await Modal.form(`<div class="alert alert-info">Metadata-only import. No endpoint, guest or host command is run. Use canonical IDs for host, virtualMachine or artifact resources.</div><label for="security-evidence-json">Normalized evidence JSON</label><textarea id="security-evidence-json" class="form-control mono" rows="20">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea>`, {
+      title: 'Import security evidence', confirmText: 'Validate and save', width: '700px',
+      onSubmit: content => JSON.parse(content.querySelector('#security-evidence-json').value),
+    });
+    if (!result) return;
+    try { await Api.importProviderSecurityEvidence(this._hostId, result); Toast.success('Security evidence saved'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _newKeyProvider() {
+    const result = await Modal.form(`<div class="alert alert-info">Register evidence only. The credential must be a secret-manager URI; inline secrets are rejected and no network call is started.</div><label>Name<input id="security-key-name" maxlength="100" class="form-control" value="Primary KMS"></label><label>Kind<select id="security-key-kind" class="form-control"><option value="external_kms">external KMS</option><option value="native_kms">provider native KMS</option><option value="hgs">Host Guardian Service</option><option value="key_broker">key broker</option></select></label><label>Credential-free HTTPS origin<input id="security-key-origin" maxlength="300" class="form-control" placeholder="https://kms.example.com"></label><label>Secret reference<input id="security-key-ref" maxlength="500" class="form-control" placeholder="vault://virtualization/kms/client"></label><label>Reported health<select id="security-key-health" class="form-control"><option value="unknown">unknown</option><option value="healthy">healthy</option><option value="degraded">degraded</option><option value="unavailable">unavailable</option></select></label>`, {
+      title: 'Register key-provider evidence', confirmText: 'Register', width: '620px',
+      onSubmit: content => ({ name: content.querySelector('#security-key-name').value.trim(),
+        providerKind: content.querySelector('#security-key-kind').value,
+        endpointOrigin: content.querySelector('#security-key-origin').value.trim(),
+        secretRef: content.querySelector('#security-key-ref').value.trim(),
+        health: { state: content.querySelector('#security-key-health').value,
+          observedAt: new Date().toISOString() }, affectedResourceIds: [] }),
+    });
+    if (!result) return;
+    try { await Api.saveProviderKeyProvider(this._hostId, result); Toast.success('Key-provider evidence registered'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _planConfidential() {
+    const result = await Modal.form('<div class="alert alert-warning"><strong>Compatibility preflight only.</strong> A passing result cannot create a VM.</div><label>Canonical artifact ID<input id="security-plan-artifact" class="form-control mono" placeholder="dda_art_…"></label><label>Canonical target-host ID<input id="security-plan-host" class="form-control mono" placeholder="ddr_host_…"></label><label>Mode<select id="security-plan-mode" class="form-control"><option value="shielded">shielded</option><option value="sev">SEV</option><option value="sev_es">SEV-ES</option><option value="sev_snp">SEV-SNP</option><option value="tdx">TDX</option></select></label>', {
+      title: 'Plan confidential VM compatibility', confirmText: 'Run preflight', width: '620px',
+      onSubmit: content => ({ artifactId: content.querySelector('#security-plan-artifact').value.trim(),
+        targetHostId: content.querySelector('#security-plan-host').value.trim(),
+        mode: content.querySelector('#security-plan-mode').value }),
+    });
+    if (!result) return;
+    try { const plan = await Api.preflightProviderConfidentialProvisioning(this._hostId, result);
+      const details = [...(plan.blockers || []), ...(plan.warnings || [])].map(item => `${item.code}: ${item.reason}`).join('\n');
+      Toast[plan.allowed ? 'success' : 'warning'](`${plan.allowed ? 'Compatible' : 'Blocked'}; execution authorized: no${details ? ` — ${details}` : ''}`); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _deleteKeyProvider(id) {
+    const item = this._assurance?.keyProviders?.find(entry => entry.id === id);
+    if (!item || !await Modal.confirm(`Delete key-provider evidence “${item.name}”?`, { danger: true })) return;
+    try { await Api.deleteProviderKeyProvider(this._hostId, id); Toast.success('Key-provider evidence deleted'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  _wireAssurance() {
+    this._container?.querySelector('#security-import-evidence')?.addEventListener('click', () => this._importEvidence());
+    this._container?.querySelector('#security-new-key-provider')?.addEventListener('click', () => this._newKeyProvider());
+    this._container?.querySelector('#security-confidential-plan')?.addEventListener('click', () => this._planConfidential());
+    this._container?.querySelectorAll('[data-security-key-delete]').forEach(button => button.addEventListener('click', () => this._deleteKeyProvider(button.dataset.securityKeyDelete)));
+  },
   async render(container) {
     this._container = container;
     try { this._hosts = (await Api.getHosts()).filter(host => host.isActive && ['proxmox', 'vsphere', 'xen'].includes(host.daemonType)); } catch { this._hosts = []; }
@@ -25,7 +88,7 @@ const ProviderSecurityPosturePage = {
     container.querySelector('#provider-security-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
     container.querySelector('#provider-security-refresh')?.addEventListener('click', () => this._load()); await this._load();
   },
-  async _load() { const target = this._container?.querySelector('#provider-security-content'); if (!target) return; if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its declared safeguards.</div>'; return; } target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting declared capability evidence…</div>'; try { const result = await Api.getProviderSecurityPosture(this._hostId); target.innerHTML = this._dashboardHtml(result) + this._freshnessHtml(result) + this._coverageHtml(result) + this._safeguardsHtml(result) + this._recoveryHtml(result) + this._consoleHtml(result) + this._tasksHtml(result) + this._networkHtml(result) + this._lifecycleHtml(result) + this._gapsHtml(result) + `<div class="alert alert-info"><strong>Assessment limits</strong><ul>${(result.limitations || []).map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>`; } catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; } },
-  destroy() { this._container = null; },
+  async _load() { const target = this._container?.querySelector('#provider-security-content'); if (!target) return; if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its declared safeguards.</div>'; return; } target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting declared capability evidence…</div>'; try { const [result, assurance] = await Promise.all([Api.getProviderSecurityPosture(this._hostId), Api.getProviderSecurityAssurance(this._hostId).catch(() => null)]); this._assurance = assurance; target.innerHTML = this._dashboardHtml(result) + this._assuranceHtml(assurance) + this._freshnessHtml(result) + this._coverageHtml(result) + this._safeguardsHtml(result) + this._recoveryHtml(result) + this._consoleHtml(result) + this._tasksHtml(result) + this._networkHtml(result) + this._lifecycleHtml(result) + this._gapsHtml(result) + `<div class="alert alert-info"><strong>Assessment limits</strong><ul>${(result.limitations || []).map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>`; this._wireAssurance(); } catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; } },
+  destroy() { this._container = null; this._assurance = null; },
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = ProviderSecurityPosturePage;

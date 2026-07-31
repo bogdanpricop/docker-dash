@@ -10,6 +10,9 @@ const NOT_IMPLEMENTED = [
   'backup.restore.disk', 'backup.restore.file',
   'backup.restore.instant', 'backup.restore.differential',
   'backup.copy.cross_site',
+  'security.secureBoot.read', 'security.vtpm.read', 'security.encryption.read',
+  'security.kms.read', 'security.confidentialVm.read',
+  'security.confidentialVm.plan', 'security.hardening.read',
 ];
 
 function declared() {
