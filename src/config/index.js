@@ -124,6 +124,12 @@ module.exports = {
     // Versioned security evidence packs, key-provider registry and
     // confidential-VM compatibility plans. No provider probing or mutation.
     providerSecurityAssurance: bool('DD_PROVIDER_SECURITY_ASSURANCE', false),
+    // Advisory correlation, exceptions, dry-run remediation plans and secret-
+    // reference validation. Uses imported evidence and starts no provider call.
+    providerSecurityLifecycle: bool('DD_PROVIDER_SECURITY_LIFECYCLE', false),
+    // Separate kill switch for allowlisted low-risk adapter execution. A current
+    // plan, canary, typed confirmation and post-read verification remain required.
+    providerSecurityLowRiskRemediation: bool('DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
     // NIC link mutation is released independently per provider. A global flag

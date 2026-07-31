@@ -605,6 +605,27 @@ const Api = {
   preflightProviderConfidentialProvisioning(hostId, body) {
     return this.post(`/providers/${hostId}/security-assurance/confidential-provisioning/preflight`, body);
   },
+  getProviderSecurityLifecycle(hostId) {
+    return this.get(`/providers/${hostId}/security-lifecycle`);
+  },
+  correlateProviderSecurityAdvisories(hostId) {
+    return this.post(`/providers/${hostId}/security-lifecycle/correlate`, {});
+  },
+  createProviderSecurityException(hostId, findingId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/exceptions`, body);
+  },
+  revokeProviderSecurityException(hostId, findingId, exceptionId) {
+    return this.delete(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/exceptions/${encodeURIComponent(exceptionId)}`);
+  },
+  planProviderSecurityRemediation(hostId, findingId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/remediation-plans`, body);
+  },
+  executeProviderSecurityRemediation(hostId, planId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/remediation-plans/${encodeURIComponent(planId)}/execute`, body);
+  },
+  validateProviderSecretReferences(hostId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/secret-references/validate`, body);
+  },
   getProviderArtifacts(hostId, filters = {}) {
     const qs = new URLSearchParams({ limit: filters.limit || 500 });
     if (filters.kind) qs.set('kind', filters.kind);

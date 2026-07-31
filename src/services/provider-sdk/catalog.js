@@ -94,6 +94,14 @@ const FEATURE_CATALOG = Object.freeze({
   'security.confidentialVm.read': 'Read provider-reported confidential VM evidence',
   'security.confidentialVm.plan': 'Plan confidential VM compatibility',
   'security.hardening.read': 'Read provider-reported host hardening evidence',
+  'security.hardwareBaseline.read': 'Read VM virtual-hardware security baseline evidence',
+  'security.protocolPosture.read': 'Read insecure protocol and authentication evidence',
+  'security.certificateTrust.read': 'Read certificate chain, SAN, expiry and algorithm evidence',
+  'security.certificate.rotate': 'Rotate a provider certificate through an approved lifecycle adapter',
+  'security.advisory.read': 'Correlate exact version/build evidence with official advisories',
+  'security.remediation.plan': 'Create a dry-run remediation plan with rollback evidence',
+  'security.remediation.lowRisk': 'Execute an allowlisted low-risk remediation with canary verification',
+  'security.secretReference.validate': 'Validate manifests, jobs and templates for symbolic secret references',
 });
 
 const FEATURE_KEYS = Object.freeze(Object.keys(FEATURE_CATALOG));

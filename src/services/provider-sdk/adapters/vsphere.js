@@ -14,6 +14,9 @@ const NOT_IMPLEMENTED = [
   'security.secureBoot.read', 'security.vtpm.read', 'security.encryption.read',
   'security.kms.read', 'security.confidentialVm.read',
   'security.confidentialVm.plan', 'security.hardening.read',
+  'security.hardwareBaseline.read', 'security.protocolPosture.read',
+  'security.certificateTrust.read', 'security.certificate.rotate', 'security.advisory.read',
+  'security.remediation.plan', 'security.remediation.lowRisk', 'security.secretReference.validate',
 ];
 
 function declared() {

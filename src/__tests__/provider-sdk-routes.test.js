@@ -121,6 +121,13 @@ const mockKeyProviderList = jest.fn();
 const mockKeyProviderUpsert = jest.fn();
 const mockKeyProviderRemove = jest.fn();
 const mockConfidentialPreflight = jest.fn();
+const mockSecurityLifecycleGet = jest.fn();
+const mockSecurityCorrelate = jest.fn();
+const mockSecurityExceptionCreate = jest.fn();
+const mockSecurityExceptionRevoke = jest.fn();
+const mockSecurityRemediationPlan = jest.fn();
+const mockSecurityRemediationExecute = jest.fn();
+const mockSecretReferenceValidate = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -131,7 +138,7 @@ jest.mock('../config', () => {
     providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
     providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
     providerRestoreReplicationDepth: true,
-    providerSecurityAssurance: true,
+    providerSecurityAssurance: true, providerSecurityLifecycle: true,
     providerVmActionSchedules: true } };
 });
 
@@ -371,6 +378,24 @@ jest.mock('../services/provider-sdk/security-assurance', () => {
     upsertKeyProvider: (...args) => mockKeyProviderUpsert(...args),
     removeKeyProvider: (...args) => mockKeyProviderRemove(...args),
     preflightConfidentialProvisioning: (...args) => mockConfidentialPreflight(...args),
+  };
+});
+jest.mock('../services/provider-sdk/security-lifecycle', () => {
+  class ProviderSecurityLifecycleError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'ProviderSecurityLifecycleError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    ProviderSecurityLifecycleError,
+    overview: (...args) => mockSecurityLifecycleGet(...args),
+    correlate: (...args) => mockSecurityCorrelate(...args),
+    createException: (...args) => mockSecurityExceptionCreate(...args),
+    revokeException: (...args) => mockSecurityExceptionRevoke(...args),
+    planRemediation: (...args) => mockSecurityRemediationPlan(...args),
+    executeLowRisk: (...args) => mockSecurityRemediationExecute(...args),
+    validateSecretReferences: (...args) => mockSecretReferenceValidate(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -684,6 +709,24 @@ describe('Provider SDK routes', () => {
     mockConfidentialPreflight.mockResolvedValue({ id: `pcvp_${'f'.repeat(26)}`,
       request: { mode: 'sev_snp' }, planHash: 'f'.repeat(64), allowed: false,
       blockers: [{ code: 'HOST_CONFIDENTIAL_MODE_UNSUPPORTED' }], executionAuthorized: false });
+    const finding = { id: `psfd_${'1'.repeat(26)}`, state: 'open',
+      exception: null, priorityScore: 100 };
+    const exception = { id: `psfx_${'2'.repeat(26)}`, exceptionHash: '2'.repeat(64),
+      expiresAt: '2026-08-31T10:00:00Z' };
+    const remediationPlan = { id: `psrp_${'3'.repeat(26)}`, planHash: '3'.repeat(64),
+      risk: 'low', allowed: true, executionAuthorized: false };
+    mockSecurityLifecycleGet.mockReturnValue({ schemaVersion: '1.0', counts: { open: 1 },
+      findings: [finding] });
+    mockSecurityCorrelate.mockReturnValue({ matched: 1, skipped: 0, source: 'official_catalog',
+      findings: [finding] });
+    mockSecurityExceptionCreate.mockReturnValue({ ...finding, state: 'excepted', exception });
+    mockSecurityExceptionRevoke.mockReturnValue(finding);
+    mockSecurityRemediationPlan.mockReturnValue(remediationPlan);
+    mockSecurityRemediationExecute.mockResolvedValue({ id: `psrr_${'4'.repeat(26)}`,
+      state: 'succeeded', providerMutationsStarted: true });
+    mockSecretReferenceValidate.mockReturnValue({ id: `psrv_${'5'.repeat(26)}`,
+      documentHash: '5'.repeat(64), state: 'invalid', referenceCount: 0,
+      documentStored: false, findings: [{ code: 'INLINE_SECRET_FIELD' }] });
     mockConformanceList.mockReturnValue([]);
     mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
     mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
@@ -1342,6 +1385,50 @@ describe('Provider SDK routes', () => {
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
       action: 'provider_security_assurance_confidential_preflight',
       details: expect.objectContaining({ executionAuthorized: false }),
+    }));
+  });
+
+  it('admin-gates and audits advisory, exception, remediation and secret-reference lifecycle routes', async () => {
+    const findingId = `psfd_${'1'.repeat(26)}`; const exceptionId = `psfx_${'2'.repeat(26)}`;
+    const planId = `psrp_${'3'.repeat(26)}`;
+    const overview = await request(app).get('/api/providers/7/security-lifecycle')
+      .set('x-test-role', 'viewer');
+    expect(overview.status).toBe(200); expect(overview.body.counts.open).toBe(1);
+    expect(mockSecurityLifecycleGet).toHaveBeenCalledWith(mockHost);
+    expect((await request(app).post('/api/providers/7/security-lifecycle/correlate')
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const correlated = await request(app).post('/api/providers/7/security-lifecycle/correlate');
+    expect(correlated.status).toBe(200); expect(correlated.body.matched).toBe(1);
+    expect(mockSecurityCorrelate).toHaveBeenCalledWith(mockHost, { canOperate: true, createdBy: 1 });
+
+    const exceptionBody = { owner: 'security', reason: 'qualification',
+      expiresAt: '2026-08-31T10:00:00Z', compensatingControls: ['isolation'] };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions`)
+      .set('x-test-role', 'viewer').send(exceptionBody)).status).toBe(403);
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions`)
+      .send(exceptionBody)).status).toBe(201);
+    expect((await request(app).delete(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions/${exceptionId}`)).status).toBe(200);
+
+    const remediationBody = { actionKey: 'disable_legacy_protocol', steps: ['Disable TLS 1.0'],
+      downtimeSeconds: 0, dependencies: [], rollback: { strategy: 'Restore', verified: true },
+      dryRun: { passed: true, evidence: 'passed' } };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/remediation-plans`)
+      .send(remediationBody)).status).toBe(201);
+    const executeBody = { planHash: '3'.repeat(64), adapterKey: 'xen.protocol',
+      confirmation: `EXECUTE SECURITY PLAN ${planId}` };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/remediation-plans/${planId}/execute`)
+      .send(executeBody)).status).toBe(202);
+    const validation = await request(app).post('/api/providers/7/security-lifecycle/secret-references/validate')
+      .send({ documentKind: 'manifest', document: { password: 'inline' } });
+    expect(validation.status).toBe(422); expect(validation.body.documentStored).toBe(false);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_lifecycle_remediation_executed',
+      details: expect.objectContaining({ providerMutationAuthorized: true,
+        providerMutationsStarted: true }),
+    }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_lifecycle_secret_references_validated',
+      details: expect.objectContaining({ documentStored: false, state: 'invalid' }),
     }));
   });
 

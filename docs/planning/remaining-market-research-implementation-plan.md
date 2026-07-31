@@ -375,19 +375,25 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] confidential VM detection și compatibility preflight persistent;
   provisioning-ul real rămâne separat și neautorizat;
 - [x] CIS/STIG/vendor host baseline evidence closed-schema;
-- [ ] VM virtual-hardware baseline B159 și colectoare provider-native.
+- [x] VM virtual-hardware baseline B159 ca evidence closed-schema;
+- [ ] colectoare provider-native pentru toate domeniile de trust.
 
 ### R6b — advisories și remediation controlată
 
 **Features:** B160–B168.
 
-- TLS/protocol/certificate evidence live;
-- vendor advisory ingestion semnat/versionat și mapping build→CVE;
-- priority din severity + criticality + exposure, cu confidence;
-- finding exceptions cu owner/reason/expiry;
-- dry-run remediation; allowlisted auto-remediation numai după canary;
-- certificate rotation reutilizează lifecycle assurance existent;
-- manifests/jobs/templates continuă să accepte numai secret references.
+- [x] TLS/protocol/certificate evidence importată/provider-reported,
+  closed-schema; colectarea live rămâne fail-closed;
+- [x] reutilizarea catalogului oficial versionat și mapping exact
+  version/build→CVE, fără fetch sau range guessing;
+- [x] priority din severity + criticality + reachability, cu confidence;
+- [x] finding exceptions cu owner/reason/expiry/compensating controls;
+- [x] dry-run remediation cu steps/downtime/dependencies/rollback;
+- [x] executor low-risk allowlisted numai după flag separat, typed confirmation,
+  canary, adapter injectat și post-read verification; niciun adaptor production;
+- [x] certificate rotation reutilizează lifecycle assurance existent;
+- [x] manifests/jobs/templates resping credentialele inline și păstrează numai
+  document/reference hashes.
 
 ### R6c — privileged access și compliance
 

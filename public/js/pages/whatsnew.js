@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.83.0', date: '2026-07-31', title: 'Provider security lifecycle', changes: [
+      { type: 'security', text: 'B159–B168 add closed-schema virtual-hardware, protocol, certificate-trust and exposure evidence without implicit provider scans.' },
+      { type: 'feature', text: 'Exact version/build matches from the official advisory catalog create CVE findings with severity, exposure-based priority and confidence.' },
+      { type: 'security', text: 'Owned expiring exceptions and hash-bound dry-run remediation plans require compensating controls, dependencies and verified rollback.' },
+      { type: 'security', text: 'Low-risk execution remains separately gated and requires typed confirmation, a mutation-free canary, an injected adapter and post-read verification.' },
+      { type: 'improvement', text: 'Certificate renewal state is projected without PEM, while secret-reference validation stores only document/reference hashes and rejects inline credentials.' },
+    ] },
     { version: '8.82.0', date: '2026-07-31', title: 'DR objectives and provider security assurance', changes: [
       { type: 'feature', text: 'B149–B158 add workload RPO/RTO outcomes, isolated DR-test readiness and versioned provider security assurance packs.' },
       { type: 'security', text: 'Secure Boot, vTPM, encryption, confidential-compute and hardening facts are closed-schema evidence; absence remains unknown, never compliant.' },

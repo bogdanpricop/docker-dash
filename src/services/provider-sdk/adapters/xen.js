@@ -164,6 +164,14 @@ function _fromCapabilities(capabilities = {}) {
     'security.confidentialVm.read': adapterNotImplemented('Xen confidential VM evidence'),
     'security.confidentialVm.plan': adapterNotImplemented('Xen confidential VM compatibility planning'),
     'security.hardening.read': adapterNotImplemented('Xen host hardening evidence'),
+    'security.hardwareBaseline.read': adapterNotImplemented('Xen virtual-hardware security baseline evidence'),
+    'security.protocolPosture.read': adapterNotImplemented('Xen protocol posture evidence'),
+    'security.certificateTrust.read': adapterNotImplemented('Xen certificate trust evidence'),
+    'security.certificate.rotate': adapterNotImplemented('Xen certificate rotation transport'),
+    'security.advisory.read': adapterNotImplemented('Xen advisory correlation collector'),
+    'security.remediation.plan': adapterNotImplemented('Xen remediation planning collector'),
+    'security.remediation.lowRisk': adapterNotImplemented('Xen low-risk remediation transport'),
+    'security.secretReference.validate': adapterNotImplemented('Xen secret-reference policy integration'),
   };
 
   const actions = new Set(capabilities.vmActions || []);

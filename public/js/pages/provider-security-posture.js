@@ -2,7 +2,7 @@
 'use strict';
 
 const ProviderSecurityPosturePage = {
-  _hosts: [], _hostId: null, _container: null, _assurance: null,
+  _hosts: [], _hostId: null, _container: null, _assurance: null, _securityLifecycle: null,
   _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _badge(state) { return { supported: 'badge-success', conditional: 'badge-warning', unsupported: 'badge-secondary' }[state] || 'badge-secondary'; },
   _coverageHtml(result) {
@@ -28,6 +28,18 @@ const ProviderSecurityPosturePage = {
     return `<div class="card" style="padding:16px;margin-bottom:16px;border-left:4px solid var(--yellow)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><strong>Versioned provider security assurance</strong><div class="text-muted text-sm">${Utils.escapeHtml(result.pack?.title || 'Generic security posture')} · pack ${Utils.escapeHtml(result.pack?.version || 'unknown')}. Absence is unknown; this view starts no probe or provider mutation.</div></div>${controls}</div><div class="stats-grid" style="margin-top:14px">${['pass', 'fail', 'unknown', 'not_applicable'].map(state => `<div class="stat-card"><div class="stat-value">${Number(result.counts?.[state] || 0)}</div><div class="stat-label">${Utils.escapeHtml(state.replace('_', ' '))}</div></div>`).join('')}<div class="stat-card"><div class="stat-value">${Number(result.keyProviders?.length || 0)}</div><div class="stat-label">Key providers</div></div></div></div>
       <details class="card" style="padding:16px;margin-bottom:16px" open><summary><strong>Secure Boot, vTPM, encryption, confidential VM and hardening evidence</strong> <span class="badge badge-secondary">${Number(result.evidenceCount || 0)}</span></summary><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Resource</th><th>Kind</th><th>Controls</th><th>Observed</th><th>Evidence</th></tr></thead><tbody>${evidenceRows || '<tr><td colspan="5" class="text-muted">No evidence imported. All assurance domains remain unknown.</td></tr>'}</tbody></table></div></details>
       <details class="card" style="padding:16px;margin-bottom:16px"><summary><strong>KMS and key-provider registry</strong> <span class="badge badge-secondary">${Number(result.keyProviders?.length || 0)}</span></summary><div class="text-muted text-sm" style="margin-top:8px">Credentials are symbolic secret-manager references and are never returned by the API.</div><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Provider</th><th>HTTPS origin</th><th>Health</th><th>Affected resources</th><th></th></tr></thead><tbody>${keyRows || '<tr><td colspan="5" class="text-muted">No key provider is registered.</td></tr>'}</tbody></table></div></details>`;
+  },
+  _securityLifecycleHtml(result) {
+    if (!result) return '<div class="alert alert-secondary"><strong>Security lifecycle controls are disabled.</strong> Exact advisory correlation, exceptions, remediation planning and secret-reference validation remain unavailable.</div>';
+    const badge = state => ({ open: 'badge-danger', excepted: 'badge-warning', planned: 'badge-info',
+      remediated: 'badge-success', valid: 'badge-success', invalid: 'badge-danger', critical: 'badge-danger',
+      high: 'badge-danger', medium: 'badge-warning' }[state] || 'badge-secondary');
+    const findings = (result.findings || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.advisoryId)}</strong><div class="text-muted text-sm">${(item.cveIds || []).map(id => Utils.escapeHtml(id)).join(', ') || 'No CVE ID'}</div></td><td><span class="badge ${badge(item.severity)}">${Utils.escapeHtml(item.severity)}</span> <strong>${Number(item.priorityScore || 0)}</strong><div class="text-muted text-sm">${Utils.escapeHtml(item.confidence)} confidence</div></td><td>${Utils.escapeHtml(item.resourceName)}<div class="text-muted text-sm"><code>${Utils.escapeHtml(item.resourceId)}</code></div></td><td><span class="badge ${badge(item.state)}">${Utils.escapeHtml(item.state)}</span>${item.exception ? `<div class="text-muted text-sm">${Utils.escapeHtml(item.exception.owner)} · ${Utils.escapeHtml(Utils.timeAgo(item.exception.expiresAt))}</div>` : ''}</td><td>${this._isAdmin() ? `<div style="display:flex;gap:5px;flex-wrap:wrap">${item.exception ? `<button class="btn btn-xs btn-secondary" data-security-exception-revoke="${Utils.escapeHtml(item.id)}">Revoke exception</button>` : `<button class="btn btn-xs btn-secondary" data-security-exception="${Utils.escapeHtml(item.id)}">Exception</button>`}<button class="btn btn-xs btn-primary" data-security-remediation="${Utils.escapeHtml(item.id)}">Dry-run plan</button>${result.automation?.enabled && item.remediationPlan?.allowed && item.remediationPlan?.state === 'planned' ? `<button class="btn btn-xs btn-warning" data-security-execute="${Utils.escapeHtml(item.remediationPlan.id)}">Execute low-risk</button>` : ''}</div>` : ''}</td></tr>`).join('');
+    const certificates = (result.certificateRotation || []).map(item => `<tr><td><strong>${Utils.escapeHtml(item.name)}</strong><div class="text-muted text-sm">${Utils.escapeHtml(item.subject || 'Unknown subject')}</div></td><td>${item.ownership ? `${Utils.escapeHtml(item.ownership.owner)}<div class="text-muted text-sm">${Utils.escapeHtml(item.ownership.environment)}</div>` : '<span class="badge badge-warning">unowned</span>'}</td><td>${item.expiresAt ? Utils.escapeHtml(Utils.timeAgo(item.expiresAt)) : '—'}</td><td>${item.latestRenewal ? `<span class="badge ${badge(item.latestRenewal.state)}">${Utils.escapeHtml(item.latestRenewal.state)}</span><div class="text-muted text-sm">${Utils.escapeHtml(item.latestRenewal.adapterKey)}</div>` : 'No plan'}</td></tr>`).join('');
+    const controls = this._isAdmin() ? '<div style="display:flex;gap:7px;flex-wrap:wrap"><button id="security-correlate" class="btn btn-sm btn-secondary"><i class="fas fa-project-diagram"></i> Correlate official advisories</button><button id="security-validate-references" class="btn btn-sm btn-secondary"><i class="fas fa-key"></i> Validate secret references</button></div>' : '';
+    return `<div class="card" style="padding:16px;margin-bottom:16px;border-left:4px solid var(--red)"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><strong>Security findings and remediation lifecycle</strong><div class="text-muted text-sm">Exact version/build matching against the imported official catalog. No advisory fetch or provider mutation is started by this view.</div></div>${controls}</div><div class="stats-grid" style="margin-top:14px">${['open', 'excepted', 'planned', 'remediated'].map(state => `<div class="stat-card"><div class="stat-value">${Number(result.counts?.[state] || 0)}</div><div class="stat-label">${state}</div></div>`).join('')}<div class="stat-card"><div class="stat-value">${Number(result.validations?.length || 0)}</div><div class="stat-label">Secret checks</div></div></div></div>
+      <details class="card" style="padding:16px;margin-bottom:16px" open><summary><strong>CVE/advisory findings and exposure priority</strong> <span class="badge badge-secondary">${Number(result.findings?.length || 0)}</span></summary><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Advisory</th><th>Priority</th><th>Resource</th><th>State</th><th></th></tr></thead><tbody>${findings || '<tr><td colspan="5" class="text-muted">No exact advisory match has been correlated.</td></tr>'}</tbody></table></div></details>
+      <details class="card" style="padding:16px;margin-bottom:16px"><summary><strong>Certificate ownership and rotation workflow</strong> <span class="badge badge-secondary">${Number(result.certificateRotation?.length || 0)}</span></summary><div class="text-muted text-sm" style="margin-top:8px">Rotation remains approval-bound in the existing lifecycle workflow and retains rollback evidence.</div><div style="overflow:auto;margin-top:12px"><table class="data-table"><thead><tr><th>Certificate</th><th>Owner</th><th>Expiry</th><th>Latest renewal</th></tr></thead><tbody>${certificates || '<tr><td colspan="4" class="text-muted">No endpoint-scoped tracked certificate.</td></tr>'}</tbody></table></div></details>`;
   },
   async _importEvidence() {
     const sample = { resourceKind: 'endpoint', source: 'imported_evidence', observedAt: new Date().toISOString(),
@@ -74,11 +86,81 @@ const ProviderSecurityPosturePage = {
     try { await Api.deleteProviderKeyProvider(this._hostId, id); Toast.success('Key-provider evidence deleted'); await this._load(); }
     catch (err) { Toast.error(err.message); }
   },
+  async _correlateSecurity() {
+    try { const result = await Api.correlateProviderSecurityAdvisories(this._hostId);
+      Toast.success(`${result.matched} exact advisory match(es) correlated`); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _validateSecretReferences() {
+    const sample = { documentKind: 'manifest', document: { services: { app: {
+      environment: { DATABASE_PASSWORD_REF: 'vault://docker-dash/database/password' } } } } };
+    const result = await Modal.form(`<div class="alert alert-info">The document is validated in memory. Only its hash, reference hashes and finding paths are stored.</div><label for="security-secret-document">Manifest, job or template JSON</label><textarea id="security-secret-document" class="form-control mono" rows="18">${Utils.escapeHtml(JSON.stringify(sample, null, 2))}</textarea>`, {
+      title: 'Validate secret references', confirmText: 'Validate', width: '700px',
+      onSubmit: content => JSON.parse(content.querySelector('#security-secret-document').value),
+    });
+    if (!result) return;
+    try { await Api.validateProviderSecretReferences(this._hostId, result);
+      Toast.success('All secret-bearing fields use approved references'); await this._load(); }
+    catch (err) { Toast.error(err.message); await this._load(); }
+  },
+  async _createSecurityException(findingId) {
+    const result = await Modal.form('<div class="alert alert-warning">Exceptions require an owner, expiry and explicit compensating controls.</div><label>Owner<input id="security-exception-owner" maxlength="160" class="form-control"></label><label>Reason<textarea id="security-exception-reason" maxlength="500" class="form-control"></textarea></label><label>Expires at<input id="security-exception-expiry" type="datetime-local" class="form-control"></label><label>Compensating controls (one per line)<textarea id="security-exception-controls" maxlength="4000" class="form-control"></textarea></label>', {
+      title: 'Create security exception', confirmText: 'Create exception', width: '620px',
+      onSubmit: content => ({ owner: content.querySelector('#security-exception-owner').value.trim(),
+        reason: content.querySelector('#security-exception-reason').value.trim(),
+        expiresAt: new Date(content.querySelector('#security-exception-expiry').value).toISOString(),
+        compensatingControls: content.querySelector('#security-exception-controls').value.split('\n').map(value => value.trim()).filter(Boolean) }),
+    });
+    if (!result) return;
+    try { await Api.createProviderSecurityException(this._hostId, findingId, result);
+      Toast.success('Security exception created'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _revokeSecurityException(findingId) {
+    const finding = this._securityLifecycle?.findings?.find(item => item.id === findingId);
+    if (!finding?.exception || !await Modal.confirm('Revoke this active security exception?', { danger: true })) return;
+    try { await Api.revokeProviderSecurityException(this._hostId, findingId, finding.exception.id);
+      Toast.success('Security exception revoked'); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _planSecurityRemediation(findingId) {
+    const result = await Modal.form('<div class="alert alert-info">Plan only. Dry-run and rollback evidence are mandatory; this action starts no provider mutation.</div><label>Action<select id="security-plan-action" class="form-control"><option value="disable_legacy_protocol">disable legacy protocol (low)</option><option value="remove_legacy_device">remove legacy device (low)</option><option value="enforce_secret_reference">enforce secret reference (low)</option><option value="rotate_certificate">rotate certificate (moderate)</option><option value="upgrade_provider_build">upgrade provider build (high)</option></select></label><label>Steps (one per line)<textarea id="security-plan-steps" class="form-control">Verify current evidence\nApply bounded change\nPost-read verification</textarea></label><label>Downtime seconds<input id="security-plan-downtime" type="number" min="0" max="604800" value="0" class="form-control"></label><label>Dry-run evidence<input id="security-plan-dryrun" maxlength="500" class="form-control" value="Read-only dry-run passed"></label><label>Rollback strategy<input id="security-plan-rollback" maxlength="500" class="form-control" value="Restore the captured pre-change state"></label>', {
+      title: 'Create remediation plan', confirmText: 'Save dry-run plan', width: '650px',
+      onSubmit: content => ({ actionKey: content.querySelector('#security-plan-action').value,
+        steps: content.querySelector('#security-plan-steps').value.split('\n').map(value => value.trim()).filter(Boolean),
+        downtimeSeconds: Number(content.querySelector('#security-plan-downtime').value), dependencies: [],
+        dryRun: { passed: true, evidence: content.querySelector('#security-plan-dryrun').value.trim() },
+        rollback: { verified: true, strategy: content.querySelector('#security-plan-rollback').value.trim() } }),
+    });
+    if (!result) return;
+    try { const plan = await Api.planProviderSecurityRemediation(this._hostId, findingId, result);
+      Toast[plan.allowed ? 'success' : 'warning'](`Plan ${plan.allowed ? 'ready' : 'blocked'}; execution authorized: no`); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
+  async _executeSecurityRemediation(planId) {
+    const finding = this._securityLifecycle?.findings?.find(item => item.remediationPlan?.id === planId);
+    const plan = finding?.remediationPlan; if (!plan) return;
+    const result = await Modal.form(`<div class="alert alert-danger"><strong>Provider mutation boundary.</strong> Execution still requires an installed conformance-tested adapter and a successful read-only canary.</div><label>Adapter key<input id="security-execute-adapter" class="form-control mono"></label><label>Typed confirmation<input id="security-execute-confirm" class="form-control mono" placeholder="EXECUTE SECURITY PLAN ${Utils.escapeHtml(plan.id)}"></label>`, {
+      title: 'Execute low-risk remediation', confirmText: 'Execute canary', danger: true, width: '650px',
+      onSubmit: content => ({ adapterKey: content.querySelector('#security-execute-adapter').value.trim(),
+        confirmation: content.querySelector('#security-execute-confirm').value.trim(), planHash: plan.planHash }),
+    });
+    if (!result) return;
+    try { const run = await Api.executeProviderSecurityRemediation(this._hostId, plan.id, result);
+      Toast[run.state === 'succeeded' ? 'success' : 'warning'](`Remediation run: ${run.state}`); await this._load(); }
+    catch (err) { Toast.error(err.message); }
+  },
   _wireAssurance() {
     this._container?.querySelector('#security-import-evidence')?.addEventListener('click', () => this._importEvidence());
     this._container?.querySelector('#security-new-key-provider')?.addEventListener('click', () => this._newKeyProvider());
     this._container?.querySelector('#security-confidential-plan')?.addEventListener('click', () => this._planConfidential());
     this._container?.querySelectorAll('[data-security-key-delete]').forEach(button => button.addEventListener('click', () => this._deleteKeyProvider(button.dataset.securityKeyDelete)));
+    this._container?.querySelector('#security-correlate')?.addEventListener('click', () => this._correlateSecurity());
+    this._container?.querySelector('#security-validate-references')?.addEventListener('click', () => this._validateSecretReferences());
+    this._container?.querySelectorAll('[data-security-exception]').forEach(button => button.addEventListener('click', () => this._createSecurityException(button.dataset.securityException)));
+    this._container?.querySelectorAll('[data-security-exception-revoke]').forEach(button => button.addEventListener('click', () => this._revokeSecurityException(button.dataset.securityExceptionRevoke)));
+    this._container?.querySelectorAll('[data-security-remediation]').forEach(button => button.addEventListener('click', () => this._planSecurityRemediation(button.dataset.securityRemediation)));
+    this._container?.querySelectorAll('[data-security-execute]').forEach(button => button.addEventListener('click', () => this._executeSecurityRemediation(button.dataset.securityExecute)));
   },
   async render(container) {
     this._container = container;
@@ -88,7 +170,7 @@ const ProviderSecurityPosturePage = {
     container.querySelector('#provider-security-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
     container.querySelector('#provider-security-refresh')?.addEventListener('click', () => this._load()); await this._load();
   },
-  async _load() { const target = this._container?.querySelector('#provider-security-content'); if (!target) return; if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its declared safeguards.</div>'; return; } target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting declared capability evidence…</div>'; try { const [result, assurance] = await Promise.all([Api.getProviderSecurityPosture(this._hostId), Api.getProviderSecurityAssurance(this._hostId).catch(() => null)]); this._assurance = assurance; target.innerHTML = this._dashboardHtml(result) + this._assuranceHtml(assurance) + this._freshnessHtml(result) + this._coverageHtml(result) + this._safeguardsHtml(result) + this._recoveryHtml(result) + this._consoleHtml(result) + this._tasksHtml(result) + this._networkHtml(result) + this._lifecycleHtml(result) + this._gapsHtml(result) + `<div class="alert alert-info"><strong>Assessment limits</strong><ul>${(result.limitations || []).map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>`; this._wireAssurance(); } catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; } },
-  destroy() { this._container = null; this._assurance = null; },
+  async _load() { const target = this._container?.querySelector('#provider-security-content'); if (!target) return; if (!this._hostId) { target.innerHTML = '<div class="empty-msg"><i class="fas fa-server"></i>Add a supported virtualization endpoint to inspect its declared safeguards.</div>'; return; } target.innerHTML = '<div class="empty-msg"><i class="fas fa-spinner fa-spin"></i>Collecting declared capability evidence…</div>'; try { const [result, assurance, securityLifecycle] = await Promise.all([Api.getProviderSecurityPosture(this._hostId), Api.getProviderSecurityAssurance(this._hostId).catch(() => null), Api.getProviderSecurityLifecycle(this._hostId).catch(() => null)]); this._assurance = assurance; this._securityLifecycle = securityLifecycle; target.innerHTML = this._dashboardHtml(result) + this._assuranceHtml(assurance) + this._securityLifecycleHtml(securityLifecycle) + this._freshnessHtml(result) + this._coverageHtml(result) + this._safeguardsHtml(result) + this._recoveryHtml(result) + this._consoleHtml(result) + this._tasksHtml(result) + this._networkHtml(result) + this._lifecycleHtml(result) + this._gapsHtml(result) + `<div class="alert alert-info"><strong>Assessment limits</strong><ul>${(result.limitations || []).map(item => `<li>${Utils.escapeHtml(item)}</li>`).join('')}</ul></div>`; this._wireAssurance(); } catch (err) { target.innerHTML = `<div class="empty-msg is-error"><i class="fas fa-exclamation-triangle"></i>${Utils.escapeHtml(err.message)}</div>`; } },
+  destroy() { this._container = null; this._assurance = null; this._securityLifecycle = null; },
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = ProviderSecurityPosturePage;

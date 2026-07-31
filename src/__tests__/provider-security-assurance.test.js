@@ -95,6 +95,33 @@ describe('provider security assurance evidence control plane', () => {
     expect(JSON.stringify(result)).not.toContain('vault://virtualization/kms/client');
   });
 
+  it('normalizes virtual hardware, protocol, certificate trust and exposure evidence', async () => {
+    service.upsertEvidence(host, { resourceKind: 'virtualMachine', resourceId: vmId,
+      observedAt: new Date().toISOString(), facts: {
+        virtualHardware: { baselineKey: 'vm-security-v1', baselineVersion: '1.0.0',
+          firmware: 'uefi', bootOrder: ['disk'], legacySettings: [],
+          devices: [{ id: 'scsi0', kind: 'virtio-disk', state: 'compliant' }] },
+        transport: { services: [{ id: 'management-api', protocol: 'https', port: 443,
+          tlsVersion: '1.2', authentication: 'certificate', certificateState: 'valid',
+          legacyApi: false }] },
+        certificateTrust: { certificates: [{ id: 'management', subject: 'CN=pve-primary',
+          chainState: 'valid', sanState: 'valid', expiryState: 'valid', algorithm: 'RSA-3072/SHA-256',
+          algorithmState: 'pass', renewalOwner: 'platform-security',
+          expiresAt: new Date(Date.now() + 90 * 86400000).toISOString() }] },
+        exposure: { criticality: 'critical', reachability: 'restricted', protections: ['mfa'] },
+      } }, options());
+    const result = await service.assuranceForHost(host, options());
+    expect(result.items[0].controls).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'virtual_hardware_baseline', state: 'pass' }),
+      expect.objectContaining({ id: 'insecure_protocols', state: 'pass' }),
+      expect.objectContaining({ id: 'certificate_trust', state: 'pass' }),
+      expect.objectContaining({ id: 'exposure_context', state: 'pass' }),
+    ]));
+    expect(() => service.upsertEvidence(host, { resourceKind: 'endpoint', facts: {
+      transport: { services: [{ id: 'legacy', protocol: 'telnet', port: 23 }] },
+    } }, options())).toThrow(expect.objectContaining({ code: 'INVALID_SECURITY_ASSURANCE_EVIDENCE' }));
+  });
+
   it('persists a compatible confidential-VM plan without authorizing creation', async () => {
     const key = service.upsertKeyProvider(host, {
       name: 'Primary KMS', providerKind: 'external_kms', endpointOrigin: 'https://kms.example.test',

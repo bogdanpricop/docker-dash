@@ -899,6 +899,18 @@ numai un preflight hash-bound cu `executionAuthorized:false`. Colectoarele
 provider-native, drift live și provisioning-ul real lipsesc intenționat, deci
 B151–B158 rămân `Partial`.
 
+**Status implementare R6a/R6b / working tree 2026-07-31:** B159–B168 extind
+evidența closed-schema cu virtual hardware, transport, certificate trust și
+exposure; corelează numai potriviri exacte version/build din catalogul oficial,
+prioritizează cu criticality/reachability și gestionează excepții expirabile.
+Planurile dry-run sunt hash-bound și includ downtime/dependencies/rollback.
+Executorul low-risk cere flag separat, typed confirmation, canary, adapter și
+post-read verification, dar nu are adaptor production în acest lot. Certificate
+rotation reutilizează workflow-ul approval-bound existent, iar validatorul de
+manifeste/joburi/template-uri nu persistă documentul sau secret references.
+Colectoarele provider-native, browser smoke și canary lipsesc, deci B159–B168
+rămân `Partial`.
+
 ### H. Identity, multi-tenancy și guvernanță (B176–B200)
 
 | ID | Feature candidat | Descriere scurtă | Val. | Ef. | Oriz. |

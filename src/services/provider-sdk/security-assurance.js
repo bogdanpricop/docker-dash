@@ -134,7 +134,8 @@ function _closedObject(value, label, allowed) {
 function _facts(input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ProviderSecurityAssuranceError(
     'Security evidence facts are invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
-  const allowed = new Set(['secureBoot', 'vtpm', 'encryption', 'confidential', 'hardening']);
+  const allowed = new Set(['secureBoot', 'vtpm', 'encryption', 'confidential', 'hardening',
+    'virtualHardware', 'transport', 'certificateTrust', 'exposure']);
   if (Object.keys(input).some(key => !allowed.has(key))) throw new ProviderSecurityAssuranceError(
     'Security evidence contains an unsupported fact domain', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
   const domainFields = {
@@ -143,6 +144,11 @@ function _facts(input = {}) {
     encryption: new Set(['disks', 'savedState', 'migration', 'backups', 'keyProviderId']),
     confidential: new Set(['enabled', 'mode', 'supportedModes', 'compatibleModes', 'constraints']),
     hardening: new Set(['baselineKey', 'baselineVersion', 'checks']),
+    virtualHardware: new Set(['baselineKey', 'baselineVersion', 'firmware', 'bootOrder',
+      'devices', 'legacySettings']),
+    transport: new Set(['services']),
+    certificateTrust: new Set(['certificates']),
+    exposure: new Set(['criticality', 'reachability', 'protections']),
   };
   for (const [domain, fields] of Object.entries(domainFields)) {
     if (input[domain] !== undefined && input[domain] !== null) _closedObject(input[domain], domain, fields);
@@ -209,6 +215,98 @@ function _facts(input = {}) {
       summary: Object.fromEntries(['pass', 'fail', 'unknown'].map(state => [state,
         normalized.filter(item => item.state === state).length])) };
   }
+  if (input.virtualHardware) {
+    const baselineKey = _text(input.virtualHardware.baselineKey, 120);
+    const baselineVersion = _text(input.virtualHardware.baselineVersion, 80);
+    if (!baselineKey || !baselineVersion) throw new ProviderSecurityAssuranceError(
+      'Virtual hardware baseline key and version are required', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+    const devices = input.virtualHardware.devices || [];
+    if (!Array.isArray(devices) || devices.length > 200) throw new ProviderSecurityAssuranceError(
+      'Virtual hardware devices are invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+    const normalizedDevices = devices.map(item => {
+      _closedObject(item, 'Virtual hardware device', new Set(['id', 'kind', 'state']));
+      const id = _text(item.id, 120); const kind = _text(item.kind, 120);
+      if (!id || !kind || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(id)
+        || !/^[A-Za-z0-9][A-Za-z0-9._ -]{0,119}$/.test(kind)) throw new ProviderSecurityAssuranceError(
+        'Virtual hardware device identity is invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+      return { id, kind, state: _choice(item.state, 'Virtual hardware device state',
+        new Set(['compliant', 'noncompliant', 'unknown'])) };
+    });
+    const legacySettings = _safeList(input.virtualHardware.legacySettings,
+      'Unsafe legacy settings', null, 100);
+    out.virtualHardware = { baselineKey, baselineVersion,
+      firmware: _choice(input.virtualHardware.firmware, 'Virtual hardware firmware',
+        new Set(['bios', 'uefi', 'unknown'])),
+      bootOrder: _safeList(input.virtualHardware.bootOrder, 'Virtual hardware boot order',
+        new Set(['disk', 'network', 'cdrom', 'usb', 'floppy', 'unknown']), 10),
+      devices: normalizedDevices, legacySettings,
+      summary: { compliant: normalizedDevices.filter(item => item.state === 'compliant').length,
+        noncompliant: normalizedDevices.filter(item => item.state === 'noncompliant').length,
+        unknown: normalizedDevices.filter(item => item.state === 'unknown').length,
+        unsafeLegacySettingCount: legacySettings.length } };
+  }
+  if (input.transport) {
+    const services = input.transport.services || [];
+    if (!Array.isArray(services) || services.length > 100) throw new ProviderSecurityAssuranceError(
+      'Transport services are invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+    out.transport = { services: services.map(item => {
+      _closedObject(item, 'Transport service', new Set(['id', 'protocol', 'port', 'tlsVersion',
+        'authentication', 'certificateState', 'legacyApi']));
+      const id = _text(item.id, 120);
+      if (!id || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(id)) throw new ProviderSecurityAssuranceError(
+        'Transport service ID is invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+      const protocol = _choice(item.protocol, 'Transport protocol',
+        new Set(['https', 'http', 'ssh', 'api', 'other']));
+      const tlsVersion = _choice(item.tlsVersion, 'TLS version',
+        new Set(['1.3', '1.2', '1.1', '1.0', 'none', 'unknown']));
+      const authentication = _choice(item.authentication, 'Transport authentication',
+        new Set(['key', 'certificate', 'sso', 'password', 'mixed', 'unknown']));
+      const certificateState = _choice(item.certificateState, 'Transport certificate state',
+        new Set(['valid', 'expired', 'untrusted', 'mismatch', 'unknown', 'not_applicable']));
+      const legacyApi = _bool(item.legacyApi, 'Legacy API state');
+      const fail = protocol === 'http' || ['1.0', '1.1', 'none'].includes(tlsVersion)
+        || (protocol === 'ssh' && authentication === 'password')
+        || ['expired', 'untrusted', 'mismatch'].includes(certificateState) || legacyApi === true;
+      const unknown = tlsVersion === 'unknown' || authentication === 'unknown'
+        || certificateState === 'unknown' || legacyApi === null;
+      return { id, protocol, port: _integer(item.port, 'Transport port', 1, 65535), tlsVersion,
+        authentication, certificateState, legacyApi, state: fail ? 'fail' : unknown ? 'unknown' : 'pass' };
+    }) };
+  }
+  if (input.certificateTrust) {
+    const certificates = input.certificateTrust.certificates || [];
+    if (!Array.isArray(certificates) || certificates.length > 200) throw new ProviderSecurityAssuranceError(
+      'Certificate trust evidence is invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+    out.certificateTrust = { certificates: certificates.map(item => {
+      _closedObject(item, 'Certificate trust item', new Set(['id', 'subject', 'chainState',
+        'sanState', 'expiryState', 'algorithm', 'algorithmState', 'renewalOwner', 'expiresAt']));
+      const id = _text(item.id, 120); const subject = _text(item.subject, 240);
+      if (!id || !subject || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(id)) {
+        throw new ProviderSecurityAssuranceError(
+          'Certificate trust identity is invalid', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+      }
+      const algorithm = _text(item.algorithm, 120);
+      if (!algorithm) throw new ProviderSecurityAssuranceError(
+        'Certificate algorithm evidence is required', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
+      return { id, subject,
+        chainState: _choice(item.chainState, 'Certificate chain state',
+          new Set(['valid', 'invalid', 'unknown'])),
+        sanState: _choice(item.sanState, 'Certificate SAN state',
+          new Set(['valid', 'invalid', 'unknown'])),
+        expiryState: _choice(item.expiryState, 'Certificate expiry state',
+          new Set(['valid', 'expiring', 'expired', 'unknown'])),
+        algorithm, algorithmState: _choice(item.algorithmState, 'Certificate algorithm state',
+          new Set(['pass', 'fail', 'unknown'])), renewalOwner: _text(item.renewalOwner, 160),
+        expiresAt: item.expiresAt ? _timestamp(item.expiresAt, 'Certificate expiry') : null };
+    }) };
+  }
+  if (input.exposure) out.exposure = {
+    criticality: _choice(input.exposure.criticality, 'Workload criticality',
+      new Set(['low', 'medium', 'high', 'critical', 'unknown'])),
+    reachability: _choice(input.exposure.reachability, 'Workload reachability',
+      new Set(['internal', 'restricted', 'internet', 'unknown'])),
+    protections: _safeList(input.exposure.protections, 'Exposure protections', null, 100),
+  };
   if (!Object.keys(out).length) throw new ProviderSecurityAssuranceError(
     'At least one security fact domain is required', 'INVALID_SECURITY_ASSURANCE_EVIDENCE');
   const json = JSON.stringify(out);
@@ -276,6 +374,27 @@ function _controls(evidence) {
     ? 'unknown' : facts.confidential.enabled ? 'pass' : 'not_applicable', evidence: facts.confidential });
   if (facts.hardening) controls.push({ id: 'host_hardening', state: facts.hardening.summary.fail > 0
     ? 'fail' : facts.hardening.summary.unknown > 0 ? 'unknown' : 'pass', evidence: facts.hardening });
+  if (facts.virtualHardware) controls.push({ id: 'virtual_hardware_baseline',
+    state: facts.virtualHardware.firmware === 'bios'
+      || facts.virtualHardware.summary.noncompliant > 0
+      || facts.virtualHardware.summary.unsafeLegacySettingCount > 0 ? 'fail'
+      : facts.virtualHardware.firmware === 'unknown' || facts.virtualHardware.summary.unknown > 0
+        ? 'unknown' : 'pass', evidence: facts.virtualHardware });
+  if (facts.transport) controls.push({ id: 'insecure_protocols',
+    state: facts.transport.services.some(item => item.state === 'fail') ? 'fail'
+      : facts.transport.services.some(item => item.state === 'unknown') || !facts.transport.services.length
+        ? 'unknown' : 'pass', evidence: facts.transport });
+  if (facts.certificateTrust) controls.push({ id: 'certificate_trust',
+    state: facts.certificateTrust.certificates.some(item => item.chainState === 'invalid'
+      || item.sanState === 'invalid' || ['expiring', 'expired'].includes(item.expiryState)
+      || item.algorithmState === 'fail') ? 'fail'
+      : facts.certificateTrust.certificates.some(item => item.chainState === 'unknown'
+        || item.sanState === 'unknown' || item.expiryState === 'unknown'
+        || item.algorithmState === 'unknown') || !facts.certificateTrust.certificates.length
+        ? 'unknown' : 'pass', evidence: facts.certificateTrust });
+  if (facts.exposure) controls.push({ id: 'exposure_context',
+    state: facts.exposure.criticality === 'unknown' || facts.exposure.reachability === 'unknown'
+      ? 'unknown' : 'pass', evidence: facts.exposure });
   return controls;
 }
 function _publicKeyProvider(row) {
@@ -388,7 +507,10 @@ async function assuranceForHost(host, options = {}) {
     evidenceCount: items.length, items, keyProviders,
     capabilityEvidence: Object.fromEntries(['security.secureBoot.read', 'security.vtpm.read',
       'security.encryption.read', 'security.kms.read', 'security.confidentialVm.read',
-      'security.hardening.read'].map(key => [key, capabilities.features?.[key]
+      'security.hardening.read', 'security.hardwareBaseline.read', 'security.protocolPosture.read',
+      'security.certificateTrust.read', 'security.certificate.rotate', 'security.advisory.read',
+      'security.remediation.plan', 'security.remediation.lowRisk',
+      'security.secretReference.validate'].map(key => [key, capabilities.features?.[key]
         || { state: 'unknown', reason: 'Capability declaration is missing' }])),
     limitations: ['Evidence is provider-reported or explicitly imported; absence is unknown, never compliant.',
       'No endpoint, TLS, KMS, guest or host command is executed by this view.',

@@ -2,6 +2,35 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.83.0] - 2026-07-31 — Provider security lifecycle
+
+This batch advances exactly B159–B168 while keeping native collection and
+provider remediation fail-closed by default.
+
+- Security assurance adds closed-schema VM virtual-hardware, transport,
+  certificate-trust and exposure evidence. HTTP, weak TLS, password SSH,
+  legacy APIs and invalid/expiring trust evidence fail deterministically;
+  absence remains `unknown`.
+- Exact version/build correlation reuses the official lifecycle advisory
+  catalog, maps CVE/severity/fixed-version evidence and combines severity with
+  workload criticality/reachability for bounded patch priority and confidence.
+- Security finding exceptions require owner, reason, future expiry and
+  compensating controls; revocation/expiry returns the finding to open.
+- Remediation plans bind steps, downtime, dependencies, dry-run evidence,
+  rollback and current finding hash. A separately gated low-risk executor
+  requires typed confirmation, mutation-free canary, injected adapter,
+  post-read verification and rollback on failure; no production adapter ships.
+- Certificate ownership and the latest approval-bound renewal state are shown
+  without PEM data; existing maintenance, approval, durable-operation and
+  rollback requirements remain unchanged.
+- Manifest/job/template validation rejects inline secret fields, secret-named
+  values, private keys and credential URLs. Only document/reference hashes and
+  bounded finding paths are persisted; invalid submissions return HTTP 422.
+- Migration 168 adds findings, exceptions, remediation plans/runs and secret
+  validation evidence. The surface is default-off behind
+  `DD_PROVIDER_SECURITY_LIFECYCLE=false`; mutation additionally requires
+  `DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION=false` to be explicitly enabled.
+
 ## [8.82.0] - 2026-07-31 — DR objectives and provider security assurance
 
 This batch advances exactly B149–B158 without introducing an implicit scan,

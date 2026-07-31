@@ -278,6 +278,20 @@ function evidenceFor(feature, status) {
       },
     ];
   }
+  if (featureNumber >= 159 && featureNumber <= 168) {
+    return [
+      {
+        type: 'test',
+        reference: 'R6b provider security lifecycle focused tests',
+        path: 'src/__tests__/provider-security-lifecycle.test.js',
+      },
+      {
+        type: 'working-tree',
+        reference: 'R6a/R6b B159-B168 security lifecycle control plane',
+        path: 'docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md',
+      },
+    ];
+  }
   return [{
     type: 'release',
     reference: `${BASELINE_RELEASE} reconciled delivery baseline`,
@@ -337,6 +351,7 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];
   }
   if (status === 'Partial' && number >= 151 && number <= 175) {
+    if (number >= 159 && number <= 168) return ['Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding.'];
     return ['Provider-native security evidence, controlled remediation and compliance depth remain in batch R6.'];
   }
   if (deliveryLevel === 'control-plane') {

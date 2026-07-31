@@ -25,6 +25,7 @@ const providerGuestNetworkReadiness = require('../services/provider-sdk/guest-ne
 const providerEndpointTransportPosture = require('../services/provider-sdk/endpoint-transport-posture');
 const providerSecurityPosture = require('../services/provider-sdk/security-posture');
 const providerSecurityAssurance = require('../services/provider-sdk/security-assurance');
+const providerSecurityLifecycle = require('../services/provider-sdk/security-lifecycle');
 const providerPlacementAdvisory = require('../services/provider-sdk/placement-advisory');
 const providerPlacementChanges = require('../services/provider-operations/placement-changes');
 const providerVmPower = require('../services/provider-operations/vm-power');
@@ -316,6 +317,27 @@ function _securityAssuranceAudit(req, action, targetType, targetId, details = {}
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: `provider_security_assurance_${action}`, targetType, targetId,
+    details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false,
+      networkCallsStarted: 0, ...details },
+    ip: getClientIp(req), userAgent: req.headers['user-agent'],
+  });
+}
+
+function _securityLifecycleError(res, err) {
+  const trusted = err?.name === 'ProviderSecurityLifecycleError'
+    && /^(?:PROVIDER_|INVALID_|SECURITY_|PERMISSION_)[A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+  const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+  res.status(status).json({
+    error: status >= 500 ? 'Provider security lifecycle request failed' : err.message,
+    code: trusted ? err.code : 'PROVIDER_SECURITY_LIFECYCLE_ERROR',
+    ...(trusted && status < 500 && err?.details ? { details: err.details } : {}),
+  });
+}
+
+function _securityLifecycleAudit(req, action, targetType, targetId, details = {}) {
+  auditService.log({
+    userId: req.user.id, username: req.user.username,
+    action: `provider_security_lifecycle_${action}`, targetType, targetId,
     details: { hostId: Number(req.params.hostId), providerMutationAuthorized: false,
       networkCallsStarted: 0, ...details },
     ip: getClientIp(req), userAgent: req.headers['user-agent'],
@@ -2382,6 +2404,101 @@ router.post('/:hostId/security-assurance/confidential-provisioning/preflight', r
       res.json(plan);
     } catch (err) { _securityAssuranceError(res, err); }
   }));
+
+router.get('/:hostId/security-lifecycle', requireAuth,
+  requireHostAccess('view', { param: 'hostId' }), (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try { res.json(providerSecurityLifecycle.overview(resolved.host)); }
+    catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.post('/:hostId/security-lifecycle/correlate', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerSecurityLifecycle.correlate(resolved.host,
+        { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'advisories_correlated', 'provider_host', String(resolved.host.id), {
+        findingCount: result.matched, skippedCount: result.skipped, source: result.source,
+      });
+      res.json(result);
+    } catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.post('/:hostId/security-lifecycle/findings/:findingId/exceptions', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const finding = providerSecurityLifecycle.createException(resolved.host,
+        req.params.findingId, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'exception_created', 'security_finding', finding.id, {
+        exceptionId: finding.exception.id, exceptionHash: finding.exception.exceptionHash,
+        expiresAt: finding.exception.expiresAt,
+      });
+      res.status(201).json(finding);
+    } catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.delete('/:hostId/security-lifecycle/findings/:findingId/exceptions/:exceptionId', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const finding = providerSecurityLifecycle.revokeException(resolved.host, req.params.findingId,
+        req.params.exceptionId, { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'exception_revoked', 'security_finding', finding.id,
+        { exceptionId: req.params.exceptionId });
+      res.json(finding);
+    } catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.post('/:hostId/security-lifecycle/findings/:findingId/remediation-plans', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const plan = providerSecurityLifecycle.planRemediation(resolved.host,
+        req.params.findingId, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'remediation_planned', 'security_finding', req.params.findingId, {
+        planId: plan.id, planHash: plan.planHash, risk: plan.risk, allowed: plan.allowed,
+        executionAuthorized: false,
+      });
+      res.status(201).json(plan);
+    } catch (err) { _securityLifecycleError(res, err); }
+  });
+
+router.post('/:hostId/security-lifecycle/remediation-plans/:planId/execute', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const run = await providerSecurityLifecycle.executeLowRisk(resolved.host,
+        req.params.planId, req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'remediation_executed', 'security_remediation_plan',
+        req.params.planId, { runId: run.id, state: run.state,
+          providerMutationAuthorized: run.providerMutationsStarted,
+          providerMutationsStarted: run.providerMutationsStarted });
+      res.status(202).json(run);
+    } catch (err) { _securityLifecycleError(res, err); }
+  }));
+
+router.post('/:hostId/security-lifecycle/secret-references/validate', requireAuth,
+  requireRole('admin'), requireHostAccess('operate', { param: 'hostId' }), writeable, (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = providerSecurityLifecycle.validateSecretReferences(resolved.host,
+        req.body || {}, { canOperate: true, createdBy: req.user.id });
+      _securityLifecycleAudit(req, 'secret_references_validated', 'provider_host',
+        String(resolved.host.id), { validationId: result.id, documentHash: result.documentHash,
+          state: result.state, referenceCount: result.referenceCount, documentStored: false });
+      res.status(result.state === 'valid' ? 200 : 422).json(result);
+    } catch (err) { _securityLifecycleError(res, err); }
+  });
 
 router.get('/:hostId/resources/:kind', requireAuth, requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {
   if (!config.features.providerSdkV2) return res.status(404).json({ error: 'Provider SDK v2 is disabled' });
