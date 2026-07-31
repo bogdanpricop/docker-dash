@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: "${APP_VERSION:-8.86.0}"
-    image: docker-dash:${APP_VERSION:-8.86.0}
+        APP_VERSION: "${APP_VERSION:-8.87.0}"
+    image: docker-dash:${APP_VERSION:-8.87.0}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -56,7 +56,7 @@ services:
   dd-egress-filter:
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.86.0}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.87.0}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can

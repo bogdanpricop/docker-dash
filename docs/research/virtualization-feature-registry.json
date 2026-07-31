@@ -4657,10 +4657,15 @@
           "type": "working-tree",
           "reference": "R5a/B129-B138 local control-plane depth",
           "path": "docs/planning/virtualization-platform/V3.3b-backup-control-plane-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.80.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding."
+        "Released in v8.80.0 and read-only qualified in v8.87.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4695,10 +4700,15 @@
           "type": "working-tree",
           "reference": "R5a/B129-B138 local control-plane depth",
           "path": "docs/planning/virtualization-platform/V3.3b-backup-control-plane-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.80.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding."
+        "Released in v8.80.0 and read-only qualified in v8.87.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4725,13 +4735,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-drills.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; a second task-aware drill executor, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4758,13 +4778,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-drills.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; a second task-aware drill executor, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4791,13 +4821,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-replication-depth.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; provider-native file content adapters, an approved content endpoint and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4824,13 +4864,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-replication-depth.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; the provider-native restore/copy executor, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4857,13 +4907,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-replication-depth.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; the provider-native restore/copy executor, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4890,13 +4950,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-replication-depth.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; the provider-native restore/copy executor, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4923,13 +4993,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-restore-replication-depth.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; provider-native replication configuration, fencing, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4956,13 +5036,23 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-dr-runbooks.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.87 recovery-depth qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 and read-only qualified in v8.87.0; provider fencing, network cutover, data-authority reversal, browser smoke and a disposable-provider canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4989,13 +5079,18 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-dr-runbooks.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5022,13 +5117,18 @@
       ],
       "evidence": [
         {
-          "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "type": "test",
+          "reference": "R5b/R5c recovery control-plane focused tests",
+          "path": "src/__tests__/provider-dr-runbooks.test.js"
+        },
+        {
+          "type": "working-tree",
+          "reference": "R5b/R5c restore and replication depth",
+          "path": "docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md"
         }
       ],
       "limitations": [
-        "Deeper multi-provider backup, restore and DR execution remains in batch R5."
+        "Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",

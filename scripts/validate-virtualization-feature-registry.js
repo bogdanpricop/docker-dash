@@ -292,6 +292,26 @@ function evidenceFor(feature, status) {
       reference: 'v8.86 network/backup qualification tests',
       path: 'src/__tests__/provider-operational-qualification.test.js',
     });
+    if (featureNumber >= 137) evidence.push({
+      type: 'test',
+      reference: 'v8.87 recovery-depth qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
+    return evidence;
+  }
+  if (featureNumber >= 139 && featureNumber <= 148) {
+    const testPath = featureNumber <= 140 ? 'src/__tests__/provider-restore-drills.test.js'
+      : featureNumber <= 145 ? 'src/__tests__/provider-restore-replication-depth.test.js'
+        : 'src/__tests__/provider-dr-runbooks.test.js';
+    const evidence = [
+      { type: 'test', reference: 'R5b/R5c recovery control-plane focused tests', path: testPath },
+      { type: 'working-tree', reference: 'R5b/R5c restore and replication depth',
+        path: 'docs/planning/virtualization-platform/V3.7-restore-replication-depth-feature-spec.md' },
+    ];
+    if (featureNumber <= 146) evidence.push({
+      type: 'test', reference: 'v8.87 recovery-depth qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
     return evidence;
   }
   if (featureNumber >= 159 && featureNumber <= 168) {
@@ -364,7 +384,25 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.80.0 and read-only qualified in v8.86.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 137 && number <= 138) {
-    return ['Released in v8.80.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.87.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 139 && number <= 140) {
+    return ['Released in v8.81.0 and read-only qualified in v8.87.0; a second task-aware drill executor, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 141) {
+    return ['Released in v8.81.0 and read-only qualified in v8.87.0; provider-native file content adapters, an approved content endpoint and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 142 && number <= 144) {
+    return ['Released in v8.81.0 and read-only qualified in v8.87.0; the provider-native restore/copy executor, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 145) {
+    return ['Released in v8.81.0 and read-only qualified in v8.87.0; provider-native replication configuration, fencing, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 146) {
+    return ['Released in v8.81.0 and read-only qualified in v8.87.0; provider fencing, network cutover, data-authority reversal, browser smoke and a disposable-provider canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number >= 147 && number <= 148) {
+    return ['Released in v8.81.0 as deterministic rehearsal-only control plane; provider-native failover/failback execution, fencing, browser smoke and canary remain outstanding.'];
   }
   if (status === 'Partial' && number >= 129 && number <= 150) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];

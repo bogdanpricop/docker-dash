@@ -33,6 +33,22 @@ describe('provider security posture page', () => {
     expect(html).toContain('B124/B125/B129–B136 operational qualification');
     expect(html).toContain('0</div><div class="stat-label">Browser smoke recorded');
   });
+  it('renders the recovery-depth batch and its default-off release boundaries', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'b'.repeat(64),
+      batch: { key: 'recovery-depth', label: 'B137–B146' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 0,
+        executeFlagsEnabled: 0, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B139', name: 'Automated restore drill', schema: { state: 'ready' },
+        runtime: { state: 'not_observed', recordCount: 0, releaseFlags: [
+          { name: 'DD_PROVIDER_RESTORE_DRILLS', enabled: false },
+        ] }, delivery: { qualificationRelease: 'v8.87.0' },
+      validation: { outstanding: ['disposable_provider_canary'] } }] });
+    expect(html).toContain('B137–B146 operational qualification');
+    expect(html).toContain('DD_PROVIDER_RESTORE_DRILLS');
+    expect(html).toContain('default-off');
+    expect(html).toContain('disposable_provider_canary');
+  });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
     global.App = { user: { role: 'viewer' } };
     global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };

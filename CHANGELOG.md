@@ -2,6 +2,26 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.87.0] - 2026-08-01 — Recovery-depth operational qualification
+
+This exact batch advances B137–B146 without treating plan, metadata or
+rehearsal records as proof of native recovery execution.
+
+- `batch=recovery-depth` adds the third provider-scoped qualification envelope
+  while preserving both earlier batch contracts.
+- Mixed implementation releases are explicit: B137–B138 came from v8.80.0 and
+  B139–B146 from v8.81.0.
+- Backup encryption and strict integrity evidence are separated; a generic
+  policy cannot make B138 `observed`.
+- Restore drill/scheduler, file catalog, advanced restore/copy plan, replication
+  draft and DR protection-group evidence receive bounded provider-scoped
+  runtime metrics.
+- Backup, restore, depth and DR release flags are reported and deduplicated but
+  never changed.
+- Provider Security renders the third exact ten-feature batch. Native restore,
+  copy, replication, fencing/cutover, file-content adapters, browser smoke and
+  disposable-provider canaries remain outstanding.
+
 ## [8.86.0] - 2026-08-01 — Network and backup operational qualification
 
 This exact batch advances B124, B125 and B129–B136 without relabeling absent

@@ -57,7 +57,7 @@ Prioritățile sunt:
 | R2 | B045 Scheduled VM actions | P0 | L | `Partial` | operation core, blackout windows | Livrat în v8.80 și calificat read-only în v8.85; browser/canary rămân. |
 | R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
 | R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică B104/B118–B121/B123, iar v8.86 califică B124/B125. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
-| R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; v8.86 califică read-only B129–B136. Adaptoarele XO/vSphere și DR mutation/canary rămân. |
+| R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; v8.86 califică B129–B136, iar v8.87 califică B137–B146. Adaptoarele XO/vSphere și DR mutation/canary rămân. |
 | R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
@@ -336,7 +336,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   transportul nativ poate fi verificat;
 - [x] integrity verification separată de simpla existență a recovery point-ului;
 - [x] contract/plan/admission/integrity hashes persistente și UI de authoring;
-- [x] includere în v8.80.0; B129–B136 au calificare read-only în v8.86.0;
+- [x] includere în v8.80.0; B129–B136 au calificare read-only în v8.86.0,
+  iar B137–B138 în v8.87.0;
 - [ ] browser smoke și Proxmox/PBS canary.
 
 ### R5b — restore modes
@@ -348,6 +349,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] instant/live restore plan capability-gated și cu network isolation;
 - [x] differential restore plan cu base checksum și target isolation;
 - [x] cross-site copy plan resumable, cu bandwidth policy și checksum;
+- [x] includere în v8.81.0 și calificare read-only în v8.87.0;
 - [ ] restore drill executabil extins dincolo de Proxmox.
 
 ### R5c — replication și DR execution
@@ -357,6 +359,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] politici de replicare async/near-sync/sync versionate, draft-only;
 - [ ] provider-native replication mutation adapters;
 - [x] protection group cu network/placement maps și dependency graph versionat;
+- [x] B145–B146 incluse în v8.81.0 și calificate read-only în v8.87.0;
 - [x] failover/failback deterministic preflight și rehearsal evidence;
 - [ ] failover/failback provider mutation task-backed, approval și typed confirmation;
 - [x] bubble-network DR test compiler/readiness cu temporary clones, source
@@ -634,6 +637,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-07-31 | Release 8.84.0 / B169–B178 | `Partial` | `85f030b` / `v8.84.0` | 312 suite / 3338 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build PR/tag verzi; health intern/extern `8.84.0` pe LAN și VPS; migrarea 169 + SQLite integrity `ok` | Lot exact de 10: B169–B175 primesc TOTP/JIT, break-glass, session metadata, classification, signed evidence, mappings și ransomware posture; B176–B178 erau deja Done și sunt revalidate ca permission/custom-role/scope foundation. Flagul este activ pe ambele ținte; contul temporar standalone, dispatcherul extern, media recorderul, public attestation și enforcement-ul provider-native rămân absente. Backupurile `predeploy-v8.84.0-85f030b.db` sunt păstrate; Docker/browser local indisponibil. |
 | 2026-08-01 | Release 8.85.0 / B015, B045, B090, B096, B104, B118–B121, B123 | `Partial` | `43c05ea` / `v8.85.0` | 313 suite / 3342 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI rerun + build-uri PR/tag verzi; health intern/extern `8.85.0` pe LAN și VPS; SQLite integrity `ok` | Calificarea read-only separă schema livrată, evidența runtime și blocajele reale pentru exact primele 10 ID-uri Partial. LAN: vSphere real, schema 10/10, runtime 1; VPS fără provider activ: verificare explicit sintetică, schema 10/10, runtime 0. B045/B104 rămân false. Backupurile `predeploy-v8.85.0-43c05ea.db` sunt păstrate; browserul integrat, adaptoarele/collectorii și canary-urile rămân indisponibile. |
 | 2026-08-01 | Release 8.86.0 / B124, B125, B129–B136 | `Partial` | `84122da` / `v8.86.0` | 313 suite / 3344 teste passed / 4 skipped; ESLint 0 errors; registry 391/59/0; CI + build-uri PR/tag verzi; health intern/extern `8.86.0` pe LAN și VPS; SQLite integrity `ok` | Calificarea read-only batch-aware verifică exact 10 ID-uri deja incluse în v8.80. Schema este 10/10 pe ambele ținte, runtime observat 0, iar invocarea pornește 0 provider/network/external work. LAN păstrează cele 2 flag-uri backup deja active, VPS 0. Backupurile `predeploy-v8.86.0-84122da.db` sunt păstrate; browserul integrat nu expune runtime, iar canary-urile și adaptoarele lipsă rămân deschise. |
+| 2026-08-01 | Release 8.87.0 / B137–B146 | `In progress` | working tree local | calificare recovery-depth read-only; release-uri mixte per feature, schema/coloane, runtime și flag-uri distincte; teste focused | Exact 10 ID-uri deja incluse în v8.80/v8.81. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar adaptoarele, fencing-ul și canary-urile rămân deschise. |
 
 ## 20. Următoarele acțiuni
 

@@ -78,6 +78,27 @@ describe('virtualization market-research registry', () => {
       })]),
       limitations: ['Released in v8.80.0 and read-only qualified in v8.86.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'],
     }));
+    expect(registry.features.find(feature => feature.featureId === 'B137')).toEqual(expect.objectContaining({
+      status: 'Partial', deliveryLevel: 'partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      })]),
+      limitations: ['Released in v8.80.0 and read-only qualified in v8.87.0; Proxmox remains the only real executor, while XO/vSphere adapters, browser smoke and a disposable-provider canary remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B139')).toEqual(expect.objectContaining({
+      status: 'Partial', deliveryLevel: 'partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-restore-drills.test.js',
+      })]),
+      limitations: ['Released in v8.81.0 and read-only qualified in v8.87.0; a second task-aware drill executor, browser smoke and a disposable-provider canary remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B146')).toEqual(expect.objectContaining({
+      status: 'Partial', deliveryLevel: 'partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-dr-runbooks.test.js',
+      })]),
+      limitations: ['Released in v8.81.0 and read-only qualified in v8.87.0; provider fencing, network cutover, data-authority reversal, browser smoke and a disposable-provider canary remain outstanding.'],
+    }));
     expect(registry.features.find(feature => feature.featureId === 'B041')).toEqual(expect.objectContaining({
       status: 'Done', deliveryLevel: 'control-plane',
       limitations: ['No implicit provider or external apply path is claimed by this delivery level.'],

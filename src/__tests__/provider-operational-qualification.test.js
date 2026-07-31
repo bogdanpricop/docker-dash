@@ -15,6 +15,8 @@ function database() {
   require('../db/migrations/117_provider_recovery_points').up(db);
   require('../db/migrations/118_provider_backup_policies').up(db);
   require('../db/migrations/119_provider_backup_execution').up(db);
+  require('../db/migrations/120_provider_restore_drills').up(db);
+  require('../db/migrations/121_provider_dr_runbooks').up(db);
   require('../db/migrations/153_provider_inventory_views').up(db);
   require('../db/migrations/154_provider_snapshot_risk').up(db);
   require('../db/migrations/155_storage_repository_health').up(db);
@@ -28,6 +30,7 @@ function database() {
   require('../db/migrations/156_network_intent_validation').up(db);
   require('../db/migrations/162_network_public_ip_plans').up(db);
   require('../db/migrations/165_provider_backup_control_plane').up(db);
+  require('../db/migrations/166_provider_restore_replication_depth').up(db);
   return db;
 }
 
@@ -124,6 +127,90 @@ describe('provider operational qualification', () => {
           expect.objectContaining({ name: 'DD_PROVIDER_BACKUP_EXECUTION', enabled: false }),
         ]) }));
     expect(first.items.every(item => item.qualificationSafety.externalCommandsStarted === 0)).toBe(true);
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+  });
+
+  it('qualifies exactly B137-B146 with mixed implementation releases and no execution', () => {
+    db = database();
+    db.exec('INSERT INTO users(id) VALUES (9); INSERT INTO docker_hosts(id) VALUES (7),(8);');
+    const nodeId = `ddr_host_${'a'.repeat(26)}`; const storageId = `ddr_storage_${'b'.repeat(26)}`;
+    for (const [id, kind, hash] of [[nodeId, 'host', '2'], [storageId, 'storage', '3']]) {
+      db.prepare(`INSERT INTO provider_resource_identities
+        (canonical_id,host_id,provider_type,resource_kind,native_ref_hash,native_ref_enc,identity_stability)
+        VALUES (?,?,?,?,?,?,?)`).run(id, 7, 'proxmox', kind, hash.repeat(64), 'encrypted', 'stable');
+    }
+    const repositoryId = `ddr_backup_repo_${'c'.repeat(26)}`;
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    db.prepare(`INSERT INTO provider_backup_repositories
+      (canonical_id,host_id,provider_type,native_ref_hash,native_ref_enc,display_name,
+       repository_json,observed_at) VALUES (?,?,?,?,?,?,?,?)`).run(repositoryId, 7, 'proxmox',
+      '4'.repeat(64), 'encrypted', 'PBS', '{}', '2026-08-01T10:00:00.000Z');
+    db.prepare(`INSERT INTO provider_recovery_points
+      (canonical_id,host_id,provider_type,repository_id,native_ref_hash,native_ref_enc,
+       recovery_point_json,observed_at) VALUES (?,?,?,?,?,?,?,?)`).run(pointId, 7, 'proxmox',
+      repositoryId, '5'.repeat(64), 'encrypted', '{}', '2026-08-01T10:00:00.000Z');
+    db.prepare(`INSERT INTO provider_backup_policies
+      (id,host_id,repository_id,name,enabled,schedule_json,scope_json,consistency_json,
+       retention_json,protection_json,controls_json,verification_json,policy_hash,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('pbp_bbbbbbbb', 7, repositoryId, 'Encrypted', 0,
+      '{}', '{}', '{}', '{}', '{}', '{}', '{}', '6'.repeat(64), 9);
+    db.prepare(`INSERT INTO provider_restore_drill_policies
+      (id,host_id,backup_policy_id,name,enabled,schedule_json,target_node_id,target_storage_id,
+       assertions_json,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)`).run('pdrp_aaaaaaaa', 7,
+      'pbp_bbbbbbbb', 'Weekly drill', 0, '{}', nodeId, storageId, '{}', 9);
+    db.prepare(`INSERT INTO provider_recovery_file_catalogs
+      (id,host_id,recovery_point_id,state,source,entry_count,manifest_hash,observed_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run('prfc_aaaaaaaa', 7, pointId, 'complete',
+      'imported_evidence', 1, '7'.repeat(64), '2026-08-01T10:00:00.000Z', 9);
+    db.prepare(`INSERT INTO provider_recovery_file_entries
+      (catalog_id,path,parent_path,name,entry_type,size_bytes) VALUES (?,?,?,?,?,?)`)
+      .run('prfc_aaaaaaaa', '/etc/app.conf', '/etc', 'app.conf', 'file', 12);
+    const insertPlan = db.prepare(`INSERT INTO provider_restore_depth_plans
+      (id,host_id,recovery_point_id,restore_kind,request_json,evidence_json,plan_hash,
+       allowed,created_by,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    for (const [index, kind] of ['file_download', 'instant', 'differential', 'cross_site_copy'].entries()) {
+      insertPlan.run(`prdp_${String(index + 1).repeat(8)}`, 7, pointId, kind, '{}', '{}',
+        ['8', '9', 'a', 'b'][index].repeat(64), 0, 9, '2026-08-01T10:05:00.000Z');
+    }
+    db.prepare(`INSERT INTO provider_replication_policies
+      (id,source_host_id,target_host_id,name,mode,enabled,rpo_target_seconds,workload_ids_json,
+       storage_mappings_json,capability_json,policy_hash,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run('prpl_aaaaaaaa', 7, 8, 'Async DR', 'async', 0,
+      900, '[]', '[]', '{}', 'c'.repeat(64), 9);
+    db.prepare(`INSERT INTO provider_dr_protection_groups
+      (id,primary_host_id,recovery_host_id,name,strategy,enabled,rpo_target_seconds,
+       rto_target_seconds,created_by) VALUES (?,?,?,?,?,?,?,?,?)`).run('pdrg_aaaaaaaa', 7, 8,
+      'Payments DR', 'backup_restore', 0, 3600, 900, 9);
+
+    const first = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'recovery-depth' });
+    const second = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'recovery-depth' });
+
+    expect(first.batch).toEqual({ key: 'recovery-depth', label: 'B137–B146' });
+    expect(first.items.map(item => item.featureId)).toEqual([
+      'B137', 'B138', 'B139', 'B140', 'B141', 'B142', 'B143', 'B144', 'B145', 'B146',
+    ]);
+    expect(first.implementationRelease).toBeNull();
+    expect(first.implementationReleases).toEqual(['v8.80.0', 'v8.81.0']);
+    expect(first.items.find(item => item.featureId === 'B137').delivery.implementationRelease)
+      .toBe('v8.80.0');
+    expect(first.items.find(item => item.featureId === 'B139').delivery.implementationRelease)
+      .toBe('v8.81.0');
+    expect(first.summary).toEqual(expect.objectContaining({ featureCount: 10, schemaReady: 10,
+      runtimeObserved: 9, executeFlagsEnabled: 0, browserSmokeRecorded: 0 }));
+    expect(first.items.find(item => item.featureId === 'B138').runtime).toEqual(
+      expect.objectContaining({ state: 'not_observed', recordCount: 0, integrityEvidenceCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B139').runtime).toEqual(
+      expect.objectContaining({ configuredCount: 1, runCount: 0, succeededCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B141').runtime).toEqual(
+      expect.objectContaining({ catalogCount: 1, entryCount: 1, planCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B145').runtime).toEqual(
+      expect.objectContaining({ configuredCount: 1, enabledCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B146').runtime).toEqual(
+      expect.objectContaining({ configuredCount: 1, enabledCount: 0, runCount: 0 }));
+    expect(first.items.every(item => Object.values(item.qualificationSafety)
+      .every(value => value === 0))).toBe(true);
     expect(first.evidenceHash).toBe(second.evidenceHash);
   });
 
