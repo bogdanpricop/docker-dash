@@ -133,6 +133,17 @@ describe('B118 network dependency map', () => {
     expect(db.prepare('SELECT COUNT(*) count FROM network_dependency_snapshots').get().count).toBe(1);
   });
 
+  test('includes observations from the current minute instead of rounding the cutoff backwards', () => {
+    service.recordAddressObservation(addresses({
+      observedAt: '2026-07-30T12:00:30.000Z', addresses: addresses().addresses.slice(0, 1),
+    }), admin);
+    const snapshot = service.build({ scopeKey: 'global', freshnessHours: 24, maxEdges: 100,
+      includeDenied: false }, admin, { database: db, now: '2026-07-30T12:00:31.000Z' });
+    expect(snapshot.nodes).toEqual([expect.objectContaining({ id: 'vm:web',
+      evidenceTypes: ['ip_observation'] })]);
+    expect(snapshot.sourceCursor.addressObservationIds).toEqual([1]);
+  });
+
   test('uses only declared edges for bounded cycle-safe impact traversal', () => {
     service.recordAddressObservation(addresses(), admin); addGraph(db); addMetadata(db); addFlows(db);
     const snapshot = service.build({ scopeKey: 'global', freshnessHours: 24, maxEdges: 100,

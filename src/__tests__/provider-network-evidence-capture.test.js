@@ -134,4 +134,17 @@ describe('B118/B120/B121 provider-native network evidence capture', () => {
     ]);
     expect(db.prepare('SELECT COUNT(*) count FROM network_bond_health_observations').get().count).toBe(0);
   });
+
+  test('binds the immediate dependency rebuild to evidence observed later in the same minute', async () => {
+    ipInventory.inventoryForHost.mockResolvedValue({ observedAt: '2026-08-01T10:00:30.000Z',
+      coverage: { complete: true }, addresses: [{ address: '192.0.2.10', source: 'vmware-tools',
+        vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'web' } }] });
+    const result = await capture.captureForHost(host, admin, { database: db, now });
+    const snapshot = db.prepare('SELECT nodes_json,source_cursor_json FROM network_dependency_snapshots WHERE id=?')
+      .get(result.features.find(item => item.featureId === 'B118').recordId);
+    expect(JSON.parse(snapshot.nodes_json)).toEqual([expect.objectContaining({
+      id: `ddr_vm_${'a'.repeat(26)}`, evidenceTypes: ['ip_observation'],
+    })]);
+    expect(JSON.parse(snapshot.source_cursor_json).addressObservationIds).toEqual([1]);
+  });
 });

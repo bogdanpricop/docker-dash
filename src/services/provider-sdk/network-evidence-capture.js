@@ -126,10 +126,14 @@ async function captureForHost(host, actor, options = {}) {
     const addresses = _dedupeAddresses(ipResult.value.addresses);
     if (addresses.length) {
       try {
+        const sourceObservedAt = ipResult.value.observedAt || now.toISOString();
+        const sourceObservedMs = Date.parse(sourceObservedAt);
+        const buildNow = Number.isFinite(sourceObservedMs) && sourceObservedMs > now.getTime()
+          ? new Date(sourceObservedMs) : now;
         const saved = database.transaction(() => {
           const observation = dependencyMap.recordAddressObservation({
             source: `provider:${capabilities.provider.type}:ip-inventory`, providerHostId: Number(host.id),
-            observedAt: ipResult.value.observedAt || now.toISOString(),
+            observedAt: sourceObservedAt,
             coverage: {
               complete: ipResult.value.coverage?.complete === true,
               reason: ipResult.value.coverage?.complete === true
@@ -140,7 +144,7 @@ async function captureForHost(host, actor, options = {}) {
           const snapshot = dependencyMap.build({
             scopeKey: 'global', freshnessHours: 24, maxEdges: 5000,
             includeDenied: false,
-          }, admin, { database, now });
+          }, admin, { database, now: buildNow });
           return { observation, snapshot };
         })();
         features.push({ featureId: 'B118', state: 'captured',

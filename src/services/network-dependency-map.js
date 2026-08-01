@@ -159,7 +159,7 @@ class NetworkDependencyMapService {
     if (body.includeDenied !== undefined && typeof body.includeDenied !== 'boolean') fail('includeDenied is invalid');
     const nowInput = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
     if (Number.isNaN(nowInput.getTime())) fail('now is invalid');
-    const now = new Date(Math.floor(nowInput.getTime() / 60000) * 60000);
+    const now = new Date(nowInput);
     const freshnessCutoffAt = new Date(now.getTime() - parameters.freshnessHours * 3600000).toISOString();
     const database = this._db(options); const sources = this._sources(database, now);
     const nodes = new Map(); const edgeMap = new Map(); const ambiguousAddresses = new Set();
