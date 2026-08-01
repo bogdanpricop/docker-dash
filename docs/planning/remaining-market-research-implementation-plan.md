@@ -653,12 +653,17 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-01 | Release 8.88.0 / B147–B156 | `Released` | `635df3b`, tag/release `v8.88.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.348 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.81/v8.82. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar executorii, colectorii și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.89.0 / B157–B166 | `Released` | `b8330a4`, tag/release `v8.89.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.350 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.82/v8.83. Calificarea nu pornește provider/network/external work; colectorii, adaptoarele production, canary și browserul rămân deschise. |
 | 2026-08-01 | Release 8.90.0 / B167–B176 | `Released` | `b0ada59`, tag/release `v8.90.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.352 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | B167–B175 sunt ultimele `Partial` fără batch de calificare; B176 era deja `Done` și este doar revalidat. Nicio execuție externă, provider mutation, notificare sau media capture nu este pornită. |
+| 2026-08-01 | Release 8.91.0 + 8.91.1 / B015, B045, B090, B096, B104, B118–B121, B123 | `Released` | `ad69ae4` + `15c452e`, tag/release `v8.91.0` + `v8.91.1`, CI + Docker green, LAN/VPS healthy | 314 suite / 3.364 teste pass; registry 391/59/0; live vSphere B118/B120/B121, safety zero; snapshot cutoff reparat și verificat | Lotul exact de 10 primește captură provider read-only pentru B118/B120/B121. Două hosturi vSphere reale au produs 20 IP-uri, 4 paths și 2 bond observations; snapshot-ul final are 6 noduri. Socrate raportează B121 `fail` fără remediere. Backupurile `predeploy-v8.91.0-ad69ae4.db` sunt păstrate; browserul și gap-urile externe rămân. |
 
 ## 20. Închiderea implementării autonome
 
-La v8.90.0, toate cele 59 de features păstrate `Partial` au implementare locală
+La v8.91.1, toate cele 59 de features păstrate `Partial` au implementare locală
 declarată, teste/evidence și includere într-un calup operațional exact. Nu mai
 există un ID `Partial` fără calificare read-only și fără o limitare concretă.
+
+Pentru B118/B120/B121 există acum și evidence live pe două endpointuri vSphere;
+acest lucru închide primul canary read-only, dar nu substituie browser smoke,
+coverage multi-provider sau evidence end-to-end.
 
 Registrul rămâne intenționat 391 `Done`, 59 `Partial`, 0 `Open`: o calificare
 nu transformă absența unui browser, adaptor, provider real, canary sau executor
@@ -680,10 +685,10 @@ este un registru de prerechizite externe, nu muncă locală rămasă ascunsă.
 1. UX control-plane: browser smoke pentru Governance, Self-Service, Identity & Policy și Edge, inclusiv tab keyboard navigation și cel puțin un dialog modal pe rută.
 2. R1/B015: browser smoke pe un endpoint local; includerea în v8.80 și calificarea v8.85 sunt deja înregistrate.
 3. R2/B045: canary pe provider disposable și reconciliere browser când runtime-ul devine disponibil; execute rămâne default-off.
-4. R4a/B118 și R4b/R4c B120/B121: browser smoke și prima captură live când
-   providerul revine; VM/IP, segment-MTU vSphere/Xen și standard-vSwitch vSphere
-   au deja adaptor read-only. DNS/flow, evidence end-to-end/DF, distributed LACP,
-   counters/flaps/failover și colectoarele non-vSphere rămân.
+4. R4a/B118 și R4b/R4c B120/B121: primul canary live vSphere este înregistrat în
+   v8.91.1; rămân browser smoke, coverage canary repetabil/multi-provider,
+   DNS/flow, evidence end-to-end/DF, distributed LACP, counters/flaps/failover și
+   colectoarele non-vSphere.
 5. R4f/B104: browser smoke, canary per provider disposable și release gradual al flag-urilor independente; calificarea nu le activează.
 6. R4b/B119: browser/provider simulation adapters și decizie separată pentru probe active privind runner-ul allowlisted, source ownership, destination policy, egress și rate limits.
 7. R5a/B129–B138: canary Proxmox/PBS, apoi adaptor XO pentru un schedule/job task-aware descoperit explicit; vSphere intră numai prin VADP/VDDK sau backup vendor cu data mover.
