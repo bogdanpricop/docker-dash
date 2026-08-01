@@ -32,4 +32,34 @@ describe('vSphere VM hardware parsing', () => {
       { hostRef: 'host-22', compatibility: ['cpu'] },
     ]);
   });
+
+  it('normalizes physical NIC, standard-vSwitch MTU and teaming order read-only', () => {
+    const physicalNics = `<ArrayOfPhysicalNic>
+      <PhysicalNic><key>key-vim.host.PhysicalNic-vmnic0</key><device>vmnic0</device><driver>ixgben</driver>
+        <linkSpeed><speedMb>10000</speedMb><duplex>true</duplex></linkSpeed><mac>00:11:22:33:44:55</mac></PhysicalNic>
+      <PhysicalNic><key>key-vim.host.PhysicalNic-vmnic1</key><device>vmnic1</device><driver>ixgben</driver>
+        <linkSpeed><speedMb>10000</speedMb><duplex>true</duplex></linkSpeed><mac>00:11:22:33:44:66</mac></PhysicalNic>
+    </ArrayOfPhysicalNic>`;
+    const switches = `<ArrayOfHostVirtualSwitch><HostVirtualSwitch>
+      <key>key-vim.host.VirtualSwitch-vSwitch0</key><name>vSwitch0</name><mtu>9000</mtu>
+      <pnic>key-vim.host.PhysicalNic-vmnic0</pnic><pnic>key-vim.host.PhysicalNic-vmnic1</pnic>
+      <spec><policy><nicTeaming><policy>failover_explicit</policy><nicOrder>
+        <activeNic>vmnic0</activeNic><standbyNic>vmnic1</standbyNic>
+      </nicOrder></nicTeaming></policy></spec>
+    </HostVirtualSwitch></ArrayOfHostVirtualSwitch>`;
+    const result = _internals._parseHostNetworkEvidence({ hostRef: 'host-7', hostName: 'esx-a',
+      physicalNicXml: physicalNics, virtualSwitchXml: switches });
+    expect(result.physicalNics).toEqual([
+      expect.objectContaining({ key: 'key-vim.host.PhysicalNic-vmnic0', device: 'vmnic0',
+        linkState: 'up', speedMbps: 10000, duplex: 'full' }),
+      expect.objectContaining({ device: 'vmnic1', linkState: 'up' }),
+    ]);
+    expect(result.switches).toEqual([expect.objectContaining({
+      key: 'key-vim.host.VirtualSwitch-vSwitch0', name: 'vSwitch0', mtu: 9000,
+      mode: 'active_backup', members: [
+        expect.objectContaining({ device: 'vmnic0', role: 'active', adminState: 'up' }),
+        expect.objectContaining({ device: 'vmnic1', role: 'standby', adminState: 'up' }),
+      ],
+    })]);
+  });
 });

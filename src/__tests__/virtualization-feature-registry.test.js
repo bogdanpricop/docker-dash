@@ -45,7 +45,7 @@ describe('virtualization market-research registry', () => {
     }));
     expect(registry.features.find(feature => feature.featureId === 'B118')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'],
+      limitations: ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds bounded provider-native VM IP capture, while live evidence, DNS/flow adapters and browser smoke remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B119')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
@@ -53,11 +53,11 @@ describe('virtualization market-research registry', () => {
     }));
     expect(registry.features.find(feature => feature.featureId === 'B120')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'],
+      limitations: ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds fail-closed vSphere/Xen segment-MTU capture, while end-to-end path/DF evidence and browser smoke remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B121')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],
-      limitations: ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'],
+      limitations: ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds a read-only vSphere standard-vSwitch/pNIC collector, while live evidence, distributed-switch/LACP depth, non-vSphere collectors and browser smoke remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B123')).toEqual(expect.objectContaining({
       status: 'Partial', deliveryLevel: 'local-end-to-end', providers: ['proxmox', 'vsphere', 'xen'],

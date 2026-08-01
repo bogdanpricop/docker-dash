@@ -1066,6 +1066,43 @@ class VSphereClient {
   }
 
   /**
+   * Read physical-NIC and standard-vSwitch evidence from every visible host.
+   * This is bounded PropertyCollector inventory only: it starts no traffic,
+   * host command, failover, or network reconfiguration.
+   */
+  async listHostNetworkEvidence() {
+    await this._ensureLoggedIn();
+    const hosts = (await this.listHosts()).slice(0, 64);
+    const results = [];
+    for (const host of hosts) {
+      const raw = await this._retrievePropertiesDirect('HostSystem', host.moref, [
+        'config.network.pnic', 'config.network.vswitch',
+      ]);
+      const props = (_extractObjects(raw)[0] || { props: {} }).props;
+      results.push(_parseHostNetworkEvidence({
+        hostRef: host.moref,
+        hostName: host.name || host.moref,
+        physicalNicXml: props['config.network.pnic'] || '',
+        virtualSwitchXml: props['config.network.vswitch'] || '',
+      }));
+    }
+    return {
+      observedAt: new Date().toISOString(),
+      hosts: results,
+      coverage: {
+        complete: hosts.length < 64,
+        reason: hosts.length < 64
+          ? 'All provider-visible hosts were read through the vSphere PropertyCollector'
+          : 'Host evidence was bounded to the first 64 provider-visible hosts',
+      },
+      limitations: [
+        'Standard vSwitch and physical-NIC configuration is read; distributed-switch LACP partner state is not inferred.',
+        'Traffic counters, link-flap history and failover history are not exposed by this bounded collector.',
+      ],
+    };
+  }
+
+  /**
    * Host services (SSH, NTP, etc.) from config.service.service.
    * @param {string} hostMoref the HostSystem MoRef (from listHosts).
    */
@@ -1797,6 +1834,85 @@ function _parseVmHardware(deviceXml, guestNetXml) {
   };
 }
 
+function _networkMemberDevice(value) {
+  const input = String(value || '').trim();
+  if (!input) return null;
+  const match = /(?:^|-)vmnic[0-9]+$/i.exec(input);
+  return match ? match[0].replace(/^-/, '') : input;
+}
+
+function _parseHostPhysicalNics(xml) {
+  const blocks = _elementBlocks(xml, ['PhysicalNic', 'HostPhysicalNic']);
+  const seen = new Set();
+  const output = [];
+  for (const [index, item] of blocks.entries()) {
+    const key = _extractTag(item.body, 'key') || `pnic-${index}`;
+    const device = _extractTag(item.body, 'device') || _networkMemberDevice(key) || key;
+    if (seen.has(key) || seen.has(device)) continue;
+    seen.add(key); seen.add(device);
+    const link = _extractTag(item.body, 'linkSpeed') || '';
+    const speedMbps = _tagNumber(link, 'speedMb');
+    const duplex = _tagBool(link, 'duplex');
+    output.push({
+      key, device,
+      driver: _extractTag(item.body, 'driver') || null,
+      macAddress: _extractTag(item.body, 'mac') || null,
+      linkState: speedMbps === null ? 'unknown' : 'up',
+      speedMbps,
+      duplex: duplex === true ? 'full' : duplex === false ? 'half' : 'unknown',
+    });
+  }
+  return output.slice(0, 256);
+}
+
+function _vswitchMode(policy) {
+  const value = String(policy || '').toLowerCase();
+  if (value === 'failover_explicit') return 'active_backup';
+  if (value === 'loadbalance_loadbased') return 'adaptive';
+  if (['loadbalance_ip', 'loadbalance_srcid', 'loadbalance_srcmac'].includes(value)) return 'balance_xor';
+  return 'other';
+}
+
+function _parseHostVirtualSwitches(xml, physicalNics = []) {
+  const byKey = new Map();
+  const byDevice = new Map();
+  for (const nic of physicalNics) { byKey.set(nic.key, nic); byDevice.set(nic.device, nic); }
+  return _elementBlocks(xml, ['HostVirtualSwitch']).slice(0, 256).map((item, index) => {
+    const key = _extractTag(item.body, 'key') || `vswitch-${index}`;
+    const name = _extractTag(item.body, 'name') || key;
+    const bridge = _extractTag(item.body, 'bridge') || '';
+    const configuredRefs = [..._allTags(item.body, 'pnic'), ..._allTags(bridge, 'nicDevice')]
+      .map(_networkMemberDevice).filter(Boolean);
+    const memberDevices = [...new Set(configuredRefs.map(ref => byKey.get(ref)?.device || ref))];
+    const teaming = _extractTag(item.body, 'nicTeaming') || '';
+    const order = _extractTag(teaming, 'nicOrder') || '';
+    const active = new Set(_allTags(order, 'activeNic').map(_networkMemberDevice).filter(Boolean));
+    const standby = new Set(_allTags(order, 'standbyNic').map(_networkMemberDevice).filter(Boolean));
+    const members = memberDevices.map(device => {
+      const nic = byDevice.get(device) || byKey.get(device) || {
+        key: device, device, linkState: 'unknown', speedMbps: null, duplex: 'unknown',
+      };
+      const role = standby.has(device) ? 'standby'
+        : active.has(device) || (!active.size && !standby.size) ? 'active' : 'inactive';
+      return { ...nic, role, adminState: 'up' };
+    });
+    return {
+      key, name, mtu: _tagNumber(item.body, 'mtu'),
+      mode: _vswitchMode(_extractTag(teaming, 'policy')),
+      members,
+    };
+  });
+}
+
+function _parseHostNetworkEvidence({ hostRef, hostName, physicalNicXml, virtualSwitchXml }) {
+  const physicalNics = _parseHostPhysicalNics(physicalNicXml);
+  const switches = _parseHostVirtualSwitches(virtualSwitchXml, physicalNics);
+  return {
+    hostRef: String(hostRef || ''), hostName: String(hostName || hostRef || ''),
+    physicalNics, switches,
+  };
+}
+
 function _parseVmotionCompatibility(xml) {
   const output = [];
   const re = /<(?:\w+:)?returnval\b[^>]*>([\s\S]*?)<\/(?:\w+:)?returnval>/g;
@@ -1855,7 +1971,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _parseClusterGroups, _parseClusterRules, _parseDrsRecommendations, _elementBlocks, _typedRefs, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _parseClusterGroups, _parseClusterRules, _parseDrsRecommendations, _elementBlocks, _typedRefs, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility, _parseHostPhysicalNics, _parseHostVirtualSwitches, _parseHostNetworkEvidence },
 };
 
 if (false) log.info();

@@ -177,6 +177,11 @@ function evidenceFor(feature, status) {
         reference: 'R4a/B118 local implementation',
         path: 'docs/planning/virtualization-platform/V4.4e-network-dependency-map-feature-spec.md',
       },
+      {
+        type: 'test',
+        reference: 'provider-native B118/B120/B121 capture tests',
+        path: 'src/__tests__/provider-network-evidence-capture.test.js',
+      },
     ];
   }
   if (feature.featureId === 'B119') {
@@ -205,6 +210,11 @@ function evidenceFor(feature, status) {
         reference: 'R4b/B120 local implementation',
         path: 'docs/planning/virtualization-platform/V4.4g-network-mtu-mismatch-feature-spec.md',
       },
+      {
+        type: 'test',
+        reference: 'provider-native B118/B120/B121 capture tests',
+        path: 'src/__tests__/provider-network-evidence-capture.test.js',
+      },
     ];
   }
   if (feature.featureId === 'B121') {
@@ -218,6 +228,11 @@ function evidenceFor(feature, status) {
         type: 'working-tree',
         reference: 'R4c/B121 local implementation',
         path: 'docs/planning/virtualization-platform/V4.4h-network-bond-health-feature-spec.md',
+      },
+      {
+        type: 'test',
+        reference: 'vSphere physical-network and provider capture tests',
+        path: 'src/__tests__/provider-network-evidence-capture.test.js',
       },
     ];
   }
@@ -409,16 +424,16 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.80.0 and read-only qualified in v8.85.0; link mutation stays default-off pending browser smoke and a disposable-provider canary.'];
   }
   if (feature.featureId === 'B118') {
-    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'];
+    return ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds bounded provider-native VM IP capture, while live evidence, DNS/flow adapters and browser smoke remain outstanding.'];
   }
   if (feature.featureId === 'B119') {
     return ['Released in v8.80.0 and read-only qualified in v8.85.0 with zero qualification network calls; provider simulation adapters, browser smoke and any approved allowlisted active-probe runner remain outstanding.'];
   }
   if (feature.featureId === 'B120') {
-    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding.'];
+    return ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds fail-closed vSphere/Xen segment-MTU capture, while end-to-end path/DF evidence and browser smoke remain outstanding.'];
   }
   if (feature.featureId === 'B121') {
-    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'];
+    return ['Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds a read-only vSphere standard-vSwitch/pNIC collector, while live evidence, distributed-switch/LACP depth, non-vSphere collectors and browser smoke remain outstanding.'];
   }
   if (feature.featureId === 'B123') {
     return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding.'];

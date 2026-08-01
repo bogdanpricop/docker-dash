@@ -744,8 +744,10 @@ B118 are implementarea locală V4.4e read-only: observații normalizate IP/DNS,
 corelare cu flow batches, metadata și relationship graphs, snapshots imutabile,
 freshness/confidence/evidence per edge și impact bounded exclusiv pe relațiile
 declarate. Flow-only candidates rămân explicit non-cauzale. Browser smoke,
-adaptoarele de evidence provider-native rămân restante. Implementarea este în
-v8.80.0 și are calificare read-only în v8.85.0.
+adaptoarele DNS/flow și prima captură live rămân restante. v8.91.0 adaugă
+captură bounded provider-native din inventarul canonic VM/IP, fără probe sau
+mutații; zero adrese rămâne `not_observed`. Implementarea este în v8.80.0 și
+are calificare read-only în v8.85.0.
 
 B119 are implementarea locală V4.4f simulation-only: evaluează tuple explicite
 source/destination/TCP/UDP/ICMP din route, policy, attachment și provider
@@ -761,15 +763,20 @@ B120 are implementarea locală V4.4g pasivă: evaluează paths workload, overlay
 storage și live-migration, calculează overhead-ul cumulativ per segment, păstrează
 DF ca evidence explicit și produce `pass/fail/unknown` cu bottleneck și deficit.
 Nu pornește trafic sau remediere. Colectarea automată provider-native, browser
-smoke rămân restante; implementarea este în v8.80.0 și are calificare read-only
-în v8.85.0.
+smoke rămân parțial restante: v8.91.0 poate captura MTU de segment din
+inventarul vSphere/Xen și vSwitch standard vSphere, dar marchează coverage
+incomplet astfel încât segment-only să nu devină pass end-to-end. Implementarea
+este în v8.80.0 și are calificare read-only în v8.85.0.
 
 B121 are implementarea locală V4.4h pasivă: normalizează bond/team/LAG members,
 rol activ/standby/LACP, link/admin/speed/duplex, partner keys, delte de trafic,
 errors/drops/flaps și failover evidence. Quorum-ul, partner mismatch și imbalance
 sunt evaluate fail-closed; zero trafic rămâne `not_observed`. Colectoarele
-provider-native și browser smoke rămân restante; implementarea este în v8.80.0
-și are calificare read-only în v8.85.0.
+provider-native și browser smoke rămân parțial restante. v8.91.0 adaugă pentru
+vSphere standard vSwitch/pNIC/MTU/teaming order prin PropertyCollector; counters,
+flaps/failover, distributed LACP, Proxmox/Xen și prima captură live rămân
+neobservate. Implementarea este în v8.80.0 și are calificare read-only în
+v8.85.0.
 
 B123 are implementarea locală V4.4i read-only: inventar normalizat pentru VIP,
 listeners, pools, members, algoritm, admin/provider health și legături canonice

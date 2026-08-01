@@ -15,7 +15,9 @@ const mockListVMs = jest.fn();
 const mockListArtifacts = jest.fn();
 const mockListRecoveryPoints = jest.fn();
 const mockVSphereLogin = jest.fn();
+const mockVSphereLogout = jest.fn();
 const mockVSphereInfo = jest.fn();
+const mockVSphereNetworkEvidence = jest.fn();
 const mockXenInfo = jest.fn();
 const mockXenCaps = jest.fn();
 
@@ -25,6 +27,7 @@ jest.mock('../services/proxmox', () => ({
 jest.mock('../services/vsphere', () => ({
   fromHostRow: () => ({
     login: mockVSphereLogin, retrieveServiceContent: mockVSphereInfo,
+    logout: mockVSphereLogout, listHostNetworkEvidence: mockVSphereNetworkEvidence,
     _agent: { destroy: mockDestroy },
   }),
 }));
@@ -49,7 +52,16 @@ describe('Provider SDK registry', () => {
     mockListArtifacts.mockResolvedValue([]);
     mockListRecoveryPoints.mockResolvedValue({ repositories: [], points: [], limitations: [] });
     mockVSphereLogin.mockResolvedValue({});
+    mockVSphereLogout.mockResolvedValue({});
     mockVSphereInfo.mockResolvedValue({ productFullName: 'VMware vCenter Server 9.0', version: '9.0', apiVersion: '9.0' });
+    mockVSphereNetworkEvidence.mockResolvedValue({ observedAt: '2026-08-01T10:00:00.000Z',
+      coverage: { complete: true, reason: 'all hosts read' }, limitations: ['standard switches only'],
+      hosts: [{ hostRef: 'host-7', switches: [{ key: 'vSwitch0', name: 'vSwitch0', mtu: 9000,
+        mode: 'active_backup', members: [
+          { device: 'vmnic0', adminState: 'up', linkState: 'up', role: 'active', speedMbps: 10000, duplex: 'full' },
+          { device: 'vmnic1', adminState: 'up', linkState: 'up', role: 'standby', speedMbps: 10000, duplex: 'full' },
+        ] }] }],
+    });
     mockXenCaps.mockReturnValue({
       vms: true, hosts: true, pools: true, storages: true, networks: true,
       tasks: true, snapshots: true, taskCleanup: true, vmActions: ['start', 'shutdown'],
@@ -155,6 +167,18 @@ describe('Provider SDK registry', () => {
     await expect(registry.resourcesForHost(esxiHost, 'clusters', { database }))
       .rejects.toMatchObject({ code: 'PROVIDER_RESOURCE_UNAVAILABLE', status: 400 });
     expect(mockListVMs).not.toHaveBeenCalled();
+  });
+
+  it('returns bounded vSphere physical-network evidence through the resilience registry', async () => {
+    const result = await registry.nativeNetworkEvidenceForHost(esxiHost);
+    expect(result).toEqual(expect.objectContaining({ schemaVersion: '1.0', supported: true,
+      provider: { type: 'vsphere', endpointId: 3 },
+      switches: [expect.objectContaining({ switchKey: 'vsphere:host-7:vSwitch0', mtu: 9000 })],
+      bonds: [expect.objectContaining({ bondKey: 'vsphere:host-7:vSwitch0',
+        members: expect.arrayContaining([expect.objectContaining({ linkState: 'up' })]) })] }));
+    expect(mockVSphereNetworkEvidence).toHaveBeenCalledTimes(1);
+    expect(mockVSphereLogout).toHaveBeenCalledTimes(1);
+    expect(mockDestroy).toHaveBeenCalled();
   });
 
   it('returns a searchable artifact catalog without native references', async () => {

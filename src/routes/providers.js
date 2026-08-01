@@ -25,6 +25,7 @@ const providerGuestNetworkReadiness = require('../services/provider-sdk/guest-ne
 const providerEndpointTransportPosture = require('../services/provider-sdk/endpoint-transport-posture');
 const providerSecurityPosture = require('../services/provider-sdk/security-posture');
 const providerOperationalQualification = require('../services/provider-sdk/operational-qualification');
+const providerNetworkEvidenceCapture = require('../services/provider-sdk/network-evidence-capture');
 const providerSecurityAssurance = require('../services/provider-sdk/security-assurance');
 const providerSecurityLifecycle = require('../services/provider-sdk/security-lifecycle');
 const providerPrivilegedCompliance = require('../services/provider-sdk/privileged-compliance');
@@ -2355,6 +2356,37 @@ router.get('/:hostId/operational-qualification', requireAuth,
       });
     }
   });
+
+router.post('/:hostId/network-evidence/capture', requireAuth, requireRole('admin'),
+  requireHostAccess('operate', { param: 'hostId' }), writeable, asyncHandler(async (req, res) => {
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const result = await providerNetworkEvidenceCapture.captureForHost(resolved.host, req.user);
+      auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'provider_network_evidence_capture', targetType: 'provider_host',
+        targetId: String(resolved.host.id), details: {
+          hostId: Number(resolved.host.id), provider: resolved.host.daemon_type,
+          featureIds: result.features.map(item => item.featureId),
+          captured: result.summary.captured, notObserved: result.summary.notObserved,
+          unavailable: result.summary.unavailable,
+          providerReadsStarted: result.summary.providerReadsStarted,
+          providerMutationsStarted: 0, activeProbesStarted: 0,
+          evidenceHash: result.evidenceHash,
+        }, ip: getClientIp(req), userAgent: req.headers['user-agent'],
+      });
+      res.status(result.summary.captured ? 201 : 200).json(result);
+    } catch (err) {
+      const trusted = err?.name === 'NetworkEvidenceCaptureError'
+        && /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || ''));
+      const status = trusted && Number.isInteger(err?.status) ? err.status : 500;
+      res.status(status).json({
+        error: status >= 500 && !trusted ? 'Provider network evidence capture failed' : err.message,
+        code: trusted ? err.code : 'NETWORK_EVIDENCE_CAPTURE_ERROR',
+      });
+    }
+  }));
 
 router.get('/:hostId/security-assurance', requireAuth,
   requireHostAccess('view', { param: 'hostId' }), asyncHandler(async (req, res) => {

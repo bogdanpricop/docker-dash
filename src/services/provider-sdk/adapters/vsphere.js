@@ -199,6 +199,57 @@ async function listResources(kind, host) {
   }
 }
 
+async function networkEvidence(host) {
+  const client = fromHostRow(host);
+  try {
+    await client.login();
+    const raw = await client.listHostNetworkEvidence();
+    const switches = [];
+    const bonds = [];
+    for (const providerHost of raw.hosts || []) {
+      for (const item of providerHost.switches || []) {
+        const switchKey = `vsphere:${providerHost.hostRef}:${item.key}`;
+        switches.push({
+          switchKey, hostKey: `vsphere:${providerHost.hostRef}`,
+          name: item.name, mtu: item.mtu,
+        });
+        if ((item.members || []).length < 2) continue;
+        bonds.push({
+          bondKey: switchKey,
+          hostKey: `vsphere:${providerHost.hostRef}`,
+          mode: item.mode,
+          minActiveMembers: 1,
+          intervalSeconds: 300,
+          imbalanceThresholdPercent: 40,
+          failover: { count: 0, lastAt: null, lastReason: null },
+          members: item.members.map(member => ({
+            memberKey: `vsphere:${providerHost.hostRef}:${member.device}`,
+            adminState: member.adminState,
+            linkState: member.linkState,
+            role: member.role,
+            speedMbps: member.speedMbps,
+            duplex: member.duplex,
+            lacpPartnerKey: null,
+            rxBytesDelta: 0,
+            txBytesDelta: 0,
+            errorDelta: 0,
+            dropDelta: 0,
+            flapCount: 0,
+          })),
+        });
+      }
+    }
+    return {
+      providerType: 'vsphere', observedAt: raw.observedAt,
+      coverage: raw.coverage, switches: switches.slice(0, 500), bonds: bonds.slice(0, 500),
+      limitations: raw.limitations || [],
+    };
+  } finally {
+    try { await client.logout?.(); } catch { /* best-effort session cleanup */ }
+    client._agent?.destroy?.();
+  }
+}
+
 async function readVmHardware(host, context) {
   const client = fromHostRow(host);
   try {
@@ -280,4 +331,4 @@ function _allowedSnapshotActions(row) {
   return actions;
 }
 
-module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };
+module.exports = { type: 'vsphere', declared, probe, listResources, listArtifacts, readVmHardware, migrationCompatibility, placementInventory, networkEvidence, _internals: { _variant, _allowedVmActions, _allowedSnapshotActions } };

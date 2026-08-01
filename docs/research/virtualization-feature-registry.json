@@ -3913,10 +3913,15 @@
           "type": "working-tree",
           "reference": "R4a/B118 local implementation",
           "path": "docs/planning/virtualization-platform/V4.4e-network-dependency-map-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "provider-native B118/B120/B121 capture tests",
+          "path": "src/__tests__/provider-network-evidence-capture.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding."
+        "Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds bounded provider-native VM IP capture, while live evidence, DNS/flow adapters and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -3989,10 +3994,15 @@
           "type": "working-tree",
           "reference": "R4b/B120 local implementation",
           "path": "docs/planning/virtualization-platform/V4.4g-network-mtu-mismatch-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "provider-native B118/B120/B121 capture tests",
+          "path": "src/__tests__/provider-network-evidence-capture.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider evidence adapters remain outstanding."
+        "Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds fail-closed vSphere/Xen segment-MTU capture, while end-to-end path/DF evidence and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4027,10 +4037,15 @@
           "type": "working-tree",
           "reference": "R4c/B121 local implementation",
           "path": "docs/planning/virtualization-platform/V4.4h-network-bond-health-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "vSphere physical-network and provider capture tests",
+          "path": "src/__tests__/provider-network-evidence-capture.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and provider collectors remain outstanding."
+        "Released in v8.80.0 and qualified in v8.85.0; v8.91.0 adds a read-only vSphere standard-vSwitch/pNIC collector, while live evidence, distributed-switch/LACP depth, non-vSphere collectors and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -4220,7 +4235,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 805
+        "line": 812
       }
     },
     {
@@ -4251,7 +4266,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 806
+        "line": 813
       }
     },
     {
@@ -4282,7 +4297,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 807
+        "line": 814
       }
     },
     {
@@ -4325,7 +4340,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 808
+        "line": 815
       }
     },
     {
@@ -4368,7 +4383,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 809
+        "line": 816
       }
     },
     {
@@ -4411,7 +4426,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 810
+        "line": 817
       }
     },
     {
@@ -4454,7 +4469,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 811
+        "line": 818
       }
     },
     {
@@ -4497,7 +4512,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 812
+        "line": 819
       }
     },
     {
@@ -4540,7 +4555,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 813
+        "line": 820
       }
     },
     {
@@ -4583,7 +4598,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 814
+        "line": 821
       }
     },
     {
@@ -4626,7 +4641,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 815
+        "line": 822
       }
     },
     {
@@ -4669,7 +4684,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 816
+        "line": 823
       }
     },
     {
@@ -4712,7 +4727,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 817
+        "line": 824
       }
     },
     {
@@ -4755,7 +4770,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 818
+        "line": 825
       }
     },
     {
@@ -4798,7 +4813,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 819
+        "line": 826
       }
     },
     {
@@ -4841,7 +4856,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 820
+        "line": 827
       }
     },
     {
@@ -4884,7 +4899,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 821
+        "line": 828
       }
     },
     {
@@ -4927,7 +4942,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 822
+        "line": 829
       }
     },
     {
@@ -4970,7 +4985,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 823
+        "line": 830
       }
     },
     {
@@ -5013,7 +5028,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 824
+        "line": 831
       }
     },
     {
@@ -5056,7 +5071,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 825
+        "line": 832
       }
     },
     {
@@ -5099,7 +5114,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 826
+        "line": 833
       }
     },
     {
@@ -5142,7 +5157,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 827
+        "line": 834
       }
     },
     {
@@ -5185,7 +5200,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 828
+        "line": 835
       }
     },
     {
@@ -5228,7 +5243,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 829
+        "line": 836
       }
     },
     {
@@ -5271,7 +5286,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 869
+        "line": 876
       }
     },
     {
@@ -5314,7 +5329,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 870
+        "line": 877
       }
     },
     {
@@ -5357,7 +5372,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 871
+        "line": 878
       }
     },
     {
@@ -5400,7 +5415,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 872
+        "line": 879
       }
     },
     {
@@ -5443,7 +5458,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 873
+        "line": 880
       }
     },
     {
@@ -5486,7 +5501,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 874
+        "line": 881
       }
     },
     {
@@ -5529,7 +5544,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 875
+        "line": 882
       }
     },
     {
@@ -5572,7 +5587,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 876
+        "line": 883
       }
     },
     {
@@ -5615,7 +5630,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 877
+        "line": 884
       }
     },
     {
@@ -5658,7 +5673,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 878
+        "line": 885
       }
     },
     {
@@ -5701,7 +5716,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 879
+        "line": 886
       }
     },
     {
@@ -5744,7 +5759,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 880
+        "line": 887
       }
     },
     {
@@ -5787,7 +5802,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 881
+        "line": 888
       }
     },
     {
@@ -5830,7 +5845,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 882
+        "line": 889
       }
     },
     {
@@ -5873,7 +5888,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 883
+        "line": 890
       }
     },
     {
@@ -5916,7 +5931,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 884
+        "line": 891
       }
     },
     {
@@ -5959,7 +5974,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 885
+        "line": 892
       }
     },
     {
@@ -6002,7 +6017,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 886
+        "line": 893
       }
     },
     {
@@ -6045,7 +6060,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 887
+        "line": 894
       }
     },
     {
@@ -6088,7 +6103,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 888
+        "line": 895
       }
     },
     {
@@ -6131,7 +6146,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 889
+        "line": 896
       }
     },
     {
@@ -6174,7 +6189,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 890
+        "line": 897
       }
     },
     {
@@ -6217,7 +6232,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 891
+        "line": 898
       }
     },
     {
@@ -6260,7 +6275,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 892
+        "line": 899
       }
     },
     {
@@ -6303,7 +6318,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 893
+        "line": 900
       }
     },
     {
@@ -6342,7 +6357,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 935
+        "line": 942
       }
     },
     {
@@ -6371,7 +6386,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 936
+        "line": 943
       }
     },
     {
@@ -6400,7 +6415,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 937
+        "line": 944
       }
     },
     {
@@ -6429,7 +6444,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 938
+        "line": 945
       }
     },
     {
@@ -6458,7 +6473,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 939
+        "line": 946
       }
     },
     {
@@ -6487,7 +6502,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 940
+        "line": 947
       }
     },
     {
@@ -6516,7 +6531,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 941
+        "line": 948
       }
     },
     {
@@ -6545,7 +6560,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 942
+        "line": 949
       }
     },
     {
@@ -6574,7 +6589,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 943
+        "line": 950
       }
     },
     {
@@ -6603,7 +6618,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 944
+        "line": 951
       }
     },
     {
@@ -6632,7 +6647,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 945
+        "line": 952
       }
     },
     {
@@ -6661,7 +6676,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 946
+        "line": 953
       }
     },
     {
@@ -6690,7 +6705,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 947
+        "line": 954
       }
     },
     {
@@ -6719,7 +6734,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 948
+        "line": 955
       }
     },
     {
@@ -6748,7 +6763,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 949
+        "line": 956
       }
     },
     {
@@ -6777,7 +6792,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 950
+        "line": 957
       }
     },
     {
@@ -6806,7 +6821,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 951
+        "line": 958
       }
     },
     {
@@ -6835,7 +6850,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 952
+        "line": 959
       }
     },
     {
@@ -6864,7 +6879,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 953
+        "line": 960
       }
     },
     {
@@ -6893,7 +6908,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 954
+        "line": 961
       }
     },
     {
@@ -6922,7 +6937,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 955
+        "line": 962
       }
     },
     {
@@ -6951,7 +6966,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 956
+        "line": 963
       }
     },
     {
@@ -6980,7 +6995,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 957
+        "line": 964
       }
     },
     {
@@ -7009,7 +7024,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 958
+        "line": 965
       }
     },
     {
@@ -7038,7 +7053,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 959
+        "line": 966
       }
     },
     {
@@ -7067,7 +7082,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 978
+        "line": 985
       }
     },
     {
@@ -7096,7 +7111,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 979
+        "line": 986
       }
     },
     {
@@ -7125,7 +7140,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 980
+        "line": 987
       }
     },
     {
@@ -7154,7 +7169,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 981
+        "line": 988
       }
     },
     {
@@ -7183,7 +7198,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 982
+        "line": 989
       }
     },
     {
@@ -7212,7 +7227,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 983
+        "line": 990
       }
     },
     {
@@ -7241,7 +7256,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 984
+        "line": 991
       }
     },
     {
@@ -7270,7 +7285,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 985
+        "line": 992
       }
     },
     {
@@ -7299,7 +7314,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 986
+        "line": 993
       }
     },
     {
@@ -7328,7 +7343,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 987
+        "line": 994
       }
     },
     {
@@ -7357,7 +7372,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 988
+        "line": 995
       }
     },
     {
@@ -7386,7 +7401,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 989
+        "line": 996
       }
     },
     {
@@ -7415,7 +7430,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 990
+        "line": 997
       }
     },
     {
@@ -7444,7 +7459,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 991
+        "line": 998
       }
     },
     {
@@ -7473,7 +7488,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 992
+        "line": 999
       }
     },
     {
@@ -7502,7 +7517,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 993
+        "line": 1000
       }
     },
     {
@@ -7531,7 +7546,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 994
+        "line": 1001
       }
     },
     {
@@ -7560,7 +7575,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 995
+        "line": 1002
       }
     },
     {
@@ -7589,7 +7604,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 996
+        "line": 1003
       }
     },
     {
@@ -7618,7 +7633,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 997
+        "line": 1004
       }
     },
     {
@@ -7647,7 +7662,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 998
+        "line": 1005
       }
     },
     {
@@ -7676,7 +7691,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 999
+        "line": 1006
       }
     },
     {
@@ -7705,7 +7720,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1000
+        "line": 1007
       }
     },
     {
@@ -7734,7 +7749,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1001
+        "line": 1008
       }
     },
     {
@@ -7763,7 +7778,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1002
+        "line": 1009
       }
     },
     {
@@ -7792,7 +7807,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1018
+        "line": 1025
       }
     },
     {
@@ -7821,7 +7836,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1019
+        "line": 1026
       }
     },
     {
@@ -7850,7 +7865,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1020
+        "line": 1027
       }
     },
     {
@@ -7879,7 +7894,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1021
+        "line": 1028
       }
     },
     {
@@ -7908,7 +7923,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1022
+        "line": 1029
       }
     },
     {
@@ -7937,7 +7952,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1023
+        "line": 1030
       }
     },
     {
@@ -7966,7 +7981,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1024
+        "line": 1031
       }
     },
     {
@@ -7995,7 +8010,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1025
+        "line": 1032
       }
     },
     {
@@ -8024,7 +8039,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1026
+        "line": 1033
       }
     },
     {
@@ -8053,7 +8068,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1027
+        "line": 1034
       }
     },
     {
@@ -8082,7 +8097,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1028
+        "line": 1035
       }
     },
     {
@@ -8111,7 +8126,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1029
+        "line": 1036
       }
     },
     {
@@ -8140,7 +8155,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1030
+        "line": 1037
       }
     },
     {
@@ -8169,7 +8184,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1031
+        "line": 1038
       }
     },
     {
@@ -8198,7 +8213,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1032
+        "line": 1039
       }
     },
     {
@@ -8227,7 +8242,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1033
+        "line": 1040
       }
     },
     {
@@ -8256,7 +8271,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1034
+        "line": 1041
       }
     },
     {
@@ -8285,7 +8300,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1035
+        "line": 1042
       }
     },
     {
@@ -8314,7 +8329,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1036
+        "line": 1043
       }
     },
     {
@@ -8343,7 +8358,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1037
+        "line": 1044
       }
     },
     {
@@ -8372,7 +8387,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1038
+        "line": 1045
       }
     },
     {
@@ -8401,7 +8416,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1039
+        "line": 1046
       }
     },
     {
@@ -8430,7 +8445,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1040
+        "line": 1047
       }
     },
     {
@@ -8459,7 +8474,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1041
+        "line": 1048
       }
     },
     {
@@ -8488,7 +8503,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1042
+        "line": 1049
       }
     },
     {
@@ -8517,7 +8532,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1073
+        "line": 1080
       }
     },
     {
@@ -8546,7 +8561,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1074
+        "line": 1081
       }
     },
     {
@@ -8575,7 +8590,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1075
+        "line": 1082
       }
     },
     {
@@ -8604,7 +8619,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1076
+        "line": 1083
       }
     },
     {
@@ -8633,7 +8648,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1077
+        "line": 1084
       }
     },
     {
@@ -8662,7 +8677,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1078
+        "line": 1085
       }
     },
     {
@@ -8691,7 +8706,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1079
+        "line": 1086
       }
     },
     {
@@ -8720,7 +8735,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1080
+        "line": 1087
       }
     },
     {
@@ -8749,7 +8764,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1081
+        "line": 1088
       }
     },
     {
@@ -8778,7 +8793,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1082
+        "line": 1089
       }
     },
     {
@@ -8807,7 +8822,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1083
+        "line": 1090
       }
     },
     {
@@ -8836,7 +8851,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1084
+        "line": 1091
       }
     },
     {
@@ -8865,7 +8880,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1085
+        "line": 1092
       }
     },
     {
@@ -8894,7 +8909,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1086
+        "line": 1093
       }
     },
     {
@@ -8923,7 +8938,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1087
+        "line": 1094
       }
     },
     {
@@ -8952,7 +8967,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1088
+        "line": 1095
       }
     },
     {
@@ -8981,7 +8996,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1089
+        "line": 1096
       }
     },
     {
@@ -9010,7 +9025,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1090
+        "line": 1097
       }
     },
     {
@@ -9039,7 +9054,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1091
+        "line": 1098
       }
     },
     {
@@ -9068,7 +9083,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1092
+        "line": 1099
       }
     },
     {
@@ -9097,7 +9112,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1093
+        "line": 1100
       }
     },
     {
@@ -9126,7 +9141,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1094
+        "line": 1101
       }
     },
     {
@@ -9155,7 +9170,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1095
+        "line": 1102
       }
     },
     {
@@ -9184,7 +9199,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1096
+        "line": 1103
       }
     },
     {
@@ -9213,7 +9228,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1097
+        "line": 1104
       }
     },
     {
@@ -9242,7 +9257,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1133
+        "line": 1140
       }
     },
     {
@@ -9271,7 +9286,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1134
+        "line": 1141
       }
     },
     {
@@ -9300,7 +9315,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1135
+        "line": 1142
       }
     },
     {
@@ -9329,7 +9344,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1136
+        "line": 1143
       }
     },
     {
@@ -9358,7 +9373,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1137
+        "line": 1144
       }
     },
     {
@@ -9387,7 +9402,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1138
+        "line": 1145
       }
     },
     {
@@ -9416,7 +9431,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1139
+        "line": 1146
       }
     },
     {
@@ -9445,7 +9460,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1140
+        "line": 1147
       }
     },
     {
@@ -9474,7 +9489,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1141
+        "line": 1148
       }
     },
     {
@@ -9503,7 +9518,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1142
+        "line": 1149
       }
     },
     {
@@ -9532,7 +9547,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1143
+        "line": 1150
       }
     },
     {
@@ -9561,7 +9576,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1144
+        "line": 1151
       }
     },
     {
@@ -9590,7 +9605,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1145
+        "line": 1152
       }
     },
     {
@@ -9619,7 +9634,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1146
+        "line": 1153
       }
     },
     {
@@ -9648,7 +9663,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1147
+        "line": 1154
       }
     },
     {
@@ -9677,7 +9692,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1148
+        "line": 1155
       }
     },
     {
@@ -9706,7 +9721,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1149
+        "line": 1156
       }
     },
     {
@@ -9735,7 +9750,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1150
+        "line": 1157
       }
     },
     {
@@ -9764,7 +9779,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1151
+        "line": 1158
       }
     },
     {
@@ -9793,7 +9808,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1152
+        "line": 1159
       }
     },
     {
@@ -9822,7 +9837,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1153
+        "line": 1160
       }
     },
     {
@@ -9851,7 +9866,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1154
+        "line": 1161
       }
     },
     {
@@ -9880,7 +9895,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1155
+        "line": 1162
       }
     },
     {
@@ -9909,7 +9924,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1156
+        "line": 1163
       }
     },
     {
@@ -9938,7 +9953,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1157
+        "line": 1164
       }
     },
     {
@@ -9968,7 +9983,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1191
+        "line": 1198
       }
     },
     {
@@ -9998,7 +10013,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1192
+        "line": 1199
       }
     },
     {
@@ -10028,7 +10043,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1193
+        "line": 1200
       }
     },
     {
@@ -10058,7 +10073,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1194
+        "line": 1201
       }
     },
     {
@@ -10088,7 +10103,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1195
+        "line": 1202
       }
     },
     {
@@ -10118,7 +10133,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1196
+        "line": 1203
       }
     },
     {
@@ -10148,7 +10163,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1197
+        "line": 1204
       }
     },
     {
@@ -10178,7 +10193,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1198
+        "line": 1205
       }
     },
     {
@@ -10208,7 +10223,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1199
+        "line": 1206
       }
     },
     {
@@ -10238,7 +10253,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1200
+        "line": 1207
       }
     },
     {
@@ -10268,7 +10283,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1201
+        "line": 1208
       }
     },
     {
@@ -10298,7 +10313,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1202
+        "line": 1209
       }
     },
     {
@@ -10328,7 +10343,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1203
+        "line": 1210
       }
     },
     {
@@ -10358,7 +10373,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1204
+        "line": 1211
       }
     },
     {
@@ -10388,7 +10403,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1205
+        "line": 1212
       }
     },
     {
@@ -10418,7 +10433,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1206
+        "line": 1213
       }
     },
     {
@@ -10448,7 +10463,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1207
+        "line": 1214
       }
     },
     {
@@ -10478,7 +10493,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1208
+        "line": 1215
       }
     },
     {
@@ -10508,7 +10523,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1209
+        "line": 1216
       }
     },
     {
@@ -10538,7 +10553,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1210
+        "line": 1217
       }
     },
     {
@@ -10568,7 +10583,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1211
+        "line": 1218
       }
     },
     {
@@ -10598,7 +10613,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1212
+        "line": 1219
       }
     },
     {
@@ -10628,7 +10643,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1213
+        "line": 1220
       }
     },
     {
@@ -10658,7 +10673,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1214
+        "line": 1221
       }
     },
     {
@@ -10688,7 +10703,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1215
+        "line": 1222
       }
     },
     {
@@ -10717,7 +10732,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1255
+        "line": 1262
       }
     },
     {
@@ -10746,7 +10761,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1256
+        "line": 1263
       }
     },
     {
@@ -10775,7 +10790,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1257
+        "line": 1264
       }
     },
     {
@@ -10804,7 +10819,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1258
+        "line": 1265
       }
     },
     {
@@ -10833,7 +10848,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1259
+        "line": 1266
       }
     },
     {
@@ -10862,7 +10877,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1260
+        "line": 1267
       }
     },
     {
@@ -10891,7 +10906,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1261
+        "line": 1268
       }
     },
     {
@@ -10920,7 +10935,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1262
+        "line": 1269
       }
     },
     {
@@ -10949,7 +10964,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1263
+        "line": 1270
       }
     },
     {
@@ -10978,7 +10993,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1264
+        "line": 1271
       }
     },
     {
@@ -11007,7 +11022,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1265
+        "line": 1272
       }
     },
     {
@@ -11036,7 +11051,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1266
+        "line": 1273
       }
     },
     {
@@ -11065,7 +11080,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1267
+        "line": 1274
       }
     },
     {
@@ -11094,7 +11109,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1268
+        "line": 1275
       }
     },
     {
@@ -11123,7 +11138,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1269
+        "line": 1276
       }
     },
     {
@@ -11152,7 +11167,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1270
+        "line": 1277
       }
     },
     {
@@ -11181,7 +11196,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1271
+        "line": 1278
       }
     },
     {
@@ -11210,7 +11225,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1272
+        "line": 1279
       }
     },
     {
@@ -11239,7 +11254,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1273
+        "line": 1280
       }
     },
     {
@@ -11268,7 +11283,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1274
+        "line": 1281
       }
     },
     {
@@ -11297,7 +11312,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1275
+        "line": 1282
       }
     },
     {
@@ -11326,7 +11341,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1276
+        "line": 1283
       }
     },
     {
@@ -11355,7 +11370,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1277
+        "line": 1284
       }
     },
     {
@@ -11384,7 +11399,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1278
+        "line": 1285
       }
     },
     {
@@ -11413,7 +11428,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1279
+        "line": 1286
       }
     },
     {
@@ -11442,7 +11457,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1322
+        "line": 1329
       }
     },
     {
@@ -11471,7 +11486,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1323
+        "line": 1330
       }
     },
     {
@@ -11500,7 +11515,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1324
+        "line": 1331
       }
     },
     {
@@ -11529,7 +11544,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1325
+        "line": 1332
       }
     },
     {
@@ -11558,7 +11573,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1326
+        "line": 1333
       }
     },
     {
@@ -11587,7 +11602,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1327
+        "line": 1334
       }
     },
     {
@@ -11616,7 +11631,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1328
+        "line": 1335
       }
     },
     {
@@ -11645,7 +11660,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1329
+        "line": 1336
       }
     },
     {
@@ -11674,7 +11689,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1330
+        "line": 1337
       }
     },
     {
@@ -11703,7 +11718,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1331
+        "line": 1338
       }
     },
     {
@@ -11732,7 +11747,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1332
+        "line": 1339
       }
     },
     {
@@ -11761,7 +11776,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1333
+        "line": 1340
       }
     },
     {
@@ -11790,7 +11805,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1334
+        "line": 1341
       }
     },
     {
@@ -11819,7 +11834,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1335
+        "line": 1342
       }
     },
     {
@@ -11848,7 +11863,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1336
+        "line": 1343
       }
     },
     {
@@ -11877,7 +11892,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1337
+        "line": 1344
       }
     },
     {
@@ -11906,7 +11921,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1338
+        "line": 1345
       }
     },
     {
@@ -11935,7 +11950,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1339
+        "line": 1346
       }
     },
     {
@@ -11964,7 +11979,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1340
+        "line": 1347
       }
     },
     {
@@ -11993,7 +12008,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1341
+        "line": 1348
       }
     },
     {
@@ -12022,7 +12037,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1342
+        "line": 1349
       }
     },
     {
@@ -12051,7 +12066,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1343
+        "line": 1350
       }
     },
     {
@@ -12080,7 +12095,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1344
+        "line": 1351
       }
     },
     {
@@ -12109,7 +12124,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1345
+        "line": 1352
       }
     },
     {
@@ -12138,7 +12153,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1346
+        "line": 1353
       }
     },
     {
@@ -12167,7 +12182,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1382
+        "line": 1389
       }
     },
     {
@@ -12196,7 +12211,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1383
+        "line": 1390
       }
     },
     {
@@ -12225,7 +12240,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1384
+        "line": 1391
       }
     },
     {
@@ -12254,7 +12269,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1385
+        "line": 1392
       }
     },
     {
@@ -12283,7 +12298,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1386
+        "line": 1393
       }
     },
     {
@@ -12312,7 +12327,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1387
+        "line": 1394
       }
     },
     {
@@ -12341,7 +12356,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1388
+        "line": 1395
       }
     },
     {
@@ -12370,7 +12385,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1389
+        "line": 1396
       }
     },
     {
@@ -12399,7 +12414,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1390
+        "line": 1397
       }
     },
     {
@@ -12428,7 +12443,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1391
+        "line": 1398
       }
     },
     {
@@ -12457,7 +12472,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1392
+        "line": 1399
       }
     },
     {
@@ -12486,7 +12501,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1393
+        "line": 1400
       }
     },
     {
@@ -12515,7 +12530,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1394
+        "line": 1401
       }
     },
     {
@@ -12544,7 +12559,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1395
+        "line": 1402
       }
     },
     {
@@ -12573,7 +12588,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1396
+        "line": 1403
       }
     },
     {
@@ -12602,7 +12617,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1397
+        "line": 1404
       }
     },
     {
@@ -12631,7 +12646,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1398
+        "line": 1405
       }
     },
     {
@@ -12660,7 +12675,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1399
+        "line": 1406
       }
     },
     {
@@ -12689,7 +12704,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1400
+        "line": 1407
       }
     },
     {
@@ -12718,7 +12733,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1401
+        "line": 1408
       }
     },
     {
@@ -12747,7 +12762,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1402
+        "line": 1409
       }
     },
     {
@@ -12776,7 +12791,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1403
+        "line": 1410
       }
     },
     {
@@ -12805,7 +12820,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1404
+        "line": 1411
       }
     },
     {
@@ -12834,7 +12849,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1405
+        "line": 1412
       }
     },
     {
@@ -12863,7 +12878,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1406
+        "line": 1413
       }
     },
     {
@@ -12892,7 +12907,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1436
+        "line": 1443
       }
     },
     {
@@ -12921,7 +12936,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1437
+        "line": 1444
       }
     },
     {
@@ -12950,7 +12965,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1438
+        "line": 1445
       }
     },
     {
@@ -12979,7 +12994,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1439
+        "line": 1446
       }
     },
     {
@@ -13008,7 +13023,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1440
+        "line": 1447
       }
     },
     {
@@ -13039,7 +13054,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1441
+        "line": 1448
       }
     },
     {
@@ -13070,7 +13085,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1442
+        "line": 1449
       }
     },
     {
@@ -13101,7 +13116,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1443
+        "line": 1450
       }
     },
     {
@@ -13132,7 +13147,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1444
+        "line": 1451
       }
     },
     {
@@ -13163,7 +13178,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1445
+        "line": 1452
       }
     },
     {
@@ -13194,7 +13209,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1446
+        "line": 1453
       }
     },
     {
@@ -13225,7 +13240,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1447
+        "line": 1454
       }
     },
     {
@@ -13256,7 +13271,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1448
+        "line": 1455
       }
     },
     {
@@ -13287,7 +13302,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1449
+        "line": 1456
       }
     },
     {
@@ -13318,7 +13333,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1450
+        "line": 1457
       }
     },
     {
@@ -13349,7 +13364,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1451
+        "line": 1458
       }
     },
     {
@@ -13380,7 +13395,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1452
+        "line": 1459
       }
     },
     {
@@ -13411,7 +13426,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1453
+        "line": 1460
       }
     },
     {
@@ -13442,7 +13457,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1454
+        "line": 1461
       }
     },
     {
@@ -13473,7 +13488,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1455
+        "line": 1462
       }
     },
     {
@@ -13504,7 +13519,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1456
+        "line": 1463
       }
     },
     {
@@ -13535,7 +13550,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1457
+        "line": 1464
       }
     },
     {
@@ -13566,7 +13581,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1458
+        "line": 1465
       }
     },
     {
@@ -13597,7 +13612,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1459
+        "line": 1466
       }
     },
     {
@@ -13628,7 +13643,7 @@
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1460
+        "line": 1467
       }
     },
     {
@@ -13657,7 +13672,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1529
+        "line": 1536
       }
     },
     {
@@ -13686,7 +13701,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1530
+        "line": 1537
       }
     },
     {
@@ -13715,7 +13730,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1531
+        "line": 1538
       }
     },
     {
@@ -13744,7 +13759,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1532
+        "line": 1539
       }
     },
     {
@@ -13773,7 +13788,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1533
+        "line": 1540
       }
     },
     {
@@ -13802,7 +13817,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1534
+        "line": 1541
       }
     },
     {
@@ -13831,7 +13846,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1535
+        "line": 1542
       }
     },
     {
@@ -13860,7 +13875,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1536
+        "line": 1543
       }
     },
     {
@@ -13889,7 +13904,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1537
+        "line": 1544
       }
     },
     {
@@ -13918,7 +13933,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1538
+        "line": 1545
       }
     },
     {
@@ -13947,7 +13962,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1539
+        "line": 1546
       }
     },
     {
@@ -13976,7 +13991,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1540
+        "line": 1547
       }
     },
     {
@@ -14005,7 +14020,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1541
+        "line": 1548
       }
     },
     {
@@ -14034,7 +14049,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1542
+        "line": 1549
       }
     },
     {
@@ -14063,7 +14078,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1543
+        "line": 1550
       }
     },
     {
@@ -14092,7 +14107,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1544
+        "line": 1551
       }
     },
     {
@@ -14121,7 +14136,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1545
+        "line": 1552
       }
     },
     {
@@ -14150,7 +14165,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1546
+        "line": 1553
       }
     },
     {
@@ -14179,7 +14194,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1547
+        "line": 1554
       }
     },
     {
@@ -14208,7 +14223,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1548
+        "line": 1555
       }
     },
     {
@@ -14237,7 +14252,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1549
+        "line": 1556
       }
     },
     {
@@ -14266,7 +14281,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1550
+        "line": 1557
       }
     },
     {
@@ -14295,7 +14310,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1551
+        "line": 1558
       }
     },
     {
@@ -14324,7 +14339,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1552
+        "line": 1559
       }
     },
     {
@@ -14353,7 +14368,7 @@
       "limitations": [],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
-        "line": 1553
+        "line": 1560
       }
     }
   ]

@@ -33,6 +33,7 @@ const mockNetworkPosture = jest.fn();
 const mockNetworkPolicyAdvisory = jest.fn();
 const mockNetworkAttachmentTopology = jest.fn();
 const mockNetworkPlacementAdvisory = jest.fn();
+const mockNetworkEvidenceCapture = jest.fn();
 const mockPlacementAffinity = jest.fn();
 const mockPlacementRecommend = jest.fn();
 const mockPlacementPlan = jest.fn();
@@ -216,6 +217,9 @@ jest.mock('../services/provider-sdk/network-policy-advisory', () => ({
 }));
 jest.mock('../services/provider-sdk/network-attachment-topology', () => ({ topologyForHost: (...args) => mockNetworkAttachmentTopology(...args) }));
 jest.mock('../services/provider-sdk/network-placement-advisory', () => ({ advisoryForHost: (...args) => mockNetworkPlacementAdvisory(...args) }));
+jest.mock('../services/provider-sdk/network-evidence-capture', () => ({
+  captureForHost: (...args) => mockNetworkEvidenceCapture(...args),
+}));
 jest.mock('../services/provider-sdk/placement-advisory', () => ({
   affinityForHost: (...args) => mockPlacementAffinity(...args),
   recommendForVm: (...args) => mockPlacementRecommend(...args),
@@ -821,6 +825,14 @@ describe('Provider SDK routes', () => {
     mockNetworkPolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, networks: [] });
     mockNetworkAttachmentTopology.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { networkCount: 1 }, networks: [] });
     mockNetworkPlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, networks: [] });
+    mockNetworkEvidenceCapture.mockResolvedValue({ schemaVersion: '1.0',
+      provider: { type: 'xen', endpointId: 7 }, features: [
+        { featureId: 'B118', state: 'captured' },
+        { featureId: 'B120', state: 'captured' },
+        { featureId: 'B121', state: 'not_observed' },
+      ], summary: { captured: 2, notObserved: 1, unavailable: 0,
+        providerReadsStarted: 3, providerMutationsStarted: 0, activeProbesStarted: 0 },
+      evidenceHash: 'e'.repeat(64) });
     mockConformanceGet.mockReturnValue(null);
   });
 
@@ -939,6 +951,22 @@ describe('Provider SDK routes', () => {
   it('returns read-only virtual-network placement evidence for the visible provider host', async () => {
     const response = await request(app).get('/api/providers/7/network-placement-advisory').set('x-test-role', 'viewer');
     expect(response.status).toBe(200); expect(response.body.summary.candidateCount).toBe(1); expect(mockNetworkPlacementAdvisory).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('captures B118/B120/B121 provider evidence only for administrators and audits zero mutations', async () => {
+    expect((await request(app).post('/api/providers/7/network-evidence/capture')
+      .set('x-test-role', 'viewer').send({})).status).toBe(403);
+    const response = await request(app).post('/api/providers/7/network-evidence/capture').send({});
+    expect(response.status).toBe(201);
+    expect(response.body.summary).toEqual(expect.objectContaining({ captured: 2,
+      providerMutationsStarted: 0, activeProbesStarted: 0 }));
+    expect(mockNetworkEvidenceCapture).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ id: 1, role: 'admin' }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_network_evidence_capture', targetType: 'provider_host', targetId: '7',
+      details: expect.objectContaining({ featureIds: ['B118', 'B120', 'B121'],
+        providerReadsStarted: 3, providerMutationsStarted: 0, activeProbesStarted: 0 }),
+    }));
   });
 
   it('rejects malformed inventory limits before provider access', async () => {

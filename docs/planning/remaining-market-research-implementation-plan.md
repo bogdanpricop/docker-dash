@@ -255,7 +255,8 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
   cycle-safe, doar pe relații declarate;
 - [x] API admin, audit actions, UI și teste focused;
 - [x] includere în v8.80.0 și calificare operațională read-only în v8.85.0;
-- [ ] browser smoke și adaptoare provider-native de evidence.
+- [x] captură provider-native bounded pentru VM/IP în v8.91.0, fără probe;
+- [ ] browser smoke, prima captură live și adaptoare DNS/flow provider-native.
 
 ### R4b — B119 reachability + B120 MTU
 
@@ -276,7 +277,9 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
     missing/incomplete/expired;
   - [x] assessment imutabil/deduplicat, API admin auditat, UI și teste;
   - [x] includere în v8.80.0 și calificare read-only în v8.85.0;
-  - [ ] browser smoke și adaptoare provider-native.
+  - [x] captură vSphere/Xen MTU de segment și vSphere standard-vSwitch în
+    v8.91.0; coverage rămâne intenționat incomplet;
+  - [ ] browser smoke, prima captură live și evidence end-to-end/DF.
 
 ### R4c — B121 Bond/LAG și reconciliere B122 SR-IOV
 
@@ -286,7 +289,9 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] imbalance din delte bounded; zero trafic este `not_observed`;
 - [x] observație imutabilă/deduplicată, API admin auditat, UI și teste;
 - [x] includere în v8.80.0 și calificare read-only în v8.85.0;
-- [ ] colectoare read-only provider-native și browser smoke;
+- [x] colector vSphere standard-vSwitch/pNIC/MTU/teaming read-only în v8.91.0;
+- [ ] live evidence, counters/flaps/failover, distributed LACP, colectoare
+  Proxmox/Xen și browser smoke;
 - [x] B122 rămâne închis prin reutilizarea PF/VF din v8.71; nu se introduce un
   al doilea store SR-IOV.
 
@@ -675,7 +680,10 @@ este un registru de prerechizite externe, nu muncă locală rămasă ascunsă.
 1. UX control-plane: browser smoke pentru Governance, Self-Service, Identity & Policy și Edge, inclusiv tab keyboard navigation și cel puțin un dialog modal pe rută.
 2. R1/B015: browser smoke pe un endpoint local; includerea în v8.80 și calificarea v8.85 sunt deja înregistrate.
 3. R2/B045: canary pe provider disposable și reconciliere browser când runtime-ul devine disponibil; execute rămâne default-off.
-4. R4a/B118: browser smoke și conectarea adaptoarelor read-only de evidence când runtime/provider fixtures devin disponibile.
+4. R4a/B118 și R4b/R4c B120/B121: browser smoke și prima captură live când
+   providerul revine; VM/IP, segment-MTU vSphere/Xen și standard-vSwitch vSphere
+   au deja adaptor read-only. DNS/flow, evidence end-to-end/DF, distributed LACP,
+   counters/flaps/failover și colectoarele non-vSphere rămân.
 5. R4f/B104: browser smoke, canary per provider disposable și release gradual al flag-urilor independente; calificarea nu le activează.
 6. R4b/B119: browser/provider simulation adapters și decizie separată pentru probe active privind runner-ul allowlisted, source ownership, destination policy, egress și rate limits.
 7. R5a/B129–B138: canary Proxmox/PBS, apoi adaptor XO pentru un schedule/job task-aware descoperit explicit; vSphere intră numai prin VADP/VDDK sau backup vendor cu data mover.

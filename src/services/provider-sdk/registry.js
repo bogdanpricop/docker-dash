@@ -559,6 +559,63 @@ async function placementInventoryForHost(host, options = {}) {
   return result;
 }
 
+async function nativeNetworkEvidenceForHost(host, options = {}) {
+  if (!host || !Number.isInteger(Number(host.id))) {
+    throw new ProviderAdapterError('Valid provider host required', 'INVALID_HOST');
+  }
+  const adapter = getAdapter(host.daemon_type);
+  const capabilities = options.capabilities || await capabilitiesForHost(host, {
+    refresh: options.refresh === true,
+  });
+  if (capabilities.probe.status !== 'reachable') {
+    throw new ProviderAdapterError('Provider endpoint is currently unreachable', 'PROVIDER_UNREACHABLE', 502);
+  }
+  const capability = capabilities.features['network.health.read'];
+  if (!['supported', 'conditional'].includes(capability?.state)
+    || typeof adapter.networkEvidence !== 'function') {
+    return {
+      schemaVersion: '1.0', provider: { type: adapter.type, endpointId: Number(host.id) },
+      observedAt: new Date().toISOString(), supported: false,
+      coverage: { complete: false, reason: capability?.reason || 'Provider-native host network evidence adapter is unavailable' },
+      switches: [], bonds: [], limitations: ['No provider-native physical network evidence adapter is registered.'],
+    };
+  }
+  let result;
+  try {
+    result = await providerResilience.run(Number(host.id), () => adapter.networkEvidence(host, {
+      capabilities,
+    }), { operation: 'network.evidence.read' });
+  } catch (err) {
+    log.warn('Provider native network evidence read failed', {
+      hostId: Number(host.id), provider: adapter.type,
+      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'PROVIDER_READ_FAILED',
+    });
+    throw new ProviderAdapterError('Provider native network evidence could not be read',
+      'PROVIDER_NETWORK_EVIDENCE_READ_FAILED', 502);
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)
+    || !Array.isArray(result.switches) || result.switches.length > 500
+    || !Array.isArray(result.bonds) || result.bonds.length > 500
+    || result.switches.some(item => !item || typeof item !== 'object' || Array.isArray(item))
+    || result.bonds.some(item => !item || typeof item !== 'object' || Array.isArray(item))) {
+    throw new ProviderAdapterError('Provider returned invalid native network evidence',
+      'INVALID_PROVIDER_NETWORK_EVIDENCE_RESPONSE', 502);
+  }
+  const envelope = {
+    schemaVersion: '1.0', provider: { type: adapter.type, endpointId: Number(host.id) },
+    observedAt: result.observedAt || new Date().toISOString(), supported: true,
+    coverage: result.coverage || { complete: false, reason: 'Provider did not declare evidence coverage' },
+    switches: result.switches, bonds: result.bonds,
+    limitations: Array.isArray(result.limitations) ? result.limitations.slice(0, 20) : [],
+  };
+  if (Number.isNaN(Date.parse(envelope.observedAt))
+    || Buffer.byteLength(JSON.stringify(envelope)) > MAX_INVENTORY_BYTES) {
+    throw new ProviderAdapterError('Provider native network evidence is invalid or oversized',
+      'INVALID_PROVIDER_NETWORK_EVIDENCE_RESPONSE', 502);
+  }
+  return envelope;
+}
+
 function invalidateHost(hostId) {
   const id = Number(hostId);
   cache.delete(id);
@@ -591,6 +648,7 @@ module.exports = {
   vmHardwareForHost,
   migrationCompatibilityForHost,
   placementInventoryForHost,
+  nativeNetworkEvidenceForHost,
   invalidateHost,
   _internals: {
     adapters, cache, inFlight, clear, _sanitizeProbeError, _retrySqliteBusy,

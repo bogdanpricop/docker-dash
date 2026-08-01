@@ -94,6 +94,13 @@ describe('provider operational qualification', () => {
     expect(first.items.find(item => item.featureId === 'B119').runtime).toEqual(
       expect.objectContaining({ state: 'observed', networkCallsStarted: 0,
         providerMutationsStarted: 0 }));
+    expect(first.items.find(item => item.featureId === 'B118').runtime.providerEvidenceCapture)
+      .toEqual(expect.objectContaining({ available: true, readOnly: true,
+        route: '/api/providers/7/network-evidence/capture' }));
+    expect(first.items.find(item => item.featureId === 'B120').runtime.providerEvidenceCapture)
+      .toEqual(expect.objectContaining({ available: false, providerScope: 'vsphere/xen' }));
+    expect(first.items.find(item => item.featureId === 'B121').validation.outstanding)
+      .toEqual(expect.arrayContaining(['non_vsphere_provider_collectors', 'live_provider_evidence_capture']));
     expect(first.items.every(item => item.qualificationSafety.providerMutationsStarted === 0)).toBe(true);
     expect(first.items.find(item => item.featureId === 'B104').runtime.executeFlag.enabled).toBe(false);
     expect(first.evidenceHash).toBe(second.evidenceHash);

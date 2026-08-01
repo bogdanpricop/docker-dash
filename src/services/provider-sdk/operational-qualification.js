@@ -76,7 +76,7 @@ const DEFINITIONS = Object.freeze({
   B118: Object.freeze({
     name: 'VM dependency map', mode: 'read-only',
     tables: ['network_dependency_address_observations', 'network_dependency_dns_observations', 'network_dependency_snapshots'],
-    outstanding: ['provider_native_evidence_adapter', 'browser_smoke'],
+    outstanding: ['live_provider_evidence_capture', 'browser_smoke'],
   }),
   B119: Object.freeze({
     name: 'Network reachability test', mode: 'simulation-only',
@@ -86,12 +86,12 @@ const DEFINITIONS = Object.freeze({
   B120: Object.freeze({
     name: 'MTU mismatch detector', mode: 'passive',
     tables: ['network_mtu_assessments'],
-    outstanding: ['provider_native_evidence_adapter', 'browser_smoke'],
+    outstanding: ['end_to_end_path_evidence', 'live_provider_evidence_capture', 'browser_smoke'],
   }),
   B121: Object.freeze({
     name: 'Bond/LAG health', mode: 'passive',
     tables: ['network_bond_health_observations'],
-    outstanding: ['provider_native_collector', 'browser_smoke'],
+    outstanding: ['non_vsphere_provider_collectors', 'live_provider_evidence_capture', 'browser_smoke'],
   }),
   B123: Object.freeze({
     name: 'Load balancer inventory', mode: 'read-only',
@@ -886,7 +886,10 @@ function _runtime(database, featureId, context) {
       COALESCE(SUM(provider_mutations_started),0) provider_mutations_started,
       COALESCE(SUM(network_calls_started),0) network_calls_started
       FROM network_dependency_snapshots WHERE scope_key IN (?,?)`, [`provider:${hostId}`, 'global']);
-    return _passiveRuntime(result);
+    return { ..._passiveRuntime(result), providerEvidenceCapture: {
+      available: true, route: `/api/providers/${hostId}/network-evidence/capture`,
+      features: ['B118', 'B120', 'B121'], readOnly: true,
+    } };
   }
   if (featureId === 'B119') {
     const result = _row(database, `SELECT COUNT(*) record_count,MAX(created_at) last_evidence_at,
@@ -944,7 +947,14 @@ function _runtime(database, featureId, context) {
     COALESCE(SUM(provider_mutations_started),0) provider_mutations_started,
     COALESCE(SUM(network_calls_started),0) network_calls_started
     FROM ${table} WHERE provider_host_id=? OR provider_host_id IS NULL`, [hostId]);
-  return _passiveRuntime(result);
+  return { ..._passiveRuntime(result), ...(['B120', 'B121'].includes(featureId) ? {
+    providerEvidenceCapture: {
+      available: featureId === 'B120'
+        ? ['vsphere', 'xen'].includes(context.providerType) : context.providerType === 'vsphere',
+      route: `/api/providers/${hostId}/network-evidence/capture`,
+      providerScope: featureId === 'B121' ? 'vsphere' : 'vsphere/xen', readOnly: true,
+    },
+  } : {}) };
 }
 
 function _passiveRuntime(result) {

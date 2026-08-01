@@ -9,6 +9,7 @@ const NetworkPosturePage = {
   _policyRequireManaged: false,
   _policyRequireVlan: false,
 
+  _isAdmin() { return App.user?.role === 'admin' || App.user?.roles?.includes('admin'); },
   _badge(state) { return { pass: 'badge-success', warning: 'badge-warning', fail: 'badge-danger', unknown: 'badge-secondary' }[state] || 'badge-secondary'; },
   _label(value) { return String(value || 'unknown').replaceAll('_', ' '); },
 
@@ -61,13 +62,28 @@ const NetworkPosturePage = {
     catch { this._hosts = []; }
     const selected = Api.getHostId();
     this._hostId = this._hosts.some(host => host.id === selected) ? selected : this._hosts[0]?.id || null;
-    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-network-wired"></i> ${i18n.t('nav.network-posture')}</h1><div class="text-muted text-sm">Read-only provider evidence for virtual-network accessibility and configuration</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<label class="text-muted text-sm">Policy min MTU <input id="network-policy-mtu" type="number" min="576" max="65535" value="${this._policyMinMtu ?? ''}" placeholder="none" class="form-control" style="width:88px;display:inline-block"></label><label class="text-muted text-sm"><input id="network-policy-managed" type="checkbox"${this._policyRequireManaged ? ' checked' : ''}> Managed</label><label class="text-muted text-sm"><input id="network-policy-vlan" type="checkbox"${this._policyRequireVlan ? ' checked' : ''}> VLAN</label><select id="network-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select><button id="network-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> ${i18n.t('common.refresh')}</button>` : ''}</div></div><div id="network-posture-content"></div>`;
+    container.innerHTML = `<div class="page-header"><div><h1><i class="fas fa-network-wired"></i> ${i18n.t('nav.network-posture')}</h1><div class="text-muted text-sm">Read-only provider evidence for virtual-network accessibility and configuration</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${this._hosts.length ? `<label class="text-muted text-sm">Policy min MTU <input id="network-policy-mtu" type="number" min="576" max="65535" value="${this._policyMinMtu ?? ''}" placeholder="none" class="form-control" style="width:88px;display:inline-block"></label><label class="text-muted text-sm"><input id="network-policy-managed" type="checkbox"${this._policyRequireManaged ? ' checked' : ''}> Managed</label><label class="text-muted text-sm"><input id="network-policy-vlan" type="checkbox"${this._policyRequireVlan ? ' checked' : ''}> VLAN</label><select id="network-posture-host" class="form-control" style="width:auto">${this._hosts.map(host => `<option value="${host.id}"${host.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(host.name)} · ${Utils.escapeHtml(host.daemonType)}</option>`).join('')}</select>${this._isAdmin() ? '<button id="network-evidence-capture" class="btn btn-sm btn-primary"><i class="fas fa-camera"></i> Capture B118/B120/B121</button>' : ''}<button id="network-posture-refresh" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> ${i18n.t('common.refresh')}</button>` : ''}</div></div><div id="network-posture-content"></div>`;
     container.querySelector('#network-posture-host')?.addEventListener('change', event => { this._hostId = Number(event.target.value); Api.setHost(this._hostId); this._load(); });
     container.querySelector('#network-policy-mtu')?.addEventListener('change', event => { const raw = event.target.value; const value = raw === '' ? null : Number(raw); if (value === null || (Number.isInteger(value) && value >= 576 && value <= 65535)) { this._policyMinMtu = value; this._load(); } });
     container.querySelector('#network-policy-managed')?.addEventListener('change', event => { this._policyRequireManaged = event.target.checked === true; this._load(); });
     container.querySelector('#network-policy-vlan')?.addEventListener('change', event => { this._policyRequireVlan = event.target.checked === true; this._load(); });
+    container.querySelector('#network-evidence-capture')?.addEventListener('click', event => this._captureEvidence(event.currentTarget));
     container.querySelector('#network-posture-refresh')?.addEventListener('click', () => this._load());
     await this._load();
+  },
+
+  async _captureEvidence(button) {
+    if (!this._hostId || !this._isAdmin()) return;
+    button.disabled = true;
+    try {
+      const result = await Api.captureProviderNetworkEvidence(this._hostId);
+      Toast.success(`Provider evidence captured: ${result.summary?.captured || 0}; not observed: ${result.summary?.notObserved || 0}`);
+      await this._load();
+    } catch (error) {
+      Toast.error(error.message);
+    } finally {
+      button.disabled = false;
+    }
   },
 
   async _load() {

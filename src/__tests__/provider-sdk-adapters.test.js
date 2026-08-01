@@ -216,6 +216,38 @@ describe('Provider SDK adapters', () => {
     expect(listTasks).toHaveBeenCalled();
   });
 
+  it('normalizes vSphere standard-switch evidence for passive MTU and Bond/LAG capture', async () => {
+    const logout = jest.fn();
+    const destroy = jest.fn();
+    vsphereService.fromHostRow.mockReturnValue({
+      login: jest.fn(), logout, _agent: { destroy },
+      listHostNetworkEvidence: jest.fn(async () => ({
+        observedAt: '2026-08-01T10:00:00.000Z',
+        coverage: { complete: true, reason: 'all hosts read' }, limitations: ['no counters'],
+        hosts: [{ hostRef: 'host-7', hostName: 'esx-a', switches: [{
+          key: 'vSwitch0', name: 'vSwitch0', mtu: 9000, mode: 'active_backup',
+          members: [
+            { device: 'vmnic0', adminState: 'up', linkState: 'up', role: 'active',
+              speedMbps: 10000, duplex: 'full' },
+            { device: 'vmnic1', adminState: 'up', linkState: 'up', role: 'standby',
+              speedMbps: 10000, duplex: 'full' },
+          ],
+        }] }],
+      })),
+    });
+    const result = await vsphere.networkEvidence({});
+    expect(result.switches).toEqual([expect.objectContaining({
+      switchKey: 'vsphere:host-7:vSwitch0', hostKey: 'vsphere:host-7', mtu: 9000,
+    })]);
+    expect(result.bonds).toEqual([expect.objectContaining({
+      bondKey: 'vsphere:host-7:vSwitch0', mode: 'active_backup',
+      members: expect.arrayContaining([expect.objectContaining({ memberKey: 'vsphere:host-7:vmnic0',
+        rxBytesDelta: 0, flapCount: 0 })]),
+    })]);
+    expect(logout).toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalled();
+  });
+
   it('uses Proxmox read-only migration preconditions and target fabric evidence', async () => {
     const destroy = jest.fn();
     proxmoxService.fromHostRow.mockReturnValue({

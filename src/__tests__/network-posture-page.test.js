@@ -38,4 +38,19 @@ describe('Network posture presentation helpers', () => {
     expect(html).toContain('observed_reachable');
     expect(html).toContain('does not prove connectivity');
   });
+
+  it('runs the explicit admin-only provider evidence capture and reports bounded results', async () => {
+    global.App = { user: { role: 'admin' } };
+    global.Api = { captureProviderNetworkEvidence: jest.fn(async () => ({
+      summary: { captured: 2, notObserved: 1 },
+    })) };
+    global.Toast = { success: jest.fn(), error: jest.fn() };
+    page._hostId = 7; page._load = jest.fn(async () => {});
+    const button = { disabled: false };
+    await page._captureEvidence(button);
+    expect(global.Api.captureProviderNetworkEvidence).toHaveBeenCalledWith(7);
+    expect(global.Toast.success).toHaveBeenCalledWith('Provider evidence captured: 2; not observed: 1');
+    expect(page._load).toHaveBeenCalled();
+    expect(button.disabled).toBe(false);
+  });
 });
