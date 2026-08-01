@@ -83,6 +83,23 @@ describe('provider security posture page', () => {
     expect(html).toContain('production_remediation_adapter');
     expect(html).toContain('Browser smoke recorded');
   });
+  it('renders privileged closure qualification without claiming external execution', () => {
+    global.Utils = { escapeHtml: value => String(value) };
+    const html = page._operationalQualificationHtml({ evidenceHash: 'e'.repeat(64),
+      batch: { key: 'privileged-closure', label: 'B167–B176' },
+      summary: { featureCount: 10, schemaReady: 10, runtimeObserved: 1,
+        executeFlagsEnabled: 1, browserSmokeRecorded: 0 },
+      items: [{ featureId: 'B169', name: 'Privileged action elevation', schema: { state: 'ready' },
+        runtime: { state: 'not_observed', recordCount: 0, releaseFlags: [
+          { name: 'DD_PROVIDER_PRIVILEGED_COMPLIANCE', enabled: true },
+        ] }, delivery: { qualificationRelease: 'v8.90.0' },
+      validation: { outstanding: ['critical_operation_jit_wiring', 'browser_smoke'] } }] });
+    expect(html).toContain('B167–B176 operational qualification');
+    expect(html).toContain('DD_PROVIDER_PRIVILEGED_COMPLIANCE');
+    expect(html).toContain('critical_operation_jit_wiring');
+    expect(html).toContain('starts no provider mutation');
+    expect(html).toContain('Browser smoke recorded');
+  });
   it('keeps assurance evidence and confidential planning explicitly non-mutating', () => {
     global.App = { user: { role: 'viewer' } };
     global.Utils = { escapeHtml: value => String(value), timeAgo: value => value };

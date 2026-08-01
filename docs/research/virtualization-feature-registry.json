@@ -5947,10 +5947,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.90.0; a production remediation adapter, disposable-provider canary and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -5985,10 +5990,15 @@
           "type": "working-tree",
           "reference": "R6a/R6b B159-B168 security lifecycle control plane",
           "path": "docs/planning/virtualization-platform/V3.9-security-lifecycle-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Local evidence, correlation, exception, planning and secret-reference controls are complete; provider-native collectors, production remediation/certificate adapters, browser smoke and canary remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.90.0; automatic manifest/job/template admission integration and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6015,13 +6025,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6048,13 +6068,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; an external notification dispatcher, standalone temporary identity and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6081,13 +6111,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; an approved media recorder and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6114,13 +6154,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; provider-native classification policy enforcement and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6147,13 +6197,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; public-key attestation and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6180,13 +6240,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; external control-catalog validation, certification authority and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6213,13 +6283,23 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [
-        "Provider-native security evidence, controlled remediation and compliance depth remain in batch R6."
+        "Released in v8.84.0 and read-only qualified in v8.90.0; provider-native factor collectors, a recovery canary and browser smoke remain outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",
@@ -6244,9 +6324,19 @@
       ],
       "evidence": [
         {
+          "type": "test",
+          "reference": "R6c privileged compliance focused tests",
+          "path": "src/__tests__/provider-privileged-compliance.test.js"
+        },
+        {
           "type": "release",
-          "reference": "v8.79.0 reconciled delivery baseline",
-          "path": "docs/planning/virtualization-platform-implementation-plan.md"
+          "reference": "v8.84 privileged compliance control plane",
+          "path": "docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md"
+        },
+        {
+          "type": "test",
+          "reference": "v8.90 privileged-closure qualification tests",
+          "path": "src/__tests__/provider-operational-qualification.test.js"
         }
       ],
       "limitations": [],

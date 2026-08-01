@@ -27,6 +27,10 @@ const SECURITY_LIFECYCLE_FEATURE_IDS = Object.freeze([
   'B157', 'B158', 'B159', 'B160', 'B161',
   'B162', 'B163', 'B164', 'B165', 'B166',
 ]);
+const PRIVILEGED_CLOSURE_FEATURE_IDS = Object.freeze([
+  'B167', 'B168', 'B169', 'B170', 'B171',
+  'B172', 'B173', 'B174', 'B175', 'B176',
+]);
 const FEATURE_IDS = FOUNDATION_FEATURE_IDS;
 const BATCHES = Object.freeze({
   foundation: Object.freeze({ key: 'foundation',
@@ -39,6 +43,8 @@ const BATCHES = Object.freeze({
     label: 'B147–B156', featureIds: DR_SECURITY_FEATURE_IDS }),
   'security-lifecycle': Object.freeze({ key: 'security-lifecycle',
     label: 'B157–B166', featureIds: SECURITY_LIFECYCLE_FEATURE_IDS }),
+  'privileged-closure': Object.freeze({ key: 'privileged-closure',
+    label: 'B167–B176', featureIds: PRIVILEGED_CLOSURE_FEATURE_IDS }),
 });
 
 const DEFINITIONS = Object.freeze({
@@ -349,6 +355,77 @@ const DEFINITIONS = Object.freeze({
       'rollback_json', 'dry_run_json', 'plan_hash', 'allowed'] },
     outstanding: ['production_remediation_adapter', 'disposable_provider_canary', 'browser_smoke'],
   }),
+  B167: Object.freeze({
+    name: 'Automated low-risk remediation', mode: 'guarded-mutation', implementationRelease: 'v8.83.0',
+    tables: ['provider_security_remediation_plans', 'provider_security_remediation_runs'],
+    columns: { provider_security_remediation_plans: ['action_key', 'risk', 'state', 'plan_hash'],
+      provider_security_remediation_runs: ['adapter_key', 'state', 'provider_mutations_started',
+        'evidence_hash'] },
+    outstanding: ['production_remediation_adapter', 'disposable_provider_canary', 'browser_smoke'],
+  }),
+  B168: Object.freeze({
+    name: 'Secrets reference enforcement', mode: 'validation-only', implementationRelease: 'v8.83.0',
+    tables: ['provider_secret_reference_validations'],
+    columns: { provider_secret_reference_validations: ['document_kind', 'document_hash',
+      'reference_hashes_json', 'state', 'findings_json', 'network_calls_started'] },
+    outstanding: ['automatic_admission_integration', 'browser_smoke'],
+  }),
+  B169: Object.freeze({
+    name: 'Privileged action elevation', mode: 'control-plane', implementationRelease: 'v8.84.0',
+    tables: ['provider_privileged_step_up_attempts', 'provider_privileged_elevation_grants'],
+    columns: { provider_privileged_elevation_grants: ['scope_id', 'permission_key',
+      'mfa_verified_at', 'expires_at', 'state', 'token_hash', 'grant_hash'] },
+    outstanding: ['critical_operation_jit_wiring', 'sso_webauthn_step_up', 'browser_smoke'],
+  }),
+  B170: Object.freeze({
+    name: 'Break-glass workflow', mode: 'control-plane', implementationRelease: 'v8.84.0',
+    tables: ['provider_break_glass_requests'],
+    columns: { provider_break_glass_requests: ['scope_id', 'ticket_ref',
+      'notification_refs_json', 'recording_policy', 'expires_at', 'state', 'request_hash'] },
+    outstanding: ['external_notification_dispatcher', 'standalone_temporary_identity', 'browser_smoke'],
+  }),
+  B171: Object.freeze({
+    name: 'Console/remote-session recording', mode: 'metadata-only', implementationRelease: 'v8.84.0',
+    tables: ['provider_console_sessions'],
+    columns: { provider_console_sessions: ['recording_policy', 'recording_policy_ref',
+      'recording_consent_at', 'recording_state'] },
+    outstanding: ['approved_media_recorder', 'browser_smoke'],
+  }),
+  B172: Object.freeze({
+    name: 'Data classification tags', mode: 'control-plane', implementationRelease: 'v8.84.0',
+    tables: ['provider_resource_classifications'],
+    columns: { provider_resource_classifications: ['scope_id', 'resource_kind', 'resource_id',
+      'classification', 'policy_json', 'classification_hash'] },
+    outstanding: ['provider_native_policy_enforcement', 'browser_smoke'],
+  }),
+  B173: Object.freeze({
+    name: 'Compliance evidence export', mode: 'evidence-only', implementationRelease: 'v8.84.0',
+    tables: ['provider_compliance_exports'],
+    columns: { provider_compliance_exports: ['format', 'classification', 'bundle_hash',
+      'signature', 'signature_algorithm', 'summary_json'] },
+    outstanding: ['public_key_attestation', 'browser_smoke'],
+  }),
+  B174: Object.freeze({
+    name: 'Control-framework mapping', mode: 'control-plane', implementationRelease: 'v8.84.0',
+    tables: ['provider_compliance_control_mappings'],
+    columns: { provider_compliance_control_mappings: ['subject_kind', 'subject_key',
+      'framework', 'control_ref', 'mapping_hash'] },
+    outstanding: ['external_control_catalog_validation', 'browser_smoke'],
+  }),
+  B175: Object.freeze({
+    name: 'Ransomware recovery posture', mode: 'evidence-only', implementationRelease: 'v8.84.0',
+    tables: ['provider_ransomware_posture_observations'],
+    columns: { provider_ransomware_posture_observations: ['source', 'factors_json', 'score',
+      'confidence', 'evidence_hash', 'observed_at'] },
+    outstanding: ['provider_native_factor_collectors', 'recovery_canary', 'browser_smoke'],
+  }),
+  B176: Object.freeze({
+    name: 'Fine-grained permission catalog', mode: 'governance-foundation',
+    implementationRelease: 'v8.79.0',
+    tables: ['governance_permissions'],
+    columns: { governance_permissions: ['permission_key', 'resource_type', 'verb'] },
+    outstanding: [],
+  }),
 });
 
 class OperationalQualificationError extends Error {
@@ -626,6 +703,137 @@ function _securityLifecycleRuntime(database, featureId, context) {
     lastEvidenceAt: finding.last_evidence_at || null, releaseFlags };
 }
 
+function _securityClosureRuntime(database, featureId, context) {
+  const lifecycleFlag = { name: 'DD_PROVIDER_SECURITY_LIFECYCLE',
+    enabled: config.features?.providerSecurityLifecycle === true };
+  if (featureId === 'B168') {
+    const validation = _row(database, `SELECT COUNT(*) validation_count,MAX(created_at) last_evidence_at,
+      SUM(CASE WHEN state='valid' THEN 1 ELSE 0 END) valid_count,
+      SUM(CASE WHEN state='invalid' THEN 1 ELSE 0 END) invalid_count,
+      SUM(CASE WHEN json_valid(reference_hashes_json)
+        THEN json_array_length(reference_hashes_json) ELSE 0 END) reference_count,
+      COALESCE(SUM(network_calls_started),0) recorded_network_call_count
+      FROM provider_secret_reference_validations WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(validation.validation_count),
+      validationCount: _number(validation.validation_count), validCount: _number(validation.valid_count),
+      invalidCount: _number(validation.invalid_count), referenceCount: _number(validation.reference_count),
+      recordedNetworkCallCount: _number(validation.recorded_network_call_count),
+      lastEvidenceAt: validation.last_evidence_at || null, releaseFlags: [lifecycleFlag] };
+  }
+  const plan = _row(database, `SELECT COUNT(*) eligible_plan_count,MAX(p.created_at) last_evidence_at
+    FROM provider_security_remediation_plans p JOIN provider_security_findings f ON f.id=p.finding_id
+    WHERE f.host_id=? AND p.risk='low' AND p.allowed=1`, [context.hostId]);
+  const run = _row(database, `SELECT COUNT(*) run_count,MAX(r.created_at) last_evidence_at,
+    SUM(CASE WHEN r.state='succeeded' THEN 1 ELSE 0 END) succeeded_count,
+    SUM(CASE WHEN r.state IN ('failed','rollback_required') THEN 1 ELSE 0 END) failed_count,
+    COALESCE(SUM(r.provider_mutations_started),0) recorded_provider_mutation_count
+    FROM provider_security_remediation_runs r
+    JOIN provider_security_remediation_plans p ON p.id=r.plan_id
+    JOIN provider_security_findings f ON f.id=p.finding_id WHERE f.host_id=?`, [context.hostId]);
+  return { recordCount: _number(run.run_count), eligiblePlanCount: _number(plan.eligible_plan_count),
+    runCount: _number(run.run_count), succeededCount: _number(run.succeeded_count),
+    failedCount: _number(run.failed_count),
+    recordedProviderMutationCount: _number(run.recorded_provider_mutation_count),
+    lastEvidenceAt: _latest(plan.last_evidence_at, run.last_evidence_at), releaseFlags: [lifecycleFlag,
+      { name: 'DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION',
+        enabled: config.features?.providerSecurityLowRiskRemediation === true }] };
+}
+
+function _privilegedComplianceRuntime(database, featureId, context) {
+  const releaseFlags = [{ name: 'DD_PROVIDER_PRIVILEGED_COMPLIANCE',
+    enabled: config.features?.providerPrivilegedCompliance === true }];
+  if (featureId === 'B169') {
+    const attempt = _row(database, `SELECT COUNT(*) attempt_count,MAX(attempted_at) last_evidence_at,
+      SUM(CASE WHEN succeeded=1 THEN 1 ELSE 0 END) succeeded_count
+      FROM provider_privileged_step_up_attempts WHERE host_id=?`, [context.hostId]);
+    const grant = _row(database, `SELECT COUNT(*) grant_count,MAX(created_at) last_evidence_at,
+      SUM(CASE WHEN state='active' AND datetime(expires_at)>datetime('now') THEN 1 ELSE 0 END) active_count,
+      SUM(CASE WHEN state='pending' AND datetime(expires_at)>datetime('now') THEN 1 ELSE 0 END) pending_count,
+      SUM(CASE WHEN claimed_at IS NOT NULL THEN 1 ELSE 0 END) claimed_count
+      FROM provider_privileged_elevation_grants WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(grant.grant_count), grantCount: _number(grant.grant_count),
+      activeCount: _number(grant.active_count), pendingCount: _number(grant.pending_count),
+      claimedCount: _number(grant.claimed_count), attemptCount: _number(attempt.attempt_count),
+      successfulAttemptCount: _number(attempt.succeeded_count),
+      lastEvidenceAt: _latest(attempt.last_evidence_at, grant.last_evidence_at), releaseFlags };
+  }
+  if (featureId === 'B170') {
+    const request = _row(database, `SELECT COUNT(*) request_count,MAX(created_at) last_evidence_at,
+      SUM(CASE WHEN state='active' AND datetime(expires_at)>datetime('now') THEN 1 ELSE 0 END) active_count,
+      SUM(CASE WHEN state='reviewed' THEN 1 ELSE 0 END) reviewed_count,
+      SUM(CASE WHEN state IN ('closed','expired') THEN 1 ELSE 0 END) unreviewed_count
+      FROM provider_break_glass_requests WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(request.request_count), requestCount: _number(request.request_count),
+      activeCount: _number(request.active_count), reviewedCount: _number(request.reviewed_count),
+      unreviewedCount: _number(request.unreviewed_count),
+      lastEvidenceAt: request.last_evidence_at || null, releaseFlags };
+  }
+  if (featureId === 'B171') {
+    const session = _row(database, `SELECT COUNT(*) session_count,MAX(created_at) last_evidence_at,
+      SUM(CASE WHEN recording_state='metadata_only' THEN 1 ELSE 0 END) metadata_only_count,
+      SUM(CASE WHEN recording_state IN ('screen_requested','screen_active') THEN 1 ELSE 0 END) screen_policy_count,
+      SUM(CASE WHEN recording_consent_at IS NOT NULL THEN 1 ELSE 0 END) consent_count
+      FROM provider_console_sessions WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(session.session_count), sessionCount: _number(session.session_count),
+      metadataOnlyCount: _number(session.metadata_only_count),
+      screenPolicyCount: _number(session.screen_policy_count), consentCount: _number(session.consent_count),
+      mediaStoredCount: 0, lastEvidenceAt: session.last_evidence_at || null, releaseFlags };
+  }
+  if (featureId === 'B172') {
+    const classification = _row(database, `SELECT COUNT(*) classification_count,MAX(updated_at) last_evidence_at,
+      SUM(CASE WHEN classification='confidential' THEN 1 ELSE 0 END) confidential_count,
+      SUM(CASE WHEN classification='restricted' THEN 1 ELSE 0 END) restricted_count
+      FROM provider_resource_classifications WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(classification.classification_count),
+      classificationCount: _number(classification.classification_count),
+      confidentialCount: _number(classification.confidential_count),
+      restrictedCount: _number(classification.restricted_count),
+      lastEvidenceAt: classification.last_evidence_at || null, releaseFlags };
+  }
+  if (featureId === 'B173') {
+    const exported = _row(database, `SELECT COUNT(*) export_count,MAX(created_at) last_evidence_at,
+      SUM(CASE WHEN format='json' THEN 1 ELSE 0 END) json_count,
+      SUM(CASE WHEN format='pdf' THEN 1 ELSE 0 END) pdf_count,
+      SUM(CASE WHEN signature_algorithm='HMAC-SHA256' AND length(signature)=64 THEN 1 ELSE 0 END) signed_count
+      FROM provider_compliance_exports WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(exported.export_count), exportCount: _number(exported.export_count),
+      jsonCount: _number(exported.json_count), pdfCount: _number(exported.pdf_count),
+      signedCount: _number(exported.signed_count), lastEvidenceAt: exported.last_evidence_at || null,
+      releaseFlags };
+  }
+  if (featureId === 'B174') {
+    const mapping = _row(database, `SELECT COUNT(*) mapping_count,COUNT(DISTINCT framework) framework_count,
+      MAX(created_at) last_evidence_at FROM provider_compliance_control_mappings WHERE host_id=?`,
+    [context.hostId]);
+    return { recordCount: _number(mapping.mapping_count), mappingCount: _number(mapping.mapping_count),
+      frameworkCount: _number(mapping.framework_count), lastEvidenceAt: mapping.last_evidence_at || null,
+      releaseFlags };
+  }
+  if (featureId === 'B175') {
+    const posture = _row(database, `SELECT COUNT(*) posture_count,MAX(observed_at) last_evidence_at,
+      MAX(score) max_score,SUM(CASE WHEN confidence='high' THEN 1 ELSE 0 END) high_confidence_count
+      FROM provider_ransomware_posture_observations WHERE host_id=?`, [context.hostId]);
+    return { recordCount: _number(posture.posture_count), postureCount: _number(posture.posture_count),
+      maxScore: posture.max_score === null || posture.max_score === undefined ? null : _number(posture.max_score),
+      highConfidenceCount: _number(posture.high_confidence_count),
+      lastEvidenceAt: posture.last_evidence_at || null, releaseFlags };
+  }
+  const permissionKeys = [
+    'privileged.elevation.request', 'privileged.elevation.approve',
+    'privileged.break_glass.request', 'privileged.break_glass.approve',
+    'privileged.break_glass.review', 'privileged.session_recording.read',
+    'data.classification.manage', 'compliance.evidence.export',
+    'compliance.mapping.manage', 'recovery.ransomware_posture.manage',
+  ];
+  const placeholders = permissionKeys.map(() => '?').join(',');
+  const permission = _row(database, `SELECT COUNT(*) permission_count
+    FROM governance_permissions WHERE permission_key IN (${placeholders})`, permissionKeys);
+  return { recordCount: _number(permission.permission_count),
+    permissionCount: _number(permission.permission_count), expectedPermissionCount: permissionKeys.length,
+    missingPermissionCount: Math.max(0, permissionKeys.length - _number(permission.permission_count)),
+    lastEvidenceAt: null };
+}
+
 function _runtime(database, featureId, context) {
   const hostId = context.hostId; const actorId = context.actorId;
   if (featureId === 'B015') {
@@ -723,6 +931,12 @@ function _runtime(database, featureId, context) {
   if (['B163', 'B164', 'B165', 'B166'].includes(featureId)) {
     return _securityLifecycleRuntime(database, featureId, context);
   }
+  if (featureId === 'B167' || featureId === 'B168') {
+    return _securityClosureRuntime(database, featureId, context);
+  }
+  if (PRIVILEGED_CLOSURE_FEATURE_IDS.includes(featureId)) {
+    return _privilegedComplianceRuntime(database, featureId, context);
+  }
   const table = { B120: 'network_mtu_assessments', B121: 'network_bond_health_observations',
     B123: 'network_load_balancer_observations' }[featureId];
   const time = featureId === 'B120' ? 'assessed_at' : 'observed_at';
@@ -775,7 +989,7 @@ function qualificationForHost(host, options = {}) {
   });
   const implementationReleases = [...new Set(items.map(item => item.delivery.implementationRelease))];
   const evidence = {
-    schemaVersion: '1.4', batch: { key: batch.key, label: batch.label },
+    schemaVersion: '1.5', batch: { key: batch.key, label: batch.label },
     hostId, providerType: context.providerType,
     applicationVersion: version,
     implementationRelease: implementationReleases.length === 1 ? implementationReleases[0] : null,
@@ -804,10 +1018,11 @@ function qualificationForHost(host, options = {}) {
 
 module.exports = {
   FEATURE_IDS, NETWORK_BACKUP_FEATURE_IDS, RECOVERY_DEPTH_FEATURE_IDS, DR_SECURITY_FEATURE_IDS,
-  SECURITY_LIFECYCLE_FEATURE_IDS, BATCHES,
+  SECURITY_LIFECYCLE_FEATURE_IDS, PRIVILEGED_CLOSURE_FEATURE_IDS, BATCHES,
   OperationalQualificationError, qualificationForHost,
   _internals: { DEFINITIONS, _canonical, _hash, _passiveRuntime, _tableExists, _columnExists,
     _backupRuntime, _backupFacetRuntime, _restoreDrillRuntime, _restoreDepthRuntime, _drRuntime,
     _drFacetRuntime, _securityAssuranceRuntime, _confidentialPlanRuntime,
-    _certificateRotationRuntime, _securityLifecycleRuntime },
+    _certificateRotationRuntime, _securityLifecycleRuntime, _securityClosureRuntime,
+    _privilegedComplianceRuntime },
 };

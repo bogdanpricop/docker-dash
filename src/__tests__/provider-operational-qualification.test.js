@@ -23,6 +23,18 @@ function database() {
       id INTEGER PRIMARY KEY,ownership_id INTEGER,state TEXT,plan_hash TEXT,
       rollback_on_failure INTEGER,updated_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE governance_permissions (
+      permission_key TEXT PRIMARY KEY,resource_type TEXT,verb TEXT,description TEXT
+    );
+    CREATE TABLE governance_scopes (
+      id INTEGER PRIMARY KEY,scope_type TEXT,scope_key TEXT,display_name TEXT,
+      parent_id INTEGER,metadata_json TEXT DEFAULT '{}'
+    );
+    CREATE TABLE provider_console_sessions (
+      id TEXT PRIMARY KEY,token_hash TEXT UNIQUE,host_id INTEGER,resource_id TEXT,
+      provider_type TEXT,protocol TEXT,user_id INTEGER,created_at TEXT DEFAULT (datetime('now')),
+      expires_at TEXT,consumed_at TEXT,connected_at TEXT,closed_at TEXT,close_code TEXT
+    );
   `);
   require('../db/migrations/106_provider_resource_identities').up(db);
   require('../db/migrations/112_provider_artifact_catalog').up(db);
@@ -48,6 +60,7 @@ function database() {
   require('../db/migrations/166_provider_restore_replication_depth').up(db);
   require('../db/migrations/167_provider_security_assurance').up(db);
   require('../db/migrations/168_provider_security_lifecycle').up(db);
+  require('../db/migrations/169_provider_privileged_compliance').up(db);
   return db;
 }
 
@@ -386,6 +399,105 @@ describe('provider operational qualification', () => {
       expect.objectContaining({ activeExceptionCount: 1 }));
     expect(first.items.find(item => item.featureId === 'B166').runtime).toEqual(
       expect.objectContaining({ planCount: 1, allowedCount: 1 }));
+    expect(first.items.every(item => Object.values(item.qualificationSafety)
+      .every(value => value === 0))).toBe(true);
+    expect(first.evidenceHash).toBe(second.evidenceHash);
+  });
+
+  it('qualifies exactly B167-B176 with strict privileged closure facets', () => {
+    db = database();
+    db.exec(`INSERT INTO users(id) VALUES (9),(10); INSERT INTO docker_hosts(id) VALUES (7);
+      INSERT INTO lifecycle_version_inventory(id) VALUES (1);
+      INSERT INTO lifecycle_update_catalog(id) VALUES (2);
+      INSERT INTO governance_scopes(id,scope_type,scope_key,display_name)
+        VALUES (1,'provider','provider-host:7','Primary provider');`);
+    db.prepare(`INSERT INTO provider_security_findings
+      (id,host_id,inventory_id,advisory_catalog_id,resource_kind,resource_id,resource_name,
+       advisory_id,cve_ids_json,severity,priority_score,confidence,exposure_json,
+       match_evidence_json,evidence_hash,state,observed_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('psfd_aaaaaaaa', 7, 1, 2, 'endpoint',
+      'endpoint:7', 'pve-primary', 'ADV-2026-002', '["CVE-2026-20000"]', 'high', 82,
+      'high', '{}', '{}', '1'.repeat(64), 'remediated', '2026-08-01T10:00:00.000Z', 9);
+    db.prepare(`INSERT INTO provider_security_remediation_plans
+      (id,finding_id,action_key,risk,steps_json,downtime_seconds,dependencies_json,rollback_json,
+       dry_run_json,plan_hash,allowed,state,expires_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('psrp_bbbbbbbb', 'psfd_aaaaaaaa',
+      'disable_legacy_protocol', 'low', '[]', 0, '[]', '{}', '{}', '2'.repeat(64), 1,
+      'succeeded', '2099-08-01T00:00:00.000Z', 9);
+    db.prepare(`INSERT INTO provider_security_remediation_runs
+      (id,plan_id,adapter_key,state,provider_mutations_started,evidence_json,evidence_hash,created_by,
+       completed_at) VALUES (?,?,?,?,?,?,?,?,?)`).run('psrr_cccccccc', 'psrp_bbbbbbbb',
+      'proxmox.protocol', 'succeeded', 1, '{}', '3'.repeat(64), 9,
+      '2026-08-01T10:02:00.000Z');
+    db.prepare(`INSERT INTO provider_secret_reference_validations
+      (id,host_id,document_kind,document_hash,reference_hashes_json,state,findings_json,created_by)
+      VALUES (?,?,?,?,?,?,?,?)`).run('psrv_dddddddd', 7, 'manifest', '4'.repeat(64),
+      JSON.stringify(['5'.repeat(64)]), 'valid', '[]', 9);
+    db.prepare(`INSERT INTO provider_privileged_step_up_attempts
+      (host_id,user_id,succeeded,attempted_at) VALUES (?,?,?,?)`).run(7, 9, 1,
+      '2026-08-01T10:03:00.000Z');
+    db.prepare(`INSERT INTO provider_privileged_elevation_grants
+      (id,host_id,scope_id,permission_key,requested_by,reason,mfa_verified_at,expires_at,state,
+       approved_by,approved_at,token_hash,grant_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('ppjg_eeeeeeee', 7, 1, 'data.classification.manage', 9, 'Time-bound update',
+        '2026-08-01T10:03:00.000Z', '2099-08-01T00:00:00.000Z', 'active', 10,
+        '2026-08-01T10:04:00.000Z', '6'.repeat(64), '7'.repeat(64));
+    db.prepare(`INSERT INTO provider_break_glass_requests
+      (id,host_id,scope_id,requested_by,reason,ticket_ref,notification_refs_json,recording_policy,
+       expires_at,state,approved_by,approved_at,closed_by,closed_at,review_outcome,review_notes,
+       reviewed_by,reviewed_at,request_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run('ppbg_ffffffff', 7, 1, 9, 'Identity provider outage', 'INC-2026-0050',
+        '["oncall:security"]', 'metadata', '2099-08-01T00:00:00.000Z', 'reviewed', 10,
+        '2026-08-01T10:05:00.000Z', 9, '2026-08-01T10:06:00.000Z', 'expected',
+        'Matched incident timeline', 10, '2026-08-01T10:07:00.000Z', '8'.repeat(64));
+    db.prepare(`INSERT INTO provider_console_sessions
+      (id,token_hash,host_id,resource_id,provider_type,protocol,user_id,expires_at,
+       recording_policy,recording_policy_ref,recording_consent_at,recording_state)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run('pcs_aaaaaaaa', '9'.repeat(64), 7,
+      'ddr_vm_aaaaaaaaaaaaaaaaaaaaaaaaaa', 'proxmox', 'vnc', 9,
+      '2099-08-01T00:00:00.000Z', 'screen', 'legal:remote-v1',
+      '2026-08-01T10:08:00.000Z', 'screen_requested');
+    db.prepare(`INSERT INTO provider_resource_classifications
+      (id,host_id,scope_id,resource_kind,resource_id,classification,policy_json,
+       classification_hash,created_by) VALUES (?,?,?,?,?,?,?,?,?)`).run('pprc_aaaaaaaa', 7, 1,
+      'endpoint', 'endpoint:7', 'restricted', '{}', 'a'.repeat(64), 9);
+    db.prepare(`INSERT INTO provider_compliance_control_mappings
+      (host_id,scope_id,subject_kind,subject_key,framework,control_ref,rationale,mapping_hash,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(7, 1, 'classification', 'pprc_aaaaaaaa', 'NIST',
+      'organization-control-7', 'Internal mapping', 'b'.repeat(64), 9);
+    db.prepare(`INSERT INTO provider_compliance_exports
+      (id,host_id,scope_id,format,classification,bundle_hash,signature,summary_json,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run('ppce_bbbbbbbb', 7, 1, 'json', 'restricted',
+      'c'.repeat(64), 'd'.repeat(64), '{}', 9);
+    db.prepare(`INSERT INTO provider_ransomware_posture_observations
+      (id,host_id,scope_id,source,factors_json,score,confidence,evidence_hash,observed_at,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run('pprp_cccccccc', 7, 1, 'computed', '{}', 75,
+      'high', 'e'.repeat(64), '2026-08-01T10:09:00.000Z', 9);
+
+    const first = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'privileged-closure' });
+    const second = qualification.qualificationForHost({ id: 7, daemon_type: 'proxmox' },
+      { actorId: 9, database: db, batch: 'privileged-closure' });
+
+    expect(first.batch).toEqual({ key: 'privileged-closure', label: 'B167–B176' });
+    expect(first.items.map(item => item.featureId)).toEqual([
+      'B167', 'B168', 'B169', 'B170', 'B171', 'B172', 'B173', 'B174', 'B175', 'B176',
+    ]);
+    expect(first.implementationReleases).toEqual(['v8.83.0', 'v8.84.0', 'v8.79.0']);
+    expect(first.summary).toEqual(expect.objectContaining({ featureCount: 10, schemaReady: 10,
+      runtimeObserved: 10, browserSmokeRecorded: 0 }));
+    expect(first.items.find(item => item.featureId === 'B167').runtime).toEqual(
+      expect.objectContaining({ runCount: 1, succeededCount: 1, recordedProviderMutationCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B168').runtime).toEqual(
+      expect.objectContaining({ validationCount: 1, validCount: 1, recordedNetworkCallCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B169').runtime).toEqual(
+      expect.objectContaining({ grantCount: 1, activeCount: 1, attemptCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B170').runtime).toEqual(
+      expect.objectContaining({ requestCount: 1, reviewedCount: 1 }));
+    expect(first.items.find(item => item.featureId === 'B171').runtime).toEqual(
+      expect.objectContaining({ sessionCount: 1, screenPolicyCount: 1, mediaStoredCount: 0 }));
+    expect(first.items.find(item => item.featureId === 'B176').runtime).toEqual(
+      expect.objectContaining({ permissionCount: 10, missingPermissionCount: 0 }));
     expect(first.items.every(item => Object.values(item.qualificationSafety)
       .every(value => value === 0))).toBe(true);
     expect(first.evidenceHash).toBe(second.evidenceHash);

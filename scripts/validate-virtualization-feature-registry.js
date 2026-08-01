@@ -353,7 +353,30 @@ function evidenceFor(feature, status) {
       type: 'test', reference: 'v8.89 security-lifecycle qualification tests',
       path: 'src/__tests__/provider-operational-qualification.test.js',
     });
+    if (featureNumber >= 167) evidence.push({
+      type: 'test', reference: 'v8.90 privileged-closure qualification tests',
+      path: 'src/__tests__/provider-operational-qualification.test.js',
+    });
     return evidence;
+  }
+  if (featureNumber >= 169 && featureNumber <= 176) {
+    return [
+      {
+        type: 'test',
+        reference: 'R6c privileged compliance focused tests',
+        path: 'src/__tests__/provider-privileged-compliance.test.js',
+      },
+      {
+        type: 'release',
+        reference: 'v8.84 privileged compliance control plane',
+        path: 'docs/planning/virtualization-platform/V3.10-privileged-compliance-feature-spec.md',
+      },
+      {
+        type: 'test',
+        reference: 'v8.90 privileged-closure qualification tests',
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      },
+    ];
   }
   return [{
     type: 'release',
@@ -442,6 +465,33 @@ function limitationsFor(feature, status, deliveryLevel) {
   }
   if (status === 'Partial' && number >= 159 && number <= 166) {
     return ['Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 167) {
+    return ['Released in v8.83.0 and read-only qualified in v8.90.0; a production remediation adapter, disposable-provider canary and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 168) {
+    return ['Released in v8.83.0 and read-only qualified in v8.90.0; automatic manifest/job/template admission integration and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 169) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 170) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; an external notification dispatcher, standalone temporary identity and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 171) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; an approved media recorder and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 172) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; provider-native classification policy enforcement and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 173) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; public-key attestation and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 174) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; external control-catalog validation, certification authority and browser smoke remain outstanding.'];
+  }
+  if (status === 'Partial' && number === 175) {
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; provider-native factor collectors, a recovery canary and browser smoke remain outstanding.'];
   }
   if (status === 'Partial' && number >= 129 && number <= 150) {
     return ['Deeper multi-provider backup, restore and DR execution remains in batch R5.'];

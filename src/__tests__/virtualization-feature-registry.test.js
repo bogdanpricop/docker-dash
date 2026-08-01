@@ -136,12 +136,35 @@ describe('virtualization market-research registry', () => {
       })]),
       limitations: ['Released in v8.83.0 and read-only qualified in v8.89.0; provider-native collectors, production certificate/remediation adapters, browser smoke and canary remain outstanding.'],
     }));
+    expect(registry.features.find(feature => feature.featureId === 'B167')).toEqual(expect.objectContaining({
+      status: 'Partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      })]),
+      limitations: ['Released in v8.83.0 and read-only qualified in v8.90.0; a production remediation adapter, disposable-provider canary and browser smoke remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B169')).toEqual(expect.objectContaining({
+      status: 'Partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-privileged-compliance.test.js',
+      })]),
+      limitations: ['Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B175')).toEqual(expect.objectContaining({
+      limitations: ['Released in v8.84.0 and read-only qualified in v8.90.0; provider-native factor collectors, a recovery canary and browser smoke remain outstanding.'],
+    }));
+    expect(registry.features.find(feature => feature.featureId === 'B176')).toEqual(expect.objectContaining({
+      status: 'Done', limitations: [],
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/provider-operational-qualification.test.js',
+      })]),
+    }));
     expect(registry.features.find(feature => feature.featureId === 'B041')).toEqual(expect.objectContaining({
       status: 'Done', deliveryLevel: 'control-plane',
       limitations: ['No implicit provider or external apply path is claimed by this delivery level.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B122').status).toBe('Done');
-    expect(registry.features.find(feature => feature.featureId === 'B167').status).toBe('Partial');
+    expect(registry.features.find(feature => feature.featureId === 'B168').status).toBe('Partial');
   });
 
   test('rejects Done entries without release, commit or test evidence', () => {

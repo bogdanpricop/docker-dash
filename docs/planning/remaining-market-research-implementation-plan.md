@@ -58,7 +58,7 @@ Prioritățile sunt:
 | R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
 | R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică B104/B118–B121/B123, iar v8.86 califică B124/B125. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
 | R5 | B129–B150 Backup/DR depth | P1 | XXL | `Partial` | V3.1–V3.8 | B129–B150 au contracte/UI și execuție Proxmox limitată; v8.86 califică B129–B136, v8.87 B137–B146, iar v8.88 B147–B150. Adaptoarele XO/vSphere și DR mutation/canary rămân. |
-| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156, iar v8.89 B157–B166. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
+| R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156, v8.89 B157–B166, iar v8.90 B167–B175 și revalidează fundația Done B176. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
 | R9 | Compose blueprint catalog | P3 | L | `Not started` | OCI Compose, signatures | Catalog semnat, pinned și operabil prin wizard. |
@@ -411,6 +411,7 @@ R4 se livrează în sub-batch-uri pentru a separa evidence read-only de mutații
 - [x] manifests/jobs/templates resping credentialele inline și păstrează numai
   document/reference hashes.
 - [x] B160–B166 calificate read-only în v8.89.0;
+- [x] B167–B168 calificate read-only în v8.90.0;
 
 ### R6c — privileged access și compliance
 
@@ -431,6 +432,8 @@ reclamate ca implementări noi.
   credential separation;
 - [x] integrarea celor zece permisiuni cu custom roles și scope hierarchy
   provider-bound B176–B178;
+- [x] B169–B175 calificate read-only în v8.90.0, cu B176 `Done` revalidat ca
+  fundație pentru calupul exact de zece;
 - [ ] external notification dispatcher, standalone temporary account,
   provider-native enforcement, media recorder și public-key attestation.
 
@@ -644,6 +647,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-01 | Release 8.87.0 / B137–B146 | `Released` | `de61d4a`, tag/release `v8.87.0`, CI + Docker green, LAN/VPS healthy | calificare recovery-depth read-only; release-uri mixte per feature, schema/coloane, runtime și flag-uri distincte; 313 suite / 3.346 teste pass; rollout verificat | Exact 10 ID-uri deja incluse în v8.80/v8.81. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar adaptoarele, fencing-ul și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.88.0 / B147–B156 | `Released` | `635df3b`, tag/release `v8.88.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.348 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.81/v8.82. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar executorii, colectorii și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.89.0 / B157–B166 | `Released` | `b8330a4`, tag/release `v8.89.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.350 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.82/v8.83. Calificarea nu pornește provider/network/external work; colectorii, adaptoarele production, canary și browserul rămân deschise. |
+| 2026-08-01 | Release 8.90.0 / B167–B176 | `In progress` | working tree local | calificare privileged-closure read-only; remediation runs, secret validations, JIT, break-glass, session metadata, classification, evidence, mappings, posture și permission catalog distincte | B167–B175 sunt ultimele `Partial` fără batch de calificare; B176 era deja `Done` și este doar revalidat. Nicio execuție externă, provider mutation, notificare sau media capture nu este pornită. |
 
 ## 20. Următoarele acțiuni
 

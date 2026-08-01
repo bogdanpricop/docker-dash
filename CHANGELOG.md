@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.90.0] - 2026-08-01 — Privileged closure operational qualification
+
+This exact batch qualifies the final uncovered `Partial` features B167–B175
+and revalidates the already `Done` B176 permission-catalog foundation.
+
+- `batch=privileged-closure` adds the sixth provider-scoped qualification
+  envelope and preserves all earlier batch contracts.
+- B167 distinguishes eligible low-risk plans from actual remediation runs and
+  reports historical mutation markers without starting a mutation.
+- B168 reports exact secret-reference validation, valid/invalid, reference and
+  persisted zero-network-call counts.
+- B169–B175 separate JIT, break-glass, session metadata, classifications,
+  signed-export metadata, control mappings and ransomware posture evidence.
+- B171 always reports zero media stored; notification dispatch, temporary
+  identity provisioning and public-key attestation remain external gaps.
+- B176 verifies the exact ten privileged/compliance permission keys while
+  retaining its v8.79.0 `Done` foundation status.
+- Mixed implementation releases remain explicit: B167–B168 came from v8.83.0,
+  B169–B175 from v8.84.0 and B176 from v8.79.0. Browser smoke, production
+  adapters/collectors and provider canaries remain outstanding.
+
 ## [8.89.0] - 2026-08-01 — Security lifecycle operational qualification
 
 This exact batch advances B157–B166 without interpreting persisted plans or
