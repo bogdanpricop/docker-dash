@@ -647,9 +647,30 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-01 | Release 8.87.0 / B137–B146 | `Released` | `de61d4a`, tag/release `v8.87.0`, CI + Docker green, LAN/VPS healthy | calificare recovery-depth read-only; release-uri mixte per feature, schema/coloane, runtime și flag-uri distincte; 313 suite / 3.346 teste pass; rollout verificat | Exact 10 ID-uri deja incluse în v8.80/v8.81. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar adaptoarele, fencing-ul și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.88.0 / B147–B156 | `Released` | `635df3b`, tag/release `v8.88.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.348 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.81/v8.82. Calificarea nu pornește provider/network/external work; browserul integrat nu expune runtime, iar executorii, colectorii și canary-urile rămân deschise. |
 | 2026-08-01 | Release 8.89.0 / B157–B166 | `Released` | `b8330a4`, tag/release `v8.89.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.350 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | Exact 10 ID-uri deja incluse în v8.82/v8.83. Calificarea nu pornește provider/network/external work; colectorii, adaptoarele production, canary și browserul rămân deschise. |
-| 2026-08-01 | Release 8.90.0 / B167–B176 | `In progress` | working tree local | calificare privileged-closure read-only; remediation runs, secret validations, JIT, break-glass, session metadata, classification, evidence, mappings, posture și permission catalog distincte | B167–B175 sunt ultimele `Partial` fără batch de calificare; B176 era deja `Done` și este doar revalidat. Nicio execuție externă, provider mutation, notificare sau media capture nu este pornită. |
+| 2026-08-01 | Release 8.90.0 / B167–B176 | `Released` | `b0ada59`, tag/release `v8.90.0`, CI + Docker green, LAN/VPS healthy | 313 suite / 3.352 teste pass; schema 10/10, hash stabil, safety zero și rollout verificat | B167–B175 sunt ultimele `Partial` fără batch de calificare; B176 era deja `Done` și este doar revalidat. Nicio execuție externă, provider mutation, notificare sau media capture nu este pornită. |
 
-## 20. Următoarele acțiuni
+## 20. Închiderea implementării autonome
+
+La v8.90.0, toate cele 59 de features păstrate `Partial` au implementare locală
+declarată, teste/evidence și includere într-un calup operațional exact. Nu mai
+există un ID `Partial` fără calificare read-only și fără o limitare concretă.
+
+Registrul rămâne intenționat 391 `Done`, 59 `Partial`, 0 `Open`: o calificare
+nu transformă absența unui browser, adaptor, provider real, canary sau executor
+în succes. Promovarea ulterioară a acestor 59 de poziții cere cel puțin una
+dintre următoarele condiții care nu poate fi presupusă autonom din repo:
+
+- runtime browser integrat disponibil;
+- endpoint/provider real sau disposable și dreptul de a executa un canary;
+- adaptor/collector extern și credențiale/egress aprobate;
+- decizie explicită de produs, securitate, legal sau data authority pentru
+  mutații, probe active, recording, temporary identity ori attestation.
+
+Prin urmare, implementarea care putea fi închisă sigur folosind numai repo-ul,
+fixture-urile locale și cele două ținte Docker este completă. Lista următoare
+este un registru de prerechizite externe, nu muncă locală rămasă ascunsă.
+
+## 21. Prerechizite externe pentru promovarea `Partial` → `Done`
 
 1. UX control-plane: browser smoke pentru Governance, Self-Service, Identity & Policy și Edge, inclusiv tab keyboard navigation și cel puțin un dialog modal pe rută.
 2. R1/B015: browser smoke pe un endpoint local; includerea în v8.80 și calificarea v8.85 sunt deja înregistrate.
