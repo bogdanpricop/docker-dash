@@ -1990,6 +1990,7 @@ i18n.register('ro', 'RO', "Română", {
     stacks: {
       title: "Stacks",
       subtitle: "Stack-uri Compose și deployment-uri conectate la Git",
+      filterPlaceholder: "Filtrează stack-uri...",
       tabAll: "Toate",
       tabCompose: "Compose",
       tabGit: "Git",

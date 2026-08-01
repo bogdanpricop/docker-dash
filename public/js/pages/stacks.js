@@ -6,6 +6,8 @@
 
 const StacksPage = {
   _tab: 'all', // all | compose | git
+  _filter: '',
+  _listStacks: [],
   _detailStack: null,
   _detailType: null,
   _stackLogUnsubs: [],
@@ -37,6 +39,8 @@ const StacksPage = {
       return this._renderComposeDetail(container);
     }
 
+    this._filter = '';
+
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -44,6 +48,10 @@ const StacksPage = {
           <div class="page-subtitle">${i18n.t('pages.stacks.subtitle')}</div>
         </div>
         <div class="page-actions">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="stack-search" aria-label="${i18n.t('pages.stacks.filterPlaceholder')}" placeholder="${i18n.t('pages.stacks.filterPlaceholder')}">
+          </div>
           <label class="toggle-label" title="Include stopped Compose projects discovered under DD_STACKS_DIR">
             <input type="checkbox" id="stacks-show-disk" ${this._showDiskStacks ? 'checked' : ''}> From disk
           </label>
@@ -60,6 +68,11 @@ const StacksPage = {
       <div id="stacks-content"><div class="text-muted"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('common.loading')}</div></div>
     `;
 
+    container.querySelector('#stack-search').addEventListener('input',
+      Utils.debounce(event => {
+        this._filter = event.target.value.trim().toLowerCase();
+        this._renderStackList();
+      }, 200));
     container.querySelectorAll('#stack-tabs .tab').forEach(tab => {
       tab.addEventListener('click', () => {
         this._tab = tab.dataset.tab;
@@ -116,11 +129,37 @@ const StacksPage = {
         }
       }
 
+      this._listStacks = unified;
+      this._renderStackList();
+    } catch (err) {
+      el.innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  },
+
+  _matchesStackSearch(stack, query = this._filter) {
+    if (!query) return true;
+    const searchable = [
+      stack.name, stack.source, stack.status, stack.branch, stack.repoUrl,
+      stack.lastCommit, stack.workingDir, stack.composeSource,
+      ...(stack.services || []),
+      ...(stack.containers || []).flatMap(container => [
+        container.name, container.image, container.state, container.status,
+      ]),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return searchable.includes(String(query).trim().toLowerCase());
+  },
+
+  _renderStackList() {
+    const el = document.getElementById('stacks-content');
+    if (!el) return;
+    const unified = (this._listStacks || []).filter(stack => this._matchesStackSearch(stack));
+    const uptimeKuma = this._uptimeKuma || { detected: false };
+
       if (unified.length === 0) {
         el.innerHTML = `
           <div class="empty-msg" style="padding:48px">
             <i class="fas fa-layer-group" style="font-size:48px;opacity:0.3;margin-bottom:12px"></i>
-            <p>${i18n.t('pages.stacks.noStacks')}</p>
+            <p>${i18n.t(this._filter ? 'common.noResults' : 'pages.stacks.noStacks')}</p>
           </div>`;
         return;
       }
@@ -185,9 +224,6 @@ const StacksPage = {
           }
         });
       });
-    } catch (err) {
-      el.innerHTML = `<div class="empty-msg" style="color:var(--red)"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(err.message)}</div>`;
-    }
   },
 
   async _runComposeAction(stack, action) {

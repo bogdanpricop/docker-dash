@@ -1215,6 +1215,7 @@ i18n.register('en', 'EN', 'English', {
     stacks: {
       title: 'Stacks',
       subtitle: 'Compose stacks and Git-linked deployments',
+      filterPlaceholder: 'Filter stacks...',
       tabAll: 'All',
       tabCompose: 'Compose',
       tabGit: 'Git',
