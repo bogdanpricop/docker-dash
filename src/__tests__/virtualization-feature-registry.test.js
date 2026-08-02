@@ -164,7 +164,13 @@ describe('virtualization market-research registry', () => {
       limitations: ['No implicit provider or external apply path is claimed by this delivery level.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B122').status).toBe('Done');
-    expect(registry.features.find(feature => feature.featureId === 'B168').status).toBe('Partial');
+    expect(registry.features.find(feature => feature.featureId === 'B168')).toEqual(expect.objectContaining({
+      status: 'Partial',
+      evidence: expect.arrayContaining([expect.objectContaining({
+        path: 'src/__tests__/secret-reference-admission.test.js',
+      })]),
+      limitations: ['Released in v8.83.0 and read-only qualified in v8.90.0; v8.91.3 adds automatic manifest/job/template admission integration, while browser smoke remains outstanding.'],
+    }));
   });
 
   test('rejects Done entries without release, commit or test evidence', () => {

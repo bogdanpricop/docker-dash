@@ -26,7 +26,9 @@ router.get('/manifests/:id', route((req, res) => res.json({ manifest: automation
 router.post('/manifests', writeable, route((req, res) => {
   const manifest = automation.saveManifest(req.body || {}, req.user);
   audit(req, 'infrastructure_manifest_save', 'infrastructure_manifest', manifest.id, { kind: manifest.kind, name: manifest.name,
-    revision: manifest.revision, documentHash: manifest.documentHash, authoritative: manifest.authoritative, deduplicated: manifest.deduplicated });
+    revision: manifest.revision, documentHash: manifest.documentHash, authoritative: manifest.authoritative,
+    deduplicated: manifest.deduplicated, admissionHash: manifest.secretReferenceAdmission.documentHash,
+    secretReferenceCount: manifest.secretReferenceAdmission.referenceCount, inlineSecretAdmission: 'valid' });
   res.status(manifest.deduplicated ? 200 : 201).json({ manifest });
 }));
 router.get('/plans', route((req, res) => res.json({ plans: automation.plans(req.user) })));
@@ -46,7 +48,9 @@ router.get('/workflows', route((req, res) => res.json({ workflows: automation.wo
 router.post('/workflows', writeable, route((req, res) => {
   const workflow = automation.createWorkflow(req.body || {}, req.user);
   audit(req, 'infrastructure_workflow_create', 'infrastructure_workflow', workflow.id,
-    { name: workflow.name, version: workflow.version, definitionHash: workflow.definitionHash, steps: workflow.steps.length });
+    { name: workflow.name, version: workflow.version, definitionHash: workflow.definitionHash, steps: workflow.steps.length,
+      admissionHash: workflow.secretReferenceAdmission.documentHash,
+      secretReferenceCount: workflow.secretReferenceAdmission.referenceCount, inlineSecretAdmission: 'valid' });
   res.status(201).json({ workflow });
 }));
 router.post('/workflows/:id/compensation-plan', writeable, route((req, res) => {

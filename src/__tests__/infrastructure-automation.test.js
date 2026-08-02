@@ -55,7 +55,8 @@ describe('V0.3b infrastructure automation foundations (B226-B235)', () => {
 
   test('VM manifest normalizes desired hardware, image, network, storage and policy intent', () => {
     const result = service.validateManifest(vmDocument(), admin);
-    expect(result).toMatchObject({ valid: true, secretFree: true, documentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(result).toMatchObject({ valid: true, secretFree: true, documentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      secretReferenceAdmission: { state: 'valid', documentStored: false, networkCallsStarted: 0 } });
     expect(result.normalized.spec).toMatchObject({ hardware: { cpuCount: 4, memoryBytes: 8 * 1024 ** 3 },
       image: { imageRef: 'ubuntu:24.04' }, policies: ['production'], desiredPowerState: 'running' });
     expect(() => service.validateManifest({ ...vmDocument(), spec: { ...vmDocument().spec, password: 'never-store-me' } }, admin))
@@ -122,6 +123,24 @@ describe('V0.3b infrastructure automation foundations (B226-B235)', () => {
     const plan = service.compensationPlan(workflow.id, { completedStepIds: ['prepare', 'apply', 'verify'] }, admin);
     expect(plan.actions.map(item => item.stepId)).toEqual(['apply', 'prepare']);
     expect(plan).toMatchObject({ canAutomaticallyCompensate: true, providerMutationsScheduled: 0 });
+  });
+
+  test('manifest and workflow writes automatically enforce hash-only secret-reference admission', () => {
+    const manifest = service.saveManifest({ document: vmDocument() }, admin);
+    expect(manifest.secretReferenceAdmission).toMatchObject({ state: 'valid', documentStored: false,
+      documentHash: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    const workflow = service.createWorkflow({ name: 'referenced-secret', version: '1.0', steps: [{
+      id: 'apply', actionKey: 'vm.apply', input: {
+        environment: ['DATABASE_PASSWORD=${DD_BROKER_SECRET_DATABASE}'],
+      },
+    }] }, admin);
+    expect(workflow.secretReferenceAdmission).toMatchObject({ state: 'valid', referenceCount: 1,
+      referenceHashes: [expect.stringMatching(/^[a-f0-9]{64}$/)], documentStored: false });
+    expect(JSON.stringify(workflow.secretReferenceAdmission)).not.toContain('DD_BROKER_SECRET_DATABASE');
+    expect(() => service.createWorkflow({ name: 'inline-secret', version: '1.0', steps: [{
+      id: 'apply', actionKey: 'vm.apply', input: { environment: ['DATABASE_PASSWORD=forbidden-value'] },
+    }] }, admin)).toThrow(expect.objectContaining({ code: 'SECRET_REFERENCE_ADMISSION_FAILED', status: 422,
+      details: expect.objectContaining({ state: 'invalid', documentStored: false }) }));
   });
 
   test('accepted plans link to durable operations and expose native-task evidence without ciphertext', () => {

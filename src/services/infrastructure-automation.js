@@ -2,11 +2,11 @@
 
 const crypto = require('crypto');
 const { getDb } = require('../db');
+const { assertSecretReferenceAdmission } = require('./secret-reference-admission');
 
 const API_VERSION = 'docker-dash.io/v1alpha1';
 const MAX_DOCUMENT_BYTES = 256 * 1024;
 const MAX_STEPS = 50;
-const SENSITIVE_KEY = /password|secret|token|credential|private.?key|authorization|cookie/i;
 const SAFE_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/;
 const SAFE_REF = /^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,299}$/;
 const SAFE_ACTION = /^[a-z][a-z0-9_.-]{1,79}$/;
@@ -44,11 +44,12 @@ function assertBounded(value, key = 'document') {
   try { encoded = JSON.stringify(value); } catch { throw fail(`${key} must be JSON serializable`); }
   if (Buffer.byteLength(encoded) > MAX_DOCUMENT_BYTES) throw fail(`${key} exceeds ${MAX_DOCUMENT_BYTES} bytes`, 413, 'AUTOMATION_DOCUMENT_TOO_LARGE');
 }
-function assertSecretFree(value, path = 'document') {
-  if (!value || typeof value !== 'object') return;
-  for (const [key, child] of Object.entries(value)) {
-    if (SENSITIVE_KEY.test(key)) throw fail(`${path}.${key} may not contain secret material; use an external secret reference in a later broker workflow`, 400, 'MANIFEST_SECRET_FIELD');
-    assertSecretFree(child, `${path}.${key}`);
+function admitSecretReferences(documentKind, document, path = 'document') {
+  try { return assertSecretReferenceAdmission({ documentKind, document }); } catch (error) {
+    if (error?.name === 'SecretReferenceAdmissionError') throw fail(
+      `${path} may not contain secret material; use approved symbolic references`,
+      error.status, error.code, error.details);
+    throw error;
   }
 }
 function stringList(value, key, max = 64) {
@@ -148,7 +149,7 @@ class InfrastructureAutomationService {
     if (actor.role !== 'admin') throw fail('Administrator permission is required', 403, 'GOVERNANCE_FORBIDDEN');
   }
   normalizeManifest(document, actor) {
-    this._admin(actor); assertBounded(document); assertSecretFree(document);
+    this._admin(actor); assertBounded(document); admitSecretReferences('manifest', document);
     if (document?.kind === 'VirtualMachine') return normalizeVm(document);
     if (document?.kind === 'Host') return normalizeHost(document);
     if (document?.kind === 'Fabric') return normalizeFabric(document);
@@ -156,34 +157,40 @@ class InfrastructureAutomationService {
   }
   validateManifest(document, actor) {
     const normalized = this.normalizeManifest(document, actor);
-    return { valid: true, normalized, documentHash: hash(normalized), secretFree: true };
+    return { valid: true, normalized, documentHash: hash(normalized), secretFree: true,
+      secretReferenceAdmission: admitSecretReferences('manifest', document) };
   }
   saveManifest(body = {}, actor) {
-    const document = this.normalizeManifest(body.document || body, actor); const db = this._db(); const metadata = document.metadata;
+    this._admin(actor); const sourceDocument = body.document || body;
+    const admission = admitSecretReferences('manifest', sourceDocument);
+    const document = this.normalizeManifest(sourceDocument, actor); const db = this._db(); const metadata = document.metadata;
     const kind = { VirtualMachine: 'vm', Host: 'host', Fabric: 'fabric' }[document.kind]; const documentHash = hash(document);
     const resourceVersions = versions(body.resourceVersions); const existing = db.prepare(`SELECT * FROM infrastructure_manifests
       WHERE manifest_kind=? AND provider_host_id=? AND name=?`).get(kind, metadata.providerHostId, metadata.name);
     if (existing?.document_hash === documentHash && existing.resource_versions_json === stable(resourceVersions)) {
-      return { ...rowManifest(existing), deduplicated: true };
+      return { ...rowManifest(existing), deduplicated: true, secretReferenceAdmission: admission };
     }
     if (existing) {
       db.prepare(`UPDATE infrastructure_manifests SET resource_id=?,revision=revision+1,authoritative=?,document_json=?,document_hash=?,
         resource_versions_json=?,updated_by=?,updated_at=datetime('now') WHERE id=?`).run(metadata.resourceId, metadata.authoritative ? 1 : 0,
         stable(document), documentHash, stable(resourceVersions), actor.id, existing.id);
-      return { ...rowManifest(db.prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(existing.id)), deduplicated: false };
+      return { ...rowManifest(db.prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(existing.id)),
+        deduplicated: false, secretReferenceAdmission: admission };
     }
     const result = db.prepare(`INSERT INTO infrastructure_manifests
       (manifest_kind,name,provider_host_id,resource_id,authoritative,document_json,document_hash,resource_versions_json,created_by,updated_by)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(kind, metadata.name, metadata.providerHostId, metadata.resourceId,
       metadata.authoritative ? 1 : 0, stable(document), documentHash, stable(resourceVersions), actor.id, actor.id);
-    return { ...rowManifest(db.prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(result.lastInsertRowid)), deduplicated: false };
+    return { ...rowManifest(db.prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(result.lastInsertRowid)),
+      deduplicated: false, secretReferenceAdmission: admission };
   }
   manifests(actor) { this._admin(actor); return this._db().prepare('SELECT * FROM infrastructure_manifests ORDER BY updated_at DESC,id DESC').all().map(rowManifest); }
   manifest(id, actor) { this._admin(actor); const row = rowManifest(this._db().prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(integer(id, 'manifestId', 1)));
     if (!row) throw fail('Manifest not found', 404, 'MANIFEST_NOT_FOUND'); return row; }
   createPlan(manifestId, body = {}, actor) {
     const manifest = this.manifest(manifestId, actor); const liveState = object(body.liveState?.spec || body.liveState);
-    assertBounded(liveState, 'liveState'); assertSecretFree(liveState, 'liveState'); const currentVersions = versions(body.resourceVersions);
+    assertBounded(liveState, 'liveState'); admitSecretReferences('manifest', liveState, 'liveState');
+    const currentVersions = versions(body.resourceVersions);
     const desired = manifest.document.spec; const desiredFlat = flatten(desired); const liveFlat = flatten(canonical(liveState));
     const paths = [...new Set([...desiredFlat.keys(), ...liveFlat.keys()])].sort(); const actions = []; const blocked = [];
     for (const path of paths) {
@@ -217,7 +224,8 @@ class InfrastructureAutomationService {
     if (!raw) throw fail('Plan not found', 404, 'PLAN_NOT_FOUND'); const plan = rowPlan(raw);
     if (plan.status !== 'planned') throw fail(`Plan is ${plan.status}`, 409, 'PLAN_NOT_PENDING');
     const manifest = db.prepare('SELECT * FROM infrastructure_manifests WHERE id=?').get(plan.manifestId);
-    const liveState = object(body.liveState?.spec || body.liveState); assertBounded(liveState, 'liveState'); assertSecretFree(liveState, 'liveState');
+    const liveState = object(body.liveState?.spec || body.liveState); assertBounded(liveState, 'liveState');
+    admitSecretReferences('manifest', liveState, 'liveState');
     const currentVersions = versions(body.resourceVersions); const evidence = { expired: Date.parse(plan.expiresAt) <= Date.now(),
       manifestChanged: !manifest || manifest.document_hash !== plan.manifestHash || manifest.revision !== plan.manifestRevision,
       stateChanged: hash(liveState) !== plan.stateHash, versionsChanged: hash(currentVersions) !== plan.versionsHash };
@@ -232,7 +240,7 @@ class InfrastructureAutomationService {
   }
   _normalizeSteps(value) {
     if (!Array.isArray(value) || !value.length || value.length > MAX_STEPS) throw fail(`steps must contain 1-${MAX_STEPS} entries`);
-    assertBounded(value, 'steps'); assertSecretFree(value, 'steps');
+    assertBounded(value, 'steps'); admitSecretReferences('job', { steps: value }, 'steps');
     const steps = value.map((raw, index) => {
       const id = string(raw?.id, `steps[${index}].id`, 64, SAFE_NAME); const stage = integer(raw.stage ?? index + 1, `steps[${index}].stage`, 1, MAX_STEPS);
       const needs = stringList(raw.needs, `steps[${index}].needs`, MAX_STEPS); const actionKey = string(raw.actionKey, `steps[${index}].actionKey`, 80, SAFE_ACTION);
@@ -255,13 +263,15 @@ class InfrastructureAutomationService {
     for (const step of steps) visit(step.id); return steps;
   }
   createWorkflow(body = {}, actor) {
-    this._admin(actor); const steps = this._normalizeSteps(body.steps); const name = string(body.name, 'name', 120, SAFE_NAME);
+    this._admin(actor); const admission = admitSecretReferences('job', body, 'workflow');
+    const steps = this._normalizeSteps(body.steps); const name = string(body.name, 'name', 120, SAFE_NAME);
     const version = string(body.version, 'version', 40, /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$/); const definitionHash = hash(steps);
     try {
       const result = this._db().prepare(`INSERT INTO infrastructure_workflows
         (name,version,description,steps_json,definition_hash,created_by) VALUES (?,?,?,?,?,?)`).run(name, version,
         String(body.description || '').trim().slice(0, 1000), stable(steps), definitionHash, actor.id);
-      return rowWorkflow(this._db().prepare('SELECT * FROM infrastructure_workflows WHERE id=?').get(result.lastInsertRowid));
+      return { ...rowWorkflow(this._db().prepare('SELECT * FROM infrastructure_workflows WHERE id=?').get(result.lastInsertRowid)),
+        secretReferenceAdmission: admission };
     } catch (error) {
       if (String(error.code || '').startsWith('SQLITE_CONSTRAINT')) throw fail('Workflow name and version already exist', 409, 'WORKFLOW_VERSION_EXISTS');
       throw error;

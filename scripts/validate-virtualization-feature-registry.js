@@ -372,6 +372,10 @@ function evidenceFor(feature, status) {
       type: 'test', reference: 'v8.90 privileged-closure qualification tests',
       path: 'src/__tests__/provider-operational-qualification.test.js',
     });
+    if (featureNumber === 168) evidence.push({
+      type: 'test', reference: 'v8.91.3 automatic secret-reference admission tests',
+      path: 'src/__tests__/secret-reference-admission.test.js',
+    });
     return evidence;
   }
   if (featureNumber >= 169 && featureNumber <= 176) {
@@ -485,7 +489,7 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.83.0 and read-only qualified in v8.90.0; a production remediation adapter, disposable-provider canary and browser smoke remain outstanding.'];
   }
   if (status === 'Partial' && number === 168) {
-    return ['Released in v8.83.0 and read-only qualified in v8.90.0; automatic manifest/job/template admission integration and browser smoke remain outstanding.'];
+    return ['Released in v8.83.0 and read-only qualified in v8.90.0; v8.91.3 adds automatic manifest/job/template admission integration, while browser smoke remains outstanding.'];
   }
   if (status === 'Partial' && number === 169) {
     return ['Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding.'];

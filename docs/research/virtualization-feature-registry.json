@@ -6010,10 +6010,15 @@
           "type": "test",
           "reference": "v8.90 privileged-closure qualification tests",
           "path": "src/__tests__/provider-operational-qualification.test.js"
+        },
+        {
+          "type": "test",
+          "reference": "v8.91.3 automatic secret-reference admission tests",
+          "path": "src/__tests__/secret-reference-admission.test.js"
         }
       ],
       "limitations": [
-        "Released in v8.83.0 and read-only qualified in v8.90.0; automatic manifest/job/template admission integration and browser smoke remain outstanding."
+        "Released in v8.83.0 and read-only qualified in v8.90.0; v8.91.3 adds automatic manifest/job/template admission integration, while browser smoke remains outstanding."
       ],
       "source": {
         "path": "docs/research/virtualization-market-research-2026.md",

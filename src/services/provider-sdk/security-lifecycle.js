@@ -3,16 +3,14 @@
 const config = require('../../config');
 const { getDb } = require('../../db');
 const { generateToken, sha256 } = require('../../utils/crypto');
+const secretReferenceAdmission = require('../secret-reference-admission');
 
 const SCHEMA_VERSION = '1.0';
 const PLAN_TTL_MS = 10 * 60 * 1000;
-const MAX_DOCUMENT_BYTES = 256 * 1024;
 const RESOURCE_ID = /^ddr_(vm|host)_[a-f0-9]{26}$/;
 const CVE_ID = /^CVE-\d{4}-\d{4,8}$/;
-const SAFE_REF = /^(?:vault|keyvault|secretsmanager|1password|env):\/\/[A-Za-z0-9][A-Za-z0-9._~:/@+-]{1,497}$/;
 const SAFE_TEXT = /^[^\u0000-\u001f\u007f<>]{1,500}$/;
 const SECRET_KEY = /password|secret|token|credential|private.?key|authorization|cookie/i;
-const REFERENCE_KEY = /(?:ref|reference)$/i;
 const PRIVATE_KEY = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/i;
 const ACTION_RISK = Object.freeze({
   disable_legacy_protocol: 'low',
@@ -490,56 +488,18 @@ async function executeLowRisk(host, planId, input = {}, options = {}) {
     createdAt: run.created_at, completedAt: run.completed_at };
 }
 
-function _referenceFinding(path, code, message) { return { path: path.slice(0, 300), code, message }; }
 function _validateReferences(document) {
-  const findings = []; const references = [];
-  function visit(value, path) {
-    if (typeof value === 'string') {
-      if (PRIVATE_KEY.test(value)) findings.push(_referenceFinding(path,
-        'INLINE_PRIVATE_KEY', 'Inline private-key material is forbidden'));
-      if (/:\/\/[^\s/:]+:[^\s/@]+@/.test(value)) findings.push(_referenceFinding(path,
-        'CREDENTIAL_URL', 'Credential-bearing URLs are forbidden'));
-      return;
-    }
-    if (Array.isArray(value)) { value.forEach((item, index) => visit(item, `${path}[${index}]`)); return; }
-    if (!value || typeof value !== 'object') return;
-    if (typeof value.name === 'string' && SECRET_KEY.test(value.name) && Object.hasOwn(value, 'value')) {
-      findings.push(_referenceFinding(`${path}.value`, 'INLINE_SECRET_VALUE',
-        'Secret-named entries must use a reference, not value'));
-    }
-    for (const [key, child] of Object.entries(value)) {
-      const childPath = path ? `${path}.${key}` : key;
-      if (SECRET_KEY.test(key)) {
-        if (REFERENCE_KEY.test(key)) {
-          if (typeof child === 'string' && SAFE_REF.test(child)) references.push(child);
-          else if (key.toLowerCase() === 'secretkeyref' && child && typeof child === 'object'
-            && /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/.test(String(child.name || ''))
-            && /^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/.test(String(child.key || ''))) {
-            references.push(_canonical({ secretKeyRef: { name: child.name, key: child.key } }));
-          } else findings.push(_referenceFinding(childPath, 'INVALID_SECRET_REFERENCE',
-            'Secret references must use an approved manager URI or Kubernetes secretKeyRef'));
-        } else findings.push(_referenceFinding(childPath, 'INLINE_SECRET_FIELD',
-          'Secret-bearing fields must be replaced by symbolic references'));
-      }
-      visit(child, childPath);
-    }
-  }
-  visit(document, '');
-  return { findings: [...new Map(findings.map(item => [`${item.path}:${item.code}`, item])).values()],
-    references: [...new Set(references)] };
+  return secretReferenceAdmission._internals.inspectDocument(document);
 }
 function validateSecretReferences(host, input = {}, options = {}) {
   _assertEnabled(options); _assertOperate(options); const database = _database(options);
-  _host(database, host.id); const documentKind = String(input.documentKind || '');
-  if (!['manifest', 'job', 'template'].includes(documentKind)) throw new ProviderSecurityLifecycleError(
-    'Document kind is invalid', 'INVALID_SECRET_REFERENCE_DOCUMENT');
-  const document = input.document;
-  if (!document || typeof document !== 'object' || Array.isArray(document)) throw new ProviderSecurityLifecycleError(
-    'Document must be an object', 'INVALID_SECRET_REFERENCE_DOCUMENT');
-  _bounded(document, 'Document', MAX_DOCUMENT_BYTES);
-  const documentHash = sha256(_canonical(document)); const validation = _validateReferences(document);
-  const referenceHashes = validation.references.map(reference => sha256(reference)).sort();
-  const state = validation.findings.length ? 'invalid' : 'valid';
+  _host(database, host.id); let admission;
+  try { admission = secretReferenceAdmission.inspectSecretReferences(input); } catch (error) {
+    if (error?.name === 'SecretReferenceAdmissionError') throw new ProviderSecurityLifecycleError(
+      error.message, error.code, error.status, error.details);
+    throw error;
+  }
+  const { documentKind, documentHash, referenceHashes, state, findings } = admission;
   const existing = database.prepare(`SELECT id FROM provider_secret_reference_validations
     WHERE host_id=? AND document_kind=? AND document_hash=?`).get(Number(host.id), documentKind, documentHash);
   const id = existing?.id || `psrv_${generateToken(13)}`;
@@ -549,9 +509,9 @@ function validateSecretReferences(host, input = {}, options = {}) {
       reference_hashes_json=excluded.reference_hashes_json,state=excluded.state,
       findings_json=excluded.findings_json,created_by=excluded.created_by,created_at=datetime('now')`)
     .run(id, Number(host.id), documentKind, documentHash, JSON.stringify(referenceHashes), state,
-      JSON.stringify(validation.findings), options.createdBy || null);
+      JSON.stringify(findings), options.createdBy || null);
   return { schemaVersion: SCHEMA_VERSION, id, hostId: Number(host.id), documentKind, documentHash,
-    state, referenceCount: referenceHashes.length, referenceHashes, findings: validation.findings,
+    state, referenceCount: referenceHashes.length, referenceHashes, findings,
     networkCallsStarted: 0, documentStored: false };
 }
 
