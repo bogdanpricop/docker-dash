@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.91.2] - 2026-08-02 — Search across Compose and Git stacks
+
+- Add an Images-style search control to the unified Stacks page with the same
+  200 ms debounced interaction.
+- Filter locally across stack names, source type, services, containers, images,
+  status, working directories, repositories, branches and commit identifiers;
+  typing never triggers an additional API request.
+- Keep the active query across tab switches and refreshes, and distinguish an
+  empty host from a search with no matching results.
+- Add English and Romanian labels plus focused regressions for Compose and Git
+  search metadata.
+
 ## [8.90.0] - 2026-08-01 — Privileged closure operational qualification
 
 This exact batch qualifies the final uncovered `Partial` features B167–B175

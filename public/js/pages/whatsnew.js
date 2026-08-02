@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.91.2', date: '2026-08-02', title: 'Search across Compose and Git stacks', changes: [
+      { type: 'feature', text: 'Stacks now has the same compact, debounced search experience as Images.' },
+      { type: 'improvement', text: 'One query matches stack names, services, containers, images, status, repositories, branches and commit identifiers without refetching the API.' },
+      { type: 'improvement', text: 'Search remains active across stack tabs and refreshes, with localized English and Romanian labels and a dedicated no-results state.' },
+    ] },
     { version: '8.84.0', date: '2026-07-31', title: 'Privileged access and compliance controls', changes: [
       { type: 'security', text: 'B169–B178 add rate-limited local-TOTP step-up, four-eyes JIT and one-time permission/user/scope-bound tokens.' },
       { type: 'security', text: 'Ticketed break-glass uses independent approval, activation, expiry, closure and review while remaining a scoped envelope rather than a temporary login account.' },
