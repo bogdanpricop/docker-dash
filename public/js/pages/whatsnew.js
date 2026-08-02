@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.91.3', date: '2026-08-02', title: 'Automatic secret-reference admission', changes: [
+      { type: 'security', text: 'Infrastructure manifests, workflow jobs and onboarding templates now reject inline secret material automatically before persistence.' },
+      { type: 'security', text: 'Vault/KMS URIs, exact environment references, Kubernetes secretKeyRef/secretRef and named Compose secrets are recognized through one bounded inspector.' },
+      { type: 'improvement', text: 'Admission and audit evidence contains document/reference hashes and counts only; it starts no provider or network work and never copies submitted values.' },
+    ] },
     { version: '8.91.2', date: '2026-08-02', title: 'Search across Compose and Git stacks', changes: [
       { type: 'feature', text: 'Stacks now has the same compact, debounced search experience as Images.' },
       { type: 'improvement', text: 'One query matches stack names, services, containers, images, status, repositories, branches and commit identifiers without refetching the API.' },

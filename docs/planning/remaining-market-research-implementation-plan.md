@@ -680,6 +680,12 @@ Prin urmare, implementarea care putea fi închisă sigur folosind numai repo-ul,
 fixture-urile locale și cele două ținte Docker este completă. Lista următoare
 este un registru de prerechizite externe, nu muncă locală rămasă ascunsă.
 
+Follow-up-ul v8.91.3 închide restul local B168 identificat ulterior în
+proiecția registry: validatorul hash-only este conectat automat la admiterea
+manifestelor, joburilor și template-urilor. B168 rămâne `Partial` numai din
+cauza browser smoke-ului integrat care nu poate fi înregistrat în această
+sesiune.
+
 ## 21. Prerechizite externe pentru promovarea `Partial` → `Done`
 
 1. UX control-plane: browser smoke pentru Governance, Self-Service, Identity & Policy și Edge, inclusiv tab keyboard navigation și cel puțin un dialog modal pe rută.

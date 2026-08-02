@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.91.3] - 2026-08-02 — Automatic secret-reference admission
+
+- Reuse one bounded, hash-only inspector across provider lifecycle validation,
+  infrastructure manifests/jobs and onboarding template admission.
+- Reject inline secret fields, private keys, credential-bearing URLs and
+  secret-shaped environment assignments before application persistence.
+- Recognize approved secret-manager URIs, exact `${ENVIRONMENT_VARIABLE}`
+  references, Kubernetes `secretKeyRef`/`secretRef` and named Compose or
+  Kubernetes secrets without copying raw references into admission evidence.
+- Add admission hashes/counts to successful manifest and workflow audits, and
+  return safe 422 findings for rejected writes without provider/network work.
+- Narrow the B168 market-research limitation to integrated browser smoke; the
+  automatic manifest/job/template integration is now implemented and tested.
+
 ## [8.91.2] - 2026-08-02 — Search across Compose and Git stacks
 
 - Add an Images-style search control to the unified Stacks page with the same
