@@ -379,7 +379,7 @@ function evidenceFor(feature, status) {
     return evidence;
   }
   if (featureNumber >= 169 && featureNumber <= 176) {
-    return [
+    const evidence = [
       {
         type: 'test',
         reference: 'R6c privileged compliance focused tests',
@@ -396,6 +396,11 @@ function evidenceFor(feature, status) {
         path: 'src/__tests__/provider-operational-qualification.test.js',
       },
     ];
+    if (featureNumber === 169) evidence.push({
+      type: 'release', reference: 'v8.91.4 critical-operation JIT wiring',
+      path: 'docs/planning/virtualization-platform/V4.4t-critical-operation-jit-feature-spec.md',
+    });
+    return evidence;
   }
   return [{
     type: 'release',
@@ -492,7 +497,7 @@ function limitationsFor(feature, status, deliveryLevel) {
     return ['Released in v8.83.0 and read-only qualified in v8.90.0; v8.91.3 adds automatic manifest/job/template admission integration, while browser smoke remains outstanding.'];
   }
   if (status === 'Partial' && number === 169) {
-    return ['Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding.'];
+    return ['Released in v8.84.0 and read-only qualified in v8.90.0; v8.91.4 wires granular JIT to forced power, snapshot revert/delete and VM migration behind a default-off rollout gate, while canary/enablement, SSO/WebAuthn step-up and browser smoke remain outstanding.'];
   }
   if (status === 'Partial' && number === 170) {
     return ['Released in v8.84.0 and read-only qualified in v8.90.0; an external notification dispatcher, standalone temporary identity and browser smoke remain outstanding.'];

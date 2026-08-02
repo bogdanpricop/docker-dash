@@ -10,6 +10,7 @@ jest.mock('../db', () => ({ getDb: jest.fn(() => { throw new Error('inject datab
 
 const Database = require('better-sqlite3');
 const migration = require('../db/migrations/169_provider_privileged_compliance');
+const criticalOperationMigration = require('../db/migrations/170_provider_critical_operation_jit');
 const service = require('../services/provider-sdk/privileged-compliance');
 const broker = require('../services/provider-console/broker');
 
@@ -51,6 +52,7 @@ describe('provider privileged access and compliance lifecycle', () => {
         '{"hostId":7}','2026-07-31T10:00:00Z','${'a'.repeat(64)}');
     `);
     migration.up(db);
+    criticalOperationMigration.up(db);
   });
 
   afterEach(() => db.close());
@@ -80,15 +82,51 @@ describe('provider privileged access and compliance lifecycle', () => {
 
     const claimed = service.claimElevation(host, requested.grant.id, admin, options());
     expect(claimed.token).toMatch(/^[a-f0-9]{64}$/);
-    expect(service.validateElevation(host.id, admin, 'data.classification.manage', claimed.token, options()))
+    expect(service.validateElevation(host.id, admin, 1, 'data.classification.manage', claimed.token, options()))
       .toEqual(expect.objectContaining({ id: requested.grant.id, state: 'active' }));
     expect(() => service.claimElevation(host, requested.grant.id, admin, options())).toThrow(/cannot be claimed/i);
     const stored = JSON.stringify(db.prepare('SELECT * FROM provider_privileged_elevation_grants').all());
     expect(stored).not.toContain(claimed.token);
     db.prepare("UPDATE provider_privileged_elevation_grants SET expires_at='2020-01-01T00:00:00Z' WHERE id=?")
       .run(requested.grant.id);
-    expect(() => service.validateElevation(host.id, admin,
+    expect(() => service.validateElevation(host.id, admin, 1,
       'data.classification.manage', claimed.token, options())).toThrow(/expired|current JIT/i);
+  });
+
+  it('binds critical-operation grants to user, endpoint, scope and exact permission', () => {
+    const delegated = { id: 3, username: 'delegated', role: 'viewer' };
+    const requestGovernance = { can: (_actor, scopeId, permission) =>
+      Number(scopeId) === 1 && permission === 'privileged.elevation.request' };
+    const requested = service.requestElevation(host, { scopeId: 1,
+      permissionKey: 'provider.vm.power.force', reason: 'Emergency forced power maintenance',
+      ttlSeconds: 600, totpCode: '123456' }, delegated, options({ governanceService: requestGovernance }));
+    service.approveElevation(host, requested.grant.id,
+      { confirmation: `APPROVE JIT ${requested.grant.id}` }, approver, options());
+    const claimed = service.claimElevation(host, requested.grant.id, delegated, options());
+    const denyPersistentAccess = { can: () => false };
+    db.prepare(`INSERT INTO governance_scopes(id,scope_type,scope_key,display_name,parent_id,metadata_json)
+      VALUES (4,'provider','provider-host:7','Current endpoint',1,'{"providerHostId":7}')`).run();
+
+    expect(service.authorizeCriticalOperation(host, { scopeId: 1,
+      operationKey: 'provider.vm.power.force', grantToken: claimed.token }, delegated,
+    options({ governanceService: denyPersistentAccess }))).toEqual(expect.objectContaining({
+      operationKey: 'provider.vm.power.force', permissionKey: 'provider.vm.power.force',
+      mode: 'jit', scopeId: 1, grantId: requested.grant.id,
+    }));
+    expect(() => service.authorizeCriticalOperation(host, { scopeId: 1,
+      operationKey: 'provider.vm.snapshot.delete', grantToken: claimed.token }, delegated,
+    options({ governanceService: denyPersistentAccess }))).toThrow(/scope-bound JIT|grant is required/i);
+    expect(() => service.authorizeCriticalOperation(host, { scopeId: 4,
+      operationKey: 'provider.vm.power.force', grantToken: claimed.token }, delegated,
+    options({ governanceService: denyPersistentAccess }))).toThrow(/scope-bound JIT|grant is required/i);
+    expect(() => service.authorizeCriticalOperation({ ...host, id: 8 }, { scopeId: 1,
+      operationKey: 'provider.vm.power.force', grantToken: claimed.token }, delegated,
+    options({ governanceService: denyPersistentAccess }))).toThrow(/scope-bound JIT|grant is required/i);
+    expect(service.authorizeCriticalOperation(host,
+      { operationKey: 'provider.vm.migration.execute' }, admin, options()))
+      .toEqual(expect.objectContaining({ mode: 'global_admin', scopeId: null }));
+    expect(JSON.stringify(db.prepare('SELECT * FROM provider_privileged_elevation_grants').all()))
+      .not.toContain(claimed.token);
   });
 
   it('rate-limits repeated failed local TOTP step-up attempts without storing codes', () => {
@@ -192,6 +230,13 @@ describe('provider privileged access and compliance lifecycle', () => {
       governanceIntegration: expect.objectContaining({ permissionCount: 10 }),
       safety: expect.objectContaining({ temporaryAccountCreated: false, screenRecordingStored: false }),
     }));
+  });
+
+  it('seeds four granular critical-operation permissions without changing the B176 ten-permission proof', () => {
+    expect(criticalOperationMigration._PERMISSIONS).toHaveLength(4);
+    expect(db.prepare("SELECT COUNT(*) count FROM governance_permissions WHERE permission_key LIKE 'provider.vm.%'")
+      .get().count).toBe(4);
+    expect(service.ELEVATABLE.has('provider.vm.migration.execute')).toBe(true);
   });
 
   it('integrates delegated permissions, custom roles and host-bound scope hierarchy', () => {

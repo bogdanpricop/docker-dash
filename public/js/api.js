@@ -43,6 +43,18 @@ const Api = {
     return m ? decodeURIComponent(m[1]) : null;
   },
 
+  _criticalOperationHeaders(authorization = null) {
+    if (!authorization) return {};
+    const headers = {};
+    const scopeId = Number(authorization.scopeId);
+    if (Number.isInteger(scopeId) && scopeId > 0) {
+      headers['X-Docker-Dash-Privileged-Scope'] = String(scopeId);
+    }
+    const grantToken = String(authorization.grantToken || '').trim();
+    if (grantToken) headers['X-Docker-Dash-Privileged-Grant'] = grantToken;
+    return headers;
+  },
+
   async request(method, path, body = null, opts = {}) {
     const options = {
       method,
@@ -829,9 +841,10 @@ const Api = {
   preflightProviderVMMigration(hostId, resourceId, body) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration/preflight`, body);
   },
-  submitProviderVMMigration(hostId, resourceId, body, idempotencyKey) {
+  submitProviderVMMigration(hostId, resourceId, body, idempotencyKey, authorization = null) {
     return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration`, body, {
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
     });
   },
   preflightProviderHostMaintenance(hostId, body) {
@@ -904,17 +917,19 @@ const Api = {
   preflightProviderVMPower(hostId, resourceId, action) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power/preflight`, { action });
   },
-  submitProviderVMPower(hostId, resourceId, body, idempotencyKey) {
+  submitProviderVMPower(hostId, resourceId, body, idempotencyKey, authorization = null) {
     return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power`, body, {
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
     });
   },
   preflightProviderVMPowerBulk(hostId, resourceIds, action) {
     return this.post(`/providers/${hostId}/virtual-machines/power/preflight`, { resourceIds, action });
   },
-  submitProviderVMPowerBulk(hostId, body, idempotencyKey) {
+  submitProviderVMPowerBulk(hostId, body, idempotencyKey, authorization = null) {
     return this.request('POST', `/providers/${hostId}/virtual-machines/power`, body, {
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
     });
   },
   getProviderVMNics(hostId, resourceId) {
@@ -975,10 +990,12 @@ const Api = {
   preflightProviderVMSnapshotAction(hostId, resourceId, snapshotId, action) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}/${action}/preflight`, {});
   },
-  submitProviderVMSnapshotAction(hostId, resourceId, snapshotId, action, body, idempotencyKey) {
+  submitProviderVMSnapshotAction(hostId, resourceId, snapshotId, action, body, idempotencyKey,
+    authorization = null) {
     return this.request(action === 'delete' ? 'DELETE' : 'POST',
       `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}${action === 'delete' ? '' : '/revert'}`,
-      body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey } });
+      body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) } });
   },
   preflightProviderVMSnapshotConsolidation(hostId, resourceId) {
     return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/consolidate/preflight`, {});

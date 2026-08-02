@@ -45,6 +45,29 @@ const VirtualMachinesPage = {
     return `${prefix}-${random}`;
   },
 
+  async _withCriticalAuthorization(submit) {
+    try { return await submit(null); }
+    catch (err) {
+      if (err?.body?.code !== 'CRITICAL_OPERATION_JIT_REQUIRED') throw err;
+      const details = err.body.details || {};
+      const authorization = await Modal.form(`<div class="alert alert-warning"><strong>Scoped elevation required.</strong> Request and claim the exact permission from Provider Security, or use an active break-glass envelope. The token is sent once in a protected header and is never added to the operation body.</div>
+        <label class="form-label" for="critical-operation-permission">Permission</label>
+        <input id="critical-operation-permission" class="form-control mono" readonly value="${Utils.escapeHtml(details.permissionKey || 'provider critical operation')}">
+        <label class="form-label" for="critical-operation-scope" style="margin-top:10px">Organization or provider scope ID</label>
+        <input id="critical-operation-scope" class="form-control" type="number" min="1" value="${Number(details.scopeId) > 0 ? Number(details.scopeId) : 1}">
+        <label class="form-label" for="critical-operation-grant" style="margin-top:10px">JIT or break-glass token</label>
+        <input id="critical-operation-grant" class="form-control mono" maxlength="64" autocomplete="off" spellcheck="false">`, {
+        title: 'Authorize critical provider operation', submitLabel: 'Authorize and retry',
+        danger: true, width: '650px',
+        onSubmit: root => ({
+          scopeId: Number(root.querySelector('#critical-operation-scope').value),
+          grantToken: root.querySelector('#critical-operation-grant').value.trim(),
+        }),
+      });
+      return authorization ? submit(authorization) : null;
+    }
+  },
+
   _powerLabel(action) {
     return this._powerActions.find(item => item.action === action)?.label || action;
   },
@@ -234,10 +257,14 @@ const VirtualMachinesPage = {
         html: true, width: '620px',
       });
       if (!confirmed) return;
-      const result = await Api.submitProviderVMPower(hostId, vm.id, {
+      const idempotencyKey = this._idempotencyKey();
+      const body = {
         action, planHash: plan.planHash, confirm: true,
         ...(plan.confirmation?.mode === 'typed_name' ? { confirmName: plan.confirmation.expected } : {}),
-      }, this._idempotencyKey());
+      };
+      const result = await this._withCriticalAuthorization(authorization =>
+        Api.submitProviderVMPower(hostId, vm.id, body, idempotencyKey, authorization));
+      if (!result) return;
       Toast.success(`${this._powerLabel(action)} queued for ${vm.displayName}`);
       location.hash = `#/activity/${result.operation.id}`;
     } catch (err) { Toast.error(err.message); }
@@ -260,11 +287,15 @@ const VirtualMachinesPage = {
         if (!confirmed) return;
       }
       if (force && !confirmNames) return;
-      const result = await Api.submitProviderVMPowerBulk(this._hostId, {
+      const idempotencyKey = this._idempotencyKey('vm-power-bulk');
+      const body = {
         resourceIds, action, confirm: true,
         plans: Object.fromEntries(preflight.plans.map(plan => [plan.resource.id, plan.planHash])),
         ...(confirmNames ? { confirmNames } : {}),
-      }, this._idempotencyKey('vm-power-bulk'));
+      };
+      const result = await this._withCriticalAuthorization(authorization =>
+        Api.submitProviderVMPowerBulk(this._hostId, body, idempotencyKey, authorization));
+      if (!result) return;
       this._selected.clear();
       Toast.success(`${result.count} VM power operation(s) queued`);
       location.hash = '#/activity';
@@ -464,9 +495,14 @@ const VirtualMachinesPage = {
         typeToConfirm: plan.confirmation.expected, html: true, width: '640px',
       });
       if (!confirmed) return;
-      const result = await Api.submitProviderVMSnapshotAction(host.id, vm.id, snapshot.id, action, {
+      const idempotencyKey = this._idempotencyKey(`vm-snapshot-${action}`);
+      const body = {
         planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
-      }, this._idempotencyKey(`vm-snapshot-${action}`));
+      };
+      const result = await this._withCriticalAuthorization(authorization =>
+        Api.submitProviderVMSnapshotAction(host.id, vm.id, snapshot.id, action,
+          body, idempotencyKey, authorization));
+      if (!result) return;
       Toast.success(`Snapshot ${action} queued`);
       location.hash = `#/activity/${result.operation.id}`;
     } catch (err) { Toast.error(err.message); }
@@ -1404,9 +1440,13 @@ const VirtualMachinesPage = {
         typeToConfirm: plan.confirmation.expected, html: true, width: '680px',
       });
       if (!confirmed) return;
-      const result = await Api.submitProviderVMMigration(host.id, vm.id, {
+      const idempotencyKey = this._idempotencyKey('vm-migrate');
+      const body = {
         ...selection, planHash: plan.planHash, confirm: true, confirmName: plan.confirmation.expected,
-      }, this._idempotencyKey('vm-migrate'));
+      };
+      const result = await this._withCriticalAuthorization(authorization =>
+        Api.submitProviderVMMigration(host.id, vm.id, body, idempotencyKey, authorization));
+      if (!result) return;
       Toast.success(`Migration queued for ${vm.displayName}`);
       location.hash = `#/activity/${result.operation.id}`;
     } catch (err) { Toast.error(err.message); }

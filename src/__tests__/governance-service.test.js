@@ -33,7 +33,7 @@ describe('GovernanceService (V4.6a)', () => {
   test('seeds the catalog and lets an inherited binding grant only its declared permission', () => {
     const catalog = governance.catalog(admin);
     expect(catalog).toEqual(expect.objectContaining({ globalAdmin: true }));
-    expect(catalog.permissions).toHaveLength(112);
+    expect(catalog.permissions).toHaveLength(116);
     expect(catalog.permissions).toEqual(expect.arrayContaining([
       expect.objectContaining({ permission_key: 'project.read', key: 'project.read' }),
       expect.objectContaining({ permission_key: 'catalog.manage', key: 'catalog.manage' }),
@@ -54,6 +54,10 @@ describe('GovernanceService (V4.6a)', () => {
       expect.objectContaining({ permission_key: 'kubernetes_vm_policy.manage', key: 'kubernetes_vm_policy.manage' }),
       expect.objectContaining({ permission_key: 'kubernetes_cluster_catalog.manage', key: 'kubernetes_cluster_catalog.manage' }),
       expect.objectContaining({ permission_key: 'application_environment.manage', key: 'application_environment.manage' }),
+      expect.objectContaining({ permission_key: 'provider.vm.power.force', key: 'provider.vm.power.force' }),
+      expect.objectContaining({ permission_key: 'provider.vm.snapshot.revert', key: 'provider.vm.snapshot.revert' }),
+      expect.objectContaining({ permission_key: 'provider.vm.snapshot.delete', key: 'provider.vm.snapshot.delete' }),
+      expect.objectContaining({ permission_key: 'provider.vm.migration.execute', key: 'provider.vm.migration.execute' }),
       expect.objectContaining({ permission_key: 'edge_sites.manage', key: 'edge_sites.manage' }),
       expect.objectContaining({ permission_key: 'edge_intents.manage', key: 'edge_intents.manage' }),
       expect.objectContaining({ permission_key: 'edge_agents.manage', key: 'edge_agents.manage' }),

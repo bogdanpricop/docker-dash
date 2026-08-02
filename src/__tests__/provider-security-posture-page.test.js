@@ -151,4 +151,11 @@ describe('provider security posture page', () => {
     expect(html).not.toContain('pc-classify');
     expect(html).not.toContain('pc-request-break-glass');
   });
+  it('offers granular critical provider permissions in the JIT request flow', () => {
+    const source = page._requestJit.toString();
+    expect(source).toContain('provider.vm.power.force');
+    expect(source).toContain('provider.vm.snapshot.revert');
+    expect(source).toContain('provider.vm.snapshot.delete');
+    expect(source).toContain('provider.vm.migration.execute');
+  });
 });

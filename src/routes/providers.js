@@ -368,6 +368,47 @@ function _privilegedComplianceAudit(req, action, targetType, targetId, details =
   });
 }
 
+function _criticalOperationAuthorization(operationKeyOrResolver) {
+  return (req, res, next) => {
+    if (config.features.providerCriticalOperationJit !== true) return next();
+    const operationKey = typeof operationKeyOrResolver === 'function'
+      ? operationKeyOrResolver(req) : operationKeyOrResolver;
+    if (!operationKey) return next();
+    const resolved = _host(req.params.hostId);
+    if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
+    try {
+      const authorization = providerPrivilegedCompliance.authorizeCriticalOperation(resolved.host, {
+        operationKey,
+        scopeId: req.get('X-Docker-Dash-Privileged-Scope'),
+        grantToken: req.get('X-Docker-Dash-Privileged-Grant'),
+      }, req.user);
+      req.criticalOperationAuthorization = authorization;
+      _privilegedComplianceAudit(req, 'critical_operation_authorized', 'provider_host',
+        String(resolved.host.id), {
+          operationKey: authorization.operationKey, permissionKey: authorization.permissionKey,
+          authorizationMode: authorization.mode, scopeId: authorization.scopeId,
+          grantId: authorization.grantId, expiresAt: authorization.expiresAt,
+          tokenStoredRaw: false,
+        });
+      return next();
+    } catch (err) {
+      _privilegedComplianceAudit(req, 'critical_operation_denied', 'provider_host',
+        String(resolved.host.id), { operationKey, code: err?.code || 'PRIVILEGED_COMPLIANCE_ERROR',
+          tokenStoredRaw: false });
+      return _privilegedComplianceError(res, err);
+    }
+  };
+}
+
+function _criticalAuthorizationAudit(req) {
+  const authorization = req.criticalOperationAuthorization;
+  return authorization ? { criticalOperationJit: {
+    operationKey: authorization.operationKey, permissionKey: authorization.permissionKey,
+    authorizationMode: authorization.mode, scopeId: authorization.scopeId,
+    grantId: authorization.grantId, expiresAt: authorization.expiresAt,
+  } } : {};
+}
+
 function _restoreDrillAudit(req, action, details = {}) {
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -1208,6 +1249,8 @@ router.post('/:hostId/virtual-machines/power/preflight', requireAuth,
 
 router.post('/:hostId/virtual-machines/power', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  _criticalOperationAuthorization(req => providerVmPower.ACTIONS[req.body?.action]?.force === true
+    ? 'provider.vm.power.force' : null),
   asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
@@ -1222,6 +1265,7 @@ router.post('/:hostId/virtual-machines/power', requireAuth,
           provider: resolved.host.daemon_type, action: result.preflight.action,
           count: result.operations.length, operationIds: result.operations.map(operation => operation.id),
           forced: providerVmPower.ACTIONS[result.preflight.action].force,
+          ..._criticalAuthorizationAudit(req),
         }, ip: getClientIp(req),
       });
       res.status(202).json({
@@ -1244,6 +1288,8 @@ router.post('/:hostId/virtual-machines/:resourceId/power/preflight', requireAuth
 
 router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  _criticalOperationAuthorization(req => providerVmPower.ACTIONS[req.body?.action]?.force === true
+    ? 'provider.vm.power.force' : null),
   asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
@@ -1258,6 +1304,7 @@ router.post('/:hostId/virtual-machines/:resourceId/power', requireAuth,
           provider: resolved.host.daemon_type, hostId: resolved.host.id,
           action: result.plan.action, operationId: result.operation.id,
           planHash: result.plan.planHash, forced: providerVmPower.ACTIONS[result.plan.action].force,
+          ..._criticalAuthorizationAudit(req),
         }, ip: getClientIp(req),
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
@@ -1743,6 +1790,7 @@ for (const action of ['revert', 'delete']) {
 
 router.post('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId/revert', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  _criticalOperationAuthorization('provider.vm.snapshot.revert'),
   asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
@@ -1754,7 +1802,8 @@ router.post('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId/revert'
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'provider_vm_snapshot_revert', targetType: 'provider_snapshot', targetId: result.plan.snapshot.id,
-        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id, operationId: result.operation.id },
+        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id,
+          operationId: result.operation.id, ..._criticalAuthorizationAudit(req) },
         ip: getClientIp(req),
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
@@ -1763,6 +1812,7 @@ router.post('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId/revert'
 
 router.delete('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  _criticalOperationAuthorization('provider.vm.snapshot.delete'),
   asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
@@ -1774,7 +1824,8 @@ router.delete('/:hostId/virtual-machines/:resourceId/snapshots/:snapshotId', req
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'provider_vm_snapshot_delete', targetType: 'provider_snapshot', targetId: result.plan.snapshot.id,
-        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id, operationId: result.operation.id },
+        details: { provider: resolved.host.daemon_type, hostId: resolved.host.id, vmId: result.plan.vm.id,
+          operationId: result.operation.id, ..._criticalAuthorizationAudit(req) },
         ip: getClientIp(req),
       });
       res.status(202).json({ schemaVersion: '1.0', operation: result.operation, plan: result.plan });
@@ -1836,6 +1887,7 @@ router.post('/:hostId/virtual-machines/:resourceId/migration/preflight', require
 
 router.post('/:hostId/virtual-machines/:resourceId/migration', requireAuth,
   requireRole('admin', 'operator'), requireHostAccess('operate', { param: 'hostId' }), writeable,
+  _criticalOperationAuthorization('provider.vm.migration.execute'),
   asyncHandler(async (req, res) => {
     const resolved = _host(req.params.hostId);
     if (resolved.error) return res.status(resolved.error.status).json({ error: resolved.error.message });
@@ -1852,6 +1904,7 @@ router.post('/:hostId/virtual-machines/:resourceId/migration', requireAuth,
           provider: resolved.host.daemon_type, hostId: resolved.host.id,
           targetId: result.plan.target.id, targetStorageId: result.plan.targetStorage?.id || null,
           mode: result.plan.mode, operationId: result.operation.id,
+          ..._criticalAuthorizationAudit(req),
         },
         ip: getClientIp(req),
       });

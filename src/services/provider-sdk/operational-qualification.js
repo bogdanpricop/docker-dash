@@ -375,7 +375,7 @@ const DEFINITIONS = Object.freeze({
     tables: ['provider_privileged_step_up_attempts', 'provider_privileged_elevation_grants'],
     columns: { provider_privileged_elevation_grants: ['scope_id', 'permission_key',
       'mfa_verified_at', 'expires_at', 'state', 'token_hash', 'grant_hash'] },
-    outstanding: ['critical_operation_jit_wiring', 'sso_webauthn_step_up', 'browser_smoke'],
+    outstanding: ['critical_operation_canary_and_rollout', 'sso_webauthn_step_up', 'browser_smoke'],
   }),
   B170: Object.freeze({
     name: 'Break-glass workflow', mode: 'control-plane', implementationRelease: 'v8.84.0',
@@ -741,7 +741,9 @@ function _securityClosureRuntime(database, featureId, context) {
 
 function _privilegedComplianceRuntime(database, featureId, context) {
   const releaseFlags = [{ name: 'DD_PROVIDER_PRIVILEGED_COMPLIANCE',
-    enabled: config.features?.providerPrivilegedCompliance === true }];
+    enabled: config.features?.providerPrivilegedCompliance === true },
+  { name: 'DD_PROVIDER_CRITICAL_OPERATION_JIT',
+    enabled: config.features?.providerCriticalOperationJit === true }];
   if (featureId === 'B169') {
     const attempt = _row(database, `SELECT COUNT(*) attempt_count,MAX(attempted_at) last_evidence_at,
       SUM(CASE WHEN succeeded=1 THEN 1 ELSE 0 END) succeeded_count

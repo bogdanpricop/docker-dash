@@ -924,14 +924,17 @@ manifeste/joburi/template-uri nu persistă documentul sau secret references.
 Colectoarele provider-native, browser smoke și canary lipsesc, deci B159–B168
 rămân `Partial`.
 
-**Status implementare R6c / working tree 2026-07-31:** B169–B175 au acum un
+**Status implementare R6c / v8.84.0, follow-up v8.91.4:** B169–B175 au acum un
 control-plane endpoint-scoped pentru TOTP/JIT four-eyes, break-glass, metadata
 de sesiune, classification, export JSON/PDF semnat local, mappings de control și
 ransomware recovery posture. Tokenurile sunt returnate o singură dată și numai
 hash-urile sunt persistate; exportul aplică redaction după classification și nu
 stochează bundle/config/secrets/media. Migrarea adaugă zece permisiuni și
 revalidează rolurile custom și ierarhia de scope existente B176–B178, care rămân
-`Done` și nu sunt funcții noi ale acestui slice. B169–B175 rămân `Partial`:
+`Done` și nu sunt funcții noi ale acestui slice. Follow-up-ul B169 leagă
+permisiuni JIT distincte de power forțat, snapshot revert/delete și migrare VM,
+cu token user/endpoint/scope/permission-bound, retry UI și kill-switch separat
+default-off. B169–B175 rămân `Partial`: rollout-ul JIT cere canary, iar în rest
 nu există cont temporar standalone, dispatcher extern, media recorder,
 public-key attestation sau enforcement/colectare provider-native completă.
 

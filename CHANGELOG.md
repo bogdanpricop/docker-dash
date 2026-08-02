@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.91.4] - 2026-08-02 — Scoped JIT for critical provider operations
+
+- Add four exact governance permissions for forced VM power, snapshot revert,
+  snapshot delete and VM migration instead of one reusable broad mutation role.
+- Enforce user, endpoint, organization/provider scope, permission and expiry on
+  claimed JIT grants; preserve the explicit global-admin bypass and break-glass
+  envelope.
+- Retry protected mutations from the VM UI with scope/token headers while
+  preserving the original idempotency key and keeping grant material out of
+  request bodies and audit entries.
+- Keep enforcement behind the independent default-off
+  `DD_PROVIDER_CRITICAL_OPERATION_JIT` kill switch pending an approved provider
+  canary and staged operator rollout.
+
 ## [8.91.3] - 2026-08-02 — Automatic secret-reference admission
 
 - Reuse one bounded, hash-only inspector across provider lifecycle validation,

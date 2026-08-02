@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.91.4', date: '2026-08-02', title: 'Scoped JIT for critical provider operations', changes: [
+      { type: 'security', text: 'Forced VM power, snapshot revert/delete and VM migration now have exact JIT permissions behind a separate default-off rollout gate.' },
+      { type: 'security', text: 'Claimed grants are bound to user, endpoint, organization/provider scope, permission and expiry; raw tokens stay out of operation bodies and audits.' },
+      { type: 'improvement', text: 'The VM UI can authorize and retry a protected mutation without changing its original idempotency key.' },
+    ] },
     { version: '8.91.3', date: '2026-08-02', title: 'Automatic secret-reference admission', changes: [
       { type: 'security', text: 'Infrastructure manifests, workflow jobs and onboarding templates now reject inline secret material automatically before persistence.' },
       { type: 'security', text: 'Vault/KMS URIs, exact environment references, Kubernetes secretKeyRef/secretRef and named Compose secrets are recognized through one bounded inspector.' },

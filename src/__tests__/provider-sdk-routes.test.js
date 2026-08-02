@@ -143,6 +143,7 @@ const mockClassificationUpsert = jest.fn();
 const mockComplianceMappings = jest.fn();
 const mockRansomwarePosture = jest.fn();
 const mockComplianceExport = jest.fn();
+const mockCriticalOperationAuthorize = jest.fn();
 const mockProvisionPreflight = jest.fn();
 const mockProvisionSubmit = jest.fn();
 const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
@@ -155,6 +156,7 @@ jest.mock('../config', () => {
     providerRestoreReplicationDepth: true,
     providerSecurityAssurance: true, providerSecurityLifecycle: true,
     providerPrivilegedCompliance: true,
+    providerCriticalOperationJit: false,
     providerVmActionSchedules: true } };
 });
 
@@ -440,6 +442,7 @@ jest.mock('../services/provider-sdk/privileged-compliance', () => {
     importMappings: (...args) => mockComplianceMappings(...args),
     recordRansomwarePosture: (...args) => mockRansomwarePosture(...args),
     createComplianceExport: (...args) => mockComplianceExport(...args),
+    authorizeCriticalOperation: (...args) => mockCriticalOperationAuthorize(...args),
   };
 });
 jest.mock('../services/provider-operations/vm-provision', () => ({
@@ -471,6 +474,7 @@ jest.mock('../middleware/hostAccess', () => ({
   },
 }));
 
+const config = require('../config');
 const routes = require('../routes/providers');
 const app = express();
 app.use(express.json());
@@ -479,6 +483,7 @@ app.use('/api/providers', routes);
 describe('Provider SDK routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    config.features.providerCriticalOperationJit = false;
     mockCapabilities.mockResolvedValue({
       schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
       probe: { status: 'reachable', durationMs: 10 }, features: {},
@@ -1073,6 +1078,51 @@ describe('Provider SDK routes', () => {
       action: 'start', idempotencyKey: 'power-request-123',
     }), { canOperate: true, createdBy: 1 });
     expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_power_submit' }));
+  });
+
+  it('enforces granular JIT headers only for allowlisted critical provider mutations', async () => {
+    config.features.providerCriticalOperationJit = true;
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const required = new (require('../services/provider-sdk/privileged-compliance').PrivilegedComplianceError)(
+      'Scoped elevation required', 'CRITICAL_OPERATION_JIT_REQUIRED', 403,
+      { operationKey: 'provider.vm.power.force', permissionKey: 'provider.vm.power.force' });
+    mockCriticalOperationAuthorize.mockImplementationOnce(() => { throw required; });
+    const denied = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ action: 'forceShutdown', confirm: true, planHash: 'a'.repeat(64) });
+    expect(denied.status).toBe(403);
+    expect(denied.body).toEqual(expect.objectContaining({
+      code: 'CRITICAL_OPERATION_JIT_REQUIRED',
+      details: expect.objectContaining({ permissionKey: 'provider.vm.power.force' }),
+    }));
+    expect(mockPowerSubmit).not.toHaveBeenCalled();
+
+    mockCriticalOperationAuthorize.mockReturnValueOnce({
+      operationKey: 'provider.vm.power.force', permissionKey: 'provider.vm.power.force',
+      mode: 'jit', scopeId: 41, grantId: 'ppjg_safe', expiresAt: '2026-08-02T12:00:00Z',
+    });
+    mockPowerSubmit.mockResolvedValueOnce({
+      plan: { action: 'forceShutdown', planHash: 'a'.repeat(64), resource: { id } },
+      operation: { id: `op_${'d'.repeat(26)}` },
+    });
+    const allowed = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('X-Docker-Dash-Privileged-Scope', '41')
+      .set('X-Docker-Dash-Privileged-Grant', 'f'.repeat(64))
+      .send({ action: 'forceShutdown', confirm: true, planHash: 'a'.repeat(64) });
+    expect(allowed.status).toBe(202);
+    expect(mockCriticalOperationAuthorize).toHaveBeenLastCalledWith(mockHost, {
+      operationKey: 'provider.vm.power.force', scopeId: '41', grantToken: 'f'.repeat(64),
+    }, expect.objectContaining({ role: 'operator' }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_critical_operation_authorized',
+      details: expect.not.objectContaining({ grantToken: expect.anything() }),
+    }));
+
+    await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ action: 'start', confirm: true, planHash: 'a'.repeat(64) });
+    expect(mockCriticalOperationAuthorize).toHaveBeenCalledTimes(2);
   });
 
   it('admin-gates, audits and controls durable host maintenance runs', async () => {

@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const page = require('../../public/js/pages/virtual-machines');
 
 describe('common virtual machines page routing', () => {
@@ -57,6 +59,22 @@ describe('common virtual machines page routing', () => {
     expect(source).toContain('data-migrate-target');
     expect(page._runMigration.toString()).toContain('submitProviderVMMigration');
     expect(source).not.toContain('nativeRef');
+  });
+
+  it('retries critical mutations with scope/grant headers and stable idempotency keys', () => {
+    const authorization = page._withCriticalAuthorization.toString();
+    expect(authorization).toContain('CRITICAL_OPERATION_JIT_REQUIRED');
+    expect(authorization).toContain('critical-operation-scope');
+    expect(authorization).toContain('critical-operation-grant');
+    for (const method of [page._runPower, page._runBulkPower, page._runSnapshotAction, page._runMigration]) {
+      const source = method.toString();
+      expect(source).toContain('_withCriticalAuthorization');
+      expect(source.indexOf('idempotencyKey')).toBeLessThan(source.indexOf('_withCriticalAuthorization'));
+    }
+    const api = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'api.js'), 'utf8');
+    expect(api).toContain("headers['X-Docker-Dash-Privileged-Scope']");
+    expect(api).toContain("headers['X-Docker-Dash-Privileged-Grant']");
+    expect(api).toContain('...this._criticalOperationHeaders(authorization)');
   });
 
   it('wires blackout-aware scheduled VM actions with typed execute authorization', () => {

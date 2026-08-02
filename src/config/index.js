@@ -133,6 +133,9 @@ module.exports = {
     // MFA/four-eyes JIT, break-glass, classification, signed evidence and
     // ransomware posture control plane. Provider/media mutation stays absent.
     providerPrivilegedCompliance: bool('DD_PROVIDER_PRIVILEGED_COMPLIANCE', false),
+    // Independent kill switch for enforcing scoped JIT/break-glass grants on
+    // allowlisted provider mutations. Keep default-off until an operator canary.
+    providerCriticalOperationJit: bool('DD_PROVIDER_CRITICAL_OPERATION_JIT', false),
     providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
     providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
     // NIC link mutation is released independently per provider. A global flag

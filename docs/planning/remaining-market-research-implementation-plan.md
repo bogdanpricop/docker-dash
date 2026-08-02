@@ -705,6 +705,7 @@ sesiune.
 10. R6a/R6b/B159–B168: provider-native hardware/transport/certificate/exposure
     collectors și certificate/remediation adapters; executorul low-risk poate fi
     canary-uit numai pe un provider disposable, cu rollback și post-read verify.
-11. R6c/B169–B175: conectarea JIT la operațiile critice rămase, step-up pentru
+11. R6c/B169–B175: v8.91.4 conectează JIT default-off la power forțat,
+    snapshot revert/delete și migrare VM; rollout-ul cere canary, iar step-up pentru
     SSO/WebAuthn, dispatcher extern de notificări, media recorder aprobat legal,
     enforcement provider-native pentru classification și public-key attestation.

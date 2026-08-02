@@ -147,8 +147,10 @@ describe('virtualization market-research registry', () => {
       status: 'Partial',
       evidence: expect.arrayContaining([expect.objectContaining({
         path: 'src/__tests__/provider-privileged-compliance.test.js',
+      }), expect.objectContaining({
+        path: 'docs/planning/virtualization-platform/V4.4t-critical-operation-jit-feature-spec.md',
       })]),
-      limitations: ['Released in v8.84.0 and read-only qualified in v8.90.0; critical-operation JIT wiring, SSO/WebAuthn step-up and browser smoke remain outstanding.'],
+      limitations: ['Released in v8.84.0 and read-only qualified in v8.90.0; v8.91.4 wires granular JIT to forced power, snapshot revert/delete and VM migration behind a default-off rollout gate, while canary/enablement, SSO/WebAuthn step-up and browser smoke remain outstanding.'],
     }));
     expect(registry.features.find(feature => feature.featureId === 'B175')).toEqual(expect.objectContaining({
       limitations: ['Released in v8.84.0 and read-only qualified in v8.90.0; provider-native factor collectors, a recovery canary and browser smoke remain outstanding.'],

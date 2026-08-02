@@ -14,7 +14,15 @@ const ELEVATABLE = new Set([
   'privileged.break_glass.request', 'privileged.session_recording.read',
   'data.classification.manage', 'compliance.evidence.export',
   'compliance.mapping.manage', 'recovery.ransomware_posture.manage',
+  'provider.vm.power.force', 'provider.vm.snapshot.revert',
+  'provider.vm.snapshot.delete', 'provider.vm.migration.execute',
 ]);
+const CRITICAL_OPERATIONS = Object.freeze({
+  'provider.vm.power.force': Object.freeze({ permissionKey: 'provider.vm.power.force' }),
+  'provider.vm.snapshot.revert': Object.freeze({ permissionKey: 'provider.vm.snapshot.revert' }),
+  'provider.vm.snapshot.delete': Object.freeze({ permissionKey: 'provider.vm.snapshot.delete' }),
+  'provider.vm.migration.execute': Object.freeze({ permissionKey: 'provider.vm.migration.execute' }),
+});
 const SAFE_TEXT = /^[^\u0000-\u001f\u007f<>]{1,600}$/;
 const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,299}$/;
 const RESOURCE_PATTERNS = Object.freeze({
@@ -234,15 +242,15 @@ function claimElevation(host, grantId, actor, options = {}) {
     'SELECT * FROM provider_privileged_elevation_grants WHERE id=?').get(row.id)), token, tokenShownOnce: true };
 }
 
-function validateElevation(hostId, actor, permissionKey, token, options = {}) {
+function validateElevation(hostId, actor, scopeId, permissionKey, token, options = {}) {
   _assertEnabled(options); const database = _database(options); _actor(actor); _refresh(database);
   const raw = String(token || '');
   if (!/^[a-f0-9]{64}$/.test(raw)) throw new PrivilegedComplianceError(
     'A current JIT grant token is required', 'JIT_GRANT_REQUIRED', 403);
   const row = database.prepare(`SELECT * FROM provider_privileged_elevation_grants
-    WHERE token_hash=? AND host_id=? AND requested_by=? AND permission_key=? AND state='active'
+    WHERE token_hash=? AND host_id=? AND scope_id=? AND requested_by=? AND permission_key=? AND state='active'
       AND claimed_at IS NOT NULL AND julianday(expires_at)>julianday('now')`).get(
-    sha256(raw), Number(hostId), Number(actor.id), String(permissionKey));
+    sha256(raw), Number(hostId), Number(scopeId), Number(actor.id), String(permissionKey));
   if (!row) throw new PrivilegedComplianceError(
     'JIT grant is invalid, expired or outside the requested scope', 'JIT_GRANT_REQUIRED', 403);
   return _elevation(row);
@@ -265,12 +273,53 @@ function _operationPermission(hostId, actor, scopeId, permission, grantToken, op
   if (actor?.role === 'admin') return { mode: 'global_admin', scopeId: Number(scopeId) };
   const governanceService = options.governanceService || governance;
   if (governanceService.can(actor, Number(scopeId), permission)) return { mode: 'delegated_role', scopeId: Number(scopeId) };
-  try { return { mode: 'jit', grant: validateElevation(hostId, actor, permission, grantToken, options) }; }
+  try { return { mode: 'jit', grant: validateElevation(hostId, actor, scopeId, permission, grantToken, options) }; }
   catch (error) {
     if (error?.code !== 'JIT_GRANT_REQUIRED') throw error;
     return { mode: 'break_glass', request: validateBreakGlass(
       hostId, actor, scopeId, grantToken, options) };
   }
+}
+
+function authorizeCriticalOperation(host, input = {}, actor, options = {}) {
+  _assertEnabled(options); const database = _database(options); _host(database, host.id); _actor(actor);
+  const operationKey = String(input.operationKey || '');
+  const definition = CRITICAL_OPERATIONS[operationKey];
+  if (!definition) throw new PrivilegedComplianceError(
+    'Critical provider operation is not in the authorization allowlist',
+    'CRITICAL_OPERATION_NOT_ALLOWLISTED', 400);
+  if (actor.role === 'admin') return { schemaVersion: SCHEMA_VERSION, operationKey,
+    permissionKey: definition.permissionKey, mode: 'global_admin', scopeId: null,
+    grantId: null, expiresAt: null };
+  if (!Number.isInteger(Number(input.scopeId)) || Number(input.scopeId) <= 0) {
+    throw new PrivilegedComplianceError(
+      'Select an organization or provider scope and supply a current JIT or break-glass grant',
+      'CRITICAL_OPERATION_JIT_REQUIRED', 403, {
+        operationKey, permissionKey: definition.permissionKey,
+        allowedScopeTypes: ['organization', 'provider'],
+      });
+  }
+  const scope = _scope(database, input.scopeId, host.id);
+  if (!['organization', 'provider'].includes(scope.scope_type)) throw new PrivilegedComplianceError(
+    'Critical provider operations require an organization or provider scope',
+    'CRITICAL_OPERATION_SCOPE_REQUIRED', 409,
+    { operationKey, permissionKey: definition.permissionKey, allowedScopeTypes: ['organization', 'provider'] });
+  let authorization;
+  try {
+    authorization = _operationPermission(host.id, actor, scope.id,
+      definition.permissionKey, input.grantToken, options);
+  } catch (error) {
+    if (!['JIT_GRANT_REQUIRED', 'PRIVILEGED_GRANT_REQUIRED'].includes(error?.code)) throw error;
+    throw new PrivilegedComplianceError(
+      'A current scope-bound JIT or break-glass grant is required for this critical operation',
+      'CRITICAL_OPERATION_JIT_REQUIRED', 403, {
+        operationKey, permissionKey: definition.permissionKey, scopeId: Number(scope.id),
+      });
+  }
+  const evidence = authorization.grant || authorization.request || null;
+  return { schemaVersion: SCHEMA_VERSION, operationKey, permissionKey: definition.permissionKey,
+    mode: authorization.mode, scopeId: Number(scope.id), grantId: evidence?.id || null,
+    expiresAt: evidence?.expiresAt || null };
 }
 
 function requestBreakGlass(host, input = {}, actor, options = {}) {
@@ -782,8 +831,10 @@ function overview(host, actor, options = {}) {
 }
 
 module.exports = {
-  SCHEMA_VERSION, CLASSIFICATIONS, FRAMEWORKS, ELEVATABLE, POLICY, PrivilegedComplianceError,
+  SCHEMA_VERSION, CLASSIFICATIONS, FRAMEWORKS, ELEVATABLE, CRITICAL_OPERATIONS, POLICY,
+  PrivilegedComplianceError,
   requestElevation, approveElevation, claimElevation, validateElevation, revokeElevation,
+  authorizeCriticalOperation,
   requestBreakGlass, approveBreakGlass, activateBreakGlass, validateBreakGlass,
   closeBreakGlass, reviewBreakGlass,
   upsertClassification, importMappings, recordRansomwarePosture, createComplianceExport, overview,
