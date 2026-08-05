@@ -111,12 +111,15 @@ EU OS remains an optional compatibility profile and source of test fixtures. Dem
 | 2026-08-05 | Workstation inventory | Done | Posture, drift, combined filters and immediate Foreman-to-Edge mapping lifecycle implemented. |
 | 2026-08-05 | Guarded lifecycle | Done locally | Default-off update/rollback plan, template allowlist, fresh evidence, verified TLS, typed confirmation and exact digest post-read implemented. |
 | 2026-08-05 | Focused validation | Passed | 11 suites / 107 tests; ESLint 0 errors; i18n, accessibility and research gates passed. |
-| 2026-08-05 | Full validation | Passed | 320 suites; 3,401 passed; 4 skipped; 0 failed. Full migration chain included `171_workstation_fleet.js`. |
+| 2026-08-05 | Full validation | Passed | 320 suites; 3,398 passed; 4 skipped; 0 failed. Full migration chain included `171_workstation_fleet.js`. |
 | 2026-08-05 | Operational closure | Done | Added zero-network preflight, connection/host checks, trace inputs and bounded remote-job timeout. |
 | 2026-08-05 | API/lifecycle closure | Done | Aligned Foreman submission with required static targeting and template inputs; added atomic submit claim, bounded paginated promotion history and local pre-submit cancellation. |
 | 2026-08-05 | Final repository gates | Passed | Full Jest, ESLint (0 errors), 11-language i18n, accessibility, 450-feature research registry and whitespace checks passed. |
 | 2026-08-05 | Isolated startup smoke | Passed | Temporary database applied the full migration chain including `171_workstation_fleet.js`; the server reached ready state on loopback and temporary data was removed. |
-| 2026-08-05 | Interactive browser smoke | External | The in-app browser runtime exposed no browser backend in this session; no alternate browser mechanism was substituted. |
+| 2026-08-05 | GitHub publication | Passed | Feature `3d077a2`, release `6b243df`, tag/release v8.92.0 and draft PR #13 published; CI plus PR/tag Docker workflows passed. |
+| 2026-08-05 | Docker rollout | Passed | LAN and VPS healthy on v8.92.0 with verified SQLite backups, migration 171 once, 0 restarts and v8.91.4 rollback retained. |
+| 2026-08-05 | External HTTP/UI smoke | Passed | Health, root and Workstation Fleet asset passed on both targets; unauthenticated administrator API returned 401. |
+| 2026-08-05 | Interactive browser smoke | External | Browser skill initialized, but the runtime exposed zero browser backends; no unrelated browser mechanism was substituted. |
 
 ## Local closure statement
 
