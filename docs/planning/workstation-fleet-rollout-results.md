@@ -1,9 +1,9 @@
 # Workstation fleet control plane rollout results
 
-**Release:** v8.92.0  
-**Date:** 2026-08-05  
-**Feature commit:** `3d077a2`  
-**Release commit/tag:** `6b243df252cc0207716bc6c06293e6b32b3b7f8d` / `v8.92.0`
+- **Release:** v8.92.0
+- **Date:** 2026-08-05
+- **Feature commit:** `3d077a2`
+- **Release commit/tag:** `6b243df252cc0207716bc6c06293e6b32b3b7f8d` / `v8.92.0`
 
 ## Result
 
