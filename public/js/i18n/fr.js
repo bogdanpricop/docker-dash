@@ -110,7 +110,8 @@ i18n.register('fr', 'FR', "Français", {
     governance: "Gouvernance",
     "self-service": "Libre-service",
     "governance-controls": "Identité et politiques",
-    "edge-platform": "Edge et environnements déconnectés"
+    "edge-platform": "Edge et environnements déconnectés",
+    "workstation-fleet": "Parc de postes"
   },
   login: {
     title: "Docker Dash",

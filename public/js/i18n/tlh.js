@@ -110,7 +110,8 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     governance: "Governance",
     "self-service": "Self-Service",
     "governance-controls": "Identity & Policy",
-    "edge-platform": "Edge & Disconnected"
+    "edge-platform": "Edge & Disconnected",
+    "workstation-fleet": "Workstation Fleet"
   },
   login: {
     title: "Docker Dash",

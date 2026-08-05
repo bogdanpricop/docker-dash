@@ -188,6 +188,7 @@ app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/workflows', apiLimiter, require('./routes/workflows'));
 app.use('/api/procedures', apiLimiter, require('./routes/procedures'));
 app.use('/api/fleet', apiLimiter, require('./routes/fleet'));
+app.use('/api/workstation-fleet', apiLimiter, require('./routes/workstation-fleet'));
 app.use('/api/gitops', apiLimiter, require('./routes/gitops'));
 app.use('/api/previews', apiLimiter, require('./routes/previews'));
 app.use('/api/oci-compose', apiLimiter, require('./routes/oci-compose'));

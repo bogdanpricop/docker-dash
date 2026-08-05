@@ -110,7 +110,8 @@ i18n.register('zh', '中文', "中文", {
     governance: "治理",
     "self-service": "自助服务",
     "governance-controls": "身份与策略",
-    "edge-platform": "边缘与离线环境"
+    "edge-platform": "边缘与离线环境",
+    "workstation-fleet": "工作站队列"
   },
   login: {
     title: "Docker Dash",

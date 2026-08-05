@@ -22,7 +22,7 @@ i18n.register('xx', 'XX', 'Language Name', {
     'virtual-machines': 'Virtual Machines', 'high-availability': 'High Availability', 'storage-posture': 'Storage Posture', 'network-posture': 'Network Posture',
     'provider-security-posture': 'Provider Security', 'placement-advisor': 'Placement Advisor', 'recovery-points': 'Recovery Points', 'backup-policies': 'Backup Policies',
     'disaster-recovery': 'Disaster Recovery', 'virtualization-catalog': 'VM Catalog', activity: 'Activity Center', 'xen-resources': 'Xen / XCP-ng',
-    governance: 'Governance', 'self-service': 'Self-Service', 'governance-controls': 'Identity & Policy', 'edge-platform': 'Edge & Disconnected',
+    governance: 'Governance', 'self-service': 'Self-Service', 'governance-controls': 'Identity & Policy', 'edge-platform': 'Edge & Disconnected', 'workstation-fleet': 'Workstation Fleet',
   },
   login: {
     title: 'Docker Dash', username: 'Username', password: 'Password',

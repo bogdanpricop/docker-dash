@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/self-service', '/edge'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/self-service', '/edge', '/workstation-fleet'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -2051,6 +2051,24 @@ const Api = {
   saveFinOpsCarbonFactor(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-factors', body); },
   recommendFinOpsCarbonSchedule(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-recommendations', body); },
   compareFinOpsTco(body) { return this.post('/governance/lifecycle/finops/sustainability/tco-scenarios', body); },
+
+  // ─── Workstation fleet / bootc / Foreman ──────
+  getWorkstationFleetOverview() { return this.get('/workstation-fleet/overview'); },
+  getWorkstationDevices(params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/workstation-fleet/devices${qs ? `?${qs}` : ''}`); },
+  saveForemanConnection(body) { return body.id ? this.put(`/workstation-fleet/connections/${body.id}`, body) : this.post('/workstation-fleet/connections', body); },
+  deleteForemanConnection(id) { return this.delete(`/workstation-fleet/connections/${id}`); },
+  testForemanConnection(id) { return this.post(`/workstation-fleet/connections/${id}/test`, {}); },
+  syncForemanConnection(id) { return this.post(`/workstation-fleet/connections/${id}/sync`, {}); },
+  saveForemanMapping(id, body) { return this.put(`/workstation-fleet/connections/${id}/mappings`, body); },
+  deleteForemanMapping(id) { return this.delete(`/workstation-fleet/mappings/${id}`); },
+  inspectBootcArtifact(body) { return this.post('/workstation-fleet/artifacts/inspect', body); },
+  getBootcArtifactPromotions(id, params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/workstation-fleet/artifacts/${id}/promotions${qs ? `?${qs}` : ''}`); },
+  promoteBootcArtifact(id, body) { return this.post(`/workstation-fleet/artifacts/${id}/promote`, body); },
+  createWorkstationPlan(id, body) { return this.post(`/workstation-fleet/devices/${id}/plans`, body); },
+  preflightWorkstationPlan(id) { return this.get(`/workstation-fleet/plans/${id}/preflight`); },
+  cancelWorkstationPlan(id, body) { return this.post(`/workstation-fleet/plans/${id}/cancel`, body); },
+  executeWorkstationPlan(id, body) { return this.post(`/workstation-fleet/plans/${id}/execute`, body); },
+  reconcileWorkstationPlan(id) { return this.post(`/workstation-fleet/plans/${id}/reconcile`, {}); },
 
   // ─── Edge / disconnected platform ──────────────
   getEdgeOverview() { return this.get('/edge/overview'); },

@@ -2,6 +2,27 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.92.0] - 2026-08-05 — Workstation fleet control plane
+
+- Add generic bootc OCI inspection with digest pinning, bounded provenance and
+  SBOM/referrer evidence, reusable Cosign verification and held/canary/stable
+  release channels.
+- Add encrypted Foreman profiles, bounded read-only Foreman/Katello sync,
+  selected host-fact enrichment, Edge Site mapping and workstation posture,
+  drift, search and filters.
+- Add default-off, allowlisted update/rollback plans bound to fresh device and
+  artifact evidence, verified TLS, typed confirmation and exact post-read
+  digest verification.
+- Add zero-network execution preflight, Foreman trace inputs for plan/change/
+  maintenance references, exact template-contract validation, required static
+  targeting and a bounded terminal timeout for running jobs.
+- Add visible, bounded artifact promotion history and audited local cancellation
+  for unsubmitted plans; running Foreman jobs remain reconciliation-only.
+- Serialize concurrent execute requests with an atomic claim and fail closed on
+  unknown/expired submission state without automatically retrying Foreman.
+- Add an administrator UI, localized navigation, audit-safe API, migration,
+  tests and a production qualification runbook.
+
 ## [8.91.4] - 2026-08-02 — Scoped JIT for critical provider operations
 
 - Add four exact governance permissions for forced VM power, snapshot revert,

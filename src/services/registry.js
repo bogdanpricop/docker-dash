@@ -114,6 +114,34 @@ class RegistryService {
     };
   }
 
+  /** Fetch a bounded OCI JSON blob, primarily the image config descriptor. */
+  async blob(id, repo, digest) {
+    const reg = this.get(id);
+    if (!reg) throw new Error('Registry not found');
+    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) throw new Error('Valid sha256 blob digest required');
+    const data = await this._apiCall(reg, `/v2/${repo}/blobs/${digest}`, {
+      accept: 'application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json, application/json',
+      maxBytes: 2 * 1024 * 1024,
+    });
+    if (data.status >= 400) throw new Error(`Registry blob lookup failed (HTTP ${data.status})`);
+    if (!data.body || typeof data.body !== 'object') throw new Error('Registry config blob is not JSON');
+    return data.body;
+  }
+
+  /** OCI Distribution 1.1 referrers. Unsupported registries return an empty list. */
+  async referrers(id, repo, digest) {
+    const reg = this.get(id);
+    if (!reg) throw new Error('Registry not found');
+    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) throw new Error('Valid sha256 subject digest required');
+    const data = await this._apiCall(reg, `/v2/${repo}/referrers/${digest}`, {
+      accept: 'application/vnd.oci.image.index.v1+json, application/json',
+      maxBytes: 2 * 1024 * 1024,
+    });
+    if ([404, 405].includes(data.status)) return [];
+    if (data.status >= 400) throw new Error(`Registry referrers lookup failed (HTTP ${data.status})`);
+    return Array.isArray(data.body?.manifests) ? data.body.manifests.slice(0, 200) : [];
+  }
+
   /**
    * Delete a tag from a remote registry.
    *
@@ -454,6 +482,7 @@ class RegistryService {
         headers['Authorization'] = 'Basic ' + Buffer.from(`${reg.username}:${pass}`).toString('base64');
       }
 
+      const maxBytes = Math.min(10 * 1024 * 1024, Math.max(1024, Number(opts.maxBytes) || 5 * 1024 * 1024));
       const req = mod.request(url, {
         method,
         headers,
@@ -461,7 +490,16 @@ class RegistryService {
         rejectUnauthorized: false,
       }, (res) => {
         let data = '';
-        res.on('data', chunk => data += chunk);
+        let received = 0;
+        res.on('error', reject);
+        res.on('data', chunk => {
+          received += chunk.length;
+          if (received > maxBytes) {
+            res.destroy(new Error('Registry response exceeded the configured size limit'));
+            return;
+          }
+          data += chunk;
+        });
         res.on('end', () => {
           const result = { status: res.statusCode, headers: res.headers };
           try {

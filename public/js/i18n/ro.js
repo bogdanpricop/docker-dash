@@ -129,7 +129,8 @@ i18n.register('ro', 'RO', "Română", {
     governance: "Guvernanță",
     "self-service": "Autoservire",
     "governance-controls": "Identitate și politici",
-    "edge-platform": "Edge și medii deconectate"
+    "edge-platform": "Edge și medii deconectate",
+    "workstation-fleet": "Parc de stații"
   },
   login: {
     title: "Docker Dash",

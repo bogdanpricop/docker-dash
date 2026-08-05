@@ -195,6 +195,17 @@ function _verifyCosign(artifact, reg, signerPattern) {
   } finally { auth.cleanup(); }
 }
 
+/** Reusable trust verification for digest-pinned OCI artifacts. */
+function verifyTrust({ registryId, repository, digest, policy = 'none', signerPattern = null, provenance = {} }) {
+  const reg = registry.get(Number(registryId));
+  if (!reg) throw _error('Registry not found', 404);
+  if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) throw _error('A pinned sha256 digest is required', 400);
+  if (!['none', 'annotation', 'cosign'].includes(policy)) throw _error('Invalid signature policy');
+  return policy === 'cosign'
+    ? _verifyCosign({ repository, digest: String(digest).toLowerCase() }, reg, signerPattern)
+    : _verifyAnnotation(policy, signerPattern, provenance);
+}
+
 async function create(input, userId) {
   const name = _validateName(input.name, 'Artifact name');
   const projectName = _validateName(input.project_name || input.projectName || name, 'Project name');
@@ -357,6 +368,6 @@ function history(id, limit = 25) {
 }
 
 module.exports = {
-  list, get, create, refresh, plan, deploy, down, remove, history,
+  list, get, create, refresh, plan, deploy, down, remove, history, verifyTrust,
   _internals: { _validateOverride, _artifactUri, _hash, _verifyAnnotation, _composeCliEnvironment },
 };

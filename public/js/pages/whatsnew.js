@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.92.0', date: '2026-08-05', title: 'Trusted bootc workstation fleet', changes: [
+      { type: 'feature', text: 'Docker Dash now inventories Foreman/Katello workstations, evaluates security and bootc drift posture, and maps location or host-group evidence to Edge Sites.' },
+      { type: 'security', text: 'Digest-pinned OCI inspection combines bootc detection, bounded provenance and SBOM/referrer evidence with explicit Cosign signer policy and cryptographic verification.' },
+      { type: 'feature', text: 'Held, canary and stable channels feed immutable update or rollback plans with search, filters, promotion history and administrator workflow visibility.' },
+      { type: 'security', text: 'Foreman execution remains independently default-off and requires verified TLS, an allowlisted template contract, fresh evidence, typed confirmation and exact post-read digest verification.' },
+    ] },
     { version: '8.91.4', date: '2026-08-02', title: 'Scoped JIT for critical provider operations', changes: [
       { type: 'security', text: 'Forced VM power, snapshot revert/delete and VM migration now have exact JIT permissions behind a separate default-off rollout gate.' },
       { type: 'security', text: 'Claimed grants are bound to user, endpoint, organization/provider scope, permission and expiry; raw tokens stay out of operation bodies and audits.' },

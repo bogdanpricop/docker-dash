@@ -110,7 +110,8 @@ i18n.register('ja', 'JP', "日本語", {
     governance: "ガバナンス",
     "self-service": "セルフサービス",
     "governance-controls": "ID とポリシー",
-    "edge-platform": "エッジとオフライン環境"
+    "edge-platform": "エッジとオフライン環境",
+    "workstation-fleet": "ワークステーションフリート"
   },
   login: {
     title: "Docker Dash",

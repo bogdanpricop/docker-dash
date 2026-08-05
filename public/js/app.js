@@ -69,6 +69,7 @@ const App = {
     'governance-controls': () => GovernanceControlsPage,
     'self-service': () => SelfServicePage,
     'edge-platform': () => EdgePlatformPage,
+    'workstation-fleet': () => WorkstationFleetPage,
   },
 
   async init() {
@@ -1017,7 +1018,7 @@ const App = {
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
         { label: 'Operations',  items: ['system', 'procedures', 'workflows'] },
-        { label: 'Admin',       items: ['hosts', 'onboarding', 'governance', 'self-service', 'governance-controls', 'edge-platform', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
+        { label: 'Admin',       items: ['hosts', 'onboarding', 'governance', 'self-service', 'governance-controls', 'edge-platform', 'workstation-fleet', 'settings', 'compare', 'api-playground', 'howto', 'about', 'whatsnew'] },
       ];
 
       // Build enterprise nav HTML
@@ -2109,6 +2110,7 @@ const App = {
       { icon: 'fa-store', label: i18n.t('nav.self-service'), action: () => this.navigate('/self-service'), section: 'nav' },
       { icon: 'fa-shield-halved', label: i18n.t('nav.governance-controls'), action: () => this.navigate('/governance-controls'), section: 'nav' },
       { icon: 'fa-tower-broadcast', label: i18n.t('nav.edge-platform'), action: () => this.navigate('/edge-platform'), section: 'nav' },
+      { icon: 'fa-laptop-code', label: i18n.t('nav.workstation-fleet'), action: () => this.navigate('/workstation-fleet'), section: 'nav' },
       // Docker tools
       { icon: 'fa-terminal', label: 'docker run → Compose', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },
       { icon: 'fa-tags', label: 'Reverse Proxy Labels (Traefik/Caddy)', action: () => { this.navigate('/system'); setTimeout(() => document.querySelector('[data-tab="tools"]')?.click(), 300); }, section: 'tools' },

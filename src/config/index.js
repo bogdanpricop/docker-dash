@@ -146,6 +146,24 @@ module.exports = {
     // V4.6a — additive governance control plane. This gates only the new
     // governance API/UI; existing host/stack/provider RBAC remains independent.
     governance: bool('DD_GOVERNANCE_ENABLED', true),
+    // Generic bootc/Foreman workstation fleet control plane. Inventory sync is
+    // read-only; remote update/rollback has its own independent kill switch.
+    workstationFleet: bool('DD_WORKSTATION_FLEET', true),
+    workstationForemanMutations: bool('DD_WORKSTATION_FOREMAN_MUTATIONS', false),
+  },
+  workstationFleet: {
+    requestTimeoutMs: Math.min(120_000,
+      Math.max(5_000, int('DD_WORKSTATION_FOREMAN_TIMEOUT_MS', 30_000))),
+    maxPages: Math.min(100, Math.max(1, int('DD_WORKSTATION_FOREMAN_MAX_PAGES', 20))),
+    maxItems: Math.min(10_000, Math.max(10, int('DD_WORKSTATION_FOREMAN_MAX_ITEMS', 2_000))),
+    maxFactHosts: Math.min(2_000, Math.max(0, int('DD_WORKSTATION_FOREMAN_MAX_FACT_HOSTS', 500))),
+    factConcurrency: Math.min(10, Math.max(1, int('DD_WORKSTATION_FOREMAN_FACT_CONCURRENCY', 5))),
+    evidenceMaxAgeMs: Math.min(7 * 24 * 60 * 60_000,
+      Math.max(60 * 60_000, int('DD_WORKSTATION_EVIDENCE_MAX_AGE_HOURS', 24) * 60 * 60_000)),
+    jobTimeoutMs: Math.min(24 * 60 * 60_000,
+      Math.max(5 * 60_000, int('DD_WORKSTATION_FOREMAN_JOB_TIMEOUT_MINUTES', 120) * 60_000)),
+    allowedRemoteJobTemplates: env('DD_WORKSTATION_FOREMAN_JOB_TEMPLATES', '')
+      .split(',').map(value => value.trim()).filter(value => /^\d+$/.test(value)),
   },
   providerOperations: {
     concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
