@@ -207,6 +207,7 @@ Deep reading: [HA Mode reference](docs/features/ha-mode.md) · [Failover runbook
 - **Cloud vendor badges** (v6.12.1) — Optional DMI probe (`/sys/class/dmi/id/sys_vendor` + `product_name`) identifies AWS EC2, Google Cloud, Azure VM, DigitalOcean, Hetzner, Linode, Vultr, Oracle Cloud, Scaleway, OVHcloud, plus on-prem hypervisors (VMware, VirtualBox, KVM/QEMU, Xen, Parallels). Renders as a second colored pill on the Multi-Host card
 
 ### Operations
+- **Compose Catalog** — Curated OCI Compose blueprints with immutable versions, Cosign-only publication, typed secret-reference-safe parameters, deterministic previews, version diff/restore and a separate reviewed deploy step. See [the runbook](docs/features/compose-blueprint-catalog.md)
 - **Workstation Fleet** — Read-only Foreman/Katello inventory, bootc OCI trust/SBOM evidence, Edge Site mapping, security posture and default-off guarded update/rollback workflows. See [the runbook](docs/features/workstation-fleet.md)
 - **Stacks Page** — Unified Compose + Git stacks management with actions (up/down/restart/pull)
 - **Docker Swarm Mode** — Full UI for Nodes, Services, Tasks; init/leave swarm, scale services, drain nodes, join tokens

@@ -369,5 +369,8 @@ function history(id, limit = 25) {
 
 module.exports = {
   list, get, create, refresh, plan, deploy, down, remove, history, verifyTrust,
-  _internals: { _validateOverride, _artifactUri, _hash, _verifyAnnotation, _composeCliEnvironment },
+  _internals: {
+    _validateName, _validateRepository, _validateReference, _validateOverride,
+    _artifactUri, _hash, _verifyAnnotation, _composeCliEnvironment,
+  },
 };

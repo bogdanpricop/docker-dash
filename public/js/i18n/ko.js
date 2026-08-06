@@ -111,7 +111,8 @@ i18n.register('ko', 'KR', "한국어", {
     "self-service": "셀프 서비스",
     "governance-controls": "ID 및 정책",
     "edge-platform": "엣지 및 오프라인 환경",
-    "workstation-fleet": "워크스테이션 플릿"
+    "workstation-fleet": "워크스테이션 플릿",
+    "compose-catalog": "Compose 카탈로그"
   },
   login: {
     title: "Docker Dash",

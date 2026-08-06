@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.93.0', date: '2026-08-06', title: 'Signed Compose blueprint catalog', changes: [
+      { type: 'feature', text: 'A curated Compose Catalog now provides owned, support-classified blueprints and immutable semantic versions pinned to OCI SHA-256 digests.' },
+      { type: 'security', text: 'Publication and restoration require live Cosign verification against an explicit signer identity; typed inputs accept secret references but never inline secret material.' },
+      { type: 'feature', text: 'Operators can review deterministic parameter, override and plan hashes, compare versions, and idempotently create a stopped OCI application definition.' },
+      { type: 'security', text: 'Deployment remains a separate Docker Compose dry-run and explicit confirmation, so catalog actions cannot silently start or change workloads.' },
+    ] },
     { version: '8.92.0', date: '2026-08-05', title: 'Trusted bootc workstation fleet', changes: [
       { type: 'feature', text: 'Docker Dash now inventories Foreman/Katello workstations, evaluates security and bootc drift posture, and maps location or host-group evidence to Edge Sites.' },
       { type: 'security', text: 'Digest-pinned OCI inspection combines bootc detection, bounded provenance and SBOM/referrer evidence with explicit Cosign signer policy and cryptographic verification.' },

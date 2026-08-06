@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.93.0] - 2026-08-06 — Signed Compose blueprint catalog
+
+- Add a curated Compose catalog with owner, support level, lifecycle and
+  immutable semantic versions resolved to OCI SHA-256 digests.
+- Require Cosign cryptographic verification and an explicit signer identity
+  policy at publication and when restoring a deprecated version.
+- Add a typed parameter wizard, exact-scalar templates and shared
+  secret-reference admission; instantiation history and audit retain hashes,
+  never raw parameters or secret references.
+- Add compatibility declarations, healthcheck expectations, backup/restore
+  guidance and bounded resource estimates with explicit advisory semantics.
+- Add deterministic preview, safe version diff and catalog-only restore, with
+  stale-plan rejection and idempotent OCI application creation.
+- Keep deployment as a separate OCI Compose dry-run/review/confirmation step;
+  catalog instantiation cannot start or change a workload.
+- Add administrator/operator RBAC, effective host scope, localized navigation,
+  tests and operator/publisher incident runbooks.
+
 ## [8.92.0] - 2026-08-05 — Workstation fleet control plane
 
 - Add generic bootc OCI inspection with digest pinning, bounded provenance and

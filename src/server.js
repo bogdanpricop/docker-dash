@@ -192,6 +192,7 @@ app.use('/api/workstation-fleet', apiLimiter, require('./routes/workstation-flee
 app.use('/api/gitops', apiLimiter, require('./routes/gitops'));
 app.use('/api/previews', apiLimiter, require('./routes/previews'));
 app.use('/api/oci-compose', apiLimiter, require('./routes/oci-compose'));
+app.use('/api/compose-blueprints', apiLimiter, require('./routes/compose-blueprints'));
 app.use('/api/disk-pressure', apiLimiter, require('./routes/disk-pressure'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));

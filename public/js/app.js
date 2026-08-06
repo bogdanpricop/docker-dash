@@ -37,6 +37,7 @@ const App = {
     profile:    () => ProfilePage,
     notifications: () => NotificationsPage,
     stacks:     () => StacksPage,
+    'compose-catalog': () => ComposeCatalogPage,
     swarm:      () => SwarmPage,
     'incus-instances': () => IncusInstancesPage,
     'proxmox-resources': () => ProxmoxResourcesPage,
@@ -1013,7 +1014,7 @@ const App = {
       // Enterprise grouping (ESXi-inspired)
       const enterpriseGroups = [
         { label: null,          items: ['dashboard'] },
-        { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'swarm'] },
+        { label: 'Compute',     items: ['multi-host', 'containers', 'stacks', 'compose-catalog', 'swarm'] },
         { label: 'Storage',     items: ['images', 'volumes'] },
         { label: 'Networking',  items: ['networks', 'firewall', 'dependency-map'] },
         { label: 'Monitor',     items: ['insights', 'alerts', 'cost-optimizer', 'security', 'logs', 'timeline'] },
@@ -2104,6 +2105,7 @@ const App = {
       { icon: 'fa-calendar-check', label: i18n.t('nav.backup-policies'), action: () => this.navigate('/backup-policies'), section: 'nav' },
       { icon: 'fa-house-medical-circle-check', label: i18n.t('nav.disaster-recovery'), action: () => this.navigate('/disaster-recovery'), section: 'nav' },
       { icon: 'fa-images', label: i18n.t('nav.virtualization-catalog'), action: () => this.navigate('/virtualization-catalog'), section: 'nav' },
+      { icon: 'fa-cubes', label: i18n.t('nav.compose-catalog'), action: () => this.navigate('/compose-catalog'), section: 'nav' },
       { icon: 'fa-tasks', label: i18n.t('nav.activity'), action: () => this.navigate('/activity'), section: 'nav' },
       { icon: 'fa-cloud', label: i18n.t('nav.xen-resources'), action: () => this.navigate('/xen-resources'), section: 'nav' },
       { icon: 'fa-building-shield', label: i18n.t('nav.governance'), action: () => this.navigate('/governance'), section: 'nav' },

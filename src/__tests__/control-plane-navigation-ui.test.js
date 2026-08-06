@@ -11,7 +11,7 @@ const navigationKeys = [
   'virtual-machines', 'high-availability', 'storage-posture', 'network-posture',
   'provider-security-posture', 'placement-advisor', 'recovery-points', 'backup-policies',
   'disaster-recovery', 'virtualization-catalog', 'activity', 'xen-resources',
-  'governance', 'self-service', 'governance-controls', 'edge-platform', 'workstation-fleet',
+  'governance', 'self-service', 'governance-controls', 'edge-platform', 'workstation-fleet', 'compose-catalog',
 ];
 
 function loadLocale(code) {
@@ -55,6 +55,7 @@ describe('control-plane primary navigation and UI consistency', () => {
       'governance-controls': 'Identitate și politici',
       'edge-platform': 'Edge și medii deconectate',
       'workstation-fleet': 'Parc de stații',
+      'compose-catalog': 'Catalog Compose',
     });
   });
 

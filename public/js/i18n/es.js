@@ -111,7 +111,8 @@ i18n.register('es', 'ES', "Español", {
     "self-service": "Autoservicio",
     "governance-controls": "Identidad y políticas",
     "edge-platform": "Edge y entornos desconectados",
-    "workstation-fleet": "Flota de estaciones"
+    "workstation-fleet": "Flota de estaciones",
+    "compose-catalog": "Catálogo Compose"
   },
   login: {
     title: "Docker Dash",

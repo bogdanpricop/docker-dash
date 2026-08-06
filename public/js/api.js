@@ -1549,6 +1549,33 @@ const Api = {
   stopOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/down`); },
   deleteOciComposeArtifact(id) { return this.delete(`/oci-compose/${id}`); },
 
+  // ─── Signed Compose Blueprint Catalog ─────────────
+  getComposeBlueprints(params = {}) {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+    return this.get(`/compose-blueprints${query.size ? `?${query}` : ''}`);
+  },
+  getComposeBlueprint(id, versions = false) { return this.get(`/compose-blueprints/${id}${versions ? '?versions=true' : ''}`); },
+  createComposeBlueprint(data) { return this.post('/compose-blueprints', data); },
+  updateComposeBlueprint(id, data) { return this.put(`/compose-blueprints/${id}`, data); },
+  transitionComposeBlueprint(id, state) { return this.post(`/compose-blueprints/${id}/state`, { state }); },
+  createComposeBlueprintVersion(id, data) { return this.post(`/compose-blueprints/${id}/versions`, data); },
+  transitionComposeBlueprintVersion(id, versionId, state) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/state`, { state });
+  },
+  diffComposeBlueprintVersion(id, versionId, againstVersionId) {
+    const query = againstVersionId ? `?against=${encodeURIComponent(againstVersionId)}` : '';
+    return this.get(`/compose-blueprints/${id}/versions/${versionId}/diff${query}`);
+  },
+  previewComposeBlueprint(id, versionId, data) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/preview`, data);
+  },
+  instantiateComposeBlueprint(id, versionId, data) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/instantiate`, data);
+  },
+  getComposeBlueprintInstantiations(id, limit = 50) {
+    return this.get(`/compose-blueprints/${id}/instantiations?limit=${encodeURIComponent(limit)}`);
+  },
+
   // ─── Disk-pressure Guardrails ──────────────────────
   getDiskPressurePolicy(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/policy`); },
   updateDiskPressurePolicy(hostId, data) { return this.put(`/disk-pressure/hosts/${hostId}/policy`, data); },

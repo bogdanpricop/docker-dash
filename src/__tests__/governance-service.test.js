@@ -33,10 +33,11 @@ describe('GovernanceService (V4.6a)', () => {
   test('seeds the catalog and lets an inherited binding grant only its declared permission', () => {
     const catalog = governance.catalog(admin);
     expect(catalog).toEqual(expect.objectContaining({ globalAdmin: true }));
-    expect(catalog.permissions).toHaveLength(120);
+    expect(catalog.permissions).toHaveLength(123);
     expect(catalog.permissions).toEqual(expect.arrayContaining([
       expect.objectContaining({ permission_key: 'project.read', key: 'project.read' }),
       expect.objectContaining({ permission_key: 'catalog.manage', key: 'catalog.manage' }),
+      expect.objectContaining({ permission_key: 'compose_blueprint.instantiate', key: 'compose_blueprint.instantiate' }),
       expect.objectContaining({ permission_key: 'self_service.fulfill', key: 'self_service.fulfill' }),
       expect.objectContaining({ permission_key: 'resource_lease.manage', key: 'resource_lease.manage' }),
       expect.objectContaining({ permission_key: 'vm_observability.read', key: 'vm_observability.read' }),

@@ -111,7 +111,8 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     "self-service": "Self-Service",
     "governance-controls": "Identity & Policy",
     "edge-platform": "Edge & Disconnected",
-    "workstation-fleet": "Workstation Fleet"
+    "workstation-fleet": "Workstation Fleet",
+    "compose-catalog": "Compose Catalog"
   },
   login: {
     title: "Docker Dash",

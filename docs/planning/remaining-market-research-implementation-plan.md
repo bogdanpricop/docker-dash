@@ -61,7 +61,7 @@ Prioritățile sunt:
 | R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156, v8.89 B157–B166, iar v8.90 B167–B175 și revalidează fundația Done B176. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
-| R9 | Compose blueprint catalog | P3 | L | `Not started` | OCI Compose, signatures | Catalog semnat, pinned și operabil prin wizard. |
+| R9 | Compose blueprint catalog | P3 | L | `In progress` | OCI Compose, signatures | Implementarea locală este completă; validarea cumulativă, release-ul și rollout-ul v8.93.0 sunt în curs. |
 | R10 | Signed extension API complet | P3 | XL | `Partial` | provider plugins v8.72–v8.73 | Extensii read-only/UI stabile înaintea codului privilegiat. |
 
 ## 4. Reguli transversale
@@ -522,14 +522,28 @@ adaptere separate și propriile safeguards.
 
 ## 14. Batch R9 — Curated Compose blueprint catalog
 
-- index semnat și versionat;
-- Compose artifact pinned la digest și imagini pinned unde este posibil;
-- ownership, support level, changelog și deprecation;
-- variables wizard cu secret references;
-- healthcheck, backup/restore hints și resource estimates;
-- plan/dry-run obligatoriu înainte de deploy;
-- update diff și rollback către digestul anterior;
-- proces documentat pentru review, key rotation și template compromise.
+- [x] catalog curatat cu ownership, support level și lifecycle
+  draft/active/deprecated/retired;
+- [x] versiuni semantice imutabile, artifact OCI rezolvat și pinned la digest;
+- [x] publicare și restore fail-closed numai după verificare Cosign
+  criptografică și signer identity regexp explicit;
+- [x] wizard cu parametri tipizați și secret references validate prin admission
+  comun, fără valori raw în DB sau audit;
+- [x] compatibility pentru daemon/environment/architecture/Compose și profil
+  operațional pentru healthcheck, backup/restore hints și resource estimates;
+- [x] preview determinist cu version/parameter/override/plan hashes;
+- [x] instanțiere idempotentă într-un OCI Compose artifact oprit; dry-run-ul și
+  confirmarea de deploy rămân obligatorii și separate;
+- [x] version diff, deprecation, retirement și restore de catalog către un
+  digest anterior reverificat; aplicațiile deployed nu sunt schimbate implicit;
+- [x] RBAC admin/operator, host scope, audit sanitizat, history hash-only, UI și
+  navigație în 11 locale;
+- [x] runbook pentru review, key rotation, template compromise și rollback;
+- [ ] calificare externă cu artifact real semnat și browser smoke când
+  runtime-ul/identitatea de signing sunt disponibile.
+
+Programul detaliat și limitele declarate sunt în
+[`compose-blueprint-catalog-program.md`](compose-blueprint-catalog-program.md).
 
 ## 15. Batch R10 — Signed extension API complet
 
@@ -656,6 +670,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-01 | Release 8.91.0 + 8.91.1 / B015, B045, B090, B096, B104, B118–B121, B123 | `Released` | `ad69ae4` + `15c452e`, tag/release `v8.91.0` + `v8.91.1`, CI + Docker green, LAN/VPS healthy | 314 suite / 3.364 teste pass; registry 391/59/0; live vSphere B118/B120/B121, safety zero; snapshot cutoff reparat și verificat | Lotul exact de 10 primește captură provider read-only pentru B118/B120/B121. Două hosturi vSphere reale au produs 20 IP-uri, 4 paths și 2 bond observations; snapshot-ul final are 6 noduri. Socrate raportează B121 `fail` fără remediere. Backupurile `predeploy-v8.91.0-ad69ae4.db` sunt păstrate; browserul și gap-urile externe rămân. |
 | 2026-08-02 | Release 8.91.3 / B168 admission follow-up | `Released` | `378440a` + `ddc55ec`, tag/release `v8.91.3`, CI + Docker green, LAN/VPS healthy | 316 suite / 3.372 teste pass / 4 skipped; registry 391/59/0; runtime admission smoke și SQLite integrity `ok` | Validatorul hash-only este conectat automat la manifests/jobs/templates; inline env secrets sunt respinse cu 422 fără document/reference storage sau network calls. Backupurile `predeploy-v8.91.3-ddc55ec.db` sunt păstrate. B168 rămâne `Partial` numai pentru browser smoke-ul indisponibil. |
 | 2026-08-02 | Release 8.91.4 / B169 critical-operation JIT follow-up | `Released` | `d95249b` + `5fc742d`, tag/release `v8.91.4`, CI + Docker green, LAN/VPS healthy | 316 suite / 3.377 teste pass / 4 skipped; registry 391/59/0; migrarea 170, 4 permisiuni granulare, SQLite quick-check `ok` | Power forțat, snapshot revert/delete și migrare VM au enforcement JIT/break-glass cu scope/token headers și idempotency stabil. Flagul `DD_PROVIDER_CRITICAL_OPERATION_JIT` rămâne implicit false pe ambele ținte până la un canary provider aprobat; backupurile `predeploy-v8.91.4-5fc742d.db` sunt păstrate. |
+| 2026-08-06 | R9 / Compose blueprint catalog | `In progress` | working tree v8.93.0 | 323 suite / 3.416 teste pass / 4 skipped; ESLint 0 errors; research/i18n/a11y/whitespace green; migrarea 172 + 3 permisiuni | Catalogul, versiunea/digestul, Cosign publish/restore, wizardul, admission, profilul operațional, preview, OCI hand-off, diff și RBAC/history sunt validate local. Release-ul, deploy-ul și calificarea externă semnată/browser rămân distincte. |
 
 ## 20. Închiderea implementării autonome
 
