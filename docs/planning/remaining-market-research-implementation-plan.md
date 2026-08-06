@@ -61,7 +61,7 @@ Prioritățile sunt:
 | R6 | B151–B175 Security/compliance depth | P1 | XXL | `Partial` | provider SDK, governance | B151–B175 au control-plane/evidence; v8.88 califică B151–B156, v8.89 B157–B166, iar v8.90 B167–B175 și revalidează fundația Done B176. Colectoarele native, media recorder, public attestation și adaptoarele de remediation/enforcement rămân. |
 | R7 | V5.1–V5.5, V5.7 Provider expansion | P2 | XXL | `Not started` | conformance kit | Hyper-V/Azure Local, Nutanix, OpenStack, CloudStack și Harvester depth. |
 | R8 | Execuție pentru suprafețele plan-only | P1/P2 | XXL | `Partial` | R4–R7 | Executori expliciți pentru storage/network/migration/connectors. |
-| R9 | Compose blueprint catalog | P3 | L | `In progress` | OCI Compose, signatures | Implementarea locală este completă; validarea cumulativă, release-ul și rollout-ul v8.93.0 sunt în curs. |
+| R9 | Compose blueprint catalog | P3 | L | `Done` | OCI Compose, signatures | Livrat în v8.93.0: catalog versionat, Cosign publish/restore, wizard tipizat, admission, preview, diff și OCI hand-off fără deploy implicit. |
 | R10 | Signed extension API complet | P3 | XL | `Partial` | provider plugins v8.72–v8.73 | Extensii read-only/UI stabile înaintea codului privilegiat. |
 
 ## 4. Reguli transversale
@@ -671,6 +671,7 @@ Următoarele schimbă material produsul și nu vor fi presupuse autonom:
 | 2026-08-02 | Release 8.91.3 / B168 admission follow-up | `Released` | `378440a` + `ddc55ec`, tag/release `v8.91.3`, CI + Docker green, LAN/VPS healthy | 316 suite / 3.372 teste pass / 4 skipped; registry 391/59/0; runtime admission smoke și SQLite integrity `ok` | Validatorul hash-only este conectat automat la manifests/jobs/templates; inline env secrets sunt respinse cu 422 fără document/reference storage sau network calls. Backupurile `predeploy-v8.91.3-ddc55ec.db` sunt păstrate. B168 rămâne `Partial` numai pentru browser smoke-ul indisponibil. |
 | 2026-08-02 | Release 8.91.4 / B169 critical-operation JIT follow-up | `Released` | `d95249b` + `5fc742d`, tag/release `v8.91.4`, CI + Docker green, LAN/VPS healthy | 316 suite / 3.377 teste pass / 4 skipped; registry 391/59/0; migrarea 170, 4 permisiuni granulare, SQLite quick-check `ok` | Power forțat, snapshot revert/delete și migrare VM au enforcement JIT/break-glass cu scope/token headers și idempotency stabil. Flagul `DD_PROVIDER_CRITICAL_OPERATION_JIT` rămâne implicit false pe ambele ținte până la un canary provider aprobat; backupurile `predeploy-v8.91.4-5fc742d.db` sunt păstrate. |
 | 2026-08-06 | R9 / Compose blueprint catalog | `In progress` | working tree v8.93.0 | 323 suite / 3.416 teste pass / 4 skipped; ESLint 0 errors; research/i18n/a11y/whitespace green; migrarea 172 + 3 permisiuni | Catalogul, versiunea/digestul, Cosign publish/restore, wizardul, admission, profilul operațional, preview, OCI hand-off, diff și RBAC/history sunt validate local. Release-ul, deploy-ul și calificarea externă semnată/browser rămân distincte. |
+| 2026-08-06 | Release 8.93.0 / R9 Compose blueprint catalog | `Released` | `accba7e`, tag/release `v8.93.0`, PR #13, CI + Docker green, LAN/VPS healthy | 323 suite / 3.416 teste pass / 4 skipped; migrarea 172; 3 tabele; 3 permisiuni noi; total 123; SQLite `ok`; HTTP/UI asset smoke | R9 este închis ca funcționalitate repo-locală. Catalogul nu face deploy implicit și nu a importat un artifact fictiv; calificarea cu signer real și browser backend rămâne operațională externă. Backupurile `predeploy-v8.93.0-accba7e.db` sunt păstrate. |
 
 ## 20. Închiderea implementării autonome
 
@@ -708,6 +709,14 @@ cele patru mutații operator-accessible cu risc ridicat. Codul și UX-ul sunt
 deployed, dar gate-ul rămâne default-off; activarea și promovarea cer canary pe
 un provider controlat, browser smoke și decizia de identitate pentru
 SSO/WebAuthn step-up.
+
+Release-ul v8.93.0 închide batch-ul adiacent R9: catalogul Compose curatat,
+versiunile și digesturile imutabile, Cosign publish/restore, wizardul tipizat,
+secret-reference admission, profilul operațional, preview-ul determinist,
+diff-ul și hand-off-ul OCI sunt implementate, publicate și deployed pe ambele
+ținte. Deploy-ul aplicațiilor rămâne intenționat un pas separat cu dry-run și
+confirmare. Un artifact semnat real și browser smoke sunt calificări externe,
+nu cod local restant.
 
 ## 21. Prerechizite externe pentru promovarea `Partial` → `Done`
 

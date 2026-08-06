@@ -6,7 +6,7 @@
 
 **Source:** [`remaining-market-research-implementation-plan.md`](remaining-market-research-implementation-plan.md), Batch R9
 
-**Status:** Validated locally; release and rollout pending
+**Status:** Released and deployed
 
 ## Outcome
 
@@ -50,7 +50,7 @@ Deliver a curated Compose catalog that turns a verified OCI artifact into an ope
 - [x] all locale navigation labels and command-palette entry;
 - [x] focused service/route/page/migration tests;
 - [x] full Jest, ESLint, research, i18n/a11y and whitespace gates;
-- [ ] v8.93.0 release/tag/push and Docker rollout evidence;
+- [x] v8.93.0 release/tag/push and Docker rollout evidence;
 - [ ] real signed-artifact and browser qualification when external prerequisites are available.
 
 ## External qualification, not hidden local implementation
@@ -70,3 +70,4 @@ These items must remain explicit prerequisites. Fixtures or an unsigned public a
 |---|---|---|---|
 | 2026-08-06 | Implemented locally | migration 172; service/API/UI; 4 focused suites / 31 tests | Full validation and rollout pending. |
 | 2026-08-06 | Validated locally | 323 suites / 3,416 passed / 4 skipped; ESLint 0 errors; research 391/59/0; i18n/a11y/whitespace green | Known Redis mock handle notices and 14 pre-existing ESLint warnings remain non-blocking. |
+| 2026-08-06 | Released and deployed | `accba7e`, `v8.93.0`, PR/GitHub release, CI and Docker green; LAN/VPS v8.93.0 healthy | Migration 172, 3 tables, 3 permissions and total 123 verified; signed-artifact/browser qualification remains external. |
