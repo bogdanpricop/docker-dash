@@ -1061,27 +1061,41 @@ class DockerService {
   // ─── Helpers ──────────────────────────────────────────────
 
   _parseStats(stats) {
-    const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - (stats.precpu_stats.cpu_usage.total_usage || 0);
-    const systemDelta = stats.cpu_stats.system_cpu_usage - (stats.precpu_stats.system_cpu_usage || 0);
-    const cpuCount = stats.cpu_stats.online_cpus || stats.cpu_stats.cpu_usage.percpu_usage?.length || 1;
+    // v8.95.0 — every access here is optional. Docker does not guarantee full
+    // cgroup blocks: a Wasm container, a container caught mid-teardown, or a
+    // platform without the usual cgroup wiring can return partial stats, and the
+    // previous direct access threw a TypeError. A throw here surfaces as "stats
+    // collection skipped" and the container silently loses metrics forever, so
+    // degrading to zeros is both safer and more honest.
+    const s = stats && typeof stats === 'object' ? stats : {};
+    const cpu = s.cpu_stats || {};
+    const precpu = s.precpu_stats || {};
+    const cpuUsage = cpu.cpu_usage || {};
+    const preCpuUsage = precpu.cpu_usage || {};
+    const mem = s.memory_stats || {};
+
+    const cpuDelta = (cpuUsage.total_usage || 0) - (preCpuUsage.total_usage || 0);
+    const systemDelta = (cpu.system_cpu_usage || 0) - (precpu.system_cpu_usage || 0);
+    const cpuCount = cpu.online_cpus || cpuUsage.percpu_usage?.length || 1;
     const cpuPercent = systemDelta > 0 ? (cpuDelta / systemDelta) * cpuCount * 100 : 0;
 
-    const memUsage = stats.memory_stats.usage - (stats.memory_stats.stats?.cache || 0);
-    const memLimit = stats.memory_stats.limit;
+    const memUsage = (mem.usage || 0) - (mem.stats?.cache || 0);
+    const memLimit = mem.limit || 0;
 
     let netRx = 0, netTx = 0;
-    if (stats.networks) {
-      for (const iface of Object.values(stats.networks)) {
-        netRx += iface.rx_bytes || 0;
-        netTx += iface.tx_bytes || 0;
+    if (s.networks && typeof s.networks === 'object') {
+      for (const iface of Object.values(s.networks)) {
+        netRx += (iface && iface.rx_bytes) || 0;
+        netTx += (iface && iface.tx_bytes) || 0;
       }
     }
 
     let blkRead = 0, blkWrite = 0;
-    if (stats.blkio_stats?.io_service_bytes_recursive) {
-      for (const entry of stats.blkio_stats.io_service_bytes_recursive) {
-        if (entry.op === 'read' || entry.op === 'Read') blkRead += entry.value;
-        if (entry.op === 'write' || entry.op === 'Write') blkWrite += entry.value;
+    if (Array.isArray(s.blkio_stats?.io_service_bytes_recursive)) {
+      for (const entry of s.blkio_stats.io_service_bytes_recursive) {
+        if (!entry) continue;
+        if (entry.op === 'read' || entry.op === 'Read') blkRead += entry.value || 0;
+        if (entry.op === 'write' || entry.op === 'Write') blkWrite += entry.value || 0;
       }
     }
 
@@ -1092,7 +1106,7 @@ class DockerService {
       memPercent: memLimit > 0 ? Math.round((memUsage / memLimit) * 10000) / 100 : 0,
       netRx, netTx,
       blkRead, blkWrite,
-      pids: stats.pids_stats?.current || 0,
+      pids: s.pids_stats?.current || 0,
     };
   }
 
@@ -1157,27 +1171,37 @@ const _daemon = { _detectDaemonType };
 // binaries; the loose regex tolerates minor variations (e.g. "crun-wasm"
 // or "containerd-shim-wasmedge-v1").
 
+// v8.95.0 — patterns are anchored to the containerd shim naming convention
+// (`io.containerd.<name>.v1`) or to whole-word boundaries. The previous loose
+// forms could mis-file an unrelated runtime, and a runtime's category decides a
+// security verdict, so a collision is not cosmetic.
 const WASM_RUNTIME_PATTERNS = [
-  /wasmedge/i,      // WasmEdge (CNCF, most common in containerd/docker)
-  /wasmtime/i,      // Bytecode Alliance
-  /wamr/i,          // WebAssembly Micro Runtime
-  /spin/i,          // Fermyon Spin (containerd shim)
-  /crun-wasm/i,     // crun's wasm variant
-  /wasmer/i,        // Wasmer runtime
-  /wws/i,           // Wasm Workers Server (Fermyon)
+  /(^|[.\-_])wasmedge([.\-_]|$)/i,   // WasmEdge (CNCF, most common under containerd)
+  /(^|[.\-_])wasmtime([.\-_]|$)/i,   // Bytecode Alliance
+  /(^|[.\-_])wamr([.\-_]|$)/i,       // WebAssembly Micro Runtime
+  /(^|[.\-_])spin([.\-_]|$)/i,       // Fermyon Spin — anchored, so "spinnaker" no longer matches
+  /(^|[.\-_])crun-wasm([.\-_]|$)/i,  // crun's wasm variant
+  /(^|[.\-_])wasmer([.\-_]|$)/i,     // Wasmer
+  /(^|[.\-_])wws([.\-_]|$)/i,        // Wasm Workers Server — three letters, so anchoring matters most here
 ];
+// Runtimes that add an isolation layer beyond namespaces + cgroups.
+// NOT youki: it is a runc-equivalent written in Rust, not an extra layer, and
+// filing it here inflated the posture picture. It falls through to `standard`.
 const SANDBOXED_RUNTIME_PATTERNS = [
-  /kata/i,          // Kata Containers (VM per pod)
-  /runsc/i,         // gVisor (user-space kernel)
-  /firecracker/i,   // AWS Firecracker microVM
-  /nabla/i,         // Nabla (unikernel-inspired sandbox)
-  /youki/i,         // Rust-based OCI runtime (isolation via cgroups2 by default)
+  /(^|[.\-_])kata([.\-_]|$)/i,        // Kata Containers (VM per workload)
+  /(^|[.\-_])runsc([.\-_]|$)/i,       // gVisor (user-space kernel)
+  /(^|[.\-_])gvisor([.\-_]|$)/i,      // gVisor, when registered under its product name
+  /(^|[.\-_])firecracker([.\-_]|$)/i, // AWS Firecracker microVM
+  /(^|[.\-_])nabla([.\-_]|$)/i,       // Nabla (unikernel-inspired)
 ];
 
 function _categorizeRuntimes(runtimes) {
   const result = { standard: [], sandboxed: [], wasm: [] };
   if (!runtimes || typeof runtimes !== 'object') return result;
   for (const name of Object.keys(runtimes)) {
+    // Precedence is deliberate, not incidental: wasm wins over sandboxed if a
+    // name somehow matched both, because wasm is the stronger claim and the one
+    // that must not be silently downgraded.
     if (WASM_RUNTIME_PATTERNS.some(p => p.test(name))) {
       result.wasm.push(name);
     } else if (SANDBOXED_RUNTIME_PATTERNS.some(p => p.test(name))) {

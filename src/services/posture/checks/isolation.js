@@ -34,8 +34,14 @@ module.exports = {
 
       let info;
       try { info = await ctx.docker.info(h.id); } catch { continue; }
-      const sandboxed = (info && info.runtimeCategories && info.runtimeCategories.sandboxed) || [];
-      if (!sandboxed.length) continue; // nothing actionable on this host
+      const categories = (info && info.runtimeCategories) || {};
+      const sandboxed = categories.sandboxed || [];
+      const wasm = categories.wasm || [];
+      // The cost gate is unchanged in effect: a finding can only recommend a
+      // class reachable by a flag, which today means a sandboxed runtime. With
+      // none registered, nothing on this host can be actionable, so the
+      // per-container inspect loop never runs.
+      if (!sandboxed.length) continue;
 
       let containers;
       try { containers = await dockerService.listContainers(h.id); } catch { continue; }
@@ -49,7 +55,9 @@ module.exports = {
         catch { continue; } // a container that vanished mid-scan is not a finding
         if (insp && insp.isSelf) continue; // Docker Dash's own reach is a separate conversation
 
-        const r = isolationPosture.assess(insp, { sandboxed, default: info.defaultRuntime });
+        // Passing `wasm` is what stops a Wasm container being read as
+        // shared-kernel and advised onto a weaker runtime.
+        const r = isolationPosture.assess(insp, { sandboxed, wasm, default: info.defaultRuntime });
         if (!r.actionable) continue;
 
         const reasons = r.signals.map(s => s.label);
@@ -60,13 +68,13 @@ module.exports = {
           hostId: h.id,
           subject: `host:${h.id}:container:${name}`,
           title: `${name} has host-level reach on the shared-kernel runtime — ${h.name}`,
-          detail: `This container can reach past its runtime (${reasons.length} signal${reasons.length === 1 ? '' : 's'}) but runs under "${r.runtime}", which shares the host kernel. ${h.name} already has the sandboxed runtime${sandboxed.length === 1 ? '' : 's'} ${sandboxed.join(', ')} registered — moving this workload onto one contains the reach instead of trusting it.${omitted > 0 ? ` (${omitted} further running containers on this host were not assessed — scan cap.)` : ''}`,
+          detail: `This container can reach past its runtime (${reasons.length} signal${reasons.length === 1 ? '' : 's'}) but runs under "${r.runtime}", which shares the host kernel. ${h.name} already has the sandboxed runtime${r.upgradeOptions.length === 1 ? '' : 's'} ${r.upgradeOptions.join(', ')} registered — moving this workload onto one contains the reach instead of trusting it.${omitted > 0 ? ` (${omitted} further running containers on this host were not assessed — scan cap.)` : ''}`,
           evidence: `runtime=${r.runtime}; ${reasons.join('; ')}`,
           remediation: {
             type: 'guide',
             label: 'Move to a sandboxed runtime',
             link: '#/containers',
-            steps: `Recreate this container with \`--runtime=${sandboxed[0]}\` (Compose: \`runtime: ${sandboxed[0]}\` on the service). Verify the workload still starts — Kata and gVisor do not support every syscall or device passthrough, which is why this is guidance and not a one-click fix. If it must stay on the shared kernel, reduce the reach instead: drop the capabilities listed above, or remove the privileged flag / socket mount.`,
+            steps: `Recreate this container with \`--runtime=${r.upgradeOptions[0]}\` (Compose: \`runtime: ${r.upgradeOptions[0]}\` on the service). Verify the workload still starts — Kata and gVisor do not support every syscall or device passthrough, which is why this is guidance and not a one-click fix. If it must stay on the shared kernel, reduce the reach instead: drop the capabilities listed above, or remove the privileged flag / socket mount.`,
           },
         });
       }

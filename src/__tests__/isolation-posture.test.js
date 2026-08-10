@@ -172,3 +172,75 @@ describe('isolation-posture — robustness', () => {
     expect(r.actionable).toBe(false);
   });
 });
+
+// ── v8.95.0 — Wasm as a first-class isolation class ──────────────────────────
+//
+// The regression these pin: before v8.95.0 `assess` compared the runtime only
+// against the sandboxed list, so a Wasm runtime fell through to "not sandboxed".
+// A Wasm container was reported as SHARED KERNEL, and on a host that also had
+// gVisor it produced a finding telling the operator to move the workload onto
+// gVisor — advice to downgrade isolation.
+
+const WASM_RT = 'io.containerd.wasmedge.v1';
+const HOST_BOTH = { sandboxed: ['runsc'], wasm: [WASM_RT], default: 'runc' };
+
+describe('isolation-posture — Wasm isolation class', () => {
+  it('classifies a Wasm runtime as wasm, not shared kernel', () => {
+    const r = assess(container({ runtime: WASM_RT }), HOST_BOTH);
+    expect(r.isolationClass).toBe('wasm');
+    expect(r.sandboxed).toBe(false);   // derived field: wasm is not "sandboxed"
+  });
+
+  it('ranks wasm above sandboxed above standard', () => {
+    const rank = c => assess(container({ runtime: c }), HOST_BOTH).classRank;
+    expect(rank(WASM_RT)).toBeGreaterThan(rank('runsc'));
+    expect(rank('runsc')).toBeGreaterThan(rank('runc'));
+  });
+
+  it('never advises moving a Wasm workload anywhere', () => {
+    // The exact shape of the old bug: reach signal + a sandboxed runtime present.
+    const r = assess(container({ runtime: WASM_RT, networkMode: 'host' }), HOST_BOTH);
+    expect(r.signals).toHaveLength(1);
+    expect(r.actionable).toBe(false);
+    expect(r.upgradeOptions).toEqual([]);
+    expect(r.strongerAvailable).toEqual([]);
+  });
+
+  it('still flags a standard container when a sandboxed runtime exists', () => {
+    const r = assess(container({ runtime: 'runc', privileged: true }), HOST_BOTH);
+    expect(r.actionable).toBe(true);
+    expect(r.upgradeOptions).toEqual(['runsc']);
+  });
+
+  it('does not advise a sandboxed container to move, even though wasm outranks it', () => {
+    // Wasm is stronger, but it needs a rebuilt .wasm artifact rather than a flag,
+    // so it is reported as stronger-available and never offered as an upgrade.
+    const r = assess(container({ runtime: 'runsc', privileged: true }), HOST_BOTH);
+    expect(r.strongerAvailable).toEqual(['wasm']);
+    expect(r.upgradeOptions).toEqual([]);
+    expect(r.actionable).toBe(false);
+  });
+
+  it('never offers wasm as an upgrade option to a standard container', () => {
+    const r = assess(container({ runtime: 'runc', privileged: true }), HOST_BOTH);
+    expect(r.upgradeOptions).not.toContain(WASM_RT);
+  });
+
+  it('reports wasm availability on the host independently of the container', () => {
+    const r = assess(container({ runtime: 'runc' }), HOST_BOTH);
+    expect(r.wasmAvailable).toBe(true);
+  });
+
+  it('treats a wasm default runtime as wasm for containers that inherit it', () => {
+    const r = assess(container({ runtime: '' }), { sandboxed: [], wasm: [WASM_RT], default: WASM_RT });
+    expect(r.isolationClass).toBe('wasm');
+  });
+
+  it('classifies an unknown runtime as standard, not unknown', () => {
+    expect(assess(container({ runtime: 'some-custom-runtime' }), HOST_BOTH).isolationClass).toBe('standard');
+  });
+
+  it('reports unknown only when there is no runtime at all', () => {
+    expect(assess(container({}), {}).isolationClass).toBe('unknown');
+  });
+});

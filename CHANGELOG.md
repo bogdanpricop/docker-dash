@@ -2,6 +2,41 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.95.0] - 2026-08-11 — Wasm as a first-class isolation class
+
+Fixes a defect introduced in v8.94.0 and builds out the surface it exposed.
+
+- Replace the `sandboxed` boolean in the isolation assessment with an ordered
+  class — `wasm` > `sandboxed` > `standard`. The boolean was the bug: a Wasm
+  runtime is not in `runtimeCategories.sandboxed`, so a Wasm container fell
+  through to "not sandboxed", was reported as `SHARED KERNEL`, and on a host that
+  also had gVisor produced a finding advising the operator to move the workload
+  onto gVisor — a downgrade.
+- Raise a finding only when a strictly stronger class exists that the workload
+  could actually be moved to. Nothing outranks Wasm, so a Wasm container can
+  never produce one, and Wasm is never offered as an upgrade target for a Linux
+  container because it needs a rebuilt artifact rather than a flag.
+- Anchor the runtime name patterns to the containerd shim convention and word
+  boundaries; `spinnaker` no longer matched `spin`. Reclassify `youki` as
+  standard — it is a runc equivalent, not an extra isolation layer, and filing it
+  as sandboxed both inflated the posture picture and would have suppressed real
+  findings under the new ordering.
+- Build the three-group Runtimes panel on the System page that the Wasm how-to
+  has described since v8.9.5 but which was never implemented; operators following
+  our own guide found a flat list and concluded detection had failed.
+- Label a Wasm-backed container `WASM` on its detail page, with copy that states
+  what we can see (the runtime) and what we cannot (the WASI grants).
+- Add `GET /api/images/:id/wasm`: identify a Wasm image by its OCI platform
+  (`os=wasi`, `arch=wasm`) and warn when the host has no Wasm runtime, before the
+  operator hits `exec format error`. "We could not read the host" is reported as
+  unknown, never as incompatible.
+- Render `--runtime` and `--platform` in the CLI-equivalent preview. Omitting
+  either is the cause of that same error.
+- Make `_parseStats` degrade to zeros instead of throwing on partial stats. A
+  throw surfaced as "stats collection skipped" and the container silently lost
+  metrics for good.
+- English and Romanian labels; 71 new tests across 4 suites.
+
 ## [8.94.0] - 2026-08-10 — CLI transparency and per-container isolation posture
 
 Two features derived from the same critique of opaque management UIs: show the

@@ -133,15 +133,39 @@ const SystemPage = {
                 // Default runc is always present; hide the row unless there's something
                 // interesting beyond it. Signals "this is a professional-grade dashboard
                 // that knows about sandboxed runtimes" for the small audience that cares.
+                // v8.95.0 — the three-group panel our own how-to has documented
+                // since v8.9.5 but which was never built: operators following the
+                // guide to verify a Wasm setup found a flat list and concluded
+                // detection had failed. Groups with no members are omitted, so an
+                // ordinary host gains no clutter.
                 const alt = info.alternativeRuntimes || [];
                 const def = info.defaultRuntime || 'runc';
                 if (!alt.length && def === 'runc') return '';
-                const rtDisplay = [def, ...alt.filter(n => n !== def)].join(', ');
+                const cats = info.runtimeCategories || { standard: [], sandboxed: [], wasm: [] };
+                const groups = [
+                  { key: 'standard', names: cats.standard || [], badge: null },
+                  { key: 'sandboxed', names: cats.sandboxed || [], badge: 'SANDBOXED' },
+                  { key: 'wasm', names: cats.wasm || [], badge: 'WASM' },
+                ].filter(g => g.names.length);
+
+                // Fall back to the flat list if categorisation returned nothing —
+                // an older daemon payload should still show something useful.
+                if (!groups.length) {
+                  return `<tr><td>${i18n.t('pages.system.runtimes')}</td>
+                    <td><code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml([def, ...alt.filter(n => n !== def)].join(', '))}</code></td></tr>`;
+                }
+
+                const rows = groups.map(g => `
+                  <div style="display:flex;align-items:baseline;gap:8px;margin:2px 0">
+                    <span class="text-dim" style="font-size:11px;min-width:74px;text-transform:uppercase;letter-spacing:0.4px">${Utils.escapeHtml(i18n.t('pages.system.runtimeClass.' + g.key))}</span>
+                    <code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(g.names.join(', '))}</code>
+                    ${g.badge ? `<span class="daemon-badge" title="${Utils.escapeHtml(i18n.t('pages.system.runtimeClassHint.' + g.key))}">${g.badge}</span>` : ''}
+                    ${g.names.includes(def) ? `<span class="text-dim" style="font-size:10px">${Utils.escapeHtml(i18n.t('pages.system.runtimeDefault'))}</span>` : ''}
+                  </div>`).join('');
+
                 return `<tr>
-                  <td>${i18n.t('pages.system.runtimes')}</td>
-                  <td><code style="font-family:var(--mono);font-size:12px">${Utils.escapeHtml(rtDisplay)}</code>
-                  ${alt.length ? `<span class="daemon-badge" style="margin-left:8px" title="Alternative OCI runtimes detected (Kata, gVisor, crun, ...)">SANDBOXED</span>` : ''}
-                  </td>
+                  <td style="vertical-align:top">${i18n.t('pages.system.runtimes')}</td>
+                  <td>${rows}</td>
                 </tr>`;
               })()}
             </table>

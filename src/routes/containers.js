@@ -357,8 +357,12 @@ router.get('/:id/isolation', requireAuth, async (req, res) => {
     let info = null;
     try { info = await dockerService.getInfo(req.hostId); }
     catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
-    const sandboxed = (info && info.runtimeCategories && info.runtimeCategories.sandboxed) || [];
-    res.json(isolationPosture.assess(insp, { sandboxed, default: info && info.defaultRuntime }));
+    const categories = (info && info.runtimeCategories) || {};
+    res.json(isolationPosture.assess(insp, {
+      sandboxed: categories.sandboxed || [],
+      wasm: categories.wasm || [],
+      default: info && info.defaultRuntime,
+    }));
   } catch (err) {
     // Same mapping as /:id/inspect above — a missing container is a 404, not a
     // server error. Without this, asking about a container that has just been

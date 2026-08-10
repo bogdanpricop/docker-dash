@@ -1,26 +1,44 @@
 'use strict';
 
-// v8.94.0 — Isolation posture. Assesses how far a single container can reach
+// v8.95.0 — Isolation posture. Assesses how far a single container can reach
 // past its runtime, and whether the runtime backing it actually contains that
 // reach.
 //
 // Origin: the "Solaris Zones give full isolation, LXC shares the host kernel"
-// argument from the SmartOS article. Docker Dash already detects sandboxed OCI
-// runtimes at the HOST level (docker.js → getInfo → runtimeCategories, badged in
-// the System page). What was missing is the per-container half: knowing Kata is
-// installed is not actionable until you know which containers aren't using it.
+// argument from the SmartOS article. Docker Dash detects alternative OCI runtimes
+// at the HOST level (docker.js → getInfo → runtimeCategories); this is the
+// per-container half, without which "you have Kata installed" is not actionable.
 //
 // DELIBERATELY NOT A DUPLICATE OF THE CIS BENCHMARK. cis-benchmark.js already
 // reports "this container is privileged" / "CapAdd=ALL" / "PidMode=host" as
 // standalone failures. Here those same switches are *inputs*, not findings: they
 // establish that a container has host-level reach, which is what makes running
-// it under a shared-kernel runtime worth flagging. CIS says the door is open;
-// this says you own a lock and haven't used it.
+// it under a weaker runtime worth flagging. CIS says the door is open; this says
+// you own a lock and haven't used it.
 //
-// This module is PURE. No DB, no Docker API, no fs. Input is a plain object,
-// output is a plain object.
+// v8.95.0 replaced a `sandboxed` boolean with an ORDERED class. The boolean was
+// the bug: a Wasm runtime is not in `runtimeCategories.sandboxed`, so a Wasm
+// container fell through to "not sandboxed" — reported as SHARED KERNEL, and on a
+// host that also had gVisor it produced advice to move a Wasm workload onto
+// gVisor, which is a downgrade. With an ordering, "should this move?" is a
+// comparison rather than a special case, and the next runtime category added
+// cannot repeat the mistake.
+//
+// This module is PURE. No DB, no Docker API, no fs.
 
 const SEV_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+
+// Ordered strongest-first. Wasm outranks sandboxed because a module has no
+// syscall surface at all: it cannot fork, ptrace or open a raw socket, and its
+// filesystem/network access must be granted explicitly through WASI. A sandboxed
+// runtime still presents a (much reduced) kernel ABI.
+const CLASS_RANK = { wasm: 3, sandboxed: 2, standard: 1, unknown: 0 };
+
+// Classes an operator can move an EXISTING workload to by changing how it runs.
+// Wasm is deliberately absent: it needs a `.wasm` artifact, not a flag, so
+// offering it as an "upgrade" for a Linux container would be advice nobody can
+// act on. It still counts as stronger for ranking — it just is not an option.
+const REACHABLE_BY_FLAG = ['sandboxed'];
 
 // Capabilities that meaningfully extend a container's reach toward the host.
 // Not an exhaustive capability list — only the ones whose presence changes the
@@ -77,7 +95,6 @@ function _securityOptRisks(securityOpt) {
 
 /**
  * Enumerate the ways a container can reach past its runtime.
- *
  * Order is stable (declaration order) so findings don't churn between scans.
  *
  * @param {object} isolation the `isolation` block from dockerService.inspectContainer
@@ -128,27 +145,53 @@ function reachSignals(isolation, mounts) {
 }
 
 /**
+ * Which isolation class a runtime name belongs to, given the host's categories.
+ * Classification lives in docker.js `_categorizeRuntimes`; this only reads the
+ * result, so the runtime taxonomy stays in exactly one place.
+ */
+function classify(runtime, categories) {
+  if (!runtime) return 'unknown';
+  if ((categories.wasm || []).includes(runtime)) return 'wasm';
+  if ((categories.sandboxed || []).includes(runtime)) return 'sandboxed';
+  return 'standard';
+}
+
+/**
  * Assess one container's isolation.
  *
  * @param {object} container `{ isolation, mounts }` from inspectContainer
  * @param {object} [hostRuntimes]
- * @param {string[]} [hostRuntimes.sandboxed]  sandboxed runtimes registered on the host
- * @param {string}   [hostRuntimes.default]    the daemon's default runtime
- * @returns {{
- *   runtime: string|null, sandboxed: boolean, sandboxAvailable: boolean,
- *   sandboxOptions: string[], signals: Array, severity: string|null, actionable: boolean
- * }}
+ * @param {string[]} [hostRuntimes.sandboxed] sandboxed runtimes registered on the host
+ * @param {string[]} [hostRuntimes.wasm]      wasm runtimes registered on the host
+ * @param {string}   [hostRuntimes.default]   the daemon's default runtime
  */
 function assess(container, hostRuntimes) {
   const c = container && typeof container === 'object' ? container : {};
   const hr = hostRuntimes && typeof hostRuntimes === 'object' ? hostRuntimes : {};
-  const sandboxOptions = (Array.isArray(hr.sandboxed) ? hr.sandboxed : []).filter(Boolean);
+  const categories = {
+    sandboxed: (Array.isArray(hr.sandboxed) ? hr.sandboxed : []).filter(Boolean),
+    wasm: (Array.isArray(hr.wasm) ? hr.wasm : []).filter(Boolean),
+  };
 
   // An empty HostConfig.Runtime means "the daemon default", not "unknown".
   const declared = _norm(c.isolation && c.isolation.runtime);
   const runtime = declared || _norm(hr.default) || null;
 
-  const sandboxed = !!runtime && sandboxOptions.includes(runtime);
+  const isolationClass = classify(runtime, categories);
+  const classRank = CLASS_RANK[isolationClass];
+
+  // Classes present on this host that outrank the container's — informational.
+  const strongerAvailable = Object.keys(CLASS_RANK)
+    .filter(cls => CLASS_RANK[cls] > classRank)
+    .filter(cls => (categories[cls] || []).length > 0)
+    .sort((a, b) => CLASS_RANK[b] - CLASS_RANK[a]);
+
+  // Of those, the ones an operator can actually switch to without rebuilding the
+  // workload. This is what a finding may recommend.
+  const upgradeOptions = strongerAvailable.includes('sandboxed') && REACHABLE_BY_FLAG.includes('sandboxed')
+    ? categories.sandboxed.slice()
+    : [];
+
   const signals = reachSignals(c.isolation, c.mounts);
 
   let severity = null;
@@ -158,18 +201,27 @@ function assess(container, hostRuntimes) {
 
   return {
     runtime,
-    sandboxed,
-    sandboxAvailable: sandboxOptions.length > 0,
-    sandboxOptions,
+    isolationClass,
+    classRank,
+    strongerAvailable,
+    upgradeOptions,
+    // Retained so existing callers and the v8.94.0 UI keep working. Derived, not
+    // authoritative — `isolationClass` is.
+    sandboxed: isolationClass === 'sandboxed',
+    sandboxAvailable: categories.sandboxed.length > 0,
+    sandboxOptions: categories.sandboxed.slice(),
+    wasmAvailable: categories.wasm.length > 0,
     signals,
     severity,
-    // The finding is worth raising only when all three hold: the container has
-    // host-level reach, it is NOT already sandboxed, and the operator has a
-    // sandboxed runtime installed. Without the third we would be telling people
-    // to go install software — which is a different conversation, and one CIS
-    // already opens by flagging the privileged container itself.
-    actionable: signals.length > 0 && !sandboxed && sandboxOptions.length > 0,
+    // Worth raising only when the container has host-level reach AND there is a
+    // stronger class it can actually be moved to. A Wasm container has nothing
+    // above it, so it can never produce a finding — not by special-casing Wasm,
+    // but because nothing outranks it.
+    actionable: signals.length > 0 && upgradeOptions.length > 0,
   };
 }
 
-module.exports = { assess, reachSignals, _internals: { CAP_RISK, DOCKER_SOCKET, SEV_RANK } };
+module.exports = {
+  assess, reachSignals, classify,
+  _internals: { CAP_RISK, DOCKER_SOCKET, SEV_RANK, CLASS_RANK, REACHABLE_BY_FLAG },
+};

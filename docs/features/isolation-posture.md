@@ -109,6 +109,31 @@ GET /api/containers/:id/isolation
 names count as sandboxed) stays in one place — `_categorizeRuntimes` in
 `src/services/docker.js` — instead of being duplicated in the frontend.
 
+## 8. Wasm (v8.95.0)
+
+Wasm is the strongest class this page can observe, and until v8.95.0 it was
+reported as the weakest: a container on a Wasm runtime read `SHARED KERNEL`, and
+on a host that also had gVisor it produced a finding advising the operator to move
+the workload onto gVisor — a downgrade.
+
+The `sandboxed` boolean was the cause. It is now an ordered class:
+
+| Class | Rank | Reachable by changing a flag? |
+|---|:--:|---|
+| `wasm` | 3 | No — needs a rebuilt `.wasm` artifact |
+| `sandboxed` | 2 | Yes |
+| `standard` | 1 | — |
+
+A finding is raised only when a container has host-level reach **and** a strictly
+stronger class exists that it could actually be moved to. Nothing outranks Wasm,
+so a Wasm container can never produce one — not by special-casing Wasm, but
+because the comparison has no answer above it. Equally, Wasm is never offered as
+an upgrade target for a Linux container: telling someone to rewrite their workload
+as a WebAssembly module is not remediation advice.
+
+`sandboxed` is retained as a derived field so older callers keep working;
+`isolationClass` is authoritative.
+
 ## 7. Limitations
 
 - **Docker and Podman only.** Kubernetes, Nomad and Incus have their own

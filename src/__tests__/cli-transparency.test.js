@@ -306,3 +306,43 @@ describe('cli-transparency — allowlist and safety', () => {
     }
   });
 });
+
+// ── v8.95.0 — alternative runtimes and Wasm platform ─────────────────────────
+//
+// Omitting --runtime or --platform is the cause of the `exec format error` that
+// every Wasm-on-Docker troubleshooting thread opens with, so a rendered command
+// for a Wasm workload has to carry both.
+
+describe('cli-transparency — runtime and platform', () => {
+  it('renders --runtime when given one', () => {
+    const r = derive('container.run', { image: 'app', runtime: 'io.containerd.wasmedge.v1' });
+    expect(r.command).toContain('--runtime=io.containerd.wasmedge.v1');
+  });
+
+  it('renders --platform when given one', () => {
+    expect(derive('container.run', { image: 'app', platform: 'wasi/wasm' }).command)
+      .toContain('--platform=wasi/wasm');
+  });
+
+  it('renders the full Wasm invocation in the documented order', () => {
+    const r = derive('container.run', {
+      image: 'wasm-example', name: 'demo',
+      runtime: 'io.containerd.wasmedge.v1', platform: 'wasi/wasm',
+    });
+    expect(r.command).toContain('--name demo');
+    expect(r.command).toContain('--runtime=io.containerd.wasmedge.v1');
+    expect(r.command).toContain('--platform=wasi/wasm');
+    expect(r.command.endsWith('wasm-example')).toBe(true);
+  });
+
+  it('omits both when not given, so ordinary containers are unchanged', () => {
+    const r = derive('container.run', { image: 'nginx' });
+    expect(r.command).not.toContain('--runtime');
+    expect(r.command).not.toContain('--platform');
+  });
+
+  it('escapes a hostile runtime name', () => {
+    const r = derive('container.run', { image: 'app', runtime: 'a; rm -rf /' });
+    expect(r.command).toContain("--runtime='a; rm -rf /'");
+  });
+});

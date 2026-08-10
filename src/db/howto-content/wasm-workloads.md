@@ -13,7 +13,7 @@ summary_ro: Detecteaza runtime-uri WebAssembly configurate in Docker si ruleaza 
 
 Docker (via containerd) can run **WebAssembly modules as containers** by using an alternative OCI runtime — WasmEdge, wasmtime, wamr, spin, wasmer. The container image contains a `.wasm` module instead of a Linux binary; Docker hands it off to the wasm runtime at run time.
 
-Docker Dash's Wasm support in v8.9.5-alpha.1 is **detection only**: the host card + system info page surface which wasm runtimes are configured on each Docker host. No new UI elsewhere yet.
+Docker Dash treats Wasm as a **first-class isolation class** as of v8.95.0. The System page groups the host's runtimes into Standard / Sandboxed / Wasm, a container backed by a Wasm runtime is labelled `WASM` on its detail page, and a Wasm image whose host has no Wasm runtime is flagged before you run it.
 
 ## Why this matters
 
@@ -93,7 +93,7 @@ Docker Dash will list this container in the normal Containers view. The runtime 
 
 ## Verify in Docker Dash
 
-1. System page → Host card → **Runtimes** panel (v8.9.5-alpha.1+) shows three groups:
+1. System page → Host card → **Runtimes** panel (built in v8.95.0; documented here since v8.9.5) shows three groups:
    - **Standard:** `runc`, `crun`
    - **Sandboxed:** whatever else Kata/gVisor/Firecracker you have
    - **Wasm:** `io.containerd.wasmedge.v1`, `spin`, etc.
@@ -105,11 +105,13 @@ Docker Dash will list this container in the normal Containers view. The runtime 
 - Capability-based: a Wasm module must be explicitly granted access to files, network, env vars (via WASI preopens). Default is nothing
 - No syscalls at all — a Wasm module can't `fork()`, `ptrace()`, or open a raw socket without WASI granting permission
 
-## Alpha caveats
+## What Docker Dash does and does not claim
 
-- **Detection only.** No dedicated Deploy-Wasm-app wizard yet — use `docker run --runtime=...` directly
-- Categorization is pattern-based on the runtime binary NAME. Some custom deployments use non-canonical names — file a bug and we'll extend the regex
-- No Wasm-specific metrics (memory usage, module load time) — just what Docker exposes for any container
+- **No Deploy-Wasm-app wizard.** Launching stays a `docker run --runtime=...`, but the CLI-equivalent preview renders `--runtime` and `--platform` for you, which is where the usual `exec format error` comes from
+- Categorization is pattern-based on the runtime NAME, anchored to the shim convention (`io.containerd.<name>.v1`) and word boundaries. It proves a runtime was *registered* under that name — not that the shim is installed or functional. Non-canonical names: file a bug and we'll extend the list
+- **We report the runtime, never the grants.** A module's WASI preopens are not visible to Docker, so Docker Dash cannot tell you what a Wasm container was actually allowed to touch. A Wasm runtime with broad preopens is not automatically safe
+- No Wasm-specific metrics (linear memory, module load time) — Docker does not expose them, and inventing them would be worse than omitting them
+- Kubernetes selects Wasm through `RuntimeClass`, not `--runtime`. The isolation view is Docker/Podman only
 
 ## References
 

@@ -9,6 +9,13 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.95.0', date: '2026-08-11', title: 'Wasm as a first-class isolation class', changes: [
+      { type: 'fix', text: 'A container backed by a WebAssembly runtime was reported as SHARED KERNEL — the opposite of the truth — and on a host that also had gVisor the posture check advised moving it there, which is a downgrade. Isolation is now an ordered class: Wasm outranks sandboxed outranks standard.' },
+      { type: 'feature', text: 'The System page now groups a host\'s OCI runtimes into Standard, Sandboxed and Wasm — the panel the Wasm guide has described since v8.9.5 but which was never built.' },
+      { type: 'feature', text: 'A Wasm image is identified by its platform, and you are warned when the host has no Wasm runtime to run it — before you hit "exec format error" instead of after.' },
+      { type: 'improvement', text: 'Runtime name matching is anchored, so "spinnaker" no longer counts as Spin, and youki is classified as a standard runtime rather than a sandboxed one.' },
+      { type: 'fix', text: 'Container stats no longer throw on a partial payload, which previously left the container without metrics indefinitely.' },
+    ] },
     { version: '8.94.0', date: '2026-08-10', title: 'CLI transparency and isolation posture', changes: [
       { type: 'feature', text: 'Destructive and bulk container actions now show the equivalent docker command before you confirm them, with a copy button.' },
       { type: 'feature', text: 'Audit entries for container actions carry the equivalent command, so an incident review reads like a shell history instead of a list of verbs.' },

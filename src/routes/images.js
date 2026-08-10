@@ -29,6 +29,44 @@ router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
   res.json(await dockerService.imageHistory(req.params.id, req.hostId));
 }));
 
+// v8.95.0 — is this a Wasm image, and can this host actually run it?
+//
+// A Wasm image is identified by its OCI platform: os=wasi, architecture=wasm.
+// Running one without a Wasm runtime registered gives `exec format error`, which
+// is the single most common Wasm-on-Docker failure and says nothing useful. We
+// hold both halves — the image's platform and the host's registered runtimes —
+// so we can say it before the operator hits it.
+//
+// Read-only, and per-image rather than a sweep: inspecting every image to find
+// the Wasm ones would be one round trip per image on hosts with hundreds.
+router.get('/:id/wasm', requireAuth, asyncHandler(async (req, res) => {
+  let inspect;
+  try {
+    inspect = await dockerService.inspectImage(req.params.id, req.hostId);
+  } catch (err) {
+    return res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
+  }
+
+  const os = String(inspect.Os || '').toLowerCase();
+  const arch = String(inspect.Architecture || '').toLowerCase();
+  const isWasm = os === 'wasi' && arch === 'wasm';
+
+  // Host runtimes are best-effort: without them we still report what the image
+  // is, but we must not claim anything about whether it will run here.
+  let wasmRuntimes = null;
+  try {
+    const info = await dockerService.getInfo(req.hostId);
+    wasmRuntimes = (info && info.runtimeCategories && info.runtimeCategories.wasm) || [];
+  } catch { /* leave null — "unknown", not "incompatible" */ }
+
+  res.json({
+    isWasm,
+    platform: os && arch ? `${os}/${arch}` : null,
+    wasmRuntimes,
+    hostHasWasmRuntime: wasmRuntimes === null ? null : wasmRuntimes.length > 0,
+  });
+}));
+
 router.post('/pull', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'Image name required' });

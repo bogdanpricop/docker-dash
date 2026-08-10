@@ -161,6 +161,12 @@ function _containerRun(params, state) {
   const parts = [`docker run${params.detach === false ? '' : ' -d'}`];
   const name = _subject(params);
   if (name) parts.push(`--name ${shellEscape(name)}`);
+  // v8.95.0 — an alternative OCI runtime, and for Wasm the platform that goes
+  // with it. Omitting either is the cause of the `exec format error` that every
+  // Wasm-on-Docker troubleshooting thread opens with, so when a caller knows the
+  // runtime the rendered command has to carry it.
+  if (params.runtime) parts.push(`--runtime=${shellEscape(params.runtime)}`);
+  if (params.platform) parts.push(`--platform=${shellEscape(params.platform)}`);
   if (params.restart && params.restart !== 'no') parts.push(`--restart ${shellEscape(params.restart)}`);
 
   for (const pair of Array.isArray(params.env) ? params.env : []) {

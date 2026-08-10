@@ -1358,9 +1358,21 @@ const ContainersPageDetail = {
     if (!r || !r.runtime) return;
 
     const sev = { critical: 'var(--red)', high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--text-muted)' };
-    const badge = r.sandboxed
-      ? `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationSandboxed'))}</span>`
-      : `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`;
+    // v8.95.0 — three classes, ordered. Wasm was previously reported as SHARED
+    // KERNEL, the exact opposite of the truth.
+    const cls = r.isolationClass || (r.sandboxed ? 'sandboxed' : 'standard');
+    const badgeFor = {
+      wasm: `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationWasm'))}</span>`,
+      sandboxed: `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationSandboxed'))}</span>`,
+      standard: `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`,
+      unknown: `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`,
+    };
+    const badge = badgeFor[cls] || badgeFor.standard;
+    // Said only for Wasm, and deliberately: we can see the runtime, never the
+    // WASI grants, so the copy states both.
+    const classNote = cls === 'wasm'
+      ? `<p class="text-sm" style="margin:10px 0 0;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationWasmNote'))}</p>`
+      : '';
 
     const signals = (r.signals || []).map(s => `
       <li style="color:${sev[s.severity] || 'var(--text-muted)'}">
@@ -1371,7 +1383,7 @@ const ContainersPageDetail = {
       ? `<p class="text-sm" style="margin:10px 0 4px;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationReach'))}</p>
          <ul class="text-sm" style="margin:0;padding-left:18px;line-height:1.7">${signals}</ul>
          ${r.actionable ? `<p class="text-sm" style="margin:10px 0 0;color:var(--yellow)">
-            <i class="fas fa-lightbulb"></i> ${Utils.escapeHtml(i18n.t('pages.containers.isolationSuggest', { runtime: r.sandboxOptions[0] }))}
+            <i class="fas fa-lightbulb"></i> ${Utils.escapeHtml(i18n.t('pages.containers.isolationSuggest', { runtime: (r.upgradeOptions || r.sandboxOptions || [])[0] }))}
           </p>` : ''}`
       : `<p class="text-sm" style="margin:10px 0 0;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationClean'))}</p>`;
 
@@ -1385,6 +1397,7 @@ const ContainersPageDetail = {
               <td><span class="mono">${Utils.escapeHtml(r.runtime)}</span> ${badge}</td></tr>
         </table>
         ${body}
+        ${classNote}
       </div>`;
     el.appendChild(card);
   },

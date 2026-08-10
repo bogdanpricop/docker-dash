@@ -171,6 +171,7 @@ const Api = {
   },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
   getContainerIsolation(id) { return this.get(`/containers/${id}/isolation`); },
+  getImageWasm(id) { return this.get(`/images/${encodeURIComponent(id)}/wasm`); },
   containerAction(id, action) { return this.post(`/containers/${id}/${action}`); },
   removeContainer(id, force = false) { return this.delete(`/containers/${id}?force=${force}`); },
   renameContainer(id, name) { return this.post(`/containers/${id}/rename`, { name }); },
