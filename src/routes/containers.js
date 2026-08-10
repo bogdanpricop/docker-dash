@@ -351,14 +351,21 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
 // container's own HostConfig with the host's registered OCI runtimes so the
 // frontend never has to know which runtime names count as sandboxed — that
 // taxonomy lives in one place (docker.js `_categorizeRuntimes`).
-router.get('/:id/isolation', requireAuth, asyncHandler(async (req, res) => {
-  const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
-  let info = null;
-  try { info = await dockerService.getInfo(req.hostId); }
-  catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
-  const sandboxed = (info && info.runtimeCategories && info.runtimeCategories.sandboxed) || [];
-  res.json(isolationPosture.assess(insp, { sandboxed, default: info && info.defaultRuntime }));
-}));
+router.get('/:id/isolation', requireAuth, async (req, res) => {
+  try {
+    const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
+    let info = null;
+    try { info = await dockerService.getInfo(req.hostId); }
+    catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
+    const sandboxed = (info && info.runtimeCategories && info.runtimeCategories.sandboxed) || [];
+    res.json(isolationPosture.assess(insp, { sandboxed, default: info && info.defaultRuntime }));
+  } catch (err) {
+    // Same mapping as /:id/inspect above — a missing container is a 404, not a
+    // server error. Without this, asking about a container that has just been
+    // removed reads as "Docker Dash is broken".
+    res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
+  }
+});
 
 router.get('/:id/stats', requireAuth, asyncHandler(async (req, res) => {
   const stats = await dockerService.getContainerStats(req.params.id, req.hostId);
