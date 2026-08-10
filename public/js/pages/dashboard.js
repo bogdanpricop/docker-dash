@@ -95,7 +95,7 @@ const DashboardPage = {
         <a href="#/multi-host" class="stat-card" id="fleet-health-card" style="display:none;min-width:250px;text-decoration:none;color:inherit">
           <div class="stat-icon blue"><i class="fas fa-network-wired"></i></div>
           <div class="stat-body" style="min-width:0;flex:1">
-            <div class="stat-value" id="fleet-health-value" style="font-size:16px">—</div>
+            <div class="stat-value" id="fleet-health-value" style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
             <div class="stat-label">Fleet health · 24h</div>
             <div style="height:34px;margin-top:3px"><canvas id="chart-fleet-health" role="img" aria-label="Connected, degraded, and disconnected hosts over 24 hours"></canvas></div>
           </div>
@@ -370,8 +370,13 @@ const DashboardPage = {
     }
     card.style.display = 'flex';
     const current = data.current;
-    document.getElementById('fleet-health-value').textContent =
-      `${current.connected} connected · ${current.degraded} degraded · ${current.disconnected} down`;
+    // The card is 250px wide and this string runs past it, so it gets cut by the
+    // card's overflow:hidden. Ellipsis makes the cut deliberate and the title
+    // gives the operator a way to read the rest — before, it was just severed.
+    const fleetValue = document.getElementById('fleet-health-value');
+    const fleetSummary = `${current.connected} connected · ${current.degraded} degraded · ${current.disconnected} down`;
+    fleetValue.textContent = fleetSummary;
+    fleetValue.title = fleetSummary;
     const canvas = document.getElementById('chart-fleet-health');
     if (!canvas) return;
     if (this._charts['chart-fleet-health']) this._charts['chart-fleet-health'].destroy();
@@ -389,10 +394,66 @@ const DashboardPage = {
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: { x: { display: false }, y: { display: false, beginAtZero: true, suggestedMax: current.total_hosts } },
-        plugins: { legend: { display: false }, tooltip: { enabled: true } },
+        plugins: {
+          legend: { display: false },
+          // Chart.js draws its built-in tooltip INSIDE the canvas. This sparkline
+          // is 34px tall and sits in a .stat-card with overflow:hidden, so a
+          // three-series tooltip has nowhere to go and gets clipped to nothing.
+          // Render it as a fixed-position node on <body> instead, which escapes
+          // both the canvas and the card. v8.94.1.
+          tooltip: { enabled: false, external: DashboardPage._sparklineTooltip },
+        },
         interaction: { intersect: false, mode: 'index' },
       },
     });
+  },
+
+  // Singleton tooltip node, reused across hovers and kept out of the card so
+  // nothing can clip it. pointer-events:none so it never blocks the card's link.
+  _sparklineTooltipEl() {
+    let el = document.getElementById('dash-sparkline-tooltip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'dash-sparkline-tooltip';
+      el.setAttribute('role', 'tooltip');
+      el.style.cssText = [
+        'position:fixed', 'pointer-events:none', 'z-index:9999', 'opacity:0',
+        'transition:opacity .12s ease', 'background:var(--surface2)',
+        'color:var(--text)', 'border:1px solid var(--border)', 'border-radius:6px',
+        'padding:6px 9px', 'font-size:11px', 'line-height:1.5', 'white-space:nowrap',
+        'box-shadow:var(--shadow-md)',
+      ].join(';');
+      document.body.appendChild(el);
+    }
+    return el;
+  },
+
+  _sparklineTooltip(context) {
+    const el = DashboardPage._sparklineTooltipEl();
+    const tt = context.tooltip;
+    if (!tt || !tt.opacity) { el.style.opacity = '0'; return; }
+
+    const title = (tt.title || []).map(t => Utils.escapeHtml(t)).join(' ');
+    const rows = (tt.body || []).map((b, i) => {
+      // Only accept a literal hex colour into the style attribute. Chart.js can
+      // hand back a CanvasGradient here, and an unvalidated value interpolated
+      // into CSS is an injection vector — the dataset colours are hex literals,
+      // so anything else is a bug and falls back rather than being trusted.
+      const raw = tt.labelColors && tt.labelColors[i] && tt.labelColors[i].borderColor;
+      const dot = typeof raw === 'string' && /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : 'currentColor';
+      const text = Utils.escapeHtml((b.lines || []).join(' '));
+      return `<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${dot};margin-right:6px"></span>${text}</div>`;
+    }).join('');
+    el.innerHTML = (title ? `<div style="color:var(--text-dim);margin-bottom:3px">${title}</div>` : '') + rows;
+
+    const rect = context.chart.canvas.getBoundingClientRect();
+    el.style.opacity = '1';
+    // Measure only after the content is in place, then flip left near the right
+    // edge so the tooltip never runs off-screen on a narrow window.
+    const width = el.offsetWidth;
+    const right = rect.left + tt.caretX + 12 + width;
+    el.style.left = `${right > window.innerWidth - 8 ? rect.left + tt.caretX - width - 12 : rect.left + tt.caretX + 12}px`;
+    el.style.top = `${Math.max(8, rect.top + tt.caretY - el.offsetHeight / 2)}px`;
   },
 
   _renderCpuChart(overview) {
@@ -558,7 +619,10 @@ const DashboardPage = {
       if (b.cpuUsage !== undefined) parts.push(`CPU ${b.cpuUsage}%`);
       if (b.memoryUsage !== undefined) parts.push(`RAM ${b.memoryUsage}%`);
       if (b.unhealthy > 0) parts.push(`${b.unhealthy} unhealthy`);
+      // This line is deliberately ellipsized, but it carried no title — so the
+      // truncated half was unreachable. Same fix as the fleet summary above.
       detailText.textContent = parts.join(' · ');
+      detailText.title = parts.join(' · ');
       statusText.style.color = color;
     }
   },
@@ -979,7 +1043,7 @@ const DashboardPage = {
         hostsEl.innerHTML = hostsA.length ? hostsA.map(h => `
           <div class="card" style="padding:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-              <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(h.name || '—')}</strong>
+              <strong title="${Utils.escapeHtml(h.name || '')}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(h.name || '—')}</strong>
               <span class="badge" style="background:${h.connectionState === 'connected' ? '#3fb950' : '#f85149'};color:#fff;font-size:10px">${Utils.escapeHtml(h.connectionState || '?')}</span>
             </div>
             ${this._vBar('CPU', h.cpuPercent, `${h.cpuUsageMHz || 0} / ${h.cpuTotalMHz || 0} MHz`)}
@@ -1022,8 +1086,8 @@ const DashboardPage = {
             return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;min-width:0">
               <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex:0 0 auto"></span>
               <div style="min-width:0;flex:1">
-                <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
-                <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
+                <div title="${Utils.escapeHtml(vm.name || '')}" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
+                <div title="${Utils.escapeHtml(vm.guestOS || '')}" style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
               </div>
               <div style="font-size:11px;color:var(--text-dim);text-align:right;flex:0 0 auto">${vm.numCPU || '?'}vCPU<br>${vm.memoryMB ? (vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1) + 'G' : '—'}</div>
             </div>`;
