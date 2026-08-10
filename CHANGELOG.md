@@ -30,6 +30,21 @@ operator what the tool actually does, and what their containers actually are.
 - Add a shared per-scan `docker info` cache to the posture context, English and
   Romanian labels, and 41 tests including call-count assertions on the cost gate.
 
+### How-To guides render as formatted documents again
+
+- Render markdown how-to bodies to HTML when the loader imports them. The
+  frontend injects `content` as HTML, so the 85 guides authored as markdown had
+  been arriving as one undifferentiated wall of text — headings, lists, tables
+  and code fences all flattened. Everything with "Proxmox" in the name was in
+  that set.
+- Raw HTML in a body passes through untouched, which is what makes the fix safe:
+  133 of the 154 shipped files contain HTML and 89 mix it with markdown.
+- Add styling for the constructs markdown produces that had none — tables,
+  `h1`/`h4`-`h6`, horizontal rules, nested lists and images.
+- Add a renderer with 343 tests, including a pass over every shipped guide
+  asserting no markdown survives outside code blocks and no pre-existing HTML
+  is lost.
+
 ### CLI transparency
 
 - Add a pure derivation service that turns an action key plus typed parameters

@@ -2943,6 +2943,21 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .howto-content strong { color: var(--text-bright); }
 .howto-content a { color: var(--accent); text-decoration: none; }
 .howto-content a:hover { text-decoration: underline; }
+/* v8.94.2 — markdown-authored guides also produce h1/h4, tables and rules,
+   which had no styling and rendered as unformatted runs of text. */
+.howto-content h1 { font-size: 18px; color: var(--text-white); margin: 22px 0 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.howto-content h1:first-child, .howto-content h2:first-child { margin-top: 0; }
+.howto-content h4 { font-size: 13px; color: var(--text-bright); margin: 14px 0 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+.howto-content h5, .howto-content h6 { font-size: 12px; color: var(--text-bright); margin: 12px 0 4px; }
+.howto-content hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+.howto-content ul ul, .howto-content ol ol, .howto-content ul ol, .howto-content ol ul { margin: 4px 0; }
+.howto-content table, .howto-content .howto-table {
+  width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; display: block; overflow-x: auto;
+}
+.howto-content th, .howto-content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+.howto-content th { background: var(--surface2); color: var(--text-bright); font-weight: 600; white-space: nowrap; }
+.howto-content tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+.howto-content img { max-width: 100%; height: auto; }
 
 /* ── Onboarding & Provisioning Wizard (v8.15.0) — components/wizard.js ── */
 .wiz-overlay { position: fixed; inset: 0; z-index: 11000; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 16px; }
