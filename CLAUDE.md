@@ -19,6 +19,28 @@ Current version source of truth: [`src/version.js`](src/version.js). Bump via `n
 7. **Output escaping.** Frontend uses `Utils.escapeHtml(value)` on every interpolated user-facing string. Inline `onclick=` in template strings is forbidden — use `addEventListener` after rendering.
 8. **No secrets in source.** AES-256-GCM via `src/utils/crypto.js` for credentials at rest. `ENCRYPTION_KEY` env var required at startup.
 
+## Every page carries a "?" help button — NON-NEGOTIABLE
+
+Every routed page in `App._pages` has a `?` button in its header opening a modal
+that explains what the page does and what each action means. This was a standing
+requirement that went unenforced for a long time: 50 of 59 pages shipped without
+one before v8.94.1.
+
+**How to satisfy it now:** add an entry to `public/js/help-content.js` keyed by
+the route name. `PageHelp` (`public/js/components/page-help.js`) injects the
+button after render, so **no per-page code is needed**. Nine older pages
+hand-rolled their own `_showHelp()`; the injector backs off when it finds an
+existing `.prune-help-btn`, so those keep working.
+
+Content rules:
+- Say what the page actually does, including what it *refuses* to do.
+- English is the fallback; add `ro` too (no diacritics, matching `ro.js`).
+- Long-form prose lives in `help-content.js`, not `i18n/*.js` — same reasoning
+  that keeps how-to guides in markdown.
+
+**Enforced:** `npm run check:page-help` exits non-zero if any routed page has
+neither an entry nor its own button. Run it when adding a page.
+
 ## Deep-spec discipline (the project's own workflow)
 
 Strategic features ship in order: deep-spec → feature-spec → code → tests → release. Plans live in `plans/` (gitignored, local-only). The discipline is non-negotiable for major features (everything that ships in a `.0` minor): write the strategic intent before code, get acceptance, then execute.

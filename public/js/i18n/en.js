@@ -118,6 +118,9 @@ i18n.register('en', 'EN', 'English', {
   detail: {
     tabs: { summary: 'Summary', monitor: 'Monitor', configure: 'Configure', events: 'Events', inspect: 'Inspect' },
   },
+  pageHelp: {
+    tooltip: 'What does this page do?',
+  },
   // v8.94.0 — CLI Transparency. Framed as "what this does", never "do it yourself".
   cliPreview: {
     label: 'CLI equivalent',

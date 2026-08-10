@@ -220,6 +220,9 @@ i18n.register('ro', 'RO', "Română", {
       inspect: "Inspectare"
     }
   },
+  pageHelp: {
+    tooltip: "Ce face aceasta pagina?"
+  },
   cliPreview: {
     label: "Echivalent CLI",
     onHost: "asa cum ruleaza pe {{host}}",

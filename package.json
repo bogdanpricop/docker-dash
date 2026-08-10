@@ -15,7 +15,8 @@
     "check:virtualization-research": "node scripts/validate-virtualization-feature-registry.js",
     "generate:virtualization-research": "node scripts/validate-virtualization-feature-registry.js --write",
     "lint:fix": "eslint src/ --fix",
-    "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml"
+    "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml",
+    "check:page-help": "node scripts/check-page-help.js"
   },
   "dependencies": {
     "@novnc/novnc": "1.5.0",

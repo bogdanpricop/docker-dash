@@ -53,6 +53,18 @@ function _activeMuteKeys(db) {
   return new Set(rows.map(r => r.finding_key));
 }
 
+// Resolves to the host's daemon info, or null if it errors or takes too long.
+const DAEMON_INFO_TIMEOUT_MS = 3000;
+function _boundedInfo(hostId) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), DAEMON_INFO_TIMEOUT_MS);
+    if (timer.unref) timer.unref();
+    require('../docker').getInfo(hostId)
+      .then((info) => { clearTimeout(timer); resolve(info); })
+      .catch(() => { clearTimeout(timer); resolve(null); });
+  });
+}
+
 async function scan() {
   const db = _db();
   const hosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
@@ -75,11 +87,13 @@ async function scan() {
       },
     },
     docker: {
-      async info(hostId) {
-        if (!_infoCache.has(hostId)) {
-          try { _infoCache.set(hostId, await require('../docker').getInfo(hostId)); }
-          catch { _infoCache.set(hostId, null); }
-        }
+      // Bounded and best-effort. `docker info` against an unreachable daemon can
+      // sit for a long time, and this scan feeds the Copilot context, which has
+      // its own latency budget — an unreachable host must degrade the scan, not
+      // stall it. The promise is cached rather than the value so concurrent
+      // checks share one call instead of racing to start their own.
+      info(hostId) {
+        if (!_infoCache.has(hostId)) _infoCache.set(hostId, _boundedInfo(hostId));
         return _infoCache.get(hostId);
       },
     },

@@ -1801,6 +1801,11 @@ const App = {
       this._currentPageName = pageName;
       await page.render(container, params);
 
+      // Every routed page carries a "?" button explaining what it does. Injected
+      // here rather than repeated in 50 render methods; pages that hand-rolled
+      // their own are left alone. See components/page-help.js.
+      try { PageHelp.mount(pageName, container); } catch { /* help must never break a page */ }
+
       // Enhance accessibility: add ARIA roles to tabs and icon-only buttons
       document.querySelectorAll('.tabs').forEach(t => {
         t.setAttribute('role', 'tablist');
