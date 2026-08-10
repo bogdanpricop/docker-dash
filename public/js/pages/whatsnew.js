@@ -9,6 +9,14 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.94.0', date: '2026-08-10', title: 'CLI transparency and isolation posture', changes: [
+      { type: 'feature', text: 'Destructive and bulk container actions now show the equivalent docker command before you confirm them, with a copy button.' },
+      { type: 'feature', text: 'Audit entries for container actions carry the equivalent command, so an incident review reads like a shell history instead of a list of verbs.' },
+      { type: 'security', text: 'Command arguments are shell-escaped and secret-shaped environment values are masked, in the service itself, so every caller inherits both.' },
+      { type: 'feature', text: 'Every container detail page now shows which OCI runtime actually backs the container and, when it can reach past that runtime, exactly how.' },
+      { type: 'security', text: 'A new posture check flags containers with host-level reach that are still on the shared-kernel runtime, but only where the host already has a sandboxed runtime such as Kata or gVisor registered.' },
+      { type: 'improvement', text: 'Disabled seccomp, AppArmor or SELinux confinement and Docker-socket mounts are reported per container for the first time.' },
+    ] },
     { version: '8.93.0', date: '2026-08-06', title: 'Signed Compose blueprint catalog', changes: [
       { type: 'feature', text: 'A curated Compose Catalog now provides owned, support-classified blueprints and immutable semantic versions pinned to OCI SHA-256 digests.' },
       { type: 'security', text: 'Publication and restoration require live Cosign verification against an explicit signer identity; typed inputs accept secret references but never inline secret material.' },

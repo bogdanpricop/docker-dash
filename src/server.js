@@ -171,6 +171,7 @@ app.use('/api/networks', apiLimiter, require('./routes/networks'));
 app.use('/api/system/update-check', apiLimiter, require('./routes/update-check'));
 app.use('/api/system', apiLimiter, require('./routes/system'));
 app.use('/api/stats', apiLimiter, require('./routes/stats'));
+app.use('/api/cli-preview', apiLimiter, require('./routes/cli-preview'));
 app.use('/api/alerts', apiLimiter, require('./routes/alerts'));
 app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));

@@ -59,6 +59,10 @@ async function scan() {
   // Per-scan firewall cache so fw-drift and fw-exposed-port share ONE listRules
   // (SSH) call per host instead of two.
   const _fwCache = new Map();
+  // v8.94.0 — same idea for daemon info: the isolation check needs the host's
+  // registered OCI runtimes, and any future check that wants `docker info`
+  // should share the one call rather than adding another round trip per host.
+  const _infoCache = new Map();
   const ctx = {
     db, hosts, log,
     firewall: {
@@ -68,6 +72,15 @@ async function scan() {
           catch { _fwCache.set(hostId, null); }
         }
         return _fwCache.get(hostId);
+      },
+    },
+    docker: {
+      async info(hostId) {
+        if (!_infoCache.has(hostId)) {
+          try { _infoCache.set(hostId, await require('../docker').getInfo(hostId)); }
+          catch { _infoCache.set(hostId, null); }
+        }
+        return _infoCache.get(hostId);
       },
     },
   };

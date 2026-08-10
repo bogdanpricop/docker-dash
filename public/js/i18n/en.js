@@ -118,6 +118,13 @@ i18n.register('en', 'EN', 'English', {
   detail: {
     tabs: { summary: 'Summary', monitor: 'Monitor', configure: 'Configure', events: 'Events', inspect: 'Inspect' },
   },
+  // v8.94.0 — CLI Transparency. Framed as "what this does", never "do it yourself".
+  cliPreview: {
+    label: 'CLI equivalent',
+    onHost: 'as run on {{host}}',
+    copy: 'Copy command',
+    redacted: 'Secret values are masked in this preview.',
+  },
   pages: {
     // ── Dashboard ───────────────────────────────
     dashboard: {
@@ -174,6 +181,12 @@ i18n.register('en', 'EN', 'English', {
       general: 'General', resources: 'Resources', id: 'ID',
       started: 'Started', exitCode: 'Exit Code', platform: 'Platform',
       restartPolicy: 'Restart Policy', command: 'Command',
+      // v8.94.0 — isolation posture
+      isolation: 'Isolation', runtime: 'Runtime',
+      isolationSandboxed: 'SANDBOXED', isolationSharedKernel: 'SHARED KERNEL',
+      isolationReach: 'This container can reach past its runtime:',
+      isolationClean: 'No host-level reach detected beyond the runtime boundary.',
+      isolationSuggest: 'This host has {{runtime}} available — running this workload under it would contain the reach above.',
       cpuLimit: 'CPU Limit', memoryLimit: 'Memory Limit', pidsLimit: 'PIDs Limit',
       unlimited: 'unlimited', cores: 'cores',
       portBindings: 'Port Bindings', container: 'Container', host: 'Host',

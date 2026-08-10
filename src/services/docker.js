@@ -406,6 +406,24 @@ class DockerService {
         pidsLimit: data.HostConfig?.PidsLimit,
       },
       restartPolicy: data.HostConfig?.RestartPolicy,
+      // v8.94.0 — isolation posture. Which OCI runtime actually backs this
+      // container, plus the HostConfig switches that decide how much the
+      // container can reach past it. Host-level runtime detection already
+      // existed (see getInfo → runtimeCategories); this is the per-container
+      // half, without which "you have Kata installed" is not actionable.
+      // Additive: no existing field changes shape.
+      isolation: {
+        runtime: data.HostConfig?.Runtime || null,
+        privileged: !!data.HostConfig?.Privileged,
+        capAdd: data.HostConfig?.CapAdd || [],
+        capDrop: data.HostConfig?.CapDrop || [],
+        pidMode: data.HostConfig?.PidMode || '',
+        ipcMode: data.HostConfig?.IpcMode || '',
+        networkMode: data.HostConfig?.NetworkMode || '',
+        usernsMode: data.HostConfig?.UsernsMode || '',
+        readonlyRootfs: !!data.HostConfig?.ReadonlyRootfs,
+        securityOpt: data.HostConfig?.SecurityOpt || [],
+      },
       isSelf: hostId === 0 && this.isSelf(data.Id),
       hostId,
     };

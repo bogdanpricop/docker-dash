@@ -17,10 +17,25 @@ const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
+const cliTransparency = require('../services/cli-transparency');
+const isolationPosture = require('../services/isolation-posture');
+
 const router = Router();
 router.use(requireAuth);
 router.use(extractHostId);
 router.use(requireHostAccessForMethod());
+
+// v8.94.0 — CLI Transparency. Attach the equivalent command to an audit entry so
+// an incident review reads like a shell history instead of a list of verbs.
+// Secret redaction happens inside the service, so every caller inherits it.
+// Best-effort by design: a transparency feature must never break the action it
+// describes, so a derivation failure yields no `cli` key rather than an error.
+function _cliDetails(action, params) {
+  try {
+    const r = cliTransparency.describe(action, params);
+    return r.available ? { cli: r.command, cliRedacted: r.redacted } : {};
+  } catch { return {}; }
+}
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
@@ -332,6 +347,19 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Container stats (one-shot)
+// v8.94.0 — isolation assessment for one container. Read-only. Combines the
+// container's own HostConfig with the host's registered OCI runtimes so the
+// frontend never has to know which runtime names count as sandboxed — that
+// taxonomy lives in one place (docker.js `_categorizeRuntimes`).
+router.get('/:id/isolation', requireAuth, asyncHandler(async (req, res) => {
+  const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
+  let info = null;
+  try { info = await dockerService.getInfo(req.hostId); }
+  catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
+  const sandboxed = (info && info.runtimeCategories && info.runtimeCategories.sandboxed) || [];
+  res.json(isolationPosture.assess(insp, { sandboxed, default: info && info.defaultRuntime }));
+}));
+
 router.get('/:id/stats', requireAuth, asyncHandler(async (req, res) => {
   const stats = await dockerService.getContainerStats(req.params.id, req.hostId);
   res.json(stats);
@@ -359,6 +387,7 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: `container_${action}`, targetType: 'container', targetId: id,
+      details: _cliDetails(`container.${action}`, { name: inspect.name || id }),
       ip: getClientIp(req),
     });
     res.json({ ok: true, action });
@@ -385,7 +414,13 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_remove', targetType: 'container', targetId: req.params.id,
-      details: { force, removeVolumes: v }, ip: getClientIp(req),
+      details: {
+        force, removeVolumes: v,
+        ..._cliDetails('container.remove', {
+          name: inspect.name || req.params.id, force: force === 'true', volumes: v === 'true',
+        }),
+      },
+      ip: getClientIp(req),
     });
     res.json({ ok: true });
   } catch (err) {
@@ -397,11 +432,18 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
 router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+  const before = await dockerService.inspectContainer(req.params.id, req.hostId).catch(() => null);
   await dockerService.renameContainer(req.params.id, name, req.hostId);
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'container_rename', targetType: 'container', targetId: req.params.id,
-    details: { newName: name }, ip: getClientIp(req),
+    details: {
+      newName: name,
+      ..._cliDetails('container.rename', {
+        name: (before && before.name) || req.params.id, newName: name,
+      }),
+    },
+    ip: getClientIp(req),
   });
   res.json({ ok: true });
 }));
@@ -862,10 +904,19 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
     }
   }
 
+  // Render only what actually ran — a failed subject never produced a command,
+  // and the audit entry should read as history, not intent.
+  const applied = results.filter(r => r.ok)
+    .map(r => (action === 'remove' ? { name: r.id, force: true } : { name: r.id }));
+
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: `bulk_${action}`, targetType: 'container',
-    details: { ids, results: results.filter(r => !r.ok) }, ip: getClientIp(req),
+    details: {
+      ids, results: results.filter(r => !r.ok),
+      ..._cliDetails('container.bulk', { action, subjects: applied }),
+    },
+    ip: getClientIp(req),
   });
 
   res.json({ results });

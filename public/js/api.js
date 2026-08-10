@@ -145,6 +145,12 @@ const Api = {
   sendPasswordReset(id, lang) { return this.post(`/auth/users/${id}/send-reset`, { lang, origin: window.location.origin }); },
   sendInvitation(id, lang) { return this.post(`/auth/users/${id}/send-invite`, { lang, origin: window.location.origin }); },
 
+  // ─── CLI Transparency ────────────────────────────
+  // Read-only: derives the equivalent docker command for an action. POST because
+  // the params are structured, not because anything changes. v8.94.0.
+  getCliPreview(action, params = {}) { return this.post('/cli-preview', { action, params }); },
+  getCliPreviewActions() { return this.get('/cli-preview/actions'); },
+
   // ─── Containers ──────────────────────────────────
   getContainers(all = true) { return this.get(`/containers?all=${all}`); },
   getContainer(id) { return this.get(`/containers/${id}/inspect`); },
@@ -164,6 +170,7 @@ const Api = {
     return this.get(`/containers/logs/multi?${params.toString()}`);
   },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
+  getContainerIsolation(id) { return this.get(`/containers/${id}/isolation`); },
   containerAction(id, action) { return this.post(`/containers/${id}/${action}`); },
   removeContainer(id, force = false) { return this.delete(`/containers/${id}?force=${force}`); },
   renameContainer(id, name) { return this.post(`/containers/${id}/rename`, { name }); },

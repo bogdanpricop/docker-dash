@@ -220,6 +220,12 @@ i18n.register('ro', 'RO', "Română", {
       inspect: "Inspectare"
     }
   },
+  cliPreview: {
+    label: "Echivalent CLI",
+    onHost: "asa cum ruleaza pe {{host}}",
+    copy: "Copiaza comanda",
+    redacted: "Valorile secrete sunt mascate in aceasta previzualizare."
+  },
   pages: {
     dashboard: {
       title: "Dashboard",
@@ -307,6 +313,13 @@ i18n.register('ro', 'RO', "Română", {
       platform: "Platforma",
       restartPolicy: "Politica Restart",
       command: "Comanda",
+      isolation: "Izolare",
+      runtime: "Runtime",
+      isolationSandboxed: "IZOLAT",
+      isolationSharedKernel: "KERNEL PARTAJAT",
+      isolationReach: "Acest container poate ajunge dincolo de runtime-ul sau:",
+      isolationClean: "Nu s-a detectat acces la nivel de host dincolo de limita runtime-ului.",
+      isolationSuggest: "Acest host are {{runtime}} disponibil — rularea acestui workload sub el ar limita accesul de mai sus.",
       cpuLimit: "Limita CPU",
       memoryLimit: "Limita Memorie",
       pidsLimit: "Limita PID-uri",

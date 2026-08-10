@@ -114,7 +114,11 @@ const Modal = {
   },
 
   // Convenience: confirmation dialog
-  confirm(message, { title, confirmText, danger = false, typeToConfirm, html = false, width = '420px' } = {}) {
+  // `onMount(content)` runs once the dialog is in the DOM — the hook that lets a
+  // caller attach listeners to its own `html: true` markup without inline
+  // handlers, which CSP `script-src-attr 'none'` blocks. Added v8.94.0 for the
+  // CLI preview row; optional, so existing callers are unaffected.
+  confirm(message, { title, confirmText, danger = false, typeToConfirm, html = false, width = '420px', onMount } = {}) {
     title = title || i18n.t('common.confirm');
     confirmText = confirmText || i18n.t('common.confirm');
     return new Promise((resolve) => {
@@ -155,6 +159,7 @@ const Modal = {
       okBtn.addEventListener('click', ok);
       this._content.querySelector('#modal-cancel').addEventListener('click', cancel);
       this._content.querySelector('#modal-x').addEventListener('click', cancel);
+      if (onMount) { try { onMount(this._content); } catch { /* never block the dialog */ } }
       this._onClose = () => resolve(false);
     });
   },

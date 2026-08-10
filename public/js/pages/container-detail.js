@@ -818,9 +818,16 @@ const ContainersPageDetail = {
       const info = this._detailData || {};
       const name = info.name || id.substring(0, 12);
       const isRunning = info.state === 'running';
+      // v8.94.0 — show the equivalent docker command before a destructive action.
+      // Returns '' if unavailable, so the dialog degrades to exactly what it was.
+      const cliHtml = await CliPreview.html('container.remove', { name, force: true });
       const ok = await Modal.confirm(
-        `Remove container "${name}"? This action cannot be undone.`,
-        { danger: true, confirmText: i18n.t('common.remove'), typeToConfirm: isRunning ? name : undefined }
+        `<p>${Utils.escapeHtml(`Remove container "${name}"? This action cannot be undone.`)}</p>${cliHtml}`,
+        {
+          danger: true, html: true, confirmText: i18n.t('common.remove'),
+          typeToConfirm: isRunning ? name : undefined,
+          onMount: (root) => CliPreview.mount(root),
+        }
       );
       if (!ok) return;
       try {
@@ -1315,6 +1322,10 @@ const ContainersPageDetail = {
     // Load and display container metadata card
     this._loadMetaCard(el, info.name);
 
+    // v8.94.0 — isolation card. Loaded after render, like the meta card: the
+    // info tab is the default view and must not wait on a daemon round trip.
+    this._loadIsolationCard(el);
+
     // Wire sandbox buttons
     if (isSandbox) {
       el.querySelector('#sb-extend-btn')?.addEventListener('click', async () => {
@@ -1334,6 +1345,48 @@ const ContainersPageDetail = {
         } catch (err) { Toast.error(err.message); }
       });
     }
+  },
+
+  // v8.94.0 — isolation posture. Shows which OCI runtime actually backs this
+  // container and, when it can reach past that runtime, exactly how. The reach
+  // list is informational here; the posture page raises a finding only where the
+  // host has a sandboxed runtime the container isn't using.
+  async _loadIsolationCard(el) {
+    let r;
+    try { r = await Api.getContainerIsolation(this._detailId); }
+    catch { return; } // the info tab is more important than the assessment
+    if (!r || !r.runtime) return;
+
+    const sev = { critical: 'var(--red)', high: 'var(--red)', medium: 'var(--yellow)', low: 'var(--text-muted)' };
+    const badge = r.sandboxed
+      ? `<span class="badge badge-success">${Utils.escapeHtml(i18n.t('pages.containers.isolationSandboxed'))}</span>`
+      : `<span class="badge badge-info">${Utils.escapeHtml(i18n.t('pages.containers.isolationSharedKernel'))}</span>`;
+
+    const signals = (r.signals || []).map(s => `
+      <li style="color:${sev[s.severity] || 'var(--text-muted)'}">
+        <i class="fas fa-circle" style="font-size:6px;vertical-align:middle;margin-right:6px"></i>${Utils.escapeHtml(s.label)}
+      </li>`).join('');
+
+    const body = signals
+      ? `<p class="text-sm" style="margin:10px 0 4px;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationReach'))}</p>
+         <ul class="text-sm" style="margin:0;padding-left:18px;line-height:1.7">${signals}</ul>
+         ${r.actionable ? `<p class="text-sm" style="margin:10px 0 0;color:var(--yellow)">
+            <i class="fas fa-lightbulb"></i> ${Utils.escapeHtml(i18n.t('pages.containers.isolationSuggest', { runtime: r.sandboxOptions[0] }))}
+          </p>` : ''}`
+      : `<p class="text-sm" style="margin:10px 0 0;color:var(--text-muted)">${Utils.escapeHtml(i18n.t('pages.containers.isolationClean'))}</p>`;
+
+    const card = document.createElement('div');
+    card.className = 'card mt-md';
+    card.innerHTML = `
+      <div class="card-header"><h3>${Utils.escapeHtml(i18n.t('pages.containers.isolation'))}</h3></div>
+      <div class="card-body">
+        <table class="info-table">
+          <tr><td>${Utils.escapeHtml(i18n.t('pages.containers.runtime'))}</td>
+              <td><span class="mono">${Utils.escapeHtml(r.runtime)}</span> ${badge}</td></tr>
+        </table>
+        ${body}
+      </div>`;
+    el.appendChild(card);
   },
 
   async _loadMetaCard(el, containerName) {

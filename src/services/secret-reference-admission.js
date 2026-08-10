@@ -160,5 +160,8 @@ function assertSecretReferenceAdmission(input = {}) {
   return result;
 }
 
+// SECRET_KEY is exported so cli-transparency.js redacts against the SAME pattern
+// this module admits against. Two independently-maintained secret regexes drift,
+// and the one that drifts is the one that leaks.
 module.exports = { SecretReferenceAdmissionError, inspectSecretReferences, assertSecretReferenceAdmission,
-  _internals: { canonical, normalizedReference, inspectDocument } };
+  _internals: { canonical, normalizedReference, inspectDocument, SECRET_KEY } };

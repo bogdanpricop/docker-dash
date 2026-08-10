@@ -797,9 +797,16 @@ const ContainersPage = {
         const ids = containers.map(c => c.id);
         if (ids.length === 0) return;
 
+        // v8.94.0 — show the equivalent docker commands before a bulk action.
+        // Subjects are container names where known; the backend renders one line each.
+        const subjects = containers.map(c => ({
+          name: c.name || c.id, force: action === 'remove' ? true : undefined,
+        }));
+        const cliHtml = await CliPreview.html('container.bulk', { action, subjects });
+        const label = action.charAt(0).toUpperCase() + action.slice(1);
         const ok = await Modal.confirm(
-          i18n.t('pages.containers.stackConfirm', { action: action.charAt(0).toUpperCase() + action.slice(1), count: ids.length, stack: stackName }),
-          { confirmText: action.charAt(0).toUpperCase() + action.slice(1) }
+          `<p>${Utils.escapeHtml(i18n.t('pages.containers.stackConfirm', { action: label, count: ids.length, stack: stackName }))}</p>${cliHtml}`,
+          { html: true, confirmText: label, onMount: (root) => CliPreview.mount(root) }
         );
         if (!ok) return;
 

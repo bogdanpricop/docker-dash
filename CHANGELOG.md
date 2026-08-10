@@ -2,6 +2,55 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.94.0] - 2026-08-10 — CLI transparency and per-container isolation posture
+
+Two features derived from the same critique of opaque management UIs: show the
+operator what the tool actually does, and what their containers actually are.
+
+### Per-container isolation posture
+
+- Expose the per-container isolation model (`HostConfig.Runtime`, privileged,
+  capabilities, namespace modes, `UsernsMode`, security options) from
+  `inspectContainer` as an additive `isolation` block.
+- Add a pure assessment service that enumerates how far a container can reach
+  past its runtime, including Docker-socket mounts and disabled seccomp,
+  AppArmor or SELinux confinement — signals no existing check reported per
+  container.
+- Add a posture check that raises one finding per container, only when the
+  container has host-level reach, is not already sandboxed, and the host has a
+  sandboxed runtime registered; the same gate keeps the per-container inspect
+  loop off hosts where it would find nothing actionable.
+- Treat privileged, capability and namespace switches as inputs rather than
+  findings, so the check complements the CIS benchmark instead of repeating it.
+- Cap finding severity at high: the verdict is "this could be contained better",
+  not "this is breached", and posture scoring must not double-count CIS.
+- Add `GET /api/containers/:id/isolation` and a container-detail card so the
+  runtime taxonomy stays server-side and the teaching surface works on every
+  host, not only where a sandboxed runtime exists.
+- Add a shared per-scan `docker info` cache to the posture context, English and
+  Romanian labels, and 41 tests including call-count assertions on the cost gate.
+
+### CLI transparency
+
+- Add a pure derivation service that turns an action key plus typed parameters
+  into the equivalent `docker` or `docker compose` command, covering container
+  lifecycle, removal, rename, bulk, run, image, volume, network, prune and
+  Compose stack verbs.
+- Shell-escape every argument and mask secret-shaped environment and label values
+  inside the service, so all callers inherit both; a truncated secret is treated
+  as a secret and replaced outright.
+- Add read-only `POST /api/cli-preview` and `GET /api/cli-preview/actions`,
+  restricted to a fixed action allowlist; the endpoint never accepts a
+  caller-supplied command string.
+- Show the equivalent command, collapsed and copyable, in the container-remove
+  and stack bulk-action confirmations, and record it on the matching audit
+  entries.
+- Report an action with no exact equivalent as unavailable rather than guessing a
+  partial command an operator might paste into a production shell.
+- Add an optional `onMount` hook to `Modal.confirm` so dialog markup can attach
+  listeners without inline handlers, English and Romanian labels, and 66 tests
+  covering escaping, redaction and the allowlist.
+
 ## [8.93.0] - 2026-08-06 — Signed Compose blueprint catalog
 
 - Add a curated Compose catalog with owner, support level, lifecycle and

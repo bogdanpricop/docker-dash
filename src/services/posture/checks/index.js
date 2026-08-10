@@ -11,6 +11,7 @@ const ALL = [
   require('./fw-drift'),
   require('./exposed-port'),
   require('./egress'),
+  require('./isolation'),
   require('./vsphere'),
   require('./proxmox'),
   require('./k8s'),
