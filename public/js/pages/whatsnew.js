@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.95.1', date: '2026-08-11', title: 'Three deferred defects', changes: [
+      { type: 'security', text: 'Per-stack permissions were ignored on container start, stop, restart, kill, pause, unpause and remove: every container resolved to the standalone bucket. Global admins were unaffected; if you grant per-stack permissions to non-admins, review those grants after upgrading, because they now apply.' },
+      { type: 'security', text: 'Exporting a container as a run command or Compose file no longer emits its secrets verbatim. Values behind secret-shaped keys are masked, everything is shell-escaped, and a note says what was replaced.' },
+      { type: 'fix', text: 'The Redis client in HA mode no longer logs after it has been discarded, which was making the test suite intermittently red for reasons unrelated to the tests it failed.' },
+    ] },
     { version: '8.95.0', date: '2026-08-11', title: 'Wasm as a first-class isolation class', changes: [
       { type: 'fix', text: 'A container backed by a WebAssembly runtime was reported as SHARED KERNEL — the opposite of the truth — and on a host that also had gVisor the posture check advised moving it there, which is a downgrade. Isolation is now an ordered class: Wasm outranks sandboxed outranks standard.' },
       { type: 'feature', text: 'The System page now groups a host\'s OCI runtimes into Standard, Sandboxed and Wasm — the panel the Wasm guide has described since v8.9.5 but which was never built.' },

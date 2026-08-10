@@ -2,6 +2,52 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.95.1] - 2026-08-11 — Three deferred defects
+
+All three were found during earlier work, reported, and deliberately left for a
+separate change rather than bundled into a feature commit.
+
+### Per-stack permissions were ignored on container lifecycle routes
+
+- The container action and remove routes resolved a container's stack from
+  `inspect.Config?.Labels` — Docker's raw wire shape. `inspectContainer` returns
+  a normalized object exposing `labels`, so the optional chain always yielded
+  undefined and every container fell into the `_standalone` bucket. Per-stack
+  permission grants were therefore ignored for start, stop, restart, kill, pause,
+  unpause and remove.
+- **Who this changes:** global admins were unaffected either way, because
+  `getEffectiveRole` returns early for them. The fix changes behaviour only for
+  non-admin users holding an explicit `stack_permissions` grant — for whom the
+  configured permission now applies instead of their global role. That grant may
+  be broader or narrower than the global role, so review existing grants after
+  upgrading.
+- Other reads of `Config.Labels` in the same file are correct and untouched: they
+  operate on a raw `container.inspect()`.
+
+### Container export no longer carries credentials
+
+- `/:id/export` built its output by interpolating inspect data directly — env
+  vars as `-e "KEY=VALUE"`, labels as `--label k="v"` — with no escaping and no
+  redaction. A container's secrets were exported verbatim into a command
+  operators paste into tickets, and any value containing a quote produced a
+  broken, potentially injectable string.
+- Both the run-command and Compose exports now delegate to the CLI transparency
+  service, inheriting its shell escaping and secret redaction, and append a note
+  naming what was masked so the omission is visible rather than silent.
+
+### The test suite is no longer intermittently red
+
+- `cluster.js` attached `connect` and `error` handlers that logged unconditionally.
+  `connect` fires on a later tick, so it could land after the client had been
+  discarded by `shutdown()` or `_reset()` — in production, noise about a
+  connection nobody uses; under Jest, a write after teardown that Jest attributed
+  to whichever test happened to be running, failing 2–4 unrelated tests per run.
+- Handlers now check they are still the current client before logging, and
+  `_reset()` detaches listeners before dropping its reference. Verified: three
+  consecutive runs of the cluster suites went from 3 late writes each to none.
+
+21 new tests across 2 suites.
+
 ## [8.95.0] - 2026-08-11 — Wasm as a first-class isolation class
 
 Fixes a defect introduced in v8.94.0 and builds out the surface it exposed.

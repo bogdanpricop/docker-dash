@@ -388,7 +388,11 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
   try {
     // Check per-stack permission: actions require at least 'operate'
     const inspect = await dockerService.inspectContainer(id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'operate')) {
       return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
@@ -412,7 +416,11 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
   try {
     // Check per-stack permission: remove requires 'admin' on the stack
     const inspect = await dockerService.inspectContainer(req.params.id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'admin')) {
       return res.status(403).json({ error: 'Insufficient stack permissions to remove this container' });
@@ -1049,9 +1057,16 @@ function generateCompose(data) {
   if (rp && rp.Name && rp.Name !== 'no') {
     lines.push(`    restart: ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`);
   }
+  // v8.95.1 — same redaction as the run command: an exported compose file is a
+  // recipe, not a credential store.
+  let redacted = false;
   if (data.env?.length) {
     lines.push('    environment:');
-    data.env.forEach(e => lines.push(`      - ${e}`));
+    data.env.forEach(e => {
+      const r = cliTransparency.redactEnvPair(e);
+      if (r.redacted) redacted = true;
+      lines.push(`      - ${r.text}`);
+    });
   }
   const ports = data.ports || {};
   const portEntries = Object.entries(ports).filter(([, v]) => v?.length);
@@ -1078,46 +1093,77 @@ function generateCompose(data) {
   const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
   if (labels.length) {
     lines.push('    labels:');
-    labels.forEach(([k, v]) => lines.push(`      ${k}: "${v}"`));
+    labels.forEach(([k, v]) => {
+      const r = cliTransparency.redactEnvPair(`${k}=${v}`);
+      if (r.redacted) redacted = true;
+      lines.push(`      ${k}: ${JSON.stringify(r.text.slice(String(k).length + 1))}`);
+    });
   }
   if (nets.length) {
     lines.push('');
     lines.push('networks:');
     nets.forEach(n => lines.push(`  ${n}:\n    external: true`));
   }
+  if (redacted) {
+    lines.push('');
+    lines.push('# Secret-shaped values were replaced with <redacted>. Fill them in before deploying.');
+  }
   return lines.join('\n');
 }
 
-function generateRunCommand(data) {
-  let cmd = `docker run -d \\\n  --name ${data.name}`;
+// v8.95.1 — delegates to cli-transparency rather than interpolating inspect data
+// into a command by hand. The previous implementation emitted env vars as
+// `-e "KEY=VALUE"` and labels as `--label k="v"` with no escaping and no
+// redaction: a container's secrets were exported verbatim into a command
+// operators paste into tickets, and any value containing a quote produced a
+// broken — potentially injectable — string.
+//
+// Redaction is the point, not a side effect. An exported command is a recipe, and
+// a recipe should not carry credentials; the note makes the omission visible
+// instead of silent.
+function _toRunParams(data) {
   const rp = data.restartPolicy;
-  if (rp && rp.Name && rp.Name !== 'no') {
-    cmd += ` \\\n  --restart ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`;
+  const restart = rp && rp.Name && rp.Name !== 'no'
+    ? rp.Name + (rp.MaximumRetryCount ? ':' + rp.MaximumRetryCount : '')
+    : undefined;
+
+  const ports = [];
+  for (const [portProto, bindings] of Object.entries(data.ports || {})) {
+    if (!bindings || !bindings.length) continue;
+    const [containerPort, proto] = portProto.split('/');
+    for (const b of bindings) ports.push({ host: b.HostPort || '', container: containerPort, proto });
   }
-  if (data.env?.length) data.env.forEach(e => cmd += ` \\\n  -e "${e}"`);
-  const ports = data.ports || {};
-  Object.entries(ports).filter(([, v]) => v?.length).forEach(([container, bindings]) => {
-    bindings.forEach(b => {
-      cmd += ` \\\n  -p ${b.HostPort || ''}:${container.replace('/tcp', '')}`;
-    });
-  });
-  if (data.mounts?.length) {
-    data.mounts.forEach(m => {
-      const ro = m.RW === false ? ':ro' : '';
-      cmd += ` \\\n  -v ${m.Source || m.Name}:${m.Destination}${ro}`;
-    });
+
+  const volumes = (data.mounts || []).map(m => ({
+    source: m.Source || m.Name, target: m.Destination, readOnly: m.RW === false,
+  })).filter(v => v.source && v.target);
+
+  // `docker run` accepts a single --network, matching the previous behaviour.
+  const networks = Object.keys(data.networks || {}).filter(n => n !== 'bridge').slice(0, 1);
+
+  const labels = {};
+  for (const [k, v] of Object.entries(data.labels || {})) {
+    if (!k.startsWith('com.docker.compose')) labels[k] = v;
   }
-  const nets = Object.keys(data.networks || {}).filter(n => n !== 'bridge');
-  if (nets.length) cmd += ` \\\n  --network ${nets[0]}`;
-  if (data.resources?.memory) cmd += ` \\\n  --memory ${data.resources.memory}`;
-  if (data.resources?.cpuQuota && data.resources?.cpuPeriod) {
-    const cpus = (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1);
-    cmd += ` \\\n  --cpus ${cpus}`;
-  }
-  const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
-  labels.forEach(([k, v]) => cmd += ` \\\n  --label ${k}="${v}"`);
-  cmd += ` \\\n  ${data.image}`;
-  return cmd;
+
+  const cpus = data.resources && data.resources.cpuQuota && data.resources.cpuPeriod
+    ? (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1)
+    : undefined;
+
+  return {
+    image: data.image, name: data.name, restart,
+    env: data.env || [], ports, volumes, networks, labels,
+    memory: (data.resources && data.resources.memory) || undefined, cpus,
+    runtime: (data.isolation && data.isolation.runtime) || undefined,
+  };
+}
+
+const REDACTION_NOTE = '# Secret-shaped values were replaced with <redacted>. Fill them in before running.';
+
+function generateRunCommand(data) {
+  const r = cliTransparency.describe('container.run', _toRunParams(data));
+  if (!r.available) return '# Could not derive a run command for this container.';
+  return r.redacted ? r.command + '\n\n' + REDACTION_NOTE : r.command;
 }
 
 // ─── Smart Restart with Backoff ───────────────────────
