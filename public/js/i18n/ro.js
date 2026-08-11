@@ -104,6 +104,7 @@ i18n.register('ro', 'RO', "Română", {
     "api-playground": "API",
     "cost-optimizer": "Cost",
     "dependency-map": "Hartă Dependențe",
+    diagnostics: "Diagnostic",
     posture: "Postură",
     procedures: "Proceduri",
     blueprints: "Reconciler",
@@ -230,6 +231,26 @@ i18n.register('ro', 'RO', "Română", {
     redacted: "Valorile secrete sunt mascate in aceasta previzualizare."
   },
   pages: {
+    diagnostics: {
+      title: "Sesiuni de diagnostic",
+      subtitle: "Containere si VM-uri pe aceeasi axa de timp. Doar citire — o sesiune nu schimba nimic.",
+      newSession: "Sesiune noua", defaultName: "Investigatie",
+      empty: "Nicio sesiune inca. Creeaza una ca sa corelezi ce se intampla in parcul tau la un moment dat.",
+      window: "Fereastra", subjects: "Subiecte", createdBy: "Creata de", export: "Export",
+      pickSubjects: "Subiecte", filter: "Filtreaza containere...", subjectCap: "Maximum 25 de subiecte per sesiune.",
+      pickAtLeastOne: "Alege cel putin un subiect", noContainers: "Niciun container pornit pe acest host.",
+      created: "Sesiune creata", deleted: "Sesiune stearsa",
+      confirmDelete: "Stergi aceasta sesiune? Metricile pe care le citeste nu sunt afectate.",
+      range1h: "Ultima ora", range6h: "Ultimele 6 ore", range24h: "Ultimele 24 de ore", range7d: "Ultimele 7 zile",
+      resolution: "Rezolutie: {{resolution}}",
+      annotations: "Evenimente in aceasta fereastra",
+      noSeries: "Niciun subiect nu a returnat date pentru aceasta fereastra.",
+      noSamples: "Nicio metrica inregistrata pentru acest subiect in aceasta fereastra.",
+      noVmTelemetry: "Nu s-a ingerat telemetrie pentru acest VM. Metricile de VM vin prin ingest, nu prin polling.",
+      skewWarning: "Sursele difera cu {{ms}} ms. Compara aceste serii cu atentie — decalajul e raportat, nu corectat.",
+      chartLabel: "grafic mic, varf {{max}}"
+    },
+
     dashboard: {
       title: "Dashboard",
       subtitle: "Prezentare generala si monitorizare in timp real",

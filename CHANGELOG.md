@@ -2,6 +2,41 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.0] - 2026-08-11 — Diagnostic Sessions (retrospective)
+
+Answers "what was happening across my estate at 14:32?" by putting containers
+and VMs on one time axis. Read-only: a session changes nothing and collects
+nothing.
+
+- A session stores only its definition — which subjects, over which window. Every
+  series is re-read from metrics already collected, so creating one costs no
+  extra sampling and no sample storage. Materialising samples is what live
+  capture needs; adding it now would be storage for a feature that has not yet
+  earned it.
+- One shared axis: bucket N is the same instant for every subject, which is what
+  makes a container and a VM comparable. Nothing is interpolated to align them.
+- A gap renders as a gap. Empty buckets yield null, never zero — the most common
+  monitoring-UI bug, and one the implementation itself fell into: `Number(null)`
+  is 0, so an early version turned missing readings into measured zeros. The
+  tests caught it.
+- Cumulative counters are shown as deltas with resets broken, so a container
+  restart no longer draws a cliff.
+- Clock skew between sources is reported, never corrected. Correcting it would
+  hide the one thing most likely to make two series incomparable.
+- Events, health transitions and audit entries are marked on the axis. Usernames
+  appear; client IPs never do.
+- Sessions are exportable as JSON; create, delete and export are audited.
+- Deliberately out of scope, with reasons in the deep-spec: live capture,
+  observation ranking, log excerpts. This release exists to produce the evidence
+  live capture should be gated on.
+
+The deep-spec gated the schema behind a rendering proof. Discharged: 25 series ×
+900 samples reduce to 15 000 points in ~20 ms, and the page draws SVG polylines
+with no charting library — a null bucket splits the line, and an isolated reading
+renders as a dot rather than vanishing.
+
+38 new tests across 2 suites. Full suite: 336 suites, 4170 passing.
+
 ## [8.95.1] - 2026-08-11 — Three deferred defects
 
 All three were found during earlier work, reported, and deliberately left for a

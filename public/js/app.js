@@ -71,6 +71,7 @@ const App = {
     'self-service': () => SelfServicePage,
     'edge-platform': () => EdgePlatformPage,
     'workstation-fleet': () => WorkstationFleetPage,
+    diagnostics: () => DiagnosticsPage,
   },
 
   async init() {

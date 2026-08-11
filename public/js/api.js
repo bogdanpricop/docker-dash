@@ -151,6 +151,13 @@ const Api = {
   getCliPreview(action, params = {}) { return this.post('/cli-preview', { action, params }); },
   getCliPreviewActions() { return this.get('/cli-preview/actions'); },
 
+  // ─── Diagnostic sessions ─────────────────────────
+  getDiagnosticSessions() { return this.get('/diagnostics/sessions'); },
+  createDiagnosticSession(data) { return this.post('/diagnostics/sessions', data); },
+  getDiagnosticTimeline(id, buckets) { return this.get(`/diagnostics/sessions/${id}/timeline${buckets ? '?buckets=' + buckets : ''}`); },
+  exportDiagnosticSession(id) { return this.get(`/diagnostics/sessions/${id}/export`); },
+  deleteDiagnosticSession(id) { return this.delete(`/diagnostics/sessions/${id}`); },
+
   // ─── Containers ──────────────────────────────────
   getContainers(all = true) { return this.get(`/containers?all=${all}`); },
   getContainer(id) { return this.get(`/containers/${id}/inspect`); },

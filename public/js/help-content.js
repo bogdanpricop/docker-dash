@@ -22,6 +22,31 @@
 */
 
 const HelpContent = {
+  'diagnostics': {
+    en: {
+      title: 'Diagnostic Sessions', icon: 'fa-wave-square',
+      intro: 'Answers "what was happening across my estate at 14:32?" by putting containers and VMs on one time axis.',
+      sections: [
+        { icon: 'fa-clock-rotate-left', title: 'Retrospective, not a collector', body: 'A session stores only which subjects over which window. Every series is re-read from metrics already collected, so creating one changes nothing and costs no extra sampling.' },
+        { icon: 'fa-chart-line', title: 'One shared axis', body: 'Bucket N means the same instant for every subject, which is what makes a container and a VM comparable at a glance. Nothing is interpolated to line them up.' },
+        { icon: 'fa-square-minus', title: 'A gap is a gap', body: 'Missing data renders as a break in the line, never as zero. A cumulative counter that resets when a container restarts breaks the line too, rather than drawing a cliff.' },
+        { icon: 'fa-triangle-exclamation', title: 'Clock skew is reported', body: 'If the sources disagree by more than two seconds you are told, and by how much. The offset is never silently corrected, because that would turn a coincidence into an apparent cause.' },
+      ],
+      tip: 'Correlation is not causation. A session shows you what happened together; it does not claim one caused the other.',
+    },
+    ro: {
+      title: 'Sesiuni de diagnostic', icon: 'fa-wave-square',
+      intro: 'Raspunde la "ce se intampla in parcul meu la 14:32?" punand containere si VM-uri pe aceeasi axa de timp.',
+      sections: [
+        { icon: 'fa-clock-rotate-left', title: 'Retrospectiv, nu colector', body: 'O sesiune retine doar ce subiecte si ce fereastra. Fiecare serie e recitita din metricile deja colectate, deci crearea ei nu schimba nimic si nu costa esantionare in plus.' },
+        { icon: 'fa-chart-line', title: 'O singura axa comuna', body: 'Bucket-ul N inseamna acelasi moment pentru fiecare subiect, ceea ce face comparabile un container si un VM dintr-o privire. Nimic nu e interpolat ca sa se alinieze.' },
+        { icon: 'fa-square-minus', title: 'Un gol ramane gol', body: 'Datele lipsa apar ca intrerupere a liniei, niciodata ca zero. Un contor cumulativ care se reseteaza la restartul containerului rupe la fel linia, in loc sa deseneze o prapastie.' },
+        { icon: 'fa-triangle-exclamation', title: 'Derapajul de ceas e raportat', body: 'Daca sursele difera cu peste doua secunde esti anuntat, si cu cat. Decalajul nu e corectat tacit, fiindca asta ar transforma o coincidenta intr-o cauza aparenta.' },
+      ],
+      tip: 'Corelatia nu e cauzalitate. O sesiune arata ce s-a intamplat impreuna; nu pretinde ca una a cauzat-o pe cealalta.',
+    },
+  },
+
   'security': {
     en: {
       title: 'Security', icon: 'fa-shield-halved',

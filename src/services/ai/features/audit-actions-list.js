@@ -321,6 +321,9 @@ const auditActionsList = [
   "webhook_delete",
   "workflow_create",
   "workflow_delete",
+  'diagnostic_session_create',
+  'diagnostic_session_delete',
+  'diagnostic_session_export',
 ];
 
 module.exports = { auditActionsList };

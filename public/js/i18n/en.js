@@ -41,6 +41,7 @@ i18n.register('en', 'EN', 'English', {
     insights: 'Insights', 'git-stacks': 'Git Stacks', stacks: 'Stacks', compare: 'Compare', timeline: 'Timeline',
     notifications: 'Notifications', 'api-playground': 'API', 'cost-optimizer': 'Cost', 'dependency-map': 'Dep Map', swarm: 'Swarm', 'multi-host': 'Multi-Host',
     logs: 'Log Explorer', howto: 'How-To', observability: 'Observability', 'sample-feature': 'Sample Plugin', 'registry-browse': 'Registries', onboarding: 'Environment Setup',
+    diagnostics: 'Diagnostics',
     posture: 'Posture', blueprints: 'Reconciler', copilot: 'Copilot', procedures: 'Procedures',
     'incus-instances': 'Incus / LXD (alpha)', 'proxmox-resources': 'Proxmox (alpha)', 'migration-vm': 'VM Migration (alpha)', 'kubernetes-resources': 'Kubernetes (alpha)', 'nomad-jobs': 'Nomad (alpha)', 'vsphere-resources': 'vSphere / ESXi (alpha)',
     'virtual-machines': 'Virtual Machines', 'high-availability': 'High Availability', 'storage-posture': 'Storage Posture', 'network-posture': 'Network Posture',
@@ -129,6 +130,26 @@ i18n.register('en', 'EN', 'English', {
     redacted: 'Secret values are masked in this preview.',
   },
   pages: {
+    diagnostics: {
+      title: 'Diagnostic Sessions',
+      subtitle: 'Containers and VMs on one time axis. Read-only — a session changes nothing.',
+      newSession: 'New session', defaultName: 'Investigation',
+      empty: 'No sessions yet. Create one to correlate what was happening across your estate at a point in time.',
+      window: 'Window', subjects: 'Subjects', createdBy: 'Created by', export: 'Export',
+      pickSubjects: 'Subjects', filter: 'Filter containers...', subjectCap: 'Up to 25 subjects per session.',
+      pickAtLeastOne: 'Pick at least one subject', noContainers: 'No running containers on this host.',
+      created: 'Session created', deleted: 'Session deleted',
+      confirmDelete: 'Delete this session? The metrics it reads are not affected.',
+      range1h: 'Last hour', range6h: 'Last 6 hours', range24h: 'Last 24 hours', range7d: 'Last 7 days',
+      resolution: 'Resolution: {{resolution}}',
+      annotations: 'Events on this window',
+      noSeries: 'No subjects returned any data for this window.',
+      noSamples: 'No metrics recorded for this subject in this window.',
+      noVmTelemetry: 'No VM telemetry has been ingested for this subject. VM metrics arrive by ingest, not polling.',
+      skewWarning: 'Sources disagree by {{ms}} ms. Compare these series with care — the offset is reported, not corrected.',
+      chartLabel: 'sparkline, peak {{max}}',
+    },
+
     // ── Dashboard ───────────────────────────────
     dashboard: {
       title: 'Dashboard', subtitle: 'System overview and real-time monitoring',

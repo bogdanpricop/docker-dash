@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.0', date: '2026-08-11', title: 'Diagnostic Sessions', changes: [
+      { type: 'feature', text: 'A new Diagnostics page answers "what was happening at 14:32?" — containers and VMs on one shared time axis, with events, health transitions and audit entries marked on it.' },
+      { type: 'feature', text: 'Sessions are retrospective and read-only: they store which subjects over which window, and re-read metrics you already collect. Creating one costs no extra sampling.' },
+      { type: 'improvement', text: 'Missing data renders as a break in the line, never as zero, and a counter that resets when a container restarts breaks the line instead of drawing a cliff.' },
+      { type: 'improvement', text: 'If the clocks of the sources disagree by more than two seconds you are told by how much. The offset is reported, never silently corrected.' },
+    ] },
     { version: '8.95.1', date: '2026-08-11', title: 'Three deferred defects', changes: [
       { type: 'security', text: 'Per-stack permissions were ignored on container start, stop, restart, kill, pause, unpause and remove: every container resolved to the standalone bucket. Global admins were unaffected; if you grant per-stack permissions to non-admins, review those grants after upgrading, because they now apply.' },
       { type: 'security', text: 'Exporting a container as a run command or Compose file no longer emits its secrets verbatim. Values behind secret-shaped keys are masked, everything is shell-escaped, and a note says what was replaced.' },
