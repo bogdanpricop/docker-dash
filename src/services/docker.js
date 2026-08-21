@@ -69,13 +69,39 @@ class DockerService {
     return this._parseHostRow(row);
   }
 
-  _parseHostRow(row) {
+  /**
+   * Normalise a `docker_hosts` row into a host config object.
+   *
+   * @param {object} row Raw `docker_hosts` row.
+   * @param {object} [opts]
+   * @param {boolean} [opts.tolerant=false] When set, a credential that no longer
+   *   decrypts yields `sshConfig: null` plus a `credentialError` marker instead of
+   *   throwing. Listing callers pass it so one unreadable row cannot erase every
+   *   other host; connection callers leave it off, because dialing a host with
+   *   half a config is worse than failing loudly.
+   * @throws {Error} status 422 in strict mode when credentials cannot be read.
+   */
+  _parseHostRow(row, opts = {}) {
     let tlsConfig = null;
     let sshConfig = null;
+    let credentialError = null;
     const { tryParseJson } = require('../utils/helpers');
     const { decryptSshConfig } = require('./host-config-crypto');
     tlsConfig = tryParseJson(row.tls_config);
-    sshConfig = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
+    try {
+      sshConfig = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
+    } catch (err) {
+      if (!opts.tolerant) {
+        // 4xx, not 5xx: the server is fine, the stored credential is not. The
+        // central error handler only forwards messages for operational errors,
+        // so this status is what makes the reason visible in the UI at all.
+        const wrapped = new Error(`Host "${row.name}" (id ${row.id}): ${err.message}. Re-enter its credentials on the Hosts page.`);
+        wrapped.status = 422;
+        wrapped.code = err.code;
+        throw wrapped;
+      }
+      credentialError = err.message;
+    }
     return {
       id: row.id,
       name: row.name,
@@ -88,6 +114,7 @@ class DockerService {
       daemonType: row.daemon_type || 'docker',
       isActive: row.is_active,
       isDefault: row.is_default,
+      credentialError,
     };
   }
 
@@ -228,13 +255,28 @@ class DockerService {
 
   /** Get all active hosts from DB */
   getActiveHosts() {
+    let rows;
     try {
       const db = getDb();
-      return db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1 ORDER BY is_default DESC, name ASC').all()
-        .map(r => this._parseHostRow(r));
+      rows = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1 ORDER BY is_default DESC, name ASC').all();
     } catch {
+      // DB genuinely unavailable (bootstrap ordering) — fall back to the local socket.
       return [{ id: 0, name: 'Local', connectionType: 'socket', socketPath: config.docker.socketPath, isActive: true, isDefault: true }];
     }
+    // Parse row-by-row in tolerant mode. Until v8.96.1 a single host whose
+    // credentials no longer decrypted threw out of the .map(), hit the catch
+    // above, and collapsed the entire fleet to one synthetic local host — which
+    // silently stopped stats collection and event streams for every other host
+    // with no log line naming the culprit.
+    const hosts = [];
+    for (const row of rows) {
+      try {
+        hosts.push(this._parseHostRow(row, { tolerant: true }));
+      } catch (err) {
+        log.warn(`Host ${row.id} (${row.name}) omitted from the active list — unreadable config: ${err.message}`);
+      }
+    }
+    return hosts;
   }
 
   /** Test a connection config (without saving) */

@@ -2,6 +2,37 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.1] - 2026-08-21 — One unreadable host no longer takes the fleet down
+
+Found on a live install: `ENCRYPTION_KEY` had been rotated after three SSH hosts
+were registered. Their stored credentials stayed intact but no longer decrypted,
+and the blast radius was far larger than those three hosts.
+
+- `getActiveHosts()` parsed rows inside a `.map()` wrapped in a catch-all. One
+  row that threw sent the whole call into the catch, which returned a single
+  synthetic local host. Stats collection and Docker event streams therefore
+  stopped for *every* other host, and no log line named the host responsible.
+  Rows are now parsed one at a time: a host whose credentials cannot be read is
+  still listed, flagged with `credentialError`, and the rest of the fleet is
+  untouched.
+- A host that cannot be connected to now fails with a 4xx naming the host and
+  the fix ("re-enter its credentials"), instead of a 500 carrying the raw
+  `Unsupported state or unable to authenticate data` from Node's cipher layer —
+  which the central error handler correctly refused to forward, leaving the UI
+  with nothing to show. Strict mode still refuses to dial a host with a
+  half-parsed config; tolerance is opt-in and used only by listing callers.
+- The dashboard ran its three core lists (containers, images, volumes) inside a
+  `Promise.all` with no per-call `.catch()`, while every other call on the page
+  had one. A single failure discarded the entire page — charts, host info and
+  cluster health included — and replaced it with "Failed to load dashboard data",
+  a message that named neither what failed nor why. Each list now degrades
+  independently: what loaded is rendered, what failed leaves its tile at `---`,
+  and the banner reports the server's actual reason.
+
+Not fixed here, because it is not a code defect: credentials encrypted under a
+key you no longer hold are not recoverable. Affected hosts must have their
+credentials re-entered.
+
 ## [8.96.0] - 2026-08-11 — Diagnostic Sessions (retrospective)
 
 Answers "what was happening across my estate at 14:32?" by putting containers

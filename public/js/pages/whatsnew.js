@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.1', date: '2026-08-21', title: 'One unreadable host no longer takes the fleet down', changes: [
+      { type: 'fix', text: 'If the stored credentials of any single host could not be decrypted — the usual cause is ENCRYPTION_KEY having been changed after that host was added — the active-host list collapsed to just the local host. Stats collection and event streams then stopped silently for every other host. Hosts are now read one at a time, so an unreadable host affects only itself.' },
+      { type: 'fix', text: 'Such a host now reports what is wrong and what to do about it, naming the host, instead of a generic 500 the UI could not explain. Re-enter the credentials for that host on the Hosts page to restore it.' },
+      { type: 'fix', text: 'The Dashboard no longer discards the whole page when one of containers, images or volumes fails to load. Whatever loaded is shown, a failed tile stays blank rather than reading zero, and the error banner now states the actual reason.' },
+    ] },
     { version: '8.96.0', date: '2026-08-11', title: 'Diagnostic Sessions', changes: [
       { type: 'feature', text: 'A new Diagnostics page answers "what was happening at 14:32?" — containers and VMs on one shared time axis, with events, health transitions and audit entries marked on it.' },
       { type: 'feature', text: 'Sessions are retrospective and read-only: they store which subjects over which window, and re-read metrics you already collect. Creating one costs no extra sampling.' },

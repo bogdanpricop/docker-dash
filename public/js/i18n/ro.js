@@ -255,6 +255,8 @@ i18n.register('ro', 'RO', "Română", {
       title: "Dashboard",
       subtitle: "Prezentare generala si monitorizare in timp real",
       helpTooltip: "Ghid Dashboard",
+      containers: "Containere",
+      loadFailed: "Nu s-a putut incarca:",
       running: "Active",
       stopped: "Oprite",
       images: "Imagini",

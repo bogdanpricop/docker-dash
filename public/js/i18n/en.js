@@ -155,6 +155,8 @@ i18n.register('en', 'EN', 'English', {
       title: 'Dashboard', subtitle: 'System overview and real-time monitoring',
       helpTooltip: 'Dashboard Guide',
       running: 'Running', stopped: 'Stopped', images: 'Images', volumes: 'Volumes',
+      containers: 'Containers',
+      loadFailed: 'Could not load:',
       containerStates: 'Container States', topCpu: 'Top CPU Consumers', topMemory: 'Top Memory Consumers',
       recentEvents: 'Recent Events', liveUpdates: 'Live updates via WebSocket',
       noDataYet: 'No data yet', noRecentEvents: 'No recent events', uptime: 'Uptime',

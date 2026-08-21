@@ -264,11 +264,23 @@ const DashboardPage = {
   },
 
   async _load() {
+    // The three core lists used to be un-caught inside Promise.all, so a single
+    // failing endpoint threw away the whole page — charts, host info and cluster
+    // health included — and replaced it with a banner that named no cause. Each
+    // one now degrades on its own: whatever loaded is rendered, whatever failed
+    // leaves its tile at "---" and reports the server's reason.
+    const failures = [];
+    const soft = (promise, label) => promise.catch(err => {
+      if (err?.isAuthError) throw err;      // 401 is handled globally; let it through
+      failures.push({ label, message: err?.message || String(err) });
+      return null;
+    });
+
     try {
       const [containers, images, volumes, overview, sysInfo, health, fleetHealth] = await Promise.all([
-        Api.getContainers(true),
-        Api.getImages(),
-        Api.getVolumes(),
+        soft(Api.getContainers(true), i18n.t('pages.dashboard.containers')),
+        soft(Api.getImages(), i18n.t('pages.dashboard.images')),
+        soft(Api.getVolumes(), i18n.t('pages.dashboard.volumes')),
         Api.getStatsOverview().catch(() => null),
         Api.getSystemInfo().catch(() => null),
         Api.getClusterHealth().catch(() => null),
@@ -276,17 +288,22 @@ const DashboardPage = {
       ]);
 
       // Backend returns lowercase keys: state, not State
-      const running = containers.filter(c => c.state === 'running').length;
-      const stopped = containers.length - running;
+      if (Array.isArray(containers)) {
+        const running = containers.filter(c => c.state === 'running').length;
+        this._animateNumber('stat-running', running);
+        this._animateNumber('stat-stopped', containers.length - running);
+        this._renderStateChart(containers);
+      } else {
+        // Reset rather than leave the previous refresh's numbers looking current.
+        this._animateNumber('stat-running', '---');
+        this._animateNumber('stat-stopped', '---');
+      }
 
-      this._animateNumber('stat-running', running);
-      this._animateNumber('stat-stopped', stopped);
-      this._animateNumber('stat-images', images.length);
+      this._animateNumber('stat-images', Array.isArray(images) ? images.length : '---');
       // volumes is an array from the API (listVolumes returns mapped array)
-      const volList = Array.isArray(volumes) ? volumes : (volumes.Volumes || volumes || []);
-      this._animateNumber('stat-volumes', volList.length);
+      const volList = Array.isArray(volumes) ? volumes : (volumes?.Volumes || null);
+      this._animateNumber('stat-volumes', Array.isArray(volList) ? volList.length : '---');
 
-      this._renderStateChart(containers);
       this._renderCpuChart(overview);
       this._renderMemoryChart(overview);
       this._renderEvents();
@@ -297,21 +314,36 @@ const DashboardPage = {
       // Update "last updated" indicator
       const updEl = document.getElementById('dash-last-updated');
       if (updEl) updEl.textContent = new Date().toLocaleTimeString();
-      const errBanner = document.getElementById('dash-error');
-      if (errBanner) errBanner.style.display = 'none';
+      this._renderLoadError(failures);
     } catch (err) {
+      if (err?.isAuthError) return;
       console.error('Dashboard load error:', err);
-      // Show user-facing error banner
-      const banner = document.getElementById('dash-error');
-      if (banner) {
-        banner.style.display = 'block';
-        banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:center;gap:8px">
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>Failed to load dashboard data. <button class="btn btn-sm" style="margin-left:8px" id="dash-retry-btn">Retry</button></span>
-        </div>`;
-        banner.querySelector('#dash-retry-btn')?.addEventListener('click', () => DashboardPage._load());
-      }
+      this._renderLoadError([{ label: 'dashboard', message: err?.message || String(err) }]);
     }
+  },
+
+  /** Show (or clear) the banner listing which parts of the dashboard failed and why. */
+  _renderLoadError(failures) {
+    const banner = document.getElementById('dash-error');
+    if (!banner) return;
+    if (!failures.length) {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+      return;
+    }
+    // Distinct messages only: one broken host makes all three calls fail identically.
+    const reasons = [...new Set(failures.map(f => f.message))];
+    const parts = failures.map(f => Utils.escapeHtml(f.label)).join(', ');
+    banner.style.display = 'block';
+    banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:flex-start;gap:8px">
+      <i class="fas fa-exclamation-triangle" style="margin-top:3px"></i>
+      <div style="flex:1;min-width:0">
+        <div><strong>${Utils.escapeHtml(i18n.t('pages.dashboard.loadFailed'))}</strong> ${parts}</div>
+        ${reasons.map(r => `<div style="margin-top:4px;font-size:0.9em;opacity:0.9;word-break:break-word">${Utils.escapeHtml(r)}</div>`).join('')}
+      </div>
+      <button class="btn btn-sm" id="dash-retry-btn">${Utils.escapeHtml(i18n.t('common.retry'))}</button>
+    </div>`;
+    banner.querySelector('#dash-retry-btn')?.addEventListener('click', () => DashboardPage._load());
   },
 
   _animateNumber(id, target) {
