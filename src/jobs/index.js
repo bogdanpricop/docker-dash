@@ -212,6 +212,68 @@ function vacuumDatabase() {
   }
 }
 
+/**
+ * Rotate `predeploy-*.db` snapshots in /data/backups, keeping the newest N.
+ *
+ * The deploy sequence copies the live DB to `predeploy-<version>-<sha>.db`
+ * before swapping the image. Nothing ever removed them: the public VPS had
+ * accumulated 18 copies of a ~450MB database (11GB) growing by one snapshot
+ * per release. Retention lives here rather than in the deploy script so it
+ * applies to every target — local, LAN, VPS — no matter who wrote the file.
+ *
+ * Sorted by mtime, NOT by name: `predeploy-v8.9.0-…` sorts after
+ * `predeploy-v8.10.0-…` lexicographically, and the trailing commit sha is
+ * not ordered at all. `backup-daily-*` keeps its own name-sorted rotation
+ * inside the daily-backup job — those filenames are ISO dates, so there the
+ * two orderings agree.
+ */
+function pruneBackupSnapshots(prefix = 'predeploy-', keep = 3) {
+  const path = require('path');
+  const backupDir = path.join(process.env.DATA_DIR || '/data', 'backups');
+
+  try {
+    if (!fs.existsSync(backupDir)) return;
+
+    const snapshots = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith(prefix) && (f.endsWith('.db') || f.endsWith('.db.enc')))
+      .map(f => {
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(path.join(backupDir, f)).mtimeMs; } catch { /* vanished mid-scan */ }
+        return { f, mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    let files = 0;
+    let bytes = 0;
+
+    for (const { f } of snapshots.slice(keep)) {
+      // A snapshot taken while the source DB was in WAL mode leaves -wal/-shm
+      // companions behind; unlink them with their parent or they orphan.
+      for (const name of [f, `${f}-wal`, `${f}-shm`]) {
+        const p = path.join(backupDir, name);
+        try {
+          const size = fs.statSync(p).size;
+          fs.unlinkSync(p);
+          files++;
+          bytes += size;
+        } catch { /* companion absent — expected for most snapshots */ }
+      }
+      log.debug('Pruned backup snapshot', { file: f });
+    }
+
+    if (files > 0) {
+      log.info('Backup snapshots pruned', {
+        prefix,
+        keep,
+        files,
+        freedMB: `${(bytes / 1024 / 1024).toFixed(1)} MB`,
+      });
+    }
+  } catch (e) {
+    log.error('Backup snapshot prune failed', e.message);
+  }
+}
+
 function startAll() {
   // Stats collection already handled by statsService.start() (setInterval)
   // We handle aggregation and cleanup via cron
@@ -246,6 +308,14 @@ function startAll() {
 
   // VACUUM database to reclaim disk space — daily at 03:30
   jobs.push(cron.schedule('30 3 * * *', _m('vacuum-db', vacuumDatabase)));
+
+  // Rotate predeploy DB snapshots — daily at 03:45 (after VACUUM), plus once
+  // shortly after boot: a deploy writes its snapshot immediately before
+  // restarting this container, so startup is exactly when the previous
+  // generation needs trimming.
+  jobs.push(cron.schedule('45 3 * * *', _m('backup-prune', () => pruneBackupSnapshots())));
+  _backupPruneTimer = setTimeout(_m('backup-prune-boot', () => pruneBackupSnapshots()), 30000);
+  if (_backupPruneTimer.unref) _backupPruneTimer.unref();
 
   // Tracked certificates — re-parse + status check daily at 07:30
   jobs.push(cron.schedule('30 7 * * *', _m('certificate-scan', () => {
@@ -514,12 +584,97 @@ function startAll() {
     return require('../services/retention-cron').runAllPolicies();
   })));
 
+  // Common VM snapshot policies use cron only as a leader-gated wake-up.
+  // Due-slot dedupe and create/retention orchestration are persisted in
+  // SQLite, while every provider mutation remains a durable vm.snapshot job.
+  jobs.push(cron.schedule('* * * * *', _m('provider-snapshot-policy', () => {
+    return require('../services/provider-operations/snapshot-policies').runDue();
+  })));
+
+  // B045 uses cron only as a leader-gated minute wake-up. Local timezone/DST
+  // evaluation, blackout suppression, due-slot dedupe and child idempotency are
+  // persisted by the service before any provider operation is submitted.
+  jobs.push(cron.schedule('* * * * *', _m('provider-vm-action-schedules', () => {
+    return require('../services/provider-operations/vm-action-schedules').runDue();
+  })));
+
+  // Backup policies are deliberately plan-only in V3.2. The leader-gated
+  // scheduler persists due-slot evidence and never invokes a provider mutation.
+  jobs.push(cron.schedule('* * * * *', _m('provider-backup-policy-plan', () => {
+    return require('../services/provider-operations/backup-policies').runDue();
+  })));
+
+  // V3.3 execution is independently gated and policy-authorized. Scheduled
+  // plans are revalidated before durable child operations are dispatched;
+  // reconciliation never performs retention deletion.
+  jobs.push(cron.schedule('* * * * *', _m('provider-backup-execution', async () => {
+    const executions = require('../services/provider-operations/backup-executions');
+    const scheduled = await executions.runScheduled();
+    const reconciled = await executions.reconcile();
+    return { scheduled, reconciled };
+  })));
+
+  // Restore drills are independently release-gated and policy-authorized.
+  // Due-slot dedupe is durable; every run restores to a new VMID, disconnects
+  // every NIC before boot, and only deletes a proven owned target after success.
+  jobs.push(cron.schedule('* * * * *', _m('provider-restore-drills', () => {
+    return require('../services/provider-operations/restore-drills').runDue();
+  })));
+
+  // Host-maintenance runs are durable parent workflows. The leader-gated
+  // wake-up reconciles native tasks and dispatches bounded vm.migrate waves.
+  jobs.push(cron.schedule('* * * * *', _m('provider-host-maintenance', () => {
+    return require('../services/provider-operations/host-maintenance').runDue();
+  })));
+
+  // Read-only HA readiness evidence is sampled into encrypted, five-minute
+  // buckets. Leader gating and the global overlap guard prevent duplicate
+  // provider load in multi-replica deployments.
+  jobs.push(cron.schedule('*/15 * * * *', _m('provider-ha-readiness', () => {
+    return require('../services/provider-sdk/ha-readiness').captureAll();
+  })));
+
+  // Read-only B090 snapshot-risk evidence. Inventory calls are bounded in the
+  // service, daily trend rows are upserted, and state transitions are deduped.
+  // No snapshot deletion, consolidation or retention mutation is reachable.
+  jobs.push(cron.schedule('23 */6 * * *', _m('provider-snapshot-risk', () => {
+    return require('../services/provider-sdk/snapshot-risk').captureAll();
+  })));
+
+  // B096 repository health is network-read-only by default. The service
+  // enforces each endpoint interval, bounds the fleet, and never schedules an
+  // opt-in write test. Protocol auth/list remains unknown without an approved
+  // adapter instead of being inferred from an open TCP port.
+  jobs.push(cron.schedule('37 * * * *', _m('storage-repository-health', () => {
+    return require('../services/storage-repository-health').captureAll();
+  })));
+
   // v8.3.0 — GitOps drift detection (read-only). Every 5 min, compare each
   // running git-managed stack's actual container state against the git-checked-
   // out compose. Detection only — never starts/stops/deploys. Leader-gated.
   jobs.push(cron.schedule('*/5 * * * *', _m('git-drift-scan', () => {
     const gitDrift = require('../services/git-drift');
     return gitDrift.scanAll(dockerService);
+  })));
+
+  // Fleet health history for the dashboard sparkline. Sampling runs in the
+  // background so the 24-hour chart remains useful even when no admin keeps
+  // the dashboard open. The service upserts the current five-minute bucket.
+  jobs.push(cron.schedule('*/5 * * * *', _m('fleet-health-snapshot', () => {
+    return require('../services/fleet-operations').recordHealthSnapshot();
+  })));
+
+  // Guarded disk-pressure automation. Policies are disabled and dry-run-only
+  // by default; the service also enforces per-host cooldowns and never deletes
+  // volumes. Leader-only so HA replicas cannot race cleanup operations.
+  jobs.push(cron.schedule('*/5 * * * *', _m('disk-pressure-sweep', () => {
+    return require('../services/disk-pressure').runAllPolicies();
+  })));
+
+  // Pull-request preview TTL reaper. Closing webhooks perform immediate
+  // cleanup; this sweep covers missed deliveries and abandoned previews.
+  jobs.push(cron.schedule('*/5 * * * *', _m('preview-ttl-reaper', () => {
+    return require('../services/preview-environments').reapExpired();
   })));
 
   // v7.4.0 — Sample feature cron tick (CONTRIBUTOR DEMO). Auto-increments
@@ -691,6 +846,7 @@ function cronMatchesNow(cronExpr, now) {
 let _alertInterval = null;
 let _securityAlertInterval = null;
 let _sandboxInterval = null;
+let _backupPruneTimer = null;
 
 function stopAll() {
   jobs.forEach(j => j.stop());
@@ -698,7 +854,8 @@ function stopAll() {
   if (_alertInterval) { clearInterval(_alertInterval); _alertInterval = null; }
   if (_securityAlertInterval) { clearInterval(_securityAlertInterval); _securityAlertInterval = null; }
   if (_sandboxInterval) { clearInterval(_sandboxInterval); _sandboxInterval = null; }
+  if (_backupPruneTimer) { clearTimeout(_backupPruneTimer); _backupPruneTimer = null; }
   try { require('../services/gitPolling').stopAll(); } catch { /* git polling may not be initialized */ }
 }
 
-module.exports = { startAll, stopAll };
+module.exports = { startAll, stopAll, pruneBackupSnapshots };

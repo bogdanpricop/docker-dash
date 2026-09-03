@@ -35,6 +35,8 @@ i18n.register('zh', '中文', "中文", {
     inactive: "不活跃",
     enabled: "已启用",
     disabled: "已禁用",
+    yes: "是",
+    no: "否",
     test: "测试",
     prune: "清理",
     unlimited: "无限制",
@@ -84,6 +86,7 @@ i18n.register('zh', '中文', "中文", {
     "registry-browse": "镜像仓库",
     onboarding: "环境设置",
     posture: "安全态势",
+    procedures: "操作流程",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD（Alpha）",
@@ -91,7 +94,25 @@ i18n.register('zh', '中文', "中文", {
     "migration-vm": "虚拟机迁移（Alpha）",
     "kubernetes-resources": "Kubernetes（Alpha）",
     "nomad-jobs": "Nomad（Alpha）",
-    "vsphere-resources": "vSphere / ESXi（Alpha）"
+    "vsphere-resources": "vSphere / ESXi（Alpha）",
+    "virtual-machines": "虚拟机",
+    "high-availability": "高可用性",
+    "storage-posture": "存储态势",
+    "network-posture": "网络态势",
+    "provider-security-posture": "提供商安全",
+    "placement-advisor": "放置建议",
+    "recovery-points": "恢复点",
+    "backup-policies": "备份策略",
+    "disaster-recovery": "灾难恢复",
+    "virtualization-catalog": "VM 目录",
+    activity: "活动中心",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "治理",
+    "self-service": "自助服务",
+    "governance-controls": "身份与策略",
+    "edge-platform": "边缘与离线环境",
+    "workstation-fleet": "工作站队列",
+    "compose-catalog": "Compose 目录"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('zh', '中文', "中文", {
     checkFailed: "检查失败",
     upToDate: "您使用的已是最新版本",
     refreshed: "更新检查已刷新"
-  }
+  },
+  selfService: {
+    title: '基础设施自助服务', requestQuota: '申请配额', acknowledge: '确认', pause: '暂停通知',
+    tabs: { catalog: '目录', project: '项目', requests: '请求', incidents: '事件', guidance: '指导' },
+    actions: { start: '启动', shutdown: '关机', reboot: '重启', snapshot: '快照', console: '控制台' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: '每项基础设施更改都需要单独的受保护确认。', mobile: '安全移动视图：' },
+  },
 });

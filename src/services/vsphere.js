@@ -21,6 +21,7 @@
 
 const https = require('https');
 const log = require('../utils/logger')('vsphere');
+const { prefixToNetmask } = require('./provider-operations/guest-customization');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -106,7 +107,9 @@ class VSphereClient {
       };
       const timer = setTimeout(() => {
         try { req.destroy(); } catch { /* ignore */ }
-        finish(null, new Error(`vSphere SOAP timeout after ${timeoutMs / 1000}s`));
+        finish(null, Object.assign(new Error(`vSphere SOAP timeout after ${timeoutMs / 1000}s`), {
+          code: 'ETIMEDOUT', transient: true,
+        }));
       }, timeoutMs);
       const req = https.request(reqOpts, (res) => {
         // Capture Set-Cookie for session
@@ -243,7 +246,7 @@ class VSphereClient {
    * List all VMs via CreateContainerView + RetrievePropertiesEx.
    * Returns array of { name, powerState, guestOS, memoryMB, numCPU, uuid, moref }.
    */
-  async listVMs() {
+  async _listVirtualMachineRows() {
     await this._ensureLoggedIn();
     // Step 1: create container view for VirtualMachine
     const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
@@ -267,7 +270,10 @@ class VSphereClient {
     const props = ['name', 'summary.runtime.powerState', 'summary.config.guestFullName',
       'summary.config.memorySizeMB', 'summary.config.numCpu', 'summary.config.uuid',
       'guest.hostName', 'guest.ipAddress', 'guest.toolsStatus', 'guest.toolsVersion',
-      'config.version',
+      'runtime.host',
+      'config.version', 'config.template', 'config.annotation', 'summary.config.guestId',
+      'capability.snapshotOperationsSupported',
+      'runtime.consolidationNeeded',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.guestMemoryUsage',
       'summary.storage.committed', 'summary.storage.uncommitted',
       // v8.9.13-alpha.3 — per-datastore committed bytes, so the Datastores
@@ -288,6 +294,12 @@ class VSphereClient {
       toolsStatus: o.props['guest.toolsStatus'] || null,
       toolsVersion: o.props['guest.toolsVersion'] || null,
       hwVersion: o.props['config.version'] || null,
+      hostRef: _firstManagedRef(o.props['runtime.host'], 'HostSystem'),
+      isTemplate: o.props['config.template'] === 'true',
+      description: o.props['config.annotation'] || null,
+      osType: o.props['summary.config.guestId'] || o.props['summary.config.guestFullName'] || null,
+      snapshotOperationsSupported: o.props['capability.snapshotOperationsSupported'] === 'true',
+      consolidationNeeded: o.props['runtime.consolidationNeeded'] === 'true',
       cpuUsageMHz: parseInt(o.props['summary.quickStats.overallCpuUsage'], 10) || 0,
       memoryUsageMB: parseInt(o.props['summary.quickStats.guestMemoryUsage'], 10) || 0,
       storageCommittedBytes: parseInt(o.props['summary.storage.committed'], 10) || 0,
@@ -296,6 +308,546 @@ class VSphereClient {
       // storage.perDatastoreUsage (best-effort; [] if absent).
       datastoreUsage: _parseDatastoreUsage(o.props['storage.perDatastoreUsage'] || ''),
     }));
+  }
+
+  async listVMs() {
+    return (await this._listVirtualMachineRows()).filter(row => !row.isTemplate);
+  }
+
+  async getVmHardware(vmMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM hardware target'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref,
+      ['config.hardware.device', 'guest.net']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    return _parseVmHardware(props['config.hardware.device'] || '', props['guest.net'] || '');
+  }
+
+  async _reconfigureVmDisk(vmMoref, deviceChange) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM disk target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ReconfigVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec><deviceChange>${deviceChange}</deviceChange></spec>
+  </ReconfigVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere disk reconfiguration returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async setVmNicLinkState(vmMoref, nic = {}, connected) {
+    const key = Number(nic.nativeRef);
+    const deviceType = String(nic.deviceType || '');
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))
+      || !Number.isSafeInteger(key)
+      || !/^Virtual(?:Vmxnet\d*|E1000e?|PCNet\d*|SriovEthernetCard|EthernetCard)$/.test(deviceType)
+      || typeof connected !== 'boolean') {
+      throw Object.assign(new Error('Invalid vSphere NIC link request'), {
+        code: 'INVALID_VM_NIC_LINK_REQUEST', status: 400,
+      });
+    }
+    const attachment = nic.attachment || {};
+    if (attachment.connected === connected) {
+      return { synchronous: true, unchanged: true, provider: 'vsphere' };
+    }
+    const optional = [
+      typeof attachment.startConnected === 'boolean'
+        ? `<startConnected>${attachment.startConnected}</startConnected>` : '',
+      typeof attachment.allowGuestControl === 'boolean'
+        ? `<allowGuestControl>${attachment.allowGuestControl}</allowGuestControl>` : '',
+    ].join('');
+    const change = `<operation>edit</operation><device xsi:type="${deviceType}"><key>${key}</key>`
+      + `<connectable>${optional}<connected>${connected}</connected></connectable></device>`;
+    const result = await this._reconfigureVmDisk(vmMoref, change);
+    return { ...result, unchanged: false };
+  }
+
+  async createVmDisk(vmMoref, options = {}) {
+    const controllerKey = Number(options.controllerKey);
+    const unit = Number(options.unit);
+    const capacityBytes = Number(options.sizeBytes);
+    const datastoreRef = String(options.datastoreRef || '');
+    const datastoreName = String(options.datastoreName || '');
+    if (!Number.isSafeInteger(controllerKey) || !Number.isInteger(unit) || unit < 0 || unit > 63
+      || !Number.isSafeInteger(capacityBytes) || capacityBytes < 1024 * 1024
+      || !/^[A-Za-z0-9._:-]{1,160}$/.test(datastoreRef)
+      || !datastoreName || datastoreName.length > 160) {
+      throw Object.assign(new Error('Invalid vSphere disk create request'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const capacityInKB = Math.ceil(capacityBytes / 1024);
+    const backing = `<backing xsi:type="VirtualDiskFlatVer2BackingInfo"><fileName>[${this._xesc(datastoreName)}] </fileName>`
+      + `<datastore type="Datastore">${this._xesc(datastoreRef)}</datastore><diskMode>persistent</diskMode>`
+      + `<thinProvisioned>${options.provisioning === 'thick' ? 'false' : 'true'}</thinProvisioned></backing>`;
+    const change = `<operation>add</operation><fileOperation>create</fileOperation><device xsi:type="VirtualDisk">`
+      + `<key>-100</key>${backing}<controllerKey>${controllerKey}</controllerKey><unitNumber>${unit}</unitNumber>`
+      + `<capacityInKB>${capacityInKB}</capacityInKB></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async detachVmDisk(vmMoref, disk = {}) {
+    const key = Number(disk.nativeRef);
+    if (!Number.isSafeInteger(key)) {
+      throw Object.assign(new Error('Invalid vSphere disk detach target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const change = `<operation>remove</operation><device xsi:type="VirtualDisk"><key>${key}</key></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async resizeVmDisk(vmMoref, disk = {}, sizeBytes) {
+    const key = Number(disk.nativeRef);
+    const controllerKey = Number(disk.controllerKey);
+    const unit = Number(disk.unit);
+    const bytes = Number(sizeBytes);
+    if (![key, controllerKey, unit].every(Number.isSafeInteger)
+      || !Number.isSafeInteger(bytes) || bytes < 1024 * 1024 || !disk.backing?.path) {
+      throw Object.assign(new Error('Invalid vSphere disk resize target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    const backing = `<backing xsi:type="VirtualDiskFlatVer2BackingInfo"><fileName>${this._xesc(disk.backing.path)}</fileName>`
+      + `${disk.backing.storageId ? `<datastore type="Datastore">${this._xesc(disk.backing.storageId)}</datastore>` : ''}`
+      + `<diskMode>persistent</diskMode></backing>`;
+    const change = `<operation>edit</operation><device xsi:type="VirtualDisk"><key>${key}</key>${backing}`
+      + `<controllerKey>${controllerKey}</controllerKey><unitNumber>${unit}</unitNumber>`
+      + `<capacityInKB>${Math.ceil(bytes / 1024)}</capacityInKB></device>`;
+    return this._reconfigureVmDisk(vmMoref, change);
+  }
+
+  async moveVmDisk(vmMoref, disk = {}, datastoreRef) {
+    const key = Number(disk.nativeRef);
+    const target = String(datastoreRef || '');
+    if (!Number.isSafeInteger(key) || !/^[A-Za-z0-9._:-]{1,160}$/.test(target)) {
+      throw Object.assign(new Error('Invalid vSphere disk move target'), { code: 'INVALID_VM_DISK_REQUEST', status: 400 });
+    }
+    await this._ensureLoggedIn();
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RelocateVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec><disk><diskId>${key}</diskId><datastore type="Datastore">${this._xesc(target)}</datastore></disk></spec>
+    <priority>defaultPriority</priority>
+  </RelocateVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere disk relocation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async getVmMigrationCompatibility(vmMoref, hostMorefs) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || '')) || !Array.isArray(hostMorefs)
+      || hostMorefs.length > 64 || hostMorefs.some(ref => !/^[A-Za-z0-9._:-]{1,160}$/.test(String(ref || '')))) {
+      throw Object.assign(new Error('Invalid vSphere migration compatibility target'), { code: 'INVALID_MIGRATION_CONTEXT' });
+    }
+    await this._ensureLoggedIn();
+    const vmRaw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref, ['runtime.host']);
+    const sourceRef = _firstManagedRef((_extractObjects(vmRaw)[0] || { props: {} }).props['runtime.host'], 'HostSystem');
+    if (!hostMorefs.length) return { sourceRef, candidates: [] };
+    const hosts = hostMorefs.map(ref => `<host type="HostSystem">${this._xesc(ref)}</host>`).join('');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><QueryVMotionCompatibility xmlns="urn:vim25">
+    <_this type="ServiceInstance">${MO_SERVICE_INSTANCE}</_this>
+    <vm type="VirtualMachine">${this._xesc(vmMoref)}</vm>${hosts}
+    <compatibility>cpu</compatibility><compatibility>software</compatibility>
+  </QueryVMotionCompatibility></soap:Body>
+</soap:Envelope>`;
+    return { sourceRef, candidates: _parseVmotionCompatibility(await this._soapPost(body)) };
+  }
+
+  async listTemplates() {
+    return (await this._listVirtualMachineRows()).filter(row => row.isTemplate).map(row => ({
+      kind: 'vmTemplate', nativeRef: row.moref, id: row.moref, uuid: row.uuid,
+      name: row.name, description: row.description, osType: row.osType || row.guestOS,
+      memoryMB: row.memoryMB, numCPU: row.numCPU, version: row.hwVersion,
+      sizeBytes: row.storageCommittedBytes, source: 'vsphere-inventory',
+    }));
+  }
+
+  async getClonePlacement(templateMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(templateMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere template reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', templateMoref,
+      ['parent', 'resourcePool', 'datastore', 'config.template']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    if (props['config.template'] !== 'true') {
+      throw Object.assign(new Error('vSphere source is no longer a VM template'), { code: 'PROVIDER_ARTIFACT_NOT_FOUND' });
+    }
+    const folderRef = _firstManagedRef(props.parent, 'Folder');
+    const poolRef = _firstManagedRef(props.resourcePool, 'ResourcePool');
+    const datastoreRefs = _managedRefs(props.datastore, 'Datastore');
+    if (!folderRef || !poolRef || !datastoreRefs.length) {
+      throw Object.assign(new Error('vSphere clone placement is incomplete'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE' });
+    }
+    const datastores = (await this.listDatastores()).filter(item => item.accessible !== false && item.maintenanceMode !== 'inMaintenance');
+    const sourceDatastores = datastoreRefs.map(ref => datastores.find(item => item.moref === ref)).filter(Boolean);
+    if (!sourceDatastores.length) {
+      throw Object.assign(new Error('vSphere source template datastore is unavailable'), { code: 'PROVIDER_PLACEMENT_UNAVAILABLE' });
+    }
+    return {
+      folderRef, poolRef,
+      datastores, sourceDatastores,
+    };
+  }
+
+  _linuxCustomizationSpec(customization, tag = 'customization') {
+    if (!customization || customization.osFamily !== 'linux' || !customization.network
+      || !/^(?=.{1,63}$)[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(String(customization.hostname || ''))
+      || !customization.domain || customization.user || customization.sshAuthorizedKeys?.length) {
+      throw Object.assign(new Error('Invalid or unsupported vSphere Linux guest customization'), {
+        code: 'INVALID_GUEST_CUSTOMIZATION', status: 400,
+      });
+    }
+    const network = customization.network;
+    let ip;
+    if (network.mode === 'static') {
+      const [address, prefix] = String(network.address || '').split('/');
+      ip = `<ip xsi:type="CustomizationFixedIp"><ipAddress>${this._xesc(address)}</ipAddress></ip>`
+        + `<subnetMask>${prefixToNetmask(prefix)}</subnetMask><gateway>${this._xesc(network.gateway)}</gateway>`;
+    } else {
+      ip = '<ip xsi:type="CustomizationDhcpIpGenerator"/>';
+    }
+    const dnsServers = (network.dnsServers || []).map(value => `<dnsServerList>${this._xesc(value)}</dnsServerList>`).join('');
+    const dnsSuffixes = [...new Set([customization.domain, ...(network.searchDomains || [])].filter(Boolean))]
+      .map(value => `<dnsSuffixList>${this._xesc(value)}</dnsSuffixList>`).join('');
+    const timeZone = customization.timezone ? `<timeZone>${this._xesc(customization.timezone)}</timeZone>` : '';
+    return `<${tag}>
+      <identity xsi:type="CustomizationLinuxPrep">
+        <hostName xsi:type="CustomizationFixedName"><name>${this._xesc(customization.hostname)}</name></hostName>
+        <domain>${this._xesc(customization.domain)}</domain>${timeZone}<hwClockUTC>true</hwClockUTC>
+      </identity>
+      <globalIPSettings>${dnsSuffixes}${dnsServers}</globalIPSettings>
+      <nicSettingMap><adapter>${ip}<dnsDomain>${this._xesc(customization.domain)}</dnsDomain></adapter></nicSettingMap>
+    </${tag}>`;
+  }
+
+  async checkCustomizationSpec(templateMoref, customization) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(templateMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere template reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const spec = this._linuxCustomizationSpec(customization, 'spec');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CheckCustomizationSpec xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(templateMoref)}</_this>${spec}
+  </CheckCustomizationSpec></soap:Body>
+</soap:Envelope>`;
+    await this._soapPost(body);
+    return { compatible: true };
+  }
+
+  async cloneTemplate(templateMoref, options = {}) {
+    await this._ensureLoggedIn();
+    const refs = [templateMoref, options.folderRef, options.poolRef, options.datastoreRef];
+    if (refs.some(value => !/^[A-Za-z0-9._:-]{1,160}$/.test(String(value || '')))
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(String(options.name || ''))
+      || options.mode !== 'full') {
+      throw Object.assign(new Error('Invalid vSphere template clone request'), { code: 'INVALID_PROVIDER_RESOURCE', status: 400 });
+    }
+    const customization = options.customization
+      ? this._linuxCustomizationSpec(options.customization) : '';
+    if (options.customization) await this.checkCustomizationSpec(templateMoref, options.customization);
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CloneVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(templateMoref)}</_this>
+    <folder type="Folder">${this._xesc(options.folderRef)}</folder>
+    <name>${this._xesc(options.name)}</name>
+    <spec><location>
+      <datastore type="Datastore">${this._xesc(options.datastoreRef)}</datastore>
+      <pool type="ResourcePool">${this._xesc(options.poolRef)}</pool>
+    </location><template>false</template>${customization}<powerOn>false</powerOn></spec>
+  </CloneVM_Task></soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const taskRef = _extractTag(response, 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere clone operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  /** Recursively discover ISO media on accessible datastores. */
+  async listIsoImages() {
+    await this._ensureLoggedIn();
+    const datastores = await this.listDatastores();
+    const artifacts = [];
+    for (const datastore of datastores.filter(item => item.accessible !== false)) {
+      try {
+        const browser = await this._getDatastoreBrowser(datastore.moref);
+        if (!browser) continue;
+        const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <SearchDatastoreSubFolders_Task xmlns="urn:vim25">
+      <_this type="HostDatastoreBrowser">${browser}</_this>
+      <datastorePath>${this._xesc(`[${datastore.name}]`)}</datastorePath>
+      <searchSpec>
+        <query xsi:type="IsoImageFileQuery"/>
+        <details><fileType>true</fileType><fileSize>true</fileSize><modification>true</modification><fileOwner>false</fileOwner></details>
+        <searchCaseInsensitive>true</searchCaseInsensitive><matchPattern>*.iso</matchPattern>
+      </searchSpec>
+    </SearchDatastoreSubFolders_Task>
+  </soap:Body>
+</soap:Envelope>`;
+        const response = await this._soapPost(body);
+        const taskMoref = _extractTag(response, 'returnval');
+        if (!taskMoref) continue;
+        const result = await this._waitForTask(taskMoref, 30_000);
+        for (const entry of _parseRecursiveSearchResults(result, datastore.name)) {
+          artifacts.push({
+            kind: 'iso', nativeRef: entry.datastorePath, id: entry.datastorePath,
+            name: entry.name, storage: datastore.name, source: 'vsphere-datastore',
+            sizeBytes: entry.fileSize, createdAt: entry.modified, format: 'iso',
+          });
+        }
+      } catch (err) {
+        log.warn('vSphere ISO inventory skipped an inaccessible datastore', { datastore: datastore.name, error: err?.name || 'Error' });
+      }
+    }
+    return artifacts;
+  }
+
+  /** Submit a VM power action using the vSphere Web Services API. */
+  async acquireVmConsoleTicket(vmMoref) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <AcquireTicket xmlns="urn:vim25">
+      <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+      <ticketType>webmks</ticketType>
+    </AcquireTicket>
+  </soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const ticket = _extractTag(response, 'ticket');
+    const host = _extractTag(response, 'host');
+    const port = Number(_extractTag(response, 'port')) || 443;
+    let url = _extractTag(response, 'url');
+    if (!url && host && ticket) url = `wss://${host}:${port}/ticket/${encodeURIComponent(ticket)}`;
+    if (!ticket || !url) {
+      throw Object.assign(new Error('vSphere did not issue a WebMKS console ticket'), {
+        code: 'CONSOLE_TICKET_UNAVAILABLE', status: 502,
+      });
+    }
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'wss:' || parsed.username || parsed.password) {
+      throw Object.assign(new Error('vSphere returned an invalid WebMKS URL'), {
+        code: 'INVALID_CONSOLE_TICKET', status: 502,
+      });
+    }
+    return {
+      url: parsed.href, ticket, host: host || parsed.hostname, port,
+      sslThumbprint: _extractTag(response, 'sslThumbprint'),
+      agent: this._agent,
+    };
+  }
+
+  /** Submit a VM power action using the vSphere Web Services API. */
+  async vmPowerAction(vmMoref, action) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const operation = {
+      start: 'PowerOnVM_Task', shutdown: 'ShutdownGuest', reboot: 'RebootGuest',
+      forceShutdown: 'PowerOffVM_Task', forceReboot: 'ResetVM_Task',
+    }[action];
+    if (!operation) throw Object.assign(new Error('Unsupported vSphere VM power action'), { code: 'PROVIDER_ACTION_UNAVAILABLE' });
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <${operation} xmlns="urn:vim25">
+      <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    </${operation}>
+  </soap:Body>
+</soap:Envelope>`;
+    const response = await this._soapPost(body);
+    const taskRef = operation.endsWith('_Task') ? _extractTag(response, 'returnval') : null;
+    if (operation.endsWith('_Task') && !taskRef) {
+      throw Object.assign(new Error('vSphere power operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    }
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  async getTaskStatus(taskMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(taskMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
+    }
+    const raw = await this._retrievePropertiesDirect('Task', taskMoref,
+      ['info.state', 'info.progress', 'info.error', 'info.result', 'info.cancelable', 'info.cancelled']);
+    const props = (_extractObjects(raw)[0] || { props: {} }).props;
+    const resultRef = _firstManagedRef(props['info.result'], 'VirtualMachine');
+    return {
+      status: props['info.state'] || 'unknown',
+      progress: parseInt(props['info.progress'], 10) || 0,
+      error: props['info.error'] ? (_extractFault(props['info.error']) || 'vSphere task failed') : null,
+      ...(props['info.cancelable'] === undefined ? {} : { cancelable: props['info.cancelable'] === 'true' }),
+      ...(props['info.cancelled'] === undefined ? {} : { cancelled: props['info.cancelled'] === 'true' }),
+      ...(resultRef ? { resultRef } : {}),
+    };
+  }
+
+  /** Submit a vSphere relocation and return its durable Task MoRef. */
+  async relocateVm(vmMoref, options = {}) {
+    await this._ensureLoggedIn();
+    const hostRef = String(options.hostRef || '');
+    const datastoreRef = options.datastoreRef == null ? null : String(options.datastoreRef);
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))
+      || !/^[A-Za-z0-9._:-]{1,160}$/.test(hostRef)
+      || (datastoreRef && !/^[A-Za-z0-9._:-]{1,160}$/.test(datastoreRef))) {
+      throw Object.assign(new Error('Invalid vSphere relocation target'), { code: 'INVALID_MIGRATION_CONTEXT', status: 400 });
+    }
+    const datastore = datastoreRef
+      ? `<datastore type="Datastore">${this._xesc(datastoreRef)}</datastore>` : '';
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RelocateVM_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <spec>${datastore}<host type="HostSystem">${this._xesc(hostRef)}</host></spec>
+    <priority>defaultPriority</priority>
+  </RelocateVM_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere relocation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
+  }
+
+  /** Enter native host maintenance and return the durable vSphere Task MoRef. */
+  async enterHostMaintenance(hostMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(hostMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere host reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const timeout = Math.min(86400, Math.max(60, Math.round(Number(options.timeoutSeconds) || 3600)));
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><EnterMaintenanceMode_Task xmlns="urn:vim25">
+    <_this type="HostSystem">${this._xesc(hostMoref)}</_this>
+    <timeout>${timeout}</timeout><evacuatePoweredOffVms>false</evacuatePoweredOffVms>
+  </EnterMaintenanceMode_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere maintenance operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere', action: 'enter' };
+  }
+
+  /** Exit native host maintenance and return the durable vSphere Task MoRef. */
+  async exitHostMaintenance(hostMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(hostMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere host reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const timeout = Math.min(86400, Math.max(60, Math.round(Number(options.timeoutSeconds) || 3600)));
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ExitMaintenanceMode_Task xmlns="urn:vim25">
+    <_this type="HostSystem">${this._xesc(hostMoref)}</_this><timeout>${timeout}</timeout>
+  </ExitMaintenanceMode_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere maintenance exit returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere', action: 'exit' };
+  }
+
+  async cancelTask(taskMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(taskMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere task reference'), { code: 'INVALID_PROVIDER_TASK' });
+    }
+    await this._ensureLoggedIn();
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CancelTask xmlns="urn:vim25"><_this type="Task">${this._xesc(taskMoref)}</_this></CancelTask></soap:Body>
+</soap:Envelope>`;
+    await this._soapPost(body);
+    return { ok: true };
+  }
+
+  async listVMSnapshots(vmMoref) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    await this._ensureLoggedIn();
+    const raw = await this._retrievePropertiesDirect('VirtualMachine', vmMoref, ['snapshot']);
+    return _parseSnapshotTree(raw);
+  }
+
+  async createVMSnapshot(vmMoref, options = {}) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CreateSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+    <name>${this._xesc(options.name)}</name>
+    <description>${this._xesc(options.description || '')}</description>
+    <memory>false</memory><quiesce>${options.quiesce === true}</quiesce>
+  </CreateSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  async revertVMSnapshot(snapshotMoref) {
+    await this._ensureLoggedIn();
+    this._validateSnapshotRef(snapshotMoref);
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RevertToSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachineSnapshot">${this._xesc(snapshotMoref)}</_this>
+    <suppressPowerOn>true</suppressPowerOn>
+  </RevertToSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  async deleteVMSnapshot(snapshotMoref) {
+    await this._ensureLoggedIn();
+    this._validateSnapshotRef(snapshotMoref);
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><RemoveSnapshot_Task xmlns="urn:vim25">
+    <_this type="VirtualMachineSnapshot">${this._xesc(snapshotMoref)}</_this>
+    <removeChildren>false</removeChildren><consolidate>true</consolidate>
+  </RemoveSnapshot_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  /** Consolidate redo logs only when the VM runtime explicitly requires it. */
+  async consolidateVMDisks(vmMoref) {
+    await this._ensureLoggedIn();
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(vmMoref || ''))) {
+      throw Object.assign(new Error('Invalid vSphere VM reference'), { code: 'INVALID_PROVIDER_RESOURCE' });
+    }
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ConsolidateVMDisks_Task xmlns="urn:vim25">
+    <_this type="VirtualMachine">${this._xesc(vmMoref)}</_this>
+  </ConsolidateVMDisks_Task></soap:Body>
+</soap:Envelope>`;
+    return this._snapshotTask(await this._soapPost(body));
+  }
+
+  _validateSnapshotRef(value) {
+    if (!/^[A-Za-z0-9._:-]{1,160}$/.test(String(value || ''))) {
+      throw Object.assign(new Error('Invalid vSphere snapshot reference'), { code: 'INVALID_PROVIDER_SNAPSHOT' });
+    }
+  }
+
+  _snapshotTask(response) {
+    const taskRef = _extractTag(response, 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere snapshot operation returned no task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
   }
 
   async listHosts() {
@@ -321,7 +873,7 @@ class VSphereClient {
       'summary.hardware.numCpuThreads', 'summary.hardware.numCpuPkgs', 'summary.hardware.cpuModel',
       'summary.hardware.uuid',
       'summary.quickStats.overallCpuUsage', 'summary.quickStats.overallMemoryUsage',
-      'summary.quickStats.uptime', 'runtime.bootTime',
+      'summary.quickStats.uptime', 'runtime.bootTime', 'runtime.inMaintenanceMode',
       'summary.config.product.fullName', 'summary.config.product.version',
       'summary.config.product.build', 'summary.config.product.apiVersion'];
     const rawResp = await this._retrieveProperties(viewId, 'HostSystem', props);
@@ -355,12 +907,104 @@ class VSphereClient {
         cpuTotalMHz,
         cpuPercent: cpuTotalMHz ? Math.round((cpuUsedMHz / cpuTotalMHz) * 100) : null,
         memoryUsageMB: memUsedMB,
+        memoryFreeBytes: memBytes ? Math.max(0, memBytes - memUsedMB * 1024 * 1024) : null,
         memoryTotalMB: memTotalMB,
         memoryPercent: memTotalMB ? Math.round((memUsedMB / memTotalMB) * 100) : null,
         uptimeSeconds: parseInt(o.props['summary.quickStats.uptime'], 10) || null,
         bootTime: o.props['runtime.bootTime'] || null,
+        maintenanceMode: o.props['runtime.inMaintenanceMode'] === 'true',
       };
     });
+  }
+
+  async listClusters(options = {}) {
+    await this._ensureLoggedIn();
+    const createViewBody = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><CreateContainerView xmlns="urn:vim25">
+    <_this type="${this._moRefs.viewManager.type}">${this._moRefs.viewManager.value}</_this>
+    <container type="${this._moRefs.rootFolder.type}">${this._moRefs.rootFolder.value}</container>
+    <type>ClusterComputeResource</type><recursive>true</recursive>
+  </CreateContainerView></soap:Body>
+</soap:Envelope>`;
+    const viewId = _extractTag(await this._soapPost(createViewBody), 'returnval');
+    if (!viewId) throw new Error('vSphere: cluster container view returned no ID');
+    const properties = [
+      'name', 'configurationEx.dasConfig', 'configurationEx.dasVmConfig',
+      'summary.overallStatus', 'summary.numHosts', 'summary.numEffectiveHosts',
+      'summary.totalMemory', 'summary.effectiveMemory', 'summary.currentFailoverLevel',
+      'host', 'datastore',
+    ];
+    if (options.placement === true) properties.push('configurationEx.group', 'configurationEx.rule', 'drsRecommendation');
+    const objects = _extractObjects(await this._retrieveProperties(viewId, 'ClusterComputeResource', properties));
+    return objects.map(object => {
+      const das = object.props['configurationEx.dasConfig'] || '';
+      const groups = options.placement === true
+        ? _parseClusterGroups(object.props['configurationEx.group'] || '') : [];
+      return {
+        moref: object.obj, id: object.obj, name: object.props.name || object.obj,
+        haEnabled: _tagBool(das, 'enabled'),
+        admissionControlEnabled: _tagBool(das, 'admissionControlEnabled'),
+        hostMonitoring: _extractTag(das, 'hostMonitoring'),
+        vmMonitoring: _extractTag(das, 'vmMonitoring'),
+        vmComponentProtecting: _extractTag(das, 'vmComponentProtecting'),
+        configuredFailoverLevel: _tagNumber(das, 'failoverLevel'),
+        defaultRestartPriority: _extractTag(das, 'restartPriority') || 'medium',
+        isolationResponse: _extractTag(das, 'isolationResponse'),
+        heartbeatDatastoreRefs: _managedRefs(das, 'Datastore'),
+        vmPriorities: _parseDasVmConfig(object.props['configurationEx.dasVmConfig'] || ''),
+        ...(options.placement === true ? {
+          groups,
+          rules: _parseClusterRules(object.props['configurationEx.rule'] || '', groups),
+          drsRecommendations: _parseDrsRecommendations(object.props.drsRecommendation || ''),
+        } : {}),
+        overallStatus: object.props['summary.overallStatus'] || null,
+        hostCount: Number(object.props['summary.numHosts']) || 0,
+        effectiveHostCount: Number(object.props['summary.numEffectiveHosts']) || 0,
+        totalMemoryBytes: Number(object.props['summary.totalMemory']) || null,
+        effectiveMemoryMB: Number(object.props['summary.effectiveMemory']) || null,
+        currentFailoverLevel: _propertyNumber(object.props['summary.currentFailoverLevel']),
+        hostRefs: _managedRefs(object.props.host, 'HostSystem'),
+        datastoreRefs: _managedRefs(object.props.datastore, 'Datastore'),
+        provider: 'vsphere',
+      };
+    });
+  }
+
+  async reconfigureCluster(clusterMoref, change) {
+    await this._ensureLoggedIn();
+    const cluster = this._xesc(clusterMoref);
+    let delta = '';
+    if (change.kind === 'ha_policy') {
+      const operation = change.remove === true ? 'remove' : String(change.operation || 'edit');
+      const info = change.remove === true ? `<removeKey type="VirtualMachine">${this._xesc(change.vmRef)}</removeKey>`
+        : `<info><key type="VirtualMachine">${this._xesc(change.vmRef)}</key>`
+          + (change.restartPriority ? `<restartPriority>${this._xesc(change.restartPriority)}</restartPriority>` : '')
+          + '</info>';
+      delta = `<dasVmConfigSpec><operation>${operation}</operation>${info}</dasVmConfigSpec>`;
+    } else if (change.kind === 'affinity_rule') {
+      const operation = String(change.operation || 'add');
+      if (operation === 'remove') {
+        delta = `<rulesSpec><operation>remove</operation><removeKey>${this._xesc(change.key)}</removeKey></rulesSpec>`;
+      } else {
+        const type = change.ruleKind === 'vm_vm_anti_affinity'
+          ? 'ClusterAntiAffinityRuleSpec' : 'ClusterAffinityRuleSpec';
+        const key = change.key === null || change.key === undefined ? '' : `<key>${this._xesc(change.key)}</key>`;
+        const refs = (change.vmRefs || []).map(ref => `<vm type="VirtualMachine">${this._xesc(ref)}</vm>`).join('');
+        delta = `<rulesSpec><operation>${this._xesc(operation)}</operation><info xsi:type="${type}">${key}`
+          + `<enabled>${change.enabled === false ? 'false' : 'true'}</enabled><mandatory>${change.mandatory === true ? 'true' : 'false'}</mandatory>`
+          + `<name>${this._xesc(change.name)}</name>${refs}</info></rulesSpec>`;
+      }
+    } else throw new Error('vSphere cluster reconfiguration kind is invalid');
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body><ReconfigureComputeResource_Task xmlns="urn:vim25">
+    <_this type="ClusterComputeResource">${cluster}</_this><spec xsi:type="ClusterConfigSpecEx">${delta}</spec><modify>true</modify>
+  </ReconfigureComputeResource_Task></soap:Body>
+</soap:Envelope>`;
+    const taskRef = _extractTag(await this._soapPost(body), 'returnval');
+    if (!taskRef) throw Object.assign(new Error('vSphere cluster reconfigure returned no Task'), { code: 'INVALID_PROVIDER_TASK_RESPONSE' });
+    return { taskRef, provider: 'vsphere' };
   }
 
   async listDatastores() {
@@ -419,6 +1063,43 @@ class VSphereClient {
       name: o.props['name'],
       accessible: o.props['summary.accessible'] === 'true',
     }));
+  }
+
+  /**
+   * Read physical-NIC and standard-vSwitch evidence from every visible host.
+   * This is bounded PropertyCollector inventory only: it starts no traffic,
+   * host command, failover, or network reconfiguration.
+   */
+  async listHostNetworkEvidence() {
+    await this._ensureLoggedIn();
+    const hosts = (await this.listHosts()).slice(0, 64);
+    const results = [];
+    for (const host of hosts) {
+      const raw = await this._retrievePropertiesDirect('HostSystem', host.moref, [
+        'config.network.pnic', 'config.network.vswitch',
+      ]);
+      const props = (_extractObjects(raw)[0] || { props: {} }).props;
+      results.push(_parseHostNetworkEvidence({
+        hostRef: host.moref,
+        hostName: host.name || host.moref,
+        physicalNicXml: props['config.network.pnic'] || '',
+        virtualSwitchXml: props['config.network.vswitch'] || '',
+      }));
+    }
+    return {
+      observedAt: new Date().toISOString(),
+      hosts: results,
+      coverage: {
+        complete: hosts.length < 64,
+        reason: hosts.length < 64
+          ? 'All provider-visible hosts were read through the vSphere PropertyCollector'
+          : 'Host evidence was bounded to the first 64 provider-visible hosts',
+      },
+      limitations: [
+        'Standard vSwitch and physical-NIC configuration is read; distributed-switch LACP partner state is not inferred.',
+        'Traffic counters, link-flap history and failover history are not exposed by this bounded collector.',
+      ],
+    };
   }
 
   /**
@@ -803,6 +1484,25 @@ function _parseSearchResults(xml, dsName, folderPath) {
   return { datastore: dsName, folderPath: folderPath || '', entries };
 }
 
+function _parseRecursiveSearchResults(xml, dsName) {
+  const blocks = [];
+  const re = /<HostDatastoreBrowserSearchResults[^>]*>([\s\S]*?)<\/HostDatastoreBrowserSearchResults>/g;
+  let match;
+  while ((match = re.exec(xml || ''))) blocks.push(match[1]);
+  if (!blocks.length) blocks.push(xml || '');
+  const output = [];
+  for (const block of blocks) {
+    const rawFolder = _extractTag(block, 'folderPath') || '';
+    const folder = rawFolder.replace(new RegExp(`^\\[${String(dsName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]\\s*`), '').replace(/^\/+|\/+$/g, '');
+    const result = _parseSearchResults(block, dsName, folder);
+    for (const entry of result.entries.filter(item => !item.isFolder)) {
+      const relative = [folder, entry.name].filter(Boolean).join('/');
+      output.push({ ...entry, folderPath: folder, datastorePath: `[${dsName}] ${relative}` });
+    }
+  }
+  return output;
+}
+
 // v8.9.13-alpha.3 — parse storage.perDatastoreUsage into
 // [{ datastore: moref, committed }]. Each entry is a
 // <VirtualMachineUsageOnDatastore> with <datastore> + <committed>.
@@ -818,6 +1518,132 @@ function _parseDatastoreUsage(xml) {
     if (dsMatch) out.push({ datastore: dsMatch[1].trim(), committed });
   }
   return out;
+}
+
+function _parseSnapshotTree(xml) {
+  const current = /<currentSnapshot\b[^>]*>([^<]+)<\/currentSnapshot>/.exec(xml)?.[1]?.trim() || null;
+  const output = [];
+  const stack = [];
+  const token = /<(\/)?(rootSnapshotList|childSnapshotList)\b[^>]*>/g;
+  let match;
+  while ((match = token.exec(xml))) {
+    if (!match[1]) {
+      const closing = `</${match[2]}>`;
+      const childAt = xml.indexOf('<childSnapshotList', token.lastIndex);
+      const closeAt = xml.indexOf(closing, token.lastIndex);
+      const headerEnd = childAt >= 0 && childAt < closeAt ? childAt : closeAt;
+      const header = headerEnd >= token.lastIndex ? xml.slice(token.lastIndex, headerEnd) : '';
+      const ref = /<snapshot\b[^>]*>([^<]+)<\/snapshot>/.exec(header)?.[1]?.trim() || null;
+      const parent = stack.length ? stack[stack.length - 1].ref : null;
+      const quiesced = _extractTag(header, 'quiesced');
+      const item = ref ? {
+        nativeRef: _decodeEntities(ref), name: _extractTag(header, 'name') || ref,
+        description: _extractTag(header, 'description'), createdAt: _extractTag(header, 'createTime'),
+        parentRef: parent, isCurrent: ref === current,
+        consistency: quiesced === 'true' ? 'quiesced' : quiesced === 'false' ? 'crash' : 'unknown',
+        powerState: _extractTag(header, 'state') || null, provider: 'vsphere',
+      } : null;
+      if (item) output.push(item);
+      stack.push({ tag: match[2], ref });
+    } else {
+      const opened = stack.pop();
+      if (!opened || opened.tag !== match[2]) return [];
+    }
+  }
+  return stack.length ? [] : output;
+}
+
+function _parseDasVmConfig(xml) {
+  const priorities = {};
+  const blocks = String(xml || '').match(/<(?:\w+:)?ClusterDasVmConfigInfo\b[^>]*>[\s\S]*?<\/(?:\w+:)?ClusterDasVmConfigInfo>/g) || [];
+  for (const block of blocks.slice(0, 5000)) {
+    const vmRef = _typedTagRef(block, 'key', 'VirtualMachine');
+    if (!vmRef) continue;
+    priorities[vmRef] = {
+      restartPriority: _extractTag(block, 'restartPriority') || null,
+      isolationResponse: _extractTag(block, 'isolationResponse') || null,
+    };
+  }
+  return priorities;
+}
+
+function _elementBlocks(xml, localNames) {
+  const output = [];
+  const input = String(xml || '');
+  for (const name of localNames) {
+    const re = new RegExp(`<(?:\\w+:)?${name}\\b([^>]*)>([\\s\\S]*?)<\\/(?:\\w+:)?${name}>`, 'g');
+    let match;
+    while ((match = re.exec(input))) {
+      const type = /(?:xsi:)?type="([^"]+)"/.exec(match[1])?.[1]?.split(':').pop() || name;
+      output.push({ type, body: match[2], attrs: match[1] });
+    }
+  }
+  return output;
+}
+
+function _typedRefs(xml, tagName, expectedType) {
+  const values = [];
+  const re = new RegExp(`<(?:\\w+:)?${tagName}\\b([^>]*)>([^<]+)<\\/(?:\\w+:)?${tagName}>`, 'g');
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const type = /(?:xsi:)?type="([^"]+)"/.exec(match[1])?.[1]?.split(':').pop();
+    if (!expectedType || !type || type === expectedType) values.push(_decodeEntities(match[2].trim()));
+  }
+  return [...new Set(values.filter(Boolean))];
+}
+
+function _parseClusterGroups(xml) {
+  const blocks = _elementBlocks(xml, ['ClusterGroupInfo', 'ClusterVmGroup', 'ClusterHostGroup']);
+  return blocks.slice(0, 500).map((item, index) => ({
+    nativeId: _extractTag(item.body, 'name') || `group-${index}`,
+    name: _extractTag(item.body, 'name') || `Group ${index + 1}`,
+    type: item.type === 'ClusterHostGroup' ? 'host' : 'vm',
+    refs: item.type === 'ClusterHostGroup'
+      ? _typedRefs(item.body, 'host', 'HostSystem') : _typedRefs(item.body, 'vm', 'VirtualMachine'),
+  }));
+}
+
+function _parseClusterRules(xml, groups = []) {
+  const groupByName = new Map(groups.map(group => [group.name, group]));
+  const blocks = _elementBlocks(xml, [
+    'ClusterRuleInfo', 'ClusterAffinityRuleSpec', 'ClusterAntiAffinityRuleSpec', 'ClusterVmHostRuleInfo',
+  ]);
+  const output = [];
+  for (const [index, item] of blocks.slice(0, 500).entries()) {
+    const base = {
+      nativeId: _extractTag(item.body, 'key') || _extractTag(item.body, 'name') || `rule-${index}`,
+      name: _extractTag(item.body, 'name') || `DRS rule ${index + 1}`,
+      enabled: _tagBool(item.body, 'enabled') !== false,
+      mandatory: _tagBool(item.body, 'mandatory') === true,
+      source: 'vsphere-drs',
+    };
+    if (item.type === 'ClusterAffinityRuleSpec' || item.type === 'ClusterAntiAffinityRuleSpec') {
+      output.push({
+        ...base,
+        kind: item.type === 'ClusterAntiAffinityRuleSpec' ? 'vm-anti-affinity' : 'vm-affinity',
+        vmRefs: _typedRefs(item.body, 'vm', 'VirtualMachine'), hostRefs: [],
+      });
+      continue;
+    }
+    const vmGroup = groupByName.get(_extractTag(item.body, 'vmGroupName'));
+    const affine = groupByName.get(_extractTag(item.body, 'affineHostGroupName'));
+    const anti = groupByName.get(_extractTag(item.body, 'antiAffineHostGroupName'));
+    if (affine) output.push({ ...base, nativeId: `${base.nativeId}:affine`, kind: 'vm-host-affinity', vmRefs: vmGroup?.refs || [], hostRefs: affine.refs || [] });
+    if (anti) output.push({ ...base, nativeId: `${base.nativeId}:anti`, kind: 'vm-host-anti-affinity', vmRefs: vmGroup?.refs || [], hostRefs: anti.refs || [] });
+  }
+  return output.slice(0, 500);
+}
+
+function _parseDrsRecommendations(xml) {
+  return _elementBlocks(xml, ['ClusterRecommendation', 'Recommendation']).slice(0, 500).map((item, index) => ({
+    nativeId: _extractTag(item.body, 'key') || `recommendation-${index}`,
+    rating: _tagNumber(item.body, 'rating'),
+    reason: _extractTag(item.body, 'reason') || 'vCenter DRS recommendation',
+    createdAt: _extractTag(item.body, 'time'),
+    vmRefs: _typedRefs(item.body, 'vm', 'VirtualMachine'),
+    hostRefs: [..._typedRefs(item.body, 'target', 'HostSystem'), ..._typedRefs(item.body, 'host', 'HostSystem')],
+    source: 'vsphere-drs',
+  }));
 }
 
 // v8.9.11-alpha.8 — pull a Managed Object Reference from a ServiceContent
@@ -862,6 +1688,256 @@ function _extractObjects(xml) {
   return result;
 }
 
+function _allTags(xml, tagName) {
+  const values = [];
+  const re = new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tagName}>`, 'g');
+  let match;
+  while ((match = re.exec(String(xml || '')))) values.push(_decodeEntities(match[1].replace(/<[^>]+>/g, '').trim()));
+  return values.filter(Boolean);
+}
+
+function _tagBool(xml, name) {
+  const value = _extractTag(String(xml || ''), name);
+  return value === 'true' ? true : value === 'false' ? false : null;
+}
+
+function _tagNumber(xml, name) {
+  const raw = _extractTag(String(xml || ''), name);
+  if (raw === null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function _propertyNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function _typedTagRef(xml, tagName, expectedType) {
+  const match = new RegExp(`<(?:\\w+:)?${tagName}\\b[^>]*\\btype="${expectedType}"[^>]*>([^<]+)<\\/(?:\\w+:)?${tagName}>`)
+    .exec(String(xml || ''));
+  return match ? _decodeEntities(match[1].trim()) : null;
+}
+
+function _virtualDeviceBlocks(xml) {
+  const output = [];
+  const re = /<((?:[\w.-]+:)?(?:VirtualDevice|device))\b([^>]*)>([\s\S]*?)<\/\1>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const type = /(?:xsi:)?type="([^"]+)"/.exec(match[2])?.[1] || '';
+    output.push({ type: type.split(':').pop(), xml: match[3] });
+  }
+  return output;
+}
+
+function _guestNicRows(xml) {
+  const rows = [];
+  const re = /<(?:\w+:)?GuestNicInfo\b[^>]*>([\s\S]*?)<\/(?:\w+:)?GuestNicInfo>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const block = match[1];
+    const addresses = _allTags(block, 'ipAddress').filter(address => /^[0-9a-f:.]+$/i.test(address))
+      .map(address => ({ address, source: 'vmware-tools' }));
+    rows.push({
+      macAddress: _extractTag(block, 'macAddress'), network: _extractTag(block, 'network'),
+      connected: _tagBool(block, 'connected'), addresses,
+    });
+  }
+  return rows;
+}
+
+function _parseVmHardware(deviceXml, guestNetXml) {
+  const blocks = _virtualDeviceBlocks(deviceXml);
+  const controllers = new Map();
+  for (const item of blocks.filter(item => /Controller$/.test(item.type))) {
+    const key = _tagNumber(item.xml, 'key');
+    if (key !== null) controllers.set(key, {
+      bus: item.type.replace(/^Virtual/, '').replace(/Controller$/, '').toLowerCase(),
+      busNumber: _tagNumber(item.xml, 'busNumber'),
+    });
+  }
+  const guestByMac = new Map(_guestNicRows(guestNetXml).map(item => [
+    String(item.macAddress || '').replace(/[^a-f0-9]/gi, '').toUpperCase(), item,
+  ]));
+  const disks = [];
+  const nics = [];
+  for (const item of blocks) {
+    const key = _tagNumber(item.xml, 'key');
+    const controllerKey = _tagNumber(item.xml, 'controllerKey');
+    const controller = controllers.get(controllerKey) || {};
+    const unit = _tagNumber(item.xml, 'unitNumber');
+    const label = _extractTag(item.xml, 'label');
+    if (item.type === 'VirtualDisk' || item.type === 'VirtualCdrom') {
+      const capacityInBytes = _tagNumber(item.xml, 'capacityInBytes');
+      const capacityInKB = _tagNumber(item.xml, 'capacityInKB');
+      const fileName = _extractTag(item.xml, 'fileName');
+      const datastores = _managedRefs(item.xml, 'Datastore');
+      const datastoreRef = datastores[0] || _typedTagRef(item.xml, 'datastore', 'Datastore');
+      const thin = _tagBool(item.xml, 'thinProvisioned');
+      const eager = _tagBool(item.xml, 'eagerlyScrub');
+      const isCdrom = item.type === 'VirtualCdrom';
+      disks.push({
+        nativeRef: key, label, type: isCdrom ? 'cdrom' : 'disk',
+        device: label, bus: controller.bus || null, unit, controllerKey,
+        capacityBytes: capacityInBytes ?? (capacityInKB === null ? null : capacityInKB * 1024),
+        provisioning: isCdrom ? 'unknown' : (thin === true ? 'thin' : (eager === true ? 'eagerZeroedThick' : (thin === false ? 'thick' : 'unknown'))),
+        format: isCdrom ? 'iso' : null,
+        backing: {
+          type: fileName ? 'datastore-file' : 'device', storageId: datastoreRef,
+          storageName: /^\[([^\]]+)\]/.exec(fileName || '')?.[1] || null, path: fileName,
+          nativeRef: fileName,
+        },
+        attachment: {
+          connected: _tagBool(item.xml, 'connected'), startConnected: _tagBool(item.xml, 'startConnected'),
+          bootable: null, readOnly: isCdrom,
+          shared: (() => { const sharing = _extractTag(item.xml, 'sharing'); return sharing ? /sharingMultiWriter/i.test(sharing) : false; })(),
+        },
+        capabilities: { hotPlug: null, hotUnplug: null, onlineResize: isCdrom ? false : null },
+        status: _extractTag(item.xml, 'status') || 'configured',
+      });
+    } else if (/Virtual(?:Vmxnet|E1000|PCNet|Sriov|Ethernet)/i.test(item.type)) {
+      const macAddress = _extractTag(item.xml, 'macAddress');
+      const guest = guestByMac.get(String(macAddress || '').replace(/[^a-f0-9]/gi, '').toUpperCase());
+      const networkRefs = _managedRefs(item.xml, 'Network');
+      const networkRef = networkRefs[0] || _typedTagRef(item.xml, 'network', 'Network');
+      const portgroup = _extractTag(item.xml, 'portgroupKey');
+      const switchUuid = _extractTag(item.xml, 'switchUuid');
+      const connectable = /<(?:\w+:)?connectable\b/.test(item.xml);
+      nics.push({
+        nativeRef: key, deviceType: item.type, label, device: label,
+        model: item.type.replace(/^Virtual/, ''), macAddress,
+        network: {
+          id: portgroup || networkRef,
+          name: guest?.network || _extractTag(item.xml, 'deviceName'), bridge: null,
+          distributedSwitch: switchUuid, vlanId: null,
+        },
+        addresses: guest?.addresses || [], mtu: null,
+        attachment: {
+          connected: guest?.connected ?? _tagBool(item.xml, 'connected'),
+          startConnected: _tagBool(item.xml, 'startConnected'),
+          allowGuestControl: _tagBool(item.xml, 'allowGuestControl'),
+        },
+        security: {}, qos: {
+          reservationMbps: (() => { const value = _tagNumber(item.xml, 'reservation'); return value === null ? null : value / 1000; })(),
+          rateLimitMbps: (() => { const value = _tagNumber(item.xml, 'limit'); return value === null || value < 0 ? null : value / 1000; })(),
+        },
+        capabilities: { hotPlug: null, hotUnplug: null, connectDisconnect: connectable ? true : null },
+        status: guest?.connected === false ? 'disconnected' : (_extractTag(item.xml, 'status') || 'configured'),
+      });
+    }
+  }
+  return {
+    disks, nics, diskAvailable: !!deviceXml, nicAvailable: !!deviceXml,
+    diskReason: deviceXml ? null : 'vSphere returned no virtual-device configuration',
+    nicReason: deviceXml ? null : 'vSphere returned no virtual-device configuration',
+  };
+}
+
+function _networkMemberDevice(value) {
+  const input = String(value || '').trim();
+  if (!input) return null;
+  const match = /(?:^|-)vmnic[0-9]+$/i.exec(input);
+  return match ? match[0].replace(/^-/, '') : input;
+}
+
+function _parseHostPhysicalNics(xml) {
+  const blocks = _elementBlocks(xml, ['PhysicalNic', 'HostPhysicalNic']);
+  const seen = new Set();
+  const output = [];
+  for (const [index, item] of blocks.entries()) {
+    const key = _extractTag(item.body, 'key') || `pnic-${index}`;
+    const device = _extractTag(item.body, 'device') || _networkMemberDevice(key) || key;
+    if (seen.has(key) || seen.has(device)) continue;
+    seen.add(key); seen.add(device);
+    const link = _extractTag(item.body, 'linkSpeed') || '';
+    const speedMbps = _tagNumber(link, 'speedMb');
+    const duplex = _tagBool(link, 'duplex');
+    output.push({
+      key, device,
+      driver: _extractTag(item.body, 'driver') || null,
+      macAddress: _extractTag(item.body, 'mac') || null,
+      linkState: speedMbps === null ? 'unknown' : 'up',
+      speedMbps,
+      duplex: duplex === true ? 'full' : duplex === false ? 'half' : 'unknown',
+    });
+  }
+  return output.slice(0, 256);
+}
+
+function _vswitchMode(policy) {
+  const value = String(policy || '').toLowerCase();
+  if (value === 'failover_explicit') return 'active_backup';
+  if (value === 'loadbalance_loadbased') return 'adaptive';
+  if (['loadbalance_ip', 'loadbalance_srcid', 'loadbalance_srcmac'].includes(value)) return 'balance_xor';
+  return 'other';
+}
+
+function _parseHostVirtualSwitches(xml, physicalNics = []) {
+  const byKey = new Map();
+  const byDevice = new Map();
+  for (const nic of physicalNics) { byKey.set(nic.key, nic); byDevice.set(nic.device, nic); }
+  return _elementBlocks(xml, ['HostVirtualSwitch']).slice(0, 256).map((item, index) => {
+    const key = _extractTag(item.body, 'key') || `vswitch-${index}`;
+    const name = _extractTag(item.body, 'name') || key;
+    const bridge = _extractTag(item.body, 'bridge') || '';
+    const configuredRefs = [..._allTags(item.body, 'pnic'), ..._allTags(bridge, 'nicDevice')]
+      .map(_networkMemberDevice).filter(Boolean);
+    const memberDevices = [...new Set(configuredRefs.map(ref => byKey.get(ref)?.device || ref))];
+    const teaming = _extractTag(item.body, 'nicTeaming') || '';
+    const order = _extractTag(teaming, 'nicOrder') || '';
+    const active = new Set(_allTags(order, 'activeNic').map(_networkMemberDevice).filter(Boolean));
+    const standby = new Set(_allTags(order, 'standbyNic').map(_networkMemberDevice).filter(Boolean));
+    const members = memberDevices.map(device => {
+      const nic = byDevice.get(device) || byKey.get(device) || {
+        key: device, device, linkState: 'unknown', speedMbps: null, duplex: 'unknown',
+      };
+      const role = standby.has(device) ? 'standby'
+        : active.has(device) || (!active.size && !standby.size) ? 'active' : 'inactive';
+      return { ...nic, role, adminState: 'up' };
+    });
+    return {
+      key, name, mtu: _tagNumber(item.body, 'mtu'),
+      mode: _vswitchMode(_extractTag(teaming, 'policy')),
+      members,
+    };
+  });
+}
+
+function _parseHostNetworkEvidence({ hostRef, hostName, physicalNicXml, virtualSwitchXml }) {
+  const physicalNics = _parseHostPhysicalNics(physicalNicXml);
+  const switches = _parseHostVirtualSwitches(virtualSwitchXml, physicalNics);
+  return {
+    hostRef: String(hostRef || ''), hostName: String(hostName || hostRef || ''),
+    physicalNics, switches,
+  };
+}
+
+function _parseVmotionCompatibility(xml) {
+  const output = [];
+  const re = /<(?:\w+:)?returnval\b[^>]*>([\s\S]*?)<\/(?:\w+:)?returnval>/g;
+  let match;
+  while ((match = re.exec(String(xml || '')))) {
+    const block = match[1];
+    const hostRef = _typedTagRef(block, 'host', 'HostSystem');
+    if (!hostRef) continue;
+    output.push({ hostRef, compatibility: _allTags(block, 'compatibility').map(value => value.toLowerCase()) });
+  }
+  return output;
+}
+
+function _managedRefs(value, expectedType) {
+  const input = String(value || '');
+  const output = [];
+  const re = /<(?:ManagedObjectReference|[^>:\s]+:ManagedObjectReference)\b[^>]*\btype="([^"]+)"[^>]*>([^<]+)<\/(?:ManagedObjectReference|[^>:\s]+:ManagedObjectReference)>/g;
+  let match;
+  while ((match = re.exec(input))) if (!expectedType || match[1] === expectedType) output.push(_decodeEntities(match[2].trim()));
+  if (!output.length && /^[A-Za-z0-9._:-]{1,160}$/.test(input)) output.push(input);
+  return [...new Set(output)];
+}
+
+function _firstManagedRef(value, expectedType) { return _managedRefs(value, expectedType)[0] || null; }
+
 // ─── daemon_config encryption + fromHostRow ────────────────────
 
 function decryptDaemonConfig(raw) {
@@ -895,7 +1971,7 @@ function fromHostRow(row) {
 
 module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
-  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _parseSearchResults, _parseDatastoreUsage },
+  _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _parseClusterGroups, _parseClusterRules, _parseDrsRecommendations, _elementBlocks, _typedRefs, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility, _parseHostPhysicalNics, _parseHostVirtualSwitches, _parseHostNetworkEvidence },
 };
 
 if (false) log.info();

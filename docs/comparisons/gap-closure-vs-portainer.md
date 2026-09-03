@@ -4,7 +4,7 @@
 **Baseline version:** v8.9.6-alpha.1 (2026-07-05)
 **Current version:** v8.9.10-alpha.1 (2026-07-06)
 **Owner:** Bogdan
-**Status:** Executing — 8 of 12 open gaps closed
+**Status:** Executing — 9 of 12 actionable gaps closed
 **Last reviewed:** 2026-07-06
 
 ## Executive summary
@@ -51,22 +51,21 @@ The honest gap against Portainer is narrower than the marketing "Portainer is en
 
 ### G01 — Teams (user groups sharing permissions)
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P0
 - **Effort:** L (2-3 weeks)
 - **Dependencies:** none (unblocks G02, G03)
 - **Impact if unclosed:** Any organisation with more than a couple of operators has to grant permissions user-by-user. There is no way to say "the ops team can operate all prod hosts" without editing every user. This is the single biggest RBAC ceiling and the most common reason a Portainer user cites for not switching to Docker Dash.
 
 **Closure approach**
-New tables: `teams(id, name, description, created_at)`, `team_members(team_id, user_id, added_at, added_by)`. Add migration `073_teams.js`. Extend `stack_permissions` to accept either `user_id` or `team_id` (nullable, exactly one set — CHECK constraint). Wire new routes `/api/teams` (CRUD, admin-only) in a new `src/routes/teams.js`. New page `public/js/pages/settings-teams.js` with add/remove members. Update `settings-users.js` to show a "Teams" column. Extend `hasStackPermission()` in `src/services/permissions.js` to resolve user → teams → permissions with a UNION query. All team CRUD writes to `audit_log`.
+Migration 077 adds `teams` and `team_members`; the admin-only `/api/teams` API and **Settings → Access** UI manage memberships. Team grants participate in per-host and host-group permission resolution, and all CRUD writes are audited. Stack permission generalization remains outside this environment-level gap.
 
 **Acceptance criteria**
-- [ ] Migration 073 creates `teams` + `team_members` tables and adds `team_id` (nullable) to `stack_permissions`.
-- [ ] `POST /api/teams`, `GET /api/teams`, `PUT /api/teams/:id`, `DELETE /api/teams/:id`, `POST /api/teams/:id/members`, `DELETE /api/teams/:id/members/:userId` — all admin-only, audited.
-- [ ] Settings page shows "Teams" tab with member management.
-- [ ] Granting a stack permission to a team gives every member access; removing a user from the team revokes it.
-- [ ] 15+ unit tests covering the resolver, membership checks, cascade on user delete.
-- [ ] Backward compatible: existing per-user `stack_permissions` rows continue to work unchanged.
+- [x] Migration 077 creates `teams` + `team_members` with cascading membership cleanup.
+- [x] Admin-only team CRUD and membership management are exposed through the API and Settings → Access.
+- [x] Host and host-group grants can target a team; membership changes affect resolution immediately.
+- [x] Existing per-user access behavior remains backward compatible.
+- [x] Service and end-to-end access-enforcement tests cover membership and resolution.
 
 **Notes**
 Portainer teams also have "team leaders" — deferred; not core to permission resolution.
@@ -75,22 +74,22 @@ Portainer teams also have "team leaders" — deferred; not core to permission re
 
 ### G02 — Per-host / environment-level access control
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P0
 - **Effort:** M (1 week)
 - **Dependencies:** G01 (teams table), otherwise per-user only
 - **Impact if unclosed:** Today a non-admin user with access to Docker Dash sees **every** registered host. There is no way to say "developer X can only touch the staging host, not prod". Portainer's environment-level access control is table-stakes for shared installs.
 
 **Closure approach**
-New table `host_permissions(id, host_id, user_id NULL, team_id NULL, permission TEXT CHECK(permission IN ('view','operate','admin')), granted_by, created_at, UNIQUE(host_id, user_id, team_id))`. Migration `074_host_permissions.js`. New middleware `requireHostAccess(minLevel)` in `src/middleware/auth.js` — resolves user's effective permission on `req.hostId` from admin-global → direct grant → team grant, fails closed. Apply to every route in `containers.js`, `images.js`, `volumes.js`, `networks.js`, `stacks.js`, etc. Update `GET /api/hosts` to filter by effective permissions (admin sees all, others see only permitted). New "Access control" tab on the Hosts page (`hosts.js`).
+Migration 077 adds `host_permissions` for direct host or host-group targets and user or team subjects. `src/middleware/hostAccess.js` resolves `view`, `operate`, and `admin` access and fails closed. Host/resource routes and host selectors filter by effective permission. Administrators manage grants and the upgrade-compatibility default under **Settings → Access**.
 
 **Acceptance criteria**
-- [ ] Migration 074 creates `host_permissions`.
-- [ ] Admin can grant view/operate/admin on a host to a user or team from the Hosts page UI.
-- [ ] Non-admin user sees only permitted hosts in the host selector.
-- [ ] Route middleware returns 403 when a user hits an operate route on a host they only have `view` on.
-- [ ] Existing installs: admin retains full access to every host by default; operator/viewer default to no access until explicitly granted (breaking-change flag documented + one-shot migration seeds a "legacy default access" grant for existing non-admin users to preserve behavior).
-- [ ] 12+ tests covering resolver, middleware, host list filtering, audit.
+- [x] Migration 077 creates `host_permissions` with target and subject exclusivity checks.
+- [x] Admin can grant `view`, `operate`, or `admin` to users or teams from Settings → Access.
+- [x] Non-admin users see only permitted hosts and group memberships.
+- [x] Method-aware middleware returns 403 when `operate` is required but the user only has `view`.
+- [x] Admin remains global; the explicit `legacy_host_access_default` toggle preserves upgrade behavior until real grants are configured.
+- [x] Resolver, middleware, route filtering, group grants, and API behavior have Jest coverage.
 
 **Notes**
 Choose the seeding strategy carefully — silent lockout on upgrade is a support nightmare. Seed a `legacy_access_grant` role that admins can opt out of after they configure real permissions.
@@ -99,20 +98,21 @@ Choose the seeding strategy carefully — silent lockout on upgrade is a support
 
 ### G03 — Host groups (bulk-apply access + tags)
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P1
 - **Effort:** S (1-3 days)
 - **Dependencies:** G02
 - **Impact if unclosed:** Managing per-host permissions row-by-row when you have 20+ hosts is tedious. Portainer's "Environment Groups" let you say "prod-hosts group has these tags, ops-team has admin on prod-hosts."
 
 **Closure approach**
-New table `host_groups(id, name, description)` + `host_group_members(host_id, group_id)` + extend `host_permissions` to accept a `group_id` (mutually exclusive with `host_id`). Migration `075_host_groups.js`. Reuse `hosts.js` — add a "Groups" section to the page. Extend the resolver in G02 middleware to walk host → group → group_permissions.
+Migration 073 adds `host_groups` and `host_group_members`; migration 077 adds mutually exclusive `host_group_id` permission targets. Settings → Access provides CRUD, membership, and grants. Hosts show group badges, Multi-host filters by group, and the sidebar uses an ACL-filtered group tree.
 
 **Acceptance criteria**
-- [ ] Admin can create/edit/delete host groups.
-- [ ] A host can belong to N groups; permissions granted at group level apply to every member host.
-- [ ] Removing a host from a group revokes group-derived access on that host.
-- [ ] Tests: group-derived resolution, precedence (direct grant beats group grant).
+- [x] Admin can create/edit/delete host groups.
+- [x] A host can belong to N groups; group permissions apply to every member host.
+- [x] Removing a host from a group removes group-derived access on that host.
+- [x] Group reads expose only memberships visible under the caller's host ACL.
+- [x] Service and access-enforcement tests cover group-derived resolution and precedence.
 
 **Notes**
 Portainer also has "Environment tags" as freeform labels — considered nice-to-have, could ship in the same migration as a `host_tags` table.

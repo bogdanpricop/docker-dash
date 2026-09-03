@@ -88,6 +88,9 @@ function requireAuth(req, res, next) {
       user = apiKeys.validate(token);
     } else {
       user = authService.validateSession(token);
+      if (!user && source === 'bearer' && token.startsWith('ddst_')) {
+        try { user = require('../services/identity-governance').validateToken(token); } catch { user = null; }
+      }
     }
   }
 
@@ -129,6 +132,7 @@ function requireAuth(req, res, next) {
 
   // Enforce API key permissions (read-only keys blocked from mutations)
   if (user.apiKey) return enforceApiKeyPermissions(req, res, next);
+  if (user.serviceToken) return enforceServiceTokenPermissions(req, res, next);
 
   next();
 }
@@ -138,6 +142,9 @@ function optionalAuth(req, res, next) {
   const { token, source } = extractToken(req);
   if (token) {
     req.user = source === 'apikey' ? apiKeys.validate(token) : authService.validateSession(token);
+    if (!req.user && source === 'bearer' && token.startsWith('ddst_')) {
+      try { req.user = require('../services/identity-governance').validateToken(token); } catch { req.user = null; }
+    }
   }
   next();
 }
@@ -173,6 +180,40 @@ function writeable(req, res, next) {
   if (config.features.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return res.status(403).json({ error: 'System is in read-only mode' });
   }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    try {
+      const decision = require('../services/provider-operations/policy').globalHttpGate();
+      if (!decision.allowed) {
+        return res.status(423).json({ error: decision.reason, code: decision.code });
+      }
+      const approvalId = require('../services/governance-approvals').authorizeHttp(req);
+      if (approvalId) {
+        res.once('finish', () => {
+          try { require('../services/governance-approvals').finishHttpClaim(approvalId, res.statusCode); } catch { /* response already sent */ }
+        });
+      }
+    } catch (err) {
+      if (err.name === 'ApprovalError') {
+        return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+      }
+      return next(err);
+    }
+  }
+  next();
+}
+
+/** Enforce the deliberately small scope catalog used by short-lived tokens. */
+function enforceServiceTokenPermissions(req, res, next) {
+  if (!req.user?.serviceToken) return next();
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  const read = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  const family = path.startsWith('/api/scim/') ? 'scim'
+    : path.startsWith('/api/governance/') ? 'governance' : 'api';
+  const required = `${family}.${read ? 'read' : 'write'}`;
+  const scopes = new Set(req.user.scopes || []);
+  if (!scopes.has(required) && !(family !== 'api' && scopes.has(`api.${read ? 'read' : 'write'}`))) {
+    return res.status(403).json({ error: `Service token lacks ${required} scope`, code: 'SERVICE_SCOPE_DENIED' });
+  }
   next();
 }
 
@@ -186,4 +227,4 @@ function requireFeature(feature) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature, enforceApiKeyPermissions };
+module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature, enforceApiKeyPermissions, enforceServiceTokenPermissions };

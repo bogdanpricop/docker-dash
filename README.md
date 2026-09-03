@@ -207,6 +207,8 @@ Deep reading: [HA Mode reference](docs/features/ha-mode.md) · [Failover runbook
 - **Cloud vendor badges** (v6.12.1) — Optional DMI probe (`/sys/class/dmi/id/sys_vendor` + `product_name`) identifies AWS EC2, Google Cloud, Azure VM, DigitalOcean, Hetzner, Linode, Vultr, Oracle Cloud, Scaleway, OVHcloud, plus on-prem hypervisors (VMware, VirtualBox, KVM/QEMU, Xen, Parallels). Renders as a second colored pill on the Multi-Host card
 
 ### Operations
+- **Compose Catalog** — Curated OCI Compose blueprints with immutable versions, Cosign-only publication, typed secret-reference-safe parameters, deterministic previews, version diff/restore and a separate reviewed deploy step. See [the runbook](docs/features/compose-blueprint-catalog.md)
+- **Workstation Fleet** — Read-only Foreman/Katello inventory, bootc OCI trust/SBOM evidence, Edge Site mapping, security posture and default-off guarded update/rollback workflows. See [the runbook](docs/features/workstation-fleet.md)
 - **Stacks Page** — Unified Compose + Git stacks management with actions (up/down/restart/pull)
 - **Docker Swarm Mode** — Full UI for Nodes, Services, Tasks; init/leave swarm, scale services, drain nodes, join tokens
 - **Docker Compose Editor** — Edit, validate, save & deploy compose configs inline
@@ -736,7 +738,12 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `STATS_RAW_RETENTION_HOURS` | `24` | Keep raw stats for N hours |
 | `EVENT_RETENTION_DAYS` | `7` | Keep Docker events for N days |
 | `ENABLE_EXEC` | `true` | Allow terminal exec into containers |
+| `DD_TERMINAL_ACCESS_OVERRIDE` | `managed` | Out-of-band terminal policy: `managed`, force `deny`, or recovery `allow` |
 | `READ_ONLY_MODE` | `false` | Disable all write operations |
+| `DD_PROVIDER_SDK_V2` | `true` | Expose the versioned, read-only provider capability contract and Storage Posture assessment; it never enables storage mutation, QoS enforcement or path probes |
+| `DD_PROVIDER_VM_DISK_LIFECYCLE` | `false` | Opt in to reviewed VM-disk create, detach, grow and storage-move operations |
+| `DD_PROVIDER_VM_DISK_DELETE` | `false` | Separately opt in to permanent deletion of a verified Docker Dash-managed detached volume |
+| `DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION` | `false` | Separately opt in to vSphere-only snapshot disk consolidation after live evidence and typed VM-name confirmation |
 | `DD_MODE` | *(unset — standalone)* | Set to `ha` to enable HA mode. Requires `REDIS_URL`. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL. Only consulted when `DD_MODE=ha`. |
 | `TRUST_PROXY` | `loopback` (prod) / `true` (dev) | Trusted proxy range for `X-Forwarded-*` headers. Set to your load balancer's IP/CIDR in HA. |

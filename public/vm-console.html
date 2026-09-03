@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>VM Console · Docker Dash</title>
+  <link rel="stylesheet" href="/lib/xterm.min.css">
+  <link rel="stylesheet" href="/css/provider-console.css">
+</head>
+<body>
+  <header class="console-toolbar">
+    <div class="console-identity">
+      <strong id="console-title">VM Console</strong>
+      <span id="console-provider"></span>
+      <span id="console-status" role="status" aria-live="polite">Connecting…</span>
+    </div>
+    <div class="console-actions">
+      <button id="console-cad" type="button" disabled>Ctrl+Alt+Del</button>
+      <button id="console-scale" type="button" disabled>Actual size</button>
+      <button id="console-disconnect" type="button">Disconnect</button>
+    </div>
+  </header>
+  <main id="console-stage" aria-label="Virtual machine console">
+    <div id="console-screen"></div>
+    <div id="console-terminal"></div>
+    <div id="console-message">Establishing a protected same-origin console session…</div>
+  </main>
+  <footer>
+    The launch token is one-time and provider credentials remain in Docker Dash.
+  </footer>
+  <script src="/lib/xterm.min.js"></script>
+  <script src="/lib/xterm-addon-fit.min.js"></script>
+  <script src="/lib/novnc.min.js"></script>
+  <script src="/js/provider-console.js"></script>
+</body>
+</html>

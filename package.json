@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.21.4",
+  "version": "8.96.1",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {
@@ -8,11 +8,18 @@
     "dev": "node --watch src/server.js",
     "test": "jest --verbose --forceExit",
     "test:watch": "jest --watch",
+    "build:novnc": "esbuild node_modules/@novnc/novnc/lib/rfb.js --bundle --minify --format=iife --global-name=NoVNC --banner:js=\"/*! noVNC 1.5.0 | MPL-2.0 | https://github.com/novnc/noVNC */\" --outfile=public/lib/novnc.min.js",
     "lint": "eslint src/",
+    "check:self-service-i18n": "node scripts/validate-self-service-i18n.js",
+    "check:self-service-a11y": "node scripts/validate-self-service-a11y.js",
+    "check:virtualization-research": "node scripts/validate-virtualization-feature-registry.js",
+    "generate:virtualization-research": "node scripts/validate-virtualization-feature-registry.js --write",
     "lint:fix": "eslint src/ --fix",
-    "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml"
+    "version": "node scripts/sync-version.js && git add src/version.js docker-compose.yml",
+    "check:page-help": "node scripts/check-page-help.js"
   },
   "dependencies": {
+    "@novnc/novnc": "1.5.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.9.0",
     "cookie-parser": "^1.4.7",
@@ -26,7 +33,7 @@
     "nodemailer": "^8.0.5",
     "simple-git": "^3.36.0",
     "ssh2": "^1.16.0",
-    "ws": "^8.18.0",
+    "ws": "^8.21.1",
     "yaml": "^2.8.3"
   },
   "overrides": {
@@ -41,6 +48,7 @@
   },
   "devDependencies": {
     "canvas": "^3.2.3",
+    "esbuild": "0.25.8",
     "eslint": "^10.2.1",
     "gif-encoder-2": "^1.0.5",
     "ioredis-mock": "^8.13.1",

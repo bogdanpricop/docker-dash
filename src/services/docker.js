@@ -69,13 +69,39 @@ class DockerService {
     return this._parseHostRow(row);
   }
 
-  _parseHostRow(row) {
+  /**
+   * Normalise a `docker_hosts` row into a host config object.
+   *
+   * @param {object} row Raw `docker_hosts` row.
+   * @param {object} [opts]
+   * @param {boolean} [opts.tolerant=false] When set, a credential that no longer
+   *   decrypts yields `sshConfig: null` plus a `credentialError` marker instead of
+   *   throwing. Listing callers pass it so one unreadable row cannot erase every
+   *   other host; connection callers leave it off, because dialing a host with
+   *   half a config is worse than failing loudly.
+   * @throws {Error} status 422 in strict mode when credentials cannot be read.
+   */
+  _parseHostRow(row, opts = {}) {
     let tlsConfig = null;
     let sshConfig = null;
+    let credentialError = null;
     const { tryParseJson } = require('../utils/helpers');
     const { decryptSshConfig } = require('./host-config-crypto');
     tlsConfig = tryParseJson(row.tls_config);
-    sshConfig = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
+    try {
+      sshConfig = row.ssh_config ? decryptSshConfig(row.ssh_config) : null;
+    } catch (err) {
+      if (!opts.tolerant) {
+        // 4xx, not 5xx: the server is fine, the stored credential is not. The
+        // central error handler only forwards messages for operational errors,
+        // so this status is what makes the reason visible in the UI at all.
+        const wrapped = new Error(`Host "${row.name}" (id ${row.id}): ${err.message}. Re-enter its credentials on the Hosts page.`);
+        wrapped.status = 422;
+        wrapped.code = err.code;
+        throw wrapped;
+      }
+      credentialError = err.message;
+    }
     return {
       id: row.id,
       name: row.name,
@@ -85,13 +111,15 @@ class DockerService {
       port: row.port,
       tlsConfig,
       sshConfig,
+      daemonType: row.daemon_type || 'docker',
       isActive: row.is_active,
       isDefault: row.is_default,
+      credentialError,
     };
   }
 
   /** Create Dockerode instance from host config. `timeoutMs` overrides the
-   *  default 30s per-request timeout (used by prune, which can run for minutes). */
+   *  default 30s per-request timeout. Pass 0 for an unbounded live stream. */
   _createConnection(hostConfig, timeoutMs) {
     // v8.7.12 — applied consistently across all connection types. Previously
     // only the TCP path passed `timeout` to dockerode; SSH-tunneled and Unix-
@@ -99,12 +127,10 @@ class DockerService {
     // Docker daemon would freeze listContainers/inspect/pull through the
     // tunnel forever, even though the SSH tunnel's own keepalive (10s/3x)
     // kept the underlying transport alive. 30s is the dockerode `timeout`
-    // option — applies to per-request socket idle. Streaming endpoints
-    // (logs --follow, attach, exec) emit data faster than this in practice
-    // and the modem doesn't auto-close on the 'timeout' event (per node
-    // http req.setTimeout semantics), so live consumers are unaffected —
-    // same behavior TCP-connected hosts have had since their inception.
-    const DOCKER_REQUEST_TIMEOUT_MS = timeoutMs || 30_000;
+    // option — applies to per-request socket idle. Long-lived streaming
+    // endpoints must opt out explicitly: Docker's event stream can remain
+    // legitimately silent for longer than 30s and would otherwise abort.
+    const DOCKER_REQUEST_TIMEOUT_MS = timeoutMs ?? 30_000;
 
     switch (hostConfig.connectionType) {
       case 'socket':
@@ -220,17 +246,37 @@ class DockerService {
   dropConnection(hostId) {
     this.connections.delete(hostId);
     this._hostCache.delete(hostId);
+    // Non-Docker providers may maintain their own authenticated session cache.
+    // Keep Xen credentials/sessions in sync when a host is edited, removed, or
+    // explicitly reconnected through the common host lifecycle.
+    try { require('./xen').invalidateHost(hostId); } catch { /* Xen module optional during bootstrap */ }
+    try { require('./provider-sdk/registry').invalidateHost(hostId); } catch { /* SDK optional during bootstrap */ }
   }
 
   /** Get all active hosts from DB */
   getActiveHosts() {
+    let rows;
     try {
       const db = getDb();
-      return db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1 ORDER BY is_default DESC, name ASC').all()
-        .map(r => this._parseHostRow(r));
+      rows = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1 ORDER BY is_default DESC, name ASC').all();
     } catch {
+      // DB genuinely unavailable (bootstrap ordering) — fall back to the local socket.
       return [{ id: 0, name: 'Local', connectionType: 'socket', socketPath: config.docker.socketPath, isActive: true, isDefault: true }];
     }
+    // Parse row-by-row in tolerant mode. Until v8.96.1 a single host whose
+    // credentials no longer decrypted threw out of the .map(), hit the catch
+    // above, and collapsed the entire fleet to one synthetic local host — which
+    // silently stopped stats collection and event streams for every other host
+    // with no log line naming the culprit.
+    const hosts = [];
+    for (const row of rows) {
+      try {
+        hosts.push(this._parseHostRow(row, { tolerant: true }));
+      } catch (err) {
+        log.warn(`Host ${row.id} (${row.name}) omitted from the active list — unreadable config: ${err.message}`);
+      }
+    }
+    return hosts;
   }
 
   /** Test a connection config (without saving) */
@@ -280,6 +326,12 @@ class DockerService {
       // the connection-health service already has fresher state for it.
       if (require('./connection-health').isPaused(host.id)) continue;
       try {
+        if (host.daemonType !== 'docker' && host.daemonType !== 'podman') {
+          const info = await this._getNonDockerInfo(host.id, host.daemonType);
+          if (info._connectError) throw new Error(info._connectError);
+          this._updateHostStatus(host.id, true);
+          continue;
+        }
         const docker = this.getDocker(host.id);
         await Promise.race([
           docker.ping(),
@@ -329,15 +381,18 @@ class DockerService {
 
   // ─── Containers ──────────────────────────────────────────
 
-  async listContainers(hostId = 0) {
+  async listContainers(hostId = 0, { includeSize = false } = {}) {
     const docker = this.getDocker(hostId);
-    const containers = await docker.listContainers({ all: true });
+    const options = { all: true };
+    if (includeSize) options.size = true;
+    const containers = await docker.listContainers(options);
     return containers.map(c => ({
       id: c.Id,
       shortId: c.Id.substring(0, 12),
       name: c.Names[0]?.replace(/^\//, '') || 'unknown',
       image: c.Image,
       imageId: c.ImageID?.substring(7, 19),
+      imageIdFull: c.ImageID || null,
       state: c.State,
       status: c.Status,
       created: c.Created,
@@ -346,10 +401,15 @@ class DockerService {
       })),
       networks: Object.keys(c.NetworkSettings?.Networks || {}),
       mounts: (c.Mounts || []).map(m => ({
-        type: m.Type, source: m.Source, destination: m.Destination, rw: m.RW
+        type: m.Type, name: m.Name || null, source: m.Source,
+        destination: m.Destination, rw: m.RW, driver: m.Driver || null
       })),
       labels: c.Labels || {},
       stack: c.Labels?.['com.docker.compose.project'] || null,
+      sizeRw: includeSize && c.SizeRw != null && Number.isFinite(Number(c.SizeRw)) && Number(c.SizeRw) >= 0
+        ? Number(c.SizeRw) : null,
+      sizeRootFs: includeSize && c.SizeRootFs != null && Number.isFinite(Number(c.SizeRootFs)) && Number(c.SizeRootFs) >= 0
+        ? Number(c.SizeRootFs) : null,
       isSelf: hostId === 0 && this.isSelf(c.Id),
       hostId,
     }));
@@ -388,6 +448,24 @@ class DockerService {
         pidsLimit: data.HostConfig?.PidsLimit,
       },
       restartPolicy: data.HostConfig?.RestartPolicy,
+      // v8.94.0 — isolation posture. Which OCI runtime actually backs this
+      // container, plus the HostConfig switches that decide how much the
+      // container can reach past it. Host-level runtime detection already
+      // existed (see getInfo → runtimeCategories); this is the per-container
+      // half, without which "you have Kata installed" is not actionable.
+      // Additive: no existing field changes shape.
+      isolation: {
+        runtime: data.HostConfig?.Runtime || null,
+        privileged: !!data.HostConfig?.Privileged,
+        capAdd: data.HostConfig?.CapAdd || [],
+        capDrop: data.HostConfig?.CapDrop || [],
+        pidMode: data.HostConfig?.PidMode || '',
+        ipcMode: data.HostConfig?.IpcMode || '',
+        networkMode: data.HostConfig?.NetworkMode || '',
+        usernsMode: data.HostConfig?.UsernsMode || '',
+        readonlyRootfs: !!data.HostConfig?.ReadonlyRootfs,
+        securityOpt: data.HostConfig?.SecurityOpt || [],
+      },
       isSelf: hostId === 0 && this.isSelf(data.Id),
       hostId,
     };
@@ -779,6 +857,35 @@ class DockerService {
           _connectError: err.message };
       }
     }
+    if (daemonType === 'xen') {
+      const baseCapabilities = {
+        containers: false, images: false, networks: false, volumes: false,
+        compose: false, swarm: false, buildkit: false, plugins: false,
+        xen: true,
+      };
+      try {
+        const { clientForHost } = require('./xen');
+        const client = clientForHost(row);
+        const info = await client.info();
+        return {
+          ...base,
+          hostname: info.hostname || row.name,
+          os: info.product || 'Xen',
+          kernelVersion: info.xenCaps || null,
+          dockerVersion: info.version || null,
+          apiVersion: info.apiVersion || info.protocol || null,
+          cpus: info.cpus || 0,
+          memTotal: info.memoryMiB ? info.memoryMiB * 1024 * 1024 : 0,
+          daemonType, daemonName: info.product || 'Xen',
+          capabilities: { ...baseCapabilities, ...(info.capabilities || client.capabilities()) },
+        };
+      } catch (err) {
+        return {
+          ...base, daemonType, daemonName: 'Xen', capabilities: baseCapabilities,
+          _connectError: err.message,
+        };
+      }
+    }
     if (daemonType === 'nomad') {
       const capabilities = {
         containers: false, images: false, networks: false, volumes: false,
@@ -867,10 +974,24 @@ class DockerService {
     return results;
   }
 
+  async pruneBuildCacheBefore(unixTimestamp, hostId = 0) {
+    const PRUNE_TIMEOUT_MS = 15 * 60_000;
+    const docker = this._createConnection(this._getHostConfig(hostId), PRUNE_TIMEOUT_MS);
+    return docker.pruneBuilder({
+      filters: JSON.stringify({ until: [String(Math.floor(Number(unixTimestamp)))] }),
+    });
+  }
+
   // ─── Events Stream ────────────────────────────────────────
 
   async getEventStream(hostId = 0) {
-    const docker = this.getDocker(hostId);
+    // Keep normal API requests bounded while allowing an idle events stream
+    // to stay connected indefinitely. A dedicated client also avoids changing
+    // the timeout of the cached client shared by regular Docker operations.
+    // Seeded demo hosts retain their synthetic client and unsupported-operation
+    // behavior instead of attempting a real connection to placeholder data.
+    const docker = this._getMockDocker(hostId)
+      || this._createConnection(this._getHostConfig(hostId), 0);
     return await docker.getEvents();
   }
 
@@ -982,27 +1103,41 @@ class DockerService {
   // ─── Helpers ──────────────────────────────────────────────
 
   _parseStats(stats) {
-    const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - (stats.precpu_stats.cpu_usage.total_usage || 0);
-    const systemDelta = stats.cpu_stats.system_cpu_usage - (stats.precpu_stats.system_cpu_usage || 0);
-    const cpuCount = stats.cpu_stats.online_cpus || stats.cpu_stats.cpu_usage.percpu_usage?.length || 1;
+    // v8.95.0 — every access here is optional. Docker does not guarantee full
+    // cgroup blocks: a Wasm container, a container caught mid-teardown, or a
+    // platform without the usual cgroup wiring can return partial stats, and the
+    // previous direct access threw a TypeError. A throw here surfaces as "stats
+    // collection skipped" and the container silently loses metrics forever, so
+    // degrading to zeros is both safer and more honest.
+    const s = stats && typeof stats === 'object' ? stats : {};
+    const cpu = s.cpu_stats || {};
+    const precpu = s.precpu_stats || {};
+    const cpuUsage = cpu.cpu_usage || {};
+    const preCpuUsage = precpu.cpu_usage || {};
+    const mem = s.memory_stats || {};
+
+    const cpuDelta = (cpuUsage.total_usage || 0) - (preCpuUsage.total_usage || 0);
+    const systemDelta = (cpu.system_cpu_usage || 0) - (precpu.system_cpu_usage || 0);
+    const cpuCount = cpu.online_cpus || cpuUsage.percpu_usage?.length || 1;
     const cpuPercent = systemDelta > 0 ? (cpuDelta / systemDelta) * cpuCount * 100 : 0;
 
-    const memUsage = stats.memory_stats.usage - (stats.memory_stats.stats?.cache || 0);
-    const memLimit = stats.memory_stats.limit;
+    const memUsage = (mem.usage || 0) - (mem.stats?.cache || 0);
+    const memLimit = mem.limit || 0;
 
     let netRx = 0, netTx = 0;
-    if (stats.networks) {
-      for (const iface of Object.values(stats.networks)) {
-        netRx += iface.rx_bytes || 0;
-        netTx += iface.tx_bytes || 0;
+    if (s.networks && typeof s.networks === 'object') {
+      for (const iface of Object.values(s.networks)) {
+        netRx += (iface && iface.rx_bytes) || 0;
+        netTx += (iface && iface.tx_bytes) || 0;
       }
     }
 
     let blkRead = 0, blkWrite = 0;
-    if (stats.blkio_stats?.io_service_bytes_recursive) {
-      for (const entry of stats.blkio_stats.io_service_bytes_recursive) {
-        if (entry.op === 'read' || entry.op === 'Read') blkRead += entry.value;
-        if (entry.op === 'write' || entry.op === 'Write') blkWrite += entry.value;
+    if (Array.isArray(s.blkio_stats?.io_service_bytes_recursive)) {
+      for (const entry of s.blkio_stats.io_service_bytes_recursive) {
+        if (!entry) continue;
+        if (entry.op === 'read' || entry.op === 'Read') blkRead += entry.value || 0;
+        if (entry.op === 'write' || entry.op === 'Write') blkWrite += entry.value || 0;
       }
     }
 
@@ -1013,7 +1148,7 @@ class DockerService {
       memPercent: memLimit > 0 ? Math.round((memUsage / memLimit) * 10000) / 100 : 0,
       netRx, netTx,
       blkRead, blkWrite,
-      pids: stats.pids_stats?.current || 0,
+      pids: s.pids_stats?.current || 0,
     };
   }
 
@@ -1078,27 +1213,37 @@ const _daemon = { _detectDaemonType };
 // binaries; the loose regex tolerates minor variations (e.g. "crun-wasm"
 // or "containerd-shim-wasmedge-v1").
 
+// v8.95.0 — patterns are anchored to the containerd shim naming convention
+// (`io.containerd.<name>.v1`) or to whole-word boundaries. The previous loose
+// forms could mis-file an unrelated runtime, and a runtime's category decides a
+// security verdict, so a collision is not cosmetic.
 const WASM_RUNTIME_PATTERNS = [
-  /wasmedge/i,      // WasmEdge (CNCF, most common in containerd/docker)
-  /wasmtime/i,      // Bytecode Alliance
-  /wamr/i,          // WebAssembly Micro Runtime
-  /spin/i,          // Fermyon Spin (containerd shim)
-  /crun-wasm/i,     // crun's wasm variant
-  /wasmer/i,        // Wasmer runtime
-  /wws/i,           // Wasm Workers Server (Fermyon)
+  /(^|[.\-_])wasmedge([.\-_]|$)/i,   // WasmEdge (CNCF, most common under containerd)
+  /(^|[.\-_])wasmtime([.\-_]|$)/i,   // Bytecode Alliance
+  /(^|[.\-_])wamr([.\-_]|$)/i,       // WebAssembly Micro Runtime
+  /(^|[.\-_])spin([.\-_]|$)/i,       // Fermyon Spin — anchored, so "spinnaker" no longer matches
+  /(^|[.\-_])crun-wasm([.\-_]|$)/i,  // crun's wasm variant
+  /(^|[.\-_])wasmer([.\-_]|$)/i,     // Wasmer
+  /(^|[.\-_])wws([.\-_]|$)/i,        // Wasm Workers Server — three letters, so anchoring matters most here
 ];
+// Runtimes that add an isolation layer beyond namespaces + cgroups.
+// NOT youki: it is a runc-equivalent written in Rust, not an extra layer, and
+// filing it here inflated the posture picture. It falls through to `standard`.
 const SANDBOXED_RUNTIME_PATTERNS = [
-  /kata/i,          // Kata Containers (VM per pod)
-  /runsc/i,         // gVisor (user-space kernel)
-  /firecracker/i,   // AWS Firecracker microVM
-  /nabla/i,         // Nabla (unikernel-inspired sandbox)
-  /youki/i,         // Rust-based OCI runtime (isolation via cgroups2 by default)
+  /(^|[.\-_])kata([.\-_]|$)/i,        // Kata Containers (VM per workload)
+  /(^|[.\-_])runsc([.\-_]|$)/i,       // gVisor (user-space kernel)
+  /(^|[.\-_])gvisor([.\-_]|$)/i,      // gVisor, when registered under its product name
+  /(^|[.\-_])firecracker([.\-_]|$)/i, // AWS Firecracker microVM
+  /(^|[.\-_])nabla([.\-_]|$)/i,       // Nabla (unikernel-inspired)
 ];
 
 function _categorizeRuntimes(runtimes) {
   const result = { standard: [], sandboxed: [], wasm: [] };
   if (!runtimes || typeof runtimes !== 'object') return result;
   for (const name of Object.keys(runtimes)) {
+    // Precedence is deliberate, not incidental: wasm wins over sandboxed if a
+    // name somehow matched both, because wasm is the stronger claim and the one
+    // that must not be silently downgraded.
     if (WASM_RUNTIME_PATTERNS.some(p => p.test(name))) {
       result.wasm.push(name);
     } else if (SANDBOXED_RUNTIME_PATTERNS.some(p => p.test(name))) {

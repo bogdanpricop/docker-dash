@@ -4,8 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_VERSION: "${APP_VERSION:-8.21.4}"
-    image: docker-dash:${APP_VERSION:-8.21.4}
+        APP_VERSION: "${APP_VERSION:-8.96.1}"
+    image: docker-dash:${APP_VERSION:-8.96.1}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -19,6 +19,8 @@ services:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
       # Persistent data (SQLite DB, stats)
       - docker-dash-data:/data
+      # Compose projects discovered on disk (read/write for editor + deploy).
+      - ${DD_STACKS_HOST_DIR:-/opt/stacks}:/opt/stacks
       # Shared certs dir — Caddyfile written here by the app, read by Caddy
       - caddy-certs:/data/certs
       # Shared policy.json dir for the v6.7 egress filter sidecar (if running)
@@ -54,7 +56,7 @@ services:
   dd-egress-filter:
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.21.4}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.96.1}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can

@@ -17,6 +17,8 @@
      JetBrains Mono and Inter degrade to system monospace and sans-serif. -->
 <link rel="stylesheet" href="/lib/fontawesome.min.css?v=__VERSION__">
 <link rel="stylesheet" href="/lib/xterm.min.css?v=__VERSION__">
+<link rel="stylesheet" href="/vendor/codemirror/lib/codemirror.css?v=__VERSION__">
+<link rel="stylesheet" href="/vendor/codemirror/addon/lint/lint.css?v=__VERSION__">
 <link rel="stylesheet" href="/css/app.css?v=__VERSION__">
 </head>
 <body>
@@ -67,6 +69,14 @@
         <button type="button" class="btn btn-secondary btn-block" id="oidc-login-btn" style="display:flex;align-items:center;justify-content:center;gap:8px">
           <i class="fas fa-shield-alt"></i> Sign in with SSO
         </button>
+        <div id="federated-login" class="hidden" style="margin-top:10px">
+          <label for="federated-email" class="text-sm">Work email or domain</label>
+          <div style="display:flex;gap:7px;margin-top:5px">
+            <input type="text" id="federated-email" class="form-control" autocomplete="email" placeholder="user@example.com">
+            <button type="button" class="btn btn-secondary" id="federated-login-btn" title="Find identity provider"><i class="fas fa-arrow-right"></i></button>
+          </div>
+          <div id="federated-error" class="login-error hidden" role="alert" style="margin-top:7px"></div>
+        </div>
       </div>
       <div class="text-sm text-muted" style="margin-top:16px;text-align:center;opacity:0.5"><a href="https://github.com/bogdanpricop/docker-dash" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" title="View on GitHub"><i class="fab fa-github" style="margin-right:4px"></i>v__VERSION__</a></div>
     </div>
@@ -88,19 +98,45 @@
         </button>
       </div>
       <div class="host-selector" id="host-selector" style="display:none">
-        <select id="host-select" class="form-control form-control-sm" title="Docker Host">
+        <select id="host-select" class="form-control form-control-sm" title="Docker Host" hidden aria-hidden="true">
           <option value="0">Local</option>
         </select>
+        <button type="button" class="host-tree-toggle" id="host-tree-toggle" aria-haspopup="tree" aria-expanded="false">
+          <span class="host-tree-status pending" id="host-tree-current-status"></span>
+          <span id="host-tree-current-name">Local</span>
+          <i class="fas fa-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div class="host-tree-panel hidden" id="host-tree-panel">
+          <label class="sr-only" for="host-tree-search">Search hosts</label>
+          <div class="host-tree-search"><i class="fas fa-search" aria-hidden="true"></i><input id="host-tree-search" type="search" placeholder="Search hosts…" autocomplete="off"></div>
+          <div id="host-tree" role="tree" aria-label="Hosts by group"></div>
+        </div>
       </div>
       <nav class="sidebar-nav" id="sidebar-nav" role="navigation" aria-label="Main navigation">
         <a href="#/" class="nav-item" data-page="dashboard">
           <i class="fas fa-chart-pie"></i><span>Dashboard</span>
+        </a>
+        <a href="#/stacks" class="nav-item" data-page="stacks">
+          <i class="fas fa-layer-group"></i><span>Stacks</span>
+        </a>
+        <a href="#/containers" class="nav-item" data-page="containers">
+          <i class="fas fa-cube"></i><span>Containers</span>
+          <span class="nav-badge-count hidden" id="container-count"></span>
+        </a>
+        <a href="#/images" class="nav-item" data-page="images">
+          <i class="fas fa-layer-group"></i><span>Images</span>
+        </a>
+        <a href="#/compose-catalog" class="nav-item" data-page="compose-catalog">
+          <i class="fas fa-cubes"></i><span>Compose Catalog</span>
         </a>
         <a href="#/insights" class="nav-item" data-page="insights">
           <i class="fas fa-brain"></i><span>Insights</span>
         </a>
         <a href="#/timeline" class="nav-item" data-page="timeline">
           <i class="fas fa-stream"></i><span>Timeline</span>
+        </a>
+        <a href="#/diagnostics" class="nav-item" data-page="diagnostics">
+          <i class="fas fa-wave-square"></i><span>Diagnostics</span>
         </a>
         <a href="#/cost-optimizer" class="nav-item" data-page="cost-optimizer">
           <i class="fas fa-dollar-sign"></i><span>Cost</span>
@@ -111,13 +147,6 @@
         <div class="nav-section-label"><span>Resources</span></div>
         <a href="#/multi-host" class="nav-item" data-page="multi-host">
           <i class="fas fa-network-wired"></i><span>Multi-Host</span>
-        </a>
-        <a href="#/containers" class="nav-item" data-page="containers">
-          <i class="fas fa-cube"></i><span>Containers</span>
-          <span class="nav-badge-count hidden" id="container-count"></span>
-        </a>
-        <a href="#/images" class="nav-item" data-page="images">
-          <i class="fas fa-layer-group"></i><span>Images</span>
         </a>
         <a href="#/volumes" class="nav-item" data-page="volumes">
           <i class="fas fa-database"></i><span>Volumes</span>
@@ -148,20 +177,53 @@
         <a href="#/system" class="nav-item" data-page="system">
           <i class="fas fa-server"></i><span>System</span>
         </a>
+        <a href="#/procedures" class="nav-item" data-page="procedures" data-fleet-daemon="docker,podman">
+          <i class="fas fa-list-check"></i><span>Procedures</span>
+        </a>
         <a href="#/observability" class="nav-item admin-only" data-page="observability">
           <i class="fas fa-chart-line"></i><span>Observability</span>
         </a>
         <a href="#/registry-browse" class="nav-item admin-only" data-page="registry-browse">
           <i class="fas fa-warehouse"></i><span>Registries</span>
         </a>
-        <a href="#/stacks" class="nav-item" data-page="stacks">
-          <i class="fas fa-layer-group"></i><span>Stacks</span>
-        </a>
         <a href="#/swarm" class="nav-item" data-page="swarm" data-capability="swarm">
           <i class="fas fa-project-diagram"></i><span>Swarm</span>
         </a>
         <a href="#/incus-instances" class="nav-item" data-page="incus-instances" data-fleet-daemon="incus,lxd">
           <i class="fas fa-cubes"></i><span>Incus / LXD (alpha)</span>
+        </a>
+        <a href="#/virtual-machines" class="nav-item" data-page="virtual-machines" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-desktop"></i><span>Virtual Machines</span>
+        </a>
+        <a href="#/high-availability" class="nav-item" data-page="high-availability" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-shield-alt"></i><span>High Availability</span>
+        </a>
+        <a href="#/storage-posture" class="nav-item" data-page="storage-posture" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-database"></i><span>Storage Posture</span>
+        </a>
+        <a href="#/network-posture" class="nav-item" data-page="network-posture" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-network-wired"></i><span>Network Posture</span>
+        </a>
+        <a href="#/provider-security-posture" class="nav-item" data-page="provider-security-posture" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-shield-alt"></i><span>Provider Security</span>
+        </a>
+        <a href="#/placement-advisor" class="nav-item" data-page="placement-advisor" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-balance-scale"></i><span>Placement Advisor</span>
+        </a>
+        <a href="#/recovery-points" class="nav-item" data-page="recovery-points" data-fleet-daemon="proxmox,xen">
+          <i class="fas fa-box-archive"></i><span>Recovery Points</span>
+        </a>
+        <a href="#/backup-policies" class="nav-item" data-page="backup-policies" data-fleet-daemon="proxmox,xen">
+          <i class="fas fa-calendar-check"></i><span>Backup Policies</span>
+        </a>
+        <a href="#/disaster-recovery" class="nav-item" data-page="disaster-recovery" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-house-medical-circle-check"></i><span>Disaster Recovery</span>
+        </a>
+        <a href="#/virtualization-catalog" class="nav-item" data-page="virtualization-catalog" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-images"></i><span>VM Catalog</span>
+        </a>
+        <a href="#/activity" class="nav-item" data-page="activity" data-fleet-daemon="proxmox,vsphere,xen">
+          <i class="fas fa-tasks"></i><span>Activity Center</span>
         </a>
         <a href="#/proxmox-resources" class="nav-item" data-page="proxmox-resources" data-fleet-daemon="proxmox">
           <i class="fas fa-server"></i><span>Proxmox (alpha)</span>
@@ -178,6 +240,9 @@
         <a href="#/vsphere-resources" class="nav-item" data-page="vsphere-resources" data-fleet-daemon="vsphere">
           <i class="fas fa-server"></i><span>vSphere / ESXi (alpha)</span>
         </a>
+        <a href="#/xen-resources" class="nav-item" data-page="xen-resources" data-fleet-daemon="xen">
+          <i class="fas fa-cloud"></i><span>Xen / XCP-ng</span>
+        </a>
         <a href="#/firewall" class="nav-item" data-page="firewall">
           <i class="fas fa-fire"></i><span>Firewall</span>
         </a>
@@ -187,6 +252,21 @@
         </a>
         <a href="#/onboarding" class="nav-item admin-only" data-page="onboarding" id="onboarding-nav">
           <i class="fas fa-rocket"></i><span>Environment Setup</span>
+        </a>
+        <a href="#/governance" class="nav-item" data-page="governance" id="governance-nav">
+          <i class="fas fa-building-shield"></i><span>Governance</span>
+        </a>
+        <a href="#/self-service" class="nav-item" data-page="self-service" id="self-service-nav">
+          <i class="fas fa-store"></i><span>Self-Service</span>
+        </a>
+        <a href="#/governance-controls" class="nav-item admin-only" data-page="governance-controls" id="governance-controls-nav">
+          <i class="fas fa-shield-halved"></i><span>Identity &amp; Policy</span>
+        </a>
+        <a href="#/edge-platform" class="nav-item admin-only" data-page="edge-platform" id="edge-platform-nav">
+          <i class="fas fa-tower-broadcast"></i><span>Edge &amp; Disconnected</span>
+        </a>
+        <a href="#/workstation-fleet" class="nav-item admin-only" data-page="workstation-fleet" id="workstation-fleet-nav">
+          <i class="fas fa-laptop-code"></i><span>Workstation Fleet</span>
         </a>
         <a href="#/compare" class="nav-item" data-page="compare">
           <i class="fas fa-balance-scale"></i><span>Compare</span>
@@ -282,6 +362,13 @@
   <script src="/lib/chart.umd.min.js?v=__VERSION__"></script>
   <script src="/lib/xterm.min.js?v=__VERSION__"></script>
   <script src="/lib/xterm-addon-fit.min.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/lib/codemirror.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/mode/yaml/yaml.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/edit/matchbrackets.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/edit/closebrackets.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/lint/lint.js?v=__VERSION__"></script>
+  <script src="/vendor/js-yaml/js-yaml.min.js?v=__VERSION__"></script>
+  <script src="/vendor/codemirror/addon/lint/yaml-lint.js?v=__VERSION__"></script>
   <script src="/js/i18n.js?v=__VERSION__"></script>
   <!-- Language files: add new languages here (order doesn't matter) -->
   <script src="/js/i18n/en.js?v=__VERSION__"></script>
@@ -298,6 +385,8 @@
   <script src="/js/klingon.js?v=__VERSION__"></script>
   <script src="/js/qr.js?v=__VERSION__"></script>
   <script src="/js/utils.js?v=__VERSION__"></script>
+  <script src="/js/utils/yaml-editor.js?v=__VERSION__"></script>
+  <script src="/js/components/compose-service-form.js?v=__VERSION__"></script>
   <script src="/js/api.js?v=__VERSION__"></script>
   <script src="/js/ws.js?v=__VERSION__"></script>
   <!-- Theme toggle on login page (before app loads) -->
@@ -305,6 +394,9 @@
   <script src="/js/components/error-boundary.js?v=__VERSION__"></script>
   <script src="/js/components/toast.js?v=__VERSION__"></script>
   <script src="/js/components/modal.js?v=__VERSION__"></script>
+  <script src="/js/components/cli-preview.js?v=__VERSION__"></script>
+  <script src="/js/help-content.js?v=__VERSION__"></script>
+  <script src="/js/components/page-help.js?v=__VERSION__"></script>
   <script src="/js/components/template-configurator.js?v=__VERSION__"></script>
   <script src="/js/components/table.js?v=__VERSION__"></script>
   <script src="/js/components/context-menu.js?v=__VERSION__"></script>
@@ -316,6 +408,7 @@
   <script src="/js/pages/ssh-key-deployer.js?v=__VERSION__"></script>
   <script src="/js/update-notifier.js?v=__VERSION__"></script>
   <script src="/js/pages/dashboard.js?v=__VERSION__"></script>
+  <script src="/js/pages/diagnostics.js?v=__VERSION__"></script>
   <script src="/js/pages/containers.js?v=__VERSION__"></script>
   <script src="/js/pages/images.js?v=__VERSION__"></script>
   <script src="/js/pages/security.js?v=__VERSION__"></script>
@@ -348,10 +441,17 @@
   <script src="/js/pages/copilot.js?v=__VERSION__"></script>
   <script src="/js/pages/hosts.js?v=__VERSION__"></script>
   <script src="/js/pages/onboarding.js?v=__VERSION__"></script>
+  <script src="/js/pages/governance.js?v=__VERSION__"></script>
+  <script src="/js/pages/governance-controls.js?v=__VERSION__"></script>
+  <script src="/js/pages/self-service.js?v=__VERSION__"></script>
+  <script src="/js/pages/edge-platform.js?v=__VERSION__"></script>
+  <script src="/js/pages/workstation-fleet.js?v=__VERSION__"></script>
   <script src="/js/pages/about.js?v=__VERSION__"></script>
   <script src="/js/pages/whatsnew.js?v=__VERSION__"></script>
   <script src="/js/pages/profile.js?v=__VERSION__"></script>
   <script src="/js/pages/git-stacks.js?v=__VERSION__"></script>
+  <script src="/js/pages/compose-catalog.js?v=__VERSION__"></script>
+  <script src="/js/pages/procedures.js?v=__VERSION__"></script>
   <script src="/js/pages/compare.js?v=__VERSION__"></script>
   <script src="/js/pages/insights.js?v=__VERSION__"></script>
   <script src="/js/pages/timeline.js?v=__VERSION__"></script>
@@ -365,6 +465,18 @@
   <script src="/js/pages/kubernetes-resources.js?v=__VERSION__"></script>
   <script src="/js/pages/nomad-jobs.js?v=__VERSION__"></script>
   <script src="/js/pages/vsphere-resources.js?v=__VERSION__"></script>
+  <script src="/js/pages/xen-resources.js?v=__VERSION__"></script>
+  <script src="/js/pages/virtual-machines.js?v=__VERSION__"></script>
+  <script src="/js/pages/high-availability.js?v=__VERSION__"></script>
+  <script src="/js/pages/storage-posture.js?v=__VERSION__"></script>
+  <script src="/js/pages/network-posture.js?v=__VERSION__"></script>
+  <script src="/js/pages/provider-security-posture.js?v=__VERSION__"></script>
+  <script src="/js/pages/placement-advisor.js?v=__VERSION__"></script>
+  <script src="/js/pages/recovery-points.js?v=__VERSION__"></script>
+  <script src="/js/pages/backup-policies.js?v=__VERSION__"></script>
+  <script src="/js/pages/disaster-recovery.js?v=__VERSION__"></script>
+  <script src="/js/pages/virtualization-catalog.js?v=__VERSION__"></script>
+  <script src="/js/pages/activity-center.js?v=__VERSION__"></script>
   <script src="/js/pages/migration-vm.js?v=__VERSION__"></script>
   <script src="/js/pages/api-playground.js?v=__VERSION__"></script>
   <script src="/js/pages/multihost.js?v=__VERSION__"></script>

@@ -17,10 +17,25 @@ const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
+const cliTransparency = require('../services/cli-transparency');
+const isolationPosture = require('../services/isolation-posture');
+
 const router = Router();
 router.use(requireAuth);
 router.use(extractHostId);
 router.use(requireHostAccessForMethod());
+
+// v8.94.0 — CLI Transparency. Attach the equivalent command to an audit entry so
+// an incident review reads like a shell history instead of a list of verbs.
+// Secret redaction happens inside the service, so every caller inherits it.
+// Best-effort by design: a transparency feature must never break the action it
+// describes, so a derivation failure yields no `cli` key rather than an error.
+function _cliDetails(action, params) {
+  try {
+    const r = cliTransparency.describe(action, params);
+    return r.available ? { cli: r.command, cliRedacted: r.redacted } : {};
+  } catch { return {}; }
+}
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
@@ -52,17 +67,29 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
     const docker = dockerService.getDocker(req.hostId);
 
     // If no containers specified, get all running
-    let targetIds = containerIds ? containerIds.split(',') : [];
+    let targetIds = containerIds
+      ? [...new Set(String(containerIds).split(',')
+        .map(value => value.trim())
+        .filter(value => value && value.length <= 128 && !/[\x00-\x1f]/.test(value)))]
+      : [];
+    if (targetIds.length > 25) {
+      return res.status(400).json({ error: 'Select at most 25 containers' });
+    }
     if (targetIds.length === 0) {
       const all = await docker.listContainers();
       targetIds = all.slice(0, 20).map(c => c.Id.substring(0, 12)); // max 20
     }
+    const parsedTail = Number.parseInt(tail, 10);
+    const safeTail = Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100;
 
     const results = await Promise.allSettled(targetIds.map(async (id) => {
       const container = docker.getContainer(id);
       const inspect = await container.inspect();
+      const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+      const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+      if (!permService.hasPermission(effectiveRole, 'view')) return [];
       const name = inspect.Name.replace(/^\//, '');
-      const opts = { stdout: true, stderr: true, tail: parseInt(tail) || 100, timestamps: true };
+      const opts = { stdout: true, stderr: true, tail: safeTail, timestamps: true };
       if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
 
       const logBuffer = await container.logs(opts);
@@ -96,8 +123,9 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
       allLogs = allLogs.filter(l => l.severity === level);
     }
     if (search) {
-      const regex = new RegExp(search, 'i');
-      allLogs = allLogs.filter(l => regex.test(l.msg) || regex.test(l.container));
+      const needle = String(search).toLocaleLowerCase();
+      allLogs = allLogs.filter(l => l.msg.toLocaleLowerCase().includes(needle)
+        || l.container.toLocaleLowerCase().includes(needle));
     }
 
     // Limit output
@@ -254,6 +282,12 @@ router.get('/:id/inspect', requireAuth, async (req, res) => {
 // Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
   const { tail, since, until, search, regex, level, download } = req.query;
+    const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
+    const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+    if (!permService.hasPermission(effectiveRole, 'view')) {
+      return res.status(403).json({ error: 'Insufficient stack permissions for logs' });
+    }
     let lines = await dockerService.getContainerLogs(req.params.id, {
       tail: parseInt(tail) || 100,
       since, until,
@@ -313,6 +347,30 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Container stats (one-shot)
+// v8.94.0 — isolation assessment for one container. Read-only. Combines the
+// container's own HostConfig with the host's registered OCI runtimes so the
+// frontend never has to know which runtime names count as sandboxed — that
+// taxonomy lives in one place (docker.js `_categorizeRuntimes`).
+router.get('/:id/isolation', requireAuth, async (req, res) => {
+  try {
+    const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
+    let info = null;
+    try { info = await dockerService.getInfo(req.hostId); }
+    catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
+    const categories = (info && info.runtimeCategories) || {};
+    res.json(isolationPosture.assess(insp, {
+      sandboxed: categories.sandboxed || [],
+      wasm: categories.wasm || [],
+      default: info && info.defaultRuntime,
+    }));
+  } catch (err) {
+    // Same mapping as /:id/inspect above — a missing container is a 404, not a
+    // server error. Without this, asking about a container that has just been
+    // removed reads as "Docker Dash is broken".
+    res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
+  }
+});
+
 router.get('/:id/stats', requireAuth, asyncHandler(async (req, res) => {
   const stats = await dockerService.getContainerStats(req.params.id, req.hostId);
   res.json(stats);
@@ -330,7 +388,11 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
   try {
     // Check per-stack permission: actions require at least 'operate'
     const inspect = await dockerService.inspectContainer(id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'operate')) {
       return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
@@ -340,6 +402,7 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: `container_${action}`, targetType: 'container', targetId: id,
+      details: _cliDetails(`container.${action}`, { name: inspect.name || id }),
       ip: getClientIp(req),
     });
     res.json({ ok: true, action });
@@ -353,7 +416,11 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
   try {
     // Check per-stack permission: remove requires 'admin' on the stack
     const inspect = await dockerService.inspectContainer(req.params.id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'admin')) {
       return res.status(403).json({ error: 'Insufficient stack permissions to remove this container' });
@@ -366,7 +433,13 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_remove', targetType: 'container', targetId: req.params.id,
-      details: { force, removeVolumes: v }, ip: getClientIp(req),
+      details: {
+        force, removeVolumes: v,
+        ..._cliDetails('container.remove', {
+          name: inspect.name || req.params.id, force: force === 'true', volumes: v === 'true',
+        }),
+      },
+      ip: getClientIp(req),
     });
     res.json({ ok: true });
   } catch (err) {
@@ -378,11 +451,18 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
 router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+  const before = await dockerService.inspectContainer(req.params.id, req.hostId).catch(() => null);
   await dockerService.renameContainer(req.params.id, name, req.hostId);
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'container_rename', targetType: 'container', targetId: req.params.id,
-    details: { newName: name }, ip: getClientIp(req),
+    details: {
+      newName: name,
+      ..._cliDetails('container.rename', {
+        name: (before && before.name) || req.params.id, newName: name,
+      }),
+    },
+    ip: getClientIp(req),
   });
   res.json({ ok: true });
 }));
@@ -843,10 +923,19 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
     }
   }
 
+  // Render only what actually ran — a failed subject never produced a command,
+  // and the audit entry should read as history, not intent.
+  const applied = results.filter(r => r.ok)
+    .map(r => (action === 'remove' ? { name: r.id, force: true } : { name: r.id }));
+
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: `bulk_${action}`, targetType: 'container',
-    details: { ids, results: results.filter(r => !r.ok) }, ip: getClientIp(req),
+    details: {
+      ids, results: results.filter(r => !r.ok),
+      ..._cliDetails('container.bulk', { action, subjects: applied }),
+    },
+    ip: getClientIp(req),
   });
 
   res.json({ results });
@@ -968,9 +1057,16 @@ function generateCompose(data) {
   if (rp && rp.Name && rp.Name !== 'no') {
     lines.push(`    restart: ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`);
   }
+  // v8.95.1 — same redaction as the run command: an exported compose file is a
+  // recipe, not a credential store.
+  let redacted = false;
   if (data.env?.length) {
     lines.push('    environment:');
-    data.env.forEach(e => lines.push(`      - ${e}`));
+    data.env.forEach(e => {
+      const r = cliTransparency.redactEnvPair(e);
+      if (r.redacted) redacted = true;
+      lines.push(`      - ${r.text}`);
+    });
   }
   const ports = data.ports || {};
   const portEntries = Object.entries(ports).filter(([, v]) => v?.length);
@@ -997,46 +1093,77 @@ function generateCompose(data) {
   const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
   if (labels.length) {
     lines.push('    labels:');
-    labels.forEach(([k, v]) => lines.push(`      ${k}: "${v}"`));
+    labels.forEach(([k, v]) => {
+      const r = cliTransparency.redactEnvPair(`${k}=${v}`);
+      if (r.redacted) redacted = true;
+      lines.push(`      ${k}: ${JSON.stringify(r.text.slice(String(k).length + 1))}`);
+    });
   }
   if (nets.length) {
     lines.push('');
     lines.push('networks:');
     nets.forEach(n => lines.push(`  ${n}:\n    external: true`));
   }
+  if (redacted) {
+    lines.push('');
+    lines.push('# Secret-shaped values were replaced with <redacted>. Fill them in before deploying.');
+  }
   return lines.join('\n');
 }
 
-function generateRunCommand(data) {
-  let cmd = `docker run -d \\\n  --name ${data.name}`;
+// v8.95.1 — delegates to cli-transparency rather than interpolating inspect data
+// into a command by hand. The previous implementation emitted env vars as
+// `-e "KEY=VALUE"` and labels as `--label k="v"` with no escaping and no
+// redaction: a container's secrets were exported verbatim into a command
+// operators paste into tickets, and any value containing a quote produced a
+// broken — potentially injectable — string.
+//
+// Redaction is the point, not a side effect. An exported command is a recipe, and
+// a recipe should not carry credentials; the note makes the omission visible
+// instead of silent.
+function _toRunParams(data) {
   const rp = data.restartPolicy;
-  if (rp && rp.Name && rp.Name !== 'no') {
-    cmd += ` \\\n  --restart ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`;
+  const restart = rp && rp.Name && rp.Name !== 'no'
+    ? rp.Name + (rp.MaximumRetryCount ? ':' + rp.MaximumRetryCount : '')
+    : undefined;
+
+  const ports = [];
+  for (const [portProto, bindings] of Object.entries(data.ports || {})) {
+    if (!bindings || !bindings.length) continue;
+    const [containerPort, proto] = portProto.split('/');
+    for (const b of bindings) ports.push({ host: b.HostPort || '', container: containerPort, proto });
   }
-  if (data.env?.length) data.env.forEach(e => cmd += ` \\\n  -e "${e}"`);
-  const ports = data.ports || {};
-  Object.entries(ports).filter(([, v]) => v?.length).forEach(([container, bindings]) => {
-    bindings.forEach(b => {
-      cmd += ` \\\n  -p ${b.HostPort || ''}:${container.replace('/tcp', '')}`;
-    });
-  });
-  if (data.mounts?.length) {
-    data.mounts.forEach(m => {
-      const ro = m.RW === false ? ':ro' : '';
-      cmd += ` \\\n  -v ${m.Source || m.Name}:${m.Destination}${ro}`;
-    });
+
+  const volumes = (data.mounts || []).map(m => ({
+    source: m.Source || m.Name, target: m.Destination, readOnly: m.RW === false,
+  })).filter(v => v.source && v.target);
+
+  // `docker run` accepts a single --network, matching the previous behaviour.
+  const networks = Object.keys(data.networks || {}).filter(n => n !== 'bridge').slice(0, 1);
+
+  const labels = {};
+  for (const [k, v] of Object.entries(data.labels || {})) {
+    if (!k.startsWith('com.docker.compose')) labels[k] = v;
   }
-  const nets = Object.keys(data.networks || {}).filter(n => n !== 'bridge');
-  if (nets.length) cmd += ` \\\n  --network ${nets[0]}`;
-  if (data.resources?.memory) cmd += ` \\\n  --memory ${data.resources.memory}`;
-  if (data.resources?.cpuQuota && data.resources?.cpuPeriod) {
-    const cpus = (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1);
-    cmd += ` \\\n  --cpus ${cpus}`;
-  }
-  const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
-  labels.forEach(([k, v]) => cmd += ` \\\n  --label ${k}="${v}"`);
-  cmd += ` \\\n  ${data.image}`;
-  return cmd;
+
+  const cpus = data.resources && data.resources.cpuQuota && data.resources.cpuPeriod
+    ? (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1)
+    : undefined;
+
+  return {
+    image: data.image, name: data.name, restart,
+    env: data.env || [], ports, volumes, networks, labels,
+    memory: (data.resources && data.resources.memory) || undefined, cpus,
+    runtime: (data.isolation && data.isolation.runtime) || undefined,
+  };
+}
+
+const REDACTION_NOTE = '# Secret-shaped values were replaced with <redacted>. Fill them in before running.';
+
+function generateRunCommand(data) {
+  const r = cliTransparency.describe('container.run', _toRunParams(data));
+  if (!r.available) return '# Could not derive a run command for this container.';
+  return r.redacted ? r.command + '\n\n' + REDACTION_NOTE : r.command;
 }
 
 // ─── Smart Restart with Backoff ───────────────────────

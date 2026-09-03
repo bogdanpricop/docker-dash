@@ -35,6 +35,8 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     inactive: "vanglu'taHbe'",
     enabled: "Qaplu'",
     disabled: "Qapbe'lu'",
+    yes: "HIja'",
+    no: "ghobe'",
     test: "waH",
     prune: "pejmoH",
     unlimited: "vulbe'",
@@ -84,6 +86,7 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     "registry-browse": "qachDaqmey",
     onboarding: "yoS nIHmeH",
     posture: "Posture",
+    procedures: "mIwmeH",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alpha)",
@@ -91,7 +94,25 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     "migration-vm": "VM Migration (alpha)",
     "kubernetes-resources": "Kubernetes (alpha)",
     "nomad-jobs": "Nomad (alpha)",
-    "vsphere-resources": "vSphere / ESXi (alpha)"
+    "vsphere-resources": "vSphere / ESXi (alpha)",
+    "virtual-machines": "Virtual Machines",
+    "high-availability": "High Availability",
+    "storage-posture": "Storage Posture",
+    "network-posture": "Network Posture",
+    "provider-security-posture": "Provider Security",
+    "placement-advisor": "Placement Advisor",
+    "recovery-points": "Recovery Points",
+    "backup-policies": "Backup Policies",
+    "disaster-recovery": "Disaster Recovery",
+    "virtualization-catalog": "VM Catalog",
+    activity: "Activity Center",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "Governance",
+    "self-service": "Self-Service",
+    "governance-controls": "Identity & Policy",
+    "edge-platform": "Edge & Disconnected",
+    "workstation-fleet": "Workstation Fleet",
+    "compose-catalog": "Compose Catalog"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('tlh', '⚔️', "tlhIngan Hol", {
     checkFailed: "Sam lujpu'",
     upToDate: "SoH mI' chu' Qav Dalo'taH",
     refreshed: "chu'Ha'moH Sam chu'Ha'moHlu'pu'"
-  }
+  },
+  selfService: {
+    title: 'Infrastructure Self-Service', requestQuota: 'quota tlhob', acknowledge: 'luq', pause: 'QInvam mev',
+    tabs: { catalog: 'Catalog', project: 'Project', requests: 'Requests', incidents: 'Incidents', guidance: 'Guidance' },
+    actions: { start: 'tagh', shutdown: 'SoQmoH', reboot: 'qaStaHmoH', snapshot: 'Snapshot', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Infrastructure choH HochvaD latlh confirmation poQlu\'.', mobile: 'Safe mobile view:' },
+  },
 });

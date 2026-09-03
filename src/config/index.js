@@ -53,6 +53,9 @@ module.exports = {
     passwordMaxAgeDays: int('PASSWORD_MAX_AGE_DAYS', isStrict ? 90 : 0),
     disableTokenInBody: bool('DISABLE_TOKEN_IN_BODY', isStrict),
     disableWsQueryAuth: bool('DISABLE_WS_QUERY_AUTH', isStrict),
+    // Out-of-band terminal recovery/incident override:
+    // managed = database policy, deny = force closed, allow = ignore DB locks.
+    terminalAccessOverride: env('DD_TERMINAL_ACCESS_OVERRIDE', 'managed'),
   },
   stats: {
     collectIntervalMs: int('STATS_INTERVAL_MS', 10000),
@@ -79,6 +82,153 @@ module.exports = {
     multiHost: bool('ENABLE_MULTI_HOST', false),
     readOnly: bool('READ_ONLY_MODE', false),
     ssoHeaders: bool('ENABLE_SSO_HEADERS', false),
+    // Additive, read-only endpoint for the versioned multi-provider contract.
+    // Kept as a flag so operators can canary the new schema independently.
+    providerSdkV2: bool('DD_PROVIDER_SDK_V2', true),
+    // Mutation canary. Preflight remains inspectable while submit routes and
+    // UI actions stay closed unless an operator explicitly enables this.
+    providerVmPower: bool('DD_PROVIDER_VM_POWER', false),
+    providerVmSnapshots: bool('DD_PROVIDER_VM_SNAPSHOTS', false),
+    // vSphere-only disk-chain consolidation. Separate from general snapshot
+    // operations because it can generate material provider-storage I/O.
+    providerVmSnapshotConsolidation: bool('DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION', false),
+    providerVmSnapshotAutomation: bool('DD_PROVIDER_VM_SNAPSHOT_AUTOMATION', false),
+    // Durable start/stop/reboot/snapshot schedules. Authoring and dry-run
+    // evidence remain available while execute mode is closed by default.
+    providerVmActionSchedules: bool('DD_PROVIDER_VM_ACTION_SCHEDULES', false),
+    providerVmProvisioning: bool('DD_PROVIDER_VM_PROVISIONING', false),
+    providerVmGuestCustomization: bool('DD_PROVIDER_VM_GUEST_CUSTOMIZATION', false),
+    providerVmConsole: bool('DD_PROVIDER_VM_CONSOLE', false),
+    providerVmMigration: bool('DD_PROVIDER_VM_MIGRATION', false),
+    providerHostMaintenance: bool('DD_PROVIDER_HOST_MAINTENANCE', false),
+    providerHaReadiness: bool('DD_PROVIDER_HA_READINESS', false),
+    providerPlacementAdvisory: bool('DD_PROVIDER_PLACEMENT_ADVISORY', false),
+    providerHaPolicyMutation: bool('DD_PROVIDER_HA_POLICY_MUTATION', false),
+    providerAffinityMutation: bool('DD_PROVIDER_AFFINITY_MUTATION', false),
+    providerRebalanceApply: bool('DD_PROVIDER_REBALANCE_APPLY', false),
+    // Read-only common inventory for provider-native backup repositories and
+    // recovery points. Restore and backup execution remain separately gated.
+    providerRecoveryPointInventory: bool('DD_PROVIDER_RECOVERY_POINT_INVENTORY', false),
+    // Declarative backup policy authoring and plan-only scheduling. This flag
+    // never authorizes a provider backup or retention mutation.
+    providerBackupPolicies: bool('DD_PROVIDER_BACKUP_POLICIES', false),
+    // Durable provider backup submission. Authorization remains per policy and
+    // retention deletion is not implied by this execution flag.
+    providerBackupExecution: bool('DD_PROVIDER_BACKUP_EXECUTION', false),
+    providerRecoveryRestore: bool('DD_PROVIDER_RECOVERY_RESTORE', false),
+    providerRestoreDrills: bool('DD_PROVIDER_RESTORE_DRILLS', false),
+    providerDrRunbooks: bool('DD_PROVIDER_DR_RUNBOOKS', false),
+    // File-catalog evidence, plan-only restore depth and draft replication
+    // policies. Provider mutations remain unavailable behind this flag.
+    providerRestoreReplicationDepth: bool('DD_PROVIDER_RESTORE_REPLICATION_DEPTH', false),
+    // Versioned security evidence packs, key-provider registry and
+    // confidential-VM compatibility plans. No provider probing or mutation.
+    providerSecurityAssurance: bool('DD_PROVIDER_SECURITY_ASSURANCE', false),
+    // Advisory correlation, exceptions, dry-run remediation plans and secret-
+    // reference validation. Uses imported evidence and starts no provider call.
+    providerSecurityLifecycle: bool('DD_PROVIDER_SECURITY_LIFECYCLE', false),
+    // Separate kill switch for allowlisted low-risk adapter execution. A current
+    // plan, canary, typed confirmation and post-read verification remain required.
+    providerSecurityLowRiskRemediation: bool('DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION', false),
+    // MFA/four-eyes JIT, break-glass, classification, signed evidence and
+    // ransomware posture control plane. Provider/media mutation stays absent.
+    providerPrivilegedCompliance: bool('DD_PROVIDER_PRIVILEGED_COMPLIANCE', false),
+    // Independent kill switch for enforcing scoped JIT/break-glass grants on
+    // allowlisted provider mutations. Keep default-off until an operator canary.
+    providerCriticalOperationJit: bool('DD_PROVIDER_CRITICAL_OPERATION_JIT', false),
+    providerVmDiskLifecycle: bool('DD_PROVIDER_VM_DISK_LIFECYCLE', false),
+    providerVmDiskDelete: bool('DD_PROVIDER_VM_DISK_DELETE', false),
+    // NIC link mutation is released independently per provider. A global flag
+    // would make an untested adapter reachable when enabling a tested one.
+    providerVmNicLinkProxmox: bool('DD_PROVIDER_VM_NIC_LINK_PROXMOX', false),
+    providerVmNicLinkVsphere: bool('DD_PROVIDER_VM_NIC_LINK_VSPHERE', false),
+    providerVmNicLinkXen: bool('DD_PROVIDER_VM_NIC_LINK_XEN', false),
+    // V4.6a — additive governance control plane. This gates only the new
+    // governance API/UI; existing host/stack/provider RBAC remains independent.
+    governance: bool('DD_GOVERNANCE_ENABLED', true),
+    // Generic bootc/Foreman workstation fleet control plane. Inventory sync is
+    // read-only; remote update/rollback has its own independent kill switch.
+    workstationFleet: bool('DD_WORKSTATION_FLEET', true),
+    workstationForemanMutations: bool('DD_WORKSTATION_FOREMAN_MUTATIONS', false),
+  },
+  workstationFleet: {
+    requestTimeoutMs: Math.min(120_000,
+      Math.max(5_000, int('DD_WORKSTATION_FOREMAN_TIMEOUT_MS', 30_000))),
+    maxPages: Math.min(100, Math.max(1, int('DD_WORKSTATION_FOREMAN_MAX_PAGES', 20))),
+    maxItems: Math.min(10_000, Math.max(10, int('DD_WORKSTATION_FOREMAN_MAX_ITEMS', 2_000))),
+    maxFactHosts: Math.min(2_000, Math.max(0, int('DD_WORKSTATION_FOREMAN_MAX_FACT_HOSTS', 500))),
+    factConcurrency: Math.min(10, Math.max(1, int('DD_WORKSTATION_FOREMAN_FACT_CONCURRENCY', 5))),
+    evidenceMaxAgeMs: Math.min(7 * 24 * 60 * 60_000,
+      Math.max(60 * 60_000, int('DD_WORKSTATION_EVIDENCE_MAX_AGE_HOURS', 24) * 60 * 60_000)),
+    jobTimeoutMs: Math.min(24 * 60 * 60_000,
+      Math.max(5 * 60_000, int('DD_WORKSTATION_FOREMAN_JOB_TIMEOUT_MINUTES', 120) * 60_000)),
+    allowedRemoteJobTemplates: env('DD_WORKSTATION_FOREMAN_JOB_TEMPLATES', '')
+      .split(',').map(value => value.trim()).filter(value => /^\d+$/.test(value)),
+  },
+  providerOperations: {
+    concurrency: int('DD_PROVIDER_OPERATION_CONCURRENCY', 4),
+    pollMs: int('DD_PROVIDER_OPERATION_POLL_MS', 1000),
+    leaseMs: int('DD_PROVIDER_OPERATION_LEASE_MS', 30000),
+  },
+  providerVmDisks: {
+    planTtlMs: Math.min(30 * 60 * 1000,
+      Math.max(60_000, int('DD_PROVIDER_VM_DISK_PLAN_TTL_MS', 5 * 60_000))),
+    minimumSizeBytes: Math.max(1024 * 1024,
+      int('DD_PROVIDER_VM_DISK_MIN_SIZE_MIB', 64) * 1024 * 1024),
+    capacityHeadroomPercent: Math.min(50,
+      Math.max(0, int('DD_PROVIDER_VM_DISK_HEADROOM_PERCENT', 10))),
+    deletionRecoveryMaxAgeHours: Math.min(24 * 365,
+      Math.max(1, int('DD_PROVIDER_VM_DISK_DELETE_RECOVERY_MAX_AGE_HOURS', 24))),
+  },
+  providerVmNics: {
+    safetyDeclarationMaxHours: Math.min(24,
+      Math.max(1, int('DD_PROVIDER_VM_NIC_SAFETY_MAX_HOURS', 4))),
+    verifyTimeoutMs: Math.min(10 * 60 * 1000,
+      Math.max(30_000, int('DD_PROVIDER_VM_NIC_VERIFY_TIMEOUT_MS', 120_000))),
+  },
+  providerHostMaintenance: {
+    pollLimit: Math.min(100, Math.max(1, int('DD_PROVIDER_HOST_MAINTENANCE_POLL_LIMIT', 20))),
+    leaseMs: Math.min(5 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HOST_MAINTENANCE_LEASE_MS', 90_000))),
+    nativeTimeoutSeconds: Math.min(86400, Math.max(60, int('DD_PROVIDER_HOST_MAINTENANCE_NATIVE_TIMEOUT_SECONDS', 3600))),
+  },
+  providerHaReadiness: {
+    freshnessMs: Math.min(15 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_HA_FRESHNESS_MS', 60_000))),
+    historyLimit: Math.min(500, Math.max(12, int('DD_PROVIDER_HA_HISTORY_LIMIT', 96))),
+    endpointConcurrency: Math.min(4, Math.max(1, int('DD_PROVIDER_HA_ENDPOINT_CONCURRENCY', 2))),
+  },
+  providerPlacementAdvisory: {
+    freshnessMs: Math.min(15 * 60 * 1000, Math.max(15_000, int('DD_PROVIDER_PLACEMENT_FRESHNESS_MS', 60_000))),
+    maxRebalanceVms: Math.min(20, Math.max(1, int('DD_PROVIDER_PLACEMENT_MAX_REBALANCE_VMS', 20))),
+    endpointConcurrency: Math.min(2, Math.max(1, int('DD_PROVIDER_PLACEMENT_ENDPOINT_CONCURRENCY', 2))),
+    planTtlMs: Math.min(30 * 60 * 1000, Math.max(60_000, int('DD_PROVIDER_PLACEMENT_PLAN_TTL_MS', 5 * 60_000))),
+  },
+  providerPlacementChanges: {
+    concurrency: Math.min(5, Math.max(1, int('DD_PROVIDER_PLACEMENT_CHANGE_CONCURRENCY', 2))),
+    maxMoves: Math.min(20, Math.max(1, int('DD_PROVIDER_PLACEMENT_CHANGE_MAX_MOVES', 20))),
+    approvalTtlMs: Math.min(24 * 60 * 60 * 1000,
+      Math.max(60_000, int('DD_PROVIDER_PLACEMENT_CHANGE_APPROVAL_TTL_MS', 15 * 60_000))),
+  },
+  providerSnapshots: {
+    maxCount: int('DD_PROVIDER_VM_SNAPSHOT_MAX_COUNT', 32),
+    maxDepth: int('DD_PROVIDER_VM_SNAPSHOT_MAX_DEPTH', 16),
+  },
+  providerResilience: {
+    concurrency: int('DD_PROVIDER_MAX_CONCURRENCY', 2),
+    maxQueue: int('DD_PROVIDER_MAX_QUEUE', 64),
+    timeoutMs: int('DD_PROVIDER_REQUEST_TIMEOUT_MS', 30000),
+    failureThreshold: int('DD_PROVIDER_CIRCUIT_FAILURES', 3),
+    cooldownMs: int('DD_PROVIDER_CIRCUIT_COOLDOWN_MS', 30000),
+  },
+  providerConformance: {
+    retentionDays: int('DD_PROVIDER_CONFORMANCE_RETENTION_DAYS', 365),
+  },
+  providerConsole: {
+    tokenTtlSeconds: Math.min(120, Math.max(15, int('DD_PROVIDER_VM_CONSOLE_TOKEN_TTL_SECONDS', 45))),
+    maxPendingPerUser: Math.min(20, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_PENDING_PER_USER', 5))),
+    maxActivePerUser: Math.min(20, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_ACTIVE_PER_USER', 3))),
+    maxActivePerIp: Math.min(50, Math.max(1, int('DD_PROVIDER_VM_CONSOLE_MAX_ACTIVE_PER_IP', 5))),
+    maxSessionSeconds: Math.min(8 * 3600, Math.max(60, int('DD_PROVIDER_VM_CONSOLE_MAX_SESSION_SECONDS', 3600))),
+    accessOverride: env('DD_PROVIDER_VM_CONSOLE_ACCESS_OVERRIDE', 'managed'),
   },
   smtp: {
     host: env('SMTP_HOST', 'localhost'),

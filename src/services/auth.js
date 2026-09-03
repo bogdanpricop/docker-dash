@@ -382,6 +382,23 @@ class AuthService {
     return { success: true, recoveryCodes };
   }
 
+  /** Verify a local TOTP as a fresh step-up factor without creating a session. */
+  verifyStepUpMfa(userId, code) {
+    const db = getDb();
+    const user = db.prepare(`SELECT id, username, totp_secret, totp_enabled
+      FROM users WHERE id = ? AND is_active = 1`).get(Number(userId));
+    if (!user || !user.totp_enabled || !user.totp_secret) {
+      return { error: 'Local TOTP enrollment is required for privileged step-up' };
+    }
+    if (!/^\d{6}$/.test(String(code || ''))) return { error: 'Invalid TOTP code' };
+    let secret;
+    try { secret = decrypt(user.totp_secret); }
+    catch { return { error: 'MFA configuration error' }; }
+    if (!totp.verifyTOTP(secret, String(code))) return { error: 'Invalid TOTP code' };
+    log.info('Privileged step-up MFA verified', { username: user.username });
+    return { success: true, verifiedAt: now() };
+  }
+
   /** Disable MFA (requires password confirmation) */
   async mfaDisable(userId, password) {
     const db = getDb();

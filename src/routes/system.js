@@ -1676,5 +1676,6 @@ router.use('/backup', require('./system-backup'));       // 17 routes (S3/pCloud
 router.use('/', require('./system-stacks'));             // 9 routes (/stacks + /compose)
 router.use('/schedules', require('./system-schedules')); // 7 routes (/schedules/*)
 router.use('/database', require('./system-database'));   // 5 routes (/database/*)
+router.use('/terminal-access', require('./terminal-access'));
 
 module.exports = router;

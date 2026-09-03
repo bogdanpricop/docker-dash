@@ -46,18 +46,33 @@ async function redis() {
       log.error(msg);
       throw new Error(msg);
     }
-    _redis = new Redis(REDIS_URL, {
+    const client = new Redis(REDIS_URL, {
       lazyConnect: false,
       maxRetriesPerRequest: 3,
       retryStrategy: (times) => Math.min(times * 200, 2000),
     });
-    _redis.on('connect', () => log.info('Redis connected', {
-      // Redact credentials in the URL before logging
-      url: REDIS_URL.replace(/:\/\/[^@]*@/, '://***@'),
-      nodeId: NODE_ID,
-    }));
-    _redis.on('error', (e) => log.error('Redis error', { message: e.message }));
-    return _redis;
+    _redis = client;
+
+    // v8.95.1 — the handlers check they are still the current client before
+    // logging. `connect` fires on a later tick, so it can land after the client
+    // has been discarded by shutdown() or _reset(): in production that is noise
+    // about a connection nobody is using, and under Jest it lands after the suite
+    // has torn down, where Jest attributes the stray write to whichever test
+    // happens to be running and fails it. That was the source of an intermittent
+    // 2-4 test failures across the whole suite, unrelated to the tests it hit.
+    client.on('connect', () => {
+      if (_redis !== client) return;
+      log.info('Redis connected', {
+        // Redact credentials in the URL before logging
+        url: REDIS_URL.replace(/:\/\/[^@]*@/, '://***@'),
+        nodeId: NODE_ID,
+      });
+    });
+    client.on('error', (e) => {
+      if (_redis !== client) return;
+      log.error('Redis error', { message: e.message });
+    });
+    return client;
   })();
   return _redisPromise;
 }
@@ -343,6 +358,14 @@ module.exports = {
   // test-only: reset internal state
   _reset() {
     if (_leaderTimer) { clearInterval(_leaderTimer); _leaderTimer = null; }
+    // Detach before dropping the reference: an orphaned client keeps its
+    // listeners, and a mock that emits `connect` on a later tick would otherwise
+    // still reach the logger long after the test that created it finished.
+    for (const c of [_redis, _subClient]) {
+      if (c && typeof c.removeAllListeners === 'function') {
+        try { c.removeAllListeners(); } catch { /* best effort */ }
+      }
+    }
     _redis = null;
     _redisPromise = null;
     _subClient = null;

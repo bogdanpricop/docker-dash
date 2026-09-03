@@ -416,6 +416,31 @@ const ImagesPage = {
     this._detailShell.mount(hostEl);
   },
 
+  // Loaded after render so the summary tab never waits on a daemon round trip.
+  // Silent unless it has something actionable to say: a non-Wasm image, or a
+  // Wasm image on a host that can run it, produces nothing.
+  async _loadWasmCompatibility(el, imageId) {
+    let r;
+    try { r = await Api.getImageWasm(imageId); }
+    catch { return; }
+    if (!r || !r.isWasm) return;
+    // null means we could not read the host's runtimes — unknown is not the same
+    // as incompatible, so we say nothing rather than guess.
+    if (r.hostHasWasmRuntime !== false) return;
+
+    const note = document.createElement('div');
+    note.className = 'card mt-md';
+    note.style.borderLeft = '4px solid var(--yellow)';
+    note.innerHTML = `
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <i class="fas fa-triangle-exclamation" style="color:var(--yellow);margin-top:2px"></i>
+          <div class="text-sm">${Utils.escapeHtml(i18n.t('pages.images.wasmNoRuntime'))}</div>
+        </div>
+      </div>`;
+    el.appendChild(note);
+  },
+
   _renderImgTab(tab, el) {
     const data = this._imgData;
     if (!el || !data) return;
@@ -437,7 +462,10 @@ const ImagesPage = {
                 <tr><td>ID</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(data.Id || '')}</td></tr>
                 <tr><td>Digest</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(digest)}</td></tr>
                 <tr><td>${i18n.t('pages.images.size')}</td><td>${data.Size != null ? Utils.formatBytes(data.Size) : '—'}</td></tr>
-                <tr><td>Architecture</td><td>${Utils.escapeHtml([data.Os, data.Architecture].filter(Boolean).join('/') || '—')}</td></tr>
+                <tr><td>Architecture</td><td>${Utils.escapeHtml([data.Os, data.Architecture].filter(Boolean).join('/') || '—')}
+                  ${String(data.Os || '').toLowerCase() === 'wasi' && String(data.Architecture || '').toLowerCase() === 'wasm'
+                    ? `<span class="badge badge-success" style="margin-left:6px" title="${Utils.escapeHtml(i18n.t('pages.images.wasmBadgeHint'))}">WASM</span>` : ''}
+                </td></tr>
                 <tr><td>${i18n.t('pages.images.created')}</td><td>${data.Created ? Utils.timeAgo(data.Created) : '—'}</td></tr>
               </table>
             </div>
@@ -450,6 +478,10 @@ const ImagesPage = {
           </div>
         </div>
       `;
+      // v8.95.0 — a Wasm image on a host with no Wasm runtime fails with
+      // `exec format error`, which explains nothing. We know both halves, so we
+      // say it here instead of letting the operator discover it at run time.
+      this._loadWasmCompatibility(el, data.Id || this._imgData.Id);
     } else if (tab === 'layers') {
       el.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading layers...</div>';
       Api.getImageHistory(data.Id || this._imgData.Id).then(history => {

@@ -11,6 +11,7 @@ const { encryptSshConfig, decryptSshConfig } = require('../services/host-config-
 const asyncHandler = require('../utils/asyncHandler');
 const connectionHealth = require('../services/connection-health');
 const hostPermissions = require('../services/host-permissions');
+const hostGroups = require('../services/host-groups');
 const { requireHostAccess } = require('../middleware/hostAccess');
 
 // Validate docker socket path — must be an absolute path with safe characters only
@@ -77,6 +78,9 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
               cfg = require('../services/nomad').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
             case 'vsphere':
               cfg = require('../services/vsphere').decryptDaemonConfig(h.daemon_config); return cfg.endpoint;
+            case 'xen':
+              cfg = require('../services/xen').decryptDaemonConfig(h.daemon_config);
+              return cfg.provider === 'raw' ? cfg.sshHost : cfg.endpoint;
             default: return null;
           }
         } catch { return null; }
@@ -88,6 +92,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
         if (!h.ssh_config) return null;
         try { return (decryptSshConfig(h.ssh_config) || {}).host || null; } catch { return null; }
       })(),
+      groups: hostGroups.groupsForHost(h.id),
     };
   });
 
@@ -118,6 +123,7 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
     hasSsh: !!(host.ssh_config && host.ssh_config !== '{}'),
     // v8.10.x — Connection Health circuit breaker fields (see GET / above).
     connState: host.conn_state || 'unknown',
+    groups: hostGroups.groupsForHost(host.id),
     connPaused: !!host.conn_paused,
     connPausedReason: host.conn_paused_reason || null,
     connLastError: host.conn_last_error || null,
@@ -197,6 +203,22 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
             sshKeyPresent: !!(cfg.sshConfig && cfg.sshConfig.privateKey),
           };
           break;
+        case 'xen':
+          cfg = require('../services/xen').decryptDaemonConfig(host.daemon_config);
+          result.daemonConfig = {
+            provider: cfg.provider || 'xo', endpoint: cfg.endpoint,
+            username: cfg.username || cfg.sshUsername || '',
+            tokenPresent: !!cfg.token, passwordPresent: !!cfg.password,
+            caCertPresent: !!cfg.caCert, skipTlsVerify: !!cfg.skipTlsVerify,
+            protocol: cfg.protocol || 'auto',
+            sshHost: cfg.sshHost || '', sshPort: cfg.sshPort || 22,
+            sshUsername: cfg.sshUsername || '',
+            sshPasswordPresent: !!cfg.sshPassword,
+            sshKeyPresent: !!cfg.sshPrivateKey,
+            useSudo: !!cfg.useSudo,
+            hostKeySha256: cfg.hostKeySha256 || '',
+          };
+          break;
       }
     } catch { /* config unreadable — leave out */ }
   }
@@ -230,7 +252,7 @@ router.get('/:id/info', requireAuth, requireHostAccess('view', { param: 'id' }),
 // v8.9.5-alpha.1 — set of daemon types that DON'T use a Docker socket.
 // For these, POST /hosts takes { name, daemonType, daemonConfig } and
 // skips all of the Docker-specific fields below.
-const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nomad', 'vsphere']);
+const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nomad', 'vsphere', 'xen']);
 
 // v8.9.5-alpha.1 — per-daemon config encryption helpers. Each service's
 // encryptDaemonConfig produces an `enc:` prefixed blob using AES-256-GCM.
@@ -248,6 +270,8 @@ function _encryptDaemonConfig(daemonType, cfg) {
       return require('../services/nomad').encryptDaemonConfig(cfg);
     case 'vsphere':
       return require('../services/vsphere').encryptDaemonConfig(cfg);
+    case 'xen':
+      return require('../services/xen').encryptDaemonConfig(cfg);
     default:
       throw new Error(`Unknown daemon type: ${daemonType}`);
   }
@@ -267,6 +291,10 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(asyn
     if (daemonType && _NON_DOCKER_TYPES.has(daemonType)) {
       if (!daemonConfig || typeof daemonConfig !== 'object') {
         return res.status(400).json({ error: 'daemonConfig object is required for non-Docker hosts' });
+      }
+      if (daemonType === 'xen') {
+        try { require('../services/xen').createClient(daemonConfig); }
+        catch (err) { return res.status(400).json({ error: err.message }); }
       }
       const db = getDb();
       const enc = _encryptDaemonConfig(daemonType, daemonConfig);
@@ -355,7 +383,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
 
     const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
             sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
-            isActive, environment, daemonType, daemonConfig } = req.body;
+            isActive, environment, daemonType: _daemonType, daemonConfig } = req.body;
 
     // v8.9.11-alpha.6 — non-Docker update path.
     // Accepts { name, daemonConfig } — daemon_type is fixed post-create.
@@ -376,15 +404,25 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
           case 'kubernetes': currentCfg = require('../services/kubernetes').decryptDaemonConfig(existing.daemon_config); break;
           case 'nomad': currentCfg = require('../services/nomad').decryptDaemonConfig(existing.daemon_config); break;
           case 'vsphere': currentCfg = require('../services/vsphere').decryptDaemonConfig(existing.daemon_config); break;
+          case 'xen': currentCfg = require('../services/xen').decryptDaemonConfig(existing.daemon_config); break;
         }
       } catch { currentCfg = {}; }
 
-      const merged = { ...currentCfg };
+      // Switching Xen management planes must not carry an XO token into an
+      // XAPI/raw config (or retain an old dom0 password). Start a clean config
+      // when the provider changes; same-provider edits preserve blank secrets.
+      const providerChanged = existing.daemon_type === 'xen' && daemonConfig.provider
+        && daemonConfig.provider !== currentCfg.provider;
+      const merged = providerChanged ? {} : { ...currentCfg };
       // Copy non-empty scalars from the request into merged.
       for (const [k, v] of Object.entries(daemonConfig)) {
         if (v === undefined) continue;
         if (typeof v === 'string' && v === '') continue; // keep existing secret
         merged[k] = v;
+      }
+      if (existing.daemon_type === 'xen') {
+        try { require('../services/xen').createClient(merged); }
+        catch (err) { return res.status(400).json({ error: err.message }); }
       }
       const enc = _encryptDaemonConfig(existing.daemon_type, merged);
       const nextName = (name !== undefined) ? name : existing.name;
@@ -392,6 +430,8 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
       const nextEnv = (environment !== undefined) ? environment : existing.environment;
       db.prepare(`UPDATE docker_hosts SET name = ?, daemon_config = ?, is_active = ?, environment = ?, updated_at = ? WHERE id = ?`)
         .run(nextName, enc, nextIsActive, nextEnv, new Date().toISOString(), hostId);
+      if (existing.daemon_type === 'xen') require('../services/xen').invalidateHost(hostId);
+      require('../services/provider-sdk/registry').invalidateHost(hostId);
       auditService.log({
         userId: req.user.id, username: req.user.username,
         action: 'host_update', targetType: 'host', targetId: String(hostId),
@@ -492,6 +532,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 
     // Drop connection
     dockerService.dropConnection(hostId);
+    if (host.daemon_type === 'xen') require('../services/xen').invalidateHost(hostId);
 
     // Delete from DB
     db.prepare('DELETE FROM docker_hosts WHERE id = ?').run(hostId);
@@ -564,9 +605,12 @@ router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(
           incus: '../services/incus', lxd: '../services/incus',
           proxmox: '../services/proxmox', kubernetes: '../services/kubernetes',
           nomad: '../services/nomad', vsphere: '../services/vsphere',
+          xen: '../services/xen',
         }[daemonType];
         const stored = require(decMod).decryptDaemonConfig(existing.daemon_config);
-        const merged = { ...stored };
+        const providerChanged = daemonType === 'xen' && daemonConfig.provider
+          && daemonConfig.provider !== stored.provider;
+        const merged = providerChanged ? {} : { ...stored };
         for (const [k, v] of Object.entries(daemonConfig)) {
           if (v === undefined) continue;
           if (typeof v === 'string' && v === '') continue; // keep stored secret
@@ -634,6 +678,18 @@ router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(
         }
         break;
       }
+      case 'xen': {
+        const client = require('../services/xen').createClient(daemonConfig);
+        try {
+          const info = await client.info();
+          summary = {
+            product: info.product || 'Xen', version: info.version,
+            apiVersion: info.apiVersion || info.protocol, server: info.hostname,
+            provider: info.provider,
+          };
+        } finally { await client.close?.(); }
+        break;
+      }
       default:
         return res.status(400).json({ ok: false, error: `No test handler for ${daemonType}` });
     }
@@ -678,6 +734,17 @@ router.post('/test', requireAuth, requireRole('admin'), asyncHandler(async (req,
 // Test existing host connection
 router.post('/:id/test', requireAuth, requireHostAccess('view', { param: 'id' }), asyncHandler(async (req, res) => {
   const hostId = parseInt(req.params.id);
+  const row = getDb().prepare('SELECT daemon_type FROM docker_hosts WHERE id = ?').get(hostId);
+  if (row?.daemon_type && row.daemon_type !== 'docker' && row.daemon_type !== 'podman') {
+    const startedAt = Date.now();
+    const info = await dockerService._getNonDockerInfo(hostId, row.daemon_type);
+    if (info._connectError) return res.json({ ok: false, error: info._connectError, latency: Date.now() - startedAt });
+    return res.json({
+      ok: true, latency: Date.now() - startedAt, hostname: info.hostname,
+      product: info.daemonName || info.os || row.daemon_type,
+      version: info.dockerVersion, apiVersion: info.apiVersion,
+    });
+  }
   const hostConfig = dockerService._getHostConfig(hostId);
   const result = await dockerService.testConnection(hostConfig);
   res.json(result);

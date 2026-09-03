@@ -31,7 +31,7 @@ const Api = {
     // resolves the vSphere host explicitly), so the globally-selected host
     // must NOT be auto-appended — otherwise a selected Docker host leaks in
     // and the endpoint rejects it ("not a vSphere daemon").
-    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes'];
+    const skipPrefixes = ['/auth', '/settings', '/hosts', '/notifications', '/webhooks', '/alerts/rules', '/favorites', '/audit', '/git/credentials', '/git/test-connection', '/gitops', '/previews', '/oci-compose', '/disk-pressure', '/system/terminal-access', '/groups', '/dashboard/preferences', '/docs', '/howto', '/vsphere', '/xen', '/incus', '/firewall', '/host-groups', '/teams', '/host-permissions', '/alert-routes', '/providers', '/operations', '/governance', '/self-service', '/edge', '/workstation-fleet'];
     if (skipPrefixes.some(p => path.startsWith(p))) return path;
     const sep = path.includes('?') ? '&' : '?';
     return `${path}${sep}hostId=${this._currentHostId}`;
@@ -41,6 +41,18 @@ const Api = {
   _readXsrfToken() {
     const m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : null;
+  },
+
+  _criticalOperationHeaders(authorization = null) {
+    if (!authorization) return {};
+    const headers = {};
+    const scopeId = Number(authorization.scopeId);
+    if (Number.isInteger(scopeId) && scopeId > 0) {
+      headers['X-Docker-Dash-Privileged-Scope'] = String(scopeId);
+    }
+    const grantToken = String(authorization.grantToken || '').trim();
+    if (grantToken) headers['X-Docker-Dash-Privileged-Grant'] = grantToken;
+    return headers;
   },
 
   async request(method, path, body = null, opts = {}) {
@@ -133,6 +145,19 @@ const Api = {
   sendPasswordReset(id, lang) { return this.post(`/auth/users/${id}/send-reset`, { lang, origin: window.location.origin }); },
   sendInvitation(id, lang) { return this.post(`/auth/users/${id}/send-invite`, { lang, origin: window.location.origin }); },
 
+  // ─── CLI Transparency ────────────────────────────
+  // Read-only: derives the equivalent docker command for an action. POST because
+  // the params are structured, not because anything changes. v8.94.0.
+  getCliPreview(action, params = {}) { return this.post('/cli-preview', { action, params }); },
+  getCliPreviewActions() { return this.get('/cli-preview/actions'); },
+
+  // ─── Diagnostic sessions ─────────────────────────
+  getDiagnosticSessions() { return this.get('/diagnostics/sessions'); },
+  createDiagnosticSession(data) { return this.post('/diagnostics/sessions', data); },
+  getDiagnosticTimeline(id, buckets) { return this.get(`/diagnostics/sessions/${id}/timeline${buckets ? '?buckets=' + buckets : ''}`); },
+  exportDiagnosticSession(id) { return this.get(`/diagnostics/sessions/${id}/export`); },
+  deleteDiagnosticSession(id) { return this.delete(`/diagnostics/sessions/${id}`); },
+
   // ─── Containers ──────────────────────────────────
   getContainers(all = true) { return this.get(`/containers?all=${all}`); },
   getContainer(id) { return this.get(`/containers/${id}/inspect`); },
@@ -152,6 +177,8 @@ const Api = {
     return this.get(`/containers/logs/multi?${params.toString()}`);
   },
   getContainerStats(id) { return this.get(`/containers/${id}/stats`); },
+  getContainerIsolation(id) { return this.get(`/containers/${id}/isolation`); },
+  getImageWasm(id) { return this.get(`/images/${encodeURIComponent(id)}/wasm`); },
   containerAction(id, action) { return this.post(`/containers/${id}/${action}`); },
   removeContainer(id, force = false) { return this.delete(`/containers/${id}?force=${force}`); },
   renameContainer(id, name) { return this.post(`/containers/${id}/rename`, { name }); },
@@ -261,6 +288,21 @@ const Api = {
   createWorkflow(data) { return this.post('/workflows', data); },
   updateWorkflow(id, data) { return this.put(`/workflows/${id}`, data); },
   deleteWorkflow(id) { return this.delete(`/workflows/${id}`); },
+
+  // ─── Procedures ───────────────────────────────────
+  getProcedures() { return this.get('/procedures'); },
+  getProcedure(id) { return this.get(`/procedures/${id}`); },
+  getProcedureTemplates() { return this.get('/procedures/templates'); },
+  createProcedure(data) { return this.post('/procedures', data); },
+  updateProcedure(id, data) { return this.put(`/procedures/${id}`, data); },
+  deleteProcedure(id) { return this.delete(`/procedures/${id}`); },
+  runProcedure(id) { return this.post(`/procedures/${id}/run`); },
+  getProcedureRun(runId) { return this.get(`/procedures/runs/${runId}`); },
+  getProcedureRuns(id, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.get(`/procedures/${id}/runs${qs ? '?' + qs : ''}`);
+  },
+  cancelProcedureRun(runId) { return this.post(`/procedures/runs/${runId}/cancel`); },
 
   // ─── Dashboard Preferences ────────────────────────
   getDashboardPrefs() { return this.get('/dashboard/preferences'); },
@@ -405,6 +447,74 @@ const Api = {
 
   // ─── Compose (Stacks) ─────────────────────────────
   composeAction(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${action}`); },
+  composePlan(stack, action) { return this.post(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/plan`); },
+  async streamComposeAction(stack, action, onEvent) {
+    const path = this._appendHostId(`/system/compose/${encodeURIComponent(stack)}/${encodeURIComponent(action)}/stream`);
+    const headers = { 'Content-Type': 'application/json' };
+    const xsrf = this._readXsrfToken();
+    if (xsrf) headers['X-XSRF-TOKEN'] = xsrf;
+    if (this._bearerToken) headers.Authorization = `Bearer ${this._bearerToken}`;
+
+    const response = await fetch(`/api${path}`, {
+      method: 'POST', headers, credentials: 'same-origin', body: '{}',
+    });
+    if (response.status === 401) {
+      if (typeof Toast !== 'undefined') Toast.muteErrorsForMs(6000);
+      App.handleUnauthorized();
+      const err = new Error('Unauthorized');
+      err.isAuthError = true;
+      throw err;
+    }
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      const body = contentType.includes('json')
+        ? await response.json().catch(() => ({}))
+        : await response.text().catch(() => '');
+      const err = new Error(body?.error || body?.message || body || `HTTP ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    if (!response.body?.getReader) throw new Error('Streaming is not supported by this browser');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let completed = null;
+
+    const dispatch = (rawEvent) => {
+      let type = 'message';
+      const dataLines = [];
+      for (const line of rawEvent.split('\n')) {
+        if (line.startsWith('event:')) type = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+      }
+      if (!dataLines.length) return;
+      let data;
+      try { data = JSON.parse(dataLines.join('\n')); }
+      catch { data = { data: dataLines.join('\n') }; }
+      try { onEvent?.({ type, data }); } catch { /* UI observers cannot stop the stream */ }
+      if (type === 'done') completed = data;
+      if (type === 'error') {
+        const err = new Error(data.error || 'Compose action failed');
+        err.exitCode = data.exitCode;
+        err.durationMs = data.durationMs;
+        throw err;
+      }
+    };
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+      for (const event of events) dispatch(event);
+    }
+    buffer += decoder.decode().replace(/\r\n/g, '\n');
+    if (buffer.trim()) dispatch(buffer);
+    if (!completed) throw new Error('Compose progress stream ended before completion');
+    return completed;
+  },
   composeConfig(stack) { return this.get(`/system/compose/${encodeURIComponent(stack)}/config`); },
 
   // ─── Stack Permissions (RBAC) ─────────────────────
@@ -472,6 +582,504 @@ const Api = {
   getProxmoxInfo()                    { return this.get('/proxmox/info'); },
   getProxmoxNodes()                   { return this.get('/proxmox/nodes'); },
   getProxmoxVMs()                     { return this.get('/proxmox/vms'); },
+  getProviderVMs(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/virtual-machines?limit=${limit}`); },
+  getProviderInventoryViews(resourceType = 'virtual-machines') { return this.get(`/providers/inventory-views?resourceType=${encodeURIComponent(resourceType)}`); },
+  createProviderInventoryView(body) { return this.post('/providers/inventory-views', body); },
+  updateProviderInventoryView(id, body) { return this.put(`/providers/inventory-views/${encodeURIComponent(id)}`, body); },
+  deleteProviderInventoryView(id) { return this.delete(`/providers/inventory-views/${encodeURIComponent(id)}`); },
+  getProviderHosts(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/hosts?limit=${limit}`); },
+  getProviderClusters(hostId, limit = 64) { return this.get(`/providers/${hostId}/resources/clusters?limit=${limit}`); },
+  getProviderStorages(hostId, limit = 500) { return this.get(`/providers/${hostId}/resources/storages?limit=${limit}`); },
+  getProviderStoragePosture(hostId) { return this.get(`/providers/${hostId}/storage-posture`); },
+  getProviderSnapshotRisk(hostId) { return this.get(`/providers/${hostId}/snapshot-risk`); },
+  refreshProviderSnapshotRisk(hostId) { return this.post(`/providers/${hostId}/snapshot-risk/refresh`, {}); },
+  updateProviderSnapshotRiskPolicy(hostId, body) { return this.put(`/providers/${hostId}/snapshot-risk/policy`, body); },
+  getStorageRepositories(historyLimit = 30) { return this.get(`/storage-repositories?historyLimit=${encodeURIComponent(historyLimit)}`); },
+  createStorageRepository(body) { return this.post('/storage-repositories', body); },
+  updateStorageRepository(id, body) { return this.put(`/storage-repositories/${encodeURIComponent(id)}`, body); },
+  deleteStorageRepository(id) { return this.delete(`/storage-repositories/${encodeURIComponent(id)}`); },
+  probeStorageRepository(id) { return this.post(`/storage-repositories/${encodeURIComponent(id)}/probe`, {}); },
+  writeTestStorageRepository(id, confirmation) { return this.post(`/storage-repositories/${encodeURIComponent(id)}/write-test`, { confirmation }); },
+  getProviderStorageTopology(hostId) { return this.get(`/providers/${hostId}/storage-topology`); },
+  getProviderStoragePlacementAdvisory(hostId, requiredBytes) { return this.get(`/providers/${hostId}/storage-placement-advisory?requiredBytes=${encodeURIComponent(requiredBytes)}`); },
+  getProviderStoragePolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minFreeBytes !== null && options.minFreeBytes !== undefined) query.set('minFreeBytes', options.minFreeBytes); if (options.requireShared === true) query.set('requireShared', 'true'); return this.get(`/providers/${hostId}/storage-policy-advisory?${query}`); },
+  getProviderNetworkPosture(hostId) { return this.get(`/providers/${hostId}/network-posture`); },
+  captureProviderNetworkEvidence(hostId) { return this.post(`/providers/${hostId}/network-evidence/capture`, {}); },
+  getProviderNetworkPolicyAdvisory(hostId, options = {}) { const query = new URLSearchParams(); if (options.minMtu) query.set('minMtu', options.minMtu); if (options.requireManaged) query.set('requireManaged', 'true'); if (options.requireVlan) query.set('requireVlan', 'true'); return this.get(`/providers/${hostId}/network-policy-advisory?${query}`); },
+  getProviderNetworkAttachmentTopology(hostId) { return this.get(`/providers/${hostId}/network-attachment-topology`); },
+  getProviderNetworkPlacementAdvisory(hostId) { return this.get(`/providers/${hostId}/network-placement-advisory`); },
+  getProviderNetworkDriftBaseline(hostId) { return this.get(`/providers/${hostId}/network-drift-baseline`); },
+  saveProviderNetworkDriftBaseline(hostId) { return this.post(`/providers/${hostId}/network-drift-baseline`, {}); },
+  getProviderIpAddressInventory(hostId) { return this.get(`/providers/${hostId}/ip-address-inventory`); },
+  getProviderIpConflictCandidates(hostId) { return this.get(`/providers/${hostId}/ip-conflict-candidates`); },
+  getProviderGuestNetworkReadiness(hostId) { return this.get(`/providers/${hostId}/guest-network-readiness`); },
+  getProviderEndpointTransportPosture(hostId) { return this.get(`/providers/${hostId}/endpoint-transport-posture`); },
+  getProviderSecurityPosture(hostId) { return this.get(`/providers/${hostId}/security-posture`); },
+  getProviderOperationalQualification(hostId, batch = null) { const query = batch ? `?batch=${encodeURIComponent(batch)}` : ''; return this.get(`/providers/${hostId}/operational-qualification${query}`); },
+  getProviderSecurityAssurance(hostId) { return this.get(`/providers/${hostId}/security-assurance`); },
+  importProviderSecurityEvidence(hostId, body) {
+    return this.put(`/providers/${hostId}/security-assurance/evidence`, body);
+  },
+  getProviderKeyProviders(hostId) {
+    return this.get(`/providers/${hostId}/security-assurance/key-providers`);
+  },
+  saveProviderKeyProvider(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/security-assurance/key-providers/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/security-assurance/key-providers`, body);
+  },
+  deleteProviderKeyProvider(hostId, id) {
+    return this.delete(`/providers/${hostId}/security-assurance/key-providers/${encodeURIComponent(id)}`);
+  },
+  preflightProviderConfidentialProvisioning(hostId, body) {
+    return this.post(`/providers/${hostId}/security-assurance/confidential-provisioning/preflight`, body);
+  },
+  getProviderSecurityLifecycle(hostId) {
+    return this.get(`/providers/${hostId}/security-lifecycle`);
+  },
+  correlateProviderSecurityAdvisories(hostId) {
+    return this.post(`/providers/${hostId}/security-lifecycle/correlate`, {});
+  },
+  createProviderSecurityException(hostId, findingId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/exceptions`, body);
+  },
+  revokeProviderSecurityException(hostId, findingId, exceptionId) {
+    return this.delete(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/exceptions/${encodeURIComponent(exceptionId)}`);
+  },
+  planProviderSecurityRemediation(hostId, findingId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/findings/${encodeURIComponent(findingId)}/remediation-plans`, body);
+  },
+  executeProviderSecurityRemediation(hostId, planId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/remediation-plans/${encodeURIComponent(planId)}/execute`, body);
+  },
+  validateProviderSecretReferences(hostId, body) {
+    return this.post(`/providers/${hostId}/security-lifecycle/secret-references/validate`, body);
+  },
+  getProviderPrivilegedCompliance(hostId) {
+    return this.get(`/providers/${hostId}/privileged-compliance`);
+  },
+  requestProviderElevation(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations`, body);
+  },
+  approveProviderElevation(hostId, grantId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}/approve`, { confirmation });
+  },
+  claimProviderElevation(hostId, grantId) {
+    return this.post(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}/claim`, {});
+  },
+  revokeProviderElevation(hostId, grantId) {
+    return this.delete(`/providers/${hostId}/privileged-compliance/elevations/${encodeURIComponent(grantId)}`);
+  },
+  requestProviderBreakGlass(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass`, body);
+  },
+  approveProviderBreakGlass(hostId, requestId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/approve`, { confirmation });
+  },
+  activateProviderBreakGlass(hostId, requestId, confirmation) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/activate`, { confirmation });
+  },
+  closeProviderBreakGlass(hostId, requestId) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/close`, {});
+  },
+  reviewProviderBreakGlass(hostId, requestId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/break-glass/${encodeURIComponent(requestId)}/review`, body);
+  },
+  saveProviderDataClassification(hostId, body) {
+    return this.put(`/providers/${hostId}/privileged-compliance/classifications`, body);
+  },
+  importProviderComplianceMappings(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/mappings`, body);
+  },
+  recordProviderRansomwarePosture(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/ransomware-posture`, body);
+  },
+  exportProviderComplianceEvidence(hostId, body) {
+    return this.post(`/providers/${hostId}/privileged-compliance/exports`, body);
+  },
+  getProviderArtifacts(hostId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 500 });
+    if (filters.kind) qs.set('kind', filters.kind);
+    if (filters.query) qs.set('q', filters.query);
+    return this.get(`/providers/${hostId}/artifacts?${qs}`);
+  },
+  getProviderRecoveryPoints(hostId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 500 });
+    if (filters.query) qs.set('q', filters.query);
+    if (filters.repositoryId) qs.set('repository', filters.repositoryId);
+    if (filters.workloadId) qs.set('workload', filters.workloadId);
+    if (filters.verification) qs.set('verification', filters.verification);
+    if (filters.from) qs.set('from', filters.from);
+    if (filters.to) qs.set('to', filters.to);
+    return this.get(`/providers/${hostId}/recovery-points?${qs}`);
+  },
+  preflightProviderRecoveryRestore(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore/preflight`, body);
+  },
+  submitProviderRecoveryRestore(hostId, recoveryPointId, body, idempotencyKey) {
+    return this.request('POST',
+      `/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore`, body, {
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      });
+  },
+  getProviderRecoveryFiles(hostId, recoveryPointId, filters = {}) {
+    const qs = new URLSearchParams({ limit: filters.limit || 200 });
+    if (filters.query) qs.set('q', filters.query);
+    if (filters.parent) qs.set('parent', filters.parent);
+    return this.get(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/files?${qs}`);
+  },
+  importProviderRecoveryFileCatalog(hostId, recoveryPointId, body) {
+    return this.put(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/files`, body);
+  },
+  preflightProviderRestoreDepth(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/restore-depth/preflight`, body);
+  },
+  preflightProviderRestoreDrill(hostId, recoveryPointId, body) {
+    return this.post(`/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/drill/preflight`, body);
+  },
+  submitProviderRestoreDrill(hostId, recoveryPointId, body, idempotencyKey) {
+    return this.request('POST',
+      `/providers/${hostId}/recovery-points/${encodeURIComponent(recoveryPointId)}/drill`, body, {
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      });
+  },
+  getProviderRestoreDrills(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/restore-drills?${qs}`);
+  },
+  getProviderRestoreDrill(hostId, runId) {
+    return this.get(`/providers/${hostId}/restore-drills/${encodeURIComponent(runId)}`);
+  },
+  getProviderRestoreDrillPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/restore-drill-policies?limit=${limit}`);
+  },
+  saveProviderRestoreDrillPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/restore-drill-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/restore-drill-policies`, body);
+  },
+  deleteProviderRestoreDrillPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/restore-drill-policies/${encodeURIComponent(policyId)}`);
+  },
+  getProviderDrOverview(hostId) {
+    return this.get(`/providers/${hostId}/dr/overview`);
+  },
+  getProviderDrReplications(hostId) {
+    return this.get(`/providers/${hostId}/dr/replications`);
+  },
+  getProviderReplicationPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/dr/replication-policies?limit=${limit}`);
+  },
+  saveProviderReplicationPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/dr/replication-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/dr/replication-policies`, body);
+  },
+  deleteProviderReplicationPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/dr/replication-policies/${encodeURIComponent(policyId)}`);
+  },
+  getProviderDrProtectionGroups(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/dr/protection-groups?limit=${limit}`);
+  },
+  saveProviderDrProtectionGroup(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/dr/protection-groups`, body);
+  },
+  deleteProviderDrProtectionGroup(hostId, groupId) {
+    return this.delete(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}`);
+  },
+  preflightProviderDrRunbook(hostId, groupId, body) {
+    return this.post(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}/preflight`, body);
+  },
+  rehearseProviderDrRunbook(hostId, groupId, body) {
+    return this.post(`/providers/${hostId}/dr/protection-groups/${encodeURIComponent(groupId)}/rehearse`, body);
+  },
+  getProviderDrRuns(hostId, { limit = 50, groupId = null } = {}) {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (groupId) qs.set('group', groupId);
+    return this.get(`/providers/${hostId}/dr/runs?${qs}`);
+  },
+  getProviderBackupPolicies(hostId, limit = 100) {
+    return this.get(`/providers/${hostId}/backup-policies?limit=${limit}`);
+  },
+  getProviderBackupPolicyRuns(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/backup-policies/runs?${qs}`);
+  },
+  preflightProviderBackupPolicy(hostId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/preflight`, body);
+  },
+  saveProviderBackupPolicy(hostId, body) {
+    return body.id
+      ? this.put(`/providers/${hostId}/backup-policies/${encodeURIComponent(body.id)}`, body)
+      : this.post(`/providers/${hostId}/backup-policies`, body);
+  },
+  deleteProviderBackupPolicy(hostId, policyId) {
+    return this.delete(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}`);
+  },
+  planProviderBackupPolicy(hostId, policyId) {
+    return this.post(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/plan`, {});
+  },
+  getProviderBackupExecutions(hostId, policyId = '', limit = 50) {
+    const qs = new URLSearchParams({ limit });
+    if (policyId) qs.set('policy', policyId);
+    return this.get(`/providers/${hostId}/backup-policies/executions?${qs}`);
+  },
+  authorizeProviderBackupExecution(hostId, policyId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/execution-authorization`, body);
+  },
+  executeProviderBackupPolicy(hostId, policyId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/backup-policies/${encodeURIComponent(policyId)}/execute`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  cancelProviderBackupExecution(hostId, executionId, body) {
+    return this.post(`/providers/${hostId}/backup-policies/executions/${encodeURIComponent(executionId)}/cancel`, body);
+  },
+  preflightProviderVMProvision(hostId, artifactId, body) {
+    return this.post(`/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone/preflight`, body);
+  },
+  submitProviderVMProvision(hostId, artifactId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/artifacts/${encodeURIComponent(artifactId)}/clone`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderVMDetail(hostId, resourceId, refresh = false) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}?refresh=${refresh ? 'true' : 'false'}`);
+  },
+  getProviderVMMigrationPreflight(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration-preflight`);
+  },
+  preflightProviderVMMigration(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration/preflight`, body);
+  },
+  submitProviderVMMigration(hostId, resourceId, body, idempotencyKey, authorization = null) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/migration`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
+    });
+  },
+  preflightProviderHostMaintenance(hostId, body) {
+    return this.post(`/providers/${hostId}/host-maintenance/preflight`, body);
+  },
+  startProviderHostMaintenance(hostId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/host-maintenance/runs`, body, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderHostMaintenanceRuns(hostId, limit = 50) {
+    return this.get(`/providers/${hostId}/host-maintenance/runs?limit=${limit}`);
+  },
+  getProviderHostMaintenanceRun(hostId, runId) {
+    return this.get(`/providers/${hostId}/host-maintenance/runs/${encodeURIComponent(runId)}`);
+  },
+  controlProviderHostMaintenance(hostId, runId, action) {
+    return this.post(`/providers/${hostId}/host-maintenance/runs/${encodeURIComponent(runId)}/${action}`, {});
+  },
+  getProviderHaReadiness(hostId) {
+    return this.get(`/providers/${hostId}/ha/readiness`);
+  },
+  refreshProviderHaReadiness(hostId) {
+    return this.post(`/providers/${hostId}/ha/readiness/refresh`, {});
+  },
+  getProviderHaReadinessHistory(hostId, limit = 48) {
+    return this.get(`/providers/${hostId}/ha/readiness/history?limit=${limit}`);
+  },
+  getProviderAffinity(hostId) {
+    return this.get(`/providers/${hostId}/placement/affinity`);
+  },
+  getProviderPlacementRecommendations(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/placement/recommendations`);
+  },
+  planProviderRebalance(hostId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/rebalance/plan`, body);
+  },
+  preflightProviderPlacementChange(hostId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/changes/preflight`, body);
+  },
+  requestProviderPlacementChange(hostId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/placement/changes`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderPlacementChanges(hostId, limit = 50) {
+    return this.get(`/providers/${hostId}/placement/changes?limit=${limit}`);
+  },
+  getProviderPlacementChange(hostId, changeId) {
+    return this.get(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}`);
+  },
+  approveProviderPlacementChange(hostId, changeId, comment = '') {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/approve`, { comment });
+  },
+  rejectProviderPlacementChange(hostId, changeId, reason) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/reject`, { reason });
+  },
+  controlProviderPlacementChange(hostId, changeId, action) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/${action}`, {});
+  },
+  planProviderPlacementRollback(hostId, changeId, body = {}) {
+    return this.post(`/providers/${hostId}/placement/changes/${encodeURIComponent(changeId)}/rollback/plan`, body);
+  },
+  preflightProviderVMConsole(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console/preflight`, body);
+  },
+  launchProviderVMConsole(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/console`, body);
+  },
+  preflightProviderVMPower(hostId, resourceId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power/preflight`, { action });
+  },
+  submitProviderVMPower(hostId, resourceId, body, idempotencyKey, authorization = null) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/power`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
+    });
+  },
+  preflightProviderVMPowerBulk(hostId, resourceIds, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/power/preflight`, { resourceIds, action });
+  },
+  submitProviderVMPowerBulk(hostId, body, idempotencyKey, authorization = null) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/power`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) },
+    });
+  },
+  getProviderVMNics(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics`);
+  },
+  declareProviderVMNicSafety(hostId, resourceId, nicId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/safety`, body);
+  },
+  preflightProviderVMNicLink(hostId, resourceId, nicId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/preflight`, { action });
+  },
+  submitProviderVMNicLink(hostId, resourceId, nicId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/nics/${encodeURIComponent(nicId)}/actions`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderVMDisks(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks`);
+  },
+  preflightProviderVMDiskCreate(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/preflight`, body);
+  },
+  submitProviderVMDiskCreate(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  preflightProviderVMDiskAction(hostId, resourceId, diskId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/${encodeURIComponent(diskId)}/preflight`, body);
+  },
+  submitProviderVMDiskAction(hostId, resourceId, diskId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/disks/${encodeURIComponent(diskId)}/actions`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderManagedVolumes(hostId, limit = 200) {
+    return this.get(`/providers/${hostId}/managed-volumes?limit=${limit}`);
+  },
+  preflightProviderManagedVolumeDelete(hostId, volumeId) {
+    return this.post(`/providers/${hostId}/managed-volumes/${encodeURIComponent(volumeId)}/delete/preflight`, {});
+  },
+  submitProviderManagedVolumeDelete(hostId, volumeId, body, idempotencyKey) {
+    return this.request('DELETE', `/providers/${hostId}/managed-volumes/${encodeURIComponent(volumeId)}`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderVMSnapshots(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots`);
+  },
+  preflightProviderVMSnapshotCreate(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/preflight`, body);
+  },
+  submitProviderVMSnapshotCreate(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  preflightProviderVMSnapshotAction(hostId, resourceId, snapshotId, action) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}/${action}/preflight`, {});
+  },
+  submitProviderVMSnapshotAction(hostId, resourceId, snapshotId, action, body, idempotencyKey,
+    authorization = null) {
+    return this.request(action === 'delete' ? 'DELETE' : 'POST',
+      `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/${encodeURIComponent(snapshotId)}${action === 'delete' ? '' : '/revert'}`,
+      body, { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey,
+        ...this._criticalOperationHeaders(authorization) } });
+  },
+  preflightProviderVMSnapshotConsolidation(hostId, resourceId) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/consolidate/preflight`, {});
+  },
+  submitProviderVMSnapshotConsolidation(hostId, resourceId, body, idempotencyKey) {
+    return this.request('POST', `/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshots/consolidate`, body, {
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+    });
+  },
+  getProviderVMSnapshotPolicy(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`);
+  },
+  saveProviderVMSnapshotPolicy(hostId, resourceId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`, body);
+  },
+  deleteProviderVMSnapshotPolicy(hostId, resourceId) {
+    return this.delete(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy`);
+  },
+  previewProviderVMSnapshotPolicy(hostId, resourceId, draft = null) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/preview`, draft ? { draft } : {});
+  },
+  runProviderVMSnapshotPolicy(hostId, resourceId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/run`, body);
+  },
+  getProviderVMSnapshotPolicyRuns(hostId, resourceId, limit = 20) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/snapshot-policy/runs?limit=${limit}`);
+  },
+  getProviderVMActionSchedules(hostId, resourceId) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules`);
+  },
+  createProviderVMActionSchedule(hostId, resourceId, body) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules`, body);
+  },
+  updateProviderVMActionSchedule(hostId, resourceId, scheduleId, body) {
+    return this.put(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}`, body);
+  },
+  deleteProviderVMActionSchedule(hostId, resourceId, scheduleId) {
+    return this.delete(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}`);
+  },
+  getProviderVMActionScheduleRuns(hostId, resourceId, scheduleId, limit = 20) {
+    return this.get(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}/runs?limit=${limit}`);
+  },
+  runProviderVMActionSchedule(hostId, resourceId, scheduleId, body = {}) {
+    return this.post(`/providers/${hostId}/virtual-machines/${encodeURIComponent(resourceId)}/action-schedules/${encodeURIComponent(scheduleId)}/run`, body);
+  },
+  getProviderOperations(filters = {}) {
+    const qs = new URLSearchParams();
+    if (filters.limit) qs.set('limit', filters.limit);
+    if (filters.hostId) qs.set('hostId', filters.hostId);
+    if (filters.state) qs.set('state', filters.state);
+    return this.get(`/operations${qs.toString() ? `?${qs}` : ''}`);
+  },
+  getProviderOperation(id) { return this.get(`/operations/${encodeURIComponent(id)}`); },
+  getProviderOperationEvents(id, limit = 200) {
+    return this.get(`/operations/${encodeURIComponent(id)}/events?limit=${limit}`);
+  },
+  cancelProviderOperation(id) {
+    return this.post(`/operations/${encodeURIComponent(id)}/cancel`, {});
+  },
+  resolveProviderOperation(id, resolution, evidence) {
+    return this.post(`/operations/${encodeURIComponent(id)}/resolve`, { resolution, evidence });
+  },
+  getInfrastructureHome() { return this.get('/experience/home'); },
+  getExperienceNavigation() { return this.get('/experience/navigation'); },
+  getExperienceActionAvailability(hostId, resourceKind, resourceState = '') {
+    const qs = new URLSearchParams({ hostId, resourceKind });
+    if (resourceState) qs.set('resourceState', resourceState);
+    return this.get(`/experience/actions?${qs}`);
+  },
   getProxmoxVM(node, vmid)            { return this.get(`/proxmox/vms/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
   getProxmoxLXC()                     { return this.get('/proxmox/lxc'); },
   getProxmoxLXCInstance(node, vmid)   { return this.get(`/proxmox/lxc/${encodeURIComponent(node)}/${encodeURIComponent(vmid)}`); },
@@ -610,6 +1218,32 @@ const Api = {
   getVSphereSshTelemetry(hostId)      { return this.get(`/vsphere/ssh/telemetry?hostId=${hostId}`); },
   testVSphereSsh(hostId)              { return this.post(`/vsphere/ssh/test?hostId=${hostId}`, {}); },
 
+  // ─── Xen / XCP-ng / XenServer ──────────────────────────────
+  reconnectXen(hostId)                { return this.post(`/xen/reconnect?hostId=${hostId}`, {}); },
+  getXenInfo(hostId)                  { return this.get(`/xen/info?hostId=${hostId}`); },
+  getXenCapabilities(hostId)          { return this.get(`/xen/capabilities?hostId=${hostId}`); },
+  getXenPools(hostId)                 { return this.get(`/xen/pools?hostId=${hostId}`); },
+  getXenHosts(hostId)                 { return this.get(`/xen/hosts?hostId=${hostId}`); },
+  getXenVMs(hostId)                   { return this.get(`/xen/vms?hostId=${hostId}`); },
+  getXenStorages(hostId)              { return this.get(`/xen/storages?hostId=${hostId}`); },
+  getXenNetworks(hostId)              { return this.get(`/xen/networks?hostId=${hostId}`); },
+  getXenTasks(hostId)                 { return this.get(`/xen/tasks?hostId=${hostId}`); },
+  getXenTask(hostId, taskId)          { return this.get(`/xen/tasks/${encodeURIComponent(taskId)}?hostId=${hostId}`); },
+  deleteXenTask(hostId, taskId)       { return this.delete(`/xen/tasks/${encodeURIComponent(taskId)}?hostId=${hostId}`); },
+  getXenSnapshots(hostId, vmId)       { return this.get(`/xen/vms/${encodeURIComponent(vmId)}/snapshots?hostId=${hostId}`); },
+  xenVMAction(hostId, vmId, action, confirm = false) {
+    return this.post(`/xen/vms/${encodeURIComponent(vmId)}/actions/${encodeURIComponent(action)}?hostId=${hostId}`, { confirm });
+  },
+  createXenSnapshot(hostId, vmId, name) {
+    return this.post(`/xen/vms/${encodeURIComponent(vmId)}/snapshots?hostId=${hostId}`, { name });
+  },
+  revertXenSnapshot(hostId, snapshotId) {
+    return this.post(`/xen/snapshots/${encodeURIComponent(snapshotId)}/revert?hostId=${hostId}`, { confirm: true });
+  },
+  deleteXenSnapshot(hostId, snapshotId) {
+    return this.delete(`/xen/snapshots/${encodeURIComponent(snapshotId)}?hostId=${hostId}&confirm=true`);
+  },
+
   // ─── Kubernetes (v8.9.4-alpha.1, Sprint 5) — read-only alpha ───
   getKubernetesVersion()              { return this.get('/kubernetes/version'); },
   getKubernetesNamespaces()           { return this.get('/kubernetes/namespaces'); },
@@ -617,6 +1251,62 @@ const Api = {
   getKubernetesDeployments(namespace) { return this.get(`/kubernetes/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
   getKubernetesServices(namespace)    { return this.get(`/kubernetes/services${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`); },
   getKubernetesNodes()                { return this.get('/kubernetes/nodes'); },
+  getKubernetesVirtualizationCapabilities() { return this.get('/kubernetes/virtualization/capabilities'); },
+  refreshKubernetesVirtualizationCapabilities() { return this.post('/kubernetes/virtualization/capabilities/refresh', {}); },
+  getKubernetesVirtualizationInventory(namespace) {
+    return this.get(`/kubernetes/virtualization/inventory${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesVirtualizationInventory(namespace) {
+    return this.post('/kubernetes/virtualization/inventory/refresh', { namespace: namespace || undefined });
+  },
+  getOpenShiftVirtualizationOverview(namespace) {
+    return this.get(`/kubernetes/virtualization/openshift?namespace=${encodeURIComponent(namespace || 'default')}`);
+  },
+  getHarvesterOverview(namespace) {
+    return this.get(`/kubernetes/virtualization/harvester?namespace=${encodeURIComponent(namespace || 'default')}`);
+  },
+  getKubeVirtVmYaml(namespace, name) {
+    return this.get(`/kubernetes/virtualization/vms/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/yaml`);
+  },
+  dryRunKubeVirtVmYaml(namespace, name, yaml) {
+    return this.post(`/kubernetes/virtualization/vms/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/dry-run`, { yaml });
+  },
+  getKubernetesVirtualizationEvidence() { return this.get('/kubernetes/virtualization/evidence'); },
+  getKubernetesConvergence(kind, namespace) {
+    return this.get(`/kubernetes/virtualization/convergence/${encodeURIComponent(kind)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesConvergence(kind, namespace) {
+    return this.post(`/kubernetes/virtualization/convergence/${encodeURIComponent(kind)}/refresh`, { namespace: namespace || undefined });
+  },
+  getKubernetesConvergenceSnapshots() { return this.get('/kubernetes/virtualization/convergence-snapshots'); },
+  createKubeVirtDataVolumePlan(body) { return this.post('/kubernetes/virtualization/datavolumes/plans', body); },
+  createKubeVirtTemplatePlan(body) { return this.post('/kubernetes/virtualization/templates/plans', body); },
+  getKubeVirtChangePlans() { return this.get('/kubernetes/virtualization/change-plans'); },
+  getKubeVirtChangePlanEvents(id) { return this.get(`/kubernetes/virtualization/change-plans/${id}/events`); },
+  executeKubeVirtChangePlan(id, body) { return this.post(`/kubernetes/virtualization/change-plans/${id}/execute`, body); },
+  getKubeVirtMigrationPolicies() { return this.get('/kubernetes/virtualization/migration-policies'); },
+  saveKubeVirtMigrationPolicy(body) { return this.post('/kubernetes/virtualization/migration-policies', body); },
+  getKubernetesUnifiedEvidence(kind, namespace) {
+    return this.get(`/kubernetes/virtualization/unified/evidence/${encodeURIComponent(kind)}${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ''}`);
+  },
+  refreshKubernetesUnifiedEvidence(kind, namespace) {
+    return this.post(`/kubernetes/virtualization/unified/evidence/${encodeURIComponent(kind)}/refresh`, { namespace: namespace || undefined });
+  },
+  getKubernetesUnifiedSnapshots() { return this.get('/kubernetes/virtualization/unified/snapshots'); },
+  createKubeVirtGitOpsPlan(body) { return this.post('/kubernetes/virtualization/unified/gitops/plans', body); },
+  getKubeVirtGitOpsPlans() { return this.get('/kubernetes/virtualization/unified/gitops/plans'); },
+  getKubeVirtAdmissionPolicies() { return this.get('/kubernetes/virtualization/unified/admission/policies'); },
+  evaluateKubeVirtAdmission(body) { return this.post('/kubernetes/virtualization/unified/admission/evaluate', body); },
+  getKubernetesClusterCatalog() { return this.get('/kubernetes/virtualization/unified/cluster-catalog'); },
+  getKubernetesClusterPlans() { return this.get('/kubernetes/virtualization/unified/cluster-plans'); },
+  createKubernetesClusterPlan(body) { return this.post('/kubernetes/virtualization/unified/cluster-plans', body); },
+  getVirtualizationModernizationMaps() { return this.get('/kubernetes/virtualization/unified/modernization'); },
+  createVirtualizationModernizationMap(body) { return this.post('/kubernetes/virtualization/unified/modernization', body); },
+  getSharedImageProvenance() { return this.get('/kubernetes/virtualization/unified/image-provenance'); },
+  ingestSharedImageProvenance(body) { return this.post('/kubernetes/virtualization/unified/image-provenance', body); },
+  getUnifiedApplicationEnvironments() { return this.get('/kubernetes/virtualization/unified/environments'); },
+  getUnifiedApplicationEnvironment(slug) { return this.get(`/kubernetes/virtualization/unified/environments/${encodeURIComponent(slug)}`); },
+  saveUnifiedApplicationEnvironment(body) { return this.post('/kubernetes/virtualization/unified/environments', body); },
 
   // ─── VM Migration (v8.9.2-alpha.1, Sprint 7) ───
   listMigrationJobs()                 { return this.get('/migration-vm?limit=100'); },
@@ -816,8 +1506,10 @@ const Api = {
   deleteGitCredential(id) { return this.delete(`/git/credentials/${id}`); },
   getGitStacks() { return this.get('/git/stacks'); },
   getGitStack(id) { return this.get(`/git/stacks/${id}`); },
+  getGitStackFile(id, path) { return this.get(`/git/stacks/${id}/file?path=${encodeURIComponent(path || '')}`); },
   createGitStack(data) { return this.post('/git/stacks', data); },
   updateGitStack(id, data) { return this.put(`/git/stacks/${id}`, data); },
+  updateGitRolloutPolicy(id, data) { return this.put(`/git/stacks/${id}/rollout`, data); },
   deleteGitStack(id, params = {}) {
     const qs = new URLSearchParams(params).toString();
     return this.delete(`/git/stacks/${id}${qs ? '?' + qs : ''}`);
@@ -843,6 +1535,76 @@ const Api = {
   getRemoteStatus(id) { return this.get(`/git/stacks/${id}/remote-status`); },
   pushToGit(id, data) { return this.post(`/git/stacks/${id}/push`, data); },
 
+  // ─── Declarative Fleet GitOps ───────────────────────
+  exportGitOps() { return this.get('/gitops/export'); },
+  planGitOps(document) { return this.post('/gitops/plan', { document }); },
+  applyGitOps(document, planHash, allowDelete = false) {
+    return this.post('/gitops/apply', { document, planHash, allowDelete });
+  },
+  getManagedGitOps() { return this.get('/gitops/managed'); },
+  configureManagedGitOps(data) { return this.put('/gitops/managed', data); },
+  planManagedGitOps(id) { return this.post(`/gitops/managed/${id}/plan`); },
+  applyManagedGitOps(id, planHash, commitMessage) {
+    return this.post(`/gitops/managed/${id}/apply`, { planHash, commitMessage });
+  },
+
+  // ─── Pull-request Previews ─────────────────────────
+  getPreviewConfig(stackId) { return this.get(`/previews/stacks/${stackId}/config`); },
+  updatePreviewConfig(stackId, data) { return this.put(`/previews/stacks/${stackId}/config`, data); },
+  getPreviews(stackId) { return this.get(`/previews${stackId ? `?stackId=${stackId}` : ''}`); },
+  redeployPreview(id) { return this.post(`/previews/${id}/redeploy`); },
+  deletePreview(id) { return this.delete(`/previews/${id}`); },
+
+  // ─── OCI Compose Artifacts ─────────────────────────
+  getOciComposeArtifacts() { return this.get('/oci-compose'); },
+  createOciComposeArtifact(data) { return this.post('/oci-compose', data); },
+  refreshOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/refresh`); },
+  planOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/plan`); },
+  deployOciComposeArtifact(id, planHash) { return this.post(`/oci-compose/${id}/deploy`, { planHash }); },
+  stopOciComposeArtifact(id) { return this.post(`/oci-compose/${id}/down`); },
+  deleteOciComposeArtifact(id) { return this.delete(`/oci-compose/${id}`); },
+
+  // ─── Signed Compose Blueprint Catalog ─────────────
+  getComposeBlueprints(params = {}) {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+    return this.get(`/compose-blueprints${query.size ? `?${query}` : ''}`);
+  },
+  getComposeBlueprint(id, versions = false) { return this.get(`/compose-blueprints/${id}${versions ? '?versions=true' : ''}`); },
+  createComposeBlueprint(data) { return this.post('/compose-blueprints', data); },
+  updateComposeBlueprint(id, data) { return this.put(`/compose-blueprints/${id}`, data); },
+  transitionComposeBlueprint(id, state) { return this.post(`/compose-blueprints/${id}/state`, { state }); },
+  createComposeBlueprintVersion(id, data) { return this.post(`/compose-blueprints/${id}/versions`, data); },
+  transitionComposeBlueprintVersion(id, versionId, state) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/state`, { state });
+  },
+  diffComposeBlueprintVersion(id, versionId, againstVersionId) {
+    const query = againstVersionId ? `?against=${encodeURIComponent(againstVersionId)}` : '';
+    return this.get(`/compose-blueprints/${id}/versions/${versionId}/diff${query}`);
+  },
+  previewComposeBlueprint(id, versionId, data) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/preview`, data);
+  },
+  instantiateComposeBlueprint(id, versionId, data) {
+    return this.post(`/compose-blueprints/${id}/versions/${versionId}/instantiate`, data);
+  },
+  getComposeBlueprintInstantiations(id, limit = 50) {
+    return this.get(`/compose-blueprints/${id}/instantiations?limit=${encodeURIComponent(limit)}`);
+  },
+
+  // ─── Disk-pressure Guardrails ──────────────────────
+  getDiskPressurePolicy(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/policy`); },
+  updateDiskPressurePolicy(hostId, data) { return this.put(`/disk-pressure/hosts/${hostId}/policy`, data); },
+  previewDiskPressure(hostId) { return this.post(`/disk-pressure/hosts/${hostId}/preview`); },
+  runDiskPressure(hostId, force = false) { return this.post(`/disk-pressure/hosts/${hostId}/run`, { force }); },
+  getDiskPressureHistory(hostId) { return this.get(`/disk-pressure/hosts/${hostId}/history`); },
+
+  // ─── Emergency Terminal Access ─────────────────────
+  getTerminalAccess(hostId = 0) { return this.get(`/system/terminal-access?targetHostId=${encodeURIComponent(hostId)}`); },
+  setGlobalTerminalAccess(locked, reason = '') { return this.put('/system/terminal-access/global', { locked, reason }); },
+  setHostTerminalAccess(hostId, locked, reason = '') {
+    return this.put(`/system/terminal-access/hosts/${encodeURIComponent(hostId)}`, { locked, reason });
+  },
+
   // ─── Notification Channels ──────────────────────
   getNotificationProviders() { return this.get('/notification-channels/providers'); },
   getNotificationChannels() { return this.get('/notification-channels'); },
@@ -853,6 +1615,9 @@ const Api = {
 
   // ─── Multi-Host ─────────────────────────────────
   getMultiHostOverview() { return this.get('/multi-host/overview'); },
+  getFleetHealth(hours = 24) { return this.get(`/fleet/health?hours=${encodeURIComponent(hours)}`); },
+  previewFleetBulk(action, hostIds) { return this.post('/fleet/bulk/preview', { action, host_ids: hostIds }); },
+  runFleetBulk(action, hostIds) { return this.post('/fleet/bulk/run', { action, host_ids: hostIds }); },
 
   // ─── Hosts ──────────────────────────────────────
   getHosts() { return this.get('/hosts'); },
@@ -938,6 +1703,464 @@ const Api = {
   // reactivates a lapsed/suspended trial.
   replanOnboarding(tenantId, declaration) { return this.post(`/onboarding/tenants/${tenantId}/replan`, declaration); },
   extendTrial(tenantId, body) { return this.post(`/onboarding/tenants/${tenantId}/extend-trial`, body || {}); },
+
+  // ─── Governance foundation (v8.49.0 / V4.6a) ──────────────
+  getGovernanceCatalog() { return this.get('/governance/catalog'); },
+  getGovernanceSubjects() { return this.get('/governance/subjects'); },
+  listGovernanceRoles() { return this.get('/governance/roles'); },
+  createGovernanceRole(body) { return this.post('/governance/roles', body); },
+  updateGovernanceRole(id, body) { return this.put(`/governance/roles/${id}`, body); },
+  deleteGovernanceRole(id) { return this.delete(`/governance/roles/${id}`); },
+  listGovernanceScopes() { return this.get('/governance/scopes'); },
+  createGovernanceScope(body) { return this.post('/governance/scopes', body); },
+  listGovernanceBindings(scopeId) { return this.get(`/governance/scopes/${scopeId}/bindings`); },
+  createGovernanceBinding(body) { return this.post('/governance/bindings', body); },
+  deleteGovernanceBinding(id) { return this.delete(`/governance/bindings/${id}`); },
+  listGovernanceProjects() { return this.get('/governance/projects'); },
+  getGovernanceProject(id) { return this.get(`/governance/projects/${id}`); },
+  createGovernanceProject(body) { return this.post('/governance/projects', body); },
+  updateGovernanceProject(id, body) { return this.put(`/governance/projects/${id}`, body); },
+  setGovernanceProjectMember(id, body) { return this.post(`/governance/projects/${id}/members`, body); },
+  removeGovernanceProjectMember(id, userId) { return this.delete(`/governance/projects/${id}/members/${userId}`); },
+  transferGovernanceProjectOwner(id, userId) { return this.post(`/governance/projects/${id}/transfer-owner`, { userId }); },
+  listGovernanceInvitations(id) { return this.get(`/governance/projects/${id}/invitations`); },
+  createGovernanceInvitation(id, body) { return this.post(`/governance/projects/${id}/invitations`, body); },
+  revokeGovernanceInvitation(id, invitationId) { return this.delete(`/governance/projects/${id}/invitations/${invitationId}`); },
+  acceptGovernanceInvitation(token) { return this.post('/governance/invitations/accept', { token }); },
+  setGovernanceProjectQuotas(id, body) { return this.put(`/governance/projects/${id}/quotas`, body); },
+  assignGovernanceProjectResource(id, body) { return this.post(`/governance/projects/${id}/resources`, body); },
+  unassignGovernanceProjectResource(id, resourceId) { return this.delete(`/governance/projects/${id}/resources/${resourceId}`); },
+
+  // ─── Self-service catalog + project portal (v8.68.0 / V6.2a) ───
+  getSelfServiceCatalog(includeAll = false) { return this.get(`/self-service/catalog${includeAll ? '?includeAll=true' : ''}`); },
+  getSelfServiceCatalogItem(slug, versions = false) { return this.get(`/self-service/catalog/${encodeURIComponent(slug)}${versions ? '?versions=true' : ''}`); },
+  createSelfServiceCatalogItem(body) { return this.post('/self-service/catalog', body); },
+  updateSelfServiceCatalogItem(id, body) { return this.put(`/self-service/catalog/${id}`, body); },
+  createSelfServiceCatalogVersion(id, body) { return this.post(`/self-service/catalog/${id}/versions`, body); },
+  transitionSelfServiceCatalogVersion(id, versionId, state) { return this.post(`/self-service/catalog/${id}/versions/${versionId}/state`, { state }); },
+  getSelfServiceProjectPolicy(id) { return this.get(`/self-service/projects/${id}/policy`); },
+  saveSelfServiceProjectPolicy(id, body) { return this.put(`/self-service/projects/${id}/policy`, body); },
+  getSelfServiceProjectDashboard(id) { return this.get(`/self-service/projects/${id}/dashboard`); },
+  previewSelfServiceCatalogRequest(slug, body) { return this.post(`/self-service/catalog/${encodeURIComponent(slug)}/preview`, body); },
+  createSelfServiceCatalogRequest(slug, body) { return this.post(`/self-service/catalog/${encodeURIComponent(slug)}/requests`, body); },
+  createSelfServiceLifecycleRequest(projectId, resourceId, body) { return this.post(`/self-service/projects/${projectId}/resources/${resourceId}/lifecycle`, body); },
+  listSelfServiceRequests(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/self-service/requests${query ? `?${query}` : ''}`); },
+  getSelfServiceRequest(id) { return this.get(`/self-service/requests/${id}`); },
+  getSelfServiceApprovalInbox() { return this.get('/self-service/approval-inbox'); },
+  decideSelfServiceRequest(id, body) { return this.post(`/self-service/requests/${id}/decision`, body); },
+  preflightSelfServiceFulfillment(id) { return this.post(`/self-service/requests/${id}/fulfillment/preflight`, {}); },
+  fulfillSelfServiceRequest(id, body) { return this.post(`/self-service/requests/${id}/fulfillment`, body); },
+  getSelfServiceBasket() { return this.get('/self-service/basket'); },
+  addSelfServiceBasketItem(body) { return this.post('/self-service/basket', body); },
+  removeSelfServiceBasketItem(id) { return this.delete(`/self-service/basket/${id}`); },
+  clearSelfServiceBasket() { return this.delete('/self-service/basket'); },
+  searchSelfServicePalette(q) { return this.get(`/self-service/palette?q=${encodeURIComponent(q)}`); },
+  getSelfServiceBranding(projectId = null) { return this.get(`/self-service/experience/branding${projectId == null ? '' : `?projectId=${encodeURIComponent(projectId)}`}`); },
+  saveSelfServiceBranding(body) { return this.put('/self-service/experience/branding', body); },
+  getSelfServiceContextualHelp(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/self-service/experience/help${query ? `?${query}` : ''}`); },
+  createSelfServiceTroubleshooting(requestId) { return this.post('/self-service/experience/troubleshooting', { requestId }); },
+  getSelfServiceRecommendations(projectId) { return this.get(`/self-service/experience/projects/${projectId}/recommendations`); },
+  getSelfServiceIncidents() { return this.get('/self-service/experience/incidents'); },
+  updateSelfServiceIncident(key, body) { return this.post(`/self-service/experience/incidents/${encodeURIComponent(key)}/actions`, body); },
+  getSelfServiceFeedbackPreference() { return this.get('/self-service/experience/feedback/preference'); },
+  saveSelfServiceFeedbackPreference(body) { return this.put('/self-service/experience/feedback/preference', body); },
+  recordSelfServiceFeedback(body) { return this.post('/self-service/experience/feedback/events', body); },
+  getSelfServiceFeedbackSummary() { return this.get('/self-service/experience/feedback/summary'); },
+
+  // ─── Identity + policy governance (v8.50.0 / V4.6b) ─────
+  getGovernanceControlsCatalog() { return this.get('/governance/controls/catalog'); },
+  getProjectCapacity(id) { return this.get(`/governance/controls/projects/${id}/capacity`); },
+  setProjectCapacityQuotas(id, quotas) { return this.put(`/governance/controls/projects/${id}/capacity/quotas`, { quotas }); },
+  assignProjectCapacity(id, body) { return this.post(`/governance/controls/projects/${id}/capacity/allocations`, body); },
+  removeProjectCapacity(id, allocationId) { return this.delete(`/governance/controls/projects/${id}/capacity/allocations/${allocationId}`); },
+  listQuotaRequests(id) { return this.get(`/governance/controls/projects/${id}/quota-requests`); },
+  requestQuota(id, body) { return this.post(`/governance/controls/projects/${id}/quota-requests`, body); },
+  listApprovalPolicies() { return this.get('/governance/controls/approval-policies'); },
+  createApprovalPolicy(body) { return this.post('/governance/controls/approval-policies', body); },
+  deleteApprovalPolicy(id) { return this.delete(`/governance/controls/approval-policies/${id}`); },
+  listApprovalRequests(query = '') { return this.get(`/governance/controls/approval-requests${query ? `?${query}` : ''}`); },
+  decideApprovalRequest(id, decision, comment) { return this.post(`/governance/controls/approval-requests/${id}/decision`, { decision, comment }); },
+  listBlackouts() { return this.get('/governance/controls/blackouts'); },
+  createBlackout(body) { return this.post('/governance/controls/blackouts', body); },
+  deleteBlackout(id) { return this.delete(`/governance/controls/blackouts/${id}`); },
+  listIdentityRealms() { return this.get('/governance/controls/identity-realms'); },
+  createIdentityRealm(body) { return this.post('/governance/controls/identity-realms', body); },
+  deleteIdentityRealm(id) { return this.delete(`/governance/controls/identity-realms/${id}`); },
+  listServiceTokens() { return this.get('/governance/controls/service-tokens'); },
+  issueServiceToken(body) { return this.post('/governance/controls/service-tokens', body); },
+  rotateServiceToken(id, body = {}) { return this.post(`/governance/controls/service-tokens/${id}/rotate`, body); },
+  revokeServiceToken(id) { return this.delete(`/governance/controls/service-tokens/${id}`); },
+  listWorkloadTrusts() { return this.get('/governance/controls/workload-trusts'); },
+  createWorkloadTrust(body) { return this.post('/governance/controls/workload-trusts', body); },
+  deleteWorkloadTrust(id) { return this.delete(`/governance/controls/workload-trusts/${id}`); },
+
+  // ─── Governance lifecycle + unified VM metrics (V4.6c) ───
+  getGovernanceLifecycleCatalog() { return this.get('/governance/lifecycle/catalog'); },
+  listResourceLeasePolicies(tenantId) { return this.get(`/governance/lifecycle/lease-policies?tenantId=${encodeURIComponent(tenantId)}`); },
+  saveResourceLeasePolicy(body) { return this.put('/governance/lifecycle/lease-policies', body); },
+  listResourceLeases(query = '') { return this.get(`/governance/lifecycle/leases${query ? `?${query}` : ''}`); },
+  createResourceLease(body) { return this.post('/governance/lifecycle/leases', body); },
+  renewResourceLease(id, body) { return this.post(`/governance/lifecycle/leases/${id}/renew`, body); },
+  releaseResourceLease(id, cleaned = false) { return this.post(`/governance/lifecycle/leases/${id}/release`, { cleaned }); },
+  getProjectOwnershipPolicy(id) { return this.get(`/governance/lifecycle/projects/${id}/ownership-policy`); },
+  saveProjectOwnershipPolicy(id, body) { return this.put(`/governance/lifecycle/projects/${id}/ownership-policy`, body); },
+  saveResourceOwnership(id, body) { return this.put(`/governance/lifecycle/resources/${id}/ownership`, body); },
+  getSeparationOfDutiesReport() { return this.get('/governance/lifecycle/sod-report'); },
+  createSeparationOfDutiesRule(body) { return this.post('/governance/lifecycle/sod-rules', body); },
+  listAccessReviewCampaigns() { return this.get('/governance/lifecycle/access-reviews'); },
+  createAccessReviewCampaign(body) { return this.post('/governance/lifecycle/access-reviews', body); },
+  getAccessReviewCampaign(id) { return this.get(`/governance/lifecycle/access-reviews/${id}`); },
+  decideAccessReviewItem(campaignId, itemId, body) { return this.post(`/governance/lifecycle/access-reviews/${campaignId}/items/${itemId}/decision`, body); },
+  completeAccessReviewCampaign(id) { return this.post(`/governance/lifecycle/access-reviews/${id}/complete`, {}); },
+  exportGovernanceTenant(id) { return this.post(`/governance/lifecycle/tenants/${id}/exports`, {}); },
+  getGovernanceTenantExport(id) { return this.get(`/governance/lifecycle/tenant-exports/${id}`); },
+  planGovernanceTenantOffboarding(id, exportId) { return this.post(`/governance/lifecycle/tenants/${id}/offboarding`, { exportId }); },
+  completeGovernanceTenantOffboarding(id, body) { return this.post(`/governance/lifecycle/offboarding/${id}/complete`, body); },
+  getVmMetricDefinitions() { return this.get('/governance/lifecycle/metrics/definitions'); },
+  listVmMetricSamples(query = '') { return this.get(`/governance/lifecycle/metrics/samples${query ? `?${query}` : ''}`); },
+  getVmMetricFreshness(query = '') { return this.get(`/governance/lifecycle/metrics/freshness${query ? `?${query}` : ''}`); },
+  getVmMetricPollingDecision(hostId, query = '') { return this.get(`/governance/lifecycle/metrics/polling/${hostId}/decision${query ? `?${query}` : ''}`); },
+  saveVmMetricPollingPolicy(hostId, body) { return this.put(`/governance/lifecycle/metrics/polling/${hostId}`, body); },
+  saveVmMetricCardinalityPolicy(hostId, body) { return this.put(`/governance/lifecycle/metrics/cardinality/${hostId}`, body); },
+  ingestVmMetrics(body) { return this.post('/governance/lifecycle/metrics/ingest', body); },
+  recordVmMetricError(body) { return this.post('/governance/lifecycle/metrics/errors', body); },
+
+  // ─── Hardware, performance and device accelerators (V6.6a/V6.6b) ────────
+  getHardwarePerformance() { return this.get('/governance/lifecycle/hardware'); },
+  recordHardwareSnapshot(body) { return this.post('/governance/lifecycle/hardware/snapshots', body); },
+  getHardwareCompatibility(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/compatibility`); },
+  getHardwareCpuBaseline(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-baseline`); },
+  saveHardwareCpuPolicy(clusterRef, body) { return this.put(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-policy`, body); },
+  getHardwareCpuPinning(clusterRef) { return this.get(`/governance/lifecycle/hardware/clusters/${encodeURIComponent(clusterRef)}/cpu-pinning`); },
+  getHardwareNuma(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/numa`); },
+  getHardwareHugepages(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/hugepages`); },
+  getHardwareMemory(hostId) { return this.get(`/governance/lifecycle/hardware/hosts/${hostId}/memory`); },
+  getHardwareVmNumaFit(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/numa-fit?hostId=${encodeURIComponent(hostId)}`); },
+  getHardwareRealtimeProfile(resourceKey, hostId) { return this.get(`/governance/lifecycle/hardware/vms/${encodeURIComponent(resourceKey)}/realtime-profile?hostId=${encodeURIComponent(hostId)}`); },
+  getHardwareDevices() { return this.get('/governance/lifecycle/hardware/devices'); },
+  recordHardwareDeviceSnapshot(body) { return this.post('/governance/lifecycle/hardware/devices/snapshots', body); },
+  getHardwareMemoryTiers(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/memory-tiers`); },
+  getHardwarePci(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/pci`); },
+  getHardwareGpus(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/gpus`); },
+  getHardwareUsb(hostId) { return this.get(`/governance/lifecycle/hardware/devices/hosts/${hostId}/usb`); },
+  planHardwareDeviceAllocation(body) { return this.post('/governance/lifecycle/hardware/devices/allocations', body); },
+  releaseHardwareDeviceAllocation(id) { return this.post(`/governance/lifecycle/hardware/devices/allocations/${id}/release`, {}); },
+  recordHardwareAcceleratorMetrics(body) { return this.post('/governance/lifecycle/hardware/devices/metrics', body); },
+  createHardwareAcceleratorReservation(body) { return this.post('/governance/lifecycle/hardware/devices/reservations', body); },
+  getHardwareAdvanced() { return this.get('/governance/lifecycle/hardware/advanced'); },
+  scanVirtualHardwareCompatibility(body) { return this.post('/governance/lifecycle/hardware/advanced/compatibility-scans', body); },
+  recordHardwareBenchmark(body) { return this.post('/governance/lifecycle/hardware/advanced/benchmarks', body); },
+  recordWorkloadPerformanceSample(body) { return this.post('/governance/lifecycle/hardware/advanced/samples', body); },
+  getNoisyNeighbors(resourceKey, windowMinutes = 5) { return this.get(`/governance/lifecycle/hardware/advanced/resources/${encodeURIComponent(resourceKey)}/noisy-neighbors?windowMinutes=${windowMinutes}`); },
+  compareHardwareBenchmarks(body) { return this.post('/governance/lifecycle/hardware/advanced/regressions', body); },
+  saveWorkloadPerformanceProfile(resourceKey, body) { return this.put(`/governance/lifecycle/hardware/advanced/profiles/${encodeURIComponent(resourceKey)}`, body); },
+  evaluateWorkloadPerformanceProfile(resourceKey) { return this.get(`/governance/lifecycle/hardware/advanced/profiles/${encodeURIComponent(resourceKey)}/evaluation`); },
+  getProviderPlugins() { return this.get('/governance/lifecycle/plugins'); },
+  registerProviderPlugin(body) { return this.post('/governance/lifecycle/plugins/manifests', body); },
+  consentProviderPlugin(pluginKey, body) { return this.post(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/consents`, body); },
+  getProviderPluginCompatibility(pluginKey) { return this.get(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/compatibility`); },
+  setProviderPluginEnabled(pluginKey, enabled) { return this.put(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/enabled`, { enabled }); },
+  probeProviderPluginSandbox(pluginKey, body) { return this.post(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/sandbox-probes`, body); },
+  recordProviderPluginHealth(pluginKey, body) { return this.post(`/governance/lifecycle/plugins/${encodeURIComponent(pluginKey)}/health`, body); },
+  getConnectorMarketplace() { return this.get('/governance/lifecycle/connectors'); },
+  registerConnectorMarketplaceEntry(body) { return this.post('/governance/lifecycle/connectors/marketplace', body); },
+  planConnectorCmdbSync(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/cmdb-syncs`, body); },
+  linkConnectorItsmChange(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/itsm-changes`, body); },
+  normalizeConnectorSiemEvent(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/siem-events`, body); },
+  bindConnectorSecretReference(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/secret-references`, body); },
+  planConnectorIpamDns(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/ipam-dns-plans`, body); },
+  recordConnectorBackupObservation(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/backup-observations`, body); },
+  saveConnectorMonitoringTarget(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/monitoring-targets`, body); },
+  planConnectorEventPublication(connectorKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/event-publications`, body); },
+  saveConnectorOpenApiOperation(connectorKey, body) { return this.put(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations`, body); },
+  prototypeConnectorOpenApiRequest(connectorKey, operationKey, body) { return this.post(`/governance/lifecycle/connectors/${encodeURIComponent(connectorKey)}/openapi-operations/${encodeURIComponent(operationKey)}/prototypes`, body); },
+  getMigrationFactory() { return this.get('/governance/lifecycle/migration-factory'); },
+  createMigrationAssessment(body) { return this.post('/governance/lifecycle/migration-factory/assessments', body); },
+  planMigrationConversion(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/conversions`, body); },
+  mapMigrationNetworks(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/network-mappings`, body); },
+  mapMigrationStorage(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/storage-mappings`, body); },
+  recordMigrationTestClone(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/test-clones`, body); },
+  planMigrationWaves(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/wave-plans`, body); },
+  planMigrationCutover(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/cutover-plans`, body); },
+  planMigrationRollback(cutoverPlanId, body) { return this.post(`/governance/lifecycle/migration-factory/cutover-plans/${cutoverPlanId}/rollback-plans`, body); },
+  createMigrationEvidenceReport(assessmentId, body) { return this.post(`/governance/lifecycle/migration-factory/assessments/${assessmentId}/evidence-reports`, body); },
+  assessLegacyXenMigration(body) { return this.post('/governance/lifecycle/migration-factory/legacy-xen-assessments', body); },
+  getPlatformFoundation() { return this.get('/governance/lifecycle/platform-foundation'); },
+  normalizePlatformEvent(body) { return this.post('/governance/lifecycle/platform-foundation/events', body); },
+  recordPlatformInventoryDelta(body) { return this.post('/governance/lifecycle/platform-foundation/inventory-deltas', body); },
+  savePlatformCollection(body) { return this.post('/governance/lifecycle/platform-foundation/collections', body); },
+  evaluatePlatformCollection(id, body) { return this.post(`/governance/lifecycle/platform-foundation/collections/${id}/evaluate`, body); },
+  savePlatformMetadataSchema(body) { return this.post('/governance/lifecycle/platform-foundation/metadata-schemas', body); },
+  setPlatformMetadata(resourceKey, schemaKey, body) { return this.put(`/governance/lifecycle/platform-foundation/resources/${encodeURIComponent(resourceKey)}/metadata/${encodeURIComponent(schemaKey)}`, body); },
+  recordPlatformRelationshipGraph(body) { return this.post('/governance/lifecycle/platform-foundation/relationship-graphs', body); },
+  getPlatformGraphImpact(id, resourceKey) { return this.get(`/governance/lifecycle/platform-foundation/relationship-graphs/${id}/impact/${encodeURIComponent(resourceKey)}`); },
+  scanPlatformHygiene(body) { return this.post('/governance/lifecycle/platform-foundation/hygiene-scans', body); },
+  observePlatformRateBudget(endpointKey, body) { return this.post(`/governance/lifecycle/platform-foundation/rate-budgets/${encodeURIComponent(endpointKey)}/observations`, body); },
+  planPlatformLinkedClone(body) { return this.post('/governance/lifecycle/platform-foundation/linked-clone-plans', body); },
+  savePlatformCustomizationProfile(body) { return this.post('/governance/lifecycle/platform-foundation/customization-profiles', body); },
+  mapPlatformFlavor(body) { return this.post('/governance/lifecycle/platform-foundation/flavor-mappings', body); },
+  recordPlatformImageObservations(body) { return this.post('/governance/lifecycle/platform-foundation/image-observations', body); },
+  createPlatformImageUploadSession(body) { return this.post('/governance/lifecycle/platform-foundation/image-upload-sessions', body); },
+  recordPlatformImageChunkReceipt(id, body) { return this.post(`/governance/lifecycle/platform-foundation/image-upload-sessions/${id}/chunk-receipts`, body); },
+  finalizePlatformImageUpload(id, body) { return this.post(`/governance/lifecycle/platform-foundation/image-upload-sessions/${id}/finalize`, body); },
+  getVmContentMobility() { return this.get('/governance/lifecycle/vm-content-mobility'); },
+  planImageReplication(body) { return this.post('/governance/lifecycle/vm-content-mobility/image-replication-plans', body); },
+  saveManagedTemplateVersion(body) { return this.post('/governance/lifecycle/vm-content-mobility/template-versions', body); },
+  planTemplatePromotion(id, body) { return this.post(`/governance/lifecycle/vm-content-mobility/template-versions/${id}/promotions`, body); },
+  createVmLeaseContract(body) { return this.post('/governance/lifecycle/vm-content-mobility/vm-leases', body); },
+  planGuestCommand(body) { return this.post('/governance/lifecycle/vm-content-mobility/guest-command-plans', body); },
+  saveConsoleProtocolProfile(body) { return this.post('/governance/lifecycle/vm-content-mobility/console-profiles', body); },
+  planControlledLiveMigration(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/live', body); },
+  planControlledColdMigration(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/cold', body); },
+  planControlledStorageMigration(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/storage', body); },
+  planCrossPoolMigration(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/cross-pool', body); },
+  planCrossProviderMigration(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/cross-provider', body); },
+  saveMigrationBandwidthPolicy(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/bandwidth-policies', body); },
+  saveMigrationQueuePolicy(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/queue-policies', body); },
+  planMigrationControlDecision(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/control-decisions', body); },
+  planMigrationStageRollback(body) { return this.post('/governance/lifecycle/vm-content-mobility/migrations/rollback-plans', body); },
+
+  // ─── Advanced storage control plane (V4.2f) ────────────
+  getStorageAdvanced() { return this.get('/governance/lifecycle/storage-advanced'); },
+  planStorageFormatConversion(body) { return this.post('/governance/lifecycle/storage-advanced/format-conversion-plans', body); },
+  recordStoragePolicyCatalog(body) { return this.post('/governance/lifecycle/storage-advanced/policy-observations', body); },
+  planStoragePolicyAssignment(body) { return this.post('/governance/lifecycle/storage-advanced/policy-assignment-plans', body); },
+  recordStorageLatencyHeatmap(body) { return this.post('/governance/lifecycle/storage-advanced/latency-heatmaps', body); },
+  recordStoragePathHealth(body) { return this.post('/governance/lifecycle/storage-advanced/path-health-observations', body); },
+  planStorageOrphanCleanup(body) { return this.post('/governance/lifecycle/storage-advanced/orphan-cleanup-plans', body); },
+  planStorageQosChange(body) { return this.post('/governance/lifecycle/storage-advanced/qos-change-plans', body); },
+  recommendStorageTier(body) { return this.post('/governance/lifecycle/storage-advanced/tiering-recommendations', body); },
+  registerStorageObjectStore(body) { return this.post('/governance/lifecycle/storage-advanced/object-stores', body); },
+  recordStorageSuiteHealth(body) { return this.post('/governance/lifecycle/storage-advanced/suite-health-observations', body); },
+  planStorageChange(body) { return this.post('/governance/lifecycle/storage-advanced/change-plans', body); },
+
+  // ─── Advanced network control plane (V4.3f / V4.4j) ─
+  getNetworkAdvanced() { return this.get('/governance/lifecycle/network-advanced'); },
+  planNetworkNicAttach(body) { return this.post('/governance/lifecycle/network-advanced/nic-attach-plans', body); },
+  planNetworkNicDetach(body) { return this.post('/governance/lifecycle/network-advanced/nic-detach-plans', body); },
+  saveNetworkMappingProfile(body) { return this.post('/governance/lifecycle/network-advanced/mapping-profiles', body); },
+  planNetworkSegment(body) { return this.post('/governance/lifecycle/network-advanced/segment-plans', body); },
+  planTenantNetworkChange(body) { return this.post('/governance/lifecycle/network-advanced/tenant-network-plans', body); },
+  planNetworkAddressChange(body) { return this.post('/governance/lifecycle/network-advanced/address-change-plans', body); },
+  recordSecurityGroupInventory(body) { return this.post('/governance/lifecycle/network-advanced/security-group-observations', body); },
+  planSecurityGroupChange(body) { return this.post('/governance/lifecycle/network-advanced/security-group-change-plans', body); },
+  recordDistributedFirewall(body) { return this.post('/governance/lifecycle/network-advanced/distributed-firewall-observations', body); },
+  saveMicrosegmentationPolicy(body) { return this.post('/governance/lifecycle/network-advanced/microsegmentation-policies', body); },
+  ingestNetworkFlowLogs(body) { return this.post('/governance/lifecycle/network-advanced/flow-log-batches', body); },
+  validateNetworkIntent(body) { return this.post('/governance/lifecycle/network-advanced/intent-validations', body); },
+  recordNetworkDependencyAddresses(body) { return this.post('/governance/lifecycle/network-advanced/dependency-address-observations', body); },
+  recordNetworkDependencyDns(body) { return this.post('/governance/lifecycle/network-advanced/dependency-dns-observations', body); },
+  buildNetworkDependencyMap(body) { return this.post('/governance/lifecycle/network-advanced/dependency-snapshots', body); },
+  assessNetworkReachability(body) { return this.post('/governance/lifecycle/network-advanced/reachability-assessments', body); },
+  getNetworkDependencyImpact(snapshotId, resourceKey, maxDepth = 5) { return this.get(`/governance/lifecycle/network-advanced/dependency-snapshots/${encodeURIComponent(snapshotId)}/impact?resourceKey=${encodeURIComponent(resourceKey)}&maxDepth=${encodeURIComponent(maxDepth)}`); },
+  assessNetworkMtu(body) { return this.post('/governance/lifecycle/network-advanced/mtu-assessments', body); },
+  recordNetworkBondHealth(body) { return this.post('/governance/lifecycle/network-advanced/bond-health-observations', body); },
+  recordNetworkLoadBalancerInventory(body) { return this.post('/governance/lifecycle/network-advanced/load-balancer-observations', body); },
+  planNetworkPublicIp(body) { return this.post('/governance/lifecycle/network-advanced/public-ip-plans', body); },
+
+  // ─── VM observability, events and multi-signal correlation (V6.4a) ───
+  getVmObservabilityCatalog() { return this.get('/governance/lifecycle/observability/catalog'); },
+  getVmPerformance(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/performance?${query}`); },
+  getVmPerformanceDashboard(kind, params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/dashboards/${encodeURIComponent(kind)}${query ? `?${query}` : ''}`); },
+  listVmObservabilityEvents(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/events${query ? `?${query}` : ''}`); },
+  ingestVmObservabilityEvents(body) { return this.post('/governance/lifecycle/observability/events/ingest', body); },
+  getVmCorrelationTimeline(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/timeline${query ? `?${query}` : ''}`); },
+  getVmIncidentTimeline(resourceKey, params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/incidents/${encodeURIComponent(resourceKey)}${query ? `?${query}` : ''}`); },
+  getVmObservabilityTopology(params = {}) { const query = new URLSearchParams(params).toString(); return this.get(`/governance/lifecycle/observability/topology${query ? `?${query}` : ''}`); },
+  saveVmObservabilityTopologyEdge(body) { return this.put('/governance/lifecycle/observability/topology/edges', body); },
+  getVmTopologyImpact(eventId) { return this.get(`/governance/lifecycle/observability/topology/impact/${eventId}`); },
+  getVmSignalRules() { return this.get('/governance/lifecycle/observability/signal-rules'); },
+  createVmSignalRule(body) { return this.post('/governance/lifecycle/observability/signal-rules', body); },
+  evaluateVmSignalRules(body = {}) { return this.post('/governance/lifecycle/observability/signal-rules/evaluate', body); },
+  getVmObservabilityAdvanced() { return this.get('/governance/lifecycle/observability/advanced'); },
+  createVmDynamicBaseline(body) { return this.post('/governance/lifecycle/observability/baselines', body); },
+  evaluateVmDynamicBaselines(body = {}) { return this.post('/governance/lifecycle/observability/baselines/evaluate', body); },
+  createVmObservabilityMaintenance(body) { return this.post('/governance/lifecycle/observability/maintenance', body); },
+  reconcileVmAlertSuppressions() { return this.post('/governance/lifecycle/observability/suppressions/reconcile', {}); },
+  createVmCapacityForecast(body) { return this.post('/governance/lifecycle/observability/capacity-forecast', body); },
+  createVmIncidentTriage(body) { return this.post('/governance/lifecycle/observability/triage', body); },
+  createVmRunbookMapping(body) { return this.post('/governance/lifecycle/observability/runbooks', body); },
+  getVmTelemetryPrivacy(hostId = 0) { return this.get(`/governance/lifecycle/observability/privacy/${hostId}`); },
+  saveVmTelemetryPrivacy(hostId, body) { return this.put(`/governance/lifecycle/observability/privacy/${hostId}`, body); },
+  getVmTelemetryRetentionPlan(hostId = 0) { return this.get(`/governance/lifecycle/observability/privacy/${hostId}/retention`); },
+  applyVmTelemetryRetention(hostId, body) { return this.post(`/governance/lifecycle/observability/privacy/${hostId}/retention/apply`, body); },
+  createVmObservabilityExport(body) { return this.post('/governance/lifecycle/observability/exports', body); },
+  previewVmObservabilityExport(id, hours = 1) { return this.get(`/governance/lifecycle/observability/exports/${id}/preview?hours=${hours}`); },
+  deliverVmObservabilityExport(id, body = {}) { return this.post(`/governance/lifecycle/observability/exports/${id}/deliver`, body); },
+  saveVmSlo(body) { return this.put('/governance/lifecycle/observability/slo', body); },
+  getVmSloReports() { return this.get('/governance/lifecycle/observability/slo/reports'); },
+  // ─── Infrastructure automation, manifests and stale-safe plans (V0.3b) ───
+  getInfrastructureAutomation() { return this.get('/governance/lifecycle/automation'); },
+  validateInfrastructureManifest(document) { return this.post('/governance/lifecycle/automation/manifests/validate', { document }); },
+  saveInfrastructureManifest(body) { return this.post('/governance/lifecycle/automation/manifests', body); },
+  createInfrastructurePlan(manifestId, body) { return this.post(`/governance/lifecycle/automation/manifests/${manifestId}/plans`, body); },
+  revalidateInfrastructurePlan(planId, body) { return this.post(`/governance/lifecycle/automation/plans/${planId}/revalidate`, body); },
+  createInfrastructureWorkflow(body) { return this.post('/governance/lifecycle/automation/workflows', body); },
+  previewInfrastructureCompensation(workflowId, completedStepIds) { return this.post(`/governance/lifecycle/automation/workflows/${workflowId}/compensation-plan`, { completedStepIds }); },
+  linkInfrastructurePlanJob(planId, body) { return this.post(`/governance/lifecycle/automation/plans/${planId}/jobs`, body); },
+  // ─── Infrastructure delivery and GitOps safeguards (V0.3c) ───
+  saveInfrastructureResourceManifest(body) { return this.post('/governance/lifecycle/automation/resource-manifests', body); },
+  importInfrastructureResource(body) { return this.post('/governance/lifecycle/automation/import', body); },
+  evaluateInfrastructureDrift(body) { return this.post('/governance/lifecycle/automation/drift', body); },
+  createInfrastructureReconcile(body) { return this.post('/governance/lifecycle/automation/reconcile-runs', body); },
+  approveInfrastructureReconcile(id, body) { return this.post(`/governance/lifecycle/automation/reconcile-runs/${id}/approve`, body); },
+  applyInfrastructureReconcile(id, body) { return this.post(`/governance/lifecycle/automation/reconcile-runs/${id}/apply`, body); },
+  createInfrastructureController(body) { return this.post('/governance/lifecycle/automation/controllers', body); },
+  runInfrastructureController(id) { return this.post(`/governance/lifecycle/automation/controllers/${id}/run`, {}); },
+  resumeInfrastructureController(id) { return this.post(`/governance/lifecycle/automation/controllers/${id}/resume`, {}); },
+  previewInfrastructurePullRequest(body) { return this.post('/governance/lifecycle/automation/previews/pull-request', body); },
+  createTerraformImportMappings(body) { return this.post('/governance/lifecycle/automation/terraform/import-mappings', body); },
+  ingestTerraformPlan(body) { return this.post('/governance/lifecycle/automation/terraform/plans', body); },
+  authorizeInfrastructureExternalPlan(id, body) { return this.post(`/governance/lifecycle/automation/external-plans/${id}/authorize`, body); },
+  getAnsibleInfrastructureInventory() { return this.get('/governance/lifecycle/automation/ansible-inventory'); },
+  createInfrastructureWebhookTrigger(body) { return this.post('/governance/lifecycle/automation/webhook-triggers', body); },
+  // ─── Automation operations and lifecycle readiness (V0.3d) ───
+  createInfrastructureSchedule(body) { return this.post('/governance/lifecycle/automation/operations/schedules', body); },
+  evaluateInfrastructureSchedule(id, at) { return this.get(`/governance/lifecycle/automation/operations/schedules/${id}/evaluate${at ? `?at=${encodeURIComponent(at)}` : ''}`); },
+  createInfrastructureApproval(body) { return this.post('/governance/lifecycle/automation/operations/approvals', body); },
+  decideInfrastructureApproval(id, body) { return this.post(`/governance/lifecycle/automation/operations/approvals/${id}/decision`, body); },
+  createInfrastructureDryRun(body) { return this.post('/governance/lifecycle/automation/operations/dry-runs', body); },
+  createInfrastructureSecretBroker(body) { return this.post('/governance/lifecycle/automation/operations/secret-brokers', body); },
+  probeInfrastructureSecretBroker(id, purpose) { return this.post(`/governance/lifecycle/automation/operations/secret-brokers/${id}/probe`, { purpose }); },
+  instantiateInfrastructureTemplate(id, body) { return this.post(`/governance/lifecycle/automation/operations/workflow-templates/${id}/instantiate`, body); },
+  getLifecycleUpdates() { return this.get('/governance/lifecycle/updates'); },
+  recordLifecycleInventory(body) { return this.post('/governance/lifecycle/updates/inventory', body); },
+  saveLifecycleSupport(body) { return this.put('/governance/lifecycle/updates/support', body); },
+  saveLifecycleUpgradePath(body) { return this.put('/governance/lifecycle/updates/upgrade-paths', body); },
+  getLifecycleUpgradeAdvice(id, targetVersion) { return this.get(`/governance/lifecycle/updates/inventory/${id}/advisor?targetVersion=${encodeURIComponent(targetVersion)}`); },
+  ingestLifecycleUpdateCatalog(body) { return this.post('/governance/lifecycle/updates/catalog/ingest', body); },
+  runLifecycleUpgradePrecheck(body) { return this.post('/governance/lifecycle/updates/prechecks', body); },
+  getLifecycleMaintenance() { return this.get('/governance/lifecycle/maintenance-lifecycle'); },
+  createLifecycleMaintenancePlan(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/plans', body); },
+  approveLifecycleMaintenancePlan(id, body) { return this.post(`/governance/lifecycle/maintenance-lifecycle/plans/${id}/approve`, body); },
+  createLifecycleCampaign(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/campaigns', body); },
+  approveLifecycleCampaign(id, body) { return this.post(`/governance/lifecycle/maintenance-lifecycle/campaigns/${id}/approve`, body); },
+  advanceLifecycleCampaign(id, body) { return this.post(`/governance/lifecycle/maintenance-lifecycle/campaigns/${id}/advance`, body); },
+  recordLifecycleLivePatch(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/live-patch', body); },
+  recordLifecycleRebootSignal(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/reboot-signals', body); },
+  getLifecycleRebootStatus(hostId, targetRef) { return this.get(`/governance/lifecycle/maintenance-lifecycle/reboot-status/${hostId}/${encodeURIComponent(targetRef)}`); },
+  saveLifecycleFirmware(body) { return this.put('/governance/lifecycle/maintenance-lifecycle/firmware', body); },
+  saveLifecycleDriverCompatibility(body) { return this.put('/governance/lifecycle/maintenance-lifecycle/drivers', body); },
+  checkLifecycleDriverCompatibility(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/drivers/check', body); },
+  saveLifecycleCertificateOwnership(body) { return this.put('/governance/lifecycle/maintenance-lifecycle/certificates/ownership', body); },
+  createLifecycleCertificateReminderPolicy(body) { return this.post('/governance/lifecycle/maintenance-lifecycle/certificates/reminder-policies', body); },
+  evaluateLifecycleCertificateReminders() { return this.post('/governance/lifecycle/maintenance-lifecycle/certificates/reminders/evaluate', {}); },
+  getLifecycleAssurance() { return this.get('/governance/lifecycle/assurance'); },
+  planCertificateRenewal(body) { return this.post('/governance/lifecycle/assurance/certificate-renewals', body); },
+  approveCertificateRenewal(id, body) { return this.post(`/governance/lifecycle/assurance/certificate-renewals/${id}/approve`, body); },
+  executeCertificateRenewal(id, body) { return this.post(`/governance/lifecycle/assurance/certificate-renewals/${id}/execute`, body); },
+  saveLicenseEntitlement(body) { return this.put('/governance/lifecycle/assurance/licenses/entitlements', body); },
+  assignLicenseEntitlement(id, body) { return this.put(`/governance/lifecycle/assurance/licenses/entitlements/${id}/assignments`, body); },
+  recordLicenseUsage(id, body) { return this.post(`/governance/lifecycle/assurance/licenses/entitlements/${id}/usage`, body); },
+  createLicenseAlertPolicy(body) { return this.post('/governance/lifecycle/assurance/licenses/alert-policies', body); },
+  evaluateLicenseAlerts() { return this.post('/governance/lifecycle/assurance/licenses/alerts/evaluate', {}); },
+  createConfigurationSnapshot(body) { return this.post('/governance/lifecycle/assurance/configuration/snapshots', body); },
+  createConfigurationDiff(body) { return this.post('/governance/lifecycle/assurance/configuration/diffs', body); },
+  createDriftPolicy(body) { return this.post('/governance/lifecycle/assurance/configuration/drift-policies', body); },
+  evaluateDriftPolicy(id, diffId) { return this.post(`/governance/lifecycle/assurance/configuration/drift-policies/${id}/evaluate/${diffId}`, {}); },
+  createHostProfile(body) { return this.post('/governance/lifecycle/assurance/configuration/profiles', body); },
+  assessHostProfile(id, snapshotId) { return this.post(`/governance/lifecycle/assurance/configuration/profiles/${id}/assess/${snapshotId}`, {}); },
+  createAirgapMirror(body) { return this.post('/governance/lifecycle/assurance/airgap/mirrors', body); },
+  syncAirgapMirror(id, body) { return this.post(`/governance/lifecycle/assurance/airgap/mirrors/${id}/sync`, body); },
+  collectLifecycleSupportBundle(body) { return this.post('/governance/lifecycle/assurance/support-bundles', body); },
+  createPostUpgradeValidationPack(body) { return this.post('/governance/lifecycle/assurance/validation-packs', body); },
+  runPostUpgradeValidationPack(id, body) { return this.post(`/governance/lifecycle/assurance/validation-packs/${id}/run`, body); },
+  getFinOpsFoundation() { return this.get('/governance/lifecycle/finops'); },
+  recordFinOpsLedger(body) { return this.post('/governance/lifecycle/finops/ledger', body); },
+  createFinOpsCostModel(body) { return this.post('/governance/lifecycle/finops/cost-models', body); },
+  saveFinOpsAllocationRule(body) { return this.post('/governance/lifecycle/finops/allocation-rules', body); },
+  resolveFinOpsAllocation(id) { return this.post(`/governance/lifecycle/finops/ledger/${id}/allocate`, {}); },
+  createFinOpsRatingRun(body) { return this.post('/governance/lifecycle/finops/rating-runs', body); },
+  getFinOpsRatingRun(id) { return this.get(`/governance/lifecycle/finops/rating-runs/${id}`); },
+  createFinOpsChargebackExport(id, body) { return this.post(`/governance/lifecycle/finops/rating-runs/${id}/chargeback-exports`, body); },
+  createFinOpsBudget(body) { return this.post('/governance/lifecycle/finops/budgets', body); },
+  getFinOpsOptimization() { return this.get('/governance/lifecycle/finops/optimization'); },
+  saveFinOpsBudgetAlertPolicy(body) { return this.post('/governance/lifecycle/finops/optimization/budget-alert-policies', body); },
+  evaluateFinOpsBudgetAlerts(runId) { return this.post(`/governance/lifecycle/finops/optimization/budget-alerts/evaluate/${runId}`, {}); },
+  saveFinOpsAnomalyPolicy(body) { return this.post('/governance/lifecycle/finops/optimization/anomaly-policies', body); },
+  evaluateFinOpsAnomalies(runId) { return this.post(`/governance/lifecycle/finops/optimization/anomalies/evaluate/${runId}`, {}); },
+  assessFinOpsIdleVm(ledgerId, body) { return this.post(`/governance/lifecycle/finops/optimization/assessments/idle/${ledgerId}`, body); },
+  assessFinOpsOversizedVm(ledgerId, body) { return this.post(`/governance/lifecycle/finops/optimization/assessments/oversized/${ledgerId}`, body); },
+  assessFinOpsZombie(body) { return this.post('/governance/lifecycle/finops/optimization/assessments/zombie', body); },
+  saveFinOpsSavingsSchedule(body) { return this.post('/governance/lifecycle/finops/optimization/savings-schedules', body); },
+  executeFinOpsSavingsSchedule(id, body) { return this.post(`/governance/lifecycle/finops/optimization/savings-schedules/${id}/execute`, body); },
+  recommendFinOpsReservedCapacity(body) { return this.post('/governance/lifecycle/finops/optimization/reserved-capacity', body); },
+  simulateFinOpsConsolidation(body) { return this.post('/governance/lifecycle/finops/optimization/consolidation-scenarios', body); },
+  forecastFinOpsCapacity(body) { return this.post('/governance/lifecycle/finops/optimization/capacity-forecasts', body); },
+  scoreFinOpsPlacement(body) { return this.post('/governance/lifecycle/finops/optimization/placement-scores', body); },
+  getFinOpsSustainability() { return this.get('/governance/lifecycle/finops/sustainability'); },
+  recordFinOpsPowerTelemetry(body) { return this.post('/governance/lifecycle/finops/sustainability/power-telemetry', body); },
+  saveFinOpsCarbonFactor(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-factors', body); },
+  recommendFinOpsCarbonSchedule(body) { return this.post('/governance/lifecycle/finops/sustainability/carbon-recommendations', body); },
+  compareFinOpsTco(body) { return this.post('/governance/lifecycle/finops/sustainability/tco-scenarios', body); },
+
+  // ─── Workstation fleet / bootc / Foreman ──────
+  getWorkstationFleetOverview() { return this.get('/workstation-fleet/overview'); },
+  getWorkstationDevices(params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/workstation-fleet/devices${qs ? `?${qs}` : ''}`); },
+  saveForemanConnection(body) { return body.id ? this.put(`/workstation-fleet/connections/${body.id}`, body) : this.post('/workstation-fleet/connections', body); },
+  deleteForemanConnection(id) { return this.delete(`/workstation-fleet/connections/${id}`); },
+  testForemanConnection(id) { return this.post(`/workstation-fleet/connections/${id}/test`, {}); },
+  syncForemanConnection(id) { return this.post(`/workstation-fleet/connections/${id}/sync`, {}); },
+  saveForemanMapping(id, body) { return this.put(`/workstation-fleet/connections/${id}/mappings`, body); },
+  deleteForemanMapping(id) { return this.delete(`/workstation-fleet/mappings/${id}`); },
+  inspectBootcArtifact(body) { return this.post('/workstation-fleet/artifacts/inspect', body); },
+  getBootcArtifactPromotions(id, params = {}) { const qs = new URLSearchParams(params).toString(); return this.get(`/workstation-fleet/artifacts/${id}/promotions${qs ? `?${qs}` : ''}`); },
+  promoteBootcArtifact(id, body) { return this.post(`/workstation-fleet/artifacts/${id}/promote`, body); },
+  createWorkstationPlan(id, body) { return this.post(`/workstation-fleet/devices/${id}/plans`, body); },
+  preflightWorkstationPlan(id) { return this.get(`/workstation-fleet/plans/${id}/preflight`); },
+  cancelWorkstationPlan(id, body) { return this.post(`/workstation-fleet/plans/${id}/cancel`, body); },
+  executeWorkstationPlan(id, body) { return this.post(`/workstation-fleet/plans/${id}/execute`, body); },
+  reconcileWorkstationPlan(id) { return this.post(`/workstation-fleet/plans/${id}/reconcile`, {}); },
+
+  // ─── Edge / disconnected platform ──────────────
+  getEdgeOverview() { return this.get('/edge/overview'); },
+  saveEdgeSite(body) { return this.post('/edge/sites', body); },
+  saveEdgeConnectivity(siteId, body) { return this.put(`/edge/sites/${siteId}/connectivity`, body); },
+  getEdgeCache(siteId) { return this.get(`/edge/sites/${siteId}/cache`); },
+  recordEdgeCache(siteId, body) { return this.post(`/edge/sites/${siteId}/cache`, body); },
+  createEdgeIntent(siteId, body) { return this.post(`/edge/sites/${siteId}/intents`, body); },
+  revalidateEdgeIntent(intentId, body) { return this.post(`/edge/intents/${intentId}/revalidate`, body); },
+  saveEdgeAgent(siteId, body) { return this.post(`/edge/sites/${siteId}/agents`, body); },
+  recordEdgeHeartbeat(siteId, body) { return this.post(`/edge/sites/${siteId}/heartbeats`, body); },
+  saveEdgeSyncPolicy(siteId, body) { return this.put(`/edge/sites/${siteId}/sync-policy`, body); },
+  bufferEdgeEvents(siteId, body) { return this.post(`/edge/sites/${siteId}/events`, body); },
+  createEdgeSyncPlan(siteId, body = {}) { return this.post(`/edge/sites/${siteId}/sync-plans`, body); },
+  acknowledgeEdgeSyncPlan(planId, body) { return this.post(`/edge/sync-plans/${planId}/acknowledge`, body); },
+  createEdgeRunbook(agentId, body) { return this.post(`/edge/agents/${agentId}/runbooks`, body); },
+  createEdgeUpdatePlan(agentId, body) { return this.post(`/edge/agents/${agentId}/update-plans`, body); },
+  createEdgeBootstrap(siteId, body) { return this.post(`/edge/sites/${siteId}/bootstrap-manifests`, body); },
+  createEdgeMirror(siteId, body) { return this.post(`/edge/sites/${siteId}/mirror-manifests`, body); },
+  saveEdgeResidencyPolicy(siteId, body) { return this.put(`/edge/sites/${siteId}/residency-policy`, body); },
+  evaluateEdgeResidency(siteId, body) { return this.post(`/edge/sites/${siteId}/residency-evaluations`, body); },
+  saveEdgeIdentityPolicy(siteId, body) { return this.put(`/edge/sites/${siteId}/identity-cache-policy`, body); },
+  issueEdgeIdentityGrant(siteId, body) { return this.post(`/edge/sites/${siteId}/identity-grants`, body); },
+  activateEdgeIdentityGrant(grantId, body) { return this.post(`/edge/identity-grants/${grantId}/activate`, body); },
+  saveEdgeVaultAdapter(siteId, body) { return this.post(`/edge/sites/${siteId}/vault-adapters`, body); },
+  createEdgeSecretResolution(adapterId, body) { return this.post(`/edge/vault-adapters/${adapterId}/resolution-plans`, body); },
+  saveEdgeSingleNodeProfile(siteId, body) { return this.put(`/edge/sites/${siteId}/single-node-profile`, body); },
+  assessEdgeSingleNode(siteId, body) { return this.post(`/edge/sites/${siteId}/single-node-assessments`, body); },
+  recordEdgeQuorum(siteId, body) { return this.post(`/edge/sites/${siteId}/quorum-snapshots`, body); },
+  saveEdgeReservationPolicy(siteId, body) { return this.put(`/edge/sites/${siteId}/reservation-policy`, body); },
+  assessEdgeReservations(siteId, body) { return this.post(`/edge/sites/${siteId}/reservation-assessments`, body); },
+  saveEdgeConsoleProfile(siteId, body) { return this.put(`/edge/sites/${siteId}/console-profile`, body); },
+  createEdgeRemoteHands(siteId, body) { return this.post(`/edge/sites/${siteId}/remote-hands-plans`, body); },
+  authorizeEdgeRemoteHands(planId, body) { return this.post(`/edge/remote-hands-plans/${planId}/authorize`, body); },
+  saveEdgeBmcEndpoint(siteId, body) { return this.post(`/edge/sites/${siteId}/bmc-endpoints`, body); },
+  recordEdgeBmcInventory(endpointId, body) { return this.post(`/edge/bmc-endpoints/${endpointId}/inventory`, body); },
+  createEdgeBmcRecovery(endpointId, body) { return this.post(`/edge/bmc-endpoints/${endpointId}/recovery-plans`, body); },
+  authorizeEdgeBmcRecovery(planId, body) { return this.post(`/edge/bmc-recovery-plans/${planId}/authorize`, body); },
+  declareEdgeDisaster(siteId, body) { return this.post(`/edge/sites/${siteId}/disasters`, body); },
+  resolveEdgeDisaster(declarationId, body) { return this.post(`/edge/disasters/${declarationId}/resolve`, body); },
+  createEdgeBackupSeed(siteId, body) { return this.post(`/edge/sites/${siteId}/backup-seeds`, body); },
+  recordEdgeBackupCheckpoint(seedId, body) { return this.post(`/edge/backup-seeds/${seedId}/checkpoints`, body); },
+  saveEdgeComplianceProfile(siteId, body) { return this.put(`/edge/sites/${siteId}/compliance-profile`, body); },
+  recordEdgeComplianceSnapshot(siteId, body) { return this.post(`/edge/sites/${siteId}/compliance-snapshots`, body); },
+  getEdgeFleetCompliance() { return this.get('/edge/fleet-compliance'); },
+  saveEdgeFaultDomain(siteId, body) { return this.post(`/edge/sites/${siteId}/fault-domains`, body); },
+  assessEdgeFaultDomains(siteId, body) { return this.post(`/edge/sites/${siteId}/fault-domain-assessments`, body); },
+  createEdgeEnrollmentToken(siteId, body) { return this.post(`/edge/sites/${siteId}/enrollment-tokens`, body); },
+  redeemEdgeEnrollment(body) { return this.post('/edge/enrollments/redeem', body); },
+  approveEdgeEnrollment(attestationId, body) { return this.post(`/edge/enrollments/${attestationId}/approve`, body); },
 
   // ─── About ─────────────────────────────────────
   getAboutFiles() { return this.get('/about/files'); },

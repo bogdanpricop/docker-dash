@@ -24,11 +24,37 @@ jobs:
         run: npm ci
 
       - name: Check for critical vulnerabilities (production deps only)
-        # Only PRODUCTION dependencies gate CI. npm audit hits the live advisory
-        # DB, so auditing dev tooling (jest/eslint/etc.) made CI flip red with no
-        # code change whenever a new advisory dropped. `--omit=dev` keeps a real
-        # gate on shipped code while removing that flakiness.
-        run: npm audit --audit-level=critical --omit=dev
+        # npm's retired Quick Audit fallback can reject a valid lockfile when the
+        # Bulk Advisory endpoint returns invalid data. Use Google's first-party
+        # OSV scanner instead, pinned and checksum-verified for reproducibility.
+        # The validator preserves the existing policy: dev-only findings are
+        # excluded and only production findings with CVSS >= 9.0 fail the build.
+        env:
+          OSV_VERSION: '2.3.8'
+          OSV_LINUX_AMD64_SHA256: 'bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc'
+        run: |
+          curl --fail --silent --show-error --location \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" \
+            --output /tmp/osv-scanner
+          echo "${OSV_LINUX_AMD64_SHA256}  /tmp/osv-scanner" | sha256sum --check --strict
+          chmod +x /tmp/osv-scanner
+
+          set +e
+          /tmp/osv-scanner scan source \
+            --lockfile package-lock.json \
+            --format json \
+            --verbosity error \
+            --output-file /tmp/osv-results.json
+          SCAN_STATUS=$?
+          set -e
+
+          # OSV returns 1 when it found vulnerabilities. Other non-zero exit
+          # codes represent scanner/input failures and must not be suppressed.
+          if [ "$SCAN_STATUS" -ne 0 ] && [ "$SCAN_STATUS" -ne 1 ]; then
+            exit "$SCAN_STATUS"
+          fi
+
+          node scripts/check-osv-results.js /tmp/osv-results.json 9
 
       - name: Validate JavaScript syntax (backend)
         run: |
@@ -89,6 +115,15 @@ jobs:
             if (enKeys < 100) { console.error('ERROR: EN translation seems incomplete'); process.exit(1); }
             console.log('i18n validation passed');
           "
+
+      - name: Validate self-service localization safety copy
+        run: npm run check:self-service-i18n
+
+      - name: Validate self-service accessibility contract
+        run: npm run check:self-service-a11y
+
+      - name: Validate virtualization research registry
+        run: npm run check:virtualization-research
 
       - name: Summary
         if: always()

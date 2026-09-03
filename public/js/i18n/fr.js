@@ -35,6 +35,8 @@ i18n.register('fr', 'FR', "Français", {
     inactive: "Inactif",
     enabled: "Activé",
     disabled: "Désactivé",
+    yes: "Oui",
+    no: "Non",
     test: "Tester",
     prune: "Nettoyer",
     unlimited: "illimité",
@@ -84,6 +86,7 @@ i18n.register('fr', 'FR', "Français", {
     "registry-browse": "Registres",
     onboarding: "Configuration de l'environnement",
     posture: "Posture",
+    procedures: "Procédures",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alpha)",
@@ -91,7 +94,25 @@ i18n.register('fr', 'FR', "Français", {
     "migration-vm": "Migration de VM (alpha)",
     "kubernetes-resources": "Kubernetes (alpha)",
     "nomad-jobs": "Nomad (alpha)",
-    "vsphere-resources": "vSphere / ESXi (alpha)"
+    "vsphere-resources": "vSphere / ESXi (alpha)",
+    "virtual-machines": "Machines virtuelles",
+    "high-availability": "Haute disponibilité",
+    "storage-posture": "État du stockage",
+    "network-posture": "État du réseau",
+    "provider-security-posture": "Sécurité du fournisseur",
+    "placement-advisor": "Conseiller de placement",
+    "recovery-points": "Points de récupération",
+    "backup-policies": "Politiques de sauvegarde",
+    "disaster-recovery": "Reprise après sinistre",
+    "virtualization-catalog": "Catalogue de VM",
+    activity: "Centre d’activité",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "Gouvernance",
+    "self-service": "Libre-service",
+    "governance-controls": "Identité et politiques",
+    "edge-platform": "Edge et environnements déconnectés",
+    "workstation-fleet": "Parc de postes",
+    "compose-catalog": "Catalogue Compose"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('fr', 'FR', "Français", {
     checkFailed: "Échec de la vérification",
     upToDate: "Vous utilisez la dernière version",
     refreshed: "Vérification des mises à jour actualisée"
-  }
+  },
+  selfService: {
+    title: "Libre-service d'infrastructure", requestQuota: 'Demander un quota', acknowledge: 'Acquitter', pause: 'Suspendre les notifications',
+    tabs: { catalog: 'Catalogue', project: 'Projet', requests: 'Demandes', incidents: 'Incidents', guidance: 'Conseils' },
+    actions: { start: 'Démarrer', shutdown: 'Arrêter', reboot: 'Redémarrer', snapshot: 'Instantané', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: "Chaque changement d'infrastructure exige une confirmation protégée distincte.", mobile: 'Vue mobile sûre :' },
+  },
 });

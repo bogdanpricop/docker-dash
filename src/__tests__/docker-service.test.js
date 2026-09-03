@@ -40,6 +40,7 @@ const mockDockerInstance = {
   version: jest.fn(),
   ping: jest.fn(),
   df: jest.fn(),
+  getEvents: jest.fn(),
 };
 
 const dockerCtorCalls = [];
@@ -95,7 +96,7 @@ describe('DockerService (src/services/docker.js)', () => {
         Created: 1700000000,
         Ports: [{ PrivatePort: 80, PublicPort: 8080, Type: 'tcp', IP: '0.0.0.0' }],
         NetworkSettings: { Networks: { bridge: {} } },
-        Mounts: [{ Type: 'volume', Source: '/data', Destination: '/var/lib/data', RW: true }],
+        Mounts: [{ Type: 'volume', Name: 'mystack_data', Source: '/data', Destination: '/var/lib/data', RW: true, Driver: 'local' }],
         Labels: { 'com.docker.compose.project': 'mystack', foo: 'bar' },
       },
     ]);
@@ -113,6 +114,33 @@ describe('DockerService (src/services/docker.js)', () => {
     expect(result[0].ports[0]).toEqual({ private: 80, public: 8080, type: 'tcp', ip: '0.0.0.0' });
     expect(result[0].networks).toEqual(['bridge']);
     expect(result[0].labels.foo).toBe('bar');
+    expect(result[0].imageIdFull).toBe('sha256:1234567890abcdef');
+    expect(result[0].mounts).toEqual([{
+      type: 'volume', name: 'mystack_data', source: '/data', destination: '/var/lib/data', rw: true, driver: 'local',
+    }]);
+    expect(result[0].sizeRw).toBeNull();
+    expect(mockDockerInstance.listContainers).toHaveBeenCalledWith({ all: true });
+  });
+
+  it('listContainers requests and preserves Docker filesystem sizes only when asked', async () => {
+    mockDockerInstance.listContainers.mockResolvedValue([
+      {
+        Id: 'size1234567890aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        Names: ['/sized'], Image: 'alpine:3.20', ImageID: 'sha256:image123',
+        State: 'exited', Status: 'Exited (0)', Created: 1700000000,
+        Ports: [], NetworkSettings: { Networks: {} }, Mounts: [], Labels: {},
+        SizeRw: 4096, SizeRootFs: 12_345_678,
+      },
+    ]);
+
+    const result = await dockerService.listContainers(0, { includeSize: true });
+
+    expect(mockDockerInstance.listContainers).toHaveBeenCalledWith({ all: true, size: true });
+    expect(result[0]).toMatchObject({
+      imageIdFull: 'sha256:image123',
+      sizeRw: 4096,
+      sizeRootFs: 12_345_678,
+    });
   });
 
   it('listContainers handles empty list (returns [])', async () => {
@@ -303,6 +331,68 @@ describe('DockerService (src/services/docker.js)', () => {
     expect(remote.isActive).toBe(1);
   });
 
+  // ─── undecryptable credentials (v8.96.1 regression) ────────────────────
+  //
+  // Field incident: ENCRYPTION_KEY was rotated after three SSH hosts had been
+  // added. Their ssh_config blobs stayed intact but no longer decrypted, and
+  // _parseHostRow threw out of getActiveHosts()' .map(). The catch-all below it
+  // then collapsed the WHOLE fleet to one synthetic local host — so stats
+  // collection and Docker event streams silently stopped for every other host,
+  // with no log line naming the culprit.
+
+  it('getActiveHosts keeps healthy hosts when one row has undecryptable credentials', () => {
+    db.prepare(`
+      INSERT INTO docker_hosts (name, connection_type, host, port, ssh_config, is_active, is_default)
+      VALUES ('Broken-SSH', 'ssh', '10.0.0.9', 22, 'deadbeef:cafebabe:0badc0de', 1, 0)
+    `).run();
+    db.prepare(`
+      INSERT INTO docker_hosts (name, connection_type, host, port, is_active, is_default)
+      VALUES ('Healthy-TCP', 'tcp', '10.0.0.5', 2376, 1, 0)
+    `).run();
+
+    const hosts = dockerService.getActiveHosts();
+
+    // The bad row must not erase the others — this is the actual regression.
+    expect(hosts.find(h => h.name === 'Healthy-TCP')).toBeDefined();
+    expect(hosts.find(h => h.name === 'Local')).toBeDefined();
+
+    // The broken host is still listed, flagged rather than silently dropped.
+    const broken = hosts.find(h => h.name === 'Broken-SSH');
+    expect(broken).toBeDefined();
+    expect(broken.sshConfig).toBeNull();
+    expect(broken.credentialError).toMatch(/ENCRYPTION_KEY/);
+  });
+
+  it('getDocker throws an actionable 422 for a host whose credentials do not decrypt', () => {
+    const { lastInsertRowid } = db.prepare(`
+      INSERT INTO docker_hosts (name, connection_type, host, port, ssh_config, is_active, is_default)
+      VALUES ('Broken-SSH-2', 'ssh', '10.0.0.9', 22, 'deadbeef:cafebabe:0badc0de', 1, 0)
+    `).run();
+
+    // Strict mode must NOT silently null the config and dial the host anyway.
+    let thrown;
+    try { dockerService.getDocker(lastInsertRowid); } catch (err) { thrown = err; }
+
+    expect(thrown).toBeDefined();
+    expect(thrown.status).toBe(422);       // operational → message reaches the client
+    expect(thrown.code).toBe('HOST_CREDENTIAL_UNDECRYPTABLE');
+    expect(thrown.message).toContain('Broken-SSH-2');
+    expect(thrown.message).toMatch(/ENCRYPTION_KEY/);
+    // No half-configured connection may be left in the cache.
+    expect(dockerService.connections.has(lastInsertRowid)).toBe(false);
+  });
+
+  it('a legacy plaintext ssh_config row still parses (no false credential error)', () => {
+    db.prepare(`
+      INSERT INTO docker_hosts (name, connection_type, host, port, ssh_config, is_active, is_default)
+      VALUES ('Legacy-Plain', 'ssh', '10.0.0.7', 22, '{"username":"root"}', 1, 0)
+    `).run();
+
+    const legacy = dockerService.getActiveHosts().find(h => h.name === 'Legacy-Plain');
+    expect(legacy.sshConfig).toEqual({ username: 'root' });
+    expect(legacy.credentialError).toBeNull();
+  });
+
   // ─── dropConnection ────────────────────────────────────────────────────
 
   it('dropConnection clears the cache for a hostId', () => {
@@ -378,6 +468,27 @@ describe('DockerService (src/services/docker.js)', () => {
     // socket (default fallback path)
     dockerService._createConnection({ connectionType: 'unknown-or-missing' });
     expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(30_000);
+  });
+
+  it('_createConnection preserves an explicit zero timeout for live streams', () => {
+    dockerService._createConnection({
+      connectionType: 'socket',
+      socketPath: '/var/run/docker.sock',
+    }, 0);
+
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(0);
+  });
+
+  it('getEventStream uses a dedicated unbounded connection', async () => {
+    const eventStream = { on: jest.fn() };
+    mockDockerInstance.getEvents.mockResolvedValue(eventStream);
+
+    const result = await dockerService.getEventStream(0);
+
+    expect(result).toBe(eventStream);
+    expect(mockDockerInstance.getEvents).toHaveBeenCalledTimes(1);
+    expect(dockerCtorCalls[dockerCtorCalls.length - 1].timeout).toBe(0);
+    expect(dockerService.connections.has(0)).toBe(false);
   });
 
   it('_createConnection routes "tcp" with TLS config to https', () => {

@@ -11,6 +11,8 @@ const MultiHostPage = {
   _collapsed: {}, // track collapsed stack groups: key = "hostId:stackName" or "stack:stackName"
   _searchFilter: '', // current search string
   _hostView: 'tabs', // 'list' | 'tabs' — Tab View is the default per user request 2026-04-20
+  _groupFilter: 'all',
+  _groups: [],
 
   async render(container) {
     container.innerHTML = `
@@ -36,9 +38,11 @@ const MultiHostPage = {
           <button class="btn-icon view-toggle" id="mh-collapse" title="Collapse all"><i class="fas fa-compress-alt"></i></button>
           <button class="btn-icon view-toggle" id="mh-expand" title="Expand all"><i class="fas fa-expand-alt"></i></button>
           <button class="btn btn-sm btn-secondary" id="mh-refresh" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+          ${App.user?.role === 'admin' ? '<button class="btn btn-sm btn-primary" id="mh-bulk"><i class="fas fa-layer-group"></i> Bulk actions</button>' : ''}
           <button class="prune-help-btn" id="mh-guide" title="Actions guide" style="background:var(--accent);color:#fff;border-color:var(--accent)">i</button>
         </div>
       </div>
+      <div id="mh-group-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>
       <div id="mh-stats" style="margin-bottom:16px"></div>
       <div id="mh-content"><div class="text-muted" style="padding:20px"><i class="fas fa-spinner fa-spin"></i> Loading hosts...</div></div>
     `;
@@ -68,6 +72,7 @@ const MultiHostPage = {
     });
 
     container.querySelector('#mh-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#mh-bulk')?.addEventListener('click', () => this._showBulkActions());
     container.querySelector('#mh-guide')?.addEventListener('click', () => this._showGuide());
 
     container.querySelector('#mh-collapse').addEventListener('click', () => {
@@ -120,7 +125,10 @@ const MultiHostPage = {
 
   async _load() {
     try {
-      this._data = await Api.getMultiHostOverview();
+      [this._data, this._groups] = await Promise.all([
+        Api.getMultiHostOverview(), Api.listHostGroups().catch(() => []),
+      ]);
+      this._renderGroupFilters();
       this._renderStats();
       this._loadRecommendations();
       this._renderContent();
@@ -171,7 +179,14 @@ const MultiHostPage = {
   _renderStats() {
     const el = document.getElementById('mh-stats');
     if (!el || !this._data) return;
-    const { totals } = this._data;
+    const hosts = this._filteredHosts();
+    const totals = {
+      hosts: hosts.length,
+      healthyHosts: hosts.filter(host => host.healthy).length,
+      containers: hosts.reduce((sum, host) => sum + host.counts.total, 0),
+      running: hosts.reduce((sum, host) => sum + host.counts.running, 0),
+      images: hosts.reduce((sum, host) => sum + host.counts.images, 0),
+    };
     const stopped = totals.containers - totals.running;
 
     el.innerHTML = `
@@ -230,8 +245,9 @@ const MultiHostPage = {
     const el = document.getElementById('mh-content');
     if (!el) return;
 
-    if (!this._data.hosts.length) {
-      el.innerHTML = '<div class="empty-msg">No hosts configured.</div>';
+    const hosts = this._filteredHosts();
+    if (!hosts.length) {
+      el.innerHTML = '<div class="empty-msg">No hosts match this group.</div>';
       return;
     }
 
@@ -241,7 +257,7 @@ const MultiHostPage = {
       return;
     }
 
-    el.innerHTML = this._data.hosts.map(host => this._renderHostCard(host)).join('');
+    el.innerHTML = hosts.map(host => this._renderHostCard(host)).join('');
 
     // Attach stack toggle events
     el.querySelectorAll('[data-mh-stack-toggle]').forEach(btn => {
@@ -267,6 +283,7 @@ const MultiHostPage = {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reconnecting…';
         if (btn.dataset.daemon === 'vsphere') { try { await Api.reconnectVSphere(hostId); } catch { /* reload surfaces errors */ } }
+        if (btn.dataset.daemon === 'xen') { try { await Api.reconnectXen(hostId); } catch { /* reload surfaces errors */ } }
         await this._load();
       });
     });
@@ -419,6 +436,7 @@ const MultiHostPage = {
           ${Utils.escapeHtml(host.name) !== Utils.escapeHtml(host.info.hostname || host.name)
             ? `<span class="text-muted" style="font-size:11px">(${Utils.escapeHtml(host.name)})</span>` : ''}
           ${this._envBadge(host.environment)}
+          ${(host.groups || []).map(group => `<span class="badge" style="font-size:9px">${Utils.escapeHtml(group.name)}</span>`).join('')}
           <span class="text-muted" style="font-size:11px">
             <i class="fas fa-plug" style="margin-right:3px"></i>${Utils.escapeHtml(host.connectionType || '')}
           </span>
@@ -481,7 +499,7 @@ const MultiHostPage = {
   // ─── By Host — Tab View ──────────────────────────
 
   _renderByHostTabs(el) {
-    const hosts = this._data.hosts;
+    const hosts = this._filteredHosts();
     if (!this._activeHostTab || !hosts.find(h => h.id === this._activeHostTab)) {
       this._activeHostTab = hosts[0]?.id;
     }
@@ -495,6 +513,7 @@ const MultiHostPage = {
       if (h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman' && h.nonDocker && h.nonDocker.resources) {
         const res = h.nonDocker.resources;
         if (h.daemonType === 'vsphere') countLabel = `${res.vmsRunning || 0}/${res.vms || 0} VMs`;
+        else if (h.daemonType === 'xen') countLabel = `${res.vmsRunning || 0}/${res.vms || 0} VMs`;
         else if (h.daemonType === 'incus' || h.daemonType === 'lxd') countLabel = `${res.instancesRunning || 0}/${res.instances || 0} inst`;
         else if (h.daemonType === 'proxmox') countLabel = `${res.vms || 0} VM · ${res.lxc || 0} LXC`;
         else if (h.daemonType === 'kubernetes') countLabel = `${res.podsRunning || 0}/${res.pods || 0} pods`;
@@ -540,6 +559,7 @@ const MultiHostPage = {
 
     const pageMap = {
       vsphere: { route: '#/vsphere-resources', icon: 'fa-server', label: 'Open vSphere page' },
+      xen: { route: '#/xen-resources', icon: 'fa-cloud', label: 'Open Xen page' },
       incus: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open Incus page' },
       lxd: { route: '#/incus-instances', icon: 'fa-cubes', label: 'Open LXD page' },
       proxmox: { route: '#/proxmox-resources', icon: 'fa-server', label: 'Open Proxmox page' },
@@ -563,6 +583,21 @@ const MultiHostPage = {
     let preview = '';
 
     switch (daemonType) {
+      case 'xen':
+        stats = [
+          stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running · ${r.vmsStopped || 0} off`),
+          stat('fa-server', 'Xen hosts', r.xenHosts || 0, `${r.pools || 0} pool(s)`),
+          stat('fa-hdd', 'Storage repositories', r.storages || 0,
+            r.capacityGiB ? `${r.usedGiB || 0} / ${r.capacityGiB} GiB used` : null),
+        ].join('');
+        if ((r.topVMs || []).length) {
+          preview = `<table class="table"><thead><tr><th>VM</th><th>Power</th><th>IP</th><th>vCPU</th><th>Memory</th></tr></thead><tbody>${r.topVMs.map(vm => {
+            const color = /running|poweredon/i.test(vm.powerState || '') ? 'var(--green)' : 'var(--text-dim)';
+            return `<tr><td><strong>${Utils.escapeHtml(vm.name || '')}</strong></td><td style="color:${color}">${Utils.escapeHtml(vm.powerState || '—')}</td>
+              <td>${Utils.escapeHtml(vm.ipAddress || '—')}</td><td>${vm.cpu || '—'}</td><td>${vm.memoryGiB ? `${vm.memoryGiB} GiB` : '—'}</td></tr>`;
+          }).join('')}</tbody></table>`;
+        }
+        break;
       case 'vsphere':
         stats = [
           stat('fa-desktop', 'VMs', r.vms || 0, `${r.vmsRunning || 0} running · ${r.vmsStopped || 0} off`),
@@ -692,11 +727,12 @@ const MultiHostPage = {
 
   _renderSingleHost(el) {
     if (!el) return;
-    const host = this._data.hosts.find(h => h.id === this._activeHostTab);
+    const host = this._filteredHosts().find(h => h.id === this._activeHostTab);
     if (!host) { el.innerHTML = '<div class="text-muted">Host not found</div>'; return; }
 
     if (!host.healthy) {
       const isVsphere = host.daemonType === 'vsphere';
+      const isXen = host.daemonType === 'xen';
       el.innerHTML = `<div class="card" style="border:1px solid var(--red);border-left:4px solid var(--red);padding:20px;text-align:center">
         <i class="fas fa-exclamation-triangle" style="font-size:32px;color:var(--red);margin-bottom:12px"></i>
         <h3 style="color:var(--red)">Host Offline</h3>
@@ -711,6 +747,7 @@ const MultiHostPage = {
         // For vSphere, force-drop the (likely dead) cached client first so the
         // overview re-login lands on a fresh connection; then refresh the page.
         if (isVsphere) { try { await Api.reconnectVSphere(host.id); } catch { /* the reload will surface any error */ } }
+        if (isXen) { try { await Api.reconnectXen(host.id); } catch { /* the reload will surface any error */ } }
         await this._load();
       });
       return;
@@ -829,7 +866,7 @@ const MultiHostPage = {
 
     // Build a map: stackName → [{host, containers}]
     const stackMap = {};
-    for (const host of this._data.hosts) {
+    for (const host of this._filteredHosts()) {
       if (!host.healthy) continue;
       for (const c of host.containers) {
         const s = c.stack || '_standalone';
@@ -959,6 +996,74 @@ const MultiHostPage = {
   },
 
   // ─── Helpers ─────────────────────────────────────
+
+  _filteredHosts() {
+    const hosts = this._data?.hosts || [];
+    if (this._groupFilter === 'all') return hosts;
+    const groupId = Number(this._groupFilter);
+    return hosts.filter(host => (host.groups || []).some(group => Number(group.id) === groupId));
+  },
+
+  _renderGroupFilters() {
+    const el = document.getElementById('mh-group-filters');
+    if (!el) return;
+    const visibleIds = new Set((this._data?.hosts || []).map(host => host.id));
+    const groups = (this._groups || []).filter(group =>
+      (group.member_host_ids || []).some(id => visibleIds.has(id))
+    );
+    if (this._groupFilter !== 'all'
+      && !groups.some(group => Number(group.id) === Number(this._groupFilter))) {
+      this._groupFilter = 'all';
+    }
+    if (!groups.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<button class="btn btn-xs ${this._groupFilter === 'all' ? 'btn-primary' : 'btn-secondary'}" data-mh-group="all">All hosts</button>${groups.map(group => {
+      const active = Number(this._groupFilter) === Number(group.id);
+      return `<button class="btn btn-xs ${active ? 'btn-primary' : 'btn-secondary'}" data-mh-group="${group.id}"><i class="fas ${Utils.escapeHtml(group.icon || 'fa-server')}" style="margin-right:4px"></i>${Utils.escapeHtml(group.name)}</button>`;
+    }).join('')}`;
+    el.querySelectorAll('[data-mh-group]').forEach(button => button.addEventListener('click', () => {
+      this._groupFilter = button.dataset.mhGroup;
+      this._renderGroupFilters();
+      this._renderStats();
+      this._renderContent();
+      this._applySearch(this._searchFilter);
+    }));
+  },
+
+  async _showBulkActions() {
+    const hosts = (this._data?.hosts || []).filter(host =>
+      ['docker', 'podman'].includes(host.daemonType || 'docker')
+    );
+    if (!hosts.length) return Toast.warning('No Docker/Podman hosts are available');
+    const selection = await Modal.form(`
+      <div class="form-group"><label>Action</label><select id="mh-bulk-action" class="form-control"><option value="restart">Restart running containers</option><option value="prune">Prune unused resources (preserve volumes)</option></select></div>
+      <div class="form-group"><label>Target hosts</label><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:7px;max-height:300px;overflow:auto;border:1px solid var(--border);padding:10px;border-radius:6px">
+        ${hosts.map(host => `<label style="display:flex;align-items:center;gap:7px"><input type="checkbox" data-mh-bulk-host value="${host.id}" ${host.healthy ? 'checked' : ''}><span class="host-tree-status ${host.healthy ? 'online' : 'offline'}"></span>${Utils.escapeHtml(host.name)} <span class="text-xs text-muted">${Utils.escapeHtml(host.environment || '')}</span></label>`).join('')}
+      </div></div>
+      <div class="alert alert-warning"><i class="fas fa-triangle-exclamation"></i> Docker Dash and docker-dash-caddy are excluded from bulk restart. Prune never removes volumes.</div>`, {
+      title: 'Fleet bulk action', width: '660px',
+      onSubmit: content => {
+        const hostIds = [...content.querySelectorAll('[data-mh-bulk-host]:checked')].map(input => Number(input.value));
+        if (!hostIds.length) { Toast.warning('Select at least one host'); return false; }
+        return { action: content.querySelector('#mh-bulk-action').value, hostIds };
+      },
+    });
+    if (!selection) return;
+    try {
+      const preview = await Api.previewFleetBulk(selection.action, selection.hostIds);
+      const rows = preview.hosts.map(host => `<tr><td>${Utils.escapeHtml(host.host_name)}</td><td><span class="badge ${host.status === 'ready' ? 'badge-running' : 'badge-stopped'}">${Utils.escapeHtml(host.status)}</span></td><td>${host.error ? Utils.escapeHtml(host.error) : Utils.escapeHtml(host.detail || '')}</td></tr>`).join('');
+      const confirmed = await Modal.confirm(`<p style="margin-bottom:10px">Review every target before execution:</p><table class="data-table"><thead><tr><th>Host</th><th>Status</th><th>Impact</th></tr></thead><tbody>${rows}</tbody></table>`, {
+        title: selection.action === 'prune' ? 'Confirm fleet prune' : 'Confirm fleet restart',
+        confirmText: selection.action === 'prune' ? 'Prune fleet' : 'Restart containers',
+        danger: true, html: true, typeToConfirm: selection.action === 'prune' ? 'PRUNE' : undefined,
+      });
+      if (!confirmed) return;
+      Toast.info(`Running ${selection.action} on ${selection.hostIds.length} host(s)…`);
+      const result = await Api.runFleetBulk(selection.action, selection.hostIds);
+      Modal.open(`<div class="modal-header"><h3>Fleet ${Utils.escapeHtml(selection.action)} — ${Utils.escapeHtml(result.status)}</h3><button class="modal-close-btn" id="mh-bulk-close"><i class="fas fa-times"></i></button></div><div class="modal-body"><table class="data-table"><thead><tr><th>Host</th><th>Status</th><th>Result</th></tr></thead><tbody>${result.hosts.map(host => `<tr><td>${Utils.escapeHtml(host.host_name)}</td><td><span class="badge ${host.status === 'success' ? 'badge-running' : host.status === 'partial' ? 'badge-warning' : 'badge-stopped'}">${Utils.escapeHtml(host.status)}</span></td><td>${host.error ? Utils.escapeHtml(host.error) : selection.action === 'prune' ? Utils.formatBytes(host.reclaimed_bytes || 0) + ' reclaimed' : `${host.affected || 0} restarted${host.failures ? `, ${host.failures} failed` : ''}`}</td></tr>`).join('')}</tbody></table></div>`, { width: '700px' });
+      Modal._content.querySelector('#mh-bulk-close').addEventListener('click', () => Modal.close());
+      await this._load();
+    } catch (err) { Toast.error(err.message); }
+  },
 
   _envBadge(env) {
     if (!env || env === 'production') return '';

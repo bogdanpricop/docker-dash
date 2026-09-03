@@ -2,6 +2,1505 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.1] - 2026-08-21 — One unreadable host no longer takes the fleet down
+
+Found on a live install: `ENCRYPTION_KEY` had been rotated after three SSH hosts
+were registered. Their stored credentials stayed intact but no longer decrypted,
+and the blast radius was far larger than those three hosts.
+
+- `getActiveHosts()` parsed rows inside a `.map()` wrapped in a catch-all. One
+  row that threw sent the whole call into the catch, which returned a single
+  synthetic local host. Stats collection and Docker event streams therefore
+  stopped for *every* other host, and no log line named the host responsible.
+  Rows are now parsed one at a time: a host whose credentials cannot be read is
+  still listed, flagged with `credentialError`, and the rest of the fleet is
+  untouched.
+- A host that cannot be connected to now fails with a 4xx naming the host and
+  the fix ("re-enter its credentials"), instead of a 500 carrying the raw
+  `Unsupported state or unable to authenticate data` from Node's cipher layer —
+  which the central error handler correctly refused to forward, leaving the UI
+  with nothing to show. Strict mode still refuses to dial a host with a
+  half-parsed config; tolerance is opt-in and used only by listing callers.
+- The dashboard ran its three core lists (containers, images, volumes) inside a
+  `Promise.all` with no per-call `.catch()`, while every other call on the page
+  had one. A single failure discarded the entire page — charts, host info and
+  cluster health included — and replaced it with "Failed to load dashboard data",
+  a message that named neither what failed nor why. Each list now degrades
+  independently: what loaded is rendered, what failed leaves its tile at `---`,
+  and the banner reports the server's actual reason.
+
+Not fixed here, because it is not a code defect: credentials encrypted under a
+key you no longer hold are not recoverable. Affected hosts must have their
+credentials re-entered.
+
+## [8.96.0] - 2026-08-11 — Diagnostic Sessions (retrospective)
+
+Answers "what was happening across my estate at 14:32?" by putting containers
+and VMs on one time axis. Read-only: a session changes nothing and collects
+nothing.
+
+- A session stores only its definition — which subjects, over which window. Every
+  series is re-read from metrics already collected, so creating one costs no
+  extra sampling and no sample storage. Materialising samples is what live
+  capture needs; adding it now would be storage for a feature that has not yet
+  earned it.
+- One shared axis: bucket N is the same instant for every subject, which is what
+  makes a container and a VM comparable. Nothing is interpolated to align them.
+- A gap renders as a gap. Empty buckets yield null, never zero — the most common
+  monitoring-UI bug, and one the implementation itself fell into: `Number(null)`
+  is 0, so an early version turned missing readings into measured zeros. The
+  tests caught it.
+- Cumulative counters are shown as deltas with resets broken, so a container
+  restart no longer draws a cliff.
+- Clock skew between sources is reported, never corrected. Correcting it would
+  hide the one thing most likely to make two series incomparable.
+- Events, health transitions and audit entries are marked on the axis. Usernames
+  appear; client IPs never do.
+- Sessions are exportable as JSON; create, delete and export are audited.
+- Deliberately out of scope, with reasons in the deep-spec: live capture,
+  observation ranking, log excerpts. This release exists to produce the evidence
+  live capture should be gated on.
+
+The deep-spec gated the schema behind a rendering proof. Discharged: 25 series ×
+900 samples reduce to 15 000 points in ~20 ms, and the page draws SVG polylines
+with no charting library — a null bucket splits the line, and an isolated reading
+renders as a dot rather than vanishing.
+
+38 new tests across 2 suites. Full suite: 336 suites, 4170 passing.
+
+## [8.95.1] - 2026-08-11 — Three deferred defects
+
+All three were found during earlier work, reported, and deliberately left for a
+separate change rather than bundled into a feature commit.
+
+### Per-stack permissions were ignored on container lifecycle routes
+
+- The container action and remove routes resolved a container's stack from
+  `inspect.Config?.Labels` — Docker's raw wire shape. `inspectContainer` returns
+  a normalized object exposing `labels`, so the optional chain always yielded
+  undefined and every container fell into the `_standalone` bucket. Per-stack
+  permission grants were therefore ignored for start, stop, restart, kill, pause,
+  unpause and remove.
+- **Who this changes:** global admins were unaffected either way, because
+  `getEffectiveRole` returns early for them. The fix changes behaviour only for
+  non-admin users holding an explicit `stack_permissions` grant — for whom the
+  configured permission now applies instead of their global role. That grant may
+  be broader or narrower than the global role, so review existing grants after
+  upgrading.
+- Other reads of `Config.Labels` in the same file are correct and untouched: they
+  operate on a raw `container.inspect()`.
+
+### Container export no longer carries credentials
+
+- `/:id/export` built its output by interpolating inspect data directly — env
+  vars as `-e "KEY=VALUE"`, labels as `--label k="v"` — with no escaping and no
+  redaction. A container's secrets were exported verbatim into a command
+  operators paste into tickets, and any value containing a quote produced a
+  broken, potentially injectable string.
+- Both the run-command and Compose exports now delegate to the CLI transparency
+  service, inheriting its shell escaping and secret redaction, and append a note
+  naming what was masked so the omission is visible rather than silent.
+
+### The test suite is no longer intermittently red
+
+- `cluster.js` attached `connect` and `error` handlers that logged unconditionally.
+  `connect` fires on a later tick, so it could land after the client had been
+  discarded by `shutdown()` or `_reset()` — in production, noise about a
+  connection nobody uses; under Jest, a write after teardown that Jest attributed
+  to whichever test happened to be running, failing 2–4 unrelated tests per run.
+- Handlers now check they are still the current client before logging, and
+  `_reset()` detaches listeners before dropping its reference. Verified: three
+  consecutive runs of the cluster suites went from 3 late writes each to none.
+
+21 new tests across 2 suites.
+
+## [8.95.0] - 2026-08-11 — Wasm as a first-class isolation class
+
+Fixes a defect introduced in v8.94.0 and builds out the surface it exposed.
+
+- Replace the `sandboxed` boolean in the isolation assessment with an ordered
+  class — `wasm` > `sandboxed` > `standard`. The boolean was the bug: a Wasm
+  runtime is not in `runtimeCategories.sandboxed`, so a Wasm container fell
+  through to "not sandboxed", was reported as `SHARED KERNEL`, and on a host that
+  also had gVisor produced a finding advising the operator to move the workload
+  onto gVisor — a downgrade.
+- Raise a finding only when a strictly stronger class exists that the workload
+  could actually be moved to. Nothing outranks Wasm, so a Wasm container can
+  never produce one, and Wasm is never offered as an upgrade target for a Linux
+  container because it needs a rebuilt artifact rather than a flag.
+- Anchor the runtime name patterns to the containerd shim convention and word
+  boundaries; `spinnaker` no longer matched `spin`. Reclassify `youki` as
+  standard — it is a runc equivalent, not an extra isolation layer, and filing it
+  as sandboxed both inflated the posture picture and would have suppressed real
+  findings under the new ordering.
+- Build the three-group Runtimes panel on the System page that the Wasm how-to
+  has described since v8.9.5 but which was never implemented; operators following
+  our own guide found a flat list and concluded detection had failed.
+- Label a Wasm-backed container `WASM` on its detail page, with copy that states
+  what we can see (the runtime) and what we cannot (the WASI grants).
+- Add `GET /api/images/:id/wasm`: identify a Wasm image by its OCI platform
+  (`os=wasi`, `arch=wasm`) and warn when the host has no Wasm runtime, before the
+  operator hits `exec format error`. "We could not read the host" is reported as
+  unknown, never as incompatible.
+- Render `--runtime` and `--platform` in the CLI-equivalent preview. Omitting
+  either is the cause of that same error.
+- Make `_parseStats` degrade to zeros instead of throwing on partial stats. A
+  throw surfaced as "stats collection skipped" and the container silently lost
+  metrics for good.
+- English and Romanian labels; 71 new tests across 4 suites.
+
+## [8.94.0] - 2026-08-10 — CLI transparency and per-container isolation posture
+
+Two features derived from the same critique of opaque management UIs: show the
+operator what the tool actually does, and what their containers actually are.
+
+### Per-container isolation posture
+
+- Expose the per-container isolation model (`HostConfig.Runtime`, privileged,
+  capabilities, namespace modes, `UsernsMode`, security options) from
+  `inspectContainer` as an additive `isolation` block.
+- Add a pure assessment service that enumerates how far a container can reach
+  past its runtime, including Docker-socket mounts and disabled seccomp,
+  AppArmor or SELinux confinement — signals no existing check reported per
+  container.
+- Add a posture check that raises one finding per container, only when the
+  container has host-level reach, is not already sandboxed, and the host has a
+  sandboxed runtime registered; the same gate keeps the per-container inspect
+  loop off hosts where it would find nothing actionable.
+- Treat privileged, capability and namespace switches as inputs rather than
+  findings, so the check complements the CIS benchmark instead of repeating it.
+- Cap finding severity at high: the verdict is "this could be contained better",
+  not "this is breached", and posture scoring must not double-count CIS.
+- Add `GET /api/containers/:id/isolation` and a container-detail card so the
+  runtime taxonomy stays server-side and the teaching surface works on every
+  host, not only where a sandboxed runtime exists.
+- Add a shared per-scan `docker info` cache to the posture context, English and
+  Romanian labels, and 41 tests including call-count assertions on the cost gate.
+
+### How-To guides render as formatted documents again
+
+- Render markdown how-to bodies to HTML when the loader imports them. The
+  frontend injects `content` as HTML, so the 85 guides authored as markdown had
+  been arriving as one undifferentiated wall of text — headings, lists, tables
+  and code fences all flattened. Everything with "Proxmox" in the name was in
+  that set.
+- Raw HTML in a body passes through untouched, which is what makes the fix safe:
+  133 of the 154 shipped files contain HTML and 89 mix it with markdown.
+- Add styling for the constructs markdown produces that had none — tables,
+  `h1`/`h4`-`h6`, horizontal rules, nested lists and images.
+- Add a renderer with 343 tests, including a pass over every shipped guide
+  asserting no markdown survives outside code blocks and no pre-existing HTML
+  is lost.
+
+### CLI transparency
+
+- Add a pure derivation service that turns an action key plus typed parameters
+  into the equivalent `docker` or `docker compose` command, covering container
+  lifecycle, removal, rename, bulk, run, image, volume, network, prune and
+  Compose stack verbs.
+- Shell-escape every argument and mask secret-shaped environment and label values
+  inside the service, so all callers inherit both; a truncated secret is treated
+  as a secret and replaced outright.
+- Add read-only `POST /api/cli-preview` and `GET /api/cli-preview/actions`,
+  restricted to a fixed action allowlist; the endpoint never accepts a
+  caller-supplied command string.
+- Show the equivalent command, collapsed and copyable, in the container-remove
+  and stack bulk-action confirmations, and record it on the matching audit
+  entries.
+- Report an action with no exact equivalent as unavailable rather than guessing a
+  partial command an operator might paste into a production shell.
+- Add an optional `onMount` hook to `Modal.confirm` so dialog markup can attach
+  listeners without inline handlers, English and Romanian labels, and 66 tests
+  covering escaping, redaction and the allowlist.
+
+## [8.93.0] - 2026-08-06 — Signed Compose blueprint catalog
+
+- Add a curated Compose catalog with owner, support level, lifecycle and
+  immutable semantic versions resolved to OCI SHA-256 digests.
+- Require Cosign cryptographic verification and an explicit signer identity
+  policy at publication and when restoring a deprecated version.
+- Add a typed parameter wizard, exact-scalar templates and shared
+  secret-reference admission; instantiation history and audit retain hashes,
+  never raw parameters or secret references.
+- Add compatibility declarations, healthcheck expectations, backup/restore
+  guidance and bounded resource estimates with explicit advisory semantics.
+- Add deterministic preview, safe version diff and catalog-only restore, with
+  stale-plan rejection and idempotent OCI application creation.
+- Keep deployment as a separate OCI Compose dry-run/review/confirmation step;
+  catalog instantiation cannot start or change a workload.
+- Add administrator/operator RBAC, effective host scope, localized navigation,
+  tests and operator/publisher incident runbooks.
+
+## [8.92.0] - 2026-08-05 — Workstation fleet control plane
+
+- Add generic bootc OCI inspection with digest pinning, bounded provenance and
+  SBOM/referrer evidence, reusable Cosign verification and held/canary/stable
+  release channels.
+- Add encrypted Foreman profiles, bounded read-only Foreman/Katello sync,
+  selected host-fact enrichment, Edge Site mapping and workstation posture,
+  drift, search and filters.
+- Add default-off, allowlisted update/rollback plans bound to fresh device and
+  artifact evidence, verified TLS, typed confirmation and exact post-read
+  digest verification.
+- Add zero-network execution preflight, Foreman trace inputs for plan/change/
+  maintenance references, exact template-contract validation, required static
+  targeting and a bounded terminal timeout for running jobs.
+- Add visible, bounded artifact promotion history and audited local cancellation
+  for unsubmitted plans; running Foreman jobs remain reconciliation-only.
+- Serialize concurrent execute requests with an atomic claim and fail closed on
+  unknown/expired submission state without automatically retrying Foreman.
+- Add an administrator UI, localized navigation, audit-safe API, migration,
+  tests and a production qualification runbook.
+
+## [8.91.4] - 2026-08-02 — Scoped JIT for critical provider operations
+
+- Add four exact governance permissions for forced VM power, snapshot revert,
+  snapshot delete and VM migration instead of one reusable broad mutation role.
+- Enforce user, endpoint, organization/provider scope, permission and expiry on
+  claimed JIT grants; preserve the explicit global-admin bypass and break-glass
+  envelope.
+- Retry protected mutations from the VM UI with scope/token headers while
+  preserving the original idempotency key and keeping grant material out of
+  request bodies and audit entries.
+- Keep enforcement behind the independent default-off
+  `DD_PROVIDER_CRITICAL_OPERATION_JIT` kill switch pending an approved provider
+  canary and staged operator rollout.
+
+## [8.91.3] - 2026-08-02 — Automatic secret-reference admission
+
+- Reuse one bounded, hash-only inspector across provider lifecycle validation,
+  infrastructure manifests/jobs and onboarding template admission.
+- Reject inline secret fields, private keys, credential-bearing URLs and
+  secret-shaped environment assignments before application persistence.
+- Recognize approved secret-manager URIs, exact `${ENVIRONMENT_VARIABLE}`
+  references, Kubernetes `secretKeyRef`/`secretRef` and named Compose or
+  Kubernetes secrets without copying raw references into admission evidence.
+- Add admission hashes/counts to successful manifest and workflow audits, and
+  return safe 422 findings for rejected writes without provider/network work.
+- Narrow the B168 market-research limitation to integrated browser smoke; the
+  automatic manifest/job/template integration is now implemented and tested.
+
+## [8.91.2] - 2026-08-02 — Search across Compose and Git stacks
+
+- Add an Images-style search control to the unified Stacks page with the same
+  200 ms debounced interaction.
+- Filter locally across stack names, source type, services, containers, images,
+  status, working directories, repositories, branches and commit identifiers;
+  typing never triggers an additional API request.
+- Keep the active query across tab switches and refreshes, and distinguish an
+  empty host from a search with no matching results.
+- Add English and Romanian labels plus focused regressions for Compose and Git
+  search metadata.
+
+## [8.90.0] - 2026-08-01 — Privileged closure operational qualification
+
+This exact batch qualifies the final uncovered `Partial` features B167–B175
+and revalidates the already `Done` B176 permission-catalog foundation.
+
+- `batch=privileged-closure` adds the sixth provider-scoped qualification
+  envelope and preserves all earlier batch contracts.
+- B167 distinguishes eligible low-risk plans from actual remediation runs and
+  reports historical mutation markers without starting a mutation.
+- B168 reports exact secret-reference validation, valid/invalid, reference and
+  persisted zero-network-call counts.
+- B169–B175 separate JIT, break-glass, session metadata, classifications,
+  signed-export metadata, control mappings and ransomware posture evidence.
+- B171 always reports zero media stored; notification dispatch, temporary
+  identity provisioning and public-key attestation remain external gaps.
+- B176 verifies the exact ten privileged/compliance permission keys while
+  retaining its v8.79.0 `Done` foundation status.
+- Mixed implementation releases remain explicit: B167–B168 came from v8.83.0,
+  B169–B175 from v8.84.0 and B176 from v8.79.0. Browser smoke, production
+  adapters/collectors and provider canaries remain outstanding.
+
+## [8.89.0] - 2026-08-01 — Security lifecycle operational qualification
+
+This exact batch advances B157–B166 without interpreting persisted plans or
+release flags as provider execution.
+
+- `batch=security-lifecycle` adds the fifth provider-scoped qualification
+  envelope and keeps every earlier selector backward-compatible.
+- B157 reports confidential provisioning plans and allowed counts while
+  retaining `executionAuthorized:false` as an external contract boundary.
+- B158–B161 count only their exact hardening, virtual-hardware, transport and
+  certificate-trust JSON evidence domains.
+- B162 separates tracked certificates, ownership and renewal jobs, including
+  succeeded and failed/rollback-required counts.
+- B163–B166 separate CVE-bearing findings, priority/confidence, active
+  exceptions and remediation dry-run plans.
+- Mixed implementation releases are explicit: B157–B158 came from v8.82.0 and
+  B159–B166 from v8.83.0. Native collectors/adapters, canaries and browser
+  smoke remain outstanding.
+
+## [8.88.0] - 2026-08-01 — DR and security operational qualification
+
+This exact batch advances B147–B156 without interpreting configuration flags,
+plans or imported metadata as proof of provider-native execution.
+
+- `batch=dr-security` adds the fourth provider-scoped qualification envelope
+  while preserving all earlier batch contracts.
+- B147–B150 report strict failover/failback/test rehearsal and persisted
+  RPO/RTO evidence; only B147 treats a configured protection group as observed.
+- B151–B156 separate security-pack, Secure Boot, vTPM, encryption,
+  key-provider and confidential-compute evidence instead of sharing one broad
+  count.
+- JSON security facts are counted only when their exact closed-schema domain is
+  present; missing evidence stays `not_observed`.
+- Mixed implementation releases remain explicit: B147–B148 came from v8.81.0
+  and B149–B156 from v8.82.0.
+- Provider Security renders the fourth exact ten-feature batch. Native DR
+  executors, fencing/cutover, security collectors, browser smoke and provider
+  canaries remain outstanding.
+
+## [8.87.0] - 2026-08-01 — Recovery-depth operational qualification
+
+This exact batch advances B137–B146 without treating plan, metadata or
+rehearsal records as proof of native recovery execution.
+
+- `batch=recovery-depth` adds the third provider-scoped qualification envelope
+  while preserving both earlier batch contracts.
+- Mixed implementation releases are explicit: B137–B138 came from v8.80.0 and
+  B139–B146 from v8.81.0.
+- Backup encryption and strict integrity evidence are separated; a generic
+  policy cannot make B138 `observed`.
+- Restore drill/scheduler, file catalog, advanced restore/copy plan, replication
+  draft and DR protection-group evidence receive bounded provider-scoped
+  runtime metrics.
+- Backup, restore, depth and DR release flags are reported and deduplicated but
+  never changed.
+- Provider Security renders the third exact ten-feature batch. Native restore,
+  copy, replication, fencing/cutover, file-content adapters, browser smoke and
+  disposable-provider canaries remain outstanding.
+
+## [8.86.0] - 2026-08-01 — Network and backup operational qualification
+
+This exact batch advances B124, B125 and B129–B136 without relabeling absent
+provider, canary or browser evidence as success.
+
+- The existing provider qualification endpoint accepts the additive
+  `batch=network-backup` selector while preserving the v8.85 default response.
+- B124/B125 report scoped immutable plan/validation counts and persisted zero
+  mutation counters without invoking an executor.
+- B129–B136 report provider-scoped policy, plan, execution, child and integrity
+  evidence plus the distinct backup policy/execution release flags.
+- Required additive columns are checked alongside tables; absent schema or
+  runtime remains `missing`/`not_observed`.
+- Provider Security renders both exact ten-feature batches and continues to
+  label browser smoke as unrecorded.
+- All ten implementations were already included in v8.80.0. Public-IP apply,
+  the first intent-bound executor, XO/vSphere backup adapters and provider
+  canaries remain outstanding; qualification starts no external work.
+
+## [8.85.0] - 2026-08-01 — Operational qualification for ten Partial features
+
+This exact batch advances B015, B045, B090, B096, B104, B118, B119, B120,
+B121 and B123 without relabeling missing browser/provider evidence as success.
+
+- A new provider-scoped read-only qualification endpoint reports required
+  schema, bounded runtime counts, evidence freshness, release inclusion and a
+  deterministic SHA-256 evidence hash for the exact ten IDs.
+- B015 evidence is scoped to the current user; provider/global scopes are
+  explicit for storage and network records.
+- B045 and B104 expose their execute-flag boundary. Both stay default-off unless
+  the operator explicitly enables the existing mutation flags.
+- B096 exposes whether approved read/write data-plane adapter methods exist,
+  without resolving credentials or opening a repository connection.
+- Passive/simulation network records retain their persisted zero-call and
+  zero-mutation counters; absence remains `not_observed`.
+- Provider Security renders the ten results and the still-open browser, adapter,
+  collector, active-runner and disposable-canary requirements.
+- The implementations were already included in v8.80.0. v8.85.0 removes the
+  stale release-inclusion blocker but keeps every genuinely unproven item
+  `Partial`; the qualification itself starts no provider/network/external work.
+
+## [8.84.0] - 2026-07-31 — Privileged access and compliance controls
+
+This exact B169–B178 batch adds security/compliance depth and exercises the
+already-shipped B176–B178 governance foundation without relabeling it as new.
+
+- Local-TOTP step-up creates rate-limited, TTL-bound JIT requests. Independent
+  typed approval precedes a requester-only, one-time token claim; only token
+  hashes are stored and validation is permission/user/scope/endpoint bound.
+- Break-glass adds ticketed four-eyes approval, one-time activation, expiry,
+  closure and independent review. It creates a scoped authorization envelope,
+  not a standalone account, and retains notification references without
+  claiming that an external notification was sent.
+- Console sessions record metadata by default. Screen policy requires explicit
+  consent plus a policy reference, but no screen/audio content recorder or
+  media storage ships in this release.
+- Resource classification projects public/internal/confidential/restricted
+  backup, evidence-export and telemetry policies. Compliance JSON/PDF exports
+  apply that redaction, persist no raw bundle and use installation-local
+  HMAC-SHA256 rather than claiming public attestation.
+- Organization-authored CIS/NIST/ISO27001/SOC2/DORA references attach to one
+  evidence subject without duplicating findings; they are not normative
+  mappings or a certification verdict.
+- Ransomware posture scores immutability, isolation, restore-test and credential-
+  separation evidence with explicit confidence and starts no provider action.
+- Migration 169 adds privileged/compliance evidence tables, session-recording
+  metadata and ten permissions integrated with custom roles and provider-bound
+  scope hierarchy. The entire surface is default-off behind
+  `DD_PROVIDER_PRIVILEGED_COMPLIANCE=false`.
+
+## [8.83.0] - 2026-07-31 — Provider security lifecycle
+
+This batch advances exactly B159–B168 while keeping native collection and
+provider remediation fail-closed by default.
+
+- Security assurance adds closed-schema VM virtual-hardware, transport,
+  certificate-trust and exposure evidence. HTTP, weak TLS, password SSH,
+  legacy APIs and invalid/expiring trust evidence fail deterministically;
+  absence remains `unknown`.
+- Exact version/build correlation reuses the official lifecycle advisory
+  catalog, maps CVE/severity/fixed-version evidence and combines severity with
+  workload criticality/reachability for bounded patch priority and confidence.
+- Security finding exceptions require owner, reason, future expiry and
+  compensating controls; revocation/expiry returns the finding to open.
+- Remediation plans bind steps, downtime, dependencies, dry-run evidence,
+  rollback and current finding hash. A separately gated low-risk executor
+  requires typed confirmation, mutation-free canary, injected adapter,
+  post-read verification and rollback on failure; no production adapter ships.
+- Certificate ownership and the latest approval-bound renewal state are shown
+  without PEM data; existing maintenance, approval, durable-operation and
+  rollback requirements remain unchanged.
+- Manifest/job/template validation rejects inline secret fields, secret-named
+  values, private keys and credential URLs. Only document/reference hashes and
+  bounded finding paths are persisted; invalid submissions return HTTP 422.
+- Migration 168 adds findings, exceptions, remediation plans/runs and secret
+  validation evidence. The surface is default-off behind
+  `DD_PROVIDER_SECURITY_LIFECYCLE=false`; mutation additionally requires
+  `DD_PROVIDER_SECURITY_LOW_RISK_REMEDIATION=false` to be explicitly enabled.
+
+## [8.82.0] - 2026-07-31 — DR objectives and provider security assurance
+
+This batch advances exactly B149–B158 without introducing an implicit scan,
+KMS connection, DR action or VM creation.
+
+- DR protection-group overview now aggregates workload RPO/RTO outcomes and
+  exposes non-disruptive test readiness for bubble-network mappings, temporary
+  clones, source isolation and ownership-marked cleanup.
+- Versioned provider packs normalize imported/provider-reported Secure Boot,
+  vTPM, encryption, confidential-compute and host-hardening evidence. Missing
+  facts remain `unknown` rather than compliant.
+- The key-provider registry accepts only credential-free HTTPS origins and
+  symbolic secret-manager references; public responses never return the
+  reference and the registry performs no network calls.
+- Confidential-VM compatibility preflights require fresh image/host evidence,
+  encrypted storage/migration and a healthy key provider, then persist an
+  expiring hash-bound plan with `executionAuthorized:false`.
+- New API/UI surfaces are endpoint-scoped, admin-gated for writes, escaped and
+  audited without credential/native-reference disclosure.
+- Migration 167 adds security evidence, key-provider and confidential-plan
+  tables; assurance remains default-off behind
+  `DD_PROVIDER_SECURITY_ASSURANCE=false`.
+
+## [8.81.0] - 2026-07-31 — Restore and replication depth control plane
+
+This batch advances exactly B139–B148 while keeping every unproven provider
+mutation fail-closed and default-off.
+
+- Automated restore drills and their scheduler remain task-backed on Proxmox;
+  success-only cleanup preserves every failed or ambiguous target.
+- A bounded file-level recovery catalog adds escaped search/browse UI, absolute
+  POSIX path validation, checksums and manifest hashes without storing or
+  serving backup file content.
+- File download/restore, instant/live, differential and cross-site copy
+  preflights persist deterministic plan hashes, capability evidence, isolated
+  target constraints, resumability, checksum and bandwidth intent.
+- Draft VM replication policies support async, near-sync and sync contracts,
+  RPO/schedule/bandwidth settings, canonical workload/storage mappings and
+  versioned hashes. Enabling provider mutation is explicitly rejected.
+- Existing DR protection groups, dependency-ordered failover/failback plans and
+  immutable rehearsals are integrated into the same UI/API evidence boundary.
+- Migration 166 adds file catalogs, advanced restore plans and replication
+  policy tables; the feature remains gated by
+  `DD_PROVIDER_RESTORE_REPLICATION_DEPTH=false`.
+
+## [8.80.0] - 2026-07-31 — Virtualization operations and backup control plane
+
+- Saved VM inventory views persist per-user filters, columns and sorting with
+  ownership, bounded count and default-view enforcement.
+- Scheduled VM actions add cron/timezone/blackout-aware start, shutdown,
+  reboot and snapshot dispatch through the durable operation core.
+- Snapshot-growth and repository-health monitors add freshness, transition
+  alerts, bounded DNS/TCP probes and explicit opt-in data-plane contracts.
+- Dependency, reachability, MTU, bond/LAG, load-balancer, public-IP and network
+  intent surfaces add evidence-bound analysis and planning. VM NIC link control
+  is guarded, provider-specific and disabled by default.
+- Governance, Self-Service, Identity & Policy and Edge use consistent tabs,
+  keyboard behavior and accessible modal handling across the new controls.
+- The virtualization research registry now validates all 450 feature IDs in CI
+  and distinguishes local, partial and provider-backed delivery evidence.
+
+- Added a persistent, hash-bound execution contract for B129–B138 covering
+  provider/full/incremental intent, dynamic site/owner/classification scope,
+  explicit exclusions and consistency hook references.
+- Backup admission now applies the strictest global, provider, host, repository
+  and policy concurrency limit. Site/link/timezone bandwidth windows are
+  selected deterministically before child dispatch.
+- Encryption algorithm/key-reference/key-age, immutable lock duration and
+  provider/metadata/checksum/chain integrity requirements are evaluated
+  fail-closed. Evidence is hashed and deduplicated per execution item.
+- GFS remains advisory and every execution still records
+  `retentionMutationAuthorized:false`. Proxmox is the only real executor;
+  XO and vSphere remain blocked until a task-aware job or data mover exists.
+
+## [8.79.0] - 2026-07-30 — Guarded network and segmentation control plane
+
+This batch closes B102, B103 and B105–B117 with a unified network lifecycle,
+security-policy and flow-evidence surface.
+
+- NIC attach plans validate network, model, VLAN, MAC, IP/gateway family and
+  provider capability. Detach plans block management, last-interface, boot and
+  guest-dependent removal while retaining explicit address-reservation intent.
+- Immutable mapping profiles support migration/clone reuse. VLAN, trunk, QinQ
+  and VXLAN plans validate tag membership, VNI, transport and MTU headroom;
+  tenant VPC/subnet changes add ownership, version and blast-radius gates.
+- IPAM, DHCP and DNS lifecycle plans bind resource ownership, expected version,
+  conflict state and A/AAAA family. Signed marketplace connector plans are
+  reused without starting an external call.
+- Security-group observations retain rules, attachments, effective-policy hash
+  and drift. Change plans require atomic capability, management-access checks
+  and rollback steps and reference the established guarded firewall executor.
+- NSX, Flow, PVE, Neutron and OVN evidence shares one fail-closed model.
+  Microsegmentation supports app/tag/identity selectors, staged enforcement,
+  expiring exceptions and two approvals. Five-tuple flow batches are bounded,
+  retained and payload-free.
+
+## [8.78.0] - 2026-07-30 — Advanced storage control plane
+
+This batch closes B082–B084, B087–B089, B091–B095 and B097–B100 with a
+unified, evidence-bound storage surface.
+
+- Format conversion plans bind source/output digests, read-only source,
+  capacity, tool evidence and post-conversion checks across VMDK, VHDX, QCOW2,
+  RAW and VHD. No disk conversion or provider mutation starts implicitly.
+- Policy inventory and assignment plans expose compliance, compatibility,
+  capacity, downtime and semantic before/after evidence. Latency heatmaps and
+  multipath observations correlate bounded samples and fail closed on unknowns.
+- Orphan cleanup requires age, ownership, attachment, dependency and recovery
+  evidence before quarantine; QoS and tiering plans model capability, limits,
+  latency, resilience, cost and policy without applying a change.
+- The object-storage registry accepts HTTPS origins and secret-manager
+  references only. Ceph, Longhorn, vSAN, S2D and AOS adapters normalize
+  capacity, component, resync, replication and fault-domain health.
+- Storage change plans bind diff, blast radius, downtime, prechecks and
+  rollback. Existing guarded vSphere consolidation and opaque shared-disk
+  topology flows are reused. Governance displays all 15 capabilities and a
+  hash-bound ledger with zero implicit execution.
+
+## [8.77.0] - 2026-07-30 — Evidence-bound recovery and lifecycle closure
+
+This batch closes B064, B065, B068, B070–B075 and B077–B081 by reconciling the shipped
+maintenance, placement/HA and volume workflows with the research backlog and
+by completing the recovery start-order visualizer.
+
+- Host evacuation already provides capacity-aware waves, health gates,
+  pause/resume and explicit stop/defer/approval policy for workloads that
+  cannot migrate.
+- HA policy, affinity and rebalance changes remain capability-gated,
+  diff/approval/idempotency controlled and post-verified. Placement scoring and
+  dry-run recommendations remain explainable and bounded.
+- HA readiness now produces an opaque recovery dependency DAG. Explicit edges
+  are topologically layered; Xen start order/delay and then provider priority
+  groups are evidence-labeled fallbacks.
+- Cycles, missing dependencies and incomplete duration evidence stay visible.
+  The UI never invents start/readiness times and the visualizer performs no
+  provider mutation.
+- Volume create/attach, detach-retain, owned-volume delete guard, grow-only
+  expansion and datastore movement retain their live revalidation, durable
+  operation and post-read verification contracts.
+
+## [8.76.0] - 2026-07-30 — Governed content and VM mobility
+
+This batch closes B041–B044, B047, B049 and B053–B061 by completing the
+content lifecycle and the advanced controls around existing VM migration and
+console executors.
+
+- Digest-bound image replication plans include capacity/format blockers,
+  concurrency, progress and post-copy verification. Template releases are
+  immutable semantic versions with owners, compatibility and deprecation.
+- Dev→test→prod promotion enforces adjacent stages, checks and two approvals
+  for production. VM leases bind expiry, stop/delete intent, owner notification
+  and bounded extensions without silently scheduling destructive work.
+- Graceful shutdown/reboot/script plans require a healthy official guest agent;
+  scripts are immutable reference+digest contracts, never raw content. Console
+  profiles cover noVNC, WebMKS, serial and native SPICE handoff behind the
+  existing single-use, audited protected gateway.
+- Live, cold and storage migration plans bind state, capability, capacity,
+  preflight and post-validation to the existing durable `vm.migrate` engine.
+  Cross-pool/provider workflows add validated maps and evidence boundaries.
+- Bandwidth windows and weighted fair queues govern transfer pressure. Cancel
+  and force-complete require valid native state/evidence, while stage-aware
+  rollback remains a compensated, hash-bound plan with no implicit execution.
+
+## [8.75.0] - 2026-07-30 — Platform inventory and image lifecycle contracts
+
+This batch closes B011, B012, B016, B017, B019, B020, B023, B034, B036,
+B038, B039 and B040 with provider-neutral, versioned control-plane contracts.
+
+- Common provider events are cursor-aware and deduplicated; incremental
+  inventory requires exact cursor continuity and accepts hash-only deltas.
+- Dynamic collections use bounded safe selectors. Typed metadata schemas and
+  values use optimistic concurrency, while relationship graphs expose bounded
+  downstream impact without provider reads.
+- Hygiene scans identify missing owners, detached disks and unused images but
+  never clean them up. Rate-budget observations derive adaptive per-endpoint
+  concurrency from remaining quota, latency, errors and current in-flight work.
+- Linked-clone plans validate provider capability, shared backing, chain depth,
+  storage and source state. Immutable semantic guest profiles keep only secret
+  references, and flavor mapping ranks compatible provider offerings.
+- The cross-provider image library groups digest replicas and provenance.
+  Resumable import sessions retain chunk/checksum receipts and conversion plans
+  only: zero image bytes and zero implicit provider/data-plane execution.
+
+## [8.74.0] - 2026-07-30 — Guarded migration factory
+
+The B416–B425 batch adds an evidence-first cross-provider migration factory
+without exposing an implicit conversion, clone, cutover or rollback executor.
+
+- Assessment normalizes source VM/dependency inventory, blockers and scored
+  target candidates. Network and storage mapping bind VLAN/CIDR/security/IP and
+  datastore/policy/tier/capacity translations into immutable plans.
+- A fixed, resource-bounded subprocess validates qemu-img/virt-v2v conversion
+  contracts using formats and input/output checksums only; it receives no path,
+  performs no disk I/O and has no network or inherited environment.
+- Isolated test-clone evidence gates dependency-aware waves with downtime and
+  business-window context. Cutover requires a validated clone, ready wave,
+  approval hash and exact typed confirmation.
+- Rollback plans restore source network/power and isolate/clean the target only
+  through a separately approved external adapter; this release provides no
+  execute endpoint. Evidence reports bind hashes, timings, tests and approvals.
+- The legacy Xen assistant inventories xm/xl/Xend evidence, highlights offline
+  capture/passthrough blockers and guides migration toward XAPI/XCP-ng.
+
+## [8.73.0] - 2026-07-30 — Signed connector marketplace and integration contracts
+
+The B406–B415 batch completes the provider connector backlog with a signed,
+secret-free and fail-closed integration control plane.
+
+- Connector marketplace manifests require canonical Ed25519 signatures and
+  declare publisher, support level, domains, products and exact HTTPS hosts.
+- CMDB plans enforce per-field ownership; ITSM links gate on approval and exact
+  change windows. SIEM events use a normalized schema and never store raw
+  payloads; secret managers retain provider-native references only.
+- IPAM/DNS lifecycle is ownership/version-bound and plan-only. Backup adapters
+  normalize job/recovery visibility, while monitoring targets require explicit
+  metric/label allowlists and a host signed into the manifest.
+- Kafka/NATS/AMQP/SNS/SQS publications are schema-bound plans. Generic OpenAPI
+  operations require exact host, method, path, risk and query/body allowlists;
+  prototypes return hashes and start no network call.
+- A dedicated governance tab exposes signed entries and the integration
+  contract ledger. Every accepted write is audited and external mutations,
+  publishes and network requests remain zero in this surface.
+
+## [8.72.0] - 2026-07-30 — Advanced performance and signed provider plugins
+
+The B396–B405 batch completes performance evidence and establishes a
+fail-closed provider plugin trust boundary.
+
+- VM compatibility scans compare recorded CPU, memory and device requirements
+  with target host/provider-version evidence without starting migration or
+  placement.
+- Controlled benchmark baselines retain normalized hardware metadata. Noisy
+  neighbor analysis correlates colocated pressure without claiming causation;
+  direction-aware before/after comparison detects regressions.
+- Batch, database, VDI, latency and AI profiles define desired thresholds and
+  evaluate the latest workload sample without provider reconfiguration.
+- Provider plugin manifests require valid canonical Ed25519 signatures and a
+  known API/schema/capability contract. Explicit risk-aware permission consent
+  is bound to the exact manifest hash and gates enablement.
+- The sandbox probe runs only a fixed JSON-RPC worker in a separate process with
+  memory/time/output limits, empty environment, no plugin code/path/network
+  endpoint and no returned payload. Health stores aggregates only.
+
+## [8.71.0] - 2026-07-30 — Hardware devices and accelerator control plane
+
+The B386–B395 batch extends hardware evidence into scarce-device inventory,
+telemetry, allocation planning and scheduling without exposing provider apply.
+
+- Memory-tier snapshots report DRAM/NVMe capacity, use, hit rate and workload
+  impact. PCI inventory reports IOMMU groups, reset/ACS readiness, PF/VF
+  relationships, drivers, health and current mappings.
+- PCI passthrough and SR-IOV actions create host-scoped, conflict-checked plans
+  with NUMA, migration and HA constraints. Releasing a plan never detaches a
+  provider device.
+- GPU inventory includes model, memory, driver, health, MIG capability and
+  licensed vGPU profile capacity. Full-GPU and vGPU plans prevent conflicting
+  or over-capacity assignments.
+- Bounded GPU metrics retain SM, memory, encoder, ECC and throttle evidence.
+  Host-scoped accelerator reservations reject overlapping full/profile windows
+  and expire automatically.
+- USB ownership, mappings and mobility caveats are visible in the operator UI.
+  Credential-shaped fields and oversized evidence fail closed; all writes are
+  audited and provider mutations remain zero.
+
+## [8.70.0] - 2026-07-30 — Hardware and performance evidence foundation
+
+The B376–B385 batch adds normalized hardware and workload-placement evidence
+without exposing a provider hardware mutation path.
+
+- Host snapshots normalize CPU/NUMA/RAM/NIC/HBA/disk/GPU/BMC models,
+  provenance and compatibility tags while rejecting credential-shaped fields.
+- Cluster comparison shows common/extra/missing hardware tags and CPU features.
+  CPU policy editing stores a provider-aware, hash-bound desired plan and
+  blockers; it has no apply endpoint.
+- NUMA topology joins CPUs, memory, devices and workload placement. VM fit
+  analysis warns on oversized layouts, cross-node pinning and remote devices.
+- CPU pinning inventory finds dedicated/shared conflicts. The real-time profile
+  evaluates complete pinning, isolated CPUs, hugepages, latency sensitivity,
+  ballooning and swap.
+- Hugepage and memory dashboards expose per-node capacity, fragmentation,
+  reserved/active/balloon/swap state and overcommit risk without remediation.
+
+## [8.69.0] - 2026-07-30 — Accessible and explainable self-service experience
+
+The B366–B375 batch completes the self-service experience with bounded support,
+accessibility and privacy controls.
+
+- Project administrators can request time-bound quota increases through the
+  existing approval workflow. Approved limits become expiring grants.
+- Organization/project branding accepts only same-origin or HTTPS assets and
+  help links. Contextual documentation is provider-, version- and action-aware.
+- Guided troubleshooting persists a hash-bound redacted support bundle, an
+  evidence checklist and a read-only next safe test. Recommendations disclose
+  reason, evidence, confidence, impact and undo and remain advisory-only.
+- Keyboard VM operations, live regions, focus/contrast/motion rules and mobile
+  incident cards add safe acknowledge/pause actions without destructive mobile
+  defaults. CI gates the critical copy in all 11 bundled languages.
+- Product feedback is disabled by default. After explicit opt-in, only an
+  allowlisted local daily aggregate is retained; no telemetry is transmitted.
+
+## [8.67.0] - 2026-07-29 — Edge continuity and unified infrastructure experience
+
+The B346–B355 batch closes the edge backlog and starts the common operator
+experience with permission-filtered, evidence-aware views.
+
+- A disaster declaration freezes site mutations, signs an allowlisted local
+  assessment runbook and queues local/external notification references without
+  sending from the control plane. A different administrator must confirm the
+  site slug and attach evidence to release the freeze.
+- Offline backup seeds use signed, verified chunk manifests and monotonic,
+  replay-safe continuation checkpoints; transfer remains outside the API.
+  Fleet compliance exposes aggregate control states only and withholds source
+  evidence. Rack, power, network and storage topology visualizes placement risk
+  without changing placement.
+- Zero-touch enrollment returns a hardware-bound token once, verifies TPM and
+  device claims, rejects replay and requires independent approval of the public
+  certificate fingerprint. No private key is generated or returned.
+- The unified infrastructure home aggregates permitted endpoint health,
+  persisted VM inventory, recent container telemetry, Kubernetes topology
+  coverage, risks, rated cost and recent operations while marking unknown
+  evidence explicitly. Navigation is refined by healthy permitted endpoints.
+- DetailShell standardizes Overview, Actions, Tasks, Events and Audit tabs.
+  Action decisions explain capability, policy, state and permission blockers;
+  Activity Center adds persistent summaries, cancellation counts and canonical
+  operation/resource deep links.
+
+## [8.66.0] - 2026-07-29 — Edge sovereignty and resilient remote operations
+
+The B336–B345 batch extends disconnected sites with fail-closed data movement,
+short-lived local access and independently approved out-of-band recovery.
+
+- Per-site residency rules cover inventory, logs, metrics and backups. Every
+  evaluated destination is persisted, and synchronization plans are rejected
+  when any selected category falls outside its allowed jurisdiction.
+- Disconnected identity stores only assertion hashes, restricts normal and
+  emergency scopes/TTL and requires another administrator to activate an exact
+  signed grant. Site-local vault adapters retain references only; expiring
+  secret-resolution envelopes execute at the edge and never return a secret.
+- Single-node profiles expose lack of HA, require backup and maintenance-window
+  evidence and disable automatic upgrades. Quorum snapshots compute majority,
+  witness health and failure-domain risk; reservation assessments protect
+  system CPU, memory and storage without applying configuration.
+- Low-bandwidth console profiles prefer serial/text, adapt quality and force
+  clipboard/file transfer off. Remote-hands checklists are signed, expiring and
+  payload-bound to independent approval before local-operator readiness.
+- Redfish/IPMI inventory links a registered host to a local-vault credential
+  reference. Power recovery is blocked unless fencing, quorum, evacuation,
+  backup and identity safeguards pass, then emits a short-lived four-eyes JIT
+  envelope for an edge agent; the central service never calls the BMC.
+
+## [8.65.0] - 2026-07-29 — Edge and disconnected operations foundation
+
+The B326–B335 batch adds explicit edge-site state and bounded offline planning
+without turning disconnected evidence into implicit infrastructure execution.
+
+- Edge sites bind unique registered hosts to IANA timezone, region,
+  jurisdiction, local owner and trust roots. Connectivity policies distinguish
+  expected disconnects from outages and cached evidence is explicitly fresh,
+  stale or expired.
+- Offline mutation intents are HMAC-signed, expiring and action-allowlisted;
+  reconnect revalidation must cover every prerequisite before an intent becomes
+  agent-ready. The central service exposes no executor.
+- Replay-safe heartbeats use monotonic sequences. Store-and-forward batches
+  reject secrets, compress with deflate-raw, deduplicate by content identity and
+  prioritize inventory/events ahead of metrics/artifacts within a byte budget.
+- Local agent profiles restrict signed runbook envelopes to an allowlist.
+  Canary/stable/held update plans retain trusted offline bundle and rollback
+  evidence but expose no apply action.
+- Air-gap bootstrap and OCI/ISO/template/package/docs mirror manifests retain
+  digests, local references and external signature evidence, contain no private
+  keys and never download or sync implicitly.
+
+## [8.64.0] - 2026-07-29 — Unified Kubernetes application platform
+
+The B316–B325 batch closes the VM/container convergence group with common
+operational evidence, policy planning and application-level context.
+
+- A bounded topology graph connects namespaces, pods, VMs, Services, nodes,
+  PVCs/DataVolumes and Multus networks; normalized metrics attribute
+  virt-launcher usage to VMs and expose node contention.
+- ResourceQuota, NetworkPolicy, admission-controller and required-label
+  evidence share one policy view. Cluster version, nodes, addons, API groups
+  and OpenShift operators feed an explicit upgrade-readiness dashboard.
+- Flux/Argo-aware VM GitOps plans accept credential-free HTTPS sources, reject
+  inline secrets, compare live drift and stop after Kubernetes `dryRun=All`.
+  The five-policy VM admission library records evaluations but never enforces.
+- Curated AKS Arc, NKE, OpenShift, CloudStack CKS and Rancher workflows create
+  blocked local plans with required prechecks; no provider executor is exposed.
+- VM modernization maps, shared OCI/VM digest-SBOM-signature provenance and a
+  unified Compose/Kubernetes/KubeVirt application environment are persistent,
+  bounded and hash-idempotent without mutating providers or registries.
+
+## [8.63.0] - 2026-07-29 — KubeVirt storage and network convergence
+
+The B306–B315 batch adds CDI/template workflows and read-only storage, network
+and drain convergence evidence with guarded, independently approved creation.
+
+- DataVolume inventory normalizes HTTP, registry, PVC clone and upload sources,
+  storage, phase, progress and conditions. The creation wizard supports those
+  sources, HTTPS enforcement and optional SHA-256 provenance.
+- OpenShift templates, KubeVirt instancetypes and preferences expose explicit
+  API/RBAC coverage without returning parameter defaults. Template
+  instantiation validates namespace, storage classes and Multus attachments.
+- DataVolume and VM creation require a canonical plan, Kubernetes `dryRun=All`,
+  hash-bound approval by another administrator, typed confirmation, fresh
+  prerequisite validation, durable operation events and fingerprinted read-back.
+- Local migration policies capture bandwidth, concurrency and timeout intent
+  without applying cluster configuration. Node-drain evidence reports eviction
+  strategy and non-migratable blockers.
+- CSI snapshot classes/drivers/storage classes, Multus NAD/IPAM/interface
+  mappings, redacted NMState intent/health and VM Service/Route/Ingress exposure
+  are available as live evidence and explicit persisted snapshots.
+
+## [8.62.0] - 2026-07-29 — Sustainability and KubeVirt convergence
+
+The B296–B305 batch completes FinOps sustainability and starts the converged
+Kubernetes virtualization track without adding implicit provider actions.
+
+- Host/site power telemetry retains interval, watt/kWh, utilization, workload
+  counts, source and provenance; dashboards expose W/VM, W/workload, idle waste,
+  emissions and explicit carbon-factor coverage.
+- Time-bounded carbon factors require credential-free HTTPS sources.
+  Carbon-aware recommendations enforce capacity, residency, SLA and latency
+  blockers and never schedule or migrate a workload.
+- TCO scenarios compare CAPEX, recurring cost families, migration, residual
+  value, discount, escalation, carbon and risk without purchasing or billing.
+- KubeVirt discovery detects VM, CDI, migration, snapshot and console APIs and
+  reports RBAC-obscured evidence as unknown. VM/VMI/migration inventory is
+  normalized by namespace/name identity.
+- OpenShift Virtualization exposes projects, routes, operator conditions and
+  namespace RBAC; Harvester exposes images, networks, backups and Longhorn state.
+- The VM YAML editor accepts only `kubevirt.io/v1 VirtualMachine`, blocks
+  server-owned status, identity changes and inline secrets, and offers diff plus
+  `dryRun=All` validation with no Apply endpoint.
+
+## [8.61.0] - 2026-07-29 — FinOps optimization and capacity
+
+The B286–B295 batch adds evidence-backed alerts, savings guidance and capacity
+planning while keeping advisory actions separate from provider mutation.
+
+- Budget policies queue idempotent actual and full-period forecast threshold
+  notifications; scoped cost anomaly policies compare bounded rating-run
+  baselines with amount floors, direction and confidence.
+- Idle VM checks include CPU/RAM usage, uptime, owner, criticality and coverage;
+  oversized checks use peak evidence, observation length and headroom guards.
+- Stale disk, snapshot, IP, template and backup candidates honor attached,
+  protected, criticality and owner context and never auto-delete.
+- Off-hours policies support recommendation mode and a separate automation path
+  requiring a payload-bound approval, durable operation, typed confirmation and
+  registered apply/verify adapter.
+- Reserved-capacity options compare on-prem and cloud commitments; N+1
+  consolidation scenarios preserve HA reserve and utilization ceilings.
+- CPU/RAM/storage growth forecasts estimate purchase date/quantity, while
+  placement scoring explains cost, performance, resilience and compliance and
+  excludes blocked candidates without placing workloads.
+
+## [8.60.0] - 2026-07-29 — FinOps cost foundation
+
+The B276–B285 batch adds transparent, evidence-backed infrastructure rating
+without turning Docker Dash into a billing system.
+
+- An immutable resource ledger records allocated and used vCPU, RAM, storage,
+  GPU and IP/network quantities with bounded intervals and secret-free source
+  evidence.
+- Versioned private-cloud, provider/license, storage-tier, network/public-IP and
+  GPU-profile models keep effective windows, currency, confidence and HTTPS
+  provenance alongside their exact parameters.
+- Priority tag rules map provider metadata to business unit, application,
+  environment, cost center, project and site without changing provider tags.
+- Hash-idempotent showback ratings preserve quantity, rate, formula and
+  provenance per resource/model line and aggregate by category, cost center and
+  confidence.
+- Deterministic CSV/JSON chargeback exports are ready for billing or ERP import
+  while explicitly creating no billing transaction.
+- Monthly and quarterly budgets compare global or dimension-scoped rated spend;
+  threshold/forecast notifications remain isolated for B286.
+
+## [8.59.0] - 2026-07-29 — Lifecycle assurance, content and support
+
+The B266–B275 batch completes the lifecycle/configuration-management research
+track with adapter-gated mutation, redacted evidence and fail-closed validation.
+
+- Certificate renewal plans require an immutable approval, a separate
+  payload-bound approval and a durable operation before a registered adapter
+  can apply. Verification updates tracked evidence; failures follow the
+  approved rollback policy.
+- License entitlements store opaque contract references rather than license
+  keys, map capacity to resources and emit idempotent over-assignment,
+  over-usage, under-assignment, expiry and growth-forecast alerts.
+- Canonical host configuration snapshots redact secret-shaped values before
+  persistence. Human-readable diffs feed allow/deny/ignore drift policies and
+  versioned host-profile compliance with advisory remediation plans.
+- Air-gap mirrors accept only exact requested digests signed by configured
+  trust identities; unregistered adapters and unsigned content remain explicit
+  failures without direct-download fallback.
+- Multi-node support bundle adapters return bounded, redacted, checksummed and
+  expiring evidence. Post-upgrade validation packs cover API, HA, migration,
+  storage, network and VM checks and fail closed for required missing adapters.
+
+## [8.58.0] - 2026-07-29 — Lifecycle maintenance and compatibility operations
+
+The B256–B265 batch turns update readiness into explicit, staged operational
+plans while retaining strict separation from provider execution.
+
+- Maintenance windows model duration, owner/availability constraints,
+  evacuation readiness and deterministic waves, then require a plan-hash-bound
+  typed approval without starting provider work.
+- Rolling cluster, guest-tools and VM hardware campaigns enforce distinct
+  prechecks, ordered stages, verified durable-operation evidence and automatic
+  pause on failed work or post-verification.
+- Injectable live-patch adapters expose inventory/apply/verify evidence;
+  apply/verify needs a matching approval, durable operation and typed phrase,
+  while unavailable adapters remain explicitly unsupported.
+- Independent kernel, hypervisor, toolstack and vendor signals produce an
+  aggregate reboot-required result but never schedule a reboot.
+- Official HTTPS firmware catalogs and exact device/driver/firmware/host-release
+  compatibility records provide source-digested, non-remediating guidance.
+- Certificate inventory links endpoints, services or hosts to owners,
+  escalation and maintenance dependencies. Idempotent threshold reminders do
+  not renew certificates automatically.
+
+## [8.57.0] - 2026-07-29 — Automation operations and lifecycle readiness
+
+The B246–B255 batch closes the automation research section and starts the
+lifecycle/update track with durable, non-mutating operational evidence.
+
+- Calendar-aware workflow schedules validate five-field cron and IANA timezone,
+  suppress holidays/blackouts and deduplicate evidence per minute without
+  launching workflow execution.
+- Timed approvals can reassign, escalate and expire; decision requires the
+  reviewed payload hash and never implies apply.
+- Provider validate/simulate adapters persist bounded dry-run evidence and
+  return explicit `unsupported` when no native adapter exists.
+- The secret broker stores references only, fetches just in time, restricts
+  purpose/TTL, zeroes memory buffers and audits fingerprints without returning
+  secret values. Five curated workflow DAGs cover maintenance, migration,
+  backup, security and upgrade readiness.
+- Version/build inventory, GA/EOL/EOS support registry and vendor-supported
+  upgrade paths provide freshness, hop, prerequisite and blocker evidence.
+- Official-vendor catalog ingestion normalizes advisories without installing
+  packages. Expiring upgrade prechecks cover health, capacity, verified backup,
+  compatibility, free space and inventory freshness without starting upgrades.
+
+## [8.56.0] - 2026-07-29 — Infrastructure delivery and GitOps safeguards
+
+The B236–B245 batch extends infrastructure intent into guarded delivery
+workflows while reusing the existing Fleet GitOps and procedure engines.
+
+- Storage and network manifests require explicit ownership, owner and deletion
+  policy; deletion is possible only for managed, unprotected resources.
+- Live-resource import is deterministic and secret-free. Semantic drift honors
+  ownership boundaries and manual reconcile revalidates fresh state before
+  approval, retaining commit, diff and durable-operation evidence.
+- Optional scoped controllers evaluate stored observations on schedule, avoid
+  duplicate plans and pause when live state changes under a pending plan.
+- Pull-request previews retain policy, cost-confidence and blast-radius evidence;
+  Terraform imports and plan ingestion never take state ownership or persist
+  before/after values.
+- Terraform authorization records a typed, audited gate without launching an
+  external process; Ansible inventory exports symbolic secret references only.
+- Runbook webhooks use one-time-issued encrypted HMAC secrets, timestamp windows,
+  event allowlists and transactionally unique nonces to reject replay.
+
+## [8.55.0] - 2026-07-29 — Infrastructure automation foundations
+
+The B226–B235 batch joins the existing durable provider-operation engine to a
+secret-free, stale-safe infrastructure intent layer.
+
+- Versioned VM, host and fabric manifests normalize desired state, reject
+  secret-bearing fields and deduplicate identical revisions by SHA-256.
+- Immutable change plans classify create, update, delete, unchanged and blocked
+  paths; destructive storage/network changes remain blocked until B236.
+- Plan acceptance revalidates manifest revision, live-state hash, native
+  resource-version hash and expiry before recording reviewed intent.
+- Workflow DAGs validate dependencies and cycles, and expose deterministic
+  reverse-order compensation previews without executing provider mutations.
+- Accepted plans can link to the existing durable provider jobs while exposing
+  state, retry, idempotency, lock and native-task evidence without ciphertext.
+- Governance → Automation & IaC provides the complete admin-only control surface;
+  accepting a plan or previewing compensation schedules zero provider mutations.
+
+## [8.54.0] - 2026-07-29 — Advanced VM observability operations
+
+The B216–B225 market-backlog batch adds explainable operational controls on
+top of normalized VM telemetry. All assessments are bounded and advisory; no
+provider mutation or collection is inferred.
+
+- Dynamic baseline policies, multi-signal alert suppression and maintenance
+  windows retain evidence for every evaluation and suppression decision.
+- Capacity forecasts, incident triage and versioned runbook links turn metric
+  and event evidence into bounded operator guidance.
+- Explicit telemetry exports apply per-host privacy, residency and delivery
+  checks; retention requires a typed confirmation.
+- SLO reports calculate availability across their full window and exclude the
+  union of matching maintenance intervals without double-counting overlaps.
+- The Governance → Observability control surface exposes every policy and
+  evidence workflow; export delivery and retention purge remain separate,
+  explicitly confirmed operator actions.
+
+## [8.53.0] - 2026-07-29 — VM observability and event correlation
+
+The next ten market-backlog capabilities, B206–B215, turn the normalized VM
+telemetry foundation into bounded performance, event and correlation views.
+
+- VM performance comparison charts support up to ten resources, twelve metrics,
+  31 days, downsampling and normalized event annotations.
+- Contention, storage and network dashboards expose ready/steal/balloon/swap,
+  latency/IOPS/queue/resync and throughput/drop/error/flow/MTU evidence.
+- Six cursor/watch/webhook/poll event adapters normalize caller-supplied
+  observations and deduplicate them by native ID or a bounded fingerprint
+  window while retaining repeat counts.
+- Correlation and VM incident timelines combine normalized events, audit
+  changes, existing alerts and metric evidence.
+- Fabric topology edges produce bounded downstream impact overlays; multi-signal
+  rules combine metric, event and collection-state conditions with duration
+  evidence and create advisory, explainable alerts.
+
+## [8.52.0] - 2026-07-29 — Governance lifecycle and VM metrics foundation
+
+The next ten market-backlog controls, B196–B205, close the governance lifecycle
+wave and establish bounded, provider-aware VM telemetry.
+
+- Resource leases enforce maximum TTL, explicit renewal rights, renewal count
+  and cleanup ownership without deleting provider resources on expiry.
+- Production resource assignment can fail closed until owner, service and cost
+  center are complete; SoD reports include direct and team role bindings.
+- Access review campaigns recertify role/scope bindings and service accounts,
+  preserving evidence when a binding is expired or token revoked.
+- Tenant portability uses a size-bounded JSON export and SHA-256 checksum;
+  deletion requires suspension, cleared blockers, checksum and typed phrase.
+- A 13-series VM metrics schema normalizes PVE RRD, XAPI RRD, vSphere
+  performance, Prometheus and Azure Monitor payloads with units and provenance.
+- Per-resource freshness/errors, adaptive polling and cardinality budgets are
+  visible in the governance UI and exported as bounded Prometheus metrics.
+
+## [8.51.0] - 2026-07-29 — Compose mount and volume attribution
+
+Compose stack storage now accounts for Docker named volumes as well as image and
+writable-layer sizes, while keeping host-owned mounts explicitly separate.
+
+- Shared named volumes are deduplicated, show Docker-reported usage coverage,
+  and distinguish volumes managed by the stack from external or unknown ones.
+- Stack and service detail show bind-mount topology, including writable versus
+  read-only binds and tmpfs mounts, without scanning host filesystems.
+- Approximate persistent footprint includes named volume usage only when Docker
+  returned complete measurements; bind mounts, logs and build cache remain out
+  of scope and no Docker mutation is performed.
+
+## [8.50.0] - 2026-07-29 — Identity and policy governance
+
+The next ten market-backlog controls, B186–B195, extend projects with capacity,
+identity lifecycle and mutation governance.
+
+- Network/public-IP, snapshot/backup and GPU/device profiles use explicit soft/hard
+  quota accounting. Audited requests can add time-bound quota grants after one or
+  two distinct approvals.
+- Multiple OIDC/SAML-broker realms route login by email domain. SCIM 2.0 provisions
+  users and groups with scoped Bearer tokens, deactivates deleted users, invalidates
+  their sessions and never grants global admin through SCIM.
+- Short-lived service tokens are shown once, stored only as hashes, scope-checked,
+  rotatable and revocable. Signed OIDC/SPIFFE/cloud JWT assertions can exchange once
+  against pinned JWKs for workload tokens lasting at most one hour.
+- Policy approvals bind the canonical payload and action to distinct approvers and
+  consume the approval after a successful mutation. Blackout windows return HTTP 423;
+  permitted emergency overrides require a global admin, ticket and reason and are stored.
+- The new Identity & Policy page exposes the controls. Migration 125 is additive and
+  provider resources are never discovered, reserved or mutated by quota accounting.
+
+## [8.49.0] - 2026-07-29 — Scoped governance foundation
+
+Docker Dash now provides an additive governance control plane over its existing
+tenant model for B176–B185 from the virtualization market backlog.
+
+- A permission catalog, custom roles, hierarchical scopes and inherited
+  user/team bindings support delegated site administration without granting
+  global Docker Dash admin rights.
+- Projects include owners, members, active/suspended lifecycle, hashed expiring
+  invitations, transactional ownership transfer and explicit resource assignments.
+- CPU, memory and storage expose current usage plus soft warnings and hard
+  transactional limits. Accounting assignments never move or mutate provider resources.
+- The new Governance page and audited API are guarded by `DD_GOVERNANCE_ENABLED`.
+
+## [8.48.0] - 2026-07-29 — Compose stack storage footprint
+
+Compose stack details now show Docker-reported image and container filesystem
+sizes for every running or stopped service.
+
+- Per-container rows distinguish shared image size, writable-layer size and
+  root-filesystem size.
+- The stack summary deduplicates shared images and calculates approximate
+  footprint only when image and writable-layer coverage are complete.
+- Size accounting runs only when a stack detail is opened and explicitly
+  excludes volumes, logs and build cache; it performs no Docker mutation.
+
+## [8.47.0] - 2026-07-29 — Consolidated provider security evidence
+
+Provider Security Posture now begins with a compact summary of its existing
+capability, safeguard, gap, and freshness evidence.
+
+- The dashboard consumes the response already collected by the page.
+- It is not a security rating, compliance certification, or vulnerability assessment.
+- No additional provider, guest, network, or configuration operation is performed.
+
+## [8.46.0] - 2026-07-29 — Posture evidence freshness
+
+Provider Security Posture now displays the returned capability-evidence timestamp,
+age band, and existing probe state.
+
+- Freshness measures returned evidence only; it is not a provider health guarantee.
+- The page does not force a refresh or run an additional endpoint probe.
+
+## [8.45.0] - 2026-07-29 — Unsupported capability gap register
+
+Provider Security Posture now lists the provider SDK capabilities explicitly
+declared unsupported, with their contract reasons.
+
+- Unsupported is presented as a safety boundary, not as an error to bypass.
+- No provider CLI or compatibility fallback is invoked.
+
+## [8.44.0] - 2026-07-29 — Workload lifecycle guardrail evidence
+
+Provider Security Posture now summarizes declared safeguards for VM power,
+snapshots, clone/create, and guest customization capabilities.
+
+- It is contract evidence, not proof that a lifecycle operation is safe or complete.
+- No VM power, snapshot, clone, create, or guest customization action is submitted.
+
+## [8.43.0] - 2026-07-29 — Network-change guardrail evidence
+
+Provider Security Posture now summarizes declared network/NIC evidence bounds
+and the released state of common network mutation.
+
+- It does not test routing, VLAN safety, firewall policy, or isolation.
+- It changes no NIC, bridge, VLAN, security group, or network configuration.
+
+## [8.42.0] - 2026-07-29 — Native task assurance evidence
+
+Provider Security Posture now summarizes declared durable-task, cancellation,
+post-verification, and revalidation properties for eligible provider operations.
+
+- It is not a task history, task health, or reconciliation result.
+- No task is started, cancelled, retried, or modified.
+
+## [8.41.0] - 2026-07-29 — Console exposure safeguard evidence
+
+Provider Security Posture now shows declared console-gateway safeguards: single-use
+tokens, server-side credential isolation, and emergency lock support.
+
+- The data is contract evidence, not a live-console, TLS, or endpoint-hardening test.
+- It does not open a console or expose provider credentials.
+
+## [8.40.0] - 2026-07-29 — Backup and recovery control evidence
+
+Provider Security Posture now surfaces declared backup, restore, drill, and
+replication guardrails such as durable tasks, create-only restore, isolation,
+and disabled retention mutation.
+
+- The summary is not backup integrity, restore success, RPO/RTO, or drill proof.
+- It introduces no backup, restore, replication, retention, or provider mutation.
+
+## [8.39.0] - 2026-07-29 — Privileged-operation safeguard evidence
+
+Provider Security Posture now summarizes declared four-eyes approval, typed
+confirmation, revalidation, post-verification, and durable-task controls.
+
+- These are contract declarations, not proof that a control has been exercised.
+- The view never authorizes, submits, or changes a privileged operation.
+
+## [8.38.0] - 2026-07-29 — Provider capability coverage posture
+
+Provider Security Posture introduces a read-only summary of the provider SDK's
+declared supported, conditional, and unsupported capabilities.
+
+- It is contract coverage, not a security scan, authorization audit, or
+  compliance certification.
+- Conditional capability remains explicitly conditional per provider/resource.
+- No endpoint, credential, TLS, certificate, port, guest, or provider setting is read or changed beyond existing SDK evidence.
+
+## [8.37.0] - 2026-07-28 — Consolidated network evidence dashboard
+
+Network Posture now begins with a compact, read-only dashboard that brings the
+already-collected network, attachment, address, readiness and endpoint evidence
+into one operational view.
+
+- **No new collection.** The dashboard consumes the same responses shown below;
+  it does not add a provider, guest or network call.
+- **Unavailable stays visible.** If a supporting evidence source cannot be
+  collected, the summary counts it as unavailable rather than inferring a result.
+- **No expanded claim.** The summary does not prove connectivity, isolation,
+  routing, policy enforcement or IP ownership, and has no mutation path.
+
+## [8.36.0] - 2026-07-28 — Read-only provider endpoint transport posture
+
+Network Posture now surfaces the most recent provider capability-probe outcome
+as endpoint transport evidence.
+
+- **No additional scan.** The feature consumes existing probe evidence only; it
+  performs no new TLS, port, certificate or transport probe.
+- **Bounded meaning.** Reachability is not proof of authentication,
+  authorization, provider feature availability or workload connectivity.
+- **No mutation.** It changes no endpoint, credential, certificate, firewall or
+  network configuration.
+
+## [8.35.0] - 2026-07-28 — Read-only guest network readiness evidence
+
+Network Posture now summarizes per-VM guest network readiness evidence from
+provider-visible NIC configuration, link state and reported addresses.
+
+- **Fail-closed status.** A VM is ready only when a connected NIC and an
+  observed address are both present; missing evidence remains unknown.
+- **Bounded coverage.** Reads are limited to 100 VMs with four concurrent NIC
+  inventory requests; unreadable hardware remains visible as partial coverage.
+- **No active validation.** It does not run guest commands, ping, DNS, routing
+  or firewall tests, and makes no network mutation or remediation.
+
+## [8.34.0] - 2026-07-28 — Read-only IP conflict candidates
+
+Network Posture can now identify repeated provider-visible IP observations as
+conflict candidates.
+
+- **Candidates, not conclusions.** NAT, stale guest-tools data, multi-homing
+  and provider semantics may explain a repeated address; no result confirms an
+  IP conflict.
+- **Existing evidence only.** It reuses bounded VM IP observations and preserves
+  partial-inventory coverage rather than performing active discovery.
+- **No remediation.** No ARP/ping, DHCP/IPAM lookup, guest command, provider
+  mutation, CLI fallback or automatic response is performed.
+
+## [8.33.0] - 2026-07-28 — Read-only VM IP address evidence
+
+Network Posture now summarizes provider-visible and guest-tools-reported VM IP
+address evidence on supported endpoints.
+
+- **Bounded observations.** Inventory reads at most 100 VMs and returns at most
+  1,000 observed addresses with IPv4/IPv6 counts and explicit partial coverage.
+- **Honest evidence.** Missing values do not mean a VM has no address; observed
+  values do not prove DHCP ownership, IPAM allocation or reachability.
+- **No active discovery.** No packet, DHCP/IPAM lookup, guest command, network
+  mutation, CLI fallback or remediation is performed.
+
+## [8.32.0] - 2026-07-28 — Read-only network configuration drift baseline
+
+Network Posture can now retain an operator-created baseline of normalized
+provider-visible network configuration and compare later observations to it.
+
+- **Explicit baseline.** Until an authorized host administrator saves a
+  baseline, the result is `unbaselined`, never falsely in sync.
+- **Bounded normalized diff.** The comparison covers provider-visible
+  accessibility, managed state, bridge, VLAN and MTU; only change types and
+  fields are returned.
+- **No reconciliation.** Saving or comparing a baseline changes no provider
+  network configuration, sends no traffic and has no CLI fallback or remediation.
+
+## [8.31.0] - 2026-07-28 — Read-only virtual-network placement evidence
+
+Network Posture now evaluates provider-visible virtual networks as placement
+evidence. A candidate requires positive provider evidence for both accessibility
+and managed state; negative evidence blocks it and missing evidence remains
+unknown.
+
+- **Fail-closed advisory.** No missing management or accessibility value can
+  become a candidate.
+- **No implied fabric guarantee.** A candidate is not a reservation and does
+  not prove routing, firewall policy, capacity, connectivity or isolation.
+- **No control-plane effect.** The host-view advisory changes no NIC, switch or
+  VLAN, sends no traffic, and has no CLI fallback or remediation path.
+
+## [8.30.0] - 2026-07-28 — Read-only VM network attachment topology
+
+Network Posture now includes a bounded view of the provider-visible
+VM-to-virtual-network attachments on supported vSphere and Xen endpoints.
+
+- **Opaque, host-scoped grouping.** Provider-native network identifiers are
+  never returned. Attachments are grouped under an opaque host-scoped identity
+  with the reported display name, bridge and VLAN evidence where available.
+- **Partial evidence remains explicit.** At most 100 VMs are read with bounded
+  concurrency. Truncation and unreadable NIC inventories are reported as partial
+  coverage rather than hidden or treated as no attachments.
+- **No fabric inference or control.** The result does not prove connectivity,
+  routing, firewall policy or tenant isolation. It changes no NIC, switch or
+  VLAN, sends no traffic and has no provider CLI fallback or remediation path.
+
+## [8.29.0] - 2026-07-28 — Read-only virtual network policy advisory
+
+Network Posture can now assess provider-visible virtual networks against an
+operator-selected, temporary policy: provider-reported accessibility is always
+required, with optional minimum MTU, managed-network and VLAN-evidence criteria.
+
+- **Honest compliance states.** Networks are marked compliant, noncompliant or
+  unknown. Missing required accessibility, VLAN or MTU evidence remains unknown
+  and never appears compliant.
+- **Bounded provider-neutral evidence.** The host-view endpoint evaluates at
+  most 500 canonical network records and returns only neutral signals. Support
+  is conditional for vSphere and Xen; Proxmox remains explicitly unsupported.
+- **No control-plane effect.** The policy is transient and read-only: it is not
+  saved, applied or remediated, sends no traffic, and does not reserve network
+  capacity or use provider CLI fallback.
+
+## [8.28.0] - 2026-07-28 — Read-only virtual network posture
+
+Docker Dash now has a **Network Posture** page for vSphere and supported Xen
+management planes. It is a read-only, provider-neutral inventory projection;
+Proxmox remains explicitly unsupported until a common bridge-inventory contract
+is available.
+
+- **Live configuration evidence.** Each virtual network shows provider-reported
+  accessibility, management state, bridge/backing, VLAN ID and MTU where the
+  provider exposes them.
+- **Honest limits.** A bridge, VLAN or MTU is configuration evidence only — it
+  is not presented as proof of routing, firewall policy, tenant isolation or
+  end-to-end connectivity. Missing values remain unknown.
+- **No lockout risk.** The host-view endpoint performs no network mutation,
+  test traffic, provider CLI fallback or automatic remediation.
+
+## [8.27.0] - 2026-07-28 — Read-only storage policy compliance
+
+Storage Posture now evaluates provider-visible storage inventory against a
+temporary policy selected by the operator: accessible storage is always
+required, with optional minimum free capacity and shared-storage requirements.
+The policy is a view-only assessment and is never persisted or applied.
+
+- **Compliance without fiction.** Each target is shown as compliant,
+  noncompliant or unknown. A negative provider observation fails the policy;
+  missing accessibility, capacity or shared-state evidence remains unknown and
+  cannot appear compliant.
+- **Scoped, bounded evidence.** The host-view endpoint reads at most 500
+  normalized targets and permits a minimum-free requirement from 0 to 64 TiB.
+  It returns only canonical storage identities and provider-neutral signals.
+- **No hidden control plane.** This release reserves no capacity, changes no
+  storage policy, writes no test data and performs no provider CLI fallback.
+  A later disk operation must still perform its own authorized fresh preflight.
+
+## [8.26.0] - 2026-07-28 — Read-only virtual-disk placement advisory
+
+Storage Posture can now evaluate provider-visible storage targets for a proposed
+virtual-disk size. It applies the same capacity headroom used by the guarded
+disk lifecycle preflight, but remains a read-only, point-in-time advisory.
+
+- **Explicit target evidence.** Operators choose a disk size in GiB and receive
+  candidate, blocked and needs-evidence results based on reported accessibility,
+  maintenance state, free capacity and, for Proxmox, VM image-content support.
+- **No implied reservation.** A target becomes a candidate only when every
+  applicable check is positively evidenced. Missing telemetry remains unknown;
+  capacity is never reserved and a real disk operation must revalidate before
+  provider I/O.
+- **Bounded and portable.** The endpoint is host-view scoped, returns canonical
+  storage identities and is capability-gated for Proxmox VE, vSphere / ESXi and
+  supported Xen management planes. It performs no storage mutation, test write,
+  shell fallback or automatic placement.
+
+## [8.25.0] - 2026-07-28 — Read-only shared virtual-disk topology
+
+Storage Posture now includes a bounded, provider-neutral view of virtual-disk
+backings observed across VMs on Proxmox VE, vSphere / ESXi and supported Xen
+management planes. It is evidence only: the release creates no disks, changes
+no attachment, and enables no storage mutation.
+
+- **Opaque cross-VM correlation.** A host-scoped opaque backing ID correlates
+  observed VM disk attachments without returning VMDK, VDI, volume or provider
+  path references to the browser.
+- **No unsafe inference.** A backing is shown as *confirmed shared* only when
+  every observed attachment is explicitly declared shared by the provider.
+  Any other common backing is a *needs review* observation, never a claim that
+  a multi-writer configuration is valid or safe.
+- **Bounded, honest coverage.** Collection is limited to 100 selected VMs with
+  four concurrent read-only hardware calls. Truncation, unreadable VM hardware
+  or unavailable disk inventory is shown as partial evidence rather than being
+  silently ignored. Native identifiers, guest changes, test writes, repair,
+  policy/QoS changes and automation remain out of scope.
+
+## [8.24.0] - 2026-07-28 — Guarded vSphere snapshot consolidation
+
+Docker Dash can now submit VMware vSphere snapshot disk consolidation only when the
+VM's live runtime explicitly reports that it is needed. This is a separate opt-in
+from regular snapshots: `DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION=true` is required in
+addition to the existing snapshot gate.
+
+- **Evidence before I/O.** Consolidation is offered only for vSphere VMs whose fresh
+  `runtime.consolidationNeeded` value is true. A false or missing observation blocks
+  preview and worker execution; Proxmox and Xen providers remain unsupported.
+- **Durable and verified.** The action uses `ConsolidateVMDisks_Task`, a hash-bound
+  preflight, exact typed VM-name confirmation, admin plus host-operate access, a
+  per-VM lock and non-idempotent operation handling. Success requires both native
+  task completion and a fresh runtime observation that consolidation is no longer needed.
+- **No automation implied.** The release does not delete snapshots, schedule or bulk
+  consolidate workloads, execute guest commands, alter datastore policy/QoS or use a
+  provider CLI fallback. Operators retain explicit control over a potentially I/O-heavy task.
+
+## [8.23.0] - 2026-07-28 — Provider storage posture baseline
+
+Docker Dash now has a provider-neutral **Storage Posture** page for Proxmox VE,
+vSphere / ESXi and supported Xen management planes. It is a read-only assessment
+under the existing Provider SDK v2 contract; no storage policy or volume mutation
+is enabled by this release.
+
+- **Live, bounded evidence.** Each storage target shows provider-reported accessibility,
+  maintenance state, capacity, used/free bytes, virtual allocation where available,
+  type/content and shared-storage evidence. Inaccessible storage and >=95% observed
+  utilization are critical; maintenance, 85–<95% utilization and observed overcommit
+  are warnings.
+- **Honest coverage.** Policy, QoS and multipath capability evidence is shown alongside
+  every result. Missing or unsupported QoS/multipath, Ceph, Longhorn, vSAN, S2D and
+  appliance telemetry is explicitly unknown — it is never presented as healthy.
+- **Safe foundation.** The new host-view endpoint uses canonical IDs and the existing
+  normalized inventory. It performs no write/test-write, no shell fallback, no capacity
+  reservation and no snapshot consolidation. Those workflows remain separately planned
+  and must revalidate at execution time.
+
+## [8.22.0] - 2026-07-28 — Provider VM disk lifecycle
+
+Docker Dash can now perform a guarded lifecycle for virtual disks on supported Proxmox VE QEMU,
+vSphere/vCenter and XenAPI endpoints. The feature is intentionally opt-in through
+`DD_PROVIDER_VM_DISK_LIFECYCLE=true`; permanent backing deletion has a second, separate
+`DD_PROVIDER_VM_DISK_DELETE=true` gate.
+
+- **Plan before mutation.** The VM Disks tab provides a fresh, hash-bound preflight for creating and
+  attaching a managed disk, safely detaching while retaining data, grow-only resize, and supported
+  storage moves. Each action rechecks capability, current VM/disk state, safety evidence, permissions
+  and operation conflicts immediately before it is queued.
+- **Durable, auditable operations.** Disk actions use the provider-operation engine with VM/storage
+  locks, idempotency keys, native task reconciliation, positive post-read verification and a
+  hash-chained audit event. Native provider identifiers remain encrypted server-side.
+- **Ownership-protected cleanup.** Docker Dash records ownership only after it creates and verifies a
+  backing. It never adopts foreign disks. Permanent deletion applies solely to a positively detached,
+  Docker Dash-managed volume, and additionally requires no snapshot dependency, a recent verified
+  recovery point and the exact typed confirmation.
+- **Deliberately excluded.** Shrink, guest partition/filesystem changes, implicit format conversion,
+  foreign-volume cleanup and unverified provider transports remain fail-closed. Xen Orchestra REST,
+  raw Xen and Proxmox LXC disk mutations are not released in this slice.
+
 ## [8.21.4] - 2026-07-25 — Fix Linux image startup from Windows-authored releases
 
 - **Fixed Docker restart loop.** `entrypoint.sh` was stored with CRLF line endings, so Linux read its

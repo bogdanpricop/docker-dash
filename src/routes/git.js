@@ -8,11 +8,33 @@ const auditService = require('../services/audit');
 const { requireAuth, requireRole, writeable } = require('../middleware/auth');
 const { getClientIp } = require('../utils/helpers');
 const { rateLimit } = require('../middleware/rateLimit');
+const hostPermissions = require('../services/host-permissions');
 
 const router = Router();
 
 // Stricter rate limit for git deploy/push operations (5 per minute per IP)
 const gitDeployLimiter = rateLimit(5, 60 * 1000);
+const ACCESS_RANK = { view: 1, operate: 2, admin: 3 };
+
+function _isAdmin(user) {
+  return user?.role === 'admin' || (Array.isArray(user?.roles) && user.roles.includes('admin'));
+}
+
+function _hasStackAccess(user, stack, required = 'view') {
+  if (_isAdmin(user)) return true;
+  const targetIds = stack?.target_host_ids?.length
+    ? stack.target_host_ids : [stack?.host_id ?? 0];
+  return targetIds.every(hostId => {
+    const permission = hostPermissions.resolveEffectivePermission(user?.id, hostId, false);
+    return (ACCESS_RANK[permission] || 0) >= ACCESS_RANK[required];
+  });
+}
+
+function _assertStackAccess(req, stack, required = 'view') {
+  if (!_hasStackAccess(req.user, stack, required)) {
+    throw Object.assign(new Error(`Insufficient ${required} access on one or more deployment targets`), { status: 403 });
+  }
+}
 
 // ─── Git Credentials CRUD ──────────────────────────────
 
@@ -84,14 +106,19 @@ router.delete('/credentials/:id', requireAuth, requireRole('admin'), writeable, 
 
 router.get('/stacks', requireAuth, (req, res) => {
   const hostId = req.query.hostId !== undefined ? parseInt(req.query.hostId) : undefined;
-  res.json(gitService.listStacks(hostId));
+  res.json(gitService.listStacks(hostId).filter(stack => _hasStackAccess(req.user, stack, 'view')));
 });
 
 // Drift summary for ALL git stacks (for list-page badges). MUST be registered
 // before '/stacks/:id' or Express matches "drift" as the :id param.
 router.get('/stacks/drift', requireAuth, (req, res) => {
   try {
-    res.json(gitDrift.getAllStoredDrift());
+    const allowedIds = new Set(gitService.listStacks()
+      .filter(stack => _hasStackAccess(req.user, stack, 'view'))
+      .map(stack => String(stack.id)));
+    const visible = Object.fromEntries(Object.entries(gitDrift.getAllStoredDrift())
+      .filter(([stackId]) => allowedIds.has(String(stackId))));
+    res.json(visible);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -100,7 +127,19 @@ router.get('/stacks/drift', requireAuth, (req, res) => {
 router.get('/stacks/:id', requireAuth, (req, res) => {
   const stack = gitService.getStack(parseInt(req.params.id));
   if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+  if (!_hasStackAccess(req.user, stack, 'view')) return res.status(403).json({ error: 'Insufficient view access on one or more deployment targets' });
   res.json(stack);
+});
+
+router.get('/stacks/:id/file', requireAuth, (req, res) => {
+  try {
+    const stack = gitService.getStack(parseInt(req.params.id));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
+    res.json(gitService.readComposeFile(parseInt(req.params.id), req.query.path));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 router.post('/stacks', requireAuth, requireRole('admin'), writeable, (req, res) => {
@@ -110,7 +149,10 @@ router.post('/stacks', requireAuth, requireRole('admin'), writeable, (req, res) 
       userId: req.user.id, username: req.user.username,
       action: 'git_stack_create', targetType: 'git_stack',
       targetId: String(result.id),
-      details: JSON.stringify({ stack_name: req.body.stack_name, repo_url: req.body.repo_url, branch: req.body.branch }),
+      details: JSON.stringify({
+        stack_name: req.body.stack_name, repo_url: req.body.repo_url,
+        branch: req.body.branch, target_host_ids: req.body.target_host_ids,
+      }),
       ip: getClientIp(req),
     });
     res.status(201).json(result);
@@ -125,11 +167,34 @@ router.put('/stacks/:id', requireAuth, requireRole('admin'), writeable, (req, re
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'git_stack_update', targetType: 'git_stack',
-      targetId: req.params.id, ip: getClientIp(req),
+      targetId: req.params.id,
+      details: req.body.target_host_ids ? JSON.stringify({ target_host_ids: req.body.target_host_ids }) : null,
+      ip: getClientIp(req),
     });
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+router.put('/stacks/:id/rollout', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const stack = gitService.getStack(id);
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'admin');
+    gitService.updateStack(id, { rollout_policy: req.body });
+    const updated = gitService.getStack(id);
+    auditService.log({
+      userId: req.user.id, username: req.user.username,
+      action: 'git_stack_rollout_policy_update', targetType: 'git_stack',
+      targetId: req.params.id,
+      details: JSON.stringify({ rollout_policy: updated.rollout_policy }),
+      ip: getClientIp(req),
+    });
+    res.json({ ok: true, rollout_policy: updated.rollout_policy });
+  } catch (err) {
+    res.status(err.status || 400).json({ error: err.message });
   }
 });
 
@@ -157,7 +222,14 @@ router.delete('/stacks/:id', requireAuth, requireRole('admin'), writeable, async
 
 router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'), writeable, gitDeployLimiter, async (req, res) => {
   try {
-    await gitService.deployStack(parseInt(req.params.id), { force: req.body?.force });
+    const stackId = parseInt(req.params.id);
+    const stack = gitService.getStack(stackId);
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'operate');
+    const deploymentId = await gitService.deployStack(stackId, {
+      force: req.body?.force,
+      actor: { userId: req.user.id, username: req.user.username, ip: getClientIp(req) },
+    });
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'git_stack_deploy', targetType: 'git_stack',
@@ -165,7 +237,10 @@ router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'),
       details: JSON.stringify({ trigger: 'manual' }),
       ip: getClientIp(req),
     });
-    res.json({ ok: true, message: 'Deployment started', stack_id: parseInt(req.params.id) });
+    res.json({
+      ok: true, message: 'Deployment started', stack_id: parseInt(req.params.id),
+      deployment_id: deploymentId,
+    });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
   }
@@ -173,7 +248,11 @@ router.post('/stacks/:id/deploy', requireAuth, requireRole('admin', 'operator'),
 
 router.post('/stacks/:id/check', requireAuth, async (req, res) => {
   try {
-    const result = await gitService.checkForUpdates(parseInt(req.params.id));
+    const stackId = parseInt(req.params.id);
+    const stack = gitService.getStack(stackId);
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
+    const result = await gitService.checkForUpdates(stackId);
     res.json(result);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -189,9 +268,10 @@ router.get('/stacks/:id/drift', requireAuth, (req, res) => {
   try {
     const stack = gitService.getStack(parseInt(req.params.id));
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
     res.json(gitDrift.getStoredDrift(parseInt(req.params.id)));
   } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Internal server error' });
   }
 });
 
@@ -200,6 +280,7 @@ router.post('/stacks/:id/drift-scan', requireAuth, requireRole('admin', 'operato
   try {
     const stack = gitService.getStack(parseInt(req.params.id));
     if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'operate');
     const result = await gitDrift.scanAndStore(stack, dockerService);
     res.json(result);
   } catch (err) {
@@ -213,6 +294,9 @@ router.get('/stacks/:id/deployments', requireAuth, (req, res) => {
   try {
     // v8.7.33 — cap user-supplied limit at 200 (deployments are richer rows
     // than typical paginated lists; lower cap matches the practical UI use).
+    const stack = gitService.getStack(parseInt(req.params.id));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
     const { page, limit, status, trigger_type } = req.query;
     const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 200);
     const result = gitService.listDeployments(parseInt(req.params.id), {
@@ -295,7 +379,11 @@ router.put('/stacks/:id/auto-deploy', requireAuth, requireRole('admin'), writeab
 
 router.get('/stacks/:id/diff', requireAuth, async (req, res) => {
   try {
-    const result = await gitService.getRepoDiff(parseInt(req.params.id));
+    const stackId = parseInt(req.params.id);
+    const stack = gitService.getStack(stackId);
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'view');
+    const result = await gitService.getRepoDiff(stackId);
     res.json(result);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -304,7 +392,13 @@ router.get('/stacks/:id/diff', requireAuth, async (req, res) => {
 
 router.post('/stacks/:id/rollback/:deploymentId', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
   try {
-    await gitService.rollbackStack(parseInt(req.params.id), parseInt(req.params.deploymentId));
+    const stack = gitService.getStack(parseInt(req.params.id));
+    if (!stack) return res.status(404).json({ error: 'Git stack not found' });
+    _assertStackAccess(req, stack, 'operate');
+    await gitService.rollbackStack(
+      parseInt(req.params.id), parseInt(req.params.deploymentId),
+      { userId: req.user.id, username: req.user.username, ip: getClientIp(req) }
+    );
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'git_stack_rollback', targetType: 'git_stack',
