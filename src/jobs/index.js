@@ -212,6 +212,68 @@ function vacuumDatabase() {
   }
 }
 
+/**
+ * Rotate `predeploy-*.db` snapshots in /data/backups, keeping the newest N.
+ *
+ * The deploy sequence copies the live DB to `predeploy-<version>-<sha>.db`
+ * before swapping the image. Nothing ever removed them: the public VPS had
+ * accumulated 18 copies of a ~450MB database (11GB) growing by one snapshot
+ * per release. Retention lives here rather than in the deploy script so it
+ * applies to every target — local, LAN, VPS — no matter who wrote the file.
+ *
+ * Sorted by mtime, NOT by name: `predeploy-v8.9.0-…` sorts after
+ * `predeploy-v8.10.0-…` lexicographically, and the trailing commit sha is
+ * not ordered at all. `backup-daily-*` keeps its own name-sorted rotation
+ * inside the daily-backup job — those filenames are ISO dates, so there the
+ * two orderings agree.
+ */
+function pruneBackupSnapshots(prefix = 'predeploy-', keep = 3) {
+  const path = require('path');
+  const backupDir = path.join(process.env.DATA_DIR || '/data', 'backups');
+
+  try {
+    if (!fs.existsSync(backupDir)) return;
+
+    const snapshots = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith(prefix) && (f.endsWith('.db') || f.endsWith('.db.enc')))
+      .map(f => {
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(path.join(backupDir, f)).mtimeMs; } catch { /* vanished mid-scan */ }
+        return { f, mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    let files = 0;
+    let bytes = 0;
+
+    for (const { f } of snapshots.slice(keep)) {
+      // A snapshot taken while the source DB was in WAL mode leaves -wal/-shm
+      // companions behind; unlink them with their parent or they orphan.
+      for (const name of [f, `${f}-wal`, `${f}-shm`]) {
+        const p = path.join(backupDir, name);
+        try {
+          const size = fs.statSync(p).size;
+          fs.unlinkSync(p);
+          files++;
+          bytes += size;
+        } catch { /* companion absent — expected for most snapshots */ }
+      }
+      log.debug('Pruned backup snapshot', { file: f });
+    }
+
+    if (files > 0) {
+      log.info('Backup snapshots pruned', {
+        prefix,
+        keep,
+        files,
+        freedMB: `${(bytes / 1024 / 1024).toFixed(1)} MB`,
+      });
+    }
+  } catch (e) {
+    log.error('Backup snapshot prune failed', e.message);
+  }
+}
+
 function startAll() {
   // Stats collection already handled by statsService.start() (setInterval)
   // We handle aggregation and cleanup via cron
@@ -246,6 +308,14 @@ function startAll() {
 
   // VACUUM database to reclaim disk space — daily at 03:30
   jobs.push(cron.schedule('30 3 * * *', _m('vacuum-db', vacuumDatabase)));
+
+  // Rotate predeploy DB snapshots — daily at 03:45 (after VACUUM), plus once
+  // shortly after boot: a deploy writes its snapshot immediately before
+  // restarting this container, so startup is exactly when the previous
+  // generation needs trimming.
+  jobs.push(cron.schedule('45 3 * * *', _m('backup-prune', () => pruneBackupSnapshots())));
+  _backupPruneTimer = setTimeout(_m('backup-prune-boot', () => pruneBackupSnapshots()), 30000);
+  if (_backupPruneTimer.unref) _backupPruneTimer.unref();
 
   // Tracked certificates — re-parse + status check daily at 07:30
   jobs.push(cron.schedule('30 7 * * *', _m('certificate-scan', () => {
@@ -776,6 +846,7 @@ function cronMatchesNow(cronExpr, now) {
 let _alertInterval = null;
 let _securityAlertInterval = null;
 let _sandboxInterval = null;
+let _backupPruneTimer = null;
 
 function stopAll() {
   jobs.forEach(j => j.stop());
@@ -783,7 +854,8 @@ function stopAll() {
   if (_alertInterval) { clearInterval(_alertInterval); _alertInterval = null; }
   if (_securityAlertInterval) { clearInterval(_securityAlertInterval); _securityAlertInterval = null; }
   if (_sandboxInterval) { clearInterval(_sandboxInterval); _sandboxInterval = null; }
+  if (_backupPruneTimer) { clearTimeout(_backupPruneTimer); _backupPruneTimer = null; }
   try { require('../services/gitPolling').stopAll(); } catch { /* git polling may not be initialized */ }
 }
 
-module.exports = { startAll, stopAll };
+module.exports = { startAll, stopAll, pruneBackupSnapshots };
