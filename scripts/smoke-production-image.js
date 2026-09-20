@@ -55,7 +55,7 @@ async function main() {
     console.log('PASS production startup, native SQLite migrations and HTTP health');
     await execute(container, `const cp=require('child_process'),assert=require('assert/strict');
       assert.match(cp.execFileSync('docker',['--version'],{encoding:'utf8',timeout:10000}),/Docker version 29\\.7\\.2\\+dd\\.1,/);
-      assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.5.1');
+      assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.5.1+dd.1');
       const input='services:\\n  smoke:\\n    image: alpine:3.24\\n    read_only: true\\n    cap_drop: [ALL]\\n';
       const result=JSON.parse(cp.execFileSync('docker',['compose','-f','-','config','--format','json'],{input,encoding:'utf8',timeout:10000}));
       assert.equal(result.services.smoke.read_only,true);assert.deepEqual(result.services.smoke.cap_drop,['ALL']);

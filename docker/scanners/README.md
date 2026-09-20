@@ -7,6 +7,15 @@ the final image vulnerability gate remains mandatory.
 The same artifact stage also builds Docker CLI 29.7.2 from its verified upstream
 module with Go 1.27.1 and pinned gRPC/telemetry updates. Its version is
 `29.7.2+dd.1`; `build-cli.sh` records its source and binary provenance separately.
+Compose 5.5.1 is also rebuilt from its verified upstream module, without source
+patches, using containerd 2.3.5 and x/crypto 0.57.0. Its version is `5.5.1+dd.1`.
+`build-compose.sh` runs the upstream Compose lifecycle/API/CLI unit tests with
+the selected dependencies before compiling with the official `e2e` build tag.
+Its binary is installed at `/usr/libexec/docker/cli-plugins/docker-compose`;
+source checksum, dependency graph, build module, license and binary hash live
+alongside the other provenance files. `scripts/smoke-compose-image.js` validates
+an immutable image against a real Docker daemon in a disposable Compose project.
+This update does not constitute an exception for scanner findings in other tools.
 Application versions carry `+dd.1`. Grype's embedded Go metadata retains the
 upstream module version/checksum and actual dependency versions. Trivy discloses
 an explicit local source replacement; its verified upstream identity and patched

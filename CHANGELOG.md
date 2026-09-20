@@ -2,6 +2,18 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.4] - 2026-09-20 — Remote secret execution and Compose dependencies
+
+- Transfer remote secret scripts in memory, verify the complete payload before
+  execution and preserve SSH host verification. Record intent before execution;
+  expose uncertain outcomes without leaking script contents into audit logs.
+- Rebuild verified Compose 5.5.1 source with containerd 2.3.5, x/crypto 0.57.0
+  and Go 1.27.1. Include source and binary provenance; run upstream lifecycle,
+  API and CLI tests during the build. The plugin identifies as `5.5.1+dd.1`.
+- Add a disposable Docker Compose lifecycle smoke test for the exact image.
+  Remaining image findings and infrastructure risks remain tracked by the audit;
+  this checkpoint does not disable vulnerability admission gates.
+
 ## [8.96.3] - 2026-09-20 — Recoverable container replacement
 
 - Retain the original container through create/start/health verification and the

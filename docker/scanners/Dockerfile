@@ -11,6 +11,10 @@ WORKDIR /src/docker-cli
 COPY docker/scanners/docker-cli/go.mod docker/scanners/docker-cli/go.sum ./
 COPY docker/scanners/build-cli.sh /build-cli.sh
 RUN sh /build-cli.sh
+WORKDIR /src/compose
+COPY docker/scanners/compose/go.mod docker/scanners/compose/go.sum ./
+COPY docker/scanners/build-compose.sh /build-compose.sh
+RUN sh /build-compose.sh
 
 FROM scratch AS artifacts
 COPY --from=build /out/ /

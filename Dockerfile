@@ -11,6 +11,10 @@ WORKDIR /src/docker-cli
 COPY docker/scanners/docker-cli/go.mod docker/scanners/docker-cli/go.sum ./
 COPY docker/scanners/build-cli.sh /build-cli.sh
 RUN sh /build-cli.sh
+WORKDIR /src/compose
+COPY docker/scanners/compose/go.mod docker/scanners/compose/go.sum ./
+COPY docker/scanners/build-compose.sh /build-compose.sh
+RUN sh /build-compose.sh
 
 
 ### Base ###
@@ -32,21 +36,9 @@ RUN apk add --no-cache tini curl git openssh-client openssl
 COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker
 COPY docker/scanners/docker-cli.LICENSE /usr/share/licenses/docker-cli/LICENSE
 
-# Alpine's Compose 5.1.4 embeds vulnerable Go dependencies. Use the verified
-# upstream 5.5.1 release; hashes are the official GitHub release asset digests.
-ARG COMPOSE_VERSION=5.5.1
-RUN case "$(apk --print-arch)" in \
-      x86_64) compose_arch=x86_64; compose_sha=db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576 ;; \
-      aarch64) compose_arch=aarch64; compose_sha=732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7 ;; \
-      *) echo 'Unsupported Compose architecture' >&2; exit 1 ;; \
-    esac && \
-    mkdir -p /usr/libexec/docker/cli-plugins && \
-    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-      --connect-timeout 15 --max-time 180 \
-      "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" \
-      --output /usr/libexec/docker/cli-plugins/docker-compose && \
-    echo "${compose_sha}  /usr/libexec/docker/cli-plugins/docker-compose" | sha256sum -c - && \
-    chmod 0755 /usr/libexec/docker/cli-plugins/docker-compose
+# Verified upstream Compose 5.5.1 source with patched containerd dependencies.
+# Build provenance is included with the other security rebuilds below.
+COPY --from=scanner-build /out/docker-compose /usr/libexec/docker/cli-plugins/docker-compose
 
 # Verified source builds with pinned dependency security fixes and provenance.
 COPY --from=scanner-build /out/trivy /out/grype /usr/local/bin/
