@@ -10,6 +10,8 @@ All notable changes to Docker Dash are documented here.
 - Use stable quota scopes across resource URLs and route casing. The API quota
   is shared across its mounted routes. Return 503 before protected work when
   Redis fails, is full or cannot confirm a quota within three seconds.
+- Keep exact GET/HEAD health probes outside the API quota so traffic limits
+  cannot mark a healthy instance unavailable; health-prefix lookalikes remain limited.
 - Renew Redis leadership only after an atomic owner comparison; expire stale
   local roles, bound requests and prevent late callbacks from restoring a
   stopped coordinator. Configure Redis not to evict the active lease.

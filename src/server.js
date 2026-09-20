@@ -149,6 +149,9 @@ app.use((req, res, next) => {
 const { rateLimit } = require('./middleware/rateLimit');
 const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs, 'api');
 
+// Exact GET/HEAD health route precedes quotas; prefix lookalikes remain limited.
+app.get('/api/health', require('./routes/health'));
+
 // Git webhook receiver — public, no auth, separate rate limit
 const webhookReceiverLimiter = rateLimit(30, 60 * 1000, 'webhook-receiver');
 app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));

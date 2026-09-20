@@ -23,7 +23,7 @@ async function execute(container, code, env = [], throughEntrypoint = false) {
     sink.on('error', reject); stream.on('error', reject); stream.on('end', resolve);
     docker.modem.demuxStream(stream, sink, sink);
   });
-  assert.equal((await command.inspect()).ExitCode, 0, 'Production smoke command failed');
+  assert.equal((await command.inspect()).ExitCode, 0, 'Production smoke command failed: ' + output.slice(-8192));
   return output.trim();
 }
 
@@ -63,6 +63,8 @@ async function main() {
         const blocked=await fetch('http://127.0.0.1:8101/api/networks/nonexistent');
         assert.equal(blocked.status,429);assert.equal(blocked.headers.get('x-ratelimit-remaining'),'0');
         assert.equal((await fetch('http://127.0.0.1:8101/api/health')).status,200);
+        assert.equal((await fetch('http://127.0.0.1:8101/API/HEALTH/?probe=1',{method:'HEAD'})).status,200);
+        assert.equal((await fetch('http://127.0.0.1:8101/api/health/details')).status,429);
       })().catch(error=>{console.error(error);process.exitCode=1;});`);
     console.log('PASS built HTTP server shares API quota across paths/case while health remains available');
     await execute(container, `const cp=require('child_process'),assert=require('assert/strict');
