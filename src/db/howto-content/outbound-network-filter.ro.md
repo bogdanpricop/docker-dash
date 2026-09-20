@@ -12,6 +12,14 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 </ul>
 <p>Outbound Filter autorizeaza conexiunile IPv4 TCP care trec prin proxy, per container sau stack. Firewall-ul curent exclude DNS, loopback si destinatiile RFC1918; IPv6 si traficul non-TCP nu sunt acoperite. Nu este o izolare completa de retea. Protectia metadata din proxy nu dovedeste blocarea tuturor cailor alternative.</p>
 
+<h2>Configuratia obligatorie a capabilitatilor</h2>
+<p>Docker acorda NET_RAW implicit. Socket-urile packet pot ocoli firewall-ul IP OUTPUT, deci aplicarea filtrului si autorizarea proxy cer eliminarea explicita a capabilitatii:</p>
+<pre><code>services:
+  workload:
+    cap_drop: [NET_RAW]</code></pre>
+<p>Eliminarea ALL indeplineste aceeasi cerinta. Scoate NET_RAW/ALL din cap_add, recreeaza aplicatia, apoi aplica politica pe ID-ul actual al containerului. Un utilizator non-root nu inlocuieste eliminarea explicita a capabilitatii. Docker Dash nu recreeaza automat aplicatiile pentru aceasta schimbare.</p>
+<p>Filtrele vechi pot fi inspectate si eliminate. Statusul raporteaza safeToFilter: false si safetyError daca tinta pastreaza NET_RAW; prezenta unei tabele nftables nu dovedeste filtrarea sigura. Dupa upgrade, conexiunile proxy noi ale acestor tinte sunt refuzate pana la eliminarea capabilitatii. IPv6, traficul non-TCP si exceptiile pentru retele private raman in afara acoperirii curente.</p>
+
 <h2>Aplicarea regulilor si recuperarea unui esec</h2>
 <p>Tabela IPv4 a fiecarui container este inlocuita intr-o singura tranzactie nftables. Regulile invalide pastreaza tabela anterioara. Un stack este actualizat secvential: toate tintele sunt rezervate si politicile salvate inaintea primei modificari; la esec, tintele deja incercate sunt restaurate din acele copii. Nu exista o tranzactie atomica intre toate containerele. Contoarele si conexiunile active nu sunt restaurate.</p>
 <p>API-ul raporteaza rezultatele reale ale restaurarii. Daca recuperarea sau curatarea nu poate fi confirmata, pastreaza helper-ul <code>dd-egress-lock-&lt;id-complet-container&gt;</code> si incearca sa il opreasca. Fisierul sau <code>/tmp/dd-before.nft</code> contine politica anterioara; un fisier gol inseamna ca tabela nu exista. Rezervarea impiedica suprascrierea dovezilor printr-o operatie noua. Nu sterge automat helper-ele si nu forta repetarea prin alta unealta.</p>
@@ -25,7 +33,7 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 <p>Trei piese mobile:</p>
 <ol>
   <li><strong>Sidecar</strong> (<code>docker-dash-egress-filter</code>, Go, imagine ~2MB): ascultă pe port 29193, peek TLS SNI sau HTTP Host la fiecare conexiune, verifică allowlist-ul, forward sau reset. Fără decriptare TLS.</li>
-  <li><strong>Runner</strong> (în Docker Dash): rulează un helper container efemer <code>alpine/nftables</code> cu <code>NET_ADMIN</code> care instalează reguli nftables în netns-ul containerului țintă, redirectând tot TCP-ul non-DNS/non-RFC1918 către sidecar.</li>
+  <li><strong>Runner</strong> (în Docker Dash): rulează un helper container efemer <code>docker-dash-egress-helper:local</code> cu <code>NET_ADMIN</code> care instalează reguli nftables în netns-ul containerului țintă, redirectând tot TCP-ul non-DNS/non-RFC1918 către sidecar.</li>
   <li><strong>DB + UI</strong>: config policy, ingest block log, apply/unapply per policy via REST.</li>
 </ol>
 

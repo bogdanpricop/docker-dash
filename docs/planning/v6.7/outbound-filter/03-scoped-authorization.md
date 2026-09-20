@@ -31,7 +31,10 @@ Source identity relies on a trusted Docker bridge preserving peer IPs. This is
 not cryptographic workload attestation. Host administrators, privileged peers,
 ARP/source spoofing and externally NATed shared sources require network isolation
 or host anti-spoofing controls. Containers with namespace-changing capabilities
-are refused. The resolver is scoped to one Docker host, never a union of hosts.
+are refused. Targets must explicitly drop NET_RAW (or ALL) and must not add it
+back: Docker grants it by default, and AF_PACKET bypasses IP OUTPUT chains.
+See [the real-kernel capability audit](../../../audits/2026-09-20-egress-net-raw.md).
+The resolver is scoped to one Docker host, never a union of hosts.
 Use one app/sidecar authorization domain per host. Remote socket volume transport
 is not provided by this change.
 

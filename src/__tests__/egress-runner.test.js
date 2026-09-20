@@ -5,8 +5,6 @@ process.env.APP_ENV = 'test';
 process.env.APP_SECRET = 'egress-runner-test-secret';
 process.env.DB_PATH = ':memory:';
 jest.mock('../services/docker', () => ({ getDocker: jest.fn() }));
-jest.mock('../services/egress-filter', () => ({ canApplyFilter: jest.fn(info =>
-  info.HostConfig.Privileged || info.HostConfig.NetworkMode === 'host' ? { ok: false, reason: 'Unsafe namespace' } : { ok: true }) }));
 const dockerService = require('../services/docker');
 const runner = require('../services/egress-runner');
 const nft = require('../services/egress-nft');
@@ -23,7 +21,7 @@ beforeEach(() => {
   process.env.DD_EGRESS_SIDECAR_ENDPOINT = '172.17.0.99:29193';
   targets = new Map([A, B, C].map((Id, n) => [Id, { Id, Name: '/service-' + n,
     State: { Running: true, StartedAt: '2026-09-20T00:00:00Z', Pid: n + 100 },
-    HostConfig: { NetworkMode: 'bridge' }, Config: { Labels: { 'com.docker.compose.project': 'test-stack' } } }]));
+    HostConfig: { NetworkMode: 'bridge', CapDrop: ['ALL'] }, Config: { Labels: { 'com.docker.compose.project': 'test-stack' } } }]));
   helpers = []; events = []; failure = () => false;
   docker = {
     getContainer: jest.fn(id => ({ inspect: jest.fn(async () => JSON.parse(JSON.stringify(targets.get([...targets.keys()].find(k => k.startsWith(id)))))) })),
@@ -54,6 +52,18 @@ describe('configuration and target validation', () => {
   test.each(['', 'host:80', '999.1.2.3:80', '1.2.3.4:0', '1.2.3.4:65536', '1.2.3.4:80:90', '1.2.3.4:80;id'])('rejects endpoint %s before creating helpers', async value => {
     process.env.DD_EGRESS_SIDECAR_ENDPOINT = value;
     await expect(runner.applyToContainer({ containerId: A })).rejects.toThrow(/DD_EGRESS_SIDECAR_ENDPOINT/);
+    expect(docker.createContainer).not.toHaveBeenCalled();
+  });
+  test('refuses NET_RAW before helper creation but permits status and cleanup', async () => {
+    targets.get(A).HostConfig.CapDrop = [];
+    await expect(runner.applyToContainer({ containerId: A })).rejects.toThrow(/NET_RAW/);
+    expect(docker.createContainer).not.toHaveBeenCalled();
+    await expect(runner.isApplied({ containerId: A })).resolves.toMatchObject({ safeToFilter: false, safetyError: expect.stringContaining('NET_RAW') });
+    await expect(runner.removeFromContainer({ containerId: A })).resolves.toMatchObject({ ok: true });
+  });
+  test('one unsafe stack member prevents every mutation', async () => {
+    targets.get(B).HostConfig.CapDrop = [];
+    await expect(runner.applyToStack({ stackName: 'test-stack' })).rejects.toThrow(/NET_RAW/);
     expect(docker.createContainer).not.toHaveBeenCalled();
   });
   test('validates direct script builder input too', () => {

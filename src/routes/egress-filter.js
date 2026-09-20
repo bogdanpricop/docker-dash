@@ -330,7 +330,8 @@ router.get('/policies/:id/status', requireAuth, requireRole('admin'), async (req
       containerId: policy.scopeKey,
       hostId: policy.hostId || 0,
     });
-    res.json({ policyId: id, scope: 'container', applied: result.applied, details: result.details });
+    res.json({ policyId: id, scope: 'container', applied: result.applied, details: result.details,
+      safeToFilter: result.safeToFilter, safetyError: result.safetyError });
   } catch (err) {
     log.error('status egress policy', err);
     res.status(500).json({ error: err.message || 'Internal server error' });

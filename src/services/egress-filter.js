@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const log = require('../utils/logger')('egress-filter');
 const { getDb } = require('../db');
+const { hasRawSocketCapability } = require('./egress-capabilities');
 
 // Where the sidecar reads its policy from. Both the app container and the
 // sidecar mount the same `docker-dash-egress` volume; this path is inside
@@ -93,7 +94,7 @@ const IMDS_ENDPOINTS = [
 
 const REFUSING_CAPS = new Set(['ALL', 'NET_ADMIN', 'SYS_ADMIN']);
 
-function canApplyFilter(inspect) {
+function canInspectFilter(inspect) {
   const hc = inspect.HostConfig || {};
 
   if (hc.Privileged === true) {
@@ -132,6 +133,19 @@ function canApplyFilter(inspect) {
     };
   }
 
+  return { ok: true };
+}
+
+// NET_RAW is in Docker's default capability set. AF_PACKET traffic bypasses
+// the IP input/output firewall chains; absence from CapAdd is not proof of safety.
+// Keep inspection/removal available for legacy targets, but never apply or
+// authorize their connections until NET_RAW is explicitly dropped.
+function canApplyFilter(inspect) {
+  const namespace = canInspectFilter(inspect);
+  if (!namespace.ok) return namespace;
+  if (hasRawSocketCapability(inspect.HostConfig)) {
+    return { ok: false, reason: 'Container can use NET_RAW packet sockets, which bypass the egress OUTPUT firewall. Explicitly drop NET_RAW (cap_drop: [NET_RAW] or [ALL]), remove any NET_RAW/ALL cap_add, recreate the container, then apply its policy again.' };
+  }
   return { ok: true };
 }
 
@@ -455,6 +469,7 @@ module.exports = {
   removePolicy,
   // Preconditions
   canApplyFilter,
+  canInspectFilter,
   // Block log
   getBlockLog,
   getBlockLogGrouped,

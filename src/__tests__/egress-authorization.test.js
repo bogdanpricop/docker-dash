@@ -14,7 +14,7 @@ const otherId = 'b'.repeat(64);
 const network = { Networks: { test: { IPAddress: '172.20.0.4' } } };
 function fixture() {
   const inspect = { Id: id, State: { Running: true }, NetworkSettings: network,
-    HostConfig: { NetworkMode: 'bridge', CapAdd: [] }, Config: { Labels: { 'com.docker.compose.project': 'project-a' } } };
+    HostConfig: { NetworkMode: 'bridge', CapAdd: [], CapDrop: ['ALL'] }, Config: { Labels: { 'com.docker.compose.project': 'project-a' } } };
   const docker = {
     listContainers: jest.fn().mockResolvedValue([{ Id: id, NetworkSettings: network }]),
     getContainer: jest.fn().mockReturnValue({ inspect: jest.fn().mockResolvedValue(inspect) }),
@@ -45,7 +45,7 @@ describe('live source-scoped egress authorization', () => {
     expect((await resolveSource('172.20.0.4', options)).policies).toHaveLength(1);
   });
 
-  test.each(['no match', 'duplicate IP', 'ambiguous short ID', 'replaced', 'stopped', 'address changed', 'privileged', 'no policy', 'invalid policy', 'too large'])('%s denies authorization', async scenario => {
+  test.each(['no match', 'duplicate IP', 'ambiguous short ID', 'replaced', 'stopped', 'address changed', 'privileged', 'default NET_RAW', 'added NET_RAW', 'no policy', 'invalid policy', 'too large'])('%s denies authorization', async scenario => {
     const { inspect, docker, policy, options } = fixture();
     if (scenario === 'no match') docker.listContainers.mockResolvedValue([]);
     if (scenario === 'duplicate IP') docker.listContainers.mockResolvedValue([{ Id: id, NetworkSettings: network }, { Id: otherId, NetworkSettings: network }]);
@@ -56,6 +56,8 @@ describe('live source-scoped egress authorization', () => {
     if (scenario === 'replaced') inspect.Id = otherId;
     if (scenario === 'stopped') inspect.State.Running = false;
     if (scenario === 'address changed') inspect.NetworkSettings = { Networks: {} };
+    if (scenario === 'default NET_RAW') inspect.HostConfig.CapDrop = [];
+    if (scenario === 'added NET_RAW') inspect.HostConfig.CapAdd = ['NET_RAW'];
     if (scenario === 'privileged') inspect.HostConfig.Privileged = true;
     if (scenario === 'no policy') options.policies = () => [];
     if (scenario === 'invalid policy') policy.mode = 'typo';

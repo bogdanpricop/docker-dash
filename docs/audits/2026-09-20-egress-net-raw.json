@@ -1,0 +1,109 @@
+{
+  "at": "2026-09-20T04:42:37.227Z",
+  "status": "verified-source-change-pending-rollout",
+  "liveVersion": "8.96.5",
+  "tests": {
+    "suites": 355,
+    "passed": 4639,
+    "skipped": 1,
+    "lint": true,
+    "help": "60/60"
+  },
+  "capabilityCanaries": {
+    "lan": {
+      "marker": "dd-egress-raw-67cd197bd96b",
+      "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "probeSha256": "9f2f1da552f9ccd884f631a40a62b9f5d2e2b6439d3b71c054475e778250fa49",
+      "checks": [
+        "normal-output-blocked",
+        "default-net-raw-bypasses-output-chain",
+        "explicit-drop-denies-packet-socket",
+        "default-and-readded-net-raw-refused",
+        "unsafe-stack-refused",
+        "source-authorization-refused",
+        "legacy-status-and-removal-available",
+        "explicit-drop-apply-remove-succeeds"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    },
+    "vps": {
+      "marker": "dd-egress-raw-b274a4faf451",
+      "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "probeSha256": "9f2f1da552f9ccd884f631a40a62b9f5d2e2b6439d3b71c054475e778250fa49",
+      "checks": [
+        "normal-output-blocked",
+        "default-net-raw-bypasses-output-chain",
+        "explicit-drop-denies-packet-socket",
+        "default-and-readded-net-raw-refused",
+        "unsafe-stack-refused",
+        "source-authorization-refused",
+        "legacy-status-and-removal-available",
+        "explicit-drop-apply-remove-succeeds"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    }
+  },
+  "transactionCanaries": {
+    "lan": {
+      "marker": "dd-egress-atomic-72f38a2d6374",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    },
+    "vps": {
+      "marker": "dd-egress-atomic-4c3b13d934e9",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    }
+  },
+  "liveImpact": [
+    {
+      "target": "lan",
+      "activePolicies": 0,
+      "sidecarEndpointConfigured": false,
+      "version": "8.96.5"
+    },
+    {
+      "target": "vps",
+      "activePolicies": 0,
+      "sidecarEndpointConfigured": false,
+      "version": "8.96.5"
+    }
+  ],
+  "sources": {
+    "docker": "https://docs.docker.com/engine/containers/run/",
+    "linux": "https://man7.org/linux/man-pages/man7/packet.7.html"
+  },
+  "fileHashNormalization": "UTF-8 with LF line endings",
+  "fileSha256": {
+    "src/services/egress-capabilities.js": "18f71367f368ec3d6f3b227e2bd43ad3125e51a03c54deb30b7d4ca1c312c9d5",
+    "src/services/egress-filter.js": "da651282f43973cdea1d302924dec9b576b4cfd1dbe1012346dcbddbe009cc0f",
+    "src/services/egress-runner.js": "9e2f03a42421d4c8b8de3241df8354c6ed8d3f063946fd281e78ed1c91698c2e",
+    "src/services/egress-authorization.js": "6533d544806bebfad54e57c63f233d61f5d606615d5973af58d0d786c11e9add",
+    "src/services/egress-audit.js": "590c058aa6b64fcef881f3e8d80c4f77c07cc5f7a7a0ac47f9fcbc85908a32bf",
+    "src/routes/egress-filter.js": "7af7c83c92a5220e3883a6a8cd83ee7c201dc3caeb6f74b53741f57ae7898f74",
+    "scripts/smoke-egress-capabilities.js": "89cd942bce4bcd337ee7cc37e2062c76b139b28bd0090acd2f2d05275dd6649a",
+    "scripts/fixtures/egress-packet-probe.go": "929a9b685a806d5933df1259239b02ae4b87de84909d07a688c86fd3d94b1626"
+  }
+}

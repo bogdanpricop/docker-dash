@@ -52,6 +52,21 @@ describe('egress enforcement outcomes', () => {
       .send({ scopeType: 'stack', scopeKey: 'transaction-test', preset: 'registry-only' });
     expect(result.status).toBe(201); return result.body.policyId;
   }
+  test('container status preserves a legacy NET_RAW safety warning', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    jest.spyOn(require('../services/egress-runner'), 'isApplied').mockResolvedValue({ applied: true, safeToFilter: false, safetyError: 'Drop NET_RAW', details: 'table present' });
+    const result = await request(app).get(`/api/egress-filter/policies/${policyId}/status`).set(auth());
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ applied: true, safeToFilter: false, safetyError: 'Drop NET_RAW' });
+  });
+  test('apply refuses the default NET_RAW capability before reaching the runner', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    jest.spyOn(require('../services/docker'), 'getDocker').mockReturnValue({ getContainer: () => ({ inspect: async () => ({ HostConfig: { NetworkMode: 'bridge', CapAdd: [], CapDrop: null } }) }) });
+    const runner = jest.spyOn(require('../services/egress-runner'), 'applyToContainer');
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/apply`).set(auth());
+    expect(result.status).toBe(422); expect(result.body.error).toContain('NET_RAW');
+    expect(runner).not.toHaveBeenCalled();
+  });
   test('failed audit intent prevents firewall mutation', async () => {
     const id = await stackPolicy();
     const runner = jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockResolvedValue({ applied: [], skipped: [] });

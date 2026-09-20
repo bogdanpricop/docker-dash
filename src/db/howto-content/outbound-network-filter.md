@@ -15,6 +15,14 @@ icon: fas fa-shield-alt
 </ul>
 <p>The Outbound Filter authorizes proxied IPv4 TCP connections per container or stack. The current firewall excludes DNS, loopback and RFC1918 destinations; IPv6 and non-TCP traffic are not covered. It is not a complete network sandbox. Metadata protection in the proxy does not prove that every alternate network path is blocked.</p>
 
+<h2>Required container capability configuration</h2>
+<p>Docker grants NET_RAW by default. Packet sockets can bypass the IP OUTPUT firewall, so applying a filter and authorizing proxy connections require an explicit drop:</p>
+<pre><code>services:
+  workload:
+    cap_drop: [NET_RAW]</code></pre>
+<p>Dropping ALL also satisfies this requirement. Remove NET_RAW/ALL from cap_add, recreate the workload, then apply the policy to its current container ID. A non-root user alone does not replace the explicit capability drop. Docker Dash does not recreate workloads automatically for this change.</p>
+<p>Legacy filters can still be inspected and removed. Status reports safeToFilter: false and a safetyError for a target retaining NET_RAW; an existing nftables table is not proof of safe enforcement. After upgrading, new proxy connections from these legacy targets are denied until the capability is removed. IPv6, non-TCP traffic and the documented private-network exceptions remain outside current coverage.</p>
+
 <h2>Applying rules and recovering a failure</h2>
 <p>Each container's IPv4 table is replaced in one nftables transaction. Invalid rules preserve the previous table. A stack is updated sequentially: all targets are reserved and their policies saved first; if a later update fails, attempted targets are restored from those snapshots. This is not one atomic transaction across the stack. Counters and live connection state are not rolled back.</p>
 <p>The API reports the actual rollback results. If recovery or cleanup cannot be confirmed, it retains a helper named <code>dd-egress-lock-&lt;full-container-id&gt;</code> and attempts to stop it. Its <code>/tmp/dd-before.nft</code> file contains the previous policy; an empty file means no table existed. The reservation prevents another operation from overwriting recovery evidence. Do not automatically remove these helpers or retry through another tool.</p>
@@ -28,7 +36,7 @@ icon: fas fa-shield-alt
 <p>Three moving parts:</p>
 <ol>
   <li><strong>Sidecar</strong> (<code>docker-dash-egress-filter</code>, Go, ~2MB image): listens on port 29193, peeks TLS SNI or HTTP Host on each connection, checks the allowlist, forwards or resets. No TLS decryption.</li>
-  <li><strong>Runner</strong> (inside Docker Dash): runs a short-lived <code>alpine/nftables</code> helper container with <code>NET_ADMIN</code> that installs nftables rules into the target container's netns, redirecting all non-DNS/non-RFC1918 TCP to the sidecar.</li>
+  <li><strong>Runner</strong> (inside Docker Dash): runs a short-lived <code>docker-dash-egress-helper:local</code> helper container with <code>NET_ADMIN</code> that installs nftables rules into the target container's netns, redirecting all non-DNS/non-RFC1918 TCP to the sidecar.</li>
   <li><strong>DB + UI</strong>: policy config, block log ingestion, per-policy apply/unapply via REST (<code>/api/egress-filter/...</code>).</li>
 </ol>
 

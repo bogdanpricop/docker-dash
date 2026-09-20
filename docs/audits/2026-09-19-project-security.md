@@ -1,5 +1,10 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
+Ulterior deploy-ului 8.96.5, [bypass-ul prin NET_RAW implicit](2026-09-20-egress-net-raw.md)
+a fost reprodus pe LAN/VPS si corectat in cod. Aplicarea si autorizarea proxy cer
+eliminarea explicita a capabilitatii; auditul afiseaza implicitul Docker.
+355 suite / 4.639 teste trecute. Corectia asteapta urmatorul rollout.
+
 Stare actuala: checkpoint-ul 8.96.5 este urcat pe Git si instalat pe LAN/VPS,
 cu Docker healthy si HTTP 200 / versiunea 8.96.5. Include
 [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md) si

@@ -28,10 +28,25 @@ it('re-enables a removed scope with the new allowlist while preserving policy id
 // ─── canApplyFilter ───────────────────────────────────
 
 describe('canApplyFilter', () => {
-  const mk = (hc = {}) => ({ HostConfig: { NetworkMode: 'bridge', Privileged: false, CapAdd: [], ...hc } });
+  const mk = (hc = {}) => ({ HostConfig: { NetworkMode: 'bridge', Privileged: false, CapAdd: [], CapDrop: ['NET_RAW'], ...hc } });
 
-  it('allows a default bridge container', () => {
+  it('allows a bridge container with NET_RAW explicitly dropped', () => {
     expect(egressFilter.canApplyFilter(mk()).ok).toBe(true);
+  });
+
+  it.each([undefined, null, [], ['CHOWN']])('refuses default NET_RAW when CapDrop is %j', CapDrop => {
+    const result = egressFilter.canApplyFilter(mk({ CapDrop }));
+    expect(result).toMatchObject({ ok: false, reason: expect.stringContaining('NET_RAW') });
+  });
+  it.each(['NET_RAW', 'net_raw', 'CAP_NET_RAW'])('refuses explicitly added %s even with ALL dropped', cap => {
+    expect(egressFilter.canApplyFilter(mk({ CapDrop: ['ALL'], CapAdd: [cap] })).ok).toBe(false);
+  });
+  it.each(['ALL', 'all', 'CAP_NET_RAW', 'net_raw'])('accepts explicit drop %s', cap => {
+    expect(egressFilter.canApplyFilter(mk({ CapDrop: [cap] })).ok).toBe(true);
+  });
+  it('permits namespace inspection and removal for legacy default-capability containers', () => {
+    expect(egressFilter.canInspectFilter(mk({ CapDrop: [] })).ok).toBe(true);
+    expect(egressFilter.canInspectFilter(mk({ CapDrop: [], Privileged: true })).ok).toBe(false);
   });
 
   it('refuses privileged', () => {

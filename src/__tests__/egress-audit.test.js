@@ -10,6 +10,7 @@ const makeInspect = (over = {}) => ({
     ExtraHosts: [],
     Dns: [],
     CapAdd: [],
+    CapDrop: ['NET_RAW'],
     ...over.HostConfig,
   },
   NetworkSettings: {
@@ -129,6 +130,14 @@ describe('egress-audit — analyzeContainer', () => {
   });
 
   describe('NET_ADMIN / NET_RAW capability', () => {
+    it.each([null, [], ['CHOWN']])('flags default NET_RAW when CapDrop is %j', CapDrop => {
+      const result = analyzeContainer(makeInspect({ HostConfig: { CapDrop } }), makeNetMap({}));
+      expect(result.findings.some(f => f.severity === 'warning' && /NET_RAW/.test(f.message))).toBe(true);
+    });
+    it.each(['CAP_NET_RAW', 'net_raw', 'ALL'])('flags re-added %s after dropping ALL', cap => {
+      const result = analyzeContainer(makeInspect({ HostConfig: { CapDrop: ['ALL'], CapAdd: [cap] } }), makeNetMap({}));
+      expect(result.findings.some(f => /NET_RAW/.test(f.message))).toBe(true);
+    });
     it('flags NET_ADMIN as a warning', () => {
       const r = analyzeContainer(
         makeInspect({ HostConfig: { CapAdd: ['NET_ADMIN'] } }),

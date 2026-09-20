@@ -44,18 +44,19 @@ async function readOutput(stream) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function targetInfo(docker, id) {
+async function targetInfo(docker, id, inspectionOnly = false) {
   if (typeof id !== 'string' || !/^[a-f0-9]{12,64}$/.test(id)) throw new Error('containerId required (12-64 hex characters)');
   const info = await bounded(docker.getContainer(id).inspect());
   if (!/^[a-f0-9]{64}$/.test(info.Id || '') || !info.Id.startsWith(id)) throw new Error('Docker container identity mismatch');
   if (!info.State?.Running || info.State.Paused || info.State.Restarting || !info.State.StartedAt) throw new Error('Container must be running and stable');
-  const precheck = require('./egress-filter').canApplyFilter(info);
+  const filter = require('./egress-filter');
+  const precheck = inspectionOnly ? filter.canInspectFilter(info) : filter.canApplyFilter(info);
   if (!precheck.ok) throw new Error(precheck.reason);
   return info;
 }
 
 async function checkTarget(session) {
-  const info = await targetInfo(session.docker, session.info.Id);
+  const info = await targetInfo(session.docker, session.info.Id, session.inspectionOnly);
   if (info.State.StartedAt !== session.info.State.StartedAt || info.State.Pid !== session.info.State.Pid) {
     throw new Error('Container restarted during egress operation; namespace changed');
   }
@@ -96,7 +97,7 @@ async function closeSession(session) {
   }
 }
 
-async function withSessions(infos, docker, action) {
+async function withSessions(infos, docker, action, inspectionOnly = false) {
   const sessions = [], operationId = crypto.randomUUID();
   let result, failure;
   try {
@@ -125,7 +126,7 @@ async function withSessions(infos, docker, action) {
           operationId, recoveryRequired: uncertain, recoveryHelpers: uncertain ? [name] : [],
         });
       }
-      const session = { docker, info, helper, name, operationId, uncertain: false, recovery: false };
+      const session = { docker, info, helper, name, operationId, inspectionOnly, uncertain: false, recovery: false };
       sessions.push(session);
       await bounded(helper.start());
       await checkTarget(session);
@@ -191,21 +192,22 @@ async function applyToContainer({ containerId, hostId = 0 }) {
 }
 
 async function removeFromContainer({ containerId, hostId = 0 }) {
-  const docker = dockerService.getDocker(hostId), info = await targetInfo(docker, containerId);
+  const docker = dockerService.getDocker(hostId), info = await targetInfo(docker, containerId, true);
   return withSessions([info], docker, async ([session]) => {
     await checkTarget(session); await snapshot(session);
     await execute(session, nft.removeScript()); await checkTarget(session);
     return { ok: true, output: 'IPv4 egress table removed' };
-  });
+  }, true);
 }
 
 async function isApplied({ containerId, hostId = 0 }) {
-  const docker = dockerService.getDocker(hostId), info = await targetInfo(docker, containerId);
+  const docker = dockerService.getDocker(hostId), info = await targetInfo(docker, containerId, true);
   return withSessions([info], docker, async ([session]) => {
     const applied = await snapshot(session);
     await checkTarget(session);
-    return { applied, details: applied ? 'IPv4 ddout table present; protocol coverage is not verified by this status' : 'IPv4 ddout table absent' };
-  });
+    const safety = require('./egress-filter').canApplyFilter(info);
+    return { applied, safeToFilter: safety.ok, ...(safety.ok ? {} : { safetyError: safety.reason }), details: applied ? 'IPv4 ddout table present; protocol coverage is not verified by this status' : 'IPv4 ddout table absent' };
+  }, true);
 }
 
 async function _listStackContainers({ stackName, hostId = 0 }) {
