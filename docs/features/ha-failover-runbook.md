@@ -62,6 +62,13 @@ the single-server lease guarantee; jobs require their own durable deduplication.
 Expose these paths to your monitoring:
 
 **`GET /api/cluster/status`** (authenticated; shape stable):
+
+Global monitoring requires an administrator or a global monitoring.read/api.read
+service token. `/api/health` stays public. For curl commands below, store the
+Authorization header in an owner-readable `/run/secrets/docker-dash-monitoring.curl`
+configuration file (`header = "Authorization: Bearer <token>"`); keep the raw token
+out of shell history and command arguments. Rotate before expiry. Separate SQLite
+instances need credentials valid for each target; see the [scraper setup](observability.md#2-enabling).
 ```json
 {
   "mode": "ha",
@@ -226,7 +233,7 @@ A replica may still renew its owned lease while some subsystem is stuck, such as
 
 After any failover event, verify:
 
-- [ ] **Exactly one leader** — `curl $app/api/metrics | grep cluster_role` shows one `role 1`, rest `role 2`.
+- [ ] **Exactly one leader** — `curl --config /run/secrets/docker-dash-monitoring.curl $app/api/metrics | grep cluster_role` shows one `role 1`, rest `role 2`.
 - [ ] **Heartbeat fresh** — `heartbeat_age_seconds < 15` on the leader.
 - [ ] **Redis connected** — `redis_connected 1` on all replicas.
 - [ ] **Last cron run recent** — check `docker_dash_background_job_runs_total{job="stats-aggregate-1m"}` should increment every 2 min.

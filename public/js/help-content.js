@@ -966,7 +966,7 @@ const HelpContent = {
       intro: 'A wizard that detects what monitoring you already run and shows the right next step for it.',
       sections: [
         { icon: 'fa-magnifying-glass', title: 'Detection', body: 'Scans running containers for Prometheus and Grafana. It reads only; it never modifies Docker state.' },
-        { icon: 'fa-file-code', title: 'Scrape config', body: 'Produces the exact scrape snippet for the metrics endpoint, so you do not have to guess the target or port.' },
+        { icon: 'fa-file-code', title: 'Scrape config', body: 'The metrics and detailed cluster-status endpoints require global monitoring access. Use a global monitoring.read service token; tenant credentials and non-admin users are refused. The snippet reads /run/secrets/monitoring_token. Set MONITORING_TOKEN_FILE for the bundled Compose profile, keep the file private and readable by Prometheus, and replace its contents before token expiry. Rotation revokes the old token immediately. Anonymous health checks remain available.' },
         { icon: 'fa-upload', title: 'Dashboard import', body: 'Pushes the bundled dashboard to your Grafana. The token you supply is forwarded and discarded, never stored.' },
       ],
       tip: 'Detection only sees the local daemon. Prometheus on another host needs the manual form, not a rescan.',
@@ -976,7 +976,7 @@ const HelpContent = {
       intro: 'Un wizard care detecteaza ce monitorizare ai deja si iti arata pasul potrivit pentru ea.',
       sections: [
         { icon: 'fa-magnifying-glass', title: 'Detectie', body: 'Scaneaza containerele active dupa Prometheus si Grafana. Doar citeste; nu modifica niciodata starea Docker.' },
-        { icon: 'fa-file-code', title: 'Configuratie de scrape', body: 'Produce fragmentul exact pentru endpoint-ul de metrici, ca sa nu ghicesti tinta sau portul.' },
+        { icon: 'fa-file-code', title: 'Configuratie de scrape', body: 'Metricile si starea detaliata a clusterului necesita acces global de monitorizare. Folositi un token de serviciu global monitoring.read; credentialele de tenant si utilizatorii fara rol admin sunt refuzati. Fragmentul citeste /run/secrets/monitoring_token. Setati MONITORING_TOKEN_FILE pentru profilul Compose inclus, pastrati fisierul privat si accesibil pentru Prometheus si inlocuiti continutul inainte de expirare. Rotatia revoca imediat tokenul vechi. Verificarea anonima de sanatate ramane disponibila.' },
         { icon: 'fa-upload', title: 'Import de dashboard', body: 'Trimite dashboard-ul inclus catre Grafana ta. Token-ul furnizat e transmis si aruncat, niciodata stocat.' },
       ],
       tip: 'Detectia vede doar daemonul local. Un Prometheus de pe alt host cere formularul manual, nu o rescanare.',

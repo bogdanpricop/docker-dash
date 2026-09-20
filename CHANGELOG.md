@@ -1,5 +1,12 @@
 # Changelog
 
+## 8.96.8+monitoring.1 - 2026-09-20 (private backport)
+
+- Require global monitoring authority for metrics and detailed cluster status;
+  preserve public health checks. Add authenticated scrape configuration and
+  EN/RO guidance. No migrations or dependency changes; see the monitoring
+  backport audit for the limited scope and remaining full-update requirements.
+
 All notable changes to Docker Dash are documented here.
 
 ## [8.96.8] - 2026-09-20 — Cleanup recovery and quota lifetime

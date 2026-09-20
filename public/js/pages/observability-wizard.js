@@ -60,7 +60,7 @@ const ObservabilityWizardPage = {
     else if (hasProm || hasGraf) branch = 'partial';
     else branch = 'none';
 
-    slot.innerHTML = this._renderBranch(branch, state);
+    slot.innerHTML = `<div class="alert alert-info" style="margin-bottom:16px">${Utils.escapeHtml(i18n.t('pages.observability.monitoringAuth'))}</div>` + this._renderBranch(branch, state);
     this._attachHandlers(branch, state);
   },
 

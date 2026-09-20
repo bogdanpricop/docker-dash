@@ -5,7 +5,7 @@ const { getDb } = require('../db');
 const { generateToken, sha256 } = require('../utils/crypto');
 const { globMatches } = require('./governance-approvals');
 
-const SERVICE_SCOPES = new Set(['scim.read', 'scim.write', 'governance.read', 'governance.write', 'api.read', 'api.write']);
+const SERVICE_SCOPES = new Set(['scim.read', 'scim.write', 'governance.read', 'governance.write', 'monitoring.read', 'api.read', 'api.write']);
 const PROTOCOLS = new Set(['oidc', 'saml']);
 const IDENTITY_KINDS = new Set(['oidc', 'spiffe', 'aws', 'azure', 'gcp']);
 

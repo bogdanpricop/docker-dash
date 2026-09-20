@@ -149,6 +149,8 @@ services:
     image: prom/prometheus:v3.0.1
     container_name: docker-dash-prometheus
     restart: unless-stopped
+    secrets:
+      - monitoring_token
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -218,6 +220,10 @@ services:
       - app
     profiles:
       - tls
+
+secrets:
+  monitoring_token:
+    file: ${MONITORING_TOKEN_FILE:-./.secrets/monitoring-token}
 
 volumes:
   docker-dash-data:

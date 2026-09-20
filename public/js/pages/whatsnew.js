@@ -9,6 +9,10 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.8+monitoring.1', date: '2026-09-20', title: 'Monitoring access security backport', changes: [
+      { type: 'security', text: 'Metrics and detailed cluster status require an administrator or a global monitoring.read or api.read service credential. Anonymous health checks remain available.' },
+      { type: 'improvement', text: 'The monitoring wizard and Compose profile explain authenticated scraping, token expiry and rotation. This private patch keeps the existing database and dependencies; the full security audit update is still pending.' },
+    ] },
     { version: '8.96.8', date: '2026-09-20', title: 'Cleanup recovery and quota lifetime', changes: [
       { type: 'security', text: 'Manual, fleet and disk-pressure cleanup coordinate with container replacements and egress recovery. Pending recovery blocks cleanup; the configured helper image is preserved while pruning.' },
       { type: 'fix', text: 'An uncertain cleanup result retains its reservation for operator review. Deleting an individual image no longer implicitly prunes untagged parent images.' },

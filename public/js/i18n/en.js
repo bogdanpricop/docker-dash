@@ -535,6 +535,7 @@ i18n.register('en', 'EN', 'English', {
     // ── Observability Wizard ─────────────────────
     observability: {
       title: 'Observability Wizard',
+      monitoringAuth: 'Scraping requires a global monitoring.read service token from Identity & Policy. Save it in the private credential file configured for Prometheus and rotate it before expiry. The bundled profile uses MONITORING_TOKEN_FILE; the operator guide explains setup.',
       subtitle: 'Connect Docker Dash metrics to Prometheus + Grafana. The wizard detects existing monitoring stacks on this host and offers the right next steps.',
       rescan: 'Rescan',
       scanning: 'Scanning for monitoring containers…',
