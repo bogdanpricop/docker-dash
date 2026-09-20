@@ -1,11 +1,11 @@
 # Security Policy
 
-The MFA, credential and session fixes below are bundled in the privately tested
-[8.96.9 deployment candidate](docs/audits/2026-09-20-image-8.96.9.md). Both live
+The authentication, MFA, credential and session fixes below are bundled in the
+[8.96.10 deployment candidate](docs/audits/2026-09-20-image-8.96.10.md). Both live
 instances remain on 8.96.8. Candidate image findings and the account-email URL
 clarification remain open; the candidate is not publicly published.
 
-## OIDC browser binding (source checkpoint, not in the existing candidate)
+## OIDC and personal credentials (included in the 8.96.10 candidate)
 
 The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
 upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests
@@ -24,7 +24,7 @@ past password changes cannot be reconstructed. Expiry and permission parsing fai
 closed. Keys obey required password changes and local password age, interpreted in
 UTC with creation time as the initial password age. Key creation/revocation requires
 user authentication and writable mode. Creation and audit commit together; revocation
-stays effective if its audit fails (HTTP 500). These fixes require a rebuilt image.
+stays effective if its audit fails (HTTP 500). These fixes are included in 8.96.10.
 
 The [group authorization follow-up](docs/audits/2026-09-20-oidc-group-revocation.md)
 treats an empty group list as authoritative and applies the configured default role.

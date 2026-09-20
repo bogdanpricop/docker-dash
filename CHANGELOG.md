@@ -9,6 +9,8 @@ All notable changes to Docker Dash are documented here.
 Private candidate incorporating the fixes below and the preceding 8.96.9 changes.
 Deployment awaits the configured account-email URLs. Image publication remains
 subject to the security gates; this version does not certify the entire project.
+Built-image checks and isolated upgrade from schema 177 to 182:
+[8.96.10 audit](docs/audits/2026-09-20-image-8.96.10.md).
 
 - Bound OIDC HTTPS responses to 10 seconds and 1 MiB, with eight concurrent
   requests per process and no pending transport queue. Refuse redirects, encoded
