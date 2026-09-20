@@ -234,7 +234,7 @@ class GovernanceService {
   }
 
   listScopes(user) {
-    if (!user?.id) throw fail('Authenticated user is required', 401);
+    if (!user?.id&&!user?.serviceToken) throw fail('Authenticated user is required', 401);
     const scopes = this._db().prepare(`SELECT s.*, parent.scope_key AS parent_key, parent.display_name AS parent_name,
       (SELECT COUNT(*) FROM governance_scopes child WHERE child.parent_id = s.id) AS child_count
       FROM governance_scopes s LEFT JOIN governance_scopes parent ON parent.id = s.parent_id
@@ -249,7 +249,7 @@ class GovernanceService {
       childCount: Number(scope.child_count || 0),
       metadata: this._json(scope.metadata_json),
     }));
-    const visible = user.role === 'admin'
+    const visible = user.role === 'admin'&&!user.serviceToken
       ? scopes
       : scopes.filter(scope => this.can(user, scope.id, 'governance.read'));
     return visible.map(scope => ({
@@ -284,6 +284,7 @@ class GovernanceService {
   }
 
   effectivePermissions(user, scopeId) {
+    if(user?.serviceToken)return require('./service-token-policy').permissions(this._db(),user,scopeId);
     if (!user?.id) throw fail('Authenticated user is required', 401);
     if (user.role === 'admin') return new Set(['*']);
     const chain = this._scopeChain(scopeId);
@@ -404,7 +405,7 @@ class GovernanceService {
     const projects = this._db().prepare(`SELECT t.*, s.id AS scope_id FROM tenants t
       JOIN governance_scopes s ON s.tenant_id = t.id AND s.scope_type = 'project'
       ORDER BY t.name COLLATE NOCASE`).all();
-    return projects.filter(project => user?.role === 'admin' || this.can(user, project.scope_id, 'project.read'))
+    return projects.filter(project => (user?.role === 'admin'&&!user.serviceToken) || this.can(user, project.scope_id, 'project.read'))
       .map(project => this.projectSummary(project.id));
   }
 
@@ -445,8 +446,8 @@ class GovernanceService {
   getProject(tenantId, user) {
     const summary = this.projectSummary(tenantId);
     if (user) {
-      if (!user.id) throw fail('Authenticated user is required', 401);
-      if (user.role !== 'admin') this.assertCan(user, summary.scope_id, 'project.read');
+      if (!user.id&&!user.serviceToken) throw fail('Authenticated user is required', 401);
+      if (user.serviceToken||user.role !== 'admin') this.assertCan(user, summary.scope_id, 'project.read');
     }
     const db = this._db();
     const members = db.prepare(`SELECT ut.user_id, u.id AS id, ut.tenant_id, ut.role, ut.is_owner, ut.created_at,

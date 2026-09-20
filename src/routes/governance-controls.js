@@ -24,9 +24,9 @@ function route(handler) {
 }
 function audit(req, action, targetType, targetId, details = {}) {
   auditService.log({ userId: req.user.id, username: req.user.username, action, targetType,
-    targetId: String(targetId), details, ip: getClientIp(req) });
+    targetId: String(targetId), details:{...details,...(req.user.serviceToken?{serviceTokenId:req.user.serviceTokenId,tenantId:req.user.tenantId}:{})}, ip: getClientIp(req) });
 }
-function auditedIdentityChange(req, action, targetType, change, details = () => ({})) {
+function auditedChange(req, action, targetType, change, details = () => ({})) {
   return getDb().transaction(() => {
     const result=change();
     audit(req,action,targetType,result.id ?? req.params.id,details(result));
@@ -47,18 +47,15 @@ router.get('/catalog', route((_req, res) => res.json({
 
 router.get('/projects/:id/capacity', route((req, res) => res.json(capacity.projectCapacity(req.params.id, req.user))));
 router.put('/projects/:id/capacity/quotas', writeable, route((req, res) => {
-  const result = capacity.setQuotas(req.params.id, req.body?.quotas, req.user);
-  audit(req, 'governance_extended_quota_update', 'project', req.params.id, { quotas: req.body?.quotas });
+  const result = auditedChange(req,'governance_extended_quota_update','project',()=>capacity.setQuotas(req.params.id,req.body?.quotas,req.user),()=>({quotas:req.body?.quotas}));
   res.json(result);
 }));
 router.post('/projects/:id/capacity/allocations', writeable, route((req, res) => {
-  const result = capacity.assign(req.params.id, req.body || {}, req.user);
-  audit(req, 'governance_capacity_assign', 'project', req.params.id, { metric: req.body?.metric, resourceKey: req.body?.resourceKey });
+  const result = auditedChange(req,'governance_capacity_assign','project',()=>capacity.assign(req.params.id,req.body||{},req.user),()=>({metric:req.body?.metric,resourceKey:req.body?.resourceKey}));
   res.status(201).json(result);
 }));
 router.delete('/projects/:id/capacity/allocations/:allocationId', writeable, route((req, res) => {
-  const result = capacity.remove(req.params.id, req.params.allocationId, req.user);
-  audit(req, 'governance_capacity_remove', 'project', req.params.id, { allocationId: req.params.allocationId });
+  const result = auditedChange(req,'governance_capacity_remove','project',()=>capacity.remove(req.params.id,req.params.allocationId,req.user),()=>({allocationId:req.params.allocationId}));
   res.json(result);
 }));
 router.get('/projects/:id/quota-requests', route((req, res) => res.json({ requests: capacity.listQuotaRequests(req.params.id, req.user) })));
@@ -68,7 +65,7 @@ router.post('/projects/:id/quota-requests', writeable, route((req, res) => {
   res.status(201).json({ request });
 }));
 
-router.get('/approval-policies', route((_req, res) => res.json({ policies: approvals.listPolicies() })));
+router.get('/approval-policies', route((req, res) => res.json({ policies: approvals.listPolicies(req.user) })));
 router.post('/approval-policies', writeable, route((req, res) => {
   const policy = approvals.savePolicy(null, req.body || {}, req.user);
   audit(req, 'approval_policy_create', 'approval_policy', policy.id);
@@ -84,8 +81,8 @@ router.delete('/approval-policies/:id', writeable, route((req, res) => {
   audit(req, 'approval_policy_delete', 'approval_policy', req.params.id);
   res.json(result);
 }));
-router.get('/approval-requests', route((req, res) => res.json({ requests: approvals.listRequests(req.query),
-  decisions: req.query.requestId ? approvals.decisions(req.query.requestId) : undefined })));
+router.get('/approval-requests', route((req, res) => res.json({ requests: approvals.listRequests(req.query,req.user),
+  decisions: req.query.requestId ? approvals.decisions(req.query.requestId,req.user) : undefined })));
 router.post('/approval-requests', writeable, route((req, res) => {
   const request = approvals.createRequest(req.body || {}, req.user);
   audit(req, 'approval_request_create', 'approval_request', request.id, { actionKey: request.action_key });
@@ -99,7 +96,7 @@ router.post('/approval-requests/:id/decision', writeable, route((req, res) => {
   res.json({ request, quotaRequest: quota });
 }));
 
-router.get('/blackouts', route((_req, res) => res.json({ windows: approvals.listBlackouts() })));
+router.get('/blackouts', route((req, res) => res.json({ windows: approvals.listBlackouts(req.user) })));
 router.post('/blackouts', writeable, route((req, res) => {
   const window = approvals.saveBlackout(null, req.body || {}, req.user);
   audit(req, 'blackout_create', 'blackout_window', window.id);
@@ -118,27 +115,27 @@ router.delete('/blackouts/:id', writeable, route((req, res) => {
 
 router.get('/identity-realms', route((req, res) => { identity._admin(req.user); res.json({ realms: identity.listRealms() }); }));
 router.post('/identity-realms', writeable, route((req, res) => {
-  const realm = auditedIdentityChange(req,'identity_realm_create','identity_realm',()=>identity.saveRealm(null,req.body||{},req.user),
+  const realm = auditedChange(req,'identity_realm_create','identity_realm',()=>identity.saveRealm(null,req.body||{},req.user),
     item=>({slug:item.slug,protocol:item.protocol,domains:item.domains}));
   res.status(201).json({ realm });
 }));
 router.put('/identity-realms/:id', writeable, route((req, res) => {
-  const realm = auditedIdentityChange(req,'identity_realm_update','identity_realm',()=>identity.saveRealm(req.params.id,req.body||{},req.user));
+  const realm = auditedChange(req,'identity_realm_update','identity_realm',()=>identity.saveRealm(req.params.id,req.body||{},req.user));
   res.json({ realm });
 }));
 router.delete('/identity-realms/:id', writeable, route((req, res) => {
-  const result = auditedIdentityChange(req,'identity_realm_delete','identity_realm',()=>identity.deleteRealm(req.params.id,req.user));
+  const result = auditedChange(req,'identity_realm_delete','identity_realm',()=>identity.deleteRealm(req.params.id,req.user));
   res.json(result);
 }));
 
 router.get('/service-tokens', route((req, res) => res.json({ tokens: identity.listTokens(req.user) })));
 router.post('/service-tokens', writeable, route((req, res) => {
-  const token = auditedIdentityChange(req,'service_token_issue','service_token',()=>identity.issueToken(req.body||{},req.user),
+  const token = auditedChange(req,'service_token_issue','service_token',()=>identity.issueToken(req.body||{},req.user),
     item=>({scopes:item.scopes,expiresAt:item.expires_at}));
   res.status(201).json({ token });
 }));
 router.post('/service-tokens/:id/rotate', writeable, route((req, res) => {
-  const token = auditedIdentityChange(req,'service_token_rotate','service_token',()=>identity.rotateToken(req.params.id,req.body||{},req.user),
+  const token = auditedChange(req,'service_token_rotate','service_token',()=>identity.rotateToken(req.params.id,req.body||{},req.user),
     ()=>({rotatedFrom:req.params.id}));
   res.status(201).json({ token });
 }));
@@ -150,16 +147,16 @@ router.delete('/service-tokens/:id', writeable, route((req, res) => {
 
 router.get('/workload-trusts', route((req, res) => res.json({ trusts: identity.listTrusts(req.user) })));
 router.post('/workload-trusts', writeable, route((req, res) => {
-  const trust = auditedIdentityChange(req,'workload_trust_create','workload_identity_trust',()=>identity.saveTrust(null,req.body||{},req.user),
+  const trust = auditedChange(req,'workload_trust_create','workload_identity_trust',()=>identity.saveTrust(null,req.body||{},req.user),
     item=>({issuer:item.issuer,audience:item.audience}));
   res.status(201).json({ trust });
 }));
 router.put('/workload-trusts/:id', writeable, route((req, res) => {
-  const trust = auditedIdentityChange(req,'workload_trust_update','workload_identity_trust',()=>identity.saveTrust(req.params.id,req.body||{},req.user));
+  const trust = auditedChange(req,'workload_trust_update','workload_identity_trust',()=>identity.saveTrust(req.params.id,req.body||{},req.user));
   res.json({ trust });
 }));
 router.delete('/workload-trusts/:id', writeable, route((req, res) => {
-  const result = auditedIdentityChange(req,'workload_trust_delete','workload_identity_trust',()=>identity.deleteTrust(req.params.id,req.user));
+  const result = auditedChange(req,'workload_trust_delete','workload_identity_trust',()=>identity.deleteTrust(req.params.id,req.user));
   res.json(result);
 }));
 

@@ -51,8 +51,8 @@ class GovernanceCapacityService {
     return project;
   }
   _can(actor, project, permission) {
-    if (!actor?.id) fail('Authentication required', 401);
-    if (actor.role !== 'admin' && !this._governance.can(actor, project.scope_id, permission)) fail('Insufficient governance permission', 403);
+    if (!actor?.id&&!actor?.serviceToken) fail('Authentication required', 401);
+    if ((actor.serviceToken||actor.role !== 'admin') && !this._governance.can(actor, project.scope_id, permission)) fail('Insufficient governance permission', 403);
   }
   _limit(input, metric) {
     const softLimit = int(input?.softLimit, `${metric}.softLimit`, { nullable: true });

@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { getDb } = require('../db');
+const servicePolicy=require('./service-token-policy');
 
 const ENVIRONMENTS = new Set(['any', 'production', 'nonproduction']);
 
@@ -80,8 +81,12 @@ class GovernanceApprovalsService {
   _db() { return this._dbProvider(); }
   available() { return tableExists(this._db(), 'governance_approval_policies'); }
 
-  listPolicies() {
-    return this._db().prepare('SELECT * FROM governance_approval_policies ORDER BY enabled DESC, name').all();
+  listPolicies(actor) {
+    const rows=this._db().prepare('SELECT * FROM governance_approval_policies ORDER BY enabled DESC, name').all();
+    if(!servicePolicy.isScoped(actor))return rows;
+    if(!servicePolicy.activeTenant(this._db(),actor))return [];
+    const allowed=new Set(servicePolicy.scopeIds(this._db(),actor,{inherit:true}));
+    return rows.filter(item=>item.scope_id==null||allowed.has(item.scope_id));
   }
 
   savePolicy(id, input, actor) {
@@ -170,19 +175,29 @@ class GovernanceApprovalsService {
     return row(request);
   }
 
-  listRequests({ state, limit = 100 } = {}) {
+  listRequests({ state, limit = 100 } = {}, actor) {
     this._expire();
     const safeLimit = integer(limit, 'limit', 1, 500);
     const params = [];
-    const where = state ? 'WHERE r.state=?' : '';
-    if (state) params.push(clean(state, 'state', 20));
+    const conditions=[];
+    if (state) {conditions.push('r.state=?');params.push(clean(state, 'state', 20));}
+    if(servicePolicy.isScoped(actor)){
+      if(!servicePolicy.activeTenant(this._db(),actor))return [];
+      const ids=servicePolicy.scopeIds(this._db(),actor),scopeMatch=ids.length?'r.scope_id IN ('+ids.map(()=>'?').join(',')+')':'0';
+      conditions.push(`((r.tenant_id=? AND r.scope_id IS NULL) OR ((r.tenant_id IS NULL OR r.tenant_id=?) AND ${scopeMatch}))`);
+      params.push(Number(actor.tenantId),Number(actor.tenantId),...ids);
+    }
+    const where=conditions.length?'WHERE '+conditions.join(' AND '):'';
     return this._db().prepare(`SELECT r.*, u.username AS requester_username,
       (SELECT COUNT(*) FROM governance_approval_decisions d WHERE d.request_id=r.id AND d.decision='approve') AS approvals
       FROM governance_approval_requests r JOIN users u ON u.id=r.requested_by ${where}
       ORDER BY r.created_at DESC LIMIT ?`).all(...params, safeLimit).map(row);
   }
 
-  decisions(id) {
+  decisions(id,actor) {
+    if(servicePolicy.isScoped(actor)&&!servicePolicy.requestVisible(this._db(),this._db().prepare('SELECT * FROM governance_approval_requests WHERE id=?').get(integer(id,'id')),actor)){
+      fail('Approval request not found',404,'APPROVAL_NOT_FOUND');
+    }
     return this._db().prepare(`SELECT d.*, u.username FROM governance_approval_decisions d
       JOIN users u ON u.id=d.approver_id WHERE d.request_id=? ORDER BY d.created_at`).all(integer(id, 'id'));
   }
@@ -226,8 +241,12 @@ class GovernanceApprovalsService {
     this._db().prepare("UPDATE governance_approval_requests SET state='expired',updated_at=datetime('now') WHERE state IN ('pending','approved') AND datetime(expires_at)<=datetime('now')").run();
   }
 
-  listBlackouts() {
-    return this._db().prepare('SELECT * FROM governance_blackout_windows ORDER BY starts_at DESC').all();
+  listBlackouts(actor) {
+    const rows=this._db().prepare('SELECT * FROM governance_blackout_windows ORDER BY starts_at DESC').all();
+    if(!servicePolicy.isScoped(actor))return rows;
+    if(!servicePolicy.activeTenant(this._db(),actor))return [];
+    const allowed=new Set(servicePolicy.scopeIds(this._db(),actor,{inherit:true}));
+    return rows.filter(item=>item.scope_id==null||allowed.has(item.scope_id));
   }
 
   saveBlackout(id, input, actor) {

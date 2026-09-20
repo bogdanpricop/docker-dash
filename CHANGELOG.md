@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Enforce tenant ownership for authenticated service-token routes. Tenant credentials
+  can read their project/scopes, filtered approvals/policies/blackouts and capacity;
+  governance.write permits audited capacity accounting in that project. Foreign
+  selectors and unreviewed/global authenticated routes are refused. Migration 185
+  revokes credentials on tenant suspension; reactivation does not restore them.
+  [Supported routes, evidence and remaining limits](docs/audits/2026-09-20-service-token-tenant.md).
+
 - Require user administrator authentication for identity and service-credential
   management. Commit issuance/rotation and trust/realm changes with audit; explicit
   token revocation survives audit failure and reaches rotated descendants. Migration

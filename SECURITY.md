@@ -38,8 +38,23 @@ HTTP issuance, rotation and trust/realm changes commit with their audit entries.
 Audit failure returns 500 and rolls these operations back, including a requested
 trust disable/delete: repair audit and retry, or explicitly revoke the token.
 Explicit token revocation stays committed even when its subsequent audit fails.
-Credential administration responses carry no-store. This does not establish general
-service-token tenant isolation across other API routes.
+Credential administration responses carry no-store.
+
+The [tenant service-token follow-up](docs/audits/2026-09-20-service-token-tenant.md)
+adds an explicit route boundary to required service authentication. Tenant credentials
+can read their own project/scopes, capacity and filtered approval records. Policies
+and blackouts include applicable ancestors/global rules. Capacity accounting writes
+require governance.write or api.write and commit with audit. Other authenticated
+routes remain denied for tenant credentials until ownership enforcement is implemented.
+This is a supported route catalog, not automatic tenant support for every provider API.
+Migration 185 permanently revokes tenant tokens on suspension and backfills existing
+inactive tenants. Issuance, rotation and exchange refuse inactive tenants; reactivation
+does not restore old credentials. Global service credentials remain explicitly global.
+
+Public monitoring endpoints currently use optional authentication and are outside
+this boundary: `/api/metrics` and `/api/cluster/status` in `src/routes/misc.js` still
+need a separate access-control correction. This checkpoint does not certify complete
+tenant isolation or change existing user/team RBAC.
 
 ## OIDC and personal credentials (included in the 8.96.10 candidate)
 

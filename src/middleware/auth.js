@@ -216,7 +216,7 @@ function enforceServiceTokenPermissions(req, res, next) {
   if (!scopes.has(required) && !(family !== 'api' && scopes.has(`api.${read ? 'read' : 'write'}`))) {
     return res.status(403).json({ error: `Service token lacks ${required} scope`, code: 'SERVICE_SCOPE_DENIED' });
   }
-  next();
+  return require('../services/service-token-policy').enforceHttp(req,res,next);
 }
 
 /** Require feature flag */

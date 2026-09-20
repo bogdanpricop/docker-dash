@@ -133,6 +133,7 @@ class IdentityGovernanceService {
   }
 
   _issueToken({ name, principal, scopes, tenantId, ttlSeconds, issuedVia, rotatedFrom, createdBy, maximumExpiry, workloadTrustId }) {
+    if(tenantId!=null&&!this._db().prepare("SELECT id FROM tenants WHERE id=? AND status='active'").get(int(tenantId,'tenantId',1,Number.MAX_SAFE_INTEGER))) fail('Tenant is not active',403,'SERVICE_TENANT_DENIED');
     const ttl = int(ttlSeconds, 'ttlSeconds', workloadTrustId ? 1 : 60, workloadTrustId ? 3600 : 86400);
     const raw = `ddst_${generateToken(32)}`;
     const expiresAt = new Date(Math.min(Date.now() + ttl * 1000, maximumExpiry ?? Infinity)).toISOString();
@@ -147,8 +148,8 @@ class IdentityGovernanceService {
 
   issueToken(input, actor) {
     this._admin(actor);
-    return this._issueToken({ name: input.name, principal: input.principal, scopes: input.scopes,
-      tenantId: input.tenantId, ttlSeconds: input.ttlSeconds || 3600, issuedVia: 'manual', createdBy: actor.id });
+    return this._db().transaction(()=>this._issueToken({ name: input.name, principal: input.principal, scopes: input.scopes,
+      tenantId: input.tenantId, ttlSeconds: input.ttlSeconds || 3600, issuedVia: 'manual', createdBy: actor.id })).immediate();
   }
 
   tokenInfo(id) {
@@ -205,6 +206,7 @@ class IdentityGovernanceService {
     const item = this._db().prepare(`SELECT * FROM governance_service_tokens WHERE token_hash=? AND revoked_at IS NULL
       AND julianday(expires_at)>julianday('now')`).get(sha256(raw));
     if (!item) return null;
+    if(item.tenant_id!=null&&!this._db().prepare("SELECT id FROM tenants WHERE id=? AND status='active'").get(item.tenant_id))return null;
     const scopes=parseJson(item.scopes_json,null);
     if (!Array.isArray(scopes)||!scopes.length||scopes.some(scope=>typeof scope!=='string'||!SERVICE_SCOPES.has(scope))) return null;
     if (item.workload_trust_id || item.workload_expires_at || item.issued_via==='workload_exchange') {
