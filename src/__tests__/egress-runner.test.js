@@ -24,7 +24,11 @@ beforeEach(() => {
     HostConfig: { NetworkMode: 'bridge', CapDrop: ['ALL'] }, Config: { Labels: { 'com.docker.compose.project': 'test-stack' } } }]));
   helpers = []; events = []; failure = () => false;
   docker = {
-    getContainer: jest.fn(id => ({ inspect: jest.fn(async () => JSON.parse(JSON.stringify(targets.get([...targets.keys()].find(k => k.startsWith(id)))))) })),
+    getContainer: jest.fn(id => ({ inspect: jest.fn(async () => {
+      const target = targets.get([...targets.keys()].find(k => k.startsWith(id)));
+      if (!target) throw Object.assign(new Error('not found'), { statusCode: 404 });
+      return JSON.parse(JSON.stringify(target));
+    }) })),
     listContainers: jest.fn(async () => [...targets.values()].map(t => ({ Id: t.Id, Names: [t.Name], State: 'running' }))),
     createContainer: jest.fn(async opts => {
       const target = opts.Labels['com.docker-dash.egress-target'];
@@ -89,6 +93,14 @@ describe('configuration and target validation', () => {
 });
 
 describe('transaction orchestration', () => {
+  test('prune blocks egress before starting a helper or snapshotting firewall state', async () => {
+    const lookup = docker.getContainer.getMockImplementation();
+    docker.getContainer.mockImplementation(id => id === 'dd-maintenance-prune-lock'
+      ? { inspect: async () => ({ Id: 'prune-reservation' }) } : lookup(id));
+    await expect(runner.applyToContainer({ containerId: A })).rejects.toMatchObject({ status: 409 });
+    expect(events).toEqual([]); expect(helpers[0].start).not.toHaveBeenCalled();
+    expect(helpers[0].remove).toHaveBeenCalledTimes(1);
+  });
   test('all snapshots precede all mutations and helpers are removed after success', async () => {
     const result = await runner.applyToStack({ stackName: 'test-stack' });
     expect(result.applied).toHaveLength(3);

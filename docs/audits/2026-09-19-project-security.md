@@ -21,20 +21,17 @@ apk-tools si a dependintelor inutile, inclusiv zlib. Nicio exceptie noua sau
 prag dezactivat. Expunerea LAN 2375, IPv6/UDP, exceptiile private si celelalte
 limite egress raman deschise. Pool-urile de retea LAN sunt epuizate; daemonul
 nu a fost reconfigurat.
-Dovezi: [deploy 8.96.6](2026-09-20-deployment-8.96.6.md),
-[scanarea imaginii exacte](2026-09-20-image-8.96.6.json).
+Dovezi: [deploy 8.96.7](2026-09-20-deployment-8.96.7.md),
+[scanarea imaginii exacte](2026-09-20-image-8.96.7.json).
 Verificarea read-only a [binarelor instalate](2026-09-20-installed-scanner-artifacts.md)
 pe ambele hosturi leaga alertele de hash-urile si sursele analizate: dovezi de
 remediere gRPC si absenta codului daemon/OpenPGP pentru artefactele exacte.
 Constatarea zlib ramane deschisa; rapoartele brute si pragurile sunt pastrate.
-Corectie suplimentara in surse, inca neinstalata in aplicatiile live:
-[lease HA cu verificarea proprietarului si expirare locala](2026-09-20-ha-lease.md).
-358 suite / 4.704 teste trecute, un test omis; zece scenarii Redis reale pe fiecare
-host, inclusiv preluarea dupa suspendarea procesului si presiunea de memorie.
-Ulterior, [identitatea HTTP si limitele de cereri](2026-09-20-http-trust-and-quotas.md)
-au fost corectate: proxy-uri verificate, SSO bazat pe peer-ul socketului, scope-uri
-stabile si 503 la imposibilitatea verificarii cotei. 361 suite / 4.736 teste trecute,
-unul omis; opt scenarii HTTP/Redis reale pe fiecare host. Inca neinstalate live.
+Corectii suplimentare in surse, inca neinstalate in aplicatiile live:
+[durata cotelor si traversarea routerelor](2026-09-20-quota-lifecycle.md) si
+[protejarea recuperarilor la prune](2026-09-20-prune-recovery.md).
+Ambele au probe pe fiecare host in resurse temporare. Corectiile HA si HTTP
+anterioare sunt deja incluse in 8.96.7; aplicatiile live raman standalone.
 Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;

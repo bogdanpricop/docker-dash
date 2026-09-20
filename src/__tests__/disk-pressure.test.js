@@ -26,6 +26,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  jest.spyOn(docker, 'withPruneProtection').mockImplementation(async (_host, action) => action({ helperImage: null }));
   const old = Math.floor((Date.now() - 48 * 3600000) / 1000);
   jest.spyOn(docker, 'getDiskUsage').mockResolvedValue({
     Images: [{ Size: 2 * 1024 * 1024 * 1024 }], Containers: [], Volumes: [], BuildCache: [],
@@ -81,5 +82,35 @@ describe('disk-pressure safeguards', () => {
     expect(result.results.volumes).toEqual([]);
     pressure.updatePolicy(hostId, { dry_run_only: true });
   });
-});
 
+  it('cannot delete candidates while a recovery reservation blocks cleanup', async () => {
+    pressure.updatePolicy(hostId, { dry_run_only: false });
+    docker.withPruneProtection.mockRejectedValue(Object.assign(new Error('recovery pending'), { status: 409 }));
+    const remove = jest.spyOn(docker, 'removeContainer').mockResolvedValue();
+    try {
+      await expect(pressure.run(hostId, { force: true })).rejects.toMatchObject({ status: 409 });
+      expect(remove).not.toHaveBeenCalled();
+    } finally { pressure.updatePolicy(hostId, { dry_run_only: true }); }
+  });
+
+  it('preserves the helper even if it was selected before acquiring the guard', async () => {
+    pressure.updatePolicy(hostId, { dry_run_only: false });
+    docker.withPruneProtection.mockImplementation(async (_host, action) => action({ helperImage: 'sha256:dddddddddddd' }));
+    jest.spyOn(docker, 'removeContainer').mockResolvedValue(); jest.spyOn(docker, 'removeNetwork').mockResolvedValue();
+    const remove = jest.spyOn(docker, 'removeImage').mockResolvedValue();
+    try {
+      const result = await pressure.run(hostId, { force: true });
+      expect(remove).not.toHaveBeenCalled(); expect(result.results.images[0].status).toBe('protected');
+    } finally { pressure.updatePolicy(hostId, { dry_run_only: true }); }
+  });
+
+  it('propagates uncertain deletion to the guard and stops subsequent deletions', async () => {
+    pressure.updatePolicy(hostId, { dry_run_only: false });
+    jest.spyOn(docker, 'removeContainer').mockRejectedValue(new Error('response lost'));
+    const remove = jest.spyOn(docker, 'removeImage').mockResolvedValue();
+    try {
+      await expect(pressure.run(hostId, { force: true })).rejects.toThrow('response lost');
+      expect(remove).not.toHaveBeenCalled(); expect(pressure.history(hostId)[0].status).toBe('failed');
+    } finally { pressure.updatePolicy(hostId, { dry_run_only: true }); }
+  });
+});

@@ -72,6 +72,7 @@ async function replace({ docker, inspect, imageId, hostId = 0, action, username,
     try {
       lock = await docker.createContainer({ name: lockName, Image: inspect.Image,
         Entrypoint: ['/bin/false'], Cmd: [], Labels: { [LABEL]: id, [LABEL + '.role']: 'lock',
+          [require('./docker-prune-guard').PROTECT_LABEL]: 'true',
           [LABEL + '.original']: inspect.Id, [LABEL + '.name']: name },
         HostConfig: { NetworkMode: 'none', RestartPolicy: { Name: 'no' }, ReadonlyRootfs: true } });
     } catch (error) {
@@ -79,6 +80,7 @@ async function replace({ docker, inspect, imageId, hostId = 0, action, username,
       throw error;
     }
     update('locked');
+    await require('./docker-prune-guard').assertNoPrune(docker);
     const current = await old.inspect();
     if (fingerprint(current) !== fingerprint(inspect)) throw operational('Container changed while the update was being prepared; retry with fresh state');
     const historyId = history.record({ inspect: current, hostId, action, username });

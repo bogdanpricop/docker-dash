@@ -50,11 +50,14 @@ router.get('/events', requireAuth, (req, res) => {
 router.post('/prune', requireAuth, requireRole('admin'), writeable, requireFeature('prune'), async (req, res) => {
   try {
     const { containers, images, volumes, networks } = req.body;
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'system_prune',
+      targetType: 'docker_host', targetId: String(req.hostId), details: { phase: 'requested', containers, images, volumes, networks }, ip: getClientIp(req) });
     const results = await dockerService.prune({ containers, images, volumes, networks }, req.hostId);
     auditService.log({ userId: req.user.id, username: req.user.username,
-      action: 'system_prune', details: req.body, ip: getClientIp(req) });
+      action: 'system_prune', details: { ...req.body, phase: 'completed', protection: results.protection }, ip: getClientIp(req) });
     res.json(results);
-  } catch (err) { res.status(500).json({ error: humanizeDockerError(err) }); }
+  } catch (err) { res.status(err.status === 409 ? 409 : 500).json({ error: humanizeDockerError(err),
+    recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer }); }
 });
 
 // Per-type prune — the frontend (System → Tools → Prune buttons) sends
@@ -73,13 +76,16 @@ router.post('/prune/:type', requireAuth, requireRole('admin'), writeable, requir
     ? { containers: true, images: true, volumes: true, networks: true, buildCache: true }
     : (type === 'buildcache' ? { buildCache: true } : { [type]: true });
   try {
+    auditService.log({ userId: req.user.id, username: req.user.username, action: 'system_prune',
+      targetType: 'docker_host', targetId: String(req.hostId), details: { phase: 'requested', type, ...flags }, ip: getClientIp(req) });
     const results = await dockerService.prune(flags, req.hostId);
     auditService.log({ userId: req.user.id, username: req.user.username,
-      action: 'system_prune', details: { type, ...flags }, ip: getClientIp(req) });
+      action: 'system_prune', details: { type, ...flags, phase: 'completed', protection: results.protection }, ip: getClientIp(req) });
     res.json(results);
   } catch (err) {
     log.error('Prune failed', { type, message: err.message || String(err) });
-    res.status(500).json({ error: humanizeDockerError(err) });
+    res.status(err.status === 409 ? 409 : 500).json({ error: humanizeDockerError(err),
+      recoveryRequired: !!err.recoveryRequired, recoveryContainer: err.recoveryContainer });
   }
 });
 

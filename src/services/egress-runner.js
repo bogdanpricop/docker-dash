@@ -111,6 +111,7 @@ async function withSessions(infos, docker, action, inspectionOnly = false) {
         helper = await bounded(docker.createContainer({ name, Image: HELPER_IMAGE, User: '0:0', Entrypoint: ['/bin/sh'], Tty: false,
           Cmd: ['-c', 'trap "exit 0" TERM INT; while :; do sleep 30 & wait $!; done'],
           Labels: { 'com.docker-dash.egress-operation': operationId, 'com.docker-dash.egress-target': info.Id,
+            [require('./docker-prune-guard').PROTECT_LABEL]: 'true',
             'com.docker-dash.egress-started-at': info.State.StartedAt, 'com.docker-dash.egress-pid': String(info.State.Pid) },
           Healthcheck: { Test: ['NONE'] },
           HostConfig: { NetworkMode: `container:${info.Id}`, CapDrop: ['ALL'], CapAdd: ['NET_ADMIN'],
@@ -129,6 +130,7 @@ async function withSessions(infos, docker, action, inspectionOnly = false) {
       }
       const session = { docker, info, helper, name, operationId, inspectionOnly, uncertain: false, recovery: false };
       sessions.push(session);
+      await bounded(require('./docker-prune-guard').assertNoPrune(docker));
       await bounded(helper.start());
       await checkTarget(session);
       // The default helper already contains nftables and has no package manager.

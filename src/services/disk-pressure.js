@@ -205,35 +205,49 @@ async function run(hostId, { force = false, triggerType = 'manual', userId = nul
   const results = { containers: [], images: [], networks: [], buildCache: null, volumes: [] };
   let reclaimedBytes = 0;
   try {
-    for (const item of evaluation.candidates.containers) {
-      try {
-        await docker.removeContainer(item.id, { force: false, v: false }, evaluation.host_id);
-        results.containers.push({ ...item, status: 'deleted' });
-      } catch (err) { results.containers.push({ ...item, status: 'failed', error: err.message }); }
-    }
-    for (const item of evaluation.candidates.images) {
-      try {
-        await docker.removeImage(item.id, { force: false }, evaluation.host_id);
-        reclaimedBytes += Number(item.size) || 0;
-        results.images.push({ ...item, status: 'deleted' });
-      } catch (err) { results.images.push({ ...item, status: 'failed', error: err.message }); }
-    }
-    for (const item of evaluation.candidates.networks) {
-      try {
-        await docker.removeNetwork(item.id, evaluation.host_id);
-        results.networks.push({ ...item, status: 'deleted' });
-      } catch (err) { results.networks.push({ ...item, status: 'failed', error: err.message }); }
-    }
-    if (evaluation.candidates.buildCache.length) {
-      const cutoff = Math.floor((Date.now() - policy.min_age_hours * 3600000) / 1000);
-      results.buildCache = await docker.pruneBuildCacheBefore(cutoff, evaluation.host_id);
-      reclaimedBytes += Number(results.buildCache?.SpaceReclaimed) || 0;
-    }
-    const failures = [...results.containers, ...results.images, ...results.networks]
-      .filter(item => item.status === 'failed');
-    const status = failures.length ? 'partial' : 'success';
-    const runId = _recordRun(evaluation, { triggerType, dryRun: false, status, reclaimedBytes, userId });
-    return { status, dry_run: false, run_id: runId, reclaimed_bytes: reclaimedBytes, evaluation, results };
+    return await docker.withPruneProtection(evaluation.host_id, async ({ helperImage }) => {
+      for (const item of evaluation.candidates.containers) {
+        try {
+          await docker.removeContainer(item.id, { force: false, v: false }, evaluation.host_id);
+          results.containers.push({ ...item, status: 'deleted' });
+        } catch (err) {
+          if (!Number.isInteger(err.statusCode) || err.statusCode >= 500) throw err;
+          results.containers.push({ ...item, status: 'failed', error: err.message });
+        }
+      }
+      for (const item of evaluation.candidates.images) {
+        if (item.id === helperImage) {
+          results.images.push({ ...item, status: 'protected', reason: 'Configured egress helper' }); continue;
+        }
+        try {
+          await docker.removeImage(item.id, { force: false }, evaluation.host_id);
+          reclaimedBytes += Number(item.size) || 0;
+          results.images.push({ ...item, status: 'deleted' });
+        } catch (err) {
+          if (!Number.isInteger(err.statusCode) || err.statusCode >= 500) throw err;
+          results.images.push({ ...item, status: 'failed', error: err.message });
+        }
+      }
+      for (const item of evaluation.candidates.networks) {
+        try {
+          await docker.removeNetwork(item.id, evaluation.host_id);
+          results.networks.push({ ...item, status: 'deleted' });
+        } catch (err) {
+          if (!Number.isInteger(err.statusCode) || err.statusCode >= 500) throw err;
+          results.networks.push({ ...item, status: 'failed', error: err.message });
+        }
+      }
+      if (evaluation.candidates.buildCache.length) {
+        const cutoff = Math.floor((Date.now() - policy.min_age_hours * 3600000) / 1000);
+        results.buildCache = await docker.pruneBuildCacheBefore(cutoff, evaluation.host_id);
+        reclaimedBytes += Number(results.buildCache?.SpaceReclaimed) || 0;
+      }
+      const failures = [...results.containers, ...results.images, ...results.networks]
+        .filter(item => item.status === 'failed');
+      const status = failures.length ? 'partial' : 'success';
+      const runId = _recordRun(evaluation, { triggerType, dryRun: false, status, reclaimedBytes, userId });
+      return { status, dry_run: false, run_id: runId, reclaimed_bytes: reclaimedBytes, evaluation, results };
+    });
   } catch (err) {
     _recordRun(evaluation, { triggerType, dryRun: false, status: 'failed', reclaimedBytes, error: err.message, userId });
     throw err;

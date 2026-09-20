@@ -4,6 +4,11 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Coordinate manual/fleet/disk-pressure cleanup with replacement and egress
+  reservations. Preserve recovery containers and the configured helper image;
+  retain a daemon reservation when cleanup completion is uncertain.
+- Prevent individual image deletion from implicitly pruning untagged parents.
+
 - Preserve standalone rate-limit timestamps for each configured window instead
   of a fixed one-hour cleanup horizon. Expire short windows promptly.
 - Charge a shared limiter once per HTTP request across Express router fallthrough,

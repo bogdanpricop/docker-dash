@@ -1330,7 +1330,7 @@ i18n.register('ro', 'RO', "Română", {
       auditIp: "IP",
       pruneHelp: {
         title: "Ce inseamna Docker Prune?",
-        intro: "Docker acumuleaza in timp resurse neutilizate care ocupa spatiu pe disc. Comanda <strong>prune</strong> sterge aceste resurse pentru a elibera spatiu.",
+        intro: "Docker acumuleaza in timp resurse neutilizate care ocupa spatiu pe disc. Comanda <strong>prune</strong> sterge aceste resurse pentru a elibera spatiu. Curatarea din dashboard este blocata in timpul inlocuirilor de containere sau al recuperarilor nerezolvate. Imaginea helper egress configurata este pastrata. Daca raspunsul Docker se pierde, verifica rezervarea retinuta inainte de reincercare. Comenzile CLI manuale ocolesc aceste protectii.",
         containersTitle: "Prune Containers",
         containersBody: "Sterge toate containerele care au statusul <strong>stopped</strong> (oprite). Containerele active (running) nu sunt afectate.",
         containersWarning: "Log-urile containerelor sterse se pierd definitiv.",

@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "productionDeployed": false,
+  "validation": {
+    "suites": 362,
+    "passed": 4762,
+    "skipped": 1,
+    "lint": true,
+    "pageHelp": "60/60"
+  },
+  "hosts": {
+    "lan": {
+      "at": "2026-09-20T06:38:13.738Z",
+      "marker": "dd-prune-smoke-bac3cba25ee9",
+      "checks": [
+        "daemon-name-reservation-blocks-operations-and-competing-prune",
+        "real-container-prune-keeps-guard-and-late-operation-reservations",
+        "real-image-prune-preserves-helper-referenced-only-by-guard",
+        "retained-original-blocks-prune-before-deletion",
+        "uncertain-outcome-retains-barrier"
+      ],
+      "fixtureImage": "sha256:08ba38aa65fce82394f13636c35179eaa1d718920cce9eeaea3453c4bee68f03",
+      "sourceSha256": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+      "onlyLabeledTestResources": true,
+      "productionPruneCalled": false,
+      "ownedResourcesRemoved": true,
+      "baseHelperStillPresent": true
+    },
+    "vps": {
+      "at": "2026-09-20T06:33:16.002Z",
+      "marker": "dd-prune-smoke-fe28fd8f52b0",
+      "checks": [
+        "daemon-name-reservation-blocks-operations-and-competing-prune",
+        "real-container-prune-keeps-guard-and-late-operation-reservations",
+        "real-image-prune-preserves-helper-referenced-only-by-guard",
+        "retained-original-blocks-prune-before-deletion",
+        "uncertain-outcome-retains-barrier"
+      ],
+      "fixtureImage": "sha256:7e15601f0a92975065e0e9220247929049572d6049d77060fe4a39c0c61aa2ef",
+      "sourceSha256": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+      "onlyLabeledTestResources": true,
+      "productionPruneCalled": false,
+      "ownedResourcesRemoved": true,
+      "baseHelperStillPresent": true
+    }
+  },
+  "liveHealth": [
+    {
+      "target": "lan",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.7",
+      "at": "2026-09-20T06:37:40.917Z"
+    },
+    {
+      "target": "vps",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.7",
+      "at": "2026-09-20T06:37:34.024Z"
+    }
+  ],
+  "nativeScope": "Namespaced adapter, positive invocation-label filters; no production-wide prune",
+  "developmentFinding": "Multiple negative filters failed; replaced with one common label. Initial fixture-image cleanup removed untagged helper parent on VPS; exact helper restored and noprune enabled."
+}

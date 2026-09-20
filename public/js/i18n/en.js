@@ -969,7 +969,7 @@ i18n.register('en', 'EN', 'English', {
       // Prune help
       pruneHelp: {
         title: 'What does Docker Prune mean?',
-        intro: 'Docker accumulates unused resources over time that take up disk space. The <strong>prune</strong> command deletes these resources to free space.',
+        intro: 'Docker accumulates unused resources over time that take up disk space. The <strong>prune</strong> command deletes these resources to free space. Dashboard cleanup is blocked during container replacements or while recovery is pending. It preserves the configured egress helper image. If Docker loses the response, reconcile the retained cleanup reservation before retrying. Manual CLI commands bypass these safeguards.',
         containersTitle: 'Prune Containers',
         containersBody: 'Deletes all containers with <strong>stopped</strong> status. Active (running) containers are not affected.',
         containersWarning: 'Logs from deleted containers are permanently lost.',

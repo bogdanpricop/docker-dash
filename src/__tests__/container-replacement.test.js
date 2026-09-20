@@ -109,6 +109,15 @@ test('renamed retained originals cannot be updated through a second lock', async
   expect(fixture.docker.createContainer).not.toHaveBeenCalled();
 });
 
+test('a prune reservation blocks replacement before renaming or stopping the original', async () => {
+  const lookup = fixture.docker.getContainer.getMockImplementation();
+  fixture.docker.getContainer.mockImplementation(id => id === 'dd-maintenance-prune-lock'
+    ? { inspect: async () => ({ Id: 'prune-reservation' }) } : lookup(id));
+  await expect(replace(input)).rejects.toMatchObject({ status: 409 });
+  expect(fixture.old.rename).not.toHaveBeenCalled(); expect(fixture.old.stop).not.toHaveBeenCalled();
+  expect(fixture.states.size).toBe(1);
+});
+
 test('stale inspection is rejected without stopping the original', async () => {
   fixture.initial.Config.Env = ['CHANGED=1'];
   await expect(replace(input)).rejects.toThrow('fresh state');
