@@ -2,6 +2,13 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [Unreleased]
+
+- Preserve standalone rate-limit timestamps for each configured window instead
+  of a fixed one-hour cleanup horizon. Expire short windows promptly.
+- Charge a shared limiter once per HTTP request across Express router fallthrough,
+  while retaining independent route-specific quotas and fail-closed decisions.
+
 ## [8.96.7] - 2026-09-20 — HTTP trust and HA lease enforcement
 
 - Resolve client IPs through the configured Express proxy policy. Check SSO

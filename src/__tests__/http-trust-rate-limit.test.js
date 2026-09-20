@@ -68,6 +68,31 @@ test('independent scopes do not consume one another and trusted clients remain d
   }
 });
 
+test('a shared API limiter charges once when an Express router falls through to another mount', async () => {
+  cluster.rateLimitTick.mockImplementation((...args) => memory.tick(...args));
+  const app = express(), limiter = rateLimit(2, 60000, 'api'), first = express.Router();
+  first.get('/other', (_req, res) => res.sendStatus(200));
+  app.use('/api/volumes', limiter, first);
+  app.use('/api/volumes', limiter, (_req, res) => res.sendStatus(200));
+  for (let n = 0; n < 2; n++) {
+    const response = await request(app).get('/api/volumes/browser');
+    expect(response.status).toBe(200);
+    expect(response.headers['x-ratelimit-remaining']).toBe(String(1 - n));
+  }
+  expect((await request(app).get('/api/volumes/browser')).status).toBe(429);
+  expect(cluster.rateLimitTick).toHaveBeenCalledTimes(3);
+});
+
+test('an API allowance cannot skip a different route-specific limiter on the same request', async () => {
+  cluster.rateLimitTick.mockImplementation((...args) => memory.tick(...args));
+  const app = express(), shared = rateLimit(10, 60000, 'api');
+  app.use('/api', shared);
+  app.post('/api/run', shared, rateLimit(1, 60000, 'procedure-run'), (_req, res) => res.sendStatus(200));
+  expect((await request(app).post('/api/run')).status).toBe(200);
+  expect((await request(app).post('/api/run')).status).toBe(429);
+  expect(cluster.rateLimitTick.mock.calls.map(c => JSON.parse(c[0])[0])).toEqual(['api', 'procedure-run', 'api', 'procedure-run']);
+});
+
 test.each([new Error('Redis unavailable'), null, {}, { allowed: true, remaining: NaN },
   { allowed: false, remaining: 0, retryAfterSec: 0 }])('unavailable/invalid quota never reaches the handler: %p', async value => {
   if (value instanceof Error) cluster.rateLimitTick.mockRejectedValue(value);

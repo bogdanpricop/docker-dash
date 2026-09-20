@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "productionDeployed": false,
+  "validation": {
+    "suites": 361,
+    "passed": 4742,
+    "skipped": 1,
+    "lint": true,
+    "regressionsConfirmedBeforeFix": 5
+  },
+  "standaloneClockTest": "synchronous simulated clock inside disposable controller; not a real-time soak",
+  "hosts": {
+    "lan": {
+      "at": "2026-09-20T06:17:13.989Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "real-redis-charges-one-request-once-across-router-fallthrough",
+        "shared-api-allowance-does-not-exempt-route-specific-quota",
+        "standalone-cleanup-retains-long-quota-and-removes-expired-short-quota",
+        "standalone-quota-resumes-only-at-configured-expiry",
+        "direct-client-cannot-forge-forwarding-identity",
+        "real-redis-quota-survives-url-case-and-header-rotation",
+        "trusted-proxy-stops-at-closest-untrusted-hop",
+        "stalled-redis-returns-bounded-503-before-mutation",
+        "late-quota-success-does-not-run-abandoned-mutation",
+        "quota-service-recovers-without-bypass",
+        "redis-noeviction-oom-blocks-protected-handler",
+        "clearing-memory-pressure-restores-verified-requests"
+      ],
+      "productionDatabaseUsed": false,
+      "onlyDisposableMutationHandler": true,
+      "marker": "dd-http-quota-6cbed0a87fda",
+      "appImage": "sha256:5fffc3d18ed6c444d43e87b6c38729c78fb7d8be7d2bf364713442f78e283cf8",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "src/services/rate-limiter-memory.js": "856677e3b1474a36aa4a195d0dd188659fbd48d63a1abf5c6fb6499f7c5667fe",
+        "src/middleware/rateLimit.js": "8ad9fb41c5ced67391d9a1195593be39491f2041e4fe497c97525c3e7b05e079",
+        "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+        "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+        "scripts/fixtures/http-quota-checks.js": "85c094749311bdcde0c11e9a19d9b66eeca8da841e2434d6bf75a26ee017b9ff"
+      },
+      "bundledSourceVerified": false,
+      "publishedPorts": false,
+      "ownedResourcesRemoved": true
+    },
+    "vps": {
+      "at": "2026-09-20T06:17:14.551Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "real-redis-charges-one-request-once-across-router-fallthrough",
+        "shared-api-allowance-does-not-exempt-route-specific-quota",
+        "standalone-cleanup-retains-long-quota-and-removes-expired-short-quota",
+        "standalone-quota-resumes-only-at-configured-expiry",
+        "direct-client-cannot-forge-forwarding-identity",
+        "real-redis-quota-survives-url-case-and-header-rotation",
+        "trusted-proxy-stops-at-closest-untrusted-hop",
+        "stalled-redis-returns-bounded-503-before-mutation",
+        "late-quota-success-does-not-run-abandoned-mutation",
+        "quota-service-recovers-without-bypass",
+        "redis-noeviction-oom-blocks-protected-handler",
+        "clearing-memory-pressure-restores-verified-requests"
+      ],
+      "productionDatabaseUsed": false,
+      "onlyDisposableMutationHandler": true,
+      "marker": "dd-http-quota-cec4d60b9cd5",
+      "appImage": "sha256:5fffc3d18ed6c444d43e87b6c38729c78fb7d8be7d2bf364713442f78e283cf8",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "src/services/rate-limiter-memory.js": "856677e3b1474a36aa4a195d0dd188659fbd48d63a1abf5c6fb6499f7c5667fe",
+        "src/middleware/rateLimit.js": "8ad9fb41c5ced67391d9a1195593be39491f2041e4fe497c97525c3e7b05e079",
+        "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+        "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+        "scripts/fixtures/http-quota-checks.js": "85c094749311bdcde0c11e9a19d9b66eeca8da841e2434d6bf75a26ee017b9ff"
+      },
+      "bundledSourceVerified": false,
+      "publishedPorts": false,
+      "ownedResourcesRemoved": true
+    }
+  }
+}

@@ -16,6 +16,13 @@ app.get('/identity', (req, res) => res.json({ ip: getClientIp(req) }));
 app.use('/items', rateLimit(2, 86400000, 'canary-api'));
 app.use('/items', (_q, s) => s.json({ ok: true }));
 app.post('/mutation', rateLimit(20, 86400000, 'canary-mutation'), (_q, s) => { mutations++; s.json({ ok: true }); });
+const shared = rateLimit(2, 86400000, 'canary-shared'), first = express.Router();
+first.get('/other', (_q, s) => s.sendStatus(200));
+app.use('/split', shared, first);
+app.use('/split', shared, (_q, s) => s.sendStatus(200));
+const general = rateLimit(20, 86400000, 'canary-general');
+app.use('/scoped', general);
+app.get('/scoped/run', general, rateLimit(1, 86400000, 'canary-specific'), (_q, s) => s.sendStatus(200));
 
 (async () => {
   try {
@@ -23,6 +30,28 @@ app.post('/mutation', rateLimit(20, 86400000, 'canary-mutation'), (_q, s) => { m
     server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     const base = 'http://127.0.0.1:' + server.address().port;
     const call = (path, options = {}) => fetch(base + path, { ...options, signal: AbortSignal.timeout(7000) });
+    for (let n = 0; n < 2; n++) {
+      const response = await call('/split/browser');
+      assert.equal(response.status, 200); assert.equal(response.headers.get('x-ratelimit-remaining'), String(1 - n));
+    }
+    assert.equal((await call('/split/browser')).status, 429);
+    checks.push('real-redis-charges-one-request-once-across-router-fallthrough');
+    assert.equal((await call('/scoped/run')).status, 200);
+    assert.equal((await call('/scoped/run')).status, 429);
+    checks.push('shared-api-allowance-does-not-exempt-route-specific-quota');
+    const memory = require('../../src/services/rate-limiter-memory'), originalNow = Date.now;
+    let clock = 0;
+    try {
+      Date.now = () => clock;
+      memory.tick('canary-long', 1, 7200000); memory.tick('canary-short', 1, 1000);
+      clock = 3900000; memory._cleanup();
+      assert.equal(memory._windows.has('canary-short'), false);
+      assert.deepEqual(memory.tick('canary-long', 1, 7200000), { allowed: false, remaining: 0, retryAfterSec: 3300 });
+      checks.push('standalone-cleanup-retains-long-quota-and-removes-expired-short-quota');
+      clock = 7200000; memory._cleanup();
+      assert.equal(memory.tick('canary-long', 1, 7200000).allowed, true);
+      checks.push('standalone-quota-resumes-only-at-configured-expiry');
+    } finally { Date.now = originalNow; memory._reset(); }
     const plain = await (await call('/identity')).json();
     assert.deepEqual(await (await call('/identity', { headers: { 'X-Forwarded-For': '203.0.113.8', 'X-Real-IP': '198.51.100.9' } })).json(), plain);
     checks.push('direct-client-cannot-forge-forwarding-identity');

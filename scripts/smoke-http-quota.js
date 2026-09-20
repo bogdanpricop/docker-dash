@@ -23,6 +23,7 @@ const labels = { 'com.docker-dash.smoke': marker };
 const redisCommand = yaml.parse(fs.readFileSync('docker-compose.yml', 'utf8')).services.redis.command;
 assert.match(redisCommand, /--maxmemory-policy noeviction(?:\s|$)/, 'Coordination profile must not evict leases');
 const sources = ['src/services/cluster.js', 'src/services/cluster-lease.js',
+  'src/services/rate-limiter-memory.js',
   'src/middleware/rateLimit.js', 'src/utils/helpers.js', 'src/utils/proxy-trust.js', 'scripts/fixtures/http-quota-checks.js'];
 
 (async () => {

@@ -16,7 +16,13 @@ function middleware(maxRequests, windowMs, scope = `quota:${maxRequests}:${windo
     throw new Error('Rate-limit count and window must be positive integers');
   }
   if (typeof scope !== 'string' || !scope || scope.length > 128) throw new Error('Invalid rate-limit scope');
+  // The same limiter can be mounted on several routers traversed by one HTTP
+  // request. Charge it once, without exempting other limiter instances/scopes.
+  // Weak references avoid retaining completed requests or trusting input headers.
+  const allowedRequests = new WeakSet();
   return async (req, res, next) => {
+    if (res.destroyed || res.writableEnded) return;
+    if (allowedRequests.has(req)) return next();
     const ip = getClientIp(req);
     // Scope belongs to the configured limiter, never a caller-controlled URL,
     // parameter, capitalization, forwarding header or query string.
@@ -46,6 +52,7 @@ function middleware(maxRequests, windowMs, scope = `quota:${maxRequests}:${windo
       });
     }
     res.set('X-RateLimit-Remaining', String(result.remaining));
+    allowedRequests.add(req);
     next();
   };
 }

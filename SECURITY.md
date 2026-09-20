@@ -199,6 +199,8 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 Quota keys use a fixed configured scope and the client IP resolved by Express's proxy trust policy. Changing URL parameters, route capitalization, query strings or untrusted forwarding headers cannot create a new quota. The shared API limiter is one per-client budget across its mounted routes; login, MFA, reset and other dedicated limiters use separate named scopes. Configure trusted proxy addresses correctly to avoid grouping clients under a proxy address. This complements account lockout and RBAC; it does not replace them or upstream connection/DDoS controls.
 
+A successful admission is reused only when the same limiter instance sees the same HTTP request again during router fallthrough. Other limiter instances still enforce their own quotas. Standalone cleanup follows each stored window's configured duration, including durations longer than an hour; it cannot replenish an unexpired budget. Expired client entries are reclaimed by the periodic cleanup. See the [quota lifecycle audit](docs/audits/2026-09-20-quota-lifecycle.md) for validation and deployment status.
+
 **Mitigation:** Documented in [docs/features/ha-mode.md](docs/features/ha-mode.md#rate-limiter-semantics). Both modes implement the same API surface (`X-RateLimit-Remaining` response header, `Retry-After` on 429), so clients can't tell which backend is serving them. For target audiences (homelab standalone, corporate HA), both enforcement shapes are appropriate.
 
 ### 6. Docker socket access is inherently privileged
