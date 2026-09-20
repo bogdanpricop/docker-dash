@@ -2,6 +2,20 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.5] - 2026-09-20 — Recoverable egress rules and minimal helper
+
+- Replace each IPv4 egress table in one nftables transaction. Reserve canonical
+  targets on the Docker daemon, snapshot policies before mutation and restore
+  those snapshots on failure. Preserve uncertain/failed recovery evidence and
+  report actual rollback results instead of claiming successful restoration.
+- Bound helper commands and output, audit intent before changes and keep policy
+  configuration when firewall removal fails, including emergency disable in the UI.
+- Use a prebuilt helper by default; the optional Compose egress profile builds
+  and checks it before the sidecar starts. Remove the unused package manager,
+  zlib and installation dependencies while retaining the runtime package inventory.
+- Document protocol-coverage limits and recovery in EN/RO. IPv6/non-TCP coverage
+  and broad private-network exceptions remain open; no complete isolation claim.
+
 ## [8.96.4] - 2026-09-20 — Remote secret execution and Compose dependencies
 
 - Transfer remote secret scripts in memory, verify the complete payload before

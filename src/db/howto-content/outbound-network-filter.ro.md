@@ -19,7 +19,7 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 <p>Construieste helper-ul pe fiecare daemon Docker selectat, pentru ca regulile existente sa nu poata impiedica instalarea pachetelor:</p>
 <pre><code>docker build -t docker-dash-egress-helper:local docker/egress-helper
 # Configureaza DD_EGRESS_HELPER_IMAGE cu ID-ul sha256 al acestei imagini.</code></pre>
-<p>Fallback-ul Alpine instaleaza nftables inaintea modificarilor si refuza operatia fara a schimba regulile daca pregatirea nu reuseste. Comenzile au limita de observare de 45 secunde si 128 KiB de output combinat. Timeout-ul inseamna rezultat incert, nu ca executia nu a avut loc. Dezactivarea de urgenta pastreaza politica daca eliminarea firewall-ului esueaza.</p>
+<p>Implicit se foloseste <code>docker-dash-egress-helper:local</code>, construit de profilul Compose egress. Contine nftables, pastreaza inventarul pachetelor si exclude apk-tools si zlib. O imagine Alpine veche configurata explicit poate instala nftables inaintea modificarilor; aceasta nu mai este implicita. Lipsa imaginii helper sau esecul pregatirii refuza operatia fara a schimba regulile. Comenzile au limita de observare de 45 secunde si 128 KiB de output combinat. Timeout-ul inseamna rezultat incert, nu ca executia nu a avut loc. Dezactivarea de urgenta pastreaza politica daca eliminarea firewall-ului esueaza.</p>
 
 <h2>Arhitectura</h2>
 <p>Trei piese mobile:</p>
@@ -34,6 +34,7 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 <h3>1. Pornește sidecar-ul</h3>
 <p>Foloseste profilul Compose din radacina proiectului, pe acelasi host Docker cu aplicatia si containerele filtrate:</p>
 <pre><code>docker compose --profile egress up -d --build dd-egress-filter</code></pre>
+<p>Comanda construieste si helper-ul implicit, apoi executa o verificare scurta fara retea sau capabilitati, cu filesystem read-only. Sidecar-ul porneste numai dupa terminarea verificarii cu succes. Runner-ul creeaza helper-e separate cu NET_ADMIN doar cand administratorul aplica sau elimina un filtru.</p>
 <p>Aplicatia si sidecar-ul impart directorul politicilor si socket-ul privat <code>resolver.sock</code>. Docker Dash scrie schema 2 si autorizeaza fiecare sursa TCP prin identitatea live a containerului si intersectia politicilor. Nu inlocui configuratia cu un fisier standalone schema 1 si nu monta doar <code>policy.json</code>: acestea nu ofera autorizarea aplicatiei per container. Sidecar-ul nu publica porturi si nu primeste socket-ul Docker.</p>
 
 <h3>2. Configurează Docker Dash</h3>

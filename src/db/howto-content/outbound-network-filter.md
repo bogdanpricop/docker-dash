@@ -22,7 +22,7 @@ icon: fas fa-shield-alt
 <p>Prebuild the helper on each selected Docker daemon so restrictive existing policies cannot prevent package installation:</p>
 <pre><code>docker build -t docker-dash-egress-helper:local docker/egress-helper
 # Set DD_EGRESS_HELPER_IMAGE to this image's immutable sha256 ID in Docker Dash.</code></pre>
-<p>The legacy Alpine fallback installs nftables before any mutation and fails without changing rules if preparation is unavailable. Commands have a 45-second observation deadline and 128 KiB combined output limit. A timeout is an uncertain outcome, not proof that nothing ran. Emergency disable retains the policy if firewall removal fails.</p>
+<p>The default is <code>docker-dash-egress-helper:local</code>, built by the egress Compose profile. It contains nftables, retains its package inventory and excludes apk-tools and zlib. An explicitly configured legacy Alpine image can still install nftables before any mutation; it is not the default. A missing helper image or unavailable preparation fails without changing rules. Commands have a 45-second observation deadline and 128 KiB combined output limit. A timeout is an uncertain outcome, not proof that nothing ran. Emergency disable retains the policy if firewall removal fails.</p>
 
 <h2>Architecture</h2>
 <p>Three moving parts:</p>
@@ -37,6 +37,7 @@ icon: fas fa-shield-alt
 <h3>1. Run the sidecar</h3>
 <p>Use the repository's Compose profile from its root, on the same Docker host as the application and filtered workloads:</p>
 <pre><code>docker compose --profile egress up -d --build dd-egress-filter</code></pre>
+<p>This also builds the default helper and runs a short bootstrap check with no network, no capabilities and a read-only filesystem. The sidecar starts only after that check exits successfully. The runner creates separate helpers with NET_ADMIN only when an administrator applies or removes a filter.</p>
 <p>The application and sidecar share the policy directory and private <code>resolver.sock</code>. Docker Dash writes schema 2 and authorizes each TCP source using live container identity and intersected policies. Do not replace this with a standalone schema-1 file or mount only <code>policy.json</code>: those instructions do not provide per-container application authorization. The sidecar has no published ports or Docker socket.</p>
 
 <h3>2. Configure Docker Dash</h3>

@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const dockerService = require('./docker');
 const nft = require('./egress-nft');
 const log = require('../utils/logger')('egress-runner');
-const HELPER_IMAGE = process.env.DD_EGRESS_HELPER_IMAGE || 'alpine:3.24.2';
+const HELPER_IMAGE = process.env.DD_EGRESS_HELPER_IMAGE || 'docker-dash-egress-helper:local';
 const TIMEOUT_MS = 45000;
 const MAX_OUTPUT = 128 * 1024;
 
@@ -118,7 +118,10 @@ async function withSessions(infos, docker, action) {
       } catch (error) {
         const conflict = error.statusCode === 409;
         const uncertain = !Number.isInteger(error.statusCode) || error.statusCode >= 500;
-        throw Object.assign(new Error(conflict ? `Egress operation or recovery already holds ${name}` : `Cannot reserve egress helper ${name}`), {
+        const message = error.statusCode === 404
+          ? 'Egress helper image unavailable. Build the egress Compose profile or configure DD_EGRESS_HELPER_IMAGE.'
+          : conflict ? `Egress operation or recovery already holds ${name}` : `Cannot reserve egress helper ${name}`;
+        throw Object.assign(new Error(message), {
           operationId, recoveryRequired: uncertain, recoveryHelpers: uncertain ? [name] : [],
         });
       }
@@ -126,8 +129,8 @@ async function withSessions(infos, docker, action) {
       sessions.push(session);
       await bounded(helper.start());
       await checkTarget(session);
-      // The legacy Alpine fallback is prepared BEFORE any firewall mutation.
-      // A prebuilt docker/egress-helper image avoids this network requirement.
+      // The default helper already contains nftables and has no package manager.
+      // An explicitly configured legacy Alpine image is prepared before mutation.
       await execute(session, 'set -eu; command -v nft >/dev/null 2>&1 || timeout 30 apk add -q --no-cache nftables');
     }
     result = await action(sessions);

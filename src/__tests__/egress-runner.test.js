@@ -48,6 +48,9 @@ beforeEach(() => {
 });
 
 describe('configuration and target validation', () => {
+  test('defaults to the prebuilt helper rather than installing packages in each target', () => {
+    expect(runner._internals.HELPER_IMAGE).toBe('docker-dash-egress-helper:local');
+  });
   test.each(['', 'host:80', '999.1.2.3:80', '1.2.3.4:0', '1.2.3.4:65536', '1.2.3.4:80:90', '1.2.3.4:80;id'])('rejects endpoint %s before creating helpers', async value => {
     process.env.DD_EGRESS_SIDECAR_ENDPOINT = value;
     await expect(runner.applyToContainer({ containerId: A })).rejects.toThrow(/DD_EGRESS_SIDECAR_ENDPOINT/);
@@ -105,6 +108,13 @@ describe('transaction orchestration', () => {
   test('reservation conflict cannot modify rules or remove the competing helper', async () => {
     docker.createContainer.mockRejectedValueOnce(Object.assign(new Error('already exists'), { statusCode: 409 }));
     await expect(runner.applyToContainer({ containerId: A })).rejects.toThrow(/already holds/);
+    expect(events).toEqual([]);
+  });
+  test('missing helper image reports setup failure without claiming a recovery reservation', async () => {
+    docker.createContainer.mockRejectedValueOnce(Object.assign(new Error('No such image'), { statusCode: 404 }));
+    await expect(runner.applyToContainer({ containerId: A })).rejects.toMatchObject({
+      message: expect.stringContaining('DD_EGRESS_HELPER_IMAGE'), recoveryRequired: false, recoveryHelpers: [],
+    });
     expect(events).toEqual([]);
   });
   test('unknown apply outcome stops and retains helper instead of racing a rollback', async () => {

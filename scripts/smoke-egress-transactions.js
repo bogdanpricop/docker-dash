@@ -83,7 +83,7 @@ async function main() {
     checks.push('kernel-reject-preserves-original-table');
     if (process.env.DD_TEST_LEGACY_EGRESS_HELPER === '1') {
       delete require.cache[require.resolve('../src/services/egress-runner')];
-      delete process.env.DD_EGRESS_HELPER_IMAGE;
+      process.env.DD_EGRESS_HELPER_IMAGE = 'alpine:3.24.2';
       const legacyRunner = require('../src/services/egress-runner');
       process.env.DD_EGRESS_HELPER_IMAGE = image;
       await legacyRunner.applyToContainer({ containerId: targets[0].id });

@@ -1,0 +1,154 @@
+{
+  "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+  "configId": "sha256:841fe60e0e4592964e549346308e27c68b8f9adc14aebe7c5aaa5b5328ea2fa1",
+  "manifestConfigSha256Verified": true,
+  "orderedRootfsLayersVerified": 2,
+  "platform": "linux/amd64",
+  "trivy": {
+    "scanner": "trivy",
+    "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+    "findings": []
+  },
+  "grype": {
+    "scanner": "grype",
+    "image": "sha256:841fe60e0e4592964e549346308e27c68b8f9adc14aebe7c5aaa5b5328ea2fa1",
+    "findings": [
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox-binsh",
+        "severity": "Medium"
+      }
+    ]
+  },
+  "packages": [
+    {
+      "name": "alpine-baselayout",
+      "version": "3.7.2-r1"
+    },
+    {
+      "name": "alpine-baselayout-data",
+      "version": "3.7.2-r1"
+    },
+    {
+      "name": "alpine-keys",
+      "version": "2.6-r0"
+    },
+    {
+      "name": "alpine-release",
+      "version": "3.24.2-r0"
+    },
+    {
+      "name": "busybox",
+      "version": "1.37.0-r31"
+    },
+    {
+      "name": "busybox-binsh",
+      "version": "1.37.0-r31"
+    },
+    {
+      "name": "gmp",
+      "version": "6.3.0-r4"
+    },
+    {
+      "name": "jansson",
+      "version": "2.15.0-r0"
+    },
+    {
+      "name": "libmnl",
+      "version": "1.0.5-r2"
+    },
+    {
+      "name": "libncursesw",
+      "version": "6.6_p20260516-r0"
+    },
+    {
+      "name": "libnftnl",
+      "version": "1.3.1-r0"
+    },
+    {
+      "name": "musl",
+      "version": "1.2.6-r2"
+    },
+    {
+      "name": "musl-utils",
+      "version": "1.2.6-r2"
+    },
+    {
+      "name": "ncurses-terminfo-base",
+      "version": "6.6_p20260516-r0"
+    },
+    {
+      "name": "nftables",
+      "version": "1.1.6-r1"
+    },
+    {
+      "name": "readline",
+      "version": "8.3.3-r1"
+    },
+    {
+      "name": "scanelf",
+      "version": "1.3.9-r1"
+    }
+  ],
+  "date": "2026-09-20",
+  "tests": {
+    "suites": 355,
+    "passed": 4615,
+    "skipped": 1,
+    "lint": true,
+    "npmAudit": 0
+  },
+  "nativeCanaries": {
+    "lan": {
+      "marker": "dd-egress-atomic-0fc01cfee98b",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true
+    },
+    "vps": {
+      "marker": "dd-egress-atomic-63c12c355723",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true
+    }
+  },
+  "composeCanaries": {
+    "lan": {
+      "project": "dd-helper-profile-ee1dc7e2507c",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "bootstrapCompleted": true,
+      "dependentCompleted": true,
+      "packageDatabaseRetained": true,
+      "apkAndZlibAbsent": true
+    },
+    "vps": {
+      "project": "dd-helper-profile-a2dea5250629",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "bootstrapCompleted": true,
+      "dependentCompleted": true,
+      "packageDatabaseRetained": true,
+      "apkAndZlibAbsent": true
+    }
+  }
+}
