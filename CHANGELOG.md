@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+## [8.96.10] - 2026-09-20 — External identities and personal credentials (deployment candidate)
+
+Private candidate incorporating the fixes below and the preceding 8.96.9 changes.
+Deployment awaits the configured account-email URLs. Image publication remains
+subject to the security gates; this version does not certify the entire project.
+
 - Bound OIDC HTTPS responses to 10 seconds and 1 MiB, with eight concurrent
   requests per process and no pending transport queue. Refuse redirects, encoded
   bodies, invalid JSON and unsuccessful statuses; preserve certificate verification.

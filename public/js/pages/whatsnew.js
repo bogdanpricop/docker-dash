@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.10', date: '2026-09-20', title: 'External identities and personal credentials', changes: [
+      { type: 'security', text: 'OIDC sign-in binds the browser and provider with PKCE and a verified nonce. Accounts use verified issuer/subject identities; matching usernames or emails cannot claim another account.' },
+      { type: 'security', text: 'Missing or incomplete mapped groups refuse sign-in and revoke the bound account credentials. Empty groups apply the configured default role. Old personal API keys stay revoked after password, account or identity changes.' },
+      { type: 'security', text: 'API keys obey expiry and password policies. Key management requires user sign-in. OIDC responses have time, size and concurrency limits; provider metadata and certificates are validated.' },
+      { type: 'improvement', text: 'Existing unbound SSO accounts retain their data for administrator review and cannot be automatically claimed. Review account permissions and reissue revoked automation keys. Configure a reachable PUBLIC_URL before rollout; known image findings remain documented.' },
+    ] },
     { version: '8.96.9', date: '2026-09-20', title: 'Authentication and session lifecycle', changes: [
       { type: 'security', text: 'Account recovery uses the configured dashboard URL, bounded delivery and one-time redemption. Password changes and account deactivation revoke sessions, reset links and pending MFA challenges.' },
       { type: 'security', text: 'Expired credentials are refused consistently. Login checks current account state after password verification; concurrent failures count toward lockout. WebSocket terminals and provider consoles stop forwarding after session revocation.' },

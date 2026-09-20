@@ -20,12 +20,16 @@ const seed = `const db=require('./src/db').getDb(),auth=require('./src/services/
   const {encrypt,sha256}=require('./src/utils/crypto'),bcrypt=require('bcrypt');
   const id=Number(db.prepare("INSERT INTO users(username,email,password_hash,role,is_active,must_change_password,totp_enabled,totp_secret,recovery_codes) VALUES ('upgrade-user','upgrade@example.test',?,'admin',1,0,1,?,?)")
     .run(bcrypt.hashSync('UpgradeFixture123!',4),encrypt('JBSWY3DPEHPK3PXP'),encrypt(JSON.stringify(['upgrade-recovery']))).lastInsertRowid);
-  db.prepare("INSERT INTO users(username,password_hash,role,is_active) VALUES ('upgrade-disabled','fixture','viewer',0)").run();
+  const disabled=Number(db.prepare("INSERT INTO users(username,password_hash,role,is_active) VALUES ('upgrade-disabled','fixture','viewer',0)").run().lastInsertRowid);
+  const legacy=Number(db.prepare("INSERT INTO users(username,password_hash,role,is_active,must_change_password) VALUES ('upgrade-legacy','SSO_NO_PASSWORD','operator',1,0)").run().lastInsertRowid);
+  const keys=require('./src/services/misc').apiKeys;
+  const apiKeys=[id,disabled,legacy].map(userId=>keys.create(userId,{name:'upgrade-fixture',permissions:['read']}).key);
+  const legacySession=auth._createSession(db.prepare('SELECT * FROM users WHERE id=?').get(legacy),'192.0.2.2','upgrade-legacy');
   const session=auth._createSession(db.prepare('SELECT * FROM users WHERE id=?').get(id),'192.0.2.1','upgrade');
   const mfa=crypto.randomBytes(32).toString('hex'),reset=crypto.randomBytes(32).toString('hex');
   db.prepare("INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,datetime('now','+1 day'))").run(sha256(mfa),id);
   db.prepare("INSERT INTO password_reset_tokens(token_hash,user_id,expires_at,type) VALUES (?,?,datetime('now','+1 day'),'reset')").run(sha256(reset),id);
-  fs.writeFileSync('/data/fixture.json',JSON.stringify({id,session:session.token,mfa,reset,
+  fs.writeFileSync('/data/fixture.json',JSON.stringify({id,legacy,apiKeys,legacySession:legacySession.token,session:session.token,mfa,reset,
     user:db.prepare('SELECT username,email,password_hash,totp_secret,recovery_codes FROM users WHERE id=?').get(id)}),{mode:0o600});
   const count=db.prepare('SELECT COUNT(*) n FROM _migrations').get().n;
   if(count!==177)throw Error('Expected the pre-auth-hardening schema');
@@ -33,9 +37,9 @@ const seed = `const db=require('./src/db').getDb(),auth=require('./src/services/
   db.pragma('wal_checkpoint(TRUNCATE)');db.close();console.log(JSON.stringify({seeded:true,migrations:count}));`;
 const verify = `const assert=require('assert/strict'),fs=require('fs'),db=require('./src/db').getDb(),auth=require('./src/services/auth');
   const state=JSON.parse(fs.readFileSync('/data/fixture.json','utf8'));
-  assert.equal(require('./src/version'),'8.96.9');
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM _migrations').get().n,180);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n,2);
+  assert.equal(require('./src/version'),'8.96.10');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM _migrations').get().n,182);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n,3);
   assert.deepEqual(db.prepare('SELECT username,email,password_hash,totp_secret,recovery_codes FROM users WHERE id=?').get(state.id),state.user);
   assert.equal(db.prepare("SELECT is_active FROM users WHERE username='upgrade-disabled'").get().is_active,0);
   assert.ok(auth.validateSession(state.session));
@@ -43,9 +47,19 @@ const verify = `const assert=require('assert/strict'),fs=require('fs'),db=requir
   assert.equal(db.prepare('SELECT COUNT(*) n FROM mfa_tokens').get().n,0);
   const counter=db.prepare('SELECT totp_last_counter FROM users WHERE id=?').get(state.id).totp_last_counter;
   assert.ok(Number.isInteger(counter)&&counter>0);
+  const keys=require('./src/services/misc').apiKeys;
+  assert.ok(keys.validate(state.apiKeys[0]));
+  assert.equal(keys.validate(state.apiKeys[1]),null);assert.equal(keys.validate(state.apiKeys[2]),null);
+  assert.equal(auth.validateSession(state.legacySession),null);
+  assert.deepEqual(db.prepare('SELECT auth_source,role,external_subject FROM users WHERE id=?').get(state.legacy),
+    {auth_source:'sso_legacy',role:'operator',external_subject:null});
+  db.prepare("UPDATE users SET password_hash='changed-after-upgrade' WHERE id=?").run(state.id);
+  assert.equal(keys.validate(state.apiKeys[0]),null);assert.equal(auth.validateSession(state.session),null);
+  assert.equal(require('./src/services/password-reset').find(db,state.reset),null);
   assert.equal(db.pragma('integrity_check',{simple:true}),'ok');
-  console.log('DD_AUTH_UPGRADE_RESULT '+JSON.stringify({migrations:180,usersPreserved:2,credentialsPreserved:true,existingSessionValid:true,
-    unusedResetLinkValid:true,pendingMfaRevoked:true,replayBoundaryInitialized:true,integrity:'ok'}));`;
+  console.log('DD_AUTH_UPGRADE_RESULT '+JSON.stringify({migrations:182,usersPreserved:3,localCredentialsPreserved:true,existingLocalSessionValid:true,
+    unusedLocalResetLinkValid:true,pendingMfaRevoked:true,replayBoundaryInitialized:true,legacyAccountIsolated:true,
+    activeLocalApiKeyPreserved:true,inactiveAndLegacyApiKeysRevoked:true,postUpgradePasswordChangeRevokesCredentials:true,integrity:'ok'}));`;
 
 async function exec(container, code) {
   const command = await container.exec({ Cmd: ['node','-e',code], AttachStdout: true, AttachStderr: true });
@@ -78,7 +92,7 @@ async function exec(container, code) {
     } while (true);
     assert.equal(status.State.ExitCode,0,(await previous.logs({stdout:true,stderr:true})).toString().slice(-4096));
     const candidate = await create(afterImage, '-after'); await candidate.start();
-    await exec(candidate, `let n=0;async function check(){try{const r=await fetch('http://127.0.0.1:8101/api/health',{signal:AbortSignal.timeout(1000)});if(r.ok&&(await r.json()).version==='8.96.9')process.exit(0);}catch{}if(++n>100)process.exit(1);setTimeout(check,200)}check()`);
+    await exec(candidate, `let n=0;async function check(){try{const r=await fetch('http://127.0.0.1:8101/api/health',{signal:AbortSignal.timeout(1000)});if(r.ok&&(await r.json()).version==='8.96.10')process.exit(0);}catch{}if(++n>100)process.exit(1);setTimeout(check,200)}check()`);
     const records = (await exec(candidate,verify)).split(/\r?\n/).filter(line=>line.startsWith('DD_AUTH_UPGRADE_RESULT '));
     assert.equal(records.length,1,'Missing or duplicate upgrade verification result');
     const result = JSON.parse(records[0].slice('DD_AUTH_UPGRADE_RESULT '.length));
