@@ -289,7 +289,7 @@ describe('AuthService — MFA / TOTP setup flow', () => {
 
   it('mfaEnable rejects an invalid TOTP code', () => {
     const result = authService.mfaEnable(mfaUserId, '000000');
-    expect(result.error).toMatch(/Invalid TOTP/i);
+    expect(result.error).toMatch(/Invalid.*TOTP/i);
     const row = db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(mfaUserId);
     expect(row.totp_enabled).toBe(0);
   });
@@ -312,13 +312,13 @@ describe('AuthService — MFA / TOTP setup flow', () => {
 
   it('verifyStepUpMfa validates enrolled local TOTP without creating a session', () => {
     const enrolled = db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(mfaUserId);
-    const validCode = totp.generateTOTP(require('../utils/crypto').decrypt(enrolled.totp_secret));
+    const validCode = totp.generateTOTP(require('../utils/crypto').decrypt(enrolled.totp_secret), Date.now() + 30000);
     const sessionsBefore = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
       .get(mfaUserId).count;
     expect(authService.verifyStepUpMfa(mfaUserId, validCode)).toEqual(expect.objectContaining({
       success: true, verifiedAt: expect.any(String),
     }));
-    expect(authService.verifyStepUpMfa(mfaUserId, 'not-a-code')).toEqual({ error: 'Invalid TOTP code' });
+    expect(authService.verifyStepUpMfa(mfaUserId, 'not-a-code')).toEqual({ error: 'Invalid or already used TOTP code' });
     const sessionsAfter = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
       .get(mfaUserId).count;
     expect(sessionsAfter).toBe(sessionsBefore);

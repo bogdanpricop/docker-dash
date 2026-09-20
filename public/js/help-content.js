@@ -369,7 +369,8 @@ const HelpContent = {
       intro: 'Your own account — the identity you act as, the role that decides what you may do, and your password.',
       sections: [
         { icon: 'fa-id-card', title: 'Account information', body: 'Your username, role and user ID. The role determines what you can do everywhere else in the application.' },
-        { icon: 'fa-key', title: 'Changing your password', body: 'Requires your current password. Changing it does not sign out your other sessions automatically.' },
+        { icon: 'fa-key', title: 'Changing your password', body: 'Requires your current password. Changing it signs out all sessions and cancels pending login challenges and password-reset links. Sign in again with the new password.' },
+        { icon: 'fa-shield-alt', title: 'Authenticator and recovery codes', body: 'Each accepted authenticator code can be used once, including login and privileged confirmation. Wait for the next code before another confirmation. A login challenge allows five attempts shared between authenticator and recovery codes; then restart login. Repeated failures across challenges temporarily block MFA for your account. Recovery codes do not bypass that cooldown. Save recovery codes offline and disable the existing authenticator before enrolling another.' },
       ],
       tip: 'If your role looks wrong, an administrator has to change it — it is not editable from here.',
     },
@@ -378,7 +379,8 @@ const HelpContent = {
       intro: 'Contul tau — identitatea sub care actionezi, rolul care decide ce ai voie sa faci, si parola.',
       sections: [
         { icon: 'fa-id-card', title: 'Informatii cont', body: 'Numele de utilizator, rolul si ID-ul. Rolul determina ce poti face in restul aplicatiei.' },
-        { icon: 'fa-key', title: 'Schimbarea parolei', body: 'Necesita parola curenta. Schimbarea ei nu iti deconecteaza automat celelalte sesiuni.' },
+        { icon: 'fa-key', title: 'Schimbarea parolei', body: 'Necesita parola curenta. Schimbarea ei deconecteaza toate sesiunile si anuleaza provocarile de autentificare si linkurile de resetare in asteptare. Autentifica-te din nou cu parola noua.' },
+        { icon: 'fa-shield-alt', title: 'Autentificator si coduri de recuperare', body: 'Fiecare cod acceptat poate fi folosit o singura data, inclusiv la login si confirmarea privilegiata. Asteapta urmatorul cod pentru alta confirmare. O provocare de login permite cinci incercari comune codurilor din autentificator si celor de recuperare; apoi reia loginul. Esecurile repetate intre provocari blocheaza temporar MFA pentru cont. Codurile de recuperare nu ocolesc aceasta pauza. Pastreaza codurile de recuperare offline si dezactiveaza autentificatorul existent inainte de a configura altul.' },
       ],
       tip: 'Daca rolul pare gresit, trebuie schimbat de un administrator — nu e editabil de aici.',
     },

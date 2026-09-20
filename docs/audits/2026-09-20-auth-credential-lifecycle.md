@@ -79,9 +79,10 @@ native results, source identities and npm metadata.
 
 ## Remaining boundaries
 
-TOTP counter replay across distinct challenges/privileged step-up, per-challenge
-attempt limits, enrollment fresh-auth policy and OIDC/browser binding remain audit
-items. A local version cannot detect directory-side credential changes after a
+The [MFA replay follow-up](2026-09-20-mfa-replay-and-attempts.md) covers counter reuse
+across challenges/step-up and challenge/account attempt limits. Enrollment fresh-auth
+policy and OIDC/browser binding remain audit items. A local version cannot detect
+directory-side credential changes after a
 successful directory response without an additional provider contract. Existing
 sessions are not globally reauthenticated merely when MFA is enabled; this change
 revokes pending password proofs and prevents stale login completion.

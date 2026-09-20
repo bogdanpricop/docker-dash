@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Consume TOTP counters once across enrollment, login and privileged step-up,
+  including concurrent processes. Migration 180 excludes pre-upgrade acceptance
+  windows; existing authenticators may need up to 60 seconds before a fresh code.
+- Limit each MFA challenge to five shared TOTP/recovery attempts. Persist a shared
+  account MFA failure/cooldown budget across challenge tokens and factor endpoints;
+  successful password verification cannot clear that budget. Profile help explains
+  code reuse, cooldowns and session revocation in English and Romanian.
 - Bind asynchronous password/LDAP checks to the current credential version before
   issuing sessions or MFA challenges. Count concurrent failures atomically and
   recheck account/IP lockout before accepting a completed login.

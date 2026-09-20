@@ -1,5 +1,21 @@
 # Security Policy
 
+## MFA replay and attempt limits (pending deployment)
+
+Migration 180 records the last accepted TOTP counter and MFA failure/cooldown state.
+Enrollment, login and privileged step-up share one counter boundary. A challenge
+allows five attempts across TOTP/recovery requests; the account budget spans fresh
+challenges and factor endpoints. It uses LOCKOUT_ATTEMPTS and LOCKOUT_DURATION_MS
+(defaults: ten failures, thirty minutes), separately from password failures.
+Recovery codes also honor the MFA cooldown. Correct factors reset failures;
+password verification alone cannot do so. Transaction failures roll back factor
+consumption along with credential issuance.
+
+With synchronized clocks, enrolled users may need to wait up to 60 seconds immediately
+after upgrade because pre-upgrade code acceptance was not recorded. Replacing the encrypted
+authenticator secret resets its replay/cooldown state. See the
+[MFA verification audit](docs/audits/2026-09-20-mfa-replay-and-attempts.md).
+
 ## Credential lifecycle (pending deployment)
 
 Migration 179 adds a credential version checked after asynchronous password/LDAP

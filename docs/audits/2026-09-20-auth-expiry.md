@@ -72,8 +72,8 @@ already-open channels; the follow-up is required for that behavior.
 
 The [credential-lifecycle follow-up](2026-09-20-auth-credential-lifecycle.md) covers
 login/password-change races and pending MFA revocation on credential changes.
-Further authentication review must cover TOTP replay across distinct challenges and
-OIDC browser binding/PKCE. These checkpoints do not certify the entire login flow.
+The [MFA follow-up](2026-09-20-mfa-replay-and-attempts.md) covers TOTP reuse and attempt
+limits. OIDC browser binding/PKCE remains open. These checkpoints do not certify the entire login flow.
 Other raw expiry comparisons found in posture mutes, provider security exceptions,
 trial monitoring and provider-lock diagnostics require their own format/behavior
 review; they were not changed indiscriminately. Wall-clock jumps and multi-host

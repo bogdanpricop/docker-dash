@@ -132,11 +132,46 @@ async function main() {
     }
     await providerConsoleChecks(server, auth, db, id, WebSocket);
     await credentialLifecycleChecks(auth, db);
+    await mfaReplayChecks(auth, db);
     console.log(JSON.stringify({ checks, emailMocked: true, providerMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();
     await new Promise(resolve => server.close(resolve));
   }
+}
+
+async function mfaReplayChecks(auth, db) {
+  const { encrypt, sha256 } = require('/app/src/utils/crypto'), totp = require('/app/src/utils/totp');
+  const code = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
+    process.stdin.once('data',()=>{const result=process.env.SMOKE_KIND==='stepup'
+      ? auth.verifyStepUpMfa(Number(process.env.SMOKE_USER),process.env.SMOKE_CODE)
+      : auth.verifyMfa(process.env.SMOKE_TOKEN,process.env.SMOKE_CODE,'192.0.2.200','native');
+      console.log('RESULT:'+JSON.stringify({accepted:!!(result.token||result.success)}));db.close();process.exit(0)});console.log('READY');`;
+  for (const mode of ['login-login','login-stepup']) {
+    const secret = totp.generateSecret();
+    const id = Number(db.prepare("INSERT INTO users(username,password_hash,role,is_active,totp_enabled,totp_secret) VALUES (?,'fixture','viewer',1,1,?)")
+      .run('native-replay-' + mode, encrypt(secret)).lastInsertRowid);
+    const environments = [0,1].map(n => {
+      const token = mode + '-' + n;
+      db.prepare("INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,datetime('now','+5 minutes'))").run(sha256(token),id);
+      return { SMOKE_KIND: mode === 'login-stepup' && n === 1 ? 'stepup' : 'login', SMOKE_TOKEN: token, SMOKE_USER: String(id), SMOKE_CODE: totp.generateTOTP(secret) };
+    });
+    // Both processes use exactly the same code even at a time-step boundary.
+    environments[1].SMOKE_CODE = environments[0].SMOKE_CODE;
+    const results = await raceRedeem(code,environments);
+    assert.equal(results.filter(result => result.accepted).length,1);
+    checks.push('native-cross-process-single-use-totp-' + mode);
+  }
+  const id = Number(db.prepare("INSERT INTO users(username,password_hash,role,is_active,totp_enabled,totp_secret) VALUES ('native-attempt-limit','fixture','viewer',1,1,?)")
+    .run(encrypt(totp.generateSecret())).lastInsertRowid);
+  db.prepare("INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,datetime('now','+5 minutes'))").run(sha256('native-shared-challenge'),id);
+  const attempts = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
+    process.stdin.once('data',()=>{for(let n=0;n<3;n++)auth.verifyMfa('native-shared-challenge','invalid','192.0.2.201','native');
+      console.log('RESULT:'+JSON.stringify({done:true}));db.close();process.exit(0)});console.log('READY');`;
+  await raceRedeem(attempts,[{},{}]);
+  assert.deepEqual(db.prepare('SELECT attempts,used FROM mfa_tokens WHERE token_hash=?').get(sha256('native-shared-challenge')),{attempts:5,used:1});
+  assert.equal(db.prepare('SELECT mfa_failed_attempts n FROM users WHERE id=?').get(id).n,5);
+  checks.push('native-cross-process-challenge-five-attempt-bound');
 }
 
 async function credentialLifecycleChecks(auth, db) {

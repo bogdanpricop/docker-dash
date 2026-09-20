@@ -16,7 +16,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   db.exec('DELETE FROM sessions; DELETE FROM mfa_tokens; DELETE FROM login_attempts; DELETE FROM oidc_states');
-  db.prepare('UPDATE users SET recovery_codes=? WHERE id=?').run(encrypt(JSON.stringify([recovery])),userId);
+  db.prepare('UPDATE users SET recovery_codes=?,totp_last_counter=NULL,mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(encrypt(JSON.stringify([recovery])),userId);
 });
 afterEach(() => jest.restoreAllMocks());
 afterAll(() => closeDb());

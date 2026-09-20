@@ -275,6 +275,32 @@ class AuthService {
 
   // ─── MFA / TOTP Methods ────────────────────────────────────
 
+  // Call only inside the factor's immediate transaction.
+  _mfaAllowed(db, user) {
+    if (!user.mfa_locked_until) return true;
+    const expired = db.prepare("SELECT julianday(?) <= julianday('now') AS expired").get(user.mfa_locked_until)?.expired;
+    if (!expired) return false;
+    db.prepare('UPDATE users SET mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(user.id);
+    return true;
+  }
+
+  _mfaFailed(db, user) {
+    const until = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
+    db.prepare('UPDATE users SET mfa_failed_attempts=mfa_failed_attempts+1, mfa_locked_until=CASE WHEN mfa_failed_attempts+1>=? THEN ? ELSE mfa_locked_until END WHERE id=?')
+      .run(config.security.lockoutAttempts, until, user.id);
+    log.warn('MFA verification rejected', { userId: user.id });
+  }
+
+  _mfaSucceeded(db, user) {
+    db.prepare('UPDATE users SET mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(user.id);
+  }
+
+  _consumeTotp(db, user, secret, code) {
+    const counter = totp.matchTOTPCounter(secret, code);
+    if (counter === null) return false;
+    return db.prepare('UPDATE users SET totp_last_counter=? WHERE id=? AND (totp_last_counter IS NULL OR totp_last_counter<?)').run(counter, user.id, counter).changes === 1;
+  }
+
   /** Verify MFA token and TOTP code, create full session */
   verifyMfa(mfaToken, code, ip, userAgent) {
     const db = getDb();
@@ -284,13 +310,15 @@ class AuthService {
 
       const row = db.prepare(`
         SELECT * FROM mfa_tokens
-        WHERE token_hash = ? AND used = 0 AND julianday(expires_at) > julianday('now')
+        WHERE token_hash = ? AND used = 0 AND attempts < 5 AND julianday(expires_at) > julianday('now')
       `).get(tokenHash);
 
       if (!row) return { error: 'Invalid or expired MFA token' };
 
       const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
       if (!user || !user.totp_enabled) return { error: 'MFA is not enabled' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      db.prepare('UPDATE mfa_tokens SET attempts=attempts+1,used=CASE WHEN attempts+1>=5 THEN 1 ELSE used END WHERE id=?').run(row.id);
 
       // Decrypt TOTP secret and verify code
       let secret;
@@ -300,9 +328,11 @@ class AuthService {
         return { error: 'MFA configuration error' };
       }
 
-      if (!totp.verifyTOTP(secret, code)) {
-        return { error: 'Invalid TOTP code' };
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code' };
       }
+      this._mfaSucceeded(db, user);
 
       // Mark MFA token as used
       db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
@@ -320,13 +350,15 @@ class AuthService {
 
       const row = db.prepare(`
         SELECT * FROM mfa_tokens
-        WHERE token_hash = ? AND used = 0 AND julianday(expires_at) > julianday('now')
+        WHERE token_hash = ? AND used = 0 AND attempts < 5 AND julianday(expires_at) > julianday('now')
       `).get(tokenHash);
 
       if (!row) return { error: 'Invalid or expired MFA token' };
 
       const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
       if (!user || !user.totp_enabled || !user.recovery_codes) return { error: 'No recovery codes available' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      db.prepare('UPDATE mfa_tokens SET attempts=attempts+1,used=CASE WHEN attempts+1>=5 THEN 1 ELSE used END WHERE id=?').run(row.id);
 
       // Decrypt recovery codes and check
       let codes;
@@ -343,6 +375,10 @@ class AuthService {
       // recovery codes — meaningfully accelerating brute force against the
       // small recovery-code search space. Now we always iterate ALL codes
       // (no early-break) and use crypto.timingSafeEqual per comparison.
+      if (typeof recoveryCode !== 'string' || recoveryCode.length > 128) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid recovery code' };
+      }
       const normalizedInput = recoveryCode.toLowerCase().trim();
       const inputBuf = Buffer.from(normalizedInput, 'utf8');
       let codeIndex = -1;
@@ -357,7 +393,11 @@ class AuthService {
           // do NOT break — total time must be independent of match position
         }
       }
-      if (codeIndex === -1) return { error: 'Invalid recovery code' };
+      if (codeIndex === -1) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid recovery code' };
+      }
+      this._mfaSucceeded(db, user);
 
       // Remove used code, re-encrypt and store
       codes.splice(codeIndex, 1);
@@ -391,15 +431,18 @@ class AuthService {
   mfaEnable(userId, code) {
     const db = getDb();
     return db.transaction(() => {
-      const user = db.prepare('SELECT id, username, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1').get(userId);
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(userId);
       if (!user || !user.totp_secret) return { error: 'MFA not set up. Call /mfa/setup first.' };
       if (user.totp_enabled) return { error: 'MFA is already enabled' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
       let secret;
       try { secret = decrypt(user.totp_secret); }
       catch { return { error: 'MFA configuration error' }; }
-      if (!totp.verifyTOTP(secret, code)) {
-        return { error: 'Invalid TOTP code. Make sure your authenticator app is synced.' };
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code. Wait for the next authenticator code.' };
       }
+      this._mfaSucceeded(db, user);
       const recoveryCodes = totp.generateRecoveryCodes();
       db.prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, mfa_enrolled_at = ? WHERE id = ?')
         .run(encrypt(JSON.stringify(recoveryCodes)), now(), user.id);
@@ -411,18 +454,23 @@ class AuthService {
   /** Verify a local TOTP as a fresh step-up factor without creating a session. */
   verifyStepUpMfa(userId, code) {
     const db = getDb();
-    const user = db.prepare(`SELECT id, username, totp_secret, totp_enabled
-      FROM users WHERE id = ? AND is_active = 1`).get(Number(userId));
-    if (!user || !user.totp_enabled || !user.totp_secret) {
-      return { error: 'Local TOTP enrollment is required for privileged step-up' };
-    }
-    if (!/^\d{6}$/.test(String(code || ''))) return { error: 'Invalid TOTP code' };
-    let secret;
-    try { secret = decrypt(user.totp_secret); }
-    catch { return { error: 'MFA configuration error' }; }
-    if (!totp.verifyTOTP(secret, String(code))) return { error: 'Invalid TOTP code' };
-    log.info('Privileged step-up MFA verified', { username: user.username });
-    return { success: true, verifiedAt: now() };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(Number(userId));
+      if (!user || !user.totp_enabled || !user.totp_secret) {
+        return { error: 'Local TOTP enrollment is required for privileged step-up' };
+      }
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      let secret;
+      try { secret = decrypt(user.totp_secret); }
+      catch { return { error: 'MFA configuration error' }; }
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code' };
+      }
+      this._mfaSucceeded(db, user);
+      log.info('Privileged step-up MFA verified', { username: user.username });
+      return { success: true, verifiedAt: now() };
+    }).immediate();
   }
 
   /** Disable MFA (requires password confirmation) */
