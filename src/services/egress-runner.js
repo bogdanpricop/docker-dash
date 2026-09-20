@@ -6,6 +6,7 @@
 const crypto = require('node:crypto');
 const dockerService = require('./docker');
 const nft = require('./egress-nft');
+const { hostScope, matchesContainer } = require('./egress-policy-scope');
 const log = require('../utils/logger')('egress-runner');
 const HELPER_IMAGE = process.env.DD_EGRESS_HELPER_IMAGE || 'docker-dash-egress-helper:local';
 const TIMEOUT_MS = 45000;
@@ -191,12 +192,29 @@ async function applyToContainer({ containerId, hostId = 0 }) {
   return { ok: true, output: 'IPv4 egress table replaced atomically' };
 }
 
-async function removeFromContainer({ containerId, hostId = 0 }) {
+function remainingPolicies(info, hostId, policyId) {
+  const filter = require('./egress-filter'), matchesHost = hostScope(hostId);
+  if (policyId != null) {
+    if (!Number.isSafeInteger(policyId) || policyId < 1) throw new Error('Invalid egress policy identity');
+    const selected = filter.getPolicy(policyId);
+    if (!selected || !matchesContainer(selected, info, matchesHost)) throw new Error('Egress policy does not cover this container and host');
+  }
+  return filter.listPolicies().filter(p => p.active && p.id !== policyId && matchesContainer(p, info, matchesHost)).map(p => p.id);
+}
+
+async function removeFromContainer({ containerId, hostId = 0, policyId }) {
   const docker = dockerService.getDocker(hostId), info = await targetInfo(docker, containerId, true);
   return withSessions([info], docker, async ([session]) => {
-    await checkTarget(session); await snapshot(session);
+    await checkTarget(session);
+    const applied = await snapshot(session);
+    // Read current policies while holding the daemon reservation, immediately
+    // before removal. Configured active policies protect the shared table even
+    // if their individual apply history is unknown.
+    const retainedFor = remainingPolicies(session.info, hostId, policyId);
+    if (retainedFor.length) return { ok: true, removed: false, retained: true, applied, retainedFor,
+      output: 'Shared egress table retained for other active policies. This policy remains configured until deleted.' };
     await execute(session, nft.removeScript()); await checkTarget(session);
-    return { ok: true, output: 'IPv4 egress table removed' };
+    return { ok: true, removed: true, retained: false, applied: false, retainedFor: [], output: 'IPv4 egress table removed' };
   }, true);
 }
 
@@ -232,14 +250,18 @@ async function applyToStack({ stackName, hostId = 0 }) {
   return { applied, skipped, failed: [], stack: stackName };
 }
 
-async function removeFromStack({ stackName, hostId = 0 }) {
-  const containers = await _listStackContainers({ stackName, hostId }), removed = [], failed = [];
+async function removeFromStack({ stackName, hostId = 0, policyId }) {
+  const containers = await _listStackContainers({ stackName, hostId }), removed = [], retained = [], failed = [];
   for (const c of containers.filter(c => c.state === 'running')) {
-    try { await removeFromContainer({ containerId: c.id, hostId }); removed.push({ id: c.id, name: c.name }); }
+    try {
+      const result = await removeFromContainer({ containerId: c.id, hostId, policyId });
+      if (result.retained) retained.push({ id: c.id, name: c.name, applied: result.applied, retainedFor: result.retainedFor });
+      else removed.push({ id: c.id, name: c.name });
+    }
     catch (error) { failed.push({ id: c.id, name: c.name, error: error.message,
       recoveryRequired: !!error.recoveryRequired, recoveryHelpers: error.recoveryHelpers || [] }); }
   }
-  return { removed, failed, stack: stackName };
+  return { removed, retained, failed, stack: stackName };
 }
 
 async function statusOfStack({ stackName, hostId = 0 }) {

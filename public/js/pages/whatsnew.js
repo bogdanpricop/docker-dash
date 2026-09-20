@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.6', date: '2026-09-20', title: 'Egress capability and shared-policy protection', changes: [
+      { type: 'security', text: 'Filtered workloads must explicitly drop NET_RAW, which Docker grants by default. Applying filters and authorizing proxy connections refuse this packet-socket bypass; the network audit now reports it.' },
+      { type: 'fix', text: 'Unapply preserves a shared firewall table when another active container or stack policy needs it. The UI explains retained filters, and disabling one policy preserves the others.' },
+      { type: 'improvement', text: 'Legacy rules remain inspectable and removable. EN/RO guidance covers capability changes, shared policies and recovery. IPv6/non-TCP and other documented audit limitations remain open.' },
+    ] },
     { version: '8.96.3', date: '2026-09-20', title: 'Recoverable container updates', changes: [
       { type: 'fix', text: 'Update, safe update, pipeline and rollback retain the original container until the replacement passes verification and the audit is saved. Failures attempt to restore the original.' },
       { type: 'security', text: 'A Docker daemon reservation prevents competing replacements. Interrupted operations keep a recovery journal and require explicit reconciliation; reservations never expire automatically.' },

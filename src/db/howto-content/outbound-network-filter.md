@@ -15,6 +15,10 @@ icon: fas fa-shield-alt
 </ul>
 <p>The Outbound Filter authorizes proxied IPv4 TCP connections per container or stack. The current firewall excludes DNS, loopback and RFC1918 destinations; IPv6 and non-TCP traffic are not covered. It is not a complete network sandbox. Metadata protection in the proxy does not prove that every alternate network path is blocked.</p>
 
+<h2>Overlapping container and stack policies</h2>
+<p>Matching policies share one firewall table. Unapply keeps that table when another active policy covers the same container and Docker host, including the default-host alias. The response reports retained / retainedFor; stack responses separate retained and removed containers. Policy lookup happens while the target's Docker reservation is held, before removing rules.</p>
+<p>An active saved policy is protected even when its individual apply history is unknown. If Unapply reports a shared filter, this policy still participates in proxy authorization. Emergency disable removes this policy configuration after successful unapply/retention; other policies keep their filter. Removing the last applicable policy can restore outbound access. A missing table is reported as missing, not as protected.</p>
+
 <h2>Required container capability configuration</h2>
 <p>Docker grants NET_RAW by default. Packet sockets can bypass the IP OUTPUT firewall, so applying a filter and authorizing proxy connections require an explicit drop:</p>
 <pre><code>services:

@@ -12,6 +12,10 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 </ul>
 <p>Outbound Filter autorizeaza conexiunile IPv4 TCP care trec prin proxy, per container sau stack. Firewall-ul curent exclude DNS, loopback si destinatiile RFC1918; IPv6 si traficul non-TCP nu sunt acoperite. Nu este o izolare completa de retea. Protectia metadata din proxy nu dovedeste blocarea tuturor cailor alternative.</p>
 
+<h2>Politici suprapuse de container si stack</h2>
+<p>Politicile aplicabile folosesc aceeasi tabela firewall. Unapply pastreaza tabela daca alta politica activa acopera containerul pe acelasi host Docker, inclusiv aliasul hostului implicit. Raspunsul raporteaza retained / retainedFor; pentru stack, containerele pastrate si cele eliminate sunt separate. Politicile sunt citite sub rezervarea Docker a tintei, inaintea eliminarii regulilor.</p>
+<p>O politica activa salvata este protejata chiar daca istoricul aplicarii sale individuale nu este cunoscut. Daca Unapply raporteaza un filtru comun, aceasta politica participa in continuare la autorizarea proxy. Emergency disable elimina configuratia selectata dupa unapply/pastrare reusita; celelalte politici isi pastreaza filtrul. Eliminarea ultimei politici aplicabile poate reda accesul outbound. O tabela absenta este raportata ca absenta, nu ca protectie activa.</p>
+
 <h2>Configuratia obligatorie a capabilitatilor</h2>
 <p>Docker acorda NET_RAW implicit. Socket-urile packet pot ocoli firewall-ul IP OUTPUT, deci aplicarea filtrului si autorizarea proxy cer eliminarea explicita a capabilitatii:</p>
 <pre><code>services:

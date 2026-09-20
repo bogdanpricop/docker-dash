@@ -433,7 +433,12 @@ const SystemPageEgress = {
       mc.querySelector('#ef-unapply').addEventListener('click', async () => {
         setStatus('Unapplying filter...');
         try {
-          await Api.egressFilterUnapply(policyId);
+          const result = await Api.egressFilterUnapply(policyId);
+          if (result.retained === true || result.retained?.length) {
+            setStatus('Shared filter retained for other active policies. This policy is still configured; use Emergency disable to remove it.', 'var(--orange)');
+            Toast.warning('Other active policies still require the shared filter');
+            return;
+          }
           setStatus('Unapplied (policy config retained).', '#22c55e');
           Toast.success('Egress filter unapplied');
           setTimeout(() => { Modal.close(); onSaved && onSaved(); }, 600);
@@ -443,7 +448,7 @@ const SystemPageEgress = {
         }
       });
       mc.querySelector('#ef-emergency-disable').addEventListener('click', async () => {
-        if (!confirm('Emergency disable this policy? This unapplies the filter AND deletes the policy. The container regains full outbound.')) return;
+        if (!confirm('Disable this policy? Shared filters required by other active policies remain installed. Without another policy, the filter is removed and outbound access resumes.')) return;
         try {
           await Api.egressFilterUnapply(policyId);
           await Api.egressFilterDeletePolicy(policyId, 'emergency-disable');

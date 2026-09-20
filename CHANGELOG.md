@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.6] - 2026-09-20 — Egress capability and shared-policy protection
+
+- Require an explicit NET_RAW capability drop before applying an egress filter
+  or authorizing proxy connections. Docker grants NET_RAW by default, allowing
+  packet sockets to bypass IP OUTPUT rules. Surface this in the network audit.
+- Keep legacy filter inspection/removal available and expose unsafe target
+  configuration separately from the presence of firewall rules.
+- Preserve shared firewall tables when another active container/stack policy
+  covers the target. Scope checks use the same host aliases and container/stack
+  matching as connection authorization. Check current policy state under the
+  daemon reservation and report retained/removed targets separately.
+- Explain shared-filter outcomes in the UI and EN/RO help. Emergency disable
+  removes only the selected configuration; remaining policies keep their filter.
+- Verify capability bypass and overlapping-policy recovery on LAN and VPS using
+  disposable namespaces. IPv6/non-TCP and the remaining audit limits stay open.
+
 ## [8.96.5] - 2026-09-20 — Recoverable egress rules and minimal helper
 
 - Replace each IPv4 egress table in one nftables transaction. Reserve canonical

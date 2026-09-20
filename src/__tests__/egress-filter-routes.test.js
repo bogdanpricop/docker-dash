@@ -67,6 +67,21 @@ describe('egress enforcement outcomes', () => {
     expect(result.status).toBe(422); expect(result.body.error).toContain('NET_RAW');
     expect(runner).not.toHaveBeenCalled();
   });
+  test('unapply passes policy identity and reports retained filters truthfully', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    const runner = jest.spyOn(require('../services/egress-runner'), 'removeFromContainer').mockResolvedValue({ ok: true, removed: false, retained: true, applied: true, retainedFor: [991], output: 'Shared filter retained' });
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/unapply`).set(auth());
+    expect(result.status).toBe(200);expect(result.body).toMatchObject({ applied: true, retained: true, retainedFor: [991] });
+    expect(runner).toHaveBeenCalledWith({ containerId: CONTAINER_ID, hostId: 0, policyId });
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action='egress_filter_retained'").get().n).toBeGreaterThan(0);
+  });
+  test('stack response keeps removed and retained targets separate', async () => {
+    const policyId = await stackPolicy();
+    const runner = jest.spyOn(require('../services/egress-runner'), 'removeFromStack').mockResolvedValue({ removed: [{ id: 'a' }], retained: [{ id: 'b', applied: true, retainedFor: [991] }], failed: [] });
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/unapply`).set(auth());
+    expect(result.status).toBe(200);expect(result.body.retained).toHaveLength(1);expect(result.body.removed).toHaveLength(1);
+    expect(runner).toHaveBeenCalledWith({ stackName: 'transaction-test', hostId: 0, policyId });
+  });
   test('failed audit intent prevents firewall mutation', async () => {
     const id = await stackPolicy();
     const runner = jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockResolvedValue({ applied: [], skipped: [] });

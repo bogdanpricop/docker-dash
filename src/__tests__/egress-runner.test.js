@@ -171,3 +171,66 @@ describe('bounded Docker output and deadlines', () => {
     await expect(runner._internals.bounded(new Promise(() => {}), 5)).rejects.toMatchObject({ uncertain: true });
   });
 });
+
+
+describe('overlapping policy removal', () => {
+  const filter = require('../services/egress-filter');
+  const selected = { id: 10, active: true, scopeType: 'container', scopeKey: A, hostId: 0 };
+  function policies(rows) {
+    jest.spyOn(filter, 'listPolicies').mockReturnValue(rows);
+    jest.spyOn(filter, 'getPolicy').mockImplementation(id => rows.find(p => p.id === id));
+  }
+  afterEach(() => jest.restoreAllMocks());
+  test('keeps the shared table for an overlapping stack policy', async () => {
+    policies([selected, { ...selected, id: 11, scopeType: 'stack', scopeKey: 'test-stack' }]);
+    const result = await runner.removeFromContainer({ containerId: A, policyId: 10 });
+    expect(result).toMatchObject({ removed: false, retained: true, applied: true, retainedFor: [11] });
+    expect(events.some(e => e.operation === 'remove')).toBe(false);
+    expect(helpers[0].remove).toHaveBeenCalled();
+  });
+  test('retains only stack members that have another container policy', async () => {
+    policies([{ ...selected, scopeType: 'stack', scopeKey: 'test-stack' }, { ...selected, id: 11, scopeKey: B.slice(0, 12) }]);
+    const result = await runner.removeFromStack({ stackName: 'test-stack', policyId: 10 });
+    expect(result.retained).toEqual([{ id: B, name: 'service-1', applied: true, retainedFor: [11] }]);
+    expect(result.removed.map(c => c.id)).toEqual([A, C]);
+    expect(events.filter(e => e.operation === 'remove').map(e => e.target)).toEqual([A, C]);
+  });
+  test('does not ignore audit-only policies or a short-ID policy', async () => {
+    policies([selected, { ...selected, id: 11, scopeKey: A.slice(0, 12), mode: 'audit-only' }]);
+    expect((await runner.removeFromContainer({ containerId: A, policyId: 10 })).retainedFor).toEqual([11]);
+  });
+  test('ignores inactive, unrelated-container, unrelated-stack and remote-host policies', async () => {
+    policies([selected, { ...selected, id: 11, active: false }, { ...selected, id: 12, scopeKey: B },
+      { ...selected, id: 13, scopeType: 'stack', scopeKey: 'other' }, { ...selected, id: 14, hostId: 912 }]);
+    expect(await runner.removeFromContainer({ containerId: A, policyId: 10 })).toMatchObject({ removed: true, applied: false, retained: false });
+  });
+  test('direct removal without a policy identity protects all active policies', async () => {
+    policies([selected]);
+    expect((await runner.removeFromContainer({ containerId: A })).retainedFor).toEqual([10]);
+    expect(events.some(e => e.operation === 'remove')).toBe(false);
+  });
+  test.each([99, 0, '10'])('refuses invalid or missing selected policy %j', async policyId => {
+    policies([selected]);
+    await expect(runner.removeFromContainer({ containerId: A, policyId })).rejects.toThrow(/policy/);
+    expect(events.some(e => e.operation === 'remove')).toBe(false);
+  });
+  test('refuses excluding a policy for a different container', async () => {
+    policies([{ ...selected, scopeKey: B }]);
+    await expect(runner.removeFromContainer({ containerId: A, policyId: 10 })).rejects.toThrow(/does not cover/);
+    expect(events.some(e => e.operation === 'remove')).toBe(false);
+  });
+  test('policy lookup happens after acquiring the daemon reservation and snapshot', async () => {
+    policies([selected]);
+    filter.listPolicies.mockImplementation(() => {
+      expect(helpers).toHaveLength(1);
+      expect(events.some(e => e.operation === 'snapshot')).toBe(true);
+      return [selected, { ...selected, id: 11, scopeType: 'stack', scopeKey: 'test-stack' }];
+    });
+    expect((await runner.removeFromContainer({ containerId: A, policyId: 10 })).retained).toBe(true);
+  });
+  test('database failure cannot remove an existing shared table', async () => {
+    policies([selected]);filter.listPolicies.mockImplementation(() => { throw new Error('Policy database unavailable'); });
+    await expect(runner.removeFromContainer({ containerId: A, policyId: 10 })).rejects.toThrow(/database/);
+    expect(events.some(e => e.operation === 'remove')).toBe(false);
+  });
+});

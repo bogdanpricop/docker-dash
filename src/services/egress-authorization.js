@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const net = require('net');
-const { getDb } = require('../db');
+const { hostScope, matchesContainer } = require('./egress-policy-scope');
 const dockerService = require('./docker');
 const egressFilter = require('./egress-filter');
 
@@ -19,11 +19,6 @@ function sourceAddress(value) {
 function addresses(container) {
   return Object.values(container.NetworkSettings?.Networks || {}).flatMap(network =>
     [network.IPAddress, network.GlobalIPv6Address].filter(Boolean).map(sourceAddress));
-}
-
-function hostScope(hostId) {
-  const defaultHost = getDb().prepare('SELECT id FROM docker_hosts WHERE is_default = 1 ORDER BY id LIMIT 1').get();
-  return id => id === hostId || (defaultHost && [0, defaultHost.id].includes(id) && [0, defaultHost.id].includes(hostId));
 }
 
 async function resolveSource(source, { hostId = 0, docker = dockerService.getDocker(hostId),
@@ -41,12 +36,8 @@ async function resolveSource(source, { hostId = 0, docker = dockerService.getDoc
   }
   const precheck = egressFilter.canApplyFilter(inspect);
   if (!precheck.ok) throw new Error('Container cannot be safely filtered');
-  const project = inspect.Config?.Labels?.['com.docker.compose.project'];
-  const applicable = policies().filter(policy => policy.active && matchesHost(policy.hostId) && (
-    (policy.scopeType === 'container' && /^[a-f0-9]{12,64}$/.test(policy.scopeKey) && id.startsWith(policy.scopeKey)
-      && containers.filter(container => container.Id?.startsWith(policy.scopeKey)).length === 1)
-    || (policy.scopeType === 'stack' && project && policy.scopeKey === project)
-  ));
+  const applicable = policies().filter(policy => policy.active && matchesContainer(policy, inspect, matchesHost)
+    && (policy.scopeType !== 'container' || containers.filter(container => container.Id?.startsWith(policy.scopeKey)).length === 1));
   if (!applicable.length || applicable.length > 100) throw new Error('No applicable policy or too many policies');
   const result = applicable.map(policy => {
     if (!['enforce', 'audit-only'].includes(policy.mode) || !Array.isArray(policy.allowlist)

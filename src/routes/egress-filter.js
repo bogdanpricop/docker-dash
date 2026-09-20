@@ -278,13 +278,14 @@ router.post('/policies/:id/unapply', requireAuth, requireRole('admin'), writeabl
       const result = await egressRunner.removeFromStack({
         stackName: policy.scopeKey,
         hostId: policy.hostId || 0,
+        policyId: id,
       });
       await auditService.log({
         userId: req.user?.id,
         username: req.user?.username,
         ip: getClientIp(req),
-        action: result.failed.length ? 'egress_policy_unapply_failed' : 'egress_policy_unapplied',
-        details: { policyId: id, stackName: policy.scopeKey, hostId: policy.hostId, removedCount: result.removed.length, failedCount: result.failed.length },
+        action: result.failed.length ? 'egress_policy_unapply_failed' : result.retained?.length ? 'egress_filter_retained' : 'egress_policy_unapplied',
+        details: { policyId: id, stackName: policy.scopeKey, hostId: policy.hostId, removedCount: result.removed.length, retainedCount: result.retained?.length || 0, failedCount: result.failed.length },
       });
       return res.status(result.failed.length ? 500 : 200).json({ ok: result.failed.length === 0, scope: 'stack', ...result,
         ...(result.failed.length ? { error: `Filter removal failed for ${result.failed.length} container(s); policy retained.`,
@@ -294,17 +295,18 @@ router.post('/policies/:id/unapply', requireAuth, requireRole('admin'), writeabl
     const result = await egressRunner.removeFromContainer({
       containerId: policy.scopeKey,
       hostId: policy.hostId || 0,
+        policyId: id,
     });
 
     await auditService.log({
       userId: req.user?.id,
       username: req.user?.username,
       ip: getClientIp(req),
-      action: 'egress_policy_unapplied',
-      details: { policyId: id, containerId: policy.scopeKey, hostId: policy.hostId },
+      action: result.retained ? 'egress_filter_retained' : 'egress_policy_unapplied',
+      details: { policyId: id, containerId: policy.scopeKey, hostId: policy.hostId, retained: !!result.retained, retainedFor: result.retainedFor || [] },
     });
 
-    res.json({ ok: true, scope: 'container', applied: false, output: result.output });
+    res.json({ ok: true, scope: 'container', ...result });
   } catch (err) {
     log.error('unapply egress policy', err);
     await recordEnforcementFailure(req, 'egress_policy_unapply_failed', err);
