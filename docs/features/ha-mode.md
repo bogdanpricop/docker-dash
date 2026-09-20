@@ -81,8 +81,8 @@ curl http://localhost:8101/api/health
 docker compose exec redis redis-cli PING
 # → PONG
 
-# Prometheus metrics still work (rate-limit keys now live in Redis)
-curl http://localhost:8101/api/metrics | grep docker_dash
+# Global monitoring uses a private curl config with an Authorization header.
+curl --config /run/secrets/docker-dash-monitoring.curl http://localhost:8101/api/metrics | grep docker_dash
 ```
 
 ### 3. Disable HA mode

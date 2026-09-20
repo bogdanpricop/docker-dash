@@ -8,7 +8,8 @@ const { Router } = require('express');
 const auditService = require('../services/audit');
 const settingsService = require('../services/settings');
 const statsService = require('../services/stats');
-const { requireAuth, optionalAuth, requireRole, writeable } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
+const monitoringAccess=require('../middleware/monitoring-access');
 const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const dockerService = require('../services/docker');
@@ -34,14 +35,14 @@ router.get('/health', require('./health'));
 //   - Load-balancer health check scripts that need more than `role`
 //   - Failover troubleshooting (heartbeatAgeMs surfaces a stalled leader)
 
-router.get('/cluster/status', optionalAuth, (req, res) => {
+router.get('/cluster/status', monitoringAccess, (req, res) => {
   const cluster = require('../services/cluster');
   res.json(cluster.getStatus());
 });
 
 // ─── Prometheus Metrics ─────────────────────────────────────
 
-router.get('/metrics', optionalAuth, (req, res) => {
+router.get('/metrics', monitoringAccess, (req, res) => {
   try {
     const overview = statsService.getOverview();
     const metricsService = require('../services/metrics');
@@ -87,7 +88,7 @@ router.get('/metrics', optionalAuth, (req, res) => {
       `docker_dash_cluster_redis_connected ${cs.redisConnected === true ? 1 : 0}`,
     ];
 
-    res.type('text/plain').send(lines.join('\n') + '\n' + appMetrics + clusterLines.join('\n') + '\n');
+    res.set('Content-Type','text/plain; version=0.0.4; charset=utf-8').send(lines.join('\n') + '\n' + appMetrics + clusterLines.join('\n') + '\n');
   } catch (err) {
     res.status(500).send('# Error generating metrics\n');
   }

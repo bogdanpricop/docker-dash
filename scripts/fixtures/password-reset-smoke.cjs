@@ -139,6 +139,7 @@ async function main() {
     await require('./workload-replay-smoke.cjs')(db, checks, raceRedeem);
     await require('./service-token-smoke.cjs')(db, checks, raceRedeem);
     await require('./service-token-tenant-smoke.cjs')(db, checks, raceRedeem);
+    await require('./monitoring-access-smoke.cjs')(db, checks);
     const transport = await require('node:util').promisify(require('node:child_process').execFile)(process.execPath,
       ['/app/scripts/fixtures/oidc-transport-smoke.cjs'], { timeout:20000, env:{...process.env,
         NODE_EXTRA_CA_CERTS:'/app/src/__tests__/fixtures/provider-tls/ca.pem'} });

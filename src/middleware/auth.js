@@ -207,9 +207,9 @@ function writeable(req, res, next) {
 /** Enforce the deliberately small scope catalog used by short-lived tokens. */
 function enforceServiceTokenPermissions(req, res, next) {
   if (!req.user?.serviceToken) return next();
-  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/\/$/,'').toLowerCase();
   const read = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-  const family = path.startsWith('/api/scim/') ? 'scim'
+  const family = ['/api/metrics','/api/cluster/status'].includes(path) ? 'monitoring' : path.startsWith('/api/scim/') ? 'scim'
     : path.startsWith('/api/governance/') ? 'governance' : 'api';
   const required = `${family}.${read ? 'read' : 'write'}`;
   const scopes = new Set(req.user.scopes || []);

@@ -51,10 +51,14 @@ Migration 185 permanently revokes tenant tokens on suspension and backfills exis
 inactive tenants. Issuance, rotation and exchange refuse inactive tenants; reactivation
 does not restore old credentials. Global service credentials remain explicitly global.
 
-Public monitoring endpoints currently use optional authentication and are outside
-this boundary: `/api/metrics` and `/api/cluster/status` in `src/routes/misc.js` still
-need a separate access-control correction. This checkpoint does not certify complete
-tenant isolation or change existing user/team RBAC.
+The subsequent [monitoring correction](docs/audits/2026-09-20-monitoring-access.md)
+requires authentication for `/api/metrics` and `/api/cluster/status`. Only global
+monitoring.read/api.read service credentials or administrators (sessions or read API
+keys) can access them. Tenant credentials and restricted users are refused; no-store
+also covers denied requests. `/api/health` retains its public liveness/role metadata.
+Prometheus now requires a mounted credential file and renewal before expiry. These
+changes are not yet bundled or live. Existing user/team RBAC elsewhere still needs
+its applicable controls; this does not certify complete project security.
 
 ## OIDC and personal credentials (included in the 8.96.10 candidate)
 

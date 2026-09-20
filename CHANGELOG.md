@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Require global monitoring authentication for `/api/metrics` and `/api/cluster/status`.
+  Add the dedicated `monitoring.read` service scope, preserve global `api.read` and
+  administrator access, and refuse tenant credentials. Keep `/api/health` public.
+  Prometheus profile/snippets now read a mounted credential file; existing scrapers
+  must configure authentication and rotate before expiry.
+  [Validation and rollout requirements](docs/audits/2026-09-20-monitoring-access.md).
+
 - Enforce tenant ownership for authenticated service-token routes. Tenant credentials
   can read their project/scopes, filtered approvals/policies/blackouts and capacity;
   governance.write permits audited capacity accounting in that project. Foreign

@@ -783,6 +783,7 @@ i18n.register('ro', 'RO', "Română", {
     },
     observability: {
       title: "Wizard Observabilitate",
+      monitoringAuth: "Colectarea necesita un token de serviciu global monitoring.read din Identitate si politica. Salvati-l in fisierul privat de credentiale configurat pentru Prometheus si rotiti-l inainte de expirare. Profilul inclus foloseste MONITORING_TOKEN_FILE; ghidul operatorului explica configurarea.",
       subtitle: "Conecteaza metricile Docker Dash la Prometheus + Grafana. Wizard-ul detecteaza stack-urile de monitorizare existente pe acest host si ofera pasii urmatori potriviti.",
       rescan: "Rescaneaza",
       scanning: "Scanez containerele de monitorizare...",

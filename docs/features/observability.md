@@ -4,7 +4,7 @@
 **Optional — opt-in via `docker compose --profile observability up -d`**
 **Works in both standalone and HA mode.**
 
-Docker Dash ships an opt-in observability stack that deploys Prometheus (scraping `/api/metrics`) + Grafana (with a pre-provisioned dashboard) alongside the app. Zero UI configuration required — after `docker compose --profile observability up -d`, open Grafana and the dashboard is already populated.
+Docker Dash ships an opt-in observability stack that deploys Prometheus (scraping `/api/metrics`) + Grafana (with a pre-provisioned dashboard) alongside the app. Configure the monitoring credential before starting this profile; Grafana dashboards and its datasource are provisioned automatically.
 
 For operators who already run Prometheus or Grafana: skip this profile and integrate manually — [see §5 below](#5-integrating-with-an-existing-prometheusgrafana).
 
@@ -47,8 +47,37 @@ Instead of learning Prometheus + Grafana config from scratch, navigate to **Syst
 
 ## 2. Enabling
 
+Start the app first and sign in as an administrator. In **Identity & Policy**, issue
+a service token with only `monitoring.read`, no tenant, and a suitable lifetime
+(maximum 24 hours). Save its raw value in a private host file. Set
+`MONITORING_TOKEN_FILE` to that file; the default is `./.secrets/monitoring-token`.
+The Compose profile mounts it only into Prometheus as `/run/secrets/monitoring_token`.
+The `.secrets` directory is excluded from Git and Docker build contexts.
+
+Keep the parent directory owner-only (0700 on Linux). The file must be readable by
+the Prometheus container user: Compose file-backed secrets preserve host file
+permissions. For example, a 0644 file inside that private 0700 directory remains
+inaccessible to other host users while the explicitly mounted file is readable in
+Prometheus. Never make the parent directory public or commit the token.
+
+Arrange credential rotation before expiry. Rotation revokes the old token immediately;
+update the existing file contents promptly. Replacing the host file by rename can
+leave a Compose bind mount on the old inode; recreate Prometheus after such a replacement.
+Without a valid credential, scrapes return 401/403 and dashboards stop receiving data.
+Running the app without the observability profile does not require this secret.
+
+Existing scrapers must configure authentication before rollout. Global `api.read`
+service credentials remain compatible; prefer the narrower `monitoring.read` for
+new integrations. Metrics contain container names and operational data. Use HTTPS
+with certificate verification when scraping over an untrusted network; the bundled
+`app:8101` target is the internal Compose connection.
+
+The file configuration follows the documented
+[Prometheus authorization settings](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_config)
+and [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
+
 ```bash
-# Minimum — adds Prometheus + Grafana, default passwords
+# After configuring MONITORING_TOKEN_FILE — adds Prometheus + Grafana
 docker compose --profile observability up -d
 
 # With custom Grafana admin credentials (set before first boot)
@@ -130,6 +159,9 @@ Append to your `prometheus.yml`:
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     static_configs:
       - targets: ['docker-dash-host:8101']      # DNS name or IP
         labels:
@@ -215,6 +247,9 @@ If you run Docker Dash in HA mode with N replicas, Prometheus needs to scrape ea
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     static_configs:
       - targets: ['dd-1:8101', 'dd-2:8101', 'dd-3:8101']
         labels:
@@ -226,6 +261,9 @@ scrape_configs:
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s
