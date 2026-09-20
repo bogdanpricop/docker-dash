@@ -23,6 +23,10 @@ Verificarea read-only a [binarelor instalate](2026-09-20-installed-scanner-artif
 pe ambele hosturi leaga alertele de hash-urile si sursele analizate: dovezi de
 remediere gRPC si absenta codului daemon/OpenPGP pentru artefactele exacte.
 Constatarea zlib ramane deschisa; rapoartele brute si pragurile sunt pastrate.
+Corectie suplimentara in surse, inca neinstalata in aplicatiile live:
+[lease HA cu verificarea proprietarului si expirare locala](2026-09-20-ha-lease.md).
+358 suite / 4.704 teste trecute, un test omis; zece scenarii Redis reale pe fiecare
+host, inclusiv preluarea dupa suspendarea procesului si presiunea de memorie.
 Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;

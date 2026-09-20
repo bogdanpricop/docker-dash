@@ -119,7 +119,8 @@ services:
     image: redis:7-alpine
     container_name: docker-dash-redis
     restart: unless-stopped
-    command: redis-server --save 60 1000 --maxmemory 128mb --maxmemory-policy allkeys-lru
+    # Evicting the leader key before its TTL can grant two replicas leadership.
+    command: redis-server --save 60 1000 --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     healthcheck:
