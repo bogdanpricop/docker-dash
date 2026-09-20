@@ -9,6 +9,8 @@ const overlay = process.env.DD_RESET_SMOKE_SOURCE_OVERLAY === '1';
 const docker = new Docker({ host: url.hostname, port: Number(url.port), timeout: 30000 });
 const marker = 'dd-reset-smoke-' + crypto.randomBytes(6).toString('hex');
 const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/email.js',
+  'src/services/misc.js', 'src/routes/misc-api-keys.js', 'src/middleware/auth.js',
+  'src/utils/account-password-policy.js', 'src/db/migrations/182_api_key_credential_revocation.js',
   'src/services/password-reset.js', 'src/services/password-reset-delivery.js', 'src/config/index.js',
   'src/db/migrations/178_auth_time_indexes.js', 'src/db/migrations/179_auth_credential_version.js',
   'src/db/migrations/180_mfa_replay_and_attempts.js', 'src/db/migrations/181_external_identities.js', 'src/utils/totp.js', 'src/ws/index.js',
@@ -25,7 +27,7 @@ const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/ema
   });
   try {
     const pack = tar.pack();
-    for (const path of ['scripts/fixtures/password-reset-smoke.cjs', 'scripts/fixtures/oidc-flow-smoke.cjs', ...(overlay ? sources : [])]) {
+    for (const path of ['scripts/fixtures/password-reset-smoke.cjs', 'scripts/fixtures/oidc-flow-smoke.cjs', 'scripts/fixtures/api-key-smoke.cjs', ...(overlay ? sources : [])]) {
       pack.entry({ name: path, mode: 0o644, uid: 1000, gid: 1000 }, fs.readFileSync(path));
     }
     pack.finalize(); await c.putArchive(pack, { path: '/app' });

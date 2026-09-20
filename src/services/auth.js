@@ -515,23 +515,15 @@ class AuthService {
     const db = getDb();
     const row = db.prepare(`
       SELECT s.*, u.id as uid, u.username, u.display_name, u.role, u.is_active, u.must_change_password,
-             u.password_changed_at, u.totp_enabled
+             u.password_changed_at, u.totp_enabled, u.auth_source,
+             (julianday(COALESCE(u.password_changed_at,u.created_at))-2440587.5)*86400000 AS passwordChangedAtMs
       FROM sessions s JOIN users u ON s.user_id = u.id
       WHERE s.token_hash = ? AND s.is_valid = 1 AND julianday(s.expires_at) > julianday('now')
     `).get(tokenHash);
 
     if (!row || !row.is_active) return null;
 
-    let mustChangePassword = !!row.must_change_password;
-
-    // In strict mode: reject login if password older than passwordMaxAgeDays
-    if (config.security.passwordMaxAgeDays > 0 && row.password_changed_at) {
-      const ageMs = Date.now() - new Date(row.password_changed_at).getTime();
-      const maxAgeMs = config.security.passwordMaxAgeDays * 24 * 3600 * 1000;
-      if (ageMs > maxAgeMs) {
-        mustChangePassword = true;
-      }
-    }
+    const mustChangePassword = require('../utils/account-password-policy').mustChangePassword(row);
 
     return {
       id: row.uid, username: row.username, displayName: row.display_name, role: row.role,

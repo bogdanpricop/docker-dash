@@ -134,6 +134,7 @@ async function main() {
     await credentialLifecycleChecks(auth, db);
     await mfaReplayChecks(auth, db);
     await require('./oidc-flow-smoke.cjs')(endpoint, db, checks);
+    await require('./api-key-smoke.cjs')(db, checks);
     const provisionCode = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
       process.stdin.once('data',()=>{const user=auth.findOrCreateSsoUser('native-racing-identity','viewer','',{
         identity:{source:'oidc',issuer:'https://identity.example.test',subject:'native-racing-subject'}});

@@ -7,6 +7,15 @@ clarification remain open; the candidate is not publicly published.
 
 ## OIDC browser binding (source checkpoint, not in the existing candidate)
 
+The [personal API key follow-up](docs/audits/2026-09-20-api-key-security.md) adds
+migration 182. Changes to passwords, account activation, authentication source or
+external identity revoke personal keys. Inactive and legacy accounts are backfilled;
+past password changes cannot be reconstructed. Expiry and permission parsing fail
+closed. Keys obey required password changes and local password age, interpreted in
+UTC with creation time as the initial password age. Key creation/revocation requires
+user authentication and writable mode. Creation and audit commit together; revocation
+stays effective if its audit fails (HTTP 500). These fixes require a rebuilt image.
+
 The [group authorization follow-up](docs/audits/2026-09-20-oidc-group-revocation.md)
 treats an empty group list as authoritative and applies the configured default role.
 When mapping is enabled, absent/malformed/incomplete groups refuse login and revoke

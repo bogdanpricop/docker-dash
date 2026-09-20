@@ -42,6 +42,7 @@ const auditActionsList = [
   "alert_rule_delete",
   "alert_rule_update",
   "apikey_create",
+  "apikey_revoke",
   "backup_pcloud",
   "backup_pcloud_failed",
   "backup_s3",

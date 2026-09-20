@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Harden personal API keys: reject malformed expiry/permissions, enforce required
+  password changes and UTC local password age, and require user authentication for
+  key management. Creation and its audit commit together; revocation survives an
+  audit failure. Migration 182 revokes keys on password, activation or identity
+  changes and backfills inactive/legacy accounts. Previously revoked keys never
+  return. [Evidence and rollout limits](docs/audits/2026-09-20-api-key-security.md).
+
 - Apply the configured default role when OIDC explicitly returns an empty group
   list. If configured group authorization is absent, malformed or incomplete,
   refuse login and revoke the exact bound account's sessions, personal API keys,

@@ -80,31 +80,58 @@ const apiKeys = {
       FROM api_keys WHERE user_id = ? ORDER BY created_at DESC
     `).all(userId);
   },
-  create(userId, { name, permissions, expiresAt }) {
+  create(userId, input = {}) {
+    const invalid = message => { throw Object.assign(new Error(message), { status:400 }); };
+    if (!input || typeof input !== 'object' || Array.isArray(input)) invalid('Invalid API key request');
+    const {name,expiresAt} = input, permissions = input.permissions === undefined ? ['read'] : input.permissions;
+    if (typeof name !== 'string' || !name.trim() || name.length > 100 || /[\x00-\x1f\x7f]/.test(name)) invalid('API key name must contain 1-100 characters');
+    if (!Array.isArray(permissions) || !permissions.length || permissions.length > 3 || !permissions.every(value => ['read','write','*'].includes(value))) invalid('API key permissions must be read, write or *');
+    let expiry = null;
+    if (expiresAt !== undefined && expiresAt !== null) {
+      const parts = typeof expiresAt === 'string' && expiresAt.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
+      const instant = parts ? Date.parse(expiresAt) : NaN;
+      if (!parts || !Number.isFinite(instant) || instant <= Date.now() || Number(parts[2]) < 1 || Number(parts[2]) > 12
+        || Number(parts[3]) < 1 || Number(parts[3]) > new Date(Date.UTC(Number(parts[1]),Number(parts[2]),0)).getUTCDate()
+        || Number(parts[4]) > 23 || Number(parts[5]) > 59 || Number(parts[6]) > 59) invalid('API key expiry must be a future ISO timestamp with a timezone');
+      expiry = new Date(instant).toISOString();
+    }
+    const db = getDb();
+    return db.transaction(() => {
+    const owner = db.prepare(`SELECT auth_source,must_change_password,is_active,
+      (julianday(COALESCE(password_changed_at,created_at))-2440587.5)*86400000 AS passwordChangedAtMs FROM users WHERE id=?`).get(userId);
+    if (!owner?.is_active || owner.auth_source === 'sso_legacy' || require('../utils/account-password-policy').mustChangePassword(owner)) {
+      throw Object.assign(new Error('Account cannot issue API keys'), {status:403});
+    }
     const token = 'dd_' + generateToken(24);
     const prefix = token.substring(0, 10);
     const hash = sha256(token);
-    getDb().prepare(`
+    db.prepare(`
       INSERT INTO api_keys (user_id, name, key_prefix, key_hash, permissions, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(userId, name, prefix, hash, JSON.stringify(permissions || ['read']), expiresAt || null);
+    `).run(userId, name.trim(), prefix, hash, JSON.stringify([...new Set(permissions)]), expiry);
     return { key: token, prefix };
+    }).immediate();
   },
   validate(token) {
-    if (!token) return null;
+    if (typeof token !== 'string' || !/^dd_[a-f0-9]{48}$/.test(token)) return null;
     const hash = sha256(token);
     const key = getDb().prepare(`
-      SELECT ak.*, u.username, u.role, u.is_active as user_active
+      SELECT ak.*, u.username, u.role, u.is_active as user_active, u.must_change_password, u.auth_source,
+             (julianday(COALESCE(u.password_changed_at,u.created_at))-2440587.5)*86400000 AS passwordChangedAtMs
       FROM api_keys ak JOIN users u ON ak.user_id = u.id
-      WHERE ak.key_hash = ? AND ak.is_active = 1
+      WHERE ak.key_hash = ? AND ak.is_active = 1 AND u.auth_source!='sso_legacy'
+        AND (ak.expires_at IS NULL OR julianday(ak.expires_at)>julianday('now'))
     `).get(hash);
     if (!key || !key.user_active) return null;
-    if (key.expires_at && new Date(key.expires_at) < new Date()) return null;
+    let permissions;
+    try { permissions = JSON.parse(key.permissions); } catch { return null; }
+    if (!Array.isArray(permissions) || !permissions.length || !permissions.every(value => ['read','write','*'].includes(value))) return null;
     getDb().prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now(), key.id);
-    return { id: key.user_id, username: key.username, role: key.role, apiKey: true, permissions: JSON.parse(key.permissions || '["read"]') };
+    return { id:key.user_id, username:key.username, role:key.role, apiKey:true, permissions,
+      mustChangePassword:require('../utils/account-password-policy').mustChangePassword(key) };
   },
   revoke(id, userId) {
-    getDb().prepare('UPDATE api_keys SET is_active = 0 WHERE id = ? AND user_id = ?').run(id, userId);
+    return getDb().prepare('UPDATE api_keys SET is_active = 0 WHERE id = ? AND user_id = ? AND is_active=1').run(id, userId).changes === 1;
   },
 };
 
