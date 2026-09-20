@@ -27,15 +27,15 @@
 //
 // TLS
 // Proxmox homelab installs commonly use self-signed certs. We support
-// skipTlsVerify=true (with clear warning in the howto) plus explicit
-// CA trust via a pinned fingerprint (deferred to alpha.2).
+// explicit caCert trust. Certificate chain, expiry and hostname are verified;
+// legacy skipTlsVerify configurations must be migrated before connecting.
 //
 // TIMEOUT + SIZE CAPS (matches v8.7.x hardening pattern):
 //   - 30 s AbortController timeout on every request
 //   - 16 MB response body cap
 
 const https = require('https');
-const log = require('../utils/logger')('proxmox');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -170,9 +170,7 @@ class ProxmoxClient {
       throw new Error('ProxmoxClient: config.endpoint required (e.g. https://pve.example.com:8006)');
     }
     // v8.9.11-alpha.6 — normalize: prepend https:// if bare hostname given.
-    if (!/^https?:\/\//i.test(config.endpoint)) {
-      config = { ...config, endpoint: 'https://' + config.endpoint };
-    }
+    config = { ...config, endpoint: secureEndpoint(config.endpoint) };
     if (!config.tokenId || !config.tokenSecret) {
       throw new Error('ProxmoxClient: config.tokenId + config.tokenSecret required (PVEAPIToken auth)');
     }
@@ -182,7 +180,7 @@ class ProxmoxClient {
     this._config = config;
     this._agent = new https.Agent({
       keepAlive: true,
-      rejectUnauthorized: !config.skipTlsVerify,
+      ...tlsOptions(config),
     });
   }
 
@@ -1091,4 +1089,3 @@ module.exports = {
 
 // Silence unused-log warning; log is retained for the write-path
 // audit hooks that land in alpha.2.
-if (false) log.info();

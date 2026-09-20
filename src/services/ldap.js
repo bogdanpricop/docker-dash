@@ -4,7 +4,7 @@
  * LDAP / Active Directory authentication service
  *
  * Supports:
- *  - LDAP (plain, port 389) and LDAPS (TLS, port 636)
+ *  - LDAP with mandatory StartTLS (port 389) and LDAPS (port 636)
  *  - Simple bind (username + password)
  *  - Service account bind + user search
  *  - Group membership filtering
@@ -19,8 +19,12 @@
  */
 
 const { Client } = require('ldapts');
+const net = require('node:net');
+const tls = require('node:tls');
+const { tlsOptions } = require('../utils/provider-tls');
 const { getDb } = require('../db');
 const log = require('../utils/logger')('ldap');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const CONFIG_KEY = 'ldap_config';
 
@@ -30,12 +34,25 @@ function getConfig() {
   const db = getDb();
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(CONFIG_KEY);
   if (!row) return null;
-  try { return JSON.parse(row.value); } catch { return null; }
+  let cfg;
+  try { cfg = JSON.parse(row.value); } catch { return null; }
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return null;
+  if (cfg.bindPasswordEncrypted) {
+    cfg.bindPassword = decrypt(cfg.bindPasswordEncrypted);
+    delete cfg.bindPasswordEncrypted;
+  }
+  return cfg;
 }
 
 function saveConfig(cfg) {
+  _verifiedTls(cfg);
+  if (cfg.host) _connectionSpec(cfg);
   const db = getDb();
-  const json = JSON.stringify(cfg);
+  const stored = { ...cfg };
+  delete stored.bindPasswordEncrypted;
+  if (stored.bindPassword) stored.bindPasswordEncrypted = encrypt(stored.bindPassword);
+  delete stored.bindPassword;
+  const json = JSON.stringify(stored);
   const exists = db.prepare("SELECT 1 FROM settings WHERE key = ?").get(CONFIG_KEY);
   if (exists) {
     db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(json, CONFIG_KEY);
@@ -77,17 +94,60 @@ function _escapeFilter(value) {
 
 // ── LDAP client factory ──────────────────────────────────────
 
-function _createClient(cfg) {
-  const url = `${cfg.tls ? 'ldaps' : 'ldap'}://${cfg.host}:${cfg.port || (cfg.tls ? 636 : 389)}`;
-  const opts = {
-    url,
-    timeout: 5000,
-    connectTimeout: 5000,
-  };
-  if (cfg.tls && cfg.tlsSkipVerify) {
-    opts.tlsOptions = { rejectUnauthorized: false };
+const invalidConfig = message => Object.assign(new Error(message), { status: 400, code: 'LDAP_TLS_REQUIRED' });
+
+function _verifiedTls(cfg) {
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw invalidConfig('LDAP configuration is required');
+  if (cfg.tls !== undefined && typeof cfg.tls !== 'boolean') throw invalidConfig('LDAP tls must be a boolean');
+  if (cfg.tlsSkipVerify !== undefined && cfg.tlsSkipVerify !== false) {
+    throw invalidConfig('LDAP certificate verification is required; configure a verified CA and disable the legacy TLS bypass');
   }
-  return new Client(opts);
+  return tlsOptions({ caCert: cfg.caCert });
+}
+
+function _connectionSpec(cfg) {
+  const trust = _verifiedTls(cfg);
+  const host = typeof cfg.host === 'string' ? cfg.host.replace(/^\[([^\]]+)\]$/, '$1') : '';
+  if (!net.isIP(host) && !/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/i.test(host)) {
+    throw invalidConfig('LDAP host must be a DNS name or IP address, without URL credentials, path or port');
+  }
+  const rawPort = cfg.port === undefined || cfg.port === null || cfg.port === '' ? (cfg.tls ? 636 : 389) : cfg.port;
+  if (!/^\d+$/.test(String(rawPort)) || Number(rawPort) < 1 || Number(rawPort) > 65535) throw invalidConfig('Invalid LDAP port');
+  const port = Number(rawPort), authority = net.isIP(host) === 6 ? `[${host}]` : host;
+  return { url: `${cfg.tls ? 'ldaps' : 'ldap'}://${authority}:${port}`, trust: {
+    ...trust, host, ...(net.isIP(host) ? {} : { servername: host }),
+    checkServerIdentity: (_servername, certificate) => tls.checkServerIdentity(host, certificate),
+  } };
+}
+
+async function _createClient(cfg) {
+  const { url, trust } = _connectionSpec(cfg);
+  let plainConnections = 0;
+  const client = new Client({
+    url, timeout: 5000, connectTimeout: 5000, autoRebind: false,
+    // ldapts interprets any tlsOptions as immediate TLS, even on ldap://.
+    ...(cfg.tls ? { tlsOptions: trust } : {}),
+    createConnection(...args) {
+      if (++plainConnections > 1) throw invalidConfig('LDAP connection was lost; unencrypted reconnect refused');
+      return net.connect(...args);
+    },
+    createSecureConnection(...args) {
+      const socket = tls.connect(...args);
+      // Absolute deadline: trickled handshake bytes must not reset the budget.
+      const timer = setTimeout(() => socket.destroy(new Error('LDAP TLS handshake timed out')), 5000);
+      timer.unref?.();
+      socket.once('secureConnect', () => clearTimeout(timer));
+      socket.once('close', () => clearTimeout(timer));
+      return socket;
+    },
+  });
+  try {
+    if (!cfg.tls) await client.startTLS(trust);
+    return client;
+  } catch (error) {
+    await _destroy(client);
+    throw error;
+  }
 }
 
 async function _destroy(client) {
@@ -132,7 +192,7 @@ function _normalizeEntry(entry) {
  * Test connection — bind with service account and do a simple search
  */
 async function testConnection(cfg) {
-  const client = _createClient(cfg);
+  const client = await _createClient(cfg);
   try {
     await client.bind(cfg.bindDn, cfg.bindPassword);
     const { searchEntries } = await client.search(cfg.baseDn, {
@@ -153,10 +213,12 @@ async function testConnection(cfg) {
  * Returns user object on success, throws on failure
  */
 async function authenticate(username, password) {
+  // Empty passwords can turn an LDAP bind into anonymous authentication.
+  if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) return null;
   const cfg = getConfig();
   if (!cfg || !cfg.enabled) return null; // LDAP not configured/enabled
 
-  const client = _createClient(cfg);
+  const client = await _createClient(cfg);
   try {
     // Step 1: Bind with service account to find the user DN
     await client.bind(cfg.bindDn, cfg.bindPassword);
@@ -183,7 +245,7 @@ async function authenticate(username, password) {
     const userDn = entry.dn;
 
     // Step 2: Bind as the user to verify password
-    const userClient = _createClient(cfg);
+    const userClient = await _createClient(cfg);
     try {
       await userClient.bind(userDn, password);
     } finally {
@@ -194,8 +256,7 @@ async function authenticate(username, password) {
     if (cfg.requiredGroup) {
       const memberOf = [].concat(entry.memberOf || []);
       const inGroup = memberOf.some(g =>
-        g.toLowerCase() === cfg.requiredGroup.toLowerCase() ||
-        g.toLowerCase().includes(cfg.requiredGroup.toLowerCase())
+        g.toLowerCase() === cfg.requiredGroup.toLowerCase()
       );
       if (!inGroup) {
         log.warn(`LDAP: user "${username}" not in required group "${cfg.requiredGroup}"`);
@@ -205,7 +266,7 @@ async function authenticate(username, password) {
 
     // Map attributes to Docker Dash user profile
     const mail = [].concat(entry.mail || [])[0] || `${username}@ldap`;
-    const displayName = entry.displayName || entry.cn || username;
+    const displayName = [].concat(entry.displayName || entry.cn || username)[0];
 
     log.info(`LDAP: authenticated user "${username}" (${userDn})`);
     return {
@@ -224,7 +285,7 @@ async function authenticate(username, password) {
  * List users from LDAP directory (for preview/sync)
  */
 async function listUsers(cfg, limit = 50) {
-  const client = _createClient(cfg);
+  const client = await _createClient(cfg);
   try {
     await client.bind(cfg.bindDn, cfg.bindPassword);
     const uidAttr = cfg.uidAttr || 'uid';

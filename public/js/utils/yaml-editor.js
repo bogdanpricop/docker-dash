@@ -1,4 +1,4 @@
-/* global CodeMirror, jsyaml */
+/* global DockerDashCodeMirror, jsyaml */
 'use strict';
 
 /**
@@ -73,18 +73,10 @@ const YamlEditor = (() => {
       if (typeof onChange === 'function') onChange(currentValue());
     };
 
-    if (typeof CodeMirror !== 'undefined' && typeof CodeMirror.fromTextArea === 'function') {
-      editor = CodeMirror.fromTextArea(textarea, {
-        mode: 'yaml', lineNumbers: true, lineWrapping: false,
-        matchBrackets: true, autoCloseBrackets: true,
-        lint: !readOnly, gutters: ['CodeMirror-linenumbers', 'CodeMirror-lint-markers'],
-        readOnly: readOnly ? 'nocursor' : false,
-        tabSize: 2, indentUnit: 2, indentWithTabs: false,
-        viewportMargin: 20,
+    if (typeof DockerDashCodeMirror !== 'undefined' && typeof DockerDashCodeMirror.mount === 'function') {
+      editor = DockerDashCodeMirror.mount(textarea, {
+        readOnly, minHeight, onChange: changed, validate: validateText,
       });
-      editor.setSize('100%', minHeight);
-      editor.on('change', changed);
-      setTimeout(() => editor?.refresh(), 0);
     } else {
       textarea.style.minHeight = `${minHeight}px`;
       textarea.addEventListener('input', changed);
@@ -106,9 +98,7 @@ const YamlEditor = (() => {
         destroyed = true;
         clearTimeout(validationTimer);
         if (editor) {
-          // A modal may already have detached the textarea and CodeMirror DOM.
-          // Disposal must remain harmless in that lifecycle.
-          try { editor.toTextArea(); } catch { /* already detached */ }
+          editor.destroy();
         } else textarea.removeEventListener('input', changed);
         status.remove();
       },

@@ -446,7 +446,7 @@ describe('unified Xen client', () => {
   it('opens a standalone Xen console through the pinned SSH transport', async () => {
     const { Client } = require('ssh2');
     Client.responses.push({ stdout: 'xl' }, { stdout: '' });
-    const client = new XenRawClient({ sshHost: 'dom0.test', sshUsername: 'svc', sshPrivateKey: 'KEY' });
+    const client = new XenRawClient({ hostKeySha256: 'ab'.repeat(32), sshHost: 'dom0.test', sshUsername: 'svc', sshPrivateKey: 'KEY' });
     const descriptor = await client.openConsole('uuid-web');
     expect(descriptor.protocol).toBe('serial');
     expect(Client.commands).toEqual(['if command -v xl >/dev/null 2>&1; then printf xl; elif command -v xm >/dev/null 2>&1; then printf xm; else exit 127; fi',
@@ -460,7 +460,7 @@ describe('unified Xen client', () => {
       { stdout: 'xm' },
       { stdout: 'Name ID Mem VCPUs State Time(s)\nDomain-0 0 1024 2 r----- 1.0\nlegacy 3 512 1 -b---- 2.5\n' },
     );
-    const client = new XenRawClient({ sshHost: 'old.test', sshUsername: 'root', sshPassword: 'secret' });
+    const client = new XenRawClient({ hostKeySha256: 'ab'.repeat(32), sshHost: 'old.test', sshUsername: 'root', sshPassword: 'secret' });
     expect(await client.listVMs()).toEqual([expect.objectContaining({ name: 'legacy', domid: 3 })]);
     expect(client.capabilities()).toMatchObject({ toolstack: 'xm', legacyXend: true });
     await expect(client.vmAction('3', 'forceReboot')).rejects.toThrow(/unavailable/);

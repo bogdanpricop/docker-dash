@@ -1629,8 +1629,8 @@ const Api = {
   testNonDockerHost(daemonType, daemonConfig, hostId) {
     return this.post('/hosts/test-non-docker', { daemonType, daemonConfig, hostId });
   },
-  testHostSsh(sshConfig, hostId) {
-    return this.post('/hosts/test-ssh', { sshConfig, hostId });
+  testHostSsh(sshConfig, hostId, daemonType) {
+    return this.post('/hosts/test-ssh', { sshConfig, hostId, daemonType });
   },
   // ─── SSH Key Deployer (v8.9.16, System → Tools) ───
   generateSshKey(opts)                { return this.post('/ssh-keys/generate', opts || {}); },

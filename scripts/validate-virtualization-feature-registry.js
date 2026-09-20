@@ -103,6 +103,11 @@ function evidenceFor(feature, status) {
         path: 'src/__tests__/provider-inventory-views.test.js',
       },
       {
+        type: 'test',
+        reference: 'Chromium CRUD/default/refresh/revoked-host smoke with real view routes and fixture inventory',
+        path: 'scripts/check-inventory-views-browser.js',
+      },
+      {
         type: 'working-tree',
         reference: 'R1/B015 local implementation',
         path: 'docs/planning/remaining-market-research-implementation-plan.md',
@@ -418,7 +423,7 @@ function limitationsFor(feature, status, deliveryLevel) {
     return [`Outstanding implementation scope is tracked in batch ${batch}.`];
   }
   if (feature.featureId === 'B015') {
-    return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke remains outstanding.'];
+    return ['Released in v8.80.0 and read-only qualified in v8.85.0; Chromium smoke passed locally on 2026-09-19 using real view routes and fixture provider inventory. A real-provider read-only smoke remains outstanding.'];
   }
   if (feature.featureId === 'B045') {
     return ['Released in v8.80.0 and read-only qualified in v8.85.0; browser smoke and a real-provider canary remain outstanding.'];

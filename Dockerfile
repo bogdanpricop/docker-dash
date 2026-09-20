@@ -1,44 +1,63 @@
+FROM golang:1.27.1-alpine AS scanner-build
+COPY docker/scanners/build.sh /build.sh
+COPY docker/scanners/trivy-json-compat.go /trivy-json-compat.go
+WORKDIR /src/grype
+COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
+RUN sh /build.sh grype
+WORKDIR /src/trivy
+COPY docker/scanners/trivy/go.mod docker/scanners/trivy/go.sum ./
+RUN sh /build.sh trivy
+WORKDIR /src/docker-cli
+COPY docker/scanners/docker-cli/go.mod docker/scanners/docker-cli/go.sum ./
+COPY docker/scanners/build-cli.sh /build-cli.sh
+RUN sh /build-cli.sh
+
+
 ### Base ###
-FROM node:20-alpine AS base
+FROM node:24.21.0-alpine AS base
+
+# npm 11.19.1 includes security fixes absent from the current npm 12.0.2 bundle.
+# Keep aligned with package.json and CI; reassess when npm 12 ships those fixes.
+RUN npm install --global npm@11.19.1 --ignore-scripts
 
 # SECURITY: Upgrade all Alpine packages to get latest security patches
 RUN apk update && apk upgrade --no-cache
 
-# System tools + Docker CLI/Compose plugin + gcompat (glibc compat for Docker Scout)
+# System tools + Docker CLI/Compose plugin
 # Compose is executed from inside Docker Dash for stack plans, Git deploys,
 # pull-request previews, and OCI Compose artifacts.
-RUN apk add --no-cache tini wget curl docker-cli docker-cli-compose gcompat git openssh-client openssl
+RUN apk add --no-cache tini curl git openssh-client openssl
 
-# Install Trivy vulnerability scanner
-# Pin version for reproducible builds. Update ARG to upgrade.
-ARG TRIVY_VERSION=0.69.3
-RUN wget -qO /tmp/trivy.tar.gz \
-      "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" && \
-    tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy && \
-    chmod +x /usr/local/bin/trivy && \
-    rm -f /tmp/trivy.tar.gz
+# Alpine's Docker CLI 29.5.3 predates the go-archive path traversal fix.
+COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker
+COPY docker/scanners/docker-cli.LICENSE /usr/share/licenses/docker-cli/LICENSE
 
-# Install Grype vulnerability scanner
-# Pin version for reproducible builds. Update ARG to upgrade.
-ARG GRYPE_VERSION=0.92.0
-RUN wget -qO /tmp/grype.tar.gz \
-      "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" && \
-    tar -xzf /tmp/grype.tar.gz -C /usr/local/bin grype && \
-    chmod +x /usr/local/bin/grype && \
-    rm -f /tmp/grype.tar.gz
+# Alpine's Compose 5.1.4 embeds vulnerable Go dependencies. Use the verified
+# upstream 5.5.1 release; hashes are the official GitHub release asset digests.
+ARG COMPOSE_VERSION=5.5.1
+RUN case "$(apk --print-arch)" in \
+      x86_64) compose_arch=x86_64; compose_sha=db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576 ;; \
+      aarch64) compose_arch=aarch64; compose_sha=732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7 ;; \
+      *) echo 'Unsupported Compose architecture' >&2; exit 1 ;; \
+    esac && \
+    mkdir -p /usr/libexec/docker/cli-plugins && \
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      --connect-timeout 15 --max-time 180 \
+      "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" \
+      --output /usr/libexec/docker/cli-plugins/docker-compose && \
+    echo "${compose_sha}  /usr/libexec/docker/cli-plugins/docker-compose" | sha256sum -c - && \
+    chmod 0755 /usr/libexec/docker/cli-plugins/docker-compose
 
-# Install Docker Scout CLI plugin
-# Pin version for reproducible builds. Update ARG to upgrade.
-ARG SCOUT_VERSION=1.17.0
-RUN mkdir -p /usr/lib/docker/cli-plugins && \
-    wget -qO /tmp/scout.tar.gz \
-      "https://github.com/docker/scout-cli/releases/download/v${SCOUT_VERSION}/docker-scout_${SCOUT_VERSION}_linux_amd64.tar.gz" && \
-    tar -xzf /tmp/scout.tar.gz -C /usr/lib/docker/cli-plugins docker-scout && \
-    chmod +x /usr/lib/docker/cli-plugins/docker-scout && \
-    rm -f /tmp/scout.tar.gz
+# Verified source builds with pinned dependency security fixes and provenance.
+COPY --from=scanner-build /out/trivy /out/grype /usr/local/bin/
+COPY --from=scanner-build /out/*.txt /out/*.json /out/*.sha256 /out/*.LICENSE /out/*.mod /usr/share/docker-dash/scanners/
+
+# Docker Scout is temporarily excluded: its latest published binary embeds
+# vulnerable dependencies and its plugin source is not publicly available for
+# a security rebuild. See docs/audits/2026-09-20-scout-exclusion.md.
 
 WORKDIR /app
-COPY package*.json ./
+COPY package*.json .npmrc ./
 ENV NODE_ENV=production
 
 ### Development ###
@@ -56,9 +75,7 @@ CMD ["node", "--watch", "src/server.js"]
 
 ### Production dependencies ###
 FROM base AS deps
-# npm ci uses package-lock.json which already has patched versions via overrides:
-#   cross-spawn >=7.0.5, glob >=10.5.0, minimatch >=9.0.7,
-#   tar >=7.5.11, brace-expansion >=2.0.2, nodemailer >=7.0.7
+# Install the audited, reproducible production dependency tree.
 RUN npm ci --omit=dev
 
 ### Production ###
@@ -81,6 +98,6 @@ LABEL org.opencontainers.image.title="Docker Dash" \
 
 EXPOSE 8101
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD sh -c "wget --no-verbose --tries=1 --spider http://localhost:\${APP_PORT:-8101}/api/health || exit 1"
+  CMD sh -c "curl --fail --silent --show-error --max-time 4 http://localhost:\${APP_PORT:-8101}/api/health >/dev/null || exit 1"
 ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
 CMD ["node", "src/server.js"]

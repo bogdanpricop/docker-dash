@@ -22,7 +22,7 @@ If your problem is "I have 10 VPSes and I want one dashboard that deploys stacks
 
 Docker Dash is not trying to be a fleet orchestrator. The depth goes in a different direction:
 
-- **Security scanning bundled in the image** — Trivy, Grype, and Docker Scout, with auto-detect and fallback. No extra tools to install.
+- **Security scanning bundled in the image** — Trivy and Grype, with auto-detect and fallback for manual scans. Safe-Pull requires both engines. [Docker Scout is temporarily excluded for security reasons](../audits/2026-09-20-scout-exclusion.md).
 - **CIS Docker Benchmark** — one-click hardened container creation (cap_drop ALL, read-only rootfs, no-new-privileges, resource limits) plus per-container CIS findings.
 - **Let's Encrypt wizard** with 9 DNS providers for DNS-01 challenges, no manual `acme.sh` plumbing.
 - **AI audit log search** — natural-language queries over the audit trail.
@@ -47,7 +47,7 @@ GPL 3.0 is copyleft — derivative works must also be GPL 3.0. If you plan to em
 
 | | Docker Dash v8.2.0 | Komodo |
 |---|---|---|
-| Image size | ~180MB | Larger (Rust binary + React build assets + Mongo) |
+| Image size | Varies by build/platform; includes Trivy + Grype | Includes Rust binary, React build assets and Mongo |
 | RAM at idle | ~50MB | Higher (Rust core is lean, but Mongo adds overhead) |
 | Default port | 3000 | 9120 (core) |
 | Build step | None — vanilla JS, served as-is | Rust binary build + React frontend build |

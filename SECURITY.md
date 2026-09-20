@@ -1,10 +1,37 @@
 # Security Policy
 
+## Audit 2026-09-19 (working tree, pending release)
+
+See [the audit report](docs/audits/2026-09-19-project-security.md) for changes,
+validation evidence, dependency exceptions and deployment checks still required.
+The historical audit entries below describe their original releases, not the
+current vulnerability state. A clean dependency scan is not a security guarantee.
+
+Outbound HTTPS/SMTP connections now verify certificates. For internal PKI, set
+`NODE_EXTRA_CA_CERTS` to a PEM CA bundle readable inside the container; mount the
+bundle read-only. Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0`. LDAP requires
+verified LDAPS or StartTLS before any bind. The legacy TLS-verification bypass
+is rejected; configure a verified CA in the LDAP settings for private PKI.
+See the built-in `ldap-tls` guide for migration and certificate rotation.
+
+LDAP service-account passwords are encrypted by migration 174 on startup. Keep
+`ENCRYPTION_KEY` stable and backed up. Existing database backups/WAL snapshots may
+still contain the old plaintext password; protect them and rotate that credential.
+LDAP group restrictions now require the complete group DN (case-insensitive).
+
+Container rollback snapshots are encrypted by migration 176 and on every new
+history write. Authentication binds the snapshot to its host/container/image
+identity; corrupt, plaintext or mismatched snapshots are refused before Docker
+mutation. Encryption or storage failure also stops the update. Preserve the
+installation key for recovery. This protects live records, not historical backup,
+WAL or free-page copies, and does not make Docker replacement transactional. See
+the built-in `rollback-history` guide for recovery and retention boundaries.
+
 ## Supported Versions
 
 | Version | Supported          |
 |---------|--------------------|
-| 8.2.x   | :white_check_mark: (current) |
+| 8.96.x  | :white_check_mark: (current) |
 | 8.1.x   | :white_check_mark: (security fixes only) |
 | 8.0.x   | :white_check_mark: (security fixes only) |
 | 7.x     | :warning: (best-effort security fixes; please upgrade to 8.x) |
@@ -47,7 +74,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 - **SSO support** — Authelia, Authentik, Caddy forward_auth, Traefik (X-Forwarded-User headers)
 - **API key authentication** as alternative to session-based auth
 - **Forced password change** on first login for default admin
-- **Password policy** — minimum 8 characters + at least one digit + common password rejection, enforced via single `validatePassword()` on all password-setting flows (change-password, reset-password, create-user, token-based reset)
+- **Password policy** — minimum 12 characters + uppercase, lowercase, digit and symbol + common password rejection, enforced via single `validatePassword()` on all password-setting flows (change-password, reset-password, create-user, token-based reset)
 
 ### Encryption & Secrets
 - **AES-256-GCM** encryption for credentials at rest (Git tokens, SSH keys, registry passwords, notification tokens)

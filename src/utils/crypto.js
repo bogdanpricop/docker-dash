@@ -47,11 +47,14 @@ function encrypt(plaintext) {
 
 /** AES-256-GCM decrypt */
 function decrypt(ciphertext) {
+  if (typeof ciphertext !== 'string' || !/^[a-f0-9]{24}:[a-f0-9]{32}:(?:[a-f0-9]{2})*$/i.test(ciphertext)) {
+    throw new Error('Invalid encrypted credential format');
+  }
   const keyBuf = _getKey();
   const [ivHex, tagHex, data] = ciphertext.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const tag = Buffer.from(tagHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   let decrypted = decipher.update(data, 'hex', 'utf8');
   decrypted += decipher.final('utf8');

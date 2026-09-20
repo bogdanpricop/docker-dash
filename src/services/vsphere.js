@@ -20,6 +20,7 @@
 // for (URL/OVA import to Proxmox).
 
 const https = require('https');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 const log = require('../utils/logger')('vsphere');
 const { prefixToNetmask } = require('./provider-operations/guest-customization');
 
@@ -45,13 +46,11 @@ class VSphereClient {
     if (!config.username || !config.password) throw new Error('VSphereClient: username + password required');
     // v8.9.11-alpha.6 — normalize endpoint: prepend https:// if missing.
     // vSphere SOAP always speaks TLS; users often paste just the hostname.
-    if (!/^https?:\/\//i.test(config.endpoint)) {
-      config = { ...config, endpoint: 'https://' + config.endpoint };
-    }
+    config = { ...config, endpoint: secureEndpoint(config.endpoint) };
     this._config = config;
     this._agent = new https.Agent({
       keepAlive: true,
-      rejectUnauthorized: !config.skipTlsVerify,
+      ...tlsOptions(config),
     });
     this._sessionCookie = null;
     // v8.9.11-alpha.8 — Managed Object References differ between vCenter and
@@ -1973,5 +1972,3 @@ module.exports = {
   VSphereClient, fromHostRow, decryptDaemonConfig, encryptDaemonConfig,
   _internals: { _extractTag, _extractFault, _extractObjects, _decodeEntities, _extractMoRef, _managedRefs, _firstManagedRef, _parseSearchResults, _parseRecursiveSearchResults, _parseDatastoreUsage, _parseSnapshotTree, _parseDasVmConfig, _parseClusterGroups, _parseClusterRules, _parseDrsRecommendations, _elementBlocks, _typedRefs, _propertyNumber, _allTags, _typedTagRef, _virtualDeviceBlocks, _guestNicRows, _parseVmHardware, _parseVmotionCompatibility, _parseHostPhysicalNics, _parseHostVirtualSwitches, _parseHostNetworkEvidence },
 };
-
-if (false) log.info();

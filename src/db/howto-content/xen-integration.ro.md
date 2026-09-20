@@ -22,7 +22,7 @@ Folosește **Xen Orchestra** pentru mai multe pool-uri, **XAPI** pentru acces di
 1. Deschide **Hosts → Non-Docker host**.
 2. Selectează **Xen / XCP-ng / XenServer**.
 3. Alege planul de management și completează câmpurile lui.
-4. Folosește un CA de încredere. **Skip TLS verification** este doar pentru test temporar.
+4. Verificarea TLS este obligatorie. Pentru PKI privat, introdu CA-ul verificat al providerului; certificatul serverului trebuie sa fie valid pentru numele endpoint-ului. Configuratiile vechi care dezactiveaza TLS sunt refuzate.
 5. Apasă **Test connection**, salvează, apoi deschide **Xen / XCP-ng** din meniu.
 
 Pagina Xen afișează pool-uri, hosturi, VM-uri, storage repositories, rețele și task-uri asincrone. Butoanele de power și snapshot apar numai dacă providerul, versiunea și rolul utilizatorului le permit.

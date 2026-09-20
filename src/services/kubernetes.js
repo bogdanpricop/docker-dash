@@ -21,15 +21,15 @@
 // TRANSPORT
 // Bearer-token auth over HTTPS. Kubernetes API server typically at
 // port 6443 (k3s, k0s) or 8443 (MicroK8s). CA cert verification is
-// preferred; skipTlsVerify=true is available for testing but strongly
-// discouraged and callable out in howto.
+// required; legacy skipTlsVerify=true is rejected, and private CAs must be
+// supplied through caCert after verification through a trusted channel.
 //
 // daemon_config shape (encrypted at rest via enc: prefix):
 // {
 //   endpoint: 'https://k3s.example.com:6443',
 //   token: 'eyJhbG...',                    // ServiceAccount bearer token
 //   caCert: '-----BEGIN CERTIFICATE-----...', // optional PEM
-//   skipTlsVerify: false,                  // testing only
+//   skipTlsVerify: false,                  // verification is mandatory
 //   namespace: 'default'                   // default ns filter
 // }
 //
@@ -38,7 +38,7 @@
 // ~2 MB — 16 MB is comfortable headroom).
 
 const https = require('https');
-const log = require('../utils/logger')('kubernetes');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -73,17 +73,14 @@ class KubernetesClient {
     if (!config.endpoint) throw new Error('KubernetesClient: config.endpoint required');
     if (!config.token) throw new Error('KubernetesClient: config.token required');
     // v8.9.11-alpha.6 — normalize: prepend https:// if bare hostname.
-    if (!/^https?:\/\//i.test(config.endpoint)) {
-      config = { ...config, endpoint: 'https://' + config.endpoint };
-    }
+    config = { ...config, endpoint: secureEndpoint(config.endpoint) };
     this._config = config;
     // Custom Agent with the CA cert loaded if provided; otherwise fall
     // back to system CAs (won't verify a self-signed cluster cert).
     const agentOpts = {
       keepAlive: true,
-      rejectUnauthorized: !config.skipTlsVerify,
+      ...tlsOptions(config),
     };
-    if (config.caCert) agentOpts.ca = config.caCert;
     this._agent = new https.Agent(agentOpts);
   }
 
@@ -1002,30 +999,17 @@ function buildKubeconfig(row) {
   const clusterName = (row.name || 'docker-dash-cluster').replace(/[^a-zA-Z0-9._-]/g, '_');
   const contextName = `${clusterName}@docker-dash`;
   const userName = `docker-dash-${clusterName}`;
-  const caB64 = cfg.caCert ? Buffer.from(cfg.caCert).toString('base64') : null;
-  const clusterBlock = [
-    `- cluster:`,
-    caB64 ? `    certificate-authority-data: ${caB64}` : `    insecure-skip-tls-verify: true`,
-    `    server: ${cfg.endpoint}`,
-    `  name: ${clusterName}`,
-  ].join('\n');
-  return [
-    'apiVersion: v1',
-    'kind: Config',
-    `current-context: ${contextName}`,
-    'clusters:',
-    clusterBlock,
-    'contexts:',
-    `- context:`,
-    `    cluster: ${clusterName}`,
-    `    user: ${userName}`,
-    `  name: ${contextName}`,
-    'users:',
-    `- name: ${userName}`,
-    `  user:`,
-    `    token: ${cfg.token}`,
-    '',
-  ].join('\n');
+  const verified = tlsOptions(cfg);
+  const endpoint = secureEndpoint(cfg.endpoint);
+  const caB64 = verified.ca ? Buffer.from(verified.ca).toString('base64') : null;
+  return require('yaml').stringify({
+    apiVersion: 'v1', kind: 'Config', 'current-context': contextName,
+    clusters: [{ name: clusterName, cluster: {
+      server: endpoint, ...(caB64 ? { 'certificate-authority-data': caB64 } : {}),
+    } }],
+    contexts: [{ name: contextName, context: { cluster: clusterName, user: userName } }],
+    users: [{ name: userName, user: { token: cfg.token } }],
+  });
 }
 
 // daemon_config encryption at rest — same enc: prefix pattern as Incus /
@@ -1070,5 +1054,3 @@ module.exports = {
   buildKubeconfig,
   _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
 };
-
-if (false) log.info();

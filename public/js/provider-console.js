@@ -15,6 +15,7 @@
   let terminal = null;
   let fitAddon = null;
   let scaled = true;
+  let RFB = null;
 
   function setStatus(text, className = '') {
     status.textContent = text;
@@ -36,7 +37,6 @@
   }
 
   function attachRfb(ws) {
-    const RFB = window.NoVNC?.default || window.NoVNC;
     if (typeof RFB !== 'function') throw new Error('The noVNC client could not be loaded');
     screen.classList.add('active');
     message.classList.add('hidden');
@@ -81,9 +81,13 @@
     setStatus('Connected · serial', 'connected');
   }
 
-  function connect() {
+  async function connect() {
     const token = tokenFromFragment();
     if (!token) return fail('This console launch link is missing, invalid, or was already removed from the address bar.');
+    // noVNC 1.7 performs asynchronous codec detection at module initialization.
+    // Finish loading before opening the gateway so no RFB frames are lost.
+    try { ({ default: RFB } = await import('/lib/novnc.min.js')); }
+    catch { return fail('The noVNC client could not be loaded'); }
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(`${scheme}//${location.host}/ws/provider-console`, ['binary', `dd-console.${token}`]);
     socket.binaryType = 'arraybuffer';

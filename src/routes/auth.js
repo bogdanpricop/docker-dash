@@ -1018,14 +1018,14 @@ const ldapService = require('../services/ldap');
 router.get('/ldap', requireAuth, requireRole('admin'), (req, res) => {
   const cfg = ldapService.getConfig();
   if (!cfg) return res.json({ configured: false });
-  const safe = { ...cfg, bindPassword: cfg.bindPassword ? '••••••••' : '' };
+  const safe = { ...cfg, bindPassword: cfg.bindPassword ? '••••••••' : '', caCert: undefined, caCertPresent: !!cfg.caCert };
   res.json({ configured: true, ...safe });
 });
 
 // PUT /api/auth/ldap — save LDAP config
-router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/ldap', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
-    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn,
+    const { host, port, tls, tlsSkipVerify, caCert, bindDn, bindPassword, baseDn,
             userFilter, uidAttr, requiredGroup, defaultRole, enabled } = req.body;
     if (!host || !bindDn || !baseDn) {
       return res.status(400).json({ error: 'host, bindDn and baseDn are required' });
@@ -1035,9 +1035,11 @@ router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
     const finalPassword = (bindPassword && bindPassword !== '••••••••')
       ? bindPassword
       : (existing?.bindPassword || '');
+    if (!finalPassword) return res.status(400).json({ error: 'LDAP service bind password is required' });
     ldapService.saveConfig({
-      host, port: parseInt(port) || (tls ? 636 : 389),
-      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
+      host, port: port === undefined || port === '' ? (tls ? 636 : 389) : port,
+      tls: tls === undefined ? false : tls, tlsSkipVerify: tlsSkipVerify === undefined ? false : tlsSkipVerify,
+      caCert: caCert === null ? null : (caCert || existing?.caCert || null),
       bindDn, bindPassword: finalPassword,
       baseDn, userFilter: userFilter || '',
       uidAttr: uidAttr || 'uid',
@@ -1052,12 +1054,12 @@ router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.status === 400 ? err.message : 'Internal server error' });
   }
 });
 
 // DELETE /api/auth/ldap — remove LDAP config
-router.delete('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/ldap', requireAuth, requireRole('admin'), writeable, (req, res) => {
   ldapService.deleteConfig();
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -1070,14 +1072,17 @@ router.delete('/ldap', requireAuth, requireRole('admin'), (req, res) => {
 // POST /api/auth/ldap/test — test LDAP connection with provided config
 router.post('/ldap/test', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn, userFilter, uidAttr } = req.body;
-    if (!host || !bindDn || !bindPassword || !baseDn) {
+    const { host, port, tls, tlsSkipVerify, caCert, bindDn, bindPassword, baseDn, userFilter, uidAttr } = req.body;
+    const existing = ldapService.getConfig();
+    const finalPassword = bindPassword && bindPassword !== '••••••••' ? bindPassword : existing?.bindPassword;
+    if (!host || !bindDn || !finalPassword || !baseDn) {
       return res.status(400).json({ error: 'host, bindDn, bindPassword and baseDn are required' });
     }
     const result = await ldapService.testConnection({
-      host, port: parseInt(port) || (tls ? 636 : 389),
-      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
-      bindDn, bindPassword, baseDn, userFilter, uidAttr,
+      host, port: port === undefined || port === '' ? (tls ? 636 : 389) : port,
+      tls: tls === undefined ? false : tls, tlsSkipVerify: tlsSkipVerify === undefined ? false : tlsSkipVerify,
+      caCert: caCert === null ? null : (caCert || existing?.caCert || null),
+      bindDn, bindPassword: finalPassword, baseDn, userFilter, uidAttr,
     });
     res.json({ ok: true, ...result });
   } catch (err) {

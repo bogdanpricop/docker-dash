@@ -563,15 +563,6 @@ async function start() {
     require('./services/egress-blocklog-ingester').start();
   }
 
-  // Egress Filter boot sync (v6.7.0-rc.2): if Docker Dash restarted while
-  // policies existed, the sidecar's on-disk policy.json may be stale. Write
-  // it once at startup so the sidecar (if running) picks up via SIGHUP.
-  try {
-    require('./services/egress-filter').writePolicyFile();
-  } catch (e) {
-    require('./utils/logger')('egress-filter').debug('boot-time policy sync skipped', { error: e.message });
-  }
-
   // Egress Filter (v6.7.0-alpha.2): after each policy write, SIGHUP the sidecar.
   // The sidecar is opt-in — user runs a container named `dd-egress-filter`. If it's
   // absent, this hook silently succeeds (alpha testing without the sidecar is fine).
@@ -593,6 +584,15 @@ async function start() {
       }
     }
   });
+
+  try {
+    await require('./services/egress-authorization').start();
+  } catch (e) {
+    require('./utils/logger')('egress-filter').error('egress authorization unavailable; new scoped connections will be denied', { error: e.message });
+  }
+  // Publish schema 2 even if socket setup fails, then signal the running sidecar.
+  // Never leave the legacy global union active because authorization is down.
+  egressFilter.writePolicyFile();
 
   // Start stats collector
   const statsService = require('./services/stats');
@@ -641,6 +641,7 @@ async function shutdown(signal) {
   dockerService2.stopHealthChecks();
 
   try { require('./services/ssh-tunnel').closeAll(); } catch {}
+  try { await require('./services/egress-authorization').stop(); } catch {}
   try { require('./services/log-forwarder').stopAll(); } catch {}
   // v8.7.38 — stop the remediation scheduler. start() is called above at
   // line 384; the symmetric stop was missing, so the setInterval kept

@@ -564,8 +564,8 @@ const ImagesPage = {
       <div class="scan-menu-item" data-scanner="grype">
         <i class="fas fa-shield-alt"></i> Grype
       </div>
-      <div class="scan-menu-item" data-scanner="docker-scout">
-        <i class="fab fa-docker"></i> Docker Scout
+      <div class="text-sm text-muted" role="note" style="max-width:280px;padding:8px 12px">
+        <strong>Docker Scout</strong>: ${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason'))}
       </div>
     `;
     menu.style.position = 'fixed';
@@ -1407,7 +1407,7 @@ const ImagesPage = {
           </div>
 
           ${[
-            { icon:'fa-shield-alt', color:'var(--yellow)', label:'Scan for vulnerabilities', desc:'Opens a scanner picker (Auto / Trivy / Grype / Docker Scout). Scans the image for known CVEs in OS packages and language dependencies. Results show Critical → Low counts with per-CVE detail and fix versions.' },
+            { icon:'fa-shield-alt', color:'var(--yellow)', label:'Scan for vulnerabilities', desc:'Opens a scanner picker (Auto / Trivy / Grype). Scans the image for known CVEs in OS packages and language dependencies. Results show Critical → Low counts with per-CVE detail and fix versions.' },
             { icon:'fa-tag', color:'var(--accent)', label:'Tag', desc:'Adds a new tag to the image locally (e.g. <code>myapp:stable</code>). Does not push to a registry — use the registry page for that.' },
             { icon:'fa-file-export', color:'var(--accent)', label:'Export', desc:'Exports the image as a <code>.tar</code> archive (<code>docker save</code>). Download it and import on another host with <code>docker load</code>.' },
             { icon:'fa-search', color:'var(--accent)', label:'Inspect', desc:'Shows the raw Docker inspect output: layers, environment variables, entrypoint, exposed ports, labels, and creation metadata.' },
@@ -1460,10 +1460,10 @@ const ImagesPage = {
           </div>
 
           ${[
-            { icon:'fa-magic', color:'var(--accent)', label:'Auto', desc:'Tries Trivy first, then Grype, then Docker Scout. Picks the first available scanner. Recommended for most users.' },
+            { icon:'fa-magic', color:'var(--accent)', label:'Auto', desc:'Tries Trivy first, then Grype. Picks the first available scanner. Recommended for most users.' },
             { icon:'fa-search', color:'#38bdf8', label:'Trivy', desc:'Open-source scanner by Aqua Security. Scans OS packages + language dependencies (npm, pip, gem, etc.). No authentication needed. <strong>Recommended.</strong>' },
             { icon:'fa-shield-alt', color:'#a855f7', label:'Grype', desc:'Open-source scanner by Anchore. Checks against NVD, GitHub Advisories, Alpine SecDB, and more. Fast and accurate. No authentication needed.' },
-            { icon:'fab fa-docker', color:'#388bfd', label:'Docker Scout', desc:'Official Docker tool. Requires Docker Hub authentication. Provides supply chain insights, base image recommendations, and CVE tracking with policy evaluation.' },
+            { icon:'fab fa-docker', color:'#388bfd', label:'Docker Scout', desc:Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason')) },
           ].map(a => `
             <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
               <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">

@@ -16,7 +16,7 @@
 # Verified working in preflight A4 (2026-04-20) with Caddy 2.11.2 + GOTOOLCHAIN=auto.
 # See docs/planning/v6.5/letsencrypt-wizard/05-preflight-results.md.
 
-ARG CADDY_VERSION=2.11.2
+ARG CADDY_VERSION=2.11.4
 
 FROM caddy:${CADDY_VERSION}-builder AS builder
 

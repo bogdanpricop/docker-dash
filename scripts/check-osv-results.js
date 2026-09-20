@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const DEFAULT_MINIMUM_SEVERITY = 9;
+const DEFAULT_MINIMUM_SEVERITY = 7;
 
 function severityScore(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -98,7 +98,8 @@ function main(argv = process.argv.slice(2)) {
     console.error(`- ${finding.package}@${finding.version}: ${finding.score} (${finding.ids.join(', ')})`);
   }
 
-  return evaluated.findings.length === 0 ? 0 : 1;
+  // An unscored advisory needs review; it must never silently pass the gate.
+  return evaluated.findings.length === 0 && evaluated.unknownSeverity.length === 0 ? 0 : 1;
 }
 
 if (require.main === module) {

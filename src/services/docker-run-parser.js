@@ -70,7 +70,6 @@ function parseDockerRun(cmd) {
     if (i >= tokens.length) throw new Error(`Option ${tok.split('=')[0]} needs a value`);
     return tokens[i];
   };
-  const optName = (tok) => tok.split('=')[0];
 
   // Loop through flags until we hit a bare token (the image)
   for (; i < tokens.length; i++) {

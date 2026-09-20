@@ -452,7 +452,7 @@ const ContainersPageDetail = {
 
   async _safeUpdateContainer(id, name, image) {
     const ok = await Modal.confirm(
-      `<strong>Safe Update</strong>: Pull latest <code>${Utils.escapeHtml(image)}</code>, scan for vulnerabilities with Trivy, and only swap if no critical CVEs are found.<br><br>This is safer than a regular update.`,
+      `<strong>Safe Update</strong>: Pull latest <code>${Utils.escapeHtml(image)}</code> and scan that exact image with both Trivy and Grype. Critical, High or Unknown findings in either report block the update. Missing or failed scans also block it.`,
       { confirmText: 'Safe Update', danger: false }
     );
     if (!ok) return;
@@ -1051,7 +1051,7 @@ const ContainersPageDetail = {
         </div>
         <div class="card-body">
           <p class="text-sm text-muted" style="margin-bottom:16px">
-            Deploy updates through a staged pipeline: Pull &rarr; Scan &rarr; Swap &rarr; Verify &rarr; Notify.
+            Safe Deploy requires verified Trivy and Grype reports before swapping. Critical, High, Unknown or unavailable results block deployment. Quick Deploy skips scanning and verification.
             Safe deploy runs all stages. Quick deploy skips scan and verify.
           </p>
           <div id="pipeline-active" class="hidden">
@@ -2806,14 +2806,14 @@ const ContainersPageDetail = {
         const isCurrent = e.image_id === data.currentImageId;
         return `<tr${isCurrent ? ' style="opacity:0.5"' : ''}>
           <td class="mono text-sm">${Utils.escapeHtml(e.image_name)}</td>
-          <td class="mono text-sm" title="${Utils.escapeHtml(e.image_id)}">${shortId}</td>
+          <td class="mono text-sm" title="${Utils.escapeHtml(e.image_id)}">${Utils.escapeHtml(shortId)}</td>
           <td class="text-sm">${date}</td>
-          <td><span class="badge badge-info">${e.action}</span></td>
-          <td class="text-sm">${e.deployed_by || '—'}</td>
+          <td><span class="badge badge-info">${Utils.escapeHtml(e.action)}</span></td>
+          <td class="text-sm">${Utils.escapeHtml(e.deployed_by || '—')}</td>
           <td>${isCurrent
             ? '<span class="badge badge-running">Current</span>'
             : e.imageAvailable
-              ? `<button class="btn btn-sm btn-warning rollback-btn" data-history-id="${e.id}"><i class="fas fa-undo"></i> Rollback</button>`
+              ? `<button class="btn btn-sm btn-warning rollback-btn" data-history-id="${Utils.escapeHtml(String(e.id))}"><i class="fas fa-undo"></i> Rollback</button>`
               : '<span class="text-muted text-sm">Image pruned</span>'
           }</td>
         </tr>`;
@@ -2825,6 +2825,8 @@ const ContainersPageDetail = {
           <button class="modal-close-btn" id="modal-x"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
+          <p class="text-sm text-muted">${Utils.escapeHtml(i18n.t('pages.containers.rollbackSnapshotHint'))}
+            <a href="#/howto/rollback-history" id="rollback-history-guide">${Utils.escapeHtml(i18n.t('pages.containers.rollbackSnapshotGuide'))}</a></p>
           <div class="text-sm text-muted" style="margin-bottom:12px">Current image: <span class="mono">${Utils.escapeHtml(data.currentImage)}</span></div>
           <table class="data-table compact">
             <thead><tr><th>Image</th><th>ID</th><th>Date</th><th>Action</th><th>By</th><th></th></tr></thead>
@@ -2838,6 +2840,8 @@ const ContainersPageDetail = {
 
       Modal._content.querySelector('#modal-x').addEventListener('click', () => Modal.close());
       Modal._content.querySelector('#modal-ok').addEventListener('click', () => Modal.close());
+
+      Modal._content.querySelector('#rollback-history-guide').addEventListener('click', () => Modal.close());
 
       Modal._content.querySelectorAll('.rollback-btn').forEach(btn => {
         btn.addEventListener('click', async () => {

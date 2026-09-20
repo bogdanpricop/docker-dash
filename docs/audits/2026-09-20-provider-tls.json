@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-20",
+  "suiteCount": 349,
+  "testsPassed": 4482,
+  "testsSkipped": 1,
+  "realTlsClients": [
+    "incus",
+    "lxd",
+    "proxmox",
+    "vsphere",
+    "kubernetes",
+    "nomad",
+    "xo",
+    "xapi"
+  ],
+  "negativeTlsCases": [
+    "missing CA",
+    "wrong CA",
+    "wrong hostname",
+    "expired certificate"
+  ],
+  "negativeCasesSendNoHttp": true,
+  "incusLxdMtlsPassed": true,
+  "browserLanguages": [
+    "en",
+    "ro"
+  ],
+  "productionImage": "sha256:ee5bde868cec4a76c23ffbea93b452204de0920fdaea8726e4b6c24cea50a428",
+  "productionSmokePassed": true,
+  "imageVulnerabilityScanForThisId": false,
+  "published": false,
+  "deployed": false
+}

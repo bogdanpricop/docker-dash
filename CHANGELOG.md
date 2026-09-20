@@ -2,6 +2,24 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.2] - 2026-09-20 — Security audit checkpoint
+
+- Update application dependencies, Node LTS and vendored browser libraries; pin
+  reproducible scanner builds. Temporarily exclude Docker Scout with EN/RO
+  explanations. Trivy and Grype remain available; known image findings remain
+  documented and public image publication stays gated.
+- Require verified SSH server identity and provider/LDAP TLS. Existing SSH
+  credentials need a trusted host fingerprint or Git known_hosts; configurations
+  that disable certificate verification require migration to a verified CA.
+- Encrypt LDAP bind passwords and container rollback snapshots at rest. Refuse
+  corrupted credentials and failed history writes before modifying containers.
+- Harden container authorization, image admission, CSRF, HTML escaping, registry
+  retention, remote secret deployment and egress source authorization.
+- Complete saved inventory view interactions and add real browser, transport and
+  isolated Docker verification. See SECURITY.md and docs/audits for evidence and
+  remaining work; this checkpoint is not a claim that every audit finding is closed.
+- Use the production build target and curl health probe in Docker Compose.
+
 ## [8.96.1] - 2026-08-21 — One unreadable host no longer takes the fleet down
 
 Found on a live install: `ENCRYPTION_KEY` had been rotated after three SSH hosts

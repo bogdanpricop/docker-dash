@@ -729,29 +729,19 @@ tr.row-risk td { background: rgba(248, 81, 73, 0.08); }
 .toggle-label { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; cursor: pointer; user-select: none; }
 
 /* ── YAML editor (vendored CodeMirror, theme follows Docker Dash) ── */
-.CodeMirror {
+.yaml-code-editor .cm-editor {
   height: auto; min-height: 280px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--surface1); color: var(--text);
   font-family: var(--mono); font-size: 12px; line-height: 1.55;
 }
-.CodeMirror-focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
-.CodeMirror-gutters { background: var(--surface2); border-right: 1px solid var(--border); }
-.CodeMirror-linenumber { color: var(--text-dim); }
-.CodeMirror-cursor { border-left-color: var(--text-bright); }
-.CodeMirror-selected { background: var(--accent-dim) !important; }
-.CodeMirror-activeline-background { background: var(--surface2); }
-.cm-s-default .cm-atom,
-.cm-s-default .cm-number { color: #79c0ff; }
-.cm-s-default .cm-def,
-.cm-s-default .cm-variable-2,
-.cm-s-default .cm-property { color: #d2a8ff; }
-.cm-s-default .cm-string,
-.cm-s-default .cm-string-2 { color: #a5d6ff; }
-.cm-s-default .cm-meta { color: #ffa657; }
-.cm-s-default .cm-comment { color: #8b949e; font-style: italic; }
-.cm-s-default .cm-keyword,
-.cm-s-default .cm-tag { color: #ff7b72; }
-.CodeMirror-lint-tooltip { background: var(--surface2); color: var(--text); border-color: var(--border); }
+.yaml-code-editor .cm-focused { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.yaml-code-editor .cm-scroller { font-family: var(--mono); }
+.yaml-code-editor .cm-gutters { background: var(--surface2); color: var(--text-dim); border-right: 1px solid var(--border); }
+.yaml-code-editor .cm-cursor { border-left-color: var(--text-bright); }
+.yaml-code-editor .cm-selectionBackground { background: var(--accent-dim) !important; }
+.yaml-code-editor .cm-activeLine,
+.yaml-code-editor .cm-activeLineGutter { background: var(--surface2); }
+.yaml-code-editor .cm-tooltip { background: var(--surface2); color: var(--text); border-color: var(--border); }
 .yaml-editor-status { min-height: 18px; margin-top: 6px; color: var(--text-dim); }
 .yaml-editor-status.is-error { color: var(--red); }
 .yaml-editor-status.is-valid { color: var(--green); }

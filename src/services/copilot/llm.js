@@ -14,8 +14,8 @@ function _reqOptions(config, payloadLen, timeoutMs) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': payloadLen },
     timeout: timeoutMs,
-    // Local/self-hosted endpoints often use self-signed TLS; the user pointed us here.
-    rejectUnauthorized: false,
+    // Custom internal CAs can be trusted through NODE_EXTRA_CA_CERTS.
+    rejectUnauthorized: true,
   };
   if (config.apiKey) o.headers['Authorization'] = `Bearer ${config.apiKey}`;
   return o;

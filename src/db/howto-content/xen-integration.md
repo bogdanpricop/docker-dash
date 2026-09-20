@@ -22,7 +22,7 @@ Use **Xen Orchestra** for a multi-pool fleet, **XAPI** for direct XCP-ng/XenServ
 1. Open **Hosts → Non-Docker host**.
 2. Select **Xen / XCP-ng / XenServer**.
 3. Select the management plane and complete its fields.
-4. Prefer a trusted CA. Use **Skip TLS verification** only for a temporary test.
+4. TLS verification is mandatory. Supply the verified provider CA for private PKI; the server certificate must be valid for the endpoint hostname. Legacy TLS bypass configurations are rejected.
 5. Press **Test connection**, save, then open **Xen / XCP-ng** in the sidebar.
 
 The Xen page shows pools, hosts, VMs, storage repositories, networks and asynchronous tasks. Power and snapshot buttons appear only when both the provider and your role support them.

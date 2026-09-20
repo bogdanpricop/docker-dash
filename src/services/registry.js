@@ -88,6 +88,10 @@ class RegistryService {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
     const data = await this._apiCall(reg, `/v2/${repo}/tags/list`);
+    if (data.status >= 400) throw new Error(`Tag listing failed (HTTP ${data.status})`);
+    if (/rel\s*=\s*["']?next/i.test(data.headers?.link || '')) {
+      throw new Error('Registry returned a partial tag inventory; refusing to treat it as complete');
+    }
     return data.body?.tags || [];
   }
 
@@ -160,7 +164,7 @@ class RegistryService {
    * @param {string} tag  e.g. "v1.2.3"
    * @returns {Promise<{ok: true, digest: string}>}
    */
-  async deleteTag(id, repo, tag) {
+  async deleteTag(id, repo, tag, { expectedDigest } = {}) {
     const reg = this.get(id);
     if (!reg) throw new Error('Registry not found');
     if (!repo) throw new Error('repo required');
@@ -177,6 +181,9 @@ class RegistryService {
     if (head.status >= 400) throw new Error(`Manifest lookup failed (HTTP ${head.status})`);
     const digest = head.headers?.['docker-content-digest'];
     if (!digest) throw new Error('Registry did not return a digest — refusing to guess');
+    if (expectedDigest && digest !== expectedDigest) {
+      throw new Error('Manifest changed since the retention plan; refresh before deleting');
+    }
 
     // Step 2: DELETE by digest.
     const del = await this._apiCall(reg, `/v2/${repo}/manifests/${digest}`, { method: 'DELETE' });
@@ -487,7 +494,7 @@ class RegistryService {
         method,
         headers,
         timeout: 10000,
-        rejectUnauthorized: false,
+        rejectUnauthorized: true,
       }, (res) => {
         let data = '';
         let received = 0;

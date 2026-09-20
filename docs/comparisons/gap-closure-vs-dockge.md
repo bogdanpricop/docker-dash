@@ -277,7 +277,7 @@ Automatic monitor creation is intentionally not claimed: Uptime Kuma's documente
 
 ### W01 — Match Dockge image size (~30-50 MB)
 
-Docker Dash's image is ~180 MB because it bundles Trivy, Grype, and Docker Scout binaries so vulnerability scanning works out of the box without operator setup. This is a headline feature. Stripping the scanners to save 130 MB would break the value proposition. Rejected.
+Docker Dash bundles Trivy and Grype so vulnerability scanning works without a separate scanner installation. Image size varies by build and platform. Removing both scanners purely to reduce size remains rejected. [Scout was excluded separately for security reasons](../audits/2026-09-20-scout-exclusion.md).
 
 ### W02 — Rewrite frontend in Svelte / add build step
 
@@ -289,7 +289,7 @@ Docker Dash is deliberately broader than Dockge — multi-host, HA, security, ba
 
 ### W04 — Drop bundled scanners for footprint
 
-Same reason as W01 but explicit: Trivy + Grype + Scout are the security-scanning backbone; making them "install separately" would push Docker Dash into the same category as bare-metal Portainer and delete the differentiator. Rejected.
+Same reason as W01 but explicit: Trivy + Grype are the security-scanning backbone; making them "install separately" would push Docker Dash into the same category as bare-metal Portainer and delete the differentiator. Rejected.
 
 ## Closure result
 

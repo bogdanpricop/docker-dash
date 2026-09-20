@@ -36,20 +36,13 @@ describe('YamlEditor browser utility', () => {
 
   test('loads vendored assets before the wrapper and stays under 300 KB gzipped', () => {
     const html = read('public/index.html');
-    expect(html.indexOf('/vendor/codemirror/lib/codemirror.js'))
-      .toBeLessThan(html.indexOf('/js/utils/yaml-editor.js'));
-    expect(html.indexOf('/vendor/js-yaml/js-yaml.min.js'))
-      .toBeLessThan(html.indexOf('/vendor/codemirror/addon/lint/yaml-lint.js'));
+    for (const asset of ['/vendor/codemirror/codemirror.min.js', '/vendor/js-yaml/js-yaml.min.js']) {
+      expect(html.indexOf(asset)).toBeGreaterThan(-1);
+      expect(html.indexOf(asset)).toBeLessThan(html.indexOf('/js/utils/yaml-editor.js'));
+    }
 
     const files = [
-      'public/vendor/codemirror/lib/codemirror.js',
-      'public/vendor/codemirror/lib/codemirror.css',
-      'public/vendor/codemirror/mode/yaml/yaml.js',
-      'public/vendor/codemirror/addon/edit/matchbrackets.js',
-      'public/vendor/codemirror/addon/edit/closebrackets.js',
-      'public/vendor/codemirror/addon/lint/lint.js',
-      'public/vendor/codemirror/addon/lint/lint.css',
-      'public/vendor/codemirror/addon/lint/yaml-lint.js',
+      'public/vendor/codemirror/codemirror.min.js',
       'public/vendor/js-yaml/js-yaml.min.js',
       'public/js/utils/yaml-editor.js',
     ];

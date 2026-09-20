@@ -181,6 +181,8 @@ i18n.register('en', 'EN', 'English', {
     },
     // ── Containers ──────────────────────────────
     containers: {
+      rollbackSnapshotHint: 'Rollback configuration is encrypted. Preserve the installation encryption key for recovery.',
+      rollbackSnapshotGuide: 'Recovery and backup guidance',
       title: 'Containers', filterPlaceholder: 'Filter containers...',
       showStopped: 'Show stopped', singleColumn: 'Single column', twoColumns: 'Two columns',
       collapseAll: 'Collapse all', expandAll: 'Expand all',
@@ -343,6 +345,8 @@ i18n.register('en', 'EN', 'English', {
       loadFailed: 'Failed to load images: {{message}}',
       scanImage: 'Scan for vulnerabilities', scanning: 'Scanning image for vulnerabilities...',
       scanTitle: 'Vulnerability Scan', scannerUsed: 'Scanner', totalVulns: 'Total vulnerabilities',
+      scoutDisabledLabel: 'Temporarily disabled',
+      scoutDisabledReason: 'Temporarily excluded because the published binary includes vulnerable dependencies that we cannot rebuild from public source. Use Trivy or Grype; Scout will return after a corrected build is verified.',
       scanAuto: 'Auto-detect', scanWithTrivy: 'Scan with Trivy', scanWithGrype: 'Scan with Grype', scanWithScout: 'Scan with Docker Scout',
       severity: 'Severity', package: 'Package', version: 'Version', fixedIn: 'Fixed In',
       noVulns: 'No vulnerabilities found!', scanFailed: 'Scan failed: {{message}}',
@@ -425,6 +429,11 @@ i18n.register('en', 'EN', 'English', {
     },
     // ── Hosts ────────────────────────────────────
     hosts: {
+      providerCaLabel: 'Provider CA certificate (PEM, optional)',
+      providerTlsHint: 'TLS verification is required. Supply the verified issuer CA or trusted self-signed server certificate for a private PKI. Its name must match the endpoint. Leave blank to keep an existing CA. Legacy insecure connections need verified trust before reconnecting.',
+      providerCaClear: 'Remove the saved CA and use system trust',
+      sshHostKeyLabel: 'SSH server fingerprint (required)',
+      sshHostKeyHint: 'Verify the server key through a trusted console or existing verified connection. Paste its SHA256 fingerprint, not your login key fingerprint. Missing or changed keys block authentication.',
       title: 'Docker Hosts', addHost: 'Add Host', editHost: 'Edit Host',
       noHosts: 'No hosts configured',
       online: 'Online', offline: 'Offline', checking: 'Checking...',
@@ -804,6 +813,13 @@ i18n.register('en', 'EN', 'English', {
       nameRequired: 'Name is required',
       // Git Credentials
       gitCredentialsTitle: 'Git Credentials',
+      ldapTransportLabel: 'Encrypted LDAP transport',
+      ldapTlsGuide: 'Configuration and migration guide',
+      ldapTlsHint: 'Both modes verify the server certificate before sending passwords. StartTLS is required on LDAP connections; plaintext fallback and certificate bypass are refused. Add a verified CA for private PKI. Legacy insecure settings must be migrated before login.',
+      ldapCaUnchanged: 'CA already saved — leave blank to keep it',
+      gitKnownHostsLabel: 'Trusted Git SSH server keys (known_hosts)',
+      gitKnownHostsHint: 'Paste verified known_hosts entries from your Git provider or administrator. Include [host]:port for a custom port. Existing SSH credentials also require this before connecting. Never trust an unverified ssh-keyscan result.',
+      gitKnownHostsRequired: 'Verified SSH server keys are required.',
       addCredential: 'Add Credential',
       noCredentials: 'No Git credentials saved. Add one to deploy from private repositories.',
       usedBy: 'Used By',

@@ -97,15 +97,16 @@ describe('GET /:id/isolation — error mapping', () => {
 
     const res = await get();
     expect(res.status).toBe(404);
-    expect(res.body.error).toContain('no such container');
+    expect(res.body.error).toBe('Container not found');
+    expect(dockerService.getInfo).not.toHaveBeenCalled();
   });
 
-  it('surfaces the real cause on a daemon failure instead of a generic message', async () => {
+  it('refuses unverifiable access on a daemon failure without disclosing connection details', async () => {
     dockerService.inspectContainer.mockRejectedValue(new Error('connect ENOENT /var/run/docker.sock'));
 
     const res = await get();
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe('connect ENOENT /var/run/docker.sock');
-    expect(res.body.error).not.toBe('Internal server error');
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('Container access could not be verified');
+    expect(dockerService.getInfo).not.toHaveBeenCalled();
   });
 });

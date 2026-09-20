@@ -113,6 +113,15 @@ function evaluate({ tags, rule }) {
     for (const t of overflow) toKeep.push({ ...t, reason: 'server-cap' });
   }
 
+  // Distribution deletes manifests by digest, removing EVERY tag referencing
+  // that manifest. A disposable alias must not delete a protected/kept tag.
+  const keptDigests = new Set(toKeep.map(t => t.digest).filter(Boolean));
+  for (let i = toDelete.length - 1; i >= 0; i--) {
+    if (toDelete[i].digest && keptDigests.has(toDelete[i].digest)) {
+      toKeep.push({ ...toDelete.splice(i, 1)[0], reason: 'shared-kept-digest' });
+    }
+  }
+
   const summary = {
     count: toDelete.length,
     bytes: toDelete.reduce((s, t) => s + (t.sizeBytes || 0), 0),
@@ -160,8 +169,14 @@ async function execute({ registryService, registryId, repoPath, plan, dryRun, au
       continue;
     }
     try {
-      await registryService.deleteTag(registryId, repoPath, t.tag);
+      if (!t.digest) throw new Error('Missing planned manifest digest; refresh the retention plan');
+      await registryService.deleteTag(registryId, repoPath, t.tag, { expectedDigest: t.digest });
       deleted.push({ tag: t.tag, digest: t.digest, sizeBytes: t.sizeBytes, reason: t.reason });
+      require('./audit').log({
+        ...auditCtx, action: 'registry_tag_delete', targetType: 'registry-repo',
+        targetId: `${registryId}/${repoPath}`,
+        details: { tag: t.tag, digest: t.digest, reason: t.reason, source: 'retention' },
+      });
     } catch (err) {
       log.warn('Retention deletion failed', { repo: repoPath, tag: t.tag, error: err.message });
       errors.push({ tag: t.tag, error: String(err.message).substring(0, 200) });

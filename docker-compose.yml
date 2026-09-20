@@ -3,9 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
       args:
-        APP_VERSION: "${APP_VERSION:-8.96.1}"
-    image: docker-dash:${APP_VERSION:-8.96.1}
+        APP_VERSION: "${APP_VERSION:-8.96.2}"
+    image: docker-dash:${APP_VERSION:-8.96.2}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -26,7 +27,7 @@ services:
       # Shared policy.json dir for the v6.7 egress filter sidecar (if running)
       - egress-policy:/data/egress-policy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${APP_PORT:-8101}/api/health"]
+      test: ["CMD-SHELL", "curl --fail --silent --max-time 4 http://localhost:${APP_PORT:-8101}/api/health > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -45,7 +46,7 @@ services:
   # Configure via Docker Dash UI: System → Egress → per-row "Enable filter"
   #
   # Before starting: set these envs on the `app` service (via .env):
-  #   DD_EGRESS_SIDECAR_ENDPOINT=dd-egress-filter:29193
+  #   DD_EGRESS_SIDECAR_ENDPOINT=<sidecar IPv4>:29193
   #   DD_EGRESS_SIDECAR_NAME=dd-egress-filter
   #   DD_EGRESS_BLOCKLOG_INGESTER=1
   #
@@ -56,7 +57,7 @@ services:
   dd-egress-filter:
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.96.1}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.96.2}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can
@@ -70,6 +71,7 @@ services:
     environment:
       DD_EGRESS_LISTEN: ":29193"
       DD_EGRESS_POLICY_PATH: /etc/dd-egress/policy.json
+      DD_EGRESS_RESOLVER_SOCKET: /etc/dd-egress/resolver.sock
       DD_EGRESS_BLOCKLOG_PATH: /var/log/dd-egress/denied.log
       DD_EGRESS_METRICS_LISTEN: ":9191"
     # Deliberately NO `ports:` here — sidecar must not be exposed to the host

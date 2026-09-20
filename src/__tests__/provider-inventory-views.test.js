@@ -140,6 +140,21 @@ describe('personal provider inventory views', () => {
     expect(invalid.body.code).toBe('INVALID_COLUMNS');
   });
 
+  test('invalidates stale tabs when another view becomes the default on create or update', async () => {
+    const first = await request(app).post('/api/providers/inventory-views')
+      .set('x-test-user', '971').send(payload({ name: 'First default' })).expect(201);
+    const second = await request(app).post('/api/providers/inventory-views')
+      .set('x-test-user', '971').send(payload({ name: 'Second default' })).expect(201);
+    const staleFirst = await request(app).put(`/api/providers/inventory-views/${first.body.view.id}`)
+      .set('x-test-user', '971').send({ ...payload({ name: 'First default' }), version: 1 }).expect(409);
+    expect(staleFirst.body.code).toBe('STALE_VIEW');
+    await request(app).put(`/api/providers/inventory-views/${first.body.view.id}`)
+      .set('x-test-user', '971').send({ ...payload({ name: 'First default' }), version: 2 }).expect(200);
+    const staleSecond = await request(app).put(`/api/providers/inventory-views/${second.body.view.id}`)
+      .set('x-test-user', '971').send({ ...payload({ name: 'Second default' }), version: 1 }).expect(409);
+    expect(staleSecond.body.code).toBe('STALE_VIEW');
+  });
+
   test('requires authentication and rejects unexpected persisted state', async () => {
     await request(app).get('/api/providers/inventory-views')
       .query({ resourceType: 'virtual-machines' }).expect(401);

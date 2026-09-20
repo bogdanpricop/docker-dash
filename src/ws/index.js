@@ -622,7 +622,7 @@ class WsServer {
       ws.send(JSON.stringify({ type: 'ssh:error', message: 'Admin role required for the SSH console' }));
       return;
     }
-    let sshConfig, hostName;
+    let sshConfig, hostName, identity;
     try {
       const { getDb } = require('../db');
       const row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(hostId);
@@ -630,6 +630,7 @@ class WsServer {
       hostName = row.name;
       const cfg = require('../services/vsphere').decryptDaemonConfig(row.daemon_config);
       sshConfig = cfg.sshConfig;
+      identity = require('../utils/ssh-host-key').hostKeyOptions(sshConfig);
       if (!sshConfig || !sshConfig.host || !sshConfig.user || !(sshConfig.password || sshConfig.privateKey)) {
         throw new Error('No SSH credentials configured for this host (Hosts → Edit → SSH access)');
       }
@@ -668,7 +669,8 @@ class WsServer {
       else if (/authentication|All configured authentication methods failed/i.test(m)) m = 'SSH authentication failed — check the SSH credentials.';
       ws.send(JSON.stringify({ type: 'ssh:error', message: m }));
     });
-    const opts = { host: sshConfig.host, port: sshConfig.port || 22, username: sshConfig.user, readyTimeout: 20000 };
+    const opts = { ...identity, host: sshConfig.host, port: sshConfig.port || 22, username: sshConfig.user,
+      passphrase: sshConfig.passphrase, readyTimeout: 20000 };
     if (sshConfig.privateKey) opts.privateKey = sshConfig.privateKey; else opts.password = sshConfig.password;
     try { conn.connect(opts); } catch (err) { ws.send(JSON.stringify({ type: 'ssh:error', message: err.message })); }
   }

@@ -11,8 +11,8 @@
 // The public methods intentionally expose one normalized resource model so the
 // routes and UI do not depend on product/version-specific response shapes.
 
-const http = require('http');
 const https = require('https');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 const { Client: SshClient } = require('ssh2');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -35,7 +35,7 @@ function _endpoint(value, defaultProtocol = 'https:') {
   if (!value || typeof value !== 'string') throw new Error('Xen endpoint is required');
   const raw = /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `${defaultProtocol}//${value}`;
   const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Xen endpoint must use HTTP or HTTPS');
+  secureEndpoint(url.href);
   url.pathname = url.pathname.replace(/\/+$/, '');
   return url;
 }
@@ -45,8 +45,7 @@ function _agentFor(url, cfg) {
   if (cfg._agent) return cfg._agent;
   cfg._agent = new https.Agent({
     keepAlive: true,
-    rejectUnauthorized: !cfg.skipTlsVerify,
-    ...(cfg.caCert ? { ca: cfg.caCert } : {}),
+    ...tlsOptions(cfg),
   });
   return cfg._agent;
 }
@@ -54,12 +53,16 @@ function _agentFor(url, cfg) {
 function _httpRequest(cfg, method, path, options = {}) {
   const base = cfg._endpoint instanceof URL ? cfg._endpoint : _endpoint(cfg.endpoint);
   const url = new URL(path, `${base.origin}${base.pathname || '/'}`);
+  secureEndpoint(url.href);
+  if (url.origin !== base.origin) {
+    throw new XenError('Cross-origin provider requests are not allowed', { code: 'INVALID_PROVIDER_ENDPOINT', status: 400 });
+  }
   const body = options.body == null
     ? null
     : Buffer.from(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
   if (body) headers['Content-Length'] = body.length;
-  const transport = url.protocol === 'https:' ? https : http;
+  const transport = https;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
@@ -206,7 +209,8 @@ function _normalizedAllowedActions(value) {
 
 class XenOrchestraClient {
   constructor(config) {
-    this._config = { ...config, provider: 'xo' };
+    tlsOptions(config);
+    this._config = { ...config, provider: 'xo', _agent: null };
     this._config._endpoint = _endpoint(config.endpoint);
     this._restFeatures = { provisioning: false, guestCustomization: false, migration: null, backupInventory: false };
     if (!config.token && !(config.username && config.password)) {
@@ -570,8 +574,7 @@ class XenOrchestraClient {
       headers: {
         Cookie: `token=${encodeURIComponent(this._config.token)}; authenticationToken=${encodeURIComponent(this._config.token)}`,
       },
-      rejectUnauthorized: !this._config.skipTlsVerify,
-      ca: this._config.caCert || undefined,
+      ...tlsOptions(this._config),
     };
   }
 
@@ -845,7 +848,8 @@ function _parseXmlRpcResponse(xml) {
 
 class XapiClient {
   constructor(config) {
-    this._config = { ...config, provider: 'xapi' };
+    tlsOptions(config);
+    this._config = { ...config, provider: 'xapi', _agent: null };
     this._endpoint = _endpoint(config.endpoint);
     this._config._endpoint = this._endpoint;
     if (!config.username || !config.password) throw new Error('XAPI requires username + password');
@@ -1300,8 +1304,7 @@ class XapiClient {
     return {
       protocol: String(record.protocol).toLowerCase() === 'vt100' ? 'serial' : 'rfb',
       location: location.href, sessionId: await this.login(),
-      rejectUnauthorized: !this._config.skipTlsVerify,
-      ca: this._config.caCert || undefined,
+      ...tlsOptions(this._config),
     };
   }
 
@@ -1544,13 +1547,7 @@ class XapiClient {
 function _shellQuote(value) { return `'${String(value).replace(/'/g, `'\\''`)}'`; }
 
 function _hostKeySha256Hex(value) {
-  const input = String(value || '').trim().replace(/^SHA256:/i, '');
-  if (/^[a-f0-9]{64}$/i.test(input)) return input.toLowerCase();
-  try {
-    const decoded = Buffer.from(input, 'base64');
-    if (decoded.length === 32) return decoded.toString('hex');
-  } catch { /* validation below */ }
-  throw new Error('hostKeySha256 must be a SHA-256 hex digest or an OpenSSH SHA256: base64 fingerprint');
+  return require('../utils/ssh-host-key').normalizeFingerprint(value);
 }
 
 class XenRawClient {
@@ -1559,7 +1556,7 @@ class XenRawClient {
     this._toolstack = null;
     if (!config.sshHost || !config.sshUsername) throw new Error('Raw Xen requires SSH host + username');
     if (!config.sshPassword && !config.sshPrivateKey) throw new Error('Raw Xen requires an SSH password or private key');
-    if (config.hostKeySha256) this._hostKeyHex = _hostKeySha256Hex(config.hostKeySha256);
+    this._identity = require('../utils/ssh-host-key').hostKeyOptions(config);
   }
 
   get provider() { return 'raw'; }
@@ -1584,6 +1581,7 @@ class XenRawClient {
     return new Promise((resolve, reject) => {
       const conn = new SshClient();
       const opts = {
+        ...this._identity,
         host: this._config.sshHost,
         port: _num(this._config.sshPort) || 22,
         username: this._config.sshUsername,
@@ -1593,10 +1591,6 @@ class XenRawClient {
         opts.privateKey = this._config.sshPrivateKey;
         if (this._config.sshPassphrase) opts.passphrase = this._config.sshPassphrase;
       } else opts.password = this._config.sshPassword;
-      if (this._config.hostKeySha256) {
-        opts.hostHash = 'sha256';
-        opts.hostVerifier = hash => String(hash).toLowerCase() === this._hostKeyHex;
-      }
       conn.once('ready', () => resolve(conn));
       conn.once('error', err => reject(new XenError(`Raw Xen SSH: ${err.message}`, {
         code: err.code, status: 502, provider: 'raw',

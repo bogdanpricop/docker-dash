@@ -1,37 +1,84 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
+  egress-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: docker/egress-filter/go.mod
+          cache: false
+      - name: Verify egress policy and protocol handling
+        working-directory: docker/egress-filter
+        run: |
+          go vet ./...
+          go test -race ./...
+          go test -fuzz=FuzzSNI -fuzztime=5s -parallel=2
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck ./...
+
   test-and-validate:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
+
+      - name: Install pinned npm
+        run: npm install --global npm@11.19.1 --ignore-scripts
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Check for critical vulnerabilities (production deps only)
+      - name: Audit all npm dependencies
+        id: npm-audit
+        run: npm run audit:dependencies
+
+      - name: Verify committed browser assets
+        id: vendor
+        run: npm run check:vendor
+
+      - name: Check browser libraries and inventory views
+        id: browser
+        run: |
+          npm run check:browser
+          node scripts/check-scout-exclusion-browser.js
+          node scripts/check-ssh-identity-browser.js
+          node scripts/check-git-ssh-browser.js
+          node scripts/check-provider-tls-browser.js
+          node scripts/check-ldap-tls-browser.js
+          node scripts/check-rollback-history-browser.js
+          npm run check:inventory-browser
+
+      - name: Check for high and critical vulnerabilities (production deps only)
+        id: osv
         # npm's retired Quick Audit fallback can reject a valid lockfile when the
         # Bulk Advisory endpoint returns invalid data. Use Google's first-party
         # OSV scanner instead, pinned and checksum-verified for reproducibility.
-        # The validator preserves the existing policy: dev-only findings are
-        # excluded and only production findings with CVSS >= 9.0 fail the build.
+        # OSV adds an independent production check at CVSS >= 7.0.
+        # The npm audit step above includes development dependencies too.
         env:
-          OSV_VERSION: '2.3.8'
-          OSV_LINUX_AMD64_SHA256: 'bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc'
+          OSV_VERSION: "2.6.0"
+          OSV_LINUX_AMD64_SHA256: "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
         run: |
           curl --fail --silent --show-error --location \
             "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" \
@@ -54,23 +101,14 @@ jobs:
             exit "$SCAN_STATUS"
           fi
 
-          node scripts/check-osv-results.js /tmp/osv-results.json 9
+          node scripts/check-osv-results.js /tmp/osv-results.json 7
 
-      - name: Validate JavaScript syntax (backend)
-        run: |
-          echo "Checking backend JS files..."
-          find src -name '*.js' -not -path '*__tests__*' -exec node --check {} \;
-          echo "All backend files OK"
-
-      - name: Validate JavaScript syntax (frontend)
-        run: |
-          echo "Checking frontend JS files..."
-          for f in public/js/*.js public/js/pages/*.js public/js/components/*.js public/js/i18n/*.js; do
-            node --check "$f" || exit 1
-          done
-          echo "All frontend files OK"
+      - name: Validate JavaScript syntax
+        id: syntax
+        run: npm run check:syntax
 
       - name: Lint (ESLint)
+        id: lint
         # v7.7.0: enforce 0 warnings / 0 errors. CONTRIBUTING.md tells contributors
         # `npm run lint` must be clean — without this step, that promise was on the honor system.
         run: npm run lint
@@ -98,6 +136,7 @@ jobs:
           CLOUDFLARE_TEST_TOKEN: ${{ secrets.CLOUDFLARE_TEST_TOKEN }}
 
       - name: Validate i18n completeness
+        id: i18n
         run: |
           node -e "
             global.window = {};
@@ -125,14 +164,19 @@ jobs:
       - name: Validate virtualization research registry
         run: npm run check:virtualization-research
 
+      - name: Validate page help coverage
+        run: npm run check:page-help
+
       - name: Summary
         if: always()
         run: |
           echo "### CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Node.js syntax: ✅ (backend + frontend)" >> $GITHUB_STEP_SUMMARY
-          echo "- Lint (ESLint): ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests: ✅ (${{ steps.tests.outputs.passed || 'unknown' }} passed, ${{ steps.tests.outputs.skipped || '0' }} skipped — 100% passing)" >> $GITHUB_STEP_SUMMARY
-          echo "- Security audit: ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- i18n: ✅ (11 languages)" >> $GITHUB_STEP_SUMMARY
-          echo "- Dependencies: installed" >> $GITHUB_STEP_SUMMARY
+          echo "- Syntax: ${{ steps.syntax.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Lint: ${{ steps.lint.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tests: ${{ steps.tests.outcome }} (${{ steps.tests.outputs.passed || 'unknown' }} passed, ${{ steps.tests.outputs.skipped || 'unknown' }} skipped)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- npm audit: ${{ steps.npm-audit.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- OSV: ${{ steps.osv.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Browser assets: ${{ steps.vendor.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Browser interactions: ${{ steps.browser.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- i18n: ${{ steps.i18n.outcome }}" >> "$GITHUB_STEP_SUMMARY"

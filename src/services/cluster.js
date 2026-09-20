@@ -47,6 +47,8 @@ async function redis() {
       throw new Error(msg);
     }
     const client = new Redis(REDIS_URL, {
+      // Preserve the deployed Redis protocol when upgrading ioredis to v6.
+      protocol: 2,
       lazyConnect: false,
       maxRetriesPerRequest: 3,
       retryStrategy: (times) => Math.min(times * 200, 2000),
@@ -142,7 +144,7 @@ async function _ensureSubscriber() {
     let Redis;
     try { Redis = require('ioredis'); }
     catch { throw new Error('ioredis missing — install it or unset DD_MODE'); }
-    const c = new Redis(REDIS_URL, { lazyConnect: false, maxRetriesPerRequest: 3 });
+    const c = new Redis(REDIS_URL, { protocol: 2, lazyConnect: false, maxRetriesPerRequest: 3 });
     c.on('error', (e) => log.error('Redis subscriber error', { message: e.message }));
     c.on('message', (_chan, raw) => {
       let env;

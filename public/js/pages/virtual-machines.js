@@ -795,7 +795,9 @@ const VirtualMachinesPage = {
     this._activeViewId = defaultView?.id || null;
     this._viewState = this._stateFromView(defaultView);
     if (this._viewState.providerHostId && !this._hosts.some(host => host.id === this._viewState.providerHostId)) {
-      this._viewState.providerHostId = null;
+      this._activeViewId = null;
+      this._viewState = this._defaultViewState();
+      Toast.warning('The saved view endpoint is unavailable. Showing the built-in VM view.');
     }
     return this._renderHome(container);
   },
@@ -815,13 +817,14 @@ const VirtualMachinesPage = {
     this._viewState.providerHostId = this._hostId;
     const host = this._hosts.find(item => item.id === this._hostId);
     const activeView = this._views.find(view => view.id === this._activeViewId) || null;
+    const unavailableView = activeView?.providerHostId && !this._hosts.some(item => item.id === activeView.providerHostId);
     const columns = new Set(this._viewState.columns || this._defaultViewState().columns);
     container.innerHTML = `
       <div class="page-header">
         <div><h1><i class="fas fa-desktop"></i> ${i18n.t('nav.virtual-machines')}</h1>
           <div class="text-muted text-sm">Unified, provider-neutral inventory</div></div>
         <div style="display:flex;gap:8px;align-items:center">
-          <select id="common-vm-host" class="form-control" style="width:auto">
+          <select id="common-vm-host" class="form-control" style="width:auto" aria-label="Virtualization endpoint">
             ${this._hosts.map(item => `<option value="${item.id}"${item.id === this._hostId ? ' selected' : ''}>${Utils.escapeHtml(item.name)} · ${Utils.escapeHtml(this._providerLabel(item.daemonType))}</option>`).join('')}
           </select>
           <a class="btn btn-sm btn-secondary" href="${this._providerRoute(host.daemonType)}"><i class="fas fa-external-link-alt"></i> Provider view</a>
@@ -837,13 +840,13 @@ const VirtualMachinesPage = {
           ${this._views.map(view => `<option value="${view.id}"${view.id === this._activeViewId ? ' selected' : ''}>${Utils.escapeHtml(view.name)}${view.isDefault ? ' · default' : ''}</option>`).join('')}
         </select>
         <button class="btn btn-sm btn-secondary" id="common-vm-view-save"><i class="fas fa-bookmark"></i> Save as</button>
-        <button class="btn btn-sm btn-secondary" id="common-vm-view-update"${activeView ? '' : ' disabled'}><i class="fas fa-save"></i> Update</button>
-        <button class="btn btn-sm btn-secondary" id="common-vm-view-default"${activeView || this._activeViewId ? '' : ' disabled'}><i class="fas fa-star"></i> Set default</button>
+        <button class="btn btn-sm btn-secondary" id="common-vm-view-update"${activeView && !unavailableView ? '' : ' disabled'}><i class="fas fa-save"></i> Update</button>
+        <button class="btn btn-sm btn-secondary" id="common-vm-view-default"${activeView && !unavailableView ? '' : ' disabled'}><i class="fas fa-star"></i> Set default</button>
         <button class="btn btn-sm btn-danger" id="common-vm-view-delete"${activeView ? '' : ' disabled'}><i class="fas fa-trash"></i> Delete</button>
       </div>
       <div class="card" style="padding:12px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <input id="common-vm-search" class="form-control" style="max-width:320px" placeholder="Filter virtual machines" value="${Utils.escapeHtml(this._viewState.query || '')}">
-        <select id="common-vm-state" class="form-control" style="width:auto">
+        <input id="common-vm-search" class="form-control" style="max-width:320px" aria-label="Filter virtual machines" placeholder="Filter virtual machines" value="${Utils.escapeHtml(this._viewState.query || '')}">
+        <select id="common-vm-state" class="form-control" style="width:auto" aria-label="Power state">
           ${[['all','All power states'],['running','Running'],['stopped','Stopped'],['paused','Paused / suspended'],['unknown','Unknown']].map(([value,label]) => `<option value="${value}"${this._viewState.powerState === value ? ' selected' : ''}>${label}</option>`).join('')}
         </select>
         <select id="common-vm-sort" class="form-control" style="width:auto" aria-label="Sort field">
@@ -875,6 +878,7 @@ const VirtualMachinesPage = {
     container.querySelector('#common-vm-view-update').addEventListener('click', () => this._saveInventoryView('update', container));
     container.querySelector('#common-vm-view-default').addEventListener('click', () => this._setDefaultInventoryView(container));
     container.querySelector('#common-vm-view-delete').addEventListener('click', () => this._deleteInventoryView(container));
+    container.querySelector('#common-vm-refresh').disabled = !!unavailableView;
     container.querySelector('#common-vm-refresh').addEventListener('click', () => this._loadInventory());
     container.querySelector('#common-host-maintenance-plan')?.addEventListener('click', () => this._planHostMaintenance(host));
     container.querySelector('#common-host-maintenance-runs')?.addEventListener('click', () => this._manageHostMaintenance(host));
@@ -885,6 +889,11 @@ const VirtualMachinesPage = {
     container.querySelectorAll('[data-vm-column]').forEach(input => input.addEventListener('change', () => { this._syncViewStateFromControls(); this._renderInventory(); }));
     container.querySelectorAll('[data-vm-bulk-action]').forEach(button => button.addEventListener('click', () => this._runBulkPower(button.dataset.vmBulkAction)));
     container.querySelector('#common-vm-clear-selection').addEventListener('click', () => { this._selected.clear(); this._renderInventory(); });
+    if (unavailableView) {
+      this._inventory = [];
+      container.querySelector('#common-vm-content').innerHTML = '<div class="empty-msg">The saved view endpoint is unavailable. Select the built-in view to browse accessible endpoints, or delete this personal view.</div>';
+      return;
+    }
     await this._loadInventory();
   },
 

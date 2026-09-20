@@ -23,7 +23,7 @@ const dockerService = require('./docker');
 
 // The helper image runs the install/uninstall script. Uses Alpine + nftables
 // package. Could switch to a pre-baked image later for faster cold-start.
-const HELPER_IMAGE = process.env.DD_EGRESS_HELPER_IMAGE || 'alpine:3.19';
+const HELPER_IMAGE = process.env.DD_EGRESS_HELPER_IMAGE || 'alpine:3.24.2';
 
 // Where the sidecar listens. Operator configures via env — runner does NOT
 // auto-discover (keeps the blast radius predictable).

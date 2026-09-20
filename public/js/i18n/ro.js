@@ -292,6 +292,8 @@ i18n.register('ro', 'RO', "Română", {
       }
     },
     containers: {
+      rollbackSnapshotHint: 'Configuratia de rollback este criptata. Pastreaza cheia de criptare a instalarii pentru recuperare.',
+      rollbackSnapshotGuide: 'Ghid de recuperare si backup',
       title: "Containere",
       filterPlaceholder: "Filtreaza containere...",
       showStopped: "Arata oprite",
@@ -554,6 +556,8 @@ i18n.register('ro', 'RO', "Română", {
       scanTitle: "Scanare Vulnerabilitati",
       scannerUsed: "Scanner",
       totalVulns: "Total vulnerabilitati",
+      scoutDisabledLabel: "Dezactivat temporar",
+      scoutDisabledReason: "Exclus temporar: binarul publicat include dependente vulnerabile pe care nu le putem recompila din sursa publica. Foloseste Trivy sau Grype; Scout revine dupa verificarea unui build corectat.",
       scanAuto: "Auto-detectare",
       scanWithTrivy: "Scanare cu Trivy",
       scanWithGrype: "Scanare cu Grype",
@@ -659,6 +663,11 @@ i18n.register('ro', 'RO', "Română", {
       }
     },
     hosts: {
+      providerCaLabel: 'Certificat CA provider (PEM, optional)',
+      providerTlsHint: 'Verificarea TLS este obligatorie. Pentru PKI privat, introdu CA-ul emitent verificat sau certificatul de server autosemnat de incredere. Numele trebuie sa corespunda endpoint-ului. Lasa gol pentru a pastra CA-ul existent. Conexiunile vechi nesigure necesita incredere verificata inainte de reconectare.',
+      providerCaClear: 'Sterge CA-ul salvat si foloseste certificatele sistemului',
+      sshHostKeyLabel: 'Amprenta serverului SSH (obligatorie)',
+      sshHostKeyHint: 'Verifica cheia serverului prin consola de incredere sau o conexiune deja verificata. Introdu amprenta SHA256 a serverului, nu a cheii tale de autentificare. Cheile lipsa sau schimbate blocheaza autentificarea.',
       title: "Hosturi Docker",
       addHost: "Adauga Host",
       editHost: "Editare Host",
@@ -1154,6 +1163,13 @@ i18n.register('ro', 'RO', "Română", {
       addChannelTitle: "Adaugă canal de notificare",
       nameRequired: "Numele este obligatoriu",
       gitCredentialsTitle: "Credențiale Git",
+      ldapTransportLabel: 'Transport LDAP criptat',
+      ldapTlsGuide: 'Ghid de configurare si migrare',
+      ldapTlsHint: 'Ambele moduri verifica certificatul serverului inainte de trimiterea parolelor. StartTLS este obligatoriu pentru conexiunile LDAP; conexiunile necriptate si ignorarea certificatului sunt refuzate. Adauga CA-ul verificat pentru PKI privat. Setarile vechi nesigure trebuie migrate inainte de autentificare.',
+      ldapCaUnchanged: 'CA deja salvat — lasa gol pentru a-l pastra',
+      gitKnownHostsLabel: 'Chei de server Git SSH de incredere (known_hosts)',
+      gitKnownHostsHint: 'Introdu intrari known_hosts verificate de la furnizorul Git sau administrator. Include [host]:port pentru un port personalizat. Si credentialele SSH existente necesita aceste chei inainte de conectare. Nu accepta rezultate ssh-keyscan neverificate.',
+      gitKnownHostsRequired: 'Sunt necesare cheile SSH verificate ale serverului.',
       addCredential: "Adaugă credențială",
       noCredentials: "Nicio credențială Git salvată. Adaugă una pentru a face deploy din repository-uri private.",
       usedBy: "Utilizat de",

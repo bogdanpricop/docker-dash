@@ -53,7 +53,7 @@ Prioritățile sunt:
 | Batch | Feature-uri | Prioritate | Efort | Status | Dependențe | Rezultat de închidere |
 |---|---|---:|---:|---|---|---|
 | R0 | Reconcilierea catalogului și gate automat | P0 | S | `Done` | — | 450 ID-uri validate; status curent 391 Done, 59 Partial, 0 Open; gate CI determinist. |
-| R1 | B015 Saved inventory views | P0 | M | `Partial` | Provider VM inventory | Livrat în v8.80 și calificat read-only în v8.85; browser smoke rămâne. |
+| R1 | B015 Saved inventory views | P0 | M | `Partial` | Provider VM inventory | Browser smoke local trecut la 19 septembrie 2026; verificarea read-only pe endpoint real rămâne. |
 | R2 | B045 Scheduled VM actions | P0 | L | `Partial` | operation core, blackout windows | Livrat în v8.80 și calificat read-only în v8.85; browser/canary rămân. |
 | R3 | B090, B096 Storage operational monitors | P0 | L | `Partial` | snapshot/storage evidence | Livrate în v8.80 și calificate read-only în v8.85; adaptorul B096 și browser smoke rămân. |
 | R4 | B104, B118–B125 Network closure | P0/P1 | XL | `Partial` | v8.79 network plans, provider SDK | Implementările sunt în v8.80; v8.85 califică B104/B118–B121/B123, iar v8.86 califică B124/B125. Browser/provider/canary, probele active B119 și apply-ul R8 pentru B124 rămân. |
@@ -183,6 +183,19 @@ Serverul acceptă numai câmpuri allowlisted. Pentru VM inventory:
 - filtrarea/sortarea frontend este deterministă și nu mută inventarul original;
 - refresh păstrează view-ul activ;
 - test route, service, migration și browser/pure-page.
+
+### Verificare locală — 19 septembrie 2026
+
+`npm run check:inventory-browser` verifică în Chromium crearea, restaurarea
+default-ului, hostul, filtrele, sortarea, coloanele, refresh, update și delete.
+Folosește rutele reale de view-uri, session auth, CSRF, audit și SQLite temporar;
+inventarul providerului este fixture, fără conexiuni la infrastructură externă.
+Pierderea accesului la host revine la view-ul built-in; selectarea explicită a
+view-ului devenit indisponibil permite ștergerea, fără a afișa inventarul altui host.
+Schimbarea default-ului incrementează și versiunea view-ului anterior, astfel
+încât un tab vechi nu îl poate suprascrie fără conflict.
+Gate-ul este adăugat în CI, dar nu a fost încă executat pe runner-ul GitHub.
+R1 rămâne `Partial` până la smoke read-only pe un endpoint real, conform §4.4.
 
 ## 7. Batch R2 — B045 Scheduled VM actions
 

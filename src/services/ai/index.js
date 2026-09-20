@@ -16,8 +16,8 @@
 const { getDb } = require('../../db');
 const { encrypt, decrypt } = require('../../utils/crypto');
 const log = require('../../utils/logger')('ai');
-const { redact, AiRedactionError } = require('./redactor');
-const { AiProviderError, AiNotConfiguredError, MockAiProvider } = require('./providers/base');
+const { redact } = require('./redactor');
+const { AiProviderError, AiNotConfiguredError } = require('./providers/base');
 const auditService = require('../audit');
 
 const KNOWN_PROVIDERS = ['anthropic', 'openai', 'ollama'];

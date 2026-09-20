@@ -44,7 +44,7 @@ router.get('/credentials', requireAuth, requireRole('admin'), (req, res) => {
 
 router.post('/credentials', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
-    const { name, auth_type, username, password, ssh_private_key } = req.body;
+    const { name, auth_type, username, password, ssh_private_key, ssh_known_hosts } = req.body;
     if (!name || !auth_type) return res.status(400).json({ error: 'name and auth_type are required' });
     if (!['token', 'basic', 'ssh_key'].includes(auth_type)) {
       return res.status(400).json({ error: 'auth_type must be token, basic, or ssh_key' });
@@ -57,7 +57,7 @@ router.post('/credentials', requireAuth, requireRole('admin'), writeable, (req, 
     }
 
     const result = gitService.createCredential({
-      name: name.trim(), auth_type, username, password, ssh_private_key,
+      name: name.trim(), auth_type, username, password, ssh_private_key, ssh_known_hosts,
       created_by: req.user.id,
     });
 

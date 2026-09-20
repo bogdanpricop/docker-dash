@@ -943,7 +943,10 @@ router.get('/settings', requireAuth, requireRole('admin'), (req, res) => {
   res.json(settingsService.getAll());
 });
 
-router.put('/settings', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/settings', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ldap_config')) {
+    return res.status(400).json({ error: 'Use /api/auth/ldap to update LDAP credentials securely' });
+  }
   settingsService.setBulk(req.body, req.user.id);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'settings_update', details: Object.keys(req.body), ip: getClientIp(req) });

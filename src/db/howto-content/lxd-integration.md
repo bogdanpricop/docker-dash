@@ -102,7 +102,7 @@ Sidebar entry **"Incus / LXD (alpha)"** shows up when at least one host has `dae
 - All Incus/LXD write actions are audit-logged under `incus_*` action names, with `daemonType` in the `details` field for provenance
 - `daemon_config` is encrypted at rest via AES-256-GCM (`enc:` prefix) — identical helper to the Incus / Proxmox / git credential storage
 - Client certs (PEM) live in `daemon_config.cert` + `daemon_config.key` — same encryption applies
-- LXD's cert-fingerprint trust model is preserved (`skipTlsVerify: false` by default; set to `true` only for testing)
+- Both peers are authenticated: LXD trusts the application client certificate, and Docker Dash verifies LXD against the configured `caCert` or system CAs, including certificate validity and hostname. TLS bypass is rejected.
 
 ## Troubleshooting
 
@@ -112,7 +112,7 @@ The snap socket path isn't the one your install uses. Try the legacy path `/var/
 
 **"HTTP 403 / trust cert not accepted"**
 
-The client cert hasn't been added to LXD's trust store. Run `lxc config trust add ./docker-dash.crt` on the LXD host, or set `skipTlsVerify: true` in dev to bypass (never in production).
+If LXD rejects the client, add the application certificate using `lxc config trust add ./docker-dash.crt` on the LXD host. If Docker Dash rejects the server certificate, configure its verified CA and correct hostname. These are separate trust checks; disabling server verification would not authorize the client.
 
 **Both LXD and Incus registered, only one shows in sidebar**
 

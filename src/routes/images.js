@@ -205,57 +205,6 @@ function _scanWithGrype(imageName) {
   };
 }
 
-function _scanWithScout(imageName) {
-  // Docker Scout uses SARIF format for structured output
-  const output = execFileSync('docker', ['scout', 'cves', imageName, '--format', 'sarif', '--only-severity', 'critical,high,medium,low'], {
-    timeout: 120000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
-    env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR },
-  });
-  const data = JSON.parse(output);
-
-  // SARIF format: runs[].results[] + runs[].tool.driver.rules[]
-  const vulns = [];
-  for (const run of (data.runs || [])) {
-    const rules = {};
-    for (const rule of (run.tool?.driver?.rules || [])) {
-      rules[rule.id] = rule;
-    }
-    for (const result of (run.results || [])) {
-      const ruleId = result.ruleId || '';
-      const rule = rules[ruleId] || {};
-      const severity = (result.level === 'error' ? 'critical'
-        : result.level === 'warning' ? 'high'
-        : result.level === 'note' ? 'medium'
-        : 'low');
-
-      // Extract package info from message or properties
-      const props = rule.properties || result.properties || {};
-      const pkgName = props.affected_version
-        ? (rule.shortDescription?.text?.split(' in ')?.[1]?.split(' ')?.[0] || ruleId)
-        : (result.message?.text?.match(/Package:\s*(\S+)/)?.[1] || ruleId);
-
-      vulns.push({
-        id: ruleId,
-        severity: (props.cvssV3_severity || severity).toLowerCase(),
-        package: pkgName,
-        version: props.affected_version || '?',
-        fixedIn: props.fixed_version || null,
-        title: rule.shortDescription?.text || result.message?.text?.substring(0, 120) || '',
-      });
-    }
-  }
-
-  const recommendations = _generateRemediation(vulns, imageName);
-  return {
-    scanner: 'docker-scout',
-    image: imageName,
-    scannedAt: new Date().toISOString(),
-    vulnerabilities: vulns,
-    summary: _makeSummary(vulns),
-    recommendations,
-  };
-}
-
 function _scanWithTrivy(imageName) {
   const output = execFileSync('trivy', ['image', '--format', 'json', '--quiet', imageName], {
     timeout: 180000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, stdio: 'pipe',
@@ -457,56 +406,13 @@ function _generateRemediation(vulns, imageName) {
   return recs;
 }
 
-// Persistent docker config path (survives container restarts)
-const DOCKER_CONFIG_DIR = '/data/.docker';
-const DOCKER_CONFIG_PATH = '/data/.docker/config.json';
+// Preserve the persistent Docker CLI configuration for registry/Compose users.
+process.env.DOCKER_CONFIG ||= '/data/.docker';
+const SCOUT_DISABLED_REASON = 'Docker Scout is temporarily excluded because its latest published binary includes vulnerable dependencies and its plugin source is not publicly available for a security rebuild. Use Trivy or Grype. Scout will return only after a corrected build passes verification.';
 
-// Ensure docker CLI uses our persistent config
-process.env.DOCKER_CONFIG = DOCKER_CONFIG_DIR;
-
-function _isScoutAuthenticated() {
-  try {
-    const fs = require('fs');
-    if (fs.existsSync(DOCKER_CONFIG_PATH)) {
-      const config = JSON.parse(fs.readFileSync(DOCKER_CONFIG_PATH, 'utf8'));
-      if (config.auths && Object.keys(config.auths).length > 0) return true;
-    }
-    return false;
-  } catch { return false; }
-}
-
-// Docker Scout authentication
+// Keep a clear response for older clients without accepting or storing credentials.
 router.post('/scout-login', requireAuth, requireRole('admin'), (req, res) => {
-  try {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'username and password required' });
-
-    const fs = require('fs');
-    // Ensure persistent config directory exists
-    if (!fs.existsSync(DOCKER_CONFIG_DIR)) fs.mkdirSync(DOCKER_CONFIG_DIR, { recursive: true });
-
-    // Run docker login via execFileSync with stdin pipe (no shell interpolation)
-    const result = execFileSync('docker', ['login', '-u', username, '--password-stdin'], {
-      timeout: 30000, encoding: 'utf8', input: password,
-      env: { ...process.env, DOCKER_CONFIG: DOCKER_CONFIG_DIR },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    const success = result.includes('Login Succeeded') || result.includes('Succeeded');
-
-    if (success) {
-      auditService.log({
-        userId: req.user.id, username: req.user.username,
-        action: 'scout_login', details: { dockerHubUser: username },
-        ip: getClientIp(req),
-      });
-    }
-
-    res.json({ ok: success, output: result.trim() });
-  } catch (err) {
-    const output = err.stdout || err.stderr || err.message;
-    res.json({ ok: false, error: output.includes('unauthorized') ? 'Invalid username or password/token' : output.trim() });
-  }
+  res.status(503).json({ error: SCOUT_DISABLED_REASON, code: 'SCOUT_TEMPORARILY_DISABLED' });
 });
 
 // Check which scanners are installed and ready
@@ -519,35 +425,20 @@ router.get('/scanners', requireAuth, (req, res) => {
   // the route that lists available scanners.
   try { execFileSync('trivy', ['--version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }); available.push('trivy'); } catch { /* trivy not installed */ }
   try { execFileSync('grype', ['version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 }); available.push('grype'); } catch { /* grype not installed */ }
-  try {
-    execFileSync('docker', ['scout', 'version'], { encoding: 'utf8', stdio: 'pipe', timeout: 5000 });
-    if (_isScoutAuthenticated()) {
-      available.push('docker-scout');
-    } else {
-      available.push('docker-scout (not authenticated)');
-    }
-  } catch { /* docker scout not installed or docker CLI unavailable */ }
-  res.json({ scanners: available });
+  res.json({ scanners: available, disabled: [{ scanner: 'docker-scout', reason: SCOUT_DISABLED_REASON }] });
 });
 
 router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
+  if (['docker-scout', 'scout'].includes(String(req.query.scanner || '').toLowerCase())) {
+    return res.status(503).json({ error: SCOUT_DISABLED_REASON, code: 'SCOUT_TEMPORARILY_DISABLED', scanner: 'none', status: 'disabled' });
+  }
   const imageData = await dockerService.inspectImage(req.params.id, req.hostId);
     const imageName = imageData.RepoTags?.[0] || req.params.id;
     const preferredScanner = (req.query.scanner || 'auto').toLowerCase();
 
     let result = null;
 
-    if (preferredScanner === 'docker-scout' || preferredScanner === 'scout') {
-      try { result = _scanWithScout(imageName); }
-      catch (err) { scanLog.warn('Docker Scout scan failed', err.message); }
-      if (!result) {
-        return res.json({
-          scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
-          vulnerabilities: [], summary: _makeSummary([]),
-          message: 'Docker Scout scan failed. Ensure you are logged in to Docker Hub (docker login).',
-        });
-      }
-    } else if (preferredScanner === 'trivy') {
+    if (preferredScanner === 'trivy') {
       try { result = _scanWithTrivy(imageName); }
       catch (err) { scanLog.warn('Trivy scan failed', err.message); }
       if (!result) {
@@ -568,22 +459,18 @@ router.get('/:id/scan', requireAuth, asyncHandler(async (req, res) => {
         });
       }
     } else {
-      // Auto mode: try Trivy first, then Grype, then Scout
+      // Auto mode: try Trivy first, then Grype
       try { result = _scanWithTrivy(imageName); }
       catch (err) { scanLog.debug('Trivy auto-scan failed, trying Grype', err.message); }
       if (!result) {
         try { result = _scanWithGrype(imageName); }
-        catch (err) { scanLog.debug('Grype auto-scan failed, trying Scout', err.message); }
-      }
-      if (!result && _isScoutAuthenticated()) {
-        try { result = _scanWithScout(imageName); }
-        catch (err) { scanLog.debug('Scout auto-scan failed', err.message); }
+        catch (err) { scanLog.debug('Grype auto-scan failed', err.message); }
       }
       if (!result) {
         result = {
           scanner: 'none', image: imageName, scannedAt: new Date().toISOString(),
           vulnerabilities: [], summary: _makeSummary([]),
-          message: 'No vulnerability scanner available. Install Trivy or Grype, or authenticate Docker Scout.',
+          message: 'No vulnerability scanner available. Use the verified Docker Dash image with Trivy and Grype.',
         };
       }
     }

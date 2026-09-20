@@ -74,8 +74,8 @@ describe('NomadClient (v8.9.5-alpha.1)', () => {
       expect(() => new NomadClient({})).toThrow(/endpoint required/);
     });
 
-    it('accepts a valid http endpoint (no token required)', () => {
-      expect(() => new NomadClient({ endpoint: 'http://nomad.local:4646' })).not.toThrow();
+    it('rejects plaintext management even without a token', () => {
+      expect(() => new NomadClient({ endpoint: 'http://nomad.local:4646' })).toThrow(/HTTPS/);
     });
 
     it('accepts a valid https endpoint', () => {
@@ -85,7 +85,7 @@ describe('NomadClient (v8.9.5-alpha.1)', () => {
     });
 
     it('exposes daemonType via getter', () => {
-      const c = new NomadClient({ endpoint: 'http://n:4646' });
+      const c = new NomadClient({ endpoint: 'https://n:4646' });
       expect(c.daemonType).toBe('nomad');
     });
   });
@@ -111,7 +111,7 @@ describe('NomadClient (v8.9.5-alpha.1)', () => {
     });
 
     it('accepts a nomad row with encrypted config', () => {
-      const enc = encryptDaemonConfig({ endpoint: 'http://n:4646' });
+      const enc = encryptDaemonConfig({ endpoint: 'https://n:4646' });
       const client = fromHostRow({ daemon_type: 'nomad', daemon_config: enc });
       expect(client).toBeInstanceOf(NomadClient);
     });
@@ -120,46 +120,46 @@ describe('NomadClient (v8.9.5-alpha.1)', () => {
   describe('request handling', () => {
     it('sets X-Nomad-Token when token configured', async () => {
       let seenHeaders = null;
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         seenHeaders = opts.headers;
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646', token: 'test-token' });
+      const c = new NomadClient({ endpoint: 'https://n:4646', token: 'test-token' });
       await c.listJobs();
       expect(seenHeaders['X-Nomad-Token']).toBe('test-token');
     });
 
     it('omits X-Nomad-Token when no token configured (ACL disabled)', async () => {
       let seenHeaders = null;
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         seenHeaders = opts.headers;
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646' });
+      const c = new NomadClient({ endpoint: 'https://n:4646' });
       await c.listJobs();
       expect(seenHeaders['X-Nomad-Token']).toBeUndefined();
     });
 
     it('list endpoints hit /v1/jobs, /v1/allocations, /v1/nodes', async () => {
       const paths = [];
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         paths.push(opts.path);
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         paths.push(opts.path);
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         paths.push(opts.path);
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646' });
+      const c = new NomadClient({ endpoint: 'https://n:4646' });
       await c.listJobs();
       await c.listAllocations();
       await c.listNodes();
@@ -168,32 +168,32 @@ describe('NomadClient (v8.9.5-alpha.1)', () => {
 
     it('namespace scoping is applied to jobs list', async () => {
       let seenPath = null;
-      mockHttp._mockNext((opts, cb, _req) => {
+      mockHttps._mockNext((opts, cb, _req) => {
         seenPath = opts.path;
         const res = fakeResponse({ status: 200, body: [] });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646' });
+      const c = new NomadClient({ endpoint: 'https://n:4646' });
       await c.listJobs('production');
       expect(seenPath).toBe('/v1/jobs?namespace=production');
     });
 
     it('listNamespaces gracefully handles 501 (OSS) as empty list', async () => {
-      mockHttp._mockNext((_opts, cb, _req) => {
+      mockHttps._mockNext((_opts, cb, _req) => {
         const res = fakeResponse({ status: 501, body: { error: 'not implemented' } });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646' });
+      const c = new NomadClient({ endpoint: 'https://n:4646' });
       const nss = await c.listNamespaces();
       expect(nss).toEqual([]);
     });
 
     it('surfaces 4xx with status and message', async () => {
-      mockHttp._mockNext((_opts, cb, _req) => {
+      mockHttps._mockNext((_opts, cb, _req) => {
         const res = fakeResponse({ status: 403, body: { error: 'ACL forbidden' } });
         cb(res); res._fire();
       });
-      const c = new NomadClient({ endpoint: 'http://n:4646', token: 't' });
+      const c = new NomadClient({ endpoint: 'https://n:4646', token: 't' });
       await expect(c.listJobs()).rejects.toMatchObject({
         message: /ACL forbidden/,
         status: 403,

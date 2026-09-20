@@ -1,0 +1,48 @@
+{
+  "date": "2026-09-20",
+  "suiteCount": 352,
+  "testsPassed": 4550,
+  "testsSkipped": 1,
+  "targetedTestsPassed": 81,
+  "migration": 176,
+  "browserLanguages": [
+    "en",
+    "ro"
+  ],
+  "productionImage": "sha256:b21e40cf15e9548154310f82704fe6fe1ad81abfb640cadaf5c1f445e3dc2979",
+  "productionSmokePassed": true,
+  "snapshotRecoveryAfterRestartPassed": true,
+  "imageVulnerabilityScanForThisId": true,
+  "scanIdentity": {
+    "image": "sha256:b21e40cf15e9548154310f82704fe6fe1ad81abfb640cadaf5c1f445e3dc2979",
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "configId": "sha256:eb406fa9a0f9b83e29f6d1a3e80b0ecd17c3824de5748bff8119ad52baa27a4a",
+    "platform": "linux/amd64",
+    "manifestAndConfigSha256Verified": true,
+    "orderedRootfsLayersVerified": 20,
+    "trivyReportedIdentity": "sha256:b21e40cf15e9548154310f82704fe6fe1ad81abfb640cadaf5c1f445e3dc2979",
+    "grypeReportedIdentity": "sha256:eb406fa9a0f9b83e29f6d1a3e80b0ecd17c3824de5748bff8119ad52baa27a4a"
+  },
+  "scans": {
+    "trivy": {
+      "counts": {
+        "MEDIUM": 3,
+        "UNKNOWN": 3,
+        "HIGH": 4
+      },
+      "summary": "2026-09-20-rollback-image-trivy.json",
+      "rawReportSha256": "2fe9c822f02fb4cac2e63d68a13dcfc74c01aa1799da39e31d506a52dfc80a51"
+    },
+    "grype": {
+      "counts": {
+        "High": 4,
+        "Medium": 6
+      },
+      "summary": "2026-09-20-rollback-image-grype.json",
+      "rawReportSha256": "d0cb41f194958d2a6fa2f0265420a07ec2aacb29f16878980370253dd3b210ac"
+    }
+  },
+  "publicationGate": "blocked",
+  "published": false,
+  "deployed": false
+}

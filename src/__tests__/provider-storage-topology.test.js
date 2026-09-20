@@ -31,7 +31,7 @@ describe('Provider shared-disk topology', () => {
   });
 
   it('confirms only a provider-declared shared backing and keeps native references out of the response', async () => {
-    registry.vmHardwareForHost.mockImplementation((_host, vm) => Promise.resolve(hardware('ddh_backing_shared', true)));
+    registry.vmHardwareForHost.mockImplementation((_host, _vm) => Promise.resolve(hardware('ddh_backing_shared', true)));
     const result = await topology.topologyForHost(host, { database });
     expect(result.coverage.complete).toBe(true);
     expect(result.summary).toEqual({ sharedBackingCount: 1, confirmedCount: 1, reviewCount: 0 });

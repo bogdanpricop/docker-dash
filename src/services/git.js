@@ -11,6 +11,7 @@ const { now } = require('../utils/helpers');
 const log = require('../utils/logger')('git');
 const dockerService = require('./docker');
 const gitTargets = require('./git-multi-host');
+const gitSsh = require('../utils/git-ssh');
 
 const REPOS_BASE = path.join(process.env.DATA_DIR || '/data', 'repos');
 const PREVIEWS_BASE = path.join(process.env.DATA_DIR || '/data', 'previews');
@@ -38,13 +39,16 @@ const DEFAULT_ROLLOUT_POLICY = Object.freeze({
 const GIT_FETCH_TIMEOUT_MS = 120_000;       // 2 min — fetch / pull / log / checkForUpdates
 const GIT_CLONE_TIMEOUT_MS = 300_000;       // 5 min — initial clone (large repos)
 const GIT_REMOTE_PROBE_TIMEOUT_MS = 30_000; // 30 sec — listRemote (credential test)
-const _gitOpts = (ms = GIT_FETCH_TIMEOUT_MS) => ({ timeout: { block: ms } });
+// Only the application-generated SSH command and /dev/null global config are
+// permitted. No caller-provided command/config path enters these options.
+const _gitOpts = (ms = GIT_FETCH_TIMEOUT_MS) => ({ timeout: { block: ms },
+  unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
 
 class GitService {
   constructor() {
     fs.mkdirSync(REPOS_BASE, { recursive: true });
     fs.mkdirSync(PREVIEWS_BASE, { recursive: true });
-    // Cleanup stale SSH keys on startup (H9 fix)
+    // Remove keys left by the old shared-file transport on startup.
     this._cleanupSshKeys();
   }
 
@@ -52,12 +56,13 @@ class GitService {
     const keyDir = path.join(REPOS_BASE, '.ssh-keys');
     if (!fs.existsSync(keyDir)) return;
     try {
+      if (fs.lstatSync(keyDir).isSymbolicLink()) return;
       const files = fs.readdirSync(keyDir);
       for (const file of files) {
+        if (!/^key-(?:test|\d+)$/.test(file)) continue;
         const keyPath = path.join(keyDir, file);
-        const stat = fs.statSync(keyPath);
-        // Remove keys older than 24h (stale from crashed processes)
-        if (Date.now() - stat.mtimeMs > 86400000) {
+        const stat = fs.lstatSync(keyPath);
+        if (stat.isFile() || stat.isSymbolicLink()) {
           fs.unlinkSync(keyPath);
           log.debug('Cleaned up stale SSH key', { file });
         }
@@ -84,6 +89,7 @@ class GitService {
       has_password: !!r.password_encrypted,
       has_ssh_key: !!r.ssh_private_key_encrypted,
       ssh_public_key: r.ssh_public_key,
+      ssh_known_hosts: r.ssh_known_hosts,
       usage_count: r.usage_count,
       created_by: r.created_by,
       created_at: r.created_at,
@@ -95,11 +101,12 @@ class GitService {
     return getDb().prepare('SELECT * FROM git_credentials WHERE id = ?').get(id);
   }
 
-  createCredential({ name, auth_type, username, password, ssh_private_key, created_by }) {
+  createCredential({ name, auth_type, username, password, ssh_private_key, ssh_known_hosts, created_by }) {
     const db = getDb();
     const encrypted_password = password ? encrypt(password) : null;
     let encrypted_ssh_key = null;
     let ssh_public_key = null;
+    const knownHosts = auth_type === 'ssh_key' ? gitSsh.validateKnownHosts(ssh_known_hosts) : '';
 
     if (auth_type === 'ssh_key' && ssh_private_key) {
       encrypted_ssh_key = encrypt(ssh_private_key);
@@ -108,10 +115,10 @@ class GitService {
 
     const r = db.prepare(`
       INSERT INTO git_credentials (name, auth_type, username, password_encrypted,
-        ssh_private_key_encrypted, ssh_public_key, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        ssh_private_key_encrypted, ssh_public_key, created_by, ssh_known_hosts)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(name, auth_type, username || null, encrypted_password,
-      encrypted_ssh_key, ssh_public_key, created_by);
+      encrypted_ssh_key, ssh_public_key, created_by, knownHosts);
 
     log.info('Credential created', { id: Number(r.lastInsertRowid), name, auth_type });
     return { id: Number(r.lastInsertRowid), name, auth_type };
@@ -124,6 +131,12 @@ class GitService {
 
     const sets = [];
     const params = [];
+
+    if (existing.auth_type === 'ssh_key' && data.ssh_known_hosts !== undefined) {
+      sets.push('ssh_known_hosts = ?');
+      params.push(gitSsh.validateKnownHosts(data.ssh_known_hosts));
+    }
+
 
     if (data.name !== undefined) { sets.push('name = ?'); params.push(data.name); }
     if (data.username !== undefined) { sets.push('username = ?'); params.push(data.username); }
@@ -408,52 +421,42 @@ class GitService {
     }
 
     const git = this._getGit(repoDir, stack);
-    await git.fetch('origin', stack.branch);
+    try {
+      await git.fetch('origin', stack.branch);
 
-    const localHash = (await git.revparse(['HEAD'])).trim().substring(0, 7);
-    const remoteHash = (await git.revparse([`origin/${stack.branch}`])).trim().substring(0, 7);
+      const localHash = (await git.revparse(['HEAD'])).trim().substring(0, 7);
+      const remoteHash = (await git.revparse([`origin/${stack.branch}`])).trim().substring(0, 7);
 
-    let newCommits = [];
-    if (localHash !== remoteHash) {
-      const logResult = await git.log({ from: 'HEAD', to: `origin/${stack.branch}` });
-      newCommits = logResult.all.map(c => ({
-        hash: c.hash.substring(0, 7),
-        message: c.message,
-        author: c.author_name,
-        date: c.date,
-      }));
-    }
+      let newCommits = [];
+      if (localHash !== remoteHash) {
+        const logResult = await git.log({ from: 'HEAD', to: `origin/${stack.branch}` });
+        newCommits = logResult.all.map(c => ({
+          hash: c.hash.substring(0, 7),
+          message: c.message,
+          author: c.author_name,
+          date: c.date,
+        }));
+      }
 
-    getDb().prepare('UPDATE git_stacks SET last_check_at = ? WHERE id = ?').run(now(), id);
+      getDb().prepare('UPDATE git_stacks SET last_check_at = ? WHERE id = ?').run(now(), id);
 
-    return {
-      has_updates: localHash !== remoteHash,
-      local_commit: localHash,
-      remote_commit: remoteHash,
-      commits_behind: newCommits.length,
-      new_commits: newCommits,
-    };
+      return {
+        has_updates: localHash !== remoteHash,
+        local_commit: localHash,
+        remote_commit: remoteHash,
+        commits_behind: newCommits.length,
+        new_commits: newCommits,
+      };
+    } finally { git._ddDispose?.(); }
   }
 
   async testConnection({ repo_url, credential_id, auth_type, username, password }) {
+    let session;
     try {
       this._validateRepoUrl(repo_url);
-      const env = {};
-      let url = repo_url;
-
-      if (repo_url.startsWith('git@') || repo_url.startsWith('ssh://')) {
-        // SSH — need key from credential
-        if (credential_id) {
-          const cred = this.getCredential(credential_id);
-          if (cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted) {
-            const keyPath = this._writeTempKey('test', cred);
-            env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
-          }
-        }
-      } else {
-        // HTTPS
-        url = this._buildAuthUrl(repo_url, { credential_id, auth_type, username, password });
-      }
+      session = this._gitTransport({ repo_url, credential_id });
+      const env = session.env;
+      const url = this._buildAuthUrl(repo_url, { credential_id, auth_type, username, password });
 
       const result = await simpleGit(undefined, _gitOpts(GIT_REMOTE_PROBE_TIMEOUT_MS)).env(env).listRemote(['--heads', url]);
       const branches = result.split('\n')
@@ -467,7 +470,7 @@ class GitService {
       return { ok: true, branches };
     } catch (err) {
       return { ok: false, error: this._sanitizeGitError(err.message) };
-    }
+    } finally { session?.dispose(); }
   }
 
   // ─── Deployment History ──────────────────────────────
@@ -594,29 +597,31 @@ class GitService {
     if (!fs.existsSync(repoDir)) throw new Error('Repository not cloned yet');
 
     const git = this._getGit(repoDir, stack);
-    await git.fetch('origin', stack.branch);
+    try {
+      await git.fetch('origin', stack.branch);
 
-    const localHash = (await git.revparse(['HEAD'])).trim();
-    const remoteHash = (await git.revparse([`origin/${stack.branch}`])).trim();
+      const localHash = (await git.revparse(['HEAD'])).trim();
+      const remoteHash = (await git.revparse([`origin/${stack.branch}`])).trim();
 
-    if (localHash === remoteHash) {
-      return { stackId, stackName: stack.stack_name, hasChanges: false, localCommit: localHash.substring(0, 7), remoteCommit: remoteHash.substring(0, 7) };
-    }
+      if (localHash === remoteHash) {
+        return { stackId, stackName: stack.stack_name, hasChanges: false, localCommit: localHash.substring(0, 7), remoteCommit: remoteHash.substring(0, 7) };
+      }
 
-    const diff = await git.diff([localHash, `origin/${stack.branch}`]);
-    const diffStat = await git.diffSummary([localHash, `origin/${stack.branch}`]);
-    const commitLog = await git.log({ from: localHash, to: `origin/${stack.branch}` });
+      const diff = await git.diff([localHash, `origin/${stack.branch}`]);
+      const diffStat = await git.diffSummary([localHash, `origin/${stack.branch}`]);
+      const commitLog = await git.log({ from: localHash, to: `origin/${stack.branch}` });
 
-    return {
-      stackId, stackName: stack.stack_name, hasChanges: true,
-      localCommit: localHash.substring(0, 7),
-      remoteCommit: remoteHash.substring(0, 7),
-      commitsBetween: commitLog.all.map(c => ({
-        hash: c.hash.substring(0, 7), message: c.message, author: c.author_name, date: c.date,
-      })),
-      diff,
-      filesChanged: diffStat.files.map(f => ({ path: f.file, additions: f.insertions, deletions: f.deletions })),
-    };
+      return {
+        stackId, stackName: stack.stack_name, hasChanges: true,
+        localCommit: localHash.substring(0, 7),
+        remoteCommit: remoteHash.substring(0, 7),
+        commitsBetween: commitLog.all.map(c => ({
+          hash: c.hash.substring(0, 7), message: c.message, author: c.author_name, date: c.date,
+        })),
+        diff,
+        filesChanged: diffStat.files.map(f => ({ path: f.file, additions: f.insertions, deletions: f.deletions })),
+      };
+    } finally { git._ddDispose?.(); }
   }
 
   async rollbackStack(stackId, deploymentId, actor = null) {
@@ -639,30 +644,32 @@ class GitService {
 
     try {
       const git = this._getGit(repoDir, stack);
-      await git.checkout(deployment.commit_hash);
+      try {
+        await git.checkout(deployment.commit_hash);
 
-      this._writeEnvOverrides(stackId, stack);
-      const shortHash = deployment.commit_hash.substring(0, 7);
-      const targetResults = await this._deployComposeToTargets(stackId, stack, {
-        commit: shortHash, triggerType: 'rollback', actor,
-        deploymentId: rollbackDeployId, rolloutPolicy: { enabled: false },
-      });
-      db.prepare(`
-        UPDATE git_stacks SET status = 'running', error_message = NULL,
-          last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
-          last_deployed_at = ?, updated_at = ?
-        WHERE id = ?
-      `).run(shortHash, `Rollback to ${shortHash}`, 'system', now(), now(), stackId);
+        this._writeEnvOverrides(stackId, stack);
+        const shortHash = deployment.commit_hash.substring(0, 7);
+        const targetResults = await this._deployComposeToTargets(stackId, stack, {
+          commit: shortHash, triggerType: 'rollback', actor,
+          deploymentId: rollbackDeployId, rolloutPolicy: { enabled: false },
+        });
+        db.prepare(`
+          UPDATE git_stacks SET status = 'running', error_message = NULL,
+            last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
+            last_deployed_at = ?, updated_at = ?
+          WHERE id = ?
+        `).run(shortHash, `Rollback to ${shortHash}`, 'system', now(), now(), stackId);
 
-      this._completeDeployment(rollbackDeployId, 'success');
-      // Mark original deployment as rolled back
-      db.prepare('UPDATE git_deployments SET status = ? WHERE id = ?').run('rolled_back', deploymentId);
+        this._completeDeployment(rollbackDeployId, 'success');
+        // Mark original deployment as rolled back
+        db.prepare('UPDATE git_deployments SET status = ? WHERE id = ?').run('rolled_back', deploymentId);
 
-      this._broadcast('git:deploy:success', {
-        stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
-        rollback: true, targets: targetResults,
-      });
-      log.info('Stack rolled back', { stackId, toCommit: shortHash, targets: targetResults.length });
+        this._broadcast('git:deploy:success', {
+          stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
+          rollback: true, targets: targetResults,
+        });
+        log.info('Stack rolled back', { stackId, toCommit: shortHash, targets: targetResults.length });
+      } finally { git._ddDispose?.(); }
     } catch (err) {
       this._completeDeployment(rollbackDeployId, 'failed', this._sanitizeGitError(err.message));
       db.prepare('UPDATE git_stacks SET status = ?, error_message = ?, updated_at = ? WHERE id = ?')
@@ -682,33 +689,35 @@ class GitService {
     if (!fs.existsSync(repoDir)) throw new Error('Repository not cloned yet');
 
     const git = this._getGit(repoDir, stack);
-    await git.fetch('origin', stack.branch);
+    try {
+      await git.fetch('origin', stack.branch);
 
-    const localHead = (await git.revparse(['HEAD'])).trim();
-    const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
+      const localHead = (await git.revparse(['HEAD'])).trim();
+      const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
 
-    let localAhead = 0, localBehind = 0, remoteCommits = [];
+      let localAhead = 0, localBehind = 0, remoteCommits = [];
 
-    if (localHead !== remoteHead) {
-      try {
-        const behindLog = await git.log({ from: 'HEAD', to: `origin/${stack.branch}` });
-        localBehind = behindLog.all.length;
-        remoteCommits = behindLog.all.map(c => ({
-          hash: c.hash.substring(0, 7), message: c.message, author: c.author_name, date: c.date,
-        }));
-      } catch {}
-      try {
-        const aheadLog = await git.log({ from: `origin/${stack.branch}`, to: 'HEAD' });
-        localAhead = aheadLog.all.length;
-      } catch {}
-    }
+      if (localHead !== remoteHead) {
+        try {
+          const behindLog = await git.log({ from: 'HEAD', to: `origin/${stack.branch}` });
+          localBehind = behindLog.all.length;
+          remoteCommits = behindLog.all.map(c => ({
+            hash: c.hash.substring(0, 7), message: c.message, author: c.author_name, date: c.date,
+          }));
+        } catch {}
+        try {
+          const aheadLog = await git.log({ from: `origin/${stack.branch}`, to: 'HEAD' });
+          localAhead = aheadLog.all.length;
+        } catch {}
+      }
 
-    return {
-      localHead: localHead.substring(0, 7),
-      remoteHead: remoteHead.substring(0, 7),
-      isUpToDate: localHead === remoteHead,
-      localAhead, localBehind, remoteCommits,
-    };
+      return {
+        localHead: localHead.substring(0, 7),
+        remoteHead: remoteHead.substring(0, 7),
+        isUpToDate: localHead === remoteHead,
+        localAhead, localBehind, remoteCommits,
+      };
+    } finally { git._ddDispose?.(); }
   }
 
   async pushToGit(stackId, { commitMessage, files, author, forcePush = false }) {
@@ -720,59 +729,61 @@ class GitService {
     const repoDir = fs.realpathSync(repoPath);
 
     const git = this._getGit(repoDir, stack);
+    try {
 
-    // Check remote status
-    if (!forcePush) {
-      await git.fetch('origin', stack.branch);
-      const localHead = (await git.revparse(['HEAD'])).trim();
-      const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
+      // Check remote status
+      if (!forcePush) {
+        await git.fetch('origin', stack.branch);
+        const localHead = (await git.revparse(['HEAD'])).trim();
+        const remoteHead = (await git.revparse([`origin/${stack.branch}`])).trim();
 
-      if (localHead !== remoteHead) {
-        // Check if remote is ahead
-        try {
-          const behindLog = await git.log({ from: localHead, to: remoteHead });
-          if (behindLog.all.length > 0) {
-            throw Object.assign(new Error('Remote has newer changes. Pull first or force push.'), { status: 409 });
+        if (localHead !== remoteHead) {
+          // Check if remote is ahead
+          try {
+            const behindLog = await git.log({ from: localHead, to: remoteHead });
+            if (behindLog.all.length > 0) {
+              throw Object.assign(new Error('Remote has newer changes. Pull first or force push.'), { status: 409 });
+            }
+          } catch (err) {
+            if (err.status === 409) throw err;
           }
-        } catch (err) {
-          if (err.status === 409) throw err;
         }
       }
-    }
 
-    // Write files
-    const writtenFiles = [];
-    for (const [filePath, content] of Object.entries(files)) {
-      this._validateComposePath(filePath);
-      const fullPath = this._resolveRepoFile(repoDir, filePath);
-      const dir = path.dirname(fullPath);
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(fullPath, content, 'utf8');
-      writtenFiles.push(filePath);
-    }
+      // Write files
+      const writtenFiles = [];
+      for (const [filePath, content] of Object.entries(files)) {
+        this._validateComposePath(filePath);
+        const fullPath = this._resolveRepoFile(repoDir, filePath);
+        const dir = path.dirname(fullPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, content, 'utf8');
+        writtenFiles.push(filePath);
+      }
 
-    // Stage, commit, push
-    await git.add(writtenFiles);
-    const authorStr = author || 'Docker Dash <noreply@docker-dash.local>';
-    await git.commit(commitMessage || 'Update from Docker Dash', writtenFiles, { '--author': authorStr });
+      // Stage, commit, push
+      await git.add(writtenFiles);
+      const authorStr = author || 'Docker Dash <noreply@docker-dash.local>';
+      await git.commit(commitMessage || 'Update from Docker Dash', writtenFiles, { '--author': authorStr });
 
-    if (forcePush) {
-      await git.push('origin', stack.branch, ['--force-with-lease']);
-    } else {
-      await git.push('origin', stack.branch);
-    }
+      if (forcePush) {
+        await git.push('origin', stack.branch, ['--force-with-lease']);
+      } else {
+        await git.push('origin', stack.branch);
+      }
 
-    // Update stack commit info
-    const logResult = await git.log({ n: 1 });
-    const latest = logResult.latest;
-    const db = getDb();
-    db.prepare(`
-      UPDATE git_stacks SET last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?, updated_at = ?
-      WHERE id = ?
-    `).run(latest.hash.substring(0, 7), latest.message.substring(0, 200), latest.author_name, now(), stackId);
+      // Update stack commit info
+      const logResult = await git.log({ n: 1 });
+      const latest = logResult.latest;
+      const db = getDb();
+      db.prepare(`
+        UPDATE git_stacks SET last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?, updated_at = ?
+        WHERE id = ?
+      `).run(latest.hash.substring(0, 7), latest.message.substring(0, 200), latest.author_name, now(), stackId);
 
-    log.info('Pushed to Git', { stackId, commit: latest.hash.substring(0, 7) });
-    return { ok: true, commitHash: latest.hash.substring(0, 7) };
+      log.info('Pushed to Git', { stackId, commit: latest.hash.substring(0, 7) });
+      return { ok: true, commitHash: latest.hash.substring(0, 7) };
+    } finally { git._ddDispose?.(); }
   }
 
   readComposeFile(stackId, filePath) {
@@ -829,23 +840,11 @@ class GitService {
     const authUrl = useStackCredentials
       ? this._buildAuthUrl(sourceUrl, { credential_id: stack.credential_id })
       : sourceUrl;
-    const env = {};
-    let caPath = null;
-    if (stack.tls_skip_verify) env.GIT_SSL_NO_VERIFY = 'true';
-    else if (stack.custom_ca_cert) {
-      caPath = path.join(REPOS_BASE, `ca-preview-${Number(previewId)}.pem`);
-      fs.writeFileSync(caPath, stack.custom_ca_cert, { mode: 0o600 });
-      env.GIT_SSL_CAINFO = caPath;
-    }
-    if (useStackCredentials && stack.credential_id) {
-      const cred = this.getCredential(stack.credential_id);
-      if (cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted) {
-        const keyPath = this._writeTempKey(stack.id, cred);
-        env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
-      }
-    }
-
+    let session;
     try {
+      session = this._gitTransport({ ...stack, repo_url: sourceUrl,
+        credential_id: useStackCredentials ? stack.credential_id : null });
+      const env = session.env;
       await simpleGit(undefined, _gitOpts(GIT_CLONE_TIMEOUT_MS)).env(env).clone(authUrl, previewDir, [
         '--branch', ref, '--single-branch', '--depth', '50',
       ]);
@@ -860,7 +859,7 @@ class GitService {
       if (fs.existsSync(previewDir)) fs.rmSync(previewDir, { recursive: true, force: true });
       throw err;
     } finally {
-      if (caPath && fs.existsSync(caPath)) fs.unlinkSync(caPath);
+      session?.dispose();
     }
   }
 
@@ -880,24 +879,26 @@ class GitService {
     return path.join(REPOS_BASE, String(stackId));
   }
 
+  _gitTransport(stack) {
+    const cred = stack.credential_id ? this.getCredential(stack.credential_id) : null;
+    const privateKey = cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted
+      ? decrypt(cred.ssh_private_key_encrypted) : null;
+    if (/^(git@|ssh:\/\/)/.test(stack.repo_url || '') && !privateKey) {
+      throw Object.assign(new Error('SSH Git requires a managed private key and verified known_hosts'), { status: 400 });
+    }
+    const session = gitSsh.createSession({ privateKey, knownHosts: cred?.ssh_known_hosts,
+      caCertificate: stack.tls_skip_verify ? null : stack.custom_ca_cert });
+    if (stack.tls_skip_verify) session.env.GIT_SSL_NO_VERIFY = 'true';
+    return session;
+  }
+
   _getGit(repoDir, stack) {
-    const env = {};
-    if (stack.tls_skip_verify) {
-      env.GIT_SSL_NO_VERIFY = 'true';
-    } else if (stack.custom_ca_cert) {
-      // Write CA cert to temp file and point Git to it
-      const certPath = path.join(REPOS_BASE, `ca-${stack.id}.pem`);
-      fs.writeFileSync(certPath, stack.custom_ca_cert, 'utf8');
-      env.GIT_SSL_CAINFO = certPath;
-    }
-    if (stack.credential_id) {
-      const cred = this.getCredential(stack.credential_id);
-      if (cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted) {
-        const keyPath = this._writeTempKey(stack.id, cred);
-        env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
-      }
-    }
-    return simpleGit(repoDir, _gitOpts()).env(env);
+    const session = this._gitTransport(stack);
+    try {
+      const git = simpleGit(repoDir, _gitOpts()).env(session.env);
+      git._ddDispose = session.dispose;
+      return git;
+    } catch (err) { session.dispose(); throw err; }
   }
 
   _buildAuthUrl(repoUrl, { credential_id, auth_type, username, password }) {
@@ -926,15 +927,6 @@ class GitService {
     }
   }
 
-  _writeTempKey(stackId, credential) {
-    const keyDir = path.join(REPOS_BASE, '.ssh-keys');
-    fs.mkdirSync(keyDir, { recursive: true, mode: 0o700 });
-    const keyPath = path.join(keyDir, `key-${stackId}`);
-    const decryptedKey = decrypt(credential.ssh_private_key_encrypted);
-    fs.writeFileSync(keyPath, decryptedKey, { mode: 0o600 });
-    return keyPath;
-  }
-
   _extractPublicKey(privateKeyPem) {
     try {
       const { utils: sshUtils } = require('ssh2');
@@ -954,6 +946,7 @@ class GitService {
     const stack = this.getStack(stackId);
     const repoDir = this._getRepoDir(stackId);
 
+    let session;
     try {
       if (fs.existsSync(repoDir)) {
         fs.rmSync(repoDir, { recursive: true, force: true });
@@ -962,15 +955,8 @@ class GitService {
 
       const authUrl = this._buildAuthUrl(stack.repo_url, { credential_id: stack.credential_id });
 
-      const env = {};
-      if (stack.tls_skip_verify) env.GIT_SSL_NO_VERIFY = 'true';
-      if (stack.credential_id) {
-        const cred = this.getCredential(stack.credential_id);
-        if (cred?.auth_type === 'ssh_key' && cred.ssh_private_key_encrypted) {
-          const keyPath = this._writeTempKey(stackId, cred);
-          env.GIT_SSH_COMMAND = `ssh -i "${keyPath}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`;
-        }
-      }
+      session = this._gitTransport(stack);
+      const env = session.env;
 
       await simpleGit(undefined, _gitOpts(GIT_CLONE_TIMEOUT_MS)).env(env).clone(authUrl, repoDir, [
         '--branch', stack.branch,
@@ -985,7 +971,7 @@ class GitService {
 
       db.prepare('UPDATE git_stacks SET status = ? WHERE id = ?').run('deploying', stackId);
 
-      const git = simpleGit(repoDir, _gitOpts());
+      const git = simpleGit(repoDir, _gitOpts()).env(env);
       const logResult = await git.log({ n: 1 });
       const latest = logResult.latest;
       const shortHash = latest.hash.substring(0, 7);
@@ -1033,7 +1019,7 @@ class GitService {
         stack_id: stackId, stack_name: stack?.stack_name,
         error: this._sanitizeGitError(err.message),
       });
-    }
+    } finally { session?.dispose(); }
   }
 
   async _pullAndDeploy(stackId, {
@@ -1049,54 +1035,55 @@ class GitService {
       }
 
       const git = this._getGit(repoDir, stack);
-      await git.fetch('origin', stack.branch);
+      try {
+        await git.fetch('origin', stack.branch);
 
-      if (stack.force_redeploy || force) {
-        await git.reset(['--hard', `origin/${stack.branch}`]);
-      } else {
-        await git.pull('origin', stack.branch);
-      }
+        if (stack.force_redeploy || force) {
+          await git.reset(['--hard', `origin/${stack.branch}`]);
+        } else {
+          await git.pull('origin', stack.branch);
+        }
 
-      const composeFull = path.join(repoDir, stack.compose_path);
-      if (!fs.existsSync(composeFull)) {
-        throw new Error(`Compose file not found at '${stack.compose_path}' in repository`);
-      }
+        const composeFull = path.join(repoDir, stack.compose_path);
+        if (!fs.existsSync(composeFull)) {
+          throw new Error(`Compose file not found at '${stack.compose_path}' in repository`);
+        }
 
-      const logResult = await git.log({ n: 1 });
-      const latest = logResult.latest;
-      const shortHash = latest.hash.substring(0, 7);
+        const logResult = await git.log({ n: 1 });
+        const latest = logResult.latest;
+        const shortHash = latest.hash.substring(0, 7);
 
-      if (deploymentId) {
-        db.prepare('UPDATE git_deployments SET commit_hash = ?, commit_message = ?, commit_author = ? WHERE id = ?')
-          .run(latest.hash, latest.message.substring(0, 200), latest.author_name, deploymentId);
-      }
+        if (deploymentId) {
+          db.prepare('UPDATE git_deployments SET commit_hash = ?, commit_message = ?, commit_author = ? WHERE id = ?')
+            .run(latest.hash, latest.message.substring(0, 200), latest.author_name, deploymentId);
+        }
 
-      this._writeEnvOverrides(stackId, stack);
-      const targetResults = await this._deployComposeToTargets(stackId, stack, {
-        commit: shortHash, triggerType, actor, deploymentId,
-      });
-      if (deploymentId) this._completeDeployment(deploymentId, 'success');
+        this._writeEnvOverrides(stackId, stack);
+        const targetResults = await this._deployComposeToTargets(stackId, stack, {
+          commit: shortHash, triggerType, actor, deploymentId,
+        });
+        if (deploymentId) this._completeDeployment(deploymentId, 'success');
 
-      db.prepare(`
-        UPDATE git_stacks SET status = 'running', error_message = NULL,
-          last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
-          last_deployed_at = ?, deployment_count = deployment_count + 1,
-          ${deploymentId ? 'last_deployment_id = ?,' : ''} updated_at = ?
-        WHERE id = ?
-      `).run(
-        ...[shortHash, latest.message.substring(0, 200), latest.author_name, now()],
-        ...(deploymentId ? [deploymentId] : []),
-        now(), stackId
-      );
+        db.prepare(`
+          UPDATE git_stacks SET status = 'running', error_message = NULL,
+            last_commit_hash = ?, last_commit_message = ?, last_commit_author = ?,
+            last_deployed_at = ?, deployment_count = deployment_count + 1,
+            ${deploymentId ? 'last_deployment_id = ?,' : ''} updated_at = ?
+          WHERE id = ?
+        `).run(
+          ...[shortHash, latest.message.substring(0, 200), latest.author_name, now()],
+          ...(deploymentId ? [deploymentId] : []),
+          now(), stackId
+        );
 
-      log.info('Stack redeployed', {
-        stackId, commit: shortHash, trigger: triggerType, targets: targetResults.length,
-      });
-      this._broadcast('git:deploy:success', {
-        stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
-        targets: targetResults,
-      });
-
+        log.info('Stack redeployed', {
+          stackId, commit: shortHash, trigger: triggerType, targets: targetResults.length,
+        });
+        this._broadcast('git:deploy:success', {
+          stack_id: stackId, stack_name: stack.stack_name, commit_hash: shortHash,
+          targets: targetResults,
+        });
+      } finally { git._ddDispose?.(); }
     } catch (err) {
       if (deploymentId) {
         this._completeDeployment(deploymentId, 'failed', this._sanitizeGitError(err.message));
@@ -1352,52 +1339,54 @@ class GitService {
   async _rollbackRolloutTargets(stackId, stack, newCommit, results, { triggerType, actor }) {
     const repoDir = this._getRepoDir(stackId);
     const git = this._getGit(repoDir, stack);
-    const currentRef = (await git.revparse(['HEAD'])).trim();
-    const changed = results
-      .filter(result => result.changed && ['success', 'failed'].includes(result.status))
-      .reverse();
     try {
-      for (const result of changed) {
-        const target = { host_id: result.hostId, host_name: result.hostName };
-        try {
-          if (result.previousCommit) {
-            await git.checkout(result.previousCommit);
-            this._writeEnvOverrides(stackId, stack);
-            await this._composeUp(stackId, stack, result.hostId);
+      const currentRef = (await git.revparse(['HEAD'])).trim();
+      const changed = results
+        .filter(result => result.changed && ['success', 'failed'].includes(result.status))
+        .reverse();
+      try {
+        for (const result of changed) {
+          const target = { host_id: result.hostId, host_name: result.hostName };
+          try {
+            if (result.previousCommit) {
+              await git.checkout(result.previousCommit);
+              this._writeEnvOverrides(stackId, stack);
+              await this._composeUp(stackId, stack, result.hostId);
+              gitTargets.restoreTargetState(stackId, result.hostId, {
+                commit: result.previousCommit, previousCommit: newCommit,
+                status: 'success', error: null,
+              });
+            } else {
+              await git.checkout(currentRef);
+              await this._composeDown(stackId, stack, result.hostId, { removeVolumes: false });
+              gitTargets.restoreTargetState(stackId, result.hostId, {
+                commit: null, previousCommit: newCommit, status: 'never', error: null,
+              });
+            }
+            result.originalStatus = result.status;
+            result.status = 'rolled_back';
+            result.rollbackCommit = result.previousCommit;
+            this._auditTargetDeploy(stackId, target, {
+              commit: result.previousCommit, triggerType: `${triggerType}_auto_rollback`,
+              status: 'rolled_back', actor, wave: result.wave,
+            });
+          } catch (err) {
+            const error = this._sanitizeGitError(err.message || String(err));
+            result.originalStatus = result.status;
+            result.status = 'rollback_failed';
+            result.rollbackError = error;
             gitTargets.restoreTargetState(stackId, result.hostId, {
               commit: result.previousCommit, previousCommit: newCommit,
-              status: 'success', error: null,
-            });
-          } else {
-            await git.checkout(currentRef);
-            await this._composeDown(stackId, stack, result.hostId, { removeVolumes: false });
-            gitTargets.restoreTargetState(stackId, result.hostId, {
-              commit: null, previousCommit: newCommit, status: 'never', error: null,
+              status: 'failed', error,
             });
           }
-          result.originalStatus = result.status;
-          result.status = 'rolled_back';
-          result.rollbackCommit = result.previousCommit;
-          this._auditTargetDeploy(stackId, target, {
-            commit: result.previousCommit, triggerType: `${triggerType}_auto_rollback`,
-            status: 'rolled_back', actor, wave: result.wave,
-          });
-        } catch (err) {
-          const error = this._sanitizeGitError(err.message || String(err));
-          result.originalStatus = result.status;
-          result.status = 'rollback_failed';
-          result.rollbackError = error;
-          gitTargets.restoreTargetState(stackId, result.hostId, {
-            commit: result.previousCommit, previousCommit: newCommit,
-            status: 'failed', error,
-          });
         }
+      } finally {
+        await git.checkout(currentRef);
+        this._writeEnvOverrides(stackId, stack);
       }
-    } finally {
-      await git.checkout(currentRef);
-      this._writeEnvOverrides(stackId, stack);
-    }
-    return results;
+      return results;
+    } finally { git._ddDispose?.(); }
   }
 
   _auditTargetDeploy(stackId, target, {
@@ -1673,6 +1662,9 @@ class GitService {
   }
 
   _sanitizeGitError(message) {
+    if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/i.test(message)) {
+      return 'SSH host key verification failed. Verify the server identity and update the credential known_hosts through a trusted source.';
+    }
     return message
       .replace(/https?:\/\/[^@\s]+@/g, 'https://***@')
       .replace(/password_encrypted.*$/gm, '[redacted]')

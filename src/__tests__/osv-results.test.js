@@ -57,4 +57,8 @@ describe('OSV production severity gate', () => {
   test('rejects malformed scanner output', () => {
     expect(() => evaluateReport({})).toThrow('results must be an array');
   });
+
+  test('default policy includes high production findings', () => {
+    expect(evaluateReport({ results: [{ packages: [pkg('high', '7.1')] }] }).findings).toHaveLength(1);
+  });
 });

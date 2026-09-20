@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.2', date: '2026-09-20', title: 'Security audit checkpoint', changes: [
+      { type: 'security', text: 'SSH and Git connections verify server identity; LDAP requires verified LDAPS or StartTLS, and providers require verified HTTPS. Existing trust-bypass configurations need migration.' },
+      { type: 'security', text: 'LDAP passwords and rollback snapshots are encrypted. Container authorization, image admission, CSRF and HTML escaping have additional checks.' },
+      { type: 'improvement', text: 'Updated dependencies and browser libraries; saved inventory views now support their full workflow. Docker Scout is temporarily excluded with explanations; Trivy and Grype remain available.' },
+      { type: 'security', text: 'Known image vulnerabilities and remaining audit work are documented. Public image publication remains gated; this checkpoint does not certify the entire project as secure.' },
+    ] },
     { version: '8.96.1', date: '2026-08-21', title: 'One unreadable host no longer takes the fleet down', changes: [
       { type: 'fix', text: 'If the stored credentials of any single host could not be decrypted — the usual cause is ENCRYPTION_KEY having been changed after that host was added — the active-host list collapsed to just the local host. Stats collection and event streams then stopped silently for every other host. Hosts are now read one at a time, so an unreadable host affects only itself.' },
       { type: 'fix', text: 'Such a host now reports what is wrong and what to do about it, naming the host, instead of a generic 500 the UI could not explain. Re-enter the credentials for that host on the Hosts page to restore it.' },

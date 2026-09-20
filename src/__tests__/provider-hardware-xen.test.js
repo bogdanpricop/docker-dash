@@ -41,7 +41,7 @@ describe('Xen VM hardware inventory', () => {
   });
 
   it('labels standalone xl/xm runtime topology as incomplete', async () => {
-    const client = new XenRawClient({ sshHost: 'xen.test', sshUsername: 'root', sshPassword: 'secret' });
+    const client = new XenRawClient({ hostKeySha256: 'ab'.repeat(32), sshHost: 'xen.test', sshUsername: 'root', sshPassword: 'secret' });
     client._tool = jest.fn(async args => args.startsWith('block-list')
       ? { stdout: 'Vdev BE handle state evt-ch ring-ref BE-path\n51712 0 1 4 10 11 /local/domain/0/backend/vbd/4/51712\n' }
       : { stdout: 'Idx BE MAC Addr. handle state evt-ch tx-/rx-ring-ref BE-path\n0 0 00:16:3e:11:22:33 1 4 10 11 /local/domain/0/backend/vif/4/0\n' });

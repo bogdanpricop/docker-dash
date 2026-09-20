@@ -3,8 +3,9 @@
 const { getDb } = require('../db');
 const dockerService = require('./docker');
 const auditService = require('./audit');
-const { execFileSync } = require('child_process');
-const { sanitizeShellArg, formatBytes } = require('../utils/helpers');
+const { formatBytes } = require('../utils/helpers');
+const imageAdmission = require('./image-admission');
+const containerHistory = require('./container-history');
 
 /**
  * Deployment Pipeline Service
@@ -24,6 +25,7 @@ class PipelineService {
    */
   async start(opts) {
     const { containerId, hostId = 0, user, skipScan = false, skipVerify = false, clientIp } = opts;
+    if (typeof skipScan !== 'boolean' || typeof skipVerify !== 'boolean') throw new Error('Pipeline skip options must be boolean');
     const docker = dockerService.getDocker(hostId);
     const container = docker.getContainer(containerId);
     const inspect = await container.inspect();
@@ -47,7 +49,7 @@ class PipelineService {
     const pipelineId = db.prepare(`
       INSERT INTO deployment_pipelines (container_id, container_name, host_id, status, stages_json, started_by, image_before)
       VALUES (?, ?, ?, 'running', ?, ?, ?)
-    `).run(containerId, name, hostId, JSON.stringify(stages), user?.username || 'system', image).lastInsertRowid;
+    `).run(inspect.Id, name, hostId, JSON.stringify(stages), user?.username || 'system', image).lastInsertRowid;
 
     const updateStage = (stageName, status, detail) => {
       const stage = stages.find(s => s.name === stageName);
@@ -68,10 +70,13 @@ class PipelineService {
     try {
       // ── Stage 1: Pull ─────────────────────────
       updateStage('pull', 'running');
+      let candidateId;
       try {
         // v8.7.28 — uses shared docker-pull helper with 10-min timeout.
         await require('../utils/docker-pull').pullImage(docker, image);
         const newImg = await docker.getImage(image).inspect();
+        if (!/^sha256:[a-f0-9]{64}$/.test(newImg.Id || '')) throw new Error('Invalid pulled image identity');
+        candidateId = newImg.Id;
         updateStage('pull', 'success', `Pulled ${image} (${formatBytes(newImg.Size || 0)})`);
       } catch (err) {
         updateStage('pull', 'failed', err.message);
@@ -84,31 +89,16 @@ class PipelineService {
       let scanSummary = null;
       if (!skipScan) {
         updateStage('scan', 'running');
-        try {
-          const safeImg = sanitizeShellArg(image);
-          const scanResult = execFileSync('trivy', ['image', '--severity', 'CRITICAL,HIGH', '--format', 'json', '--quiet', safeImg], {
-            timeout: 120000, encoding: 'utf8',
-          });
-          const parsed = JSON.parse(scanResult);
-          const results = parsed.Results || [];
-          let critical = 0, high = 0;
-          for (const r of results) {
-            for (const v of (r.Vulnerabilities || [])) {
-              if (v.Severity === 'CRITICAL') critical++;
-              if (v.Severity === 'HIGH') high++;
-            }
-          }
-          scanSummary = { critical, high, passed: critical === 0 };
-          scanPassed = critical === 0;
-          updateStage('scan', scanPassed ? 'success' : 'failed', `${critical} critical, ${high} high vulnerabilities`);
-        } catch {
-          scanSummary = { scanner: 'unavailable', passed: true };
-          scanPassed = true;
-          updateStage('scan', 'success', 'Scanner not available — skipped');
-        }
+        scanSummary = await imageAdmission.scanImage(docker, candidateId);
+        scanPassed = scanSummary.passed === true;
+        updateStage('scan', scanPassed ? 'success' : 'failed', scanSummary.reason
+          || `${scanSummary.critical} critical, ${scanSummary.high} high, ${scanSummary.unknown} unknown scanner findings`);
 
         if (!scanPassed) {
-          failPipeline('Scan found critical vulnerabilities');
+          auditService.log({ userId: user?.id, username: user?.username || 'system',
+            action: 'pipeline_scan_blocked', targetType: 'container', targetId: name,
+            details: { pipelineId, image, scan: scanSummary }, ip: clientIp });
+          failPipeline('Required image scan denied deployment');
           return this._getResult(pipelineId);
         }
       }
@@ -117,18 +107,8 @@ class PipelineService {
       updateStage('swap', 'running');
       let newContainerId;
       try {
-        // Record for rollback
-        try {
-          db.prepare(`
-            INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
-            VALUES (?, ?, ?, ?, ?, 'pipeline', ?, ?, ?)
-          `).run(
-            name, inspect.Id, hostId,
-            image, inspect.Image,
-            user?.username || 'system', inspect.State.Running ? 1 : 0,
-            JSON.stringify({ Image: image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
-          );
-        } catch { /* table may not exist */ }
+        // Encryption/storage failure must not destroy the current container.
+        containerHistory.record({ inspect, hostId, action: 'pipeline', username: user?.username || 'system' });
 
         const wasRunning = inspect.State.Running;
         if (wasRunning) await container.stop();
@@ -136,7 +116,7 @@ class PipelineService {
 
         const createOpts = {
           name,
-          Image: image,
+          Image: candidateId,
           Cmd: inspect.Config.Cmd,
           Env: inspect.Config.Env,
           ExposedPorts: inspect.Config.ExposedPorts,
@@ -154,7 +134,7 @@ class PipelineService {
         if (wasRunning) await newContainer.start();
         newContainerId = newContainer.id;
 
-        db.prepare('UPDATE deployment_pipelines SET image_after = ? WHERE id = ?').run(image, pipelineId);
+        db.prepare('UPDATE deployment_pipelines SET image_after = ? WHERE id = ?').run(candidateId, pipelineId);
         updateStage('swap', 'success', `Container recreated (${newContainerId.substring(0, 12)})`);
       } catch (err) {
         updateStage('swap', 'failed', err.message);
@@ -163,7 +143,9 @@ class PipelineService {
       }
 
       // ── Stage 4: Verify ───────────────────────
-      if (!skipVerify && newContainerId) {
+      if (!skipVerify && newContainerId && !inspect.State.Running) {
+        updateStage('verify', 'skipped', 'Original container was stopped; replacement remains stopped');
+      } else if (!skipVerify && newContainerId) {
         updateStage('verify', 'running');
         try {
           // Wait up to 30 seconds for healthy status
@@ -172,6 +154,7 @@ class PipelineService {
             await new Promise(r => setTimeout(r, 5000));
             try {
               const newInspect = await docker.getContainer(newContainerId).inspect();
+              if (!newInspect.State?.Running) break;
               const healthStatus = newInspect.State?.Health?.Status;
               if (!newInspect.State?.Health) { healthy = true; break; } // No health check defined
               if (healthStatus === 'healthy') { healthy = true; break; }
@@ -179,8 +162,14 @@ class PipelineService {
             } catch { break; }
           }
           updateStage('verify', healthy ? 'success' : 'failed', healthy ? 'Container is healthy' : 'Health check failed');
+          if (!healthy) {
+            failPipeline('Replacement container failed verification');
+            return this._getResult(pipelineId);
+          }
         } catch (err) {
           updateStage('verify', 'failed', err.message);
+          failPipeline('Replacement container verification could not be completed');
+          return this._getResult(pipelineId);
         }
       }
 
@@ -196,6 +185,8 @@ class PipelineService {
         updateStage('notify', 'success', 'Audit logged');
       } catch (err) {
         updateStage('notify', 'failed', err.message);
+        failPipeline('Deployment audit could not be recorded');
+        return this._getResult(pipelineId);
       }
 
       // Mark pipeline complete

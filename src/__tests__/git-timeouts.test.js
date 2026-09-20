@@ -50,12 +50,14 @@ describe('git service — per-operation timeouts (v8.7.10)', () => {
 
   it('build() helper produces the exact shape simple-git expects', () => {
     const opts = _gitTimeouts.build(5000);
-    expect(opts).toEqual({ timeout: { block: 5000 } });
+    expect(opts).toEqual({ timeout: { block: 5000 },
+      unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
   });
 
   it('build() defaults to the fetch timeout when called with no args', () => {
     const opts = _gitTimeouts.build();
-    expect(opts).toEqual({ timeout: { block: _gitTimeouts.fetch } });
+    expect(opts).toEqual({ timeout: { block: _gitTimeouts.fetch },
+      unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
   });
 
   it('every simpleGit() call site in src/services/git.js passes _gitOpts', () => {

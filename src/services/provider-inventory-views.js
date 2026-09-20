@@ -175,7 +175,7 @@ class ProviderInventoryViewsService {
     if (count >= MAX_VIEWS) fail(`A user may save at most ${MAX_VIEWS} inventory views`, 409, 'VIEW_LIMIT_REACHED');
     try {
       const id = db.transaction(() => {
-        if (input.isDefault) db.prepare('UPDATE provider_inventory_views SET is_default = 0, updated_at = datetime(\'now\') WHERE user_id = ? AND resource_type = ? AND is_default = 1').run(actor.id, input.resourceType);
+        if (input.isDefault) db.prepare('UPDATE provider_inventory_views SET is_default = 0, version = version + 1, updated_at = datetime(\'now\') WHERE user_id = ? AND resource_type = ? AND is_default = 1').run(actor.id, input.resourceType);
         return Number(db.prepare(`INSERT INTO provider_inventory_views
           (user_id,name,resource_type,provider_host_id,filters_json,columns_json,sort_json,is_default)
           VALUES (?,?,?,?,?,?,?,?)`).run(actor.id, input.name, input.resourceType, input.providerHostId,
@@ -196,7 +196,7 @@ class ProviderInventoryViewsService {
     const db = this._db();
     try {
       db.transaction(() => {
-        if (input.isDefault) db.prepare('UPDATE provider_inventory_views SET is_default = 0, updated_at = datetime(\'now\') WHERE user_id = ? AND resource_type = ? AND id <> ? AND is_default = 1').run(actor.id, input.resourceType, current.id);
+        if (input.isDefault) db.prepare('UPDATE provider_inventory_views SET is_default = 0, version = version + 1, updated_at = datetime(\'now\') WHERE user_id = ? AND resource_type = ? AND id <> ? AND is_default = 1').run(actor.id, input.resourceType, current.id);
         const result = db.prepare(`UPDATE provider_inventory_views SET name=?,provider_host_id=?,filters_json=?,columns_json=?,sort_json=?,is_default=?,version=version+1,updated_at=datetime('now')
           WHERE id=? AND user_id=? AND version=?`).run(input.name, input.providerHostId, JSON.stringify(input.filters), JSON.stringify(input.columns),
           JSON.stringify(input.sort), input.isDefault ? 1 : 0, current.id, actor.id, input.version);

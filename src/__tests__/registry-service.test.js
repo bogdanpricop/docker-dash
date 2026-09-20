@@ -259,6 +259,19 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
   // ── deleteTag ────────────────────────────────────────────────────────
 
   describe('deleteTag', () => {
+    it('refuses to delete a tag retargeted after a retention plan', async () => {
+      const id = makeRegistry();
+      const spy = jest.spyOn(registryService, '_apiCall').mockResolvedValue({
+        status: 200, headers: { 'docker-content-digest': 'sha256:new' },
+      });
+      try {
+        await expect(registryService.deleteTag(id, 'team/app', 'nightly', { expectedDigest: 'sha256:old' }))
+          .rejects.toThrow(/Manifest changed/);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][2].method).toBe('HEAD');
+      } finally { spy.mockRestore(); }
+    });
+
     it('resolves tag→digest via HEAD then DELETEs by digest', async () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockImplementation(async (reg, path, opts) => {

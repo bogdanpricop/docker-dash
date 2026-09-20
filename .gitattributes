@@ -1,3 +1,6 @@
 # Shell scripts execute inside Linux images and hosts. Keep their shebangs LF-only
 # even when the repository is edited from Windows.
 *.sh text eol=lf
+# Vendor files are verified byte-for-byte against the npm lockfile in CI.
+public/lib/** -text
+public/vendor/** -text

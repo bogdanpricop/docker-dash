@@ -1,7 +1,8 @@
-# Vendored CodeMirror
+# Vendored CodeMirror 6
 
-- CodeMirror 5.65.21, MIT license, installed from the official `codemirror` npm package (`version5` tag).
-- Included files: core JS/CSS, YAML mode, bracket matching/closing, and lint UI/YAML adapter.
-- This is a prebuilt browser distribution and adds no frontend build step.
+Source: `scripts/vendor/codemirror.mjs`. Reproduce with `npm ci && npm run build:vendor`.
+The committed bundle provides the YAML editor without a runtime frontend build.
+Versions are recorded in ../versions.json; bundled MIT licenses are in licenses.txt.
+Tab moves focus; use the editor's standard indentation commands to indent.
 
-Source: https://www.npmjs.com/package/codemirror
+Source: https://codemirror.net/

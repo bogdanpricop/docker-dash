@@ -9,6 +9,7 @@ const { getDb } = require('../db');
 const log = require('../utils/logger')('hosts');
 const { encryptSshConfig, decryptSshConfig } = require('../services/host-config-crypto');
 const asyncHandler = require('../utils/asyncHandler');
+const { normalizeFingerprint } = require('../utils/ssh-host-key');
 const connectionHealth = require('../services/connection-health');
 const hostPermissions = require('../services/host-permissions');
 const hostGroups = require('../services/host-groups');
@@ -141,6 +142,7 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
         result.sshUsername = ssh.username;
         result.sshAuthType = ssh.privateKey ? 'key' : 'password';
         result.sshDockerSocket = ssh.dockerSocket;
+        result.sshHostKeySha256 = ssh.hostKeySha256 || '';
       }
     } catch { /* SSH config may not exist for this host */ }
   }
@@ -199,6 +201,7 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
             sshHost: (cfg.sshConfig && cfg.sshConfig.host) || '',
             sshPort: (cfg.sshConfig && cfg.sshConfig.port) || 22,
             sshUser: (cfg.sshConfig && cfg.sshConfig.user) || '',
+            sshHostKeySha256: cfg.sshConfig?.hostKeySha256 || '',
             sshPasswordPresent: !!(cfg.sshConfig && cfg.sshConfig.password),
             sshKeyPresent: !!(cfg.sshConfig && cfg.sshConfig.privateKey),
           };
@@ -219,6 +222,14 @@ router.get('/:id', requireAuth, requireHostAccess('view', { param: 'id' }), asyn
             hostKeySha256: cfg.hostKeySha256 || '',
           };
           break;
+      }
+      if (result.daemonConfig) result.daemonConfig.caCertPresent = !!cfg?.caCert;
+      if (cfg?.sshConfig && ['proxmox', 'vsphere'].includes(host.daemon_type)) {
+        Object.assign(result.daemonConfig, {
+          sshHost: cfg.sshConfig.host || '', sshPort: cfg.sshConfig.port || 22,
+          sshUser: cfg.sshConfig.user || '', sshHostKeySha256: cfg.sshConfig.hostKeySha256 || '',
+          sshPasswordPresent: !!cfg.sshConfig.password, sshKeyPresent: !!cfg.sshConfig.privateKey,
+        });
       }
     } catch { /* config unreadable — leave out */ }
   }
@@ -258,6 +269,7 @@ const _NON_DOCKER_TYPES = new Set(['incus', 'lxd', 'proxmox', 'kubernetes', 'nom
 // encryptDaemonConfig produces an `enc:` prefixed blob using AES-256-GCM.
 // Incus module handles both incus + lxd; the rest each own their own.
 function _encryptDaemonConfig(daemonType, cfg) {
+  require('../utils/provider-tls').validateProviderConfig(daemonType, cfg);
   switch (daemonType) {
     case 'incus':
     case 'lxd':
@@ -280,7 +292,7 @@ function _encryptDaemonConfig(daemonType, cfg) {
 // Add new host
 router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
   const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
-            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
+            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket, sshHostKeySha256,
             daemonType, daemonConfig } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Name is required' });
@@ -292,6 +304,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(asyn
       if (!daemonConfig || typeof daemonConfig !== 'object') {
         return res.status(400).json({ error: 'daemonConfig object is required for non-Docker hosts' });
       }
+      if (daemonConfig.sshConfig) normalizeFingerprint(daemonConfig.sshConfig.hostKeySha256);
       if (daemonType === 'xen') {
         try { require('../services/xen').createClient(daemonConfig); }
         catch (err) { return res.status(400).json({ error: err.message }); }
@@ -336,6 +349,7 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(asyn
     let sshConfig = null;
     if (connectionType === 'ssh') {
       sshConfig = encryptSshConfig({
+        hostKeySha256: normalizeFingerprint(sshHostKeySha256),
         host: sshHost,
         port: sshPort || 22,
         username: sshUsername,
@@ -382,7 +396,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
     if (!existing) return res.status(404).json({ error: 'Host not found' });
 
     const { name, connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
-            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket,
+            sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshDockerSocket, sshHostKeySha256,
             isActive, environment, daemonType: _daemonType, daemonConfig } = req.body;
 
     // v8.9.11-alpha.6 — non-Docker update path.
@@ -406,7 +420,7 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
           case 'vsphere': currentCfg = require('../services/vsphere').decryptDaemonConfig(existing.daemon_config); break;
           case 'xen': currentCfg = require('../services/xen').decryptDaemonConfig(existing.daemon_config); break;
         }
-      } catch { currentCfg = {}; }
+      } catch { return res.status(409).json({ error: 'Stored provider configuration cannot be decrypted; update refused to preserve credentials' }); }
 
       // Switching Xen management planes must not carry an XO token into an
       // XAPI/raw config (or retain an old dom0 password). Start a clean config
@@ -418,8 +432,19 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
       for (const [k, v] of Object.entries(daemonConfig)) {
         if (v === undefined) continue;
         if (typeof v === 'string' && v === '') continue; // keep existing secret
-        merged[k] = v;
+        if (k === 'sshConfig' && v && typeof v === 'object' && !Array.isArray(v)) {
+          merged.sshConfig = { ...currentCfg.sshConfig };
+          for (const [field, value] of Object.entries(v)) {
+            if (value !== undefined && value !== '') merged.sshConfig[field] = value;
+          }
+          if (v.privateKey) delete merged.sshConfig.password;
+          else if (v.password) {
+            delete merged.sshConfig.privateKey;
+            delete merged.sshConfig.passphrase;
+          }
+        } else merged[k] = v;
       }
+      if (merged.sshConfig) normalizeFingerprint(merged.sshConfig.hostKeySha256);
       if (existing.daemon_type === 'xen') {
         try { require('../services/xen').createClient(merged); }
         catch (err) { return res.status(400).json({ error: err.message }); }
@@ -453,13 +478,15 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
       if (!SOCKET_RE.test(effectiveDockerSocketPut)) {
         return res.status(400).json({ error: 'Invalid dockerSocket path' });
       }
+      const stored = decryptSshConfig(existing.ssh_config) || {};
       sshConfig = encryptSshConfig({
         host: sshHost,
         port: sshPort || 22,
-        username: sshUsername,
-        password: sshPassword || undefined,
-        privateKey: sshPrivateKey || undefined,
-        passphrase: sshPassphrase || undefined,
+        username: sshUsername || stored.username,
+        hostKeySha256: normalizeFingerprint(sshHostKeySha256 === undefined ? stored.hostKeySha256 : sshHostKeySha256),
+        password: sshPassword || (sshPrivateKey ? undefined : stored.password),
+        privateKey: sshPrivateKey || (sshPassword ? undefined : stored.privateKey),
+        passphrase: sshPassphrase || stored.passphrase,
         dockerSocket: effectiveDockerSocketPut,
       });
     }
@@ -556,13 +583,16 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler
 // given and the submitted field is blank, mirroring test-non-docker.
 router.post('/test-ssh', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const { hostId } = req.body || {};
+  let daemonType = req.body?.daemonType || 'vsphere';
   let sshConfig = (req.body && req.body.sshConfig) || {};
   if (typeof sshConfig !== 'object') return res.status(400).json({ ok: false, error: 'sshConfig is required' });
   if (hostId) {
     try {
       const existing = getDb().prepare('SELECT daemon_type, daemon_config FROM docker_hosts WHERE id = ?').get(hostId);
-      if (existing && existing.daemon_type === 'vsphere' && existing.daemon_config) {
-        const stored = (require('../services/vsphere').decryptDaemonConfig(existing.daemon_config).sshConfig) || {};
+      if (existing && ['vsphere', 'proxmox'].includes(existing.daemon_type) && existing.daemon_config) {
+        daemonType = existing.daemon_type;
+        const provider = daemonType === 'proxmox' ? require('../services/proxmox') : require('../services/vsphere');
+        const stored = (provider.decryptDaemonConfig(existing.daemon_config).sshConfig) || {};
         const merged = { ...stored };
         for (const [k, v] of Object.entries(sshConfig)) {
           if (v === undefined) continue;
@@ -574,7 +604,10 @@ router.post('/test-ssh', requireAuth, requireRole('admin'), asyncHandler(async (
     } catch { /* fall back to submitted */ }
   }
   try {
-    const result = await require('../services/vsphere-ssh').testSsh(sshConfig);
+    if (!['vsphere', 'proxmox'].includes(daemonType)) return res.status(400).json({ ok: false, error: 'Unsupported SSH provider' });
+    const result = daemonType === 'proxmox'
+      ? await require('../services/ssh-deploy').testConnection({ targetType: 'proxmox', connection: sshConfig })
+      : await require('../services/vsphere-ssh').testSsh(sshConfig);
     res.json(result);
   } catch (err) {
     res.json({ ok: false, error: err.message });
@@ -618,7 +651,7 @@ router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(
         }
         daemonConfig = merged;
       }
-    } catch { /* fall back to the submitted config as-is */ }
+    } catch { return res.status(409).json({ ok: false, error: 'Stored provider configuration cannot be decrypted' }); }
   }
 
   try {
@@ -702,18 +735,22 @@ router.post('/test-non-docker', requireAuth, requireRole('admin'), asyncHandler(
 // Test connection
 router.post('/test', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
   const { connectionType, socketPath, host, port, tlsCa, tlsCert, tlsKey,
-          sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase } = req.body;
+          sshHost, sshPort, sshUsername, sshPassword, sshPrivateKey, sshPassphrase, sshHostKeySha256 } = req.body;
 
   if (connectionType === 'ssh') {
     // Test SSH connection
     const sshTunnelService = require('../services/ssh-tunnel');
+    const existing = req.body.hostId
+      ? getDb().prepare('SELECT ssh_config FROM docker_hosts WHERE id = ?').get(req.body.hostId) : null;
+    const stored = existing ? decryptSshConfig(existing.ssh_config) || {} : {};
     const result = await sshTunnelService.testConnection({
       host: sshHost,
+      hostKeySha256: normalizeFingerprint(sshHostKeySha256),
       port: sshPort || 22,
       username: sshUsername,
-      password: sshPassword,
-      privateKey: sshPrivateKey,
-      passphrase: sshPassphrase,
+      password: sshPassword || (sshPrivateKey ? undefined : stored.password),
+      privateKey: sshPrivateKey || (sshPassword ? undefined : stored.privateKey),
+      passphrase: sshPassphrase || stored.passphrase,
     });
     return res.json(result);
   }

@@ -1,0 +1,137 @@
+{
+  "date": "2026-09-20",
+  "host": "192.168.13.20",
+  "controllerImage": "sha256:48be023784e80e1a27dc54ff8e52ba7f17c1f744b2f5d0e7021bde723f5b3a7f",
+  "script": "scripts/smoke-scanner-image.js",
+  "controllerRemoved": true,
+  "scoutAbsent": true,
+  "results": [
+    {
+      "scanner": "trivy",
+      "sha256": "d8cb4257ac73dcb262def30c2bbad7303a5b7d55059693288c4f840cd73a3874",
+      "version": "Version: 0.74.0+dd.1"
+    },
+    {
+      "scanner": "grype",
+      "sha256": "91a46ba37aa0fe5b40fd619adc7d450a8d8d942c3f935d0771aa54b00e542542",
+      "version": "Application:         grype\nVersion:             0.119.0+dd.1\nBuildDate:           [not provided]\nGitCommit:           b6f5194537747ee7f705f4113069ac9eb269919f\nGitDescription:      v0.119.0-dependency-security-patch\nPlatform:            linux/amd64\nGoVersion:           go1.27.1\nCompiler:            gc\nSyft Version:        v1.52.0\nSupported DB Schema: 6"
+    },
+    {
+      "scanner": "docker-cli",
+      "sha256": "7e54c86884f89d4e08881648a25c2abbce0e206231974990ce8c49e91a84d0c9",
+      "version": "Docker version 29.7.2+dd.1, build a7dcaa6fdb6ed04aacbfdc76357fdae01605609e"
+    },
+    {
+      "scanner": "trivy",
+      "image": "sha256:48be023784e80e1a27dc54ff8e52ba7f17c1f744b2f5d0e7021bde723f5b3a7f",
+      "findings": [
+        {
+          "id": "CVE-2026-53495",
+          "package": "github.com/containerd/containerd/v2",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-41567",
+          "package": "github.com/docker/docker",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-42306",
+          "package": "github.com/docker/docker",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-33997",
+          "package": "github.com/docker/docker",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-41568",
+          "package": "github.com/docker/docker",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    {
+      "scanner": "grype",
+      "image": "sha256:fa4b830f0f36a4d2e66f9d6478c7892a1e9942b8a19b09d7fe7e28b057caab76",
+      "findings": [
+        {
+          "id": "GO-2026-4887",
+          "package": "github.com/docker/docker",
+          "severity": "High"
+        },
+        {
+          "id": "GHSA-2v4p-qf9q-27wj",
+          "package": "google.golang.org/grpc",
+          "severity": "High"
+        },
+        {
+          "id": "GHSA-2v4p-qf9q-27wj",
+          "package": "google.golang.org/grpc",
+          "severity": "High"
+        },
+        {
+          "id": "CVE-2026-85091",
+          "package": "zlib",
+          "severity": "High"
+        },
+        {
+          "id": "GHSA-pxq6-2prw-chj9",
+          "package": "github.com/docker/docker",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox-binsh",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "ssl_client",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2026-58055",
+          "package": "nghttp2-libs",
+          "severity": "Medium"
+        },
+        {
+          "id": "GHSA-7jxh-36q5-gcqv",
+          "package": "github.com/containerd/containerd/v2",
+          "severity": "Medium"
+        }
+      ]
+    }
+  ]
+}

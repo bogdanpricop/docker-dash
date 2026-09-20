@@ -123,6 +123,8 @@ class AuthService {
   _provisionLdapUser(db, ldapUser) {
     const existing = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(ldapUser.username);
     if (existing) {
+      // A directory account must never take over a local account with the same name.
+      if (existing.auth_source !== 'ldap') throw new Error('Username belongs to a local account');
       // Update email/displayName if changed
       db.prepare("UPDATE users SET display_name = ?, email = ?, auth_source = 'ldap' WHERE id = ?")
         .run(ldapUser.displayName, ldapUser.email, existing.id);
@@ -141,6 +143,9 @@ class AuthService {
   }
 
   async login(username, password, ip, userAgent) {
+    if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
+      return { error: 'Invalid credentials' };
+    }
     const db = getDb();
 
     // Check rate limiting
@@ -149,6 +154,7 @@ class AuthService {
       return { error: 'Too many attempts. Try again later.', locked: true };
     }
 
+    let ldapVerified = false;
     let user = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
     if (!user) {
       // Try LDAP authentication if configured
@@ -156,6 +162,7 @@ class AuthService {
       if (ldapUser) {
         // Provision or update local user record for LDAP user
         user = this._provisionLdapUser(db, ldapUser);
+        ldapVerified = true;
       }
       if (!user) {
         // FIX #18: Run dummy bcrypt compare to prevent user-enumeration via timing side-channel.
@@ -175,7 +182,11 @@ class AuthService {
       return { error: 'Account is locked. Try again later.' };
     }
 
-    const valid = await bcrypt.compare(password, user.password_hash);
+    // LDAP accounts have deliberately unusable local hashes. Revalidate with
+    // the directory on every login so password/group revocations take effect.
+    const valid = user.auth_source === 'ldap'
+      ? ldapVerified || !!(await this._tryLdapLogin(username, password))
+      : await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       const fails = user.failed_attempts + 1;
       if (fails >= config.security.lockoutAttempts) {

@@ -54,8 +54,14 @@ Examples already in `plans/` (gitignored, but referenced by CHANGELOG):
 
 ## Operational conventions
 
+- **Audit checkpoints:** the user authorized periodic commit/push and deployments
+  to LAN and VPS during the ongoing audit (2026-09-20). Use tested milestones,
+  preserve environment/encryption keys, take a private database backup and verify
+  the running version/image after each rollout. Do not infer permission to disable
+  public registry security gates or to restart/reconfigure the Docker daemon.
+
 - **Port:** `8101` (HTTP) — referenced in `.env.example`, `docker-compose.yml`, README. Do NOT use `3456` (legacy from v5.x docs that may still appear).
-- **Default admin:** `admin` / `admin` (forced password change on first login). `c#12` is the local dev override.
+- **Default admin:** `admin` / `admin` (forced password change on first login). Keep local development overrides only in the untracked `.env` file.
 - **Test runner:** `npm test` runs Jest with `--forceExit`. CI lint is enforced as of v7.7.0 — fails on any warning.
 - **Deploy targets:** local (Docker Desktop), LAN (`192.168.13.20`, user `localadmin-a`), public VPS (`89.37.212.66`, user `root`). Both remotes use SSH key auth (no password). See [`memory/server_deploy.md`](C:/Users/bogdan.pricop/.claude/projects/c--Users-bogdan-pricop-OneDrive---All4Labels-Documents-TypeScript-docker-dash/memory/server_deploy.md) for the full sequence.
 - **Build target:** ALWAYS pass `--target production` to `docker build`. Buildkit otherwise tries the `development` stage in parallel and fails on `npm install` if dev-deps registry is unreachable.

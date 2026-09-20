@@ -19,7 +19,7 @@
 Docker Dash is a different shape of tool. It deliberately covers ground Dockge intentionally leaves out:
 
 - Multi-host management (TCP+TLS, SSH tunnel, Docker Desktop, NAS auto-detection for Synology/Unraid/TrueNAS/QNAP/OMV).
-- Vulnerability scanning with Trivy + Grype + Docker Scout, Safe-Pull pipelines, deployment history.
+- Vulnerability scanning with Trivy + Grype, Safe-Pull pipelines, deployment history. [Docker Scout is temporarily excluded for security reasons](../audits/2026-09-20-scout-exclusion.md).
 - Container Remediation Wizard turning audit findings into compose patches with auto-rollback.
 - CIS Docker Benchmark with 18 automated checks and remediation guidance.
 - Hash-chained immutable audit log with CSV/JSON/Syslog export, plus AI natural-language audit search (BYOK, opt-in).
@@ -44,7 +44,7 @@ Docker Dash is MIT. Dockge is Apache 2.0. Both are permissive, both allow commer
 
 | | Docker Dash | Dockge |
 |---|---|---|
-| Image size | ~180 MB (includes Trivy + Grype + Scout binaries) | ~30–50 MB |
+| Image size | Varies by build/platform; includes Trivy + Grype | ~30–50 MB |
 | RAM idle | ~50 MB | ~30–50 MB |
 | Default port | 8101 | 5001 |
 | Build step | None (vanilla JS, served as-is) | Vite + Svelte build |

@@ -1008,7 +1008,7 @@ router.post('/secrets-wizard/generate-script', requireAuth, requireRole('admin')
 });
 
 // POST /secrets-wizard/deploy-remote — upload + execute script on a remote SSH host
-router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const crypto = require('crypto');
     const { hostId, appName = 'myapp', script, useSudo = true } = req.body;
@@ -1027,8 +1027,6 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
 
     // FIX #6.3 — compute scriptSha256 for audit log
     const scriptSha256 = crypto.createHash('sha256').update(script).digest('hex');
-    const scriptPreviewFirst = script.slice(0, 200);
-    const scriptPreviewLast = script.length > 200 ? script.slice(-200) : '';
 
     // FIX #6.4 — scan for suspicious shell patterns
     const SUSPICIOUS_PATTERNS = [/\$\(/, /`/, /\beval\b/, /curl\s+[^|]+\|\s*sh/, /wget\s+[^|]+\|\s*sh/];
@@ -1056,13 +1054,17 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
     }
 
     let sshConfig;
-    try { sshConfig = JSON.parse(host.ssh_config || '{}'); }
+    try { sshConfig = require('../services/host-config-crypto').decryptSshConfig(host.ssh_config) || {}; }
     catch { return res.status(400).json({ error: 'Invalid SSH configuration' }); }
     if (!sshConfig.host || !sshConfig.username) return res.status(400).json({ error: 'SSH host/username missing' });
 
+    let identity;
+    try { identity = require('../utils/ssh-host-key').hostKeyOptions(sshConfig); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const { Client } = require('ssh2');
     const client = new Client();
     const connectOpts = {
+      ...identity,
       host: sshConfig.host,
       port: sshConfig.port || 22,
       username: sshConfig.username,
@@ -1077,7 +1079,7 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
       return res.status(400).json({ error: 'SSH host has no authentication configured' });
     }
 
-    const remotePath = '/tmp/docker-dash-secrets-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.sh';
+    const remotePath = '/tmp/docker-dash-secrets-' + crypto.randomBytes(16).toString('hex') + '.sh';
 
     const result = await new Promise((resolve, reject) => {
       let output = '';
@@ -1087,15 +1089,23 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
         client.sftp((err, sftp) => {
           if (err) { clearTimeout(timeout); client.end(); return reject(new Error('SFTP init failed: ' + err.message)); }
 
-          const stream = sftp.createWriteStream(remotePath, { mode: 0o755 });
+          const stream = sftp.createWriteStream(remotePath, { mode: 0o600, flags: 'wx' });
           stream.on('error', (e) => { clearTimeout(timeout); client.end(); reject(new Error('SFTP write failed: ' + e.message)); });
           stream.on('close', () => {
-            // chmod + execute
+            // Execute the private file through bash; executable mode is unnecessary.
             const execCmd = (useSudo ? 'sudo -n bash ' : 'bash ') + remotePath + ' 2>&1; RC=$?; rm -f ' + remotePath + '; exit $RC';
             client.exec(execCmd, { pty: false }, (err2, ch) => {
               if (err2) { clearTimeout(timeout); client.end(); return reject(new Error('exec failed: ' + err2.message)); }
-              ch.on('data', (d) => { output += d.toString(); });
-              ch.stderr.on('data', (d) => { output += d.toString(); });
+              let outputBytes = 0;
+              const append = d => {
+                outputBytes += d.length;
+                if (outputBytes > 1024 * 1024) {
+                  clearTimeout(timeout); client.end(); reject(new Error('Remote output exceeds 1 MiB')); return;
+                }
+                output += d.toString();
+              };
+              ch.on('data', append);
+              ch.stderr.on('data', append);
               ch.on('close', (code) => {
                 clearTimeout(timeout);
                 client.end();
@@ -1107,7 +1117,7 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
         });
       });
 
-      client.on('error', (e) => { clearTimeout(timeout); reject(e); });
+      client.on('error', (e) => { clearTimeout(timeout); client.end(); reject(e); });
       client.connect(connectOpts);
     });
 
@@ -1120,8 +1130,6 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
         useSudo,
         outputLen: result.output.length,
         scriptSha256,
-        scriptPreviewFirst,
-        scriptPreviewLast,
         scriptWarnings,
       },
       ip: getClientIp(req),
