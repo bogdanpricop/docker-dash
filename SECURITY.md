@@ -7,6 +7,16 @@ clarification remain open; the candidate is not publicly published.
 
 ## OIDC browser binding (source checkpoint, not in the existing candidate)
 
+The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
+upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests
+run per process, without a waiting queue. TLS certificates remain verified with
+TLS 1.2 minimum. Redirects, compressed bodies, non-200 responses and non-object JSON
+are refused. Discovery must match the configured issuer and contain valid HTTPS
+endpoints. Discovery/JWKS misses share one in-flight request per issuer and cache
+only validated results. This is a per-request resource bound, not a full-login
+deadline or a restriction to public destination IPs; private identity providers
+remain supported through the configured trust store.
+
 The [personal API key follow-up](docs/audits/2026-09-20-api-key-security.md) adds
 migration 182. Changes to passwords, account activation, authentication source or
 external identity revoke personal keys. Inactive and legacy accounts are backfilled;

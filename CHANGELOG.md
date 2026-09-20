@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Bound OIDC HTTPS responses to 10 seconds and 1 MiB, with eight concurrent
+  requests per process and no pending transport queue. Refuse redirects, encoded
+  bodies, invalid JSON and unsuccessful statuses; preserve certificate verification.
+  Validate discovery issuer/endpoints and JWKS before caching, and coalesce concurrent
+  discovery/key loads. [Verification and limits](docs/audits/2026-09-20-oidc-transport.md).
+
 - Harden personal API keys: reject malformed expiry/permissions, enforce required
   password changes and UTC local password age, and require user authentication for
   key management. Creation and its audit commit together; revocation survives an

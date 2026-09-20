@@ -460,40 +460,8 @@ router.post('/reset-password-token',
 
 // ─── OIDC / OAuth Flow ────────────────────────────────────
 
-const https = require('https');
 const crypto = require('crypto');
-
-/** Fetch JSON from a URL (for OIDC discovery, token exchange, userinfo) */
-function _oidcFetch(url, options = {}) {
-  // FIX #11: Only allow HTTPS for OIDC endpoints
-  if (!url.startsWith('https://')) {
-    return Promise.reject(new Error(`OIDC fetch rejected: only HTTPS URLs are allowed (got: ${url})`));
-  }
-  return new Promise((resolve, reject) => {
-    const mod = https;
-    const urlObj = new URL(url);
-    const reqOpts = {
-      hostname: urlObj.hostname,
-      port: urlObj.port,
-      path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: { 'Accept': 'application/json', ...(options.headers || {}) },
-      timeout: 10000,
-    };
-    const req = mod.request(reqOpts, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch { resolve({ status: res.statusCode, body: data }); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('OIDC request timeout')); });
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
+const { fetchJson: _oidcFetch, endpoint: _oidcEndpoint } = require('../utils/oidc-http');
 
 // ─── OIDC JWT Signature Verification (FIX #11) ──────────────────────────────
 
@@ -518,18 +486,37 @@ function __fetch(url, opts) {
   return (_oidcFetchOverride || _oidcFetch)(url, opts);
 }
 
-async function _getDiscovery(issuer, { force = false } = {}) {
+const _discoveryPending = new Map(), _jwksPending = new Map();
+function _singleFlight(pending, issuer, load) {
+  if (pending.has(issuer)) return pending.get(issuer);
+  const promise = Promise.resolve().then(load).finally(() => {
+    if (pending.get(issuer) === promise) pending.delete(issuer);
+  });
+  pending.set(issuer, promise); return promise;
+}
+function _getDiscovery(issuer, options) {
+  return _singleFlight(_discoveryPending, issuer, () => _loadDiscovery(issuer, options));
+}
+function _getJwks(issuer, options) {
+  return _singleFlight(_jwksPending, issuer, () => _loadJwks(issuer, options));
+}
+
+async function _loadDiscovery(issuer, { force = false } = {}) {
   if (!force) {
     const cached = _discoCache.get(issuer);
     if (cached && (Date.now() - cached.fetchedAt) < DISCO_CACHE_TTL_MS) return cached.body;
   }
   const res = await __fetch(`${issuer}/.well-known/openid-configuration`);
-  if (!res.body) throw new Error('OIDC discovery returned no body');
+  const body = res.body;
+  if (res.status !== 200 || !body || typeof body !== 'object' || Array.isArray(body) || body.issuer !== issuer) throw new Error('Invalid OIDC discovery response');
+  if (_oidcEndpoint(issuer).search) throw new Error('Invalid OIDC issuer');
+  for (const key of ['authorization_endpoint','token_endpoint','jwks_uri']) _oidcEndpoint(body[key]);
+  if (body.userinfo_endpoint !== undefined) _oidcEndpoint(body.userinfo_endpoint);
   _discoCache.set(issuer, { body: res.body, fetchedAt: Date.now() });
   return res.body;
 }
 
-async function _getJwks(issuer, { force = false } = {}) {
+async function _loadJwks(issuer, { force = false } = {}) {
   if (!force) {
     const cached = _jwksCache.get(issuer);
     if (cached && (Date.now() - cached.fetchedAt) < JWKS_CACHE_TTL_MS) return cached.jwks;
@@ -548,7 +535,8 @@ async function _getJwks(issuer, { force = false } = {}) {
   const disco = await _getDiscovery(issuer);
   if (!disco.jwks_uri) throw new Error('OIDC discovery missing jwks_uri');
   const jwksRes = await __fetch(disco.jwks_uri);
-  if (!jwksRes.body?.keys) throw new Error('Invalid JWKS response');
+  if (jwksRes.status !== 200 || !Array.isArray(jwksRes.body?.keys) || !jwksRes.body.keys.length || jwksRes.body.keys.length > 100
+    || !jwksRes.body.keys.every(key => key && typeof key === 'object' && !Array.isArray(key))) throw new Error('Invalid JWKS response');
   _jwksCache.set(issuer, { jwks: jwksRes.body.keys, fetchedAt: Date.now() });
   return jwksRes.body.keys;
 }
@@ -1068,6 +1056,6 @@ module.exports._oidcCacheInternals = {
   verifyIdToken: _verifyIdToken,
   setFetcher(fn) { _oidcFetchOverride = fn; },
   resetFetcher() { _oidcFetchOverride = null; },
-  clear() { _discoCache.clear(); _jwksCache.clear(); _jwksLastForcedRefresh.clear(); },
+  clear() { _discoCache.clear(); _jwksCache.clear(); _jwksLastForcedRefresh.clear(); _discoveryPending.clear(); _jwksPending.clear(); },
   cooldownMs: JWKS_FORCE_REFRESH_COOLDOWN_MS,
 };

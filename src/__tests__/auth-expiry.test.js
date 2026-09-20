@@ -4,6 +4,7 @@ jest.mock('../services/cluster', () => ({ rateLimitTick: jest.fn(async () => ({ 
 const { getDb, closeDb } = require('../db'), auth = require('../services/auth');
 const { sha256, encrypt, decrypt } = require('../utils/crypto'), totp = require('../utils/totp');
 const config = require('../config'), express = require('express'), request = require('supertest');
+const originalIssuer=config.oidc.issuerUrl;
 const router = require('../routes/auth'), app = express(); app.use(express.json()); app.use(require('cookie-parser')()); app.use('/api/auth', router);
 let db, userId;
 const secret = 'JBSWY3DPEHPK3PXP', recovery = 'fixture-recovery';
@@ -15,16 +16,18 @@ beforeAll(() => {
   db.exec('CREATE TABLE IF NOT EXISTS oidc_states(state TEXT PRIMARY KEY,expires_at TEXT NOT NULL)');
 });
 beforeEach(() => {
+  config.oidc.issuerUrl='https://identity.example.test';
   db.exec('DELETE FROM sessions; DELETE FROM mfa_tokens; DELETE FROM login_attempts; DELETE FROM oidc_states');
   db.prepare('UPDATE users SET recovery_codes=?,totp_last_counter=NULL,mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(encrypt(JSON.stringify([recovery])),userId);
 });
 afterEach(() => jest.restoreAllMocks());
-afterAll(() => closeDb());
+afterAll(() => { config.oidc.issuerUrl=originalIssuer;closeDb(); });
 function session(expiry) { const value = require('crypto').randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256(value),userId,expiry); return value; }
 function mfa(expiry) { const value = require('crypto').randomBytes(32).toString('hex'); db.prepare('INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256(value),userId,expiry); return value; }
 async function oidcFlow() {
   router._oidcCacheInternals.clear();
-  router._oidcCacheInternals.setFetcher(async () => ({ status: 200, body: { authorization_endpoint: 'https://identity.example.test/authorize' } }));
+  const issuer=config.oidc.issuerUrl.replace(/\/$/,'');
+  router._oidcCacheInternals.setFetcher(async () => ({ status: 200, body: { issuer, authorization_endpoint: issuer+'/authorize', token_endpoint: issuer+'/token', jwks_uri: issuer+'/keys' } }));
   const response = await request(app).get('/api/auth/oidc/login'); expect(response.status).toBe(200);
   router._oidcCacheInternals.clear();
   return { state: new URL(response.body.url).searchParams.get('state'), cookie: response.headers['set-cookie'][0].split(';')[0] };

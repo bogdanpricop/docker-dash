@@ -135,6 +135,10 @@ async function main() {
     await mfaReplayChecks(auth, db);
     await require('./oidc-flow-smoke.cjs')(endpoint, db, checks);
     await require('./api-key-smoke.cjs')(db, checks);
+    const transport = await require('node:util').promisify(require('node:child_process').execFile)(process.execPath,
+      ['/app/scripts/fixtures/oidc-transport-smoke.cjs'], { timeout:20000, env:{...process.env,
+        NODE_EXTRA_CA_CERTS:'/app/src/__tests__/fixtures/provider-tls/ca.pem'} });
+    checks.push(...JSON.parse(transport.stdout.trim()).checks);
     const provisionCode = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
       process.stdin.once('data',()=>{const user=auth.findOrCreateSsoUser('native-racing-identity','viewer','',{
         identity:{source:'oidc',issuer:'https://identity.example.test',subject:'native-racing-subject'}});
