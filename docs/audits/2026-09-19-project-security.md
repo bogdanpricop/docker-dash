@@ -1,16 +1,18 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Stare actuala: [checkpoint-ul 8.96.7](2026-09-20-deployment-8.96.7.md) este urcat pe Git si instalat pe LAN/VPS,
-cu Docker healthy si HTTP 200 / versiunea 8.96.7. Include
+Stare actuala: [checkpoint-ul 8.96.8](2026-09-20-deployment-8.96.8.md) este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP 200 / versiunea 8.96.8. Include
+[durata cotelor HTTP](2026-09-20-quota-lifecycle.md),
+[protejarea recuperarilor la prune](2026-09-20-prune-recovery.md),
 [corectiile HTTP/proxy si cote](2026-09-20-http-trust-and-quotas.md),
 [lease-ul HA](2026-09-20-ha-lease.md), health independent de cota API,
 [protectia NET_RAW](2026-09-20-egress-net-raw.md),
 [pastrarea filtrelor suprapuse](2026-09-20-egress-overlap.md),
 [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md) si
 [helper-ul preconstruit cu runtime redus](2026-09-20-egress-helper-runtime.md).
-361 suite / 4.736 teste trecute, un test live omis; lint si npm audit trecute,
+362 suite / 4.762 teste trecute, un test live omis; lint si npm audit trecute,
 zero dependente directe npm outdated. Help si i18n au trecut la validarile anterioare.
-Imaginea exacta a trecut canary-uri Compose, smoke Linux, 10 scenarii HA si 8 HTTP
+Imaginea exacta a trecut canary-uri Compose, smoke Linux, 10 scenarii HA, 12 HTTP si 5 prune
 pe fiecare host. Aplicatiile live raman standalone; HA nu este activat in productie.
 Backup-uri consistente verificate; cheile, configuratia si datele sunt pastrate.
 Helper-ul configurat este fixat la ID-ul verificat pe ambele daemone.
@@ -21,18 +23,17 @@ apk-tools si a dependintelor inutile, inclusiv zlib. Nicio exceptie noua sau
 prag dezactivat. Expunerea LAN 2375, IPv6/UDP, exceptiile private si celelalte
 limite egress raman deschise. Pool-urile de retea LAN sunt epuizate; daemonul
 nu a fost reconfigurat.
-Dovezi: [deploy 8.96.7](2026-09-20-deployment-8.96.7.md),
-[scanarea imaginii exacte](2026-09-20-image-8.96.7.json).
+Dovezi: [deploy 8.96.8](2026-09-20-deployment-8.96.8.md),
+[scanarea imaginii exacte](2026-09-20-image-8.96.8.json).
 Verificarea read-only a [binarelor instalate](2026-09-20-installed-scanner-artifacts.md)
 pe ambele hosturi leaga alertele de hash-urile si sursele analizate: dovezi de
 remediere gRPC si absenta codului daemon/OpenPGP pentru artefactele exacte.
 Constatarea zlib ramane deschisa; rapoartele brute si pragurile sunt pastrate.
-Corectii suplimentare in surse, inca neinstalate in aplicatiile live:
-[durata cotelor si traversarea routerelor](2026-09-20-quota-lifecycle.md) si
-[protejarea recuperarilor la prune](2026-09-20-prune-recovery.md).
-Ambele au probe pe fiecare host in resurse temporare. Corectiile HA si HTTP
-anterioare sunt deja incluse in 8.96.7; aplicatiile live raman standalone.
-Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
+Corectiile cotelor si recuperarilor sunt instalate in 8.96.8; aplicatiile live
+raman standalone. Prune extern si worker-ele vechi nu respecta noul protocol;
+pragurile de publicare/admitere raman active pentru constatarile imaginii.
+Checkpoint-urile anterioare: [8.96.7](2026-09-20-deployment-8.96.7.md), [8.96.6](2026-09-20-deployment-8.96.6.md),
+[8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;
 nu certifica securitatea completa.

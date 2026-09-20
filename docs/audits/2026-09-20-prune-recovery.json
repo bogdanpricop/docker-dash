@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "productionDeployed": false,
+  "productionDeployed": true,
   "validation": {
     "suites": 362,
     "passed": 4762,
@@ -61,5 +61,8 @@
     }
   ],
   "nativeScope": "Namespaced adapter, positive invocation-label filters; no production-wide prune",
-  "developmentFinding": "Multiple negative filters failed; replaced with one common label. Initial fixture-image cleanup removed untagged helper parent on VPS; exact helper restored and noprune enabled."
+  "developmentFinding": "Multiple negative filters failed; replaced with one common label. Initial fixture-image cleanup removed untagged helper parent on VPS; exact helper restored and noprune enabled.",
+  "deploymentEvidence": "2026-09-20-deployment-8.96.8.json",
+  "bundledImageCanaries": "2026-09-20-image-8.96.8.json",
+  "liveMode": "standalone"
 }

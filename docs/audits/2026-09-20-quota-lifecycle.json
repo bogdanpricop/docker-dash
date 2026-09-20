@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "productionDeployed": false,
+  "productionDeployed": true,
   "validation": {
     "suites": 361,
     "passed": 4742,
@@ -84,5 +84,8 @@
       "publishedPorts": false,
       "ownedResourcesRemoved": true
     }
-  }
+  },
+  "deploymentEvidence": "2026-09-20-deployment-8.96.8.json",
+  "bundledImageCanaries": "2026-09-20-image-8.96.8.json",
+  "liveMode": "standalone"
 }

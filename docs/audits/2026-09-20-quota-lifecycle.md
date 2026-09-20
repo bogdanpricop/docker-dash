@@ -1,7 +1,8 @@
 # Quota lifetime and router traversal
 
-Status: source corrected and verified; pending the next image/deployment checkpoint.
-The live LAN/VPS applications remain at the audited 8.96.7 image.
+Status: installed on LAN/VPS in the audited [8.96.8 deployment](2026-09-20-deployment-8.96.8.md).
+The [final-image probes](2026-09-20-image-8.96.8.json) verify bundled source hashes
+and repeat all twelve HTTP/Redis scenarios on each host.
 
 The standalone limiter previously removed timestamps older than one hour during
 its five-minute cleanup, regardless of the configured duration. For a two-hour
@@ -31,8 +32,8 @@ controller; they do not claim a two-hour real-time soak. Existing Redis pause,
 late completion, OOM, recovery and proxy-identity checks also passed.
 
 The controller base is the deployed 8.96.7 image. Listed source files were overlaid
-only in the disposable controller. These results do not claim that the live image
-contains this correction. Source hashes and results are in the
+only in the disposable controller. These original observations are separate from
+the subsequent bundled-image validation and deployment linked above. Source hashes and results are in the
 [JSON evidence](2026-09-20-quota-lifecycle.json). Test resources were removed.
 
 Remaining boundaries include process-restart quota resets, wall-clock changes,
@@ -44,4 +45,4 @@ This change does not alter proxy trust, configured quota values or Redis policy.
 Rezumat: ferestrele lungi nu mai pierd prematur istoricul, iar o cerere care trece
 prin mai multe routere consuma o singura unitate din acelasi limitator. Limitele
 specifice rutelor raman active. Corectia este testata pe ambele hosturi in
-containere temporare si va intra in urmatorul checkpoint de deploy.
+containere temporare si instalata prin checkpoint-ul 8.96.8.

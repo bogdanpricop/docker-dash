@@ -1,0 +1,97 @@
+{
+  "build": {
+    "tag": "docker-dash:8.96.8-audit-29c26d2",
+    "id": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+    "host": "192.168.13.20",
+    "revision": "29c26d2b248cbc57c580ed8df57b1d9744123064",
+    "version": "8.96.8",
+    "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5"
+  },
+  "deployments": [
+    {
+      "target": "lan",
+      "version": "8.96.8",
+      "revision": "29c26d2b248cbc57c580ed8df57b1d9744123064",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "containerId": "cc756b0c7b6584a8cd9d5c572d1eb9039a02662fe18a80c85ee18117432bb28e",
+      "at": "2026-09-20T06:48:40.096Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 5,
+      "hosts": 7,
+      "migration": "177_container_replacements.js",
+      "localDockerContainers": 148,
+      "backupDirectory": "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.8-29c26d2/backup",
+      "composeFiles": [
+        "/home/localadmin-a/docker-dash/docker-compose.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.3-9cfa369/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.4-ee84152/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.5-1edb02e/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.6-6ffc13d/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.7-cbd4dd5/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.8-29c26d2/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "integrity": "ok",
+        "bytes": 1735495680,
+        "mode": "0600",
+        "rss": 95223808
+      }
+    },
+    {
+      "target": "vps",
+      "version": "8.96.8",
+      "revision": "29c26d2b248cbc57c580ed8df57b1d9744123064",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "containerId": "d9efe4310a6cc2bd4464cd874d0838d328ed1ffbf3bed9da7e865ebe5253facd",
+      "at": "2026-09-20T06:47:02.698Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 2,
+      "hosts": 1,
+      "migration": "177_container_replacements.js",
+      "localDockerContainers": 89,
+      "backupDirectory": "/opt/docker-dash/checkpoints/8.96.8-29c26d2/backup",
+      "composeFiles": [
+        "/opt/docker-dash/docker-compose.yml",
+        "/opt/docker-dash/docker-compose.override.yml",
+        "/opt/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.3-9cfa369/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.4-ee84152/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.5-1edb02e/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.6-6ffc13d/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.7-cbd4dd5/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.8-29c26d2/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "integrity": "ok",
+        "bytes": 619614208,
+        "mode": "0600",
+        "rss": 69722112
+      }
+    }
+  ],
+  "externalHealth": [
+    {
+      "target": "lan",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.8",
+      "at": "2026-09-20T06:49:02.342Z"
+    },
+    {
+      "target": "vps",
+      "status": 200,
+      "health": "ok",
+      "version": "8.96.8",
+      "at": "2026-09-20T06:49:02.380Z"
+    }
+  ]
+}

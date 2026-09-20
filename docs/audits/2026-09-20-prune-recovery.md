@@ -1,7 +1,9 @@
 # Prune coordination and recovery preservation
 
-Status: corrected and tested in source; pending the next deployment checkpoint.
-Live LAN/VPS application containers remain at 8.96.7.
+Status: installed on LAN/VPS in the audited [8.96.8 deployment](2026-09-20-deployment-8.96.8.md).
+The [final-image probes](2026-09-20-image-8.96.8.json) verify five bundled service
+hashes and repeat the five prune scenarios on each host. No production-wide prune
+was used to validate the deployment.
 
 ## Findings and correction
 
@@ -86,4 +88,4 @@ Docker behavior references: [image prune](https://docs.docker.com/reference/cli/
 Rezumat: curatarea manuala, fleet si disk-pressure pastreaza rezervarile de
 recuperare si imaginea helper egress. Operatiile concurente sunt refuzate inainte
 de modificarea tintei. Un rezultat incert pastreaza rezervarea pentru verificare
-manuala. Corectia este testata, dar nu este instalata inca in aplicatiile live.
+manuala. Corectia este testata si instalata prin checkpoint-ul 8.96.8.
