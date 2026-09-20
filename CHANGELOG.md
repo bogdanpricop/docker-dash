@@ -2,7 +2,10 @@
 
 All notable changes to Docker Dash are documented here.
 
-## [Unreleased]
+## [8.96.9] - 2026-09-20 — Authentication and session lifecycle (deployment candidate)
+
+Private rollout candidate. Production deployment awaits the configured account-email
+URLs; known image findings still block public image publication.
 
 - Consume TOTP counters once across enrollment, login and privileged step-up,
   including concurrent processes. Migration 180 excludes pre-upgrade acceptance

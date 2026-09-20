@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.9', date: '2026-09-20', title: 'Authentication and session lifecycle', changes: [
+      { type: 'security', text: 'Account recovery uses the configured dashboard URL, bounded delivery and one-time redemption. Password changes and account deactivation revoke sessions, reset links and pending MFA challenges.' },
+      { type: 'security', text: 'Expired credentials are refused consistently. Login checks current account state after password verification; concurrent failures count toward lockout. WebSocket terminals and provider consoles stop forwarding after session revocation.' },
+      { type: 'security', text: 'Authenticator codes are accepted once across enrollment, login and privileged confirmation. MFA challenges allow five attempts and share an account cooldown across factor endpoints.' },
+      { type: 'improvement', text: 'Configure a reachable PUBLIC_URL before deployment. Pending MFA logins must restart after upgrade; enrolled authenticators with synchronized clocks may need up to 60 seconds for a fresh code. Known image findings remain documented.' },
+    ] },
     { version: '8.96.8', date: '2026-09-20', title: 'Cleanup recovery and quota lifetime', changes: [
       { type: 'security', text: 'Manual, fleet and disk-pressure cleanup coordinate with container replacements and egress recovery. Pending recovery blocks cleanup; the configured helper image is preserved while pruning.' },
       { type: 'fix', text: 'An uncertain cleanup result retains its reservation for operator review. Deleting an individual image no longer implicitly prunes untagged parent images.' },
