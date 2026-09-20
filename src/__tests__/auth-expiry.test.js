@@ -4,7 +4,7 @@ jest.mock('../services/cluster', () => ({ rateLimitTick: jest.fn(async () => ({ 
 const { getDb, closeDb } = require('../db'), auth = require('../services/auth');
 const { sha256, encrypt, decrypt } = require('../utils/crypto'), totp = require('../utils/totp');
 const config = require('../config'), express = require('express'), request = require('supertest');
-const router = require('../routes/auth'), app = express(); app.use(express.json()); app.use('/api/auth', router);
+const router = require('../routes/auth'), app = express(); app.use(express.json()); app.use(require('cookie-parser')()); app.use('/api/auth', router);
 let db, userId;
 const secret = 'JBSWY3DPEHPK3PXP', recovery = 'fixture-recovery';
 const expired = () => new Date(Date.now() - 1000).toISOString();
@@ -22,6 +22,13 @@ afterEach(() => jest.restoreAllMocks());
 afterAll(() => closeDb());
 function session(expiry) { const value = require('crypto').randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256(value),userId,expiry); return value; }
 function mfa(expiry) { const value = require('crypto').randomBytes(32).toString('hex'); db.prepare('INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256(value),userId,expiry); return value; }
+async function oidcFlow() {
+  router._oidcCacheInternals.clear();
+  router._oidcCacheInternals.setFetcher(async () => ({ status: 200, body: { authorization_endpoint: 'https://identity.example.test/authorize' } }));
+  const response = await request(app).get('/api/auth/oidc/login'); expect(response.status).toBe(200);
+  router._oidcCacheInternals.clear();
+  return { state: new URL(response.body.url).searchParams.get('state'), cookie: response.headers['set-cookie'][0].split(';')[0] };
+}
 
 test('a session expired earlier today is rejected by service and real HTTP authentication', async () => {
   const raw = session(expired());
@@ -59,11 +66,12 @@ test('cleanup removes expired and malformed sessions/MFA while retaining future 
 
 test('expired OIDC state is rejected before discovering provider endpoints', async () => {
   const prior = config.oidc.enabled; config.oidc.enabled = true;
+  const flow = await oidcFlow();
   const fetcher = jest.fn(async () => { throw new Error('Provider request should not happen'); });
   router._oidcCacheInternals.setFetcher(fetcher);
-  db.prepare('INSERT INTO oidc_states(state,expires_at) VALUES (?,?)').run('expired-fixture',expired());
+  db.prepare('UPDATE oidc_states SET expires_at=? WHERE state=?').run(expired(),flow.state);
   try {
-    const response = await request(app).get('/api/auth/oidc/callback?state=expired-fixture&code=fixture');
+    const response = await request(app).get('/api/auth/oidc/callback').query({ state: flow.state, code: 'fixture' }).set('Cookie',flow.cookie);
     expect(response.status).toBe(400); expect(response.text).toBe('Invalid or expired state parameter');
     expect(fetcher).not.toHaveBeenCalled();
   } finally { config.oidc.enabled = prior; router._oidcCacheInternals.resetFetcher(); }
@@ -108,12 +116,12 @@ test('windowed security alerts count actual production login timestamps and mixe
 
 test('OIDC state is consumed once before an asynchronous provider failure', async () => {
   const prior = config.oidc.enabled; config.oidc.enabled = true;
+  const flow = await oidcFlow();
   const fetcher = jest.fn(async () => { throw new Error('fixture provider failure'); });
   router._oidcCacheInternals.clear(); router._oidcCacheInternals.setFetcher(fetcher);
-  db.prepare('INSERT INTO oidc_states(state,expires_at) VALUES (?,?)').run('once-fixture',future());
   try {
-    expect((await request(app).get('/api/auth/oidc/callback?state=once-fixture&code=fixture')).status).toBe(500);
-    expect((await request(app).get('/api/auth/oidc/callback?state=once-fixture&code=fixture')).status).toBe(400);
+    expect((await request(app).get('/api/auth/oidc/callback').query({ state: flow.state, code: 'fixture' }).set('Cookie',flow.cookie)).status).toBe(500);
+    expect((await request(app).get('/api/auth/oidc/callback').query({ state: flow.state, code: 'fixture' }).set('Cookie',flow.cookie)).status).toBe(400);
     expect(fetcher).toHaveBeenCalledTimes(1);
   } finally { config.oidc.enabled = prior; router._oidcCacheInternals.resetFetcher(); router._oidcCacheInternals.clear(); }
 });

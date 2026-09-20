@@ -555,7 +555,8 @@ async function _getJwks(issuer, { force = false } = {}) {
  * Checks: signature, exp, nbf, iss, aud.
  * Returns the verified payload or throws with a descriptive message.
  */
-async function _verifyIdToken(idToken, issuer, clientId) {
+async function _verifyIdToken(idToken, issuer, clientId, expectedNonce) {
+  if (typeof idToken !== 'string' || idToken.length > 65536) throw new Error('Invalid ID token');
   const parts = idToken.split('.');
   if (parts.length !== 3) throw new Error('Malformed JWT: expected 3 parts');
 
@@ -608,11 +609,11 @@ async function _verifyIdToken(idToken, issuer, clientId) {
   // Verify claims
   const now = Math.floor(Date.now() / 1000);
 
-  if (payload.exp === undefined || now >= payload.exp) {
+  if (!Number.isFinite(payload.exp) || now >= payload.exp) {
     throw new Error(`JWT expired at ${payload.exp}, now=${now}`);
   }
 
-  if (payload.nbf !== undefined && now < payload.nbf) {
+  if (payload.nbf !== undefined && (!Number.isFinite(payload.nbf) || now < payload.nbf)) {
     throw new Error(`JWT not yet valid (nbf=${payload.nbf}, now=${now})`);
   }
 
@@ -624,6 +625,14 @@ async function _verifyIdToken(idToken, issuer, clientId) {
   if (!audList.includes(clientId)) {
     throw new Error(`JWT audience mismatch: "${clientId}" not in [${audList.join(', ')}]`);
   }
+
+  if ((audList.length > 1 && payload.azp !== clientId) || (payload.azp !== undefined && payload.azp !== clientId)) {
+    throw new Error('JWT authorized party mismatch');
+  }
+  if (!Number.isFinite(payload.iat) || payload.iat > now + 60 || typeof payload.sub !== 'string' || !payload.sub) {
+    throw new Error('JWT missing or invalid identity claims');
+  }
+  if (typeof expectedNonce !== 'string' || payload.nonce !== expectedNonce) throw new Error('JWT nonce mismatch');
 
   return payload;
 }
@@ -689,9 +698,27 @@ router.get('/oidc/enabled', (req, res) => {
   res.json({ enabled: config.oidc?.enabled || false });
 });
 
+// The browser holds the random PKCE verifier in an HttpOnly cookie. Separate
+// domain-separated HMACs bind state and nonce to this browser and configuration;
+// neither value exposes the verifier. Only state is stored server-side, where
+// its expiring row gives callbacks atomic single-use semantics.
+function _oidcFlow(req, verifier) {
+  const secure = !!(config.security.isStrict || config.session.secureCookie || req.secure);
+  const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
+  const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
+  const context = JSON.stringify([issuer, config.oidc.clientId, redirectUri]);
+  const derive = label => crypto.createHmac('sha256', verifier).update(label + ':' + context).digest('hex');
+  return {
+    issuer, redirectUri, state: derive('state'), nonce: derive('nonce'),
+    cookieName: secure ? '__Host-dd_oidc_flow' : 'dd_oidc_flow',
+    cookieOptions: { httpOnly: true, secure, sameSite: 'lax', path: '/' },
+  };
+}
+
 // OIDC: Initiate login — redirect to provider
 router.get('/oidc/login', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     if (!config.oidc?.enabled) return res.status(400).json({ error: 'OIDC is not enabled' });
 
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
@@ -700,8 +727,9 @@ router.get('/oidc/login', async (req, res) => {
       return res.status(500).json({ error: 'Failed to discover OIDC endpoints' });
     }
 
-    // Generate state parameter for CSRF protection
-    const state = crypto.randomBytes(16).toString('hex');
+    const verifier = crypto.randomBytes(32).toString('base64url');
+    const flow = _oidcFlow(req, verifier);
+    const state = flow.state;
 
     // Store state in a short-lived DB entry (5 min TTL)
     const db = getDb();
@@ -713,7 +741,8 @@ router.get('/oidc/login', async (req, res) => {
       )`);
     } catch { /* table may already exist */ }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    db.prepare('INSERT OR REPLACE INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
+    db.prepare("DELETE FROM oidc_states WHERE COALESCE(julianday(expires_at), 0) <= julianday('now')").run();
+    db.prepare('INSERT INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
 
     const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
     // If group-mapping is configured, ask the IdP to emit the groups claim
@@ -729,10 +758,16 @@ router.get('/oidc/login', async (req, res) => {
       response_type: 'code',
       scope,
       state,
+      nonce: flow.nonce,
+      code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'),
+      code_challenge_method: 'S256',
     });
 
-    const authUrl = `${disco.authorization_endpoint}?${params.toString()}`;
-    res.json({ url: authUrl });
+    const authUrl = new URL(disco.authorization_endpoint);
+    if (authUrl.protocol !== 'https:' || authUrl.username || authUrl.password) throw new Error('Invalid authorization endpoint');
+    for (const [key, value] of params) authUrl.searchParams.set(key, value);
+    res.cookie(flow.cookieName, verifier, { ...flow.cookieOptions, maxAge: 5 * 60 * 1000 });
+    res.json({ url: authUrl.toString() });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -741,16 +776,25 @@ router.get('/oidc/login', async (req, res) => {
 // OIDC: Callback — exchange code for tokens
 router.get('/oidc/callback', async (req, res) => {
   try {
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
     if (!config.oidc?.enabled) return res.status(400).send('OIDC is not enabled');
 
     const { code, state, error: authError } = req.query;
-    if (authError) return res.status(400).send(`OIDC error: ${authError}`);
-    if (!code || !state) return res.status(400).send('Missing code or state parameter');
+    const secure = !!(config.security.isStrict || config.session.secureCookie || req.secure);
+    const verifier = req.cookies?.[secure ? '__Host-dd_oidc_flow' : 'dd_oidc_flow'];
+    if (typeof state !== 'string' || !/^[a-f0-9]{64}$/.test(state) || typeof verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(verifier)) {
+      return res.status(400).send('Invalid or expired state parameter');
+    }
+    const flow = _oidcFlow(req, verifier);
+    if (!crypto.timingSafeEqual(Buffer.from(state), Buffer.from(flow.state))) return res.status(400).send('Invalid or expired state parameter');
+    if (authError === undefined && (typeof code !== 'string' || !code || code.length > 8192)) return res.status(400).send('Missing or invalid code parameter');
 
     // Validate state
     const db = getDb();
     const stateRow = db.prepare("DELETE FROM oidc_states WHERE state = ? AND julianday(expires_at) > julianday('now') RETURNING state").get(state);
     if (!stateRow) return res.status(400).send('Invalid or expired state parameter');
+    res.clearCookie(flow.cookieName, flow.cookieOptions);
+    if (authError !== undefined) return res.status(400).send('OIDC authorization failed');
 
     // Discover endpoints
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
@@ -766,35 +810,39 @@ router.get('/oidc/callback', async (req, res) => {
       client_secret: config.oidc.clientSecret,
       code,
       redirect_uri: redirectUri,
+      code_verifier: verifier,
     }).toString();
 
-    const tokenRes = await _oidcFetch(disco.token_endpoint, {
+    const tokenRes = await __fetch(disco.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody,
     });
 
     if (tokenRes.status !== 200 || !tokenRes.body?.access_token) {
-      return res.status(401).send('Token exchange failed: ' + (tokenRes.body?.error_description || tokenRes.body?.error || 'unknown'));
+      return res.status(401).send('OIDC token exchange failed');
     }
 
-    // Extract user info — try id_token first (with signature verification), then userinfo endpoint
-    let userInfo = null;
-    if (tokenRes.body.id_token) {
-      try {
-        userInfo = await _verifyIdToken(tokenRes.body.id_token, issuer, config.oidc.clientId);
-      } catch (err) {
-        log.warn('OIDC id_token verification failed', { error: err.message });
-        // Fall through to userinfo endpoint
-      }
+    // Never bypass ID-token/nonce verification through a userinfo fallback.
+    let userInfo;
+    try {
+      userInfo = await _verifyIdToken(tokenRes.body.id_token, issuer, config.oidc.clientId, flow.nonce);
+    } catch {
+      log.warn('OIDC id_token verification failed');
+      return res.status(401).send('OIDC identity verification failed');
     }
 
-    if ((!userInfo || !userInfo.email) && disco.userinfo_endpoint) {
-      const uiRes = await _oidcFetch(disco.userinfo_endpoint, {
+    if (!userInfo.email && disco.userinfo_endpoint) {
+      const uiRes = await __fetch(disco.userinfo_endpoint, {
         headers: { 'Authorization': `Bearer ${tokenRes.body.access_token}` },
       });
       if (uiRes.status === 200 && uiRes.body) {
-        userInfo = { ...userInfo, ...uiRes.body };
+        if (uiRes.body.sub !== userInfo.sub) return res.status(401).send('OIDC identity verification failed');
+        // Only enrich missing profile fields. Roles and identity claims come
+        // from the verified ID token, never from a second user's response.
+        for (const key of ['email', 'name', 'given_name', 'preferred_username']) {
+          if (!userInfo[key] && typeof uiRes.body[key] === 'string') userInfo[key] = uiRes.body[key];
+        }
       }
     }
 
@@ -856,7 +904,7 @@ router.get('/oidc/callback', async (req, res) => {
     auditService.log({ userId: user.id, username: user.username, action: 'oidc_login', ip, userAgent: ua });
 
     // Set session cookie and redirect to app
-    const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isHttps = secure;
     res.cookie(config.session.cookieName, session.token, {
       httpOnly: true,
       secure: isHttps,
@@ -868,7 +916,7 @@ router.get('/oidc/callback', async (req, res) => {
     // Redirect to app root
     res.redirect('/');
   } catch (err) {
-    res.status(500).send('OIDC callback error: ' + err.message);
+    res.status(500).send('OIDC callback failed');
   }
 });
 

@@ -39,7 +39,7 @@ async function main() {
   let release, firstUrl;
   const held = new Promise(resolve => { release = resolve; });
   email.sendPasswordReset = async args => { firstUrl = args.resetUrl; return held; };
-  const app = express(); app.use(express.json()); app.use('/api/auth', require('/app/src/routes/auth'));
+  const app = express(); app.use(express.json()); app.use(require('cookie-parser')()); app.use('/api/auth', require('/app/src/routes/auth'));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const endpoint = 'http://127.0.0.1:' + server.address().port;
   try {
@@ -133,6 +133,7 @@ async function main() {
     await providerConsoleChecks(server, auth, db, id, WebSocket);
     await credentialLifecycleChecks(auth, db);
     await mfaReplayChecks(auth, db);
+    await require('./oidc-flow-smoke.cjs')(endpoint, db, checks);
     console.log(JSON.stringify({ checks, emailMocked: true, providerMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();

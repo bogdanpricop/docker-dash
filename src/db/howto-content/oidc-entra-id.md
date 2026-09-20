@@ -69,6 +69,8 @@ OIDC_ROLE_VIEWER_GROUPS=33333333-3333-3333-3333-333333333333
 </ol>
 
 <h3>How role assignment works</h3>
+<p>Complete sign-in in the same browser and within five minutes. Docker Dash uses a temporary HttpOnly cookie, PKCE S256 and a verified ID-token nonce to bind the callback to your login. Starting another SSO login in the same browser replaces the previous flow. If the state is invalid or expired, or an update happened during sign-in, start again from the login page. The callback must use the same application host as the login page. Production deployments should use HTTPS with the correct trusted-proxy and secure-cookie configuration.</p>
+<p lang="ro">Finalizeaza conectarea in acelasi browser, in cel mult cinci minute. Un cookie temporar HttpOnly, PKCE S256 si nonce-ul verificat din ID token leaga raspunsul furnizorului de conectarea initiata. O noua conectare SSO in acelasi browser o inlocuieste pe cea anterioara. Dupa expirare, eroare de state sau actualizarea aplicatiei in timpul conectarii, reia conectarea. Callback-ul trebuie sa foloseasca acelasi host al aplicatiei. In productie foloseste HTTPS si configureaza corect proxy-ul de incredere si cookie-urile securizate.</p>
 <ul>
   <li><strong>First login of a new user</strong>: a local user record is created with the role resolved from their groups, or <code>OIDC_DEFAULT_ROLE</code> if no group lists are configured or none match.</li>
   <li><strong>Subsequent logins</strong> (when ANY of the three <code>OIDC_ROLE_*_GROUPS</code> lists is configured AND the IdP actually sent the groups claim): the role is <strong>re-evaluated every time</strong> — so removing someone from the Entra admin group demotes them on their next sign-in. Logged as <code>SSO user role updated from IdP</code>.</li>
@@ -81,7 +83,7 @@ OIDC_ROLE_VIEWER_GROUPS=33333333-3333-3333-3333-333333333333
   <li>A user is in <strong>more than 200 Entra groups</strong> and Entra emits the "groups overage" indicator (<code>_claim_names.groups</code> with a Microsoft Graph URL) instead of the actual list.</li>
   <li>A tenant admin re-saves the app registration and <strong>accidentally untoggles the groups claim</strong> in Token configuration.</li>
   <li>An intermediary OIDC broker <strong>strips the <code>groups</code> scope</strong>.</li>
-  <li>The id_token verification falls through to the userinfo endpoint and userinfo doesn't carry the groups claim.</li>
+  <li>The verified ID token omits groups. Userinfo may supplement profile fields for the same subject, but cannot replace the verified role claims or bypass ID-token validation.</li>
 </ul>
 <p>The event is logged at <code>warn</code> level: <code>OIDC: groups claim absent or unusable — existing user role preserved (no demotion).</code> If the overage indicator was present, the log line includes <code>hasOverageIndicator: true</code> so you can spot the >200-group case immediately.</p>
 <p class="warn-text"><i class="fas fa-exclamation-triangle"></i> For users in the overage state, role updates from Entra group changes will NOT take effect automatically — they keep whatever role they had at the last successful resolved-groups login. Either restrict those users to fewer groups, or manage their role manually in the Users page.</p>
@@ -90,7 +92,8 @@ OIDC_ROLE_VIEWER_GROUPS=33333333-3333-3333-3333-333333333333
 <ul>
   <li><strong>"Failed to discover OIDC endpoints"</strong> — check <code>OIDC_ISSUER_URL</code>; it must include the trailing <code>/v2.0</code> and resolve from inside the Docker Dash container. Test: <code>docker exec docker-dash curl -sf $OIDC_ISSUER_URL/.well-known/openid-configuration | head</code>.</li>
   <li><strong>"Token exchange failed"</strong> — usually a redirect-URI mismatch. The URI registered in Entra and <code>OIDC_REDIRECT_URI</code> must be byte-identical.</li>
-  <li><strong>User gets <code>viewer</code> even though they should be admin</strong> — likely a groups-claim issue. Check the ID token in the browser (DevTools → Network → callback request → response cookie) or inspect the audit log entry; if the <code>groups</code> claim is absent, redo step 3.</li>
+  <li><strong>User gets <code>viewer</code> even though they should be admin</strong> — check the IdP claim configuration and the server's groups-claim warning; if the <code>groups</code> claim is absent, redo step 3. The application session cookie is not an ID token. Do not copy credentials into token-debugging websites.</li>
+  <li><strong>"OIDC identity verification failed"</strong> — the provider must issue a valid RS256 ID token for this client, including the requested nonce and a stable subject. Userinfo cannot replace a missing or invalid ID token.</li>
   <li><strong>Browser shows <code>aria-hidden</code> warnings</strong> — unrelated to OIDC; a known modal-component a11y issue tracked separately.</li>
 </ul>
 

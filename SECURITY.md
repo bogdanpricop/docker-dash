@@ -1,9 +1,26 @@
 # Security Policy
 
-The pending authentication fixes below are bundled in the privately tested
+The MFA, credential and session fixes below are bundled in the privately tested
 [8.96.9 deployment candidate](docs/audits/2026-09-20-image-8.96.9.md). Both live
 instances remain on 8.96.8. Candidate image findings and the account-email URL
 clarification remain open; the candidate is not publicly published.
+
+## OIDC browser binding (source checkpoint, not in the existing candidate)
+
+OIDC login now binds state to a five-minute HttpOnly, SameSite=Lax cookie and the
+configured issuer, client and callback. The cookie holds a random PKCE verifier;
+domain-separated HMACs derive state and nonce. HTTPS uses a host-prefixed Secure
+cookie. The callback validates browser binding before atomically consuming state,
+sends the S256 verifier and requires a signed ID token with the matching nonce,
+issuer, audience/authorized party, subject and numeric lifetime claims. An invalid
+or missing ID token cannot fall back to userinfo. Userinfo must have the same
+subject and can only supplement missing profile fields, not role claims.
+
+Only the most recent login started in the same browser cookie scope can complete.
+In-flight logins from before the update must restart. Existing sessions are not
+revoked by this change. Provider errors are not reflected in HTTP responses.
+See [OIDC evidence and remaining boundaries](docs/audits/2026-09-20-oidc-browser-binding.md).
+The existing 8.96.9 candidate must be rebuilt before these changes can be deployed.
 
 ## MFA replay and attempt limits (pending deployment)
 

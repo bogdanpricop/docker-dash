@@ -25,7 +25,7 @@ const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/ema
   });
   try {
     const pack = tar.pack();
-    for (const path of ['scripts/fixtures/password-reset-smoke.cjs', ...(overlay ? sources : [])]) {
+    for (const path of ['scripts/fixtures/password-reset-smoke.cjs', 'scripts/fixtures/oidc-flow-smoke.cjs', ...(overlay ? sources : [])]) {
       pack.entry({ name: path, mode: 0o644, uid: 1000, gid: 1000 }, fs.readFileSync(path));
     }
     pack.finalize(); await c.putArchive(pack, { path: '/app' });

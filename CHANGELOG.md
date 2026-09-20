@@ -2,6 +2,17 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [Unreleased]
+
+- Bind OIDC callbacks to the initiating browser, issuer/client/callback configuration
+  and a five-minute HttpOnly cookie; add S256 PKCE and mandatory signed nonce
+  verification. Reject invalid ID tokens instead of falling back to userinfo; require
+  matching userinfo subjects and preserve verified role claims. Consume state once,
+  including provider cancellation; return fixed errors without reflecting provider
+  messages. Existing in-flight SSO logins must restart; the most recent flow wins
+  within one browser cookie scope. This source change is not in the existing 8.96.9
+  image. [Evidence and limits](docs/audits/2026-09-20-oidc-browser-binding.md).
+
 ## [8.96.9] - 2026-09-20 — Authentication and session lifecycle (deployment candidate)
 
 Private rollout candidate. Production deployment awaits the configured account-email
