@@ -43,6 +43,7 @@ const auditActionsList = [
   "alert_rule_update",
   "apikey_create",
   "apikey_revoke",
+  "workload_identity_exchange",
   "scim_user_create",
   "scim_user_replace",
   "scim_user_patch",

@@ -28,7 +28,11 @@ function int(value, field, min, max) {
 }
 function parseJson(value, fallback) { try { return JSON.parse(value); } catch { return fallback; } }
 function b64json(part, field) {
-  try { return JSON.parse(Buffer.from(part, 'base64url').toString('utf8')); } catch { fail(`Assertion ${field} is invalid`, 401, 'ASSERTION_INVALID'); }
+  try {
+    const result=JSON.parse(new (require('util').TextDecoder)('utf-8',{fatal:true}).decode(Buffer.from(part,'base64url')));
+    if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error();
+    return result;
+  } catch { fail(`Assertion ${field} is invalid`, 401, 'ASSERTION_INVALID'); }
 }
 function safeScopes(input) {
   if (!Array.isArray(input) || !input.length) fail('At least one service scope is required');
@@ -125,10 +129,10 @@ class IdentityGovernanceService {
     return { ...item, domain: routedDomain };
   }
 
-  _issueToken({ name, principal, scopes, tenantId, ttlSeconds, issuedVia, rotatedFrom, createdBy }) {
-    const ttl = int(ttlSeconds, 'ttlSeconds', 60, issuedVia === 'workload_exchange' ? 3600 : 86400);
+  _issueToken({ name, principal, scopes, tenantId, ttlSeconds, issuedVia, rotatedFrom, createdBy, maximumExpiry }) {
+    const ttl = int(ttlSeconds, 'ttlSeconds', issuedVia === 'workload_exchange' ? 1 : 60, issuedVia === 'workload_exchange' ? 3600 : 86400);
     const raw = `ddst_${generateToken(32)}`;
-    const expiresAt = new Date(Date.now() + ttl * 1000).toISOString();
+    const expiresAt = new Date(Math.min(Date.now() + ttl * 1000, maximumExpiry ?? Infinity)).toISOString();
     const result = this._db().prepare(`INSERT INTO governance_service_tokens
       (name,principal,token_prefix,token_hash,scopes_json,tenant_id,expires_at,rotated_from,issued_via,created_by)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(clean(name, 'name', 120), clean(principal, 'principal', 300), raw.slice(0, 13), sha256(raw),
@@ -247,20 +251,27 @@ class IdentityGovernanceService {
   }
 
   _verifyAssertion(assertion) {
-    const parts = String(assertion || '').split('.');
-    if (parts.length !== 3 || !parts.every(Boolean)) fail('Assertion must be a signed JWT', 401, 'ASSERTION_INVALID');
+    if (typeof assertion !== 'string' || assertion.length > 65536) fail('Assertion must be a bounded signed JWT',401,'ASSERTION_INVALID');
+    const parts = assertion.split('.');
+    if (parts.length !== 3 || !parts.every(part => /^[A-Za-z0-9_-]+$/.test(part)
+      && Buffer.from(part,'base64url').toString('base64url') === part)) fail('Assertion must use canonical JWT encoding', 401, 'ASSERTION_INVALID');
     const header = b64json(parts[0], 'header');
     const claims = b64json(parts[1], 'claims');
+    const text = (value,max) => typeof value === 'string' && value.length>0 && value.length<=max && !/[\x00-\x1f\x7f]/.test(value);
+    if (header.crit !== undefined || header.b64 !== undefined || (header.kid !== undefined && !text(header.kid,200))) fail('Unsupported assertion header',401,'ASSERTION_INVALID');
     if (!['RS256', 'ES256', 'EdDSA'].includes(header.alg)) fail('Assertion algorithm is not allowed', 401, 'ASSERTION_ALGORITHM_DENIED');
+    const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
+    if (!text(claims.iss,500) || !text(claims.sub,255) || !audiences.length || audiences.length>20 || !audiences.every(value=>text(value,300))
+      || (claims.jti !== undefined && !text(claims.jti,255))) fail('Invalid assertion identity claims',401,'ASSERTION_CLAIMS_INVALID');
     const trusts = this._db().prepare('SELECT * FROM governance_workload_identity_trusts WHERE enabled=1 AND issuer=?').all(String(claims.iss || ''));
     const trust = trusts.find(item => {
-      const audiences = Array.isArray(claims.aud) ? claims.aud.map(String) : [String(claims.aud || '')];
       return audiences.includes(item.audience) && globMatches(item.subject_pattern, String(claims.sub || ''));
     });
     if (!trust) fail('No workload identity trust matches this assertion', 401, 'WORKLOAD_TRUST_NOT_FOUND');
     const now = Math.floor(Date.now() / 1000);
-    if (!Number.isInteger(claims.iat) || !Number.isInteger(claims.exp) || !claims.sub) fail('Assertion requires sub, iat and exp claims', 401, 'ASSERTION_CLAIMS_INVALID');
-    if (claims.iat > now + 60 || claims.exp <= now || claims.exp <= claims.iat || (claims.nbf && claims.nbf > now + 60)) fail('Assertion is not currently valid', 401, 'ASSERTION_TIME_INVALID');
+    if (!Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.exp) || (claims.nbf!==undefined&&!Number.isSafeInteger(claims.nbf))) fail('Assertion requires numeric time claims', 401, 'ASSERTION_CLAIMS_INVALID');
+    if (claims.iat<=0 || claims.iat > now + 60 || claims.exp <= now || claims.exp <= claims.iat
+      || (claims.nbf!==undefined&&(claims.nbf>now+60||claims.nbf>=claims.exp))) fail('Assertion is not currently valid', 401, 'ASSERTION_TIME_INVALID');
     if (claims.exp - claims.iat > trust.max_assertion_ttl_seconds) fail('Assertion lifetime exceeds trust policy', 401, 'ASSERTION_TTL_EXCEEDED');
     const keys = parseJson(trust.jwks_json, {}).keys || [];
     const candidates = header.kid ? keys.filter(key => key.kid === header.kid) : keys;
@@ -268,35 +279,45 @@ class IdentityGovernanceService {
     const signature = Buffer.from(parts[2], 'base64url');
     const verified = candidates.some(jwk => {
       try {
+        if ((jwk.alg !== undefined && jwk.alg !== header.alg) || (jwk.use !== undefined && jwk.use !== 'sig')
+          || (jwk.key_ops !== undefined && (!Array.isArray(jwk.key_ops) || !jwk.key_ops.includes('verify')))) return false;
         const key = crypto.createPublicKey({ key: jwk, format: 'jwk' });
-        if (header.alg === 'ES256') return crypto.verify('sha256', data, { key, dsaEncoding: 'ieee-p1363' }, signature);
-        if (header.alg === 'EdDSA') return crypto.verify(null, data, key, signature);
-        return crypto.verify('RSA-SHA256', data, key, signature);
+        if (header.alg === 'ES256') return key.asymmetricKeyType === 'ec' && jwk.crv === 'P-256' && signature.length===64
+          && crypto.verify('sha256', data, { key, dsaEncoding: 'ieee-p1363' }, signature);
+        if (header.alg === 'EdDSA') return ['ed25519','ed448'].includes(key.asymmetricKeyType) && crypto.verify(null, data, key, signature);
+        return key.asymmetricKeyType === 'rsa' && key.asymmetricKeyDetails.modulusLength>=2048 && crypto.verify('RSA-SHA256', data, key, signature);
       } catch { return false; }
     });
     if (!verified) fail('Assertion signature is invalid', 401, 'ASSERTION_SIGNATURE_INVALID');
-    return { trust, claims };
+    return { trust, claims, parts };
   }
 
-  exchange(assertion) {
-    const { trust, claims } = this._verifyAssertion(assertion);
-    const hash = sha256(assertion);
-    const subjectHash = sha256(String(claims.sub));
+  exchange(assertion, onCommit) {
     const db = this._db();
     return db.transaction(() => {
+      const { trust, claims, parts } = this._verifyAssertion(assertion);
+      const cutoff=db.prepare('SELECT minimum_iat FROM governance_workload_replay_policy WHERE id=1').get();
+      if (!cutoff || claims.iat<=cutoff.minimum_iat) fail('Obtain a newly issued assertion after the upgrade cutoff',401,'ASSERTION_UPGRADE_CUTOFF');
+      const hash = sha256(assertion), subjectHash=sha256(claims.sub);
+      const keys=[sha256(JSON.stringify(['signed',parts[0],parts[1]]))];
+      if (claims.jti !== undefined) keys.push(sha256(JSON.stringify(['jti',claims.iss,claims.jti])));
+      const expiresAt=new Date(claims.exp*1000).toISOString();
       db.prepare("DELETE FROM governance_workload_assertions WHERE datetime(expires_at)<=datetime('now')").run();
+      db.prepare("DELETE FROM governance_workload_replay_keys WHERE julianday(expires_at)<=julianday('now')").run();
       try {
+        for (const key of keys) db.prepare('INSERT INTO governance_workload_replay_keys(replay_key,expires_at) VALUES (?,?)').run(key,expiresAt);
         db.prepare('INSERT INTO governance_workload_assertions (assertion_hash,trust_id,subject_hash,expires_at) VALUES (?,?,?,?)')
-          .run(hash, trust.id, subjectHash, new Date(claims.exp * 1000).toISOString());
+          .run(hash, trust.id, subjectHash, expiresAt);
       } catch (error) {
         if (/UNIQUE/.test(error.message)) fail('Assertion has already been exchanged', 409, 'ASSERTION_REPLAY');
         throw error;
       }
       const token = this._issueToken({ name: trust.name, principal: `workload:${claims.sub}`, scopes: parseJson(trust.scopes_json, []),
         tenantId: trust.tenant_id, ttlSeconds: Math.min(trust.token_ttl_seconds, claims.exp - Math.floor(Date.now() / 1000)),
-        issuedVia: 'workload_exchange', createdBy: null });
+        issuedVia: 'workload_exchange', createdBy: null, maximumExpiry: claims.exp * 1000 });
+      if (onCommit?.(token,trust)?.then) throw new Error('Workload exchange audit must be synchronous');
       return { accessToken: token.token, tokenType: 'Bearer', expiresAt: token.expires_at, scopes: token.scopes, tenantId: token.tenant_id };
-    })();
+    }).immediate();
   }
 }
 

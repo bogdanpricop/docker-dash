@@ -35,6 +35,7 @@ function database() {
   db.prepare("INSERT INTO tenants (id,slug,name,usage_mode) VALUES (1,'platform','Platform','production')").run();
   migration124.up(db);
   migration125.up(db);
+  require('../db/migrations/183_workload_replay_identity').up(db);
   return db;
 }
 

@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Prevent workload JWT replay through alternative signature encodings, ECDSA
+  signatures or reused issuer/JWT ids. Validate JWT types and pinned key algorithms;
+  commit trust verification, replay history, bounded token issuance and HTTP audit
+  atomically. Migration 183 revokes existing workload tokens and their rotations,
+  retaining manual tokens and enforcing a fresh-proof cutoff where legacy replay
+  history is still active. [Evidence](docs/audits/2026-09-20-workload-replay-security.md).
+
 - Restrict SCIM to global service tokens carrying explicit scim.read/scim.write scopes.
   Refuse tenant-scoped credentials on the global endpoint. Expose and mutate only
   SCIM-managed users/groups; reject local-account/team adoption and unmanaged group

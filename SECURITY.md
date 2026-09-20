@@ -15,6 +15,16 @@ cannot be reconstructed automatically. SCIM-to-OIDC linking remains unsupported.
 
 ## OIDC and personal credentials (included in the 8.96.10 candidate)
 
+The subsequent [workload replay correction](docs/audits/2026-09-20-workload-replay-security.md)
+is also outside the built candidate. Migration 183 revokes previously issued workload
+tokens and their rotation descendants. Active legacy replay history requires proofs
+issued after the migration timestamp plus 60 seconds; the issuer must obtain a new
+proof (up to 61 seconds before an integer iat exceeds this cutoff). Manual tokens
+are retained. Signed content and issuer/jti replay keys survive trust deletion and
+remain until the accepted proof expires. Issuers must generate unique jti values;
+this is not indefinite storage of previously used ids. Trust edits do not yet revoke
+outstanding workload tokens automatically. Exchange and audit commit atomically.
+
 The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
 upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests
 run per process, without a waiting queue. TLS certificates remain verified with
