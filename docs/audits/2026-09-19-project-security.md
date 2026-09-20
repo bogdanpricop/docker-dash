@@ -27,6 +27,10 @@ Corectie suplimentara in surse, inca neinstalata in aplicatiile live:
 [lease HA cu verificarea proprietarului si expirare locala](2026-09-20-ha-lease.md).
 358 suite / 4.704 teste trecute, un test omis; zece scenarii Redis reale pe fiecare
 host, inclusiv preluarea dupa suspendarea procesului si presiunea de memorie.
+Ulterior, [identitatea HTTP si limitele de cereri](2026-09-20-http-trust-and-quotas.md)
+au fost corectate: proxy-uri verificate, SSO bazat pe peer-ul socketului, scope-uri
+stabile si 503 la imposibilitatea verificarii cotei. 361 suite / 4.736 teste trecute,
+unul omis; opt scenarii HTTP/Redis reale pe fiecare host. Inca neinstalate live.
 Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;

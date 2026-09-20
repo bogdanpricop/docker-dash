@@ -41,8 +41,10 @@ function _isSsoTrusted(req) {
     log.warn('SSO headers present but SSO_TRUSTED_PROXY_IPS is not configured — ignoring SSO headers (fail closed)');
     return false;
   }
-  const clientIp = _normalizeIp(req.ip || '');
-  return trustedIps.has(clientIp);
+  // SSO assertions belong to the immediate authenticated proxy connection,
+  // not to the end-client address resolved from forwarding headers.
+  const peerIp = _normalizeIp(req.socket?.remoteAddress || '');
+  return trustedIps.has(peerIp);
 }
 
 // ─── Password-change-required allow-list (FIX #21) ────────────────────────────
@@ -95,7 +97,7 @@ function requireAuth(req, res, next) {
   }
 
   // SSO header-based auth (Authelia, Authentik, Caddy forward_auth, Traefik)
-  // FIX #12: Only trust SSO headers when req.ip is in the SSO_TRUSTED_PROXY_IPS allow-list.
+  // Only trust SSO headers from a socket peer in SSO_TRUSTED_PROXY_IPS.
   // If the env var is not set, fail closed — SSO headers are never trusted.
   if (!user && config.features.ssoHeaders) {
     const ssoUser = req.headers['x-forwarded-user'] || req.headers['remote-user'];

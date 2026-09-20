@@ -13,7 +13,7 @@ This doc gives concrete configs for the 4 most common LBs. Pick one and adapt.
 1. **Sticky sessions** — typically via cookie affinity. WS upgrades on `GET /ws` need to land on the same replica as any follow-up HTTP. Token in the session cookie (`ddash_session`) is our recommended stickiness key.
 2. **Health checks** — poll `GET /api/health` every 10s on each replica. Remove from pool on non-2xx or timeout > 3s.
 3. **WebSocket upgrade** — pass through `Upgrade: websocket` and `Connection: upgrade` headers.
-4. **Preserve `X-Forwarded-*`** — Docker Dash uses `trust proxy = loopback` by default; if your LB isn't on the loopback range, set `TRUST_PROXY=<lb-ip>` in `.env`.
+4. **Set forwarding headers at the trusted proxy** — overwrite untrusted incoming values. Docker Dash defaults to `TRUST_PROXY=loopback` in every environment. For another proxy, list its actual IP/CIDR; service DNS names and hop counts are not accepted. Use `TRUST_PROXY=false` for direct access. SSO assertions additionally require the immediate peer in `SSO_TRUSTED_PROXY_IPS`.
 5. **Long-lived connection support** — WS connections can live for hours. Don't set idle timeouts below 5 minutes.
 
 ---
@@ -63,7 +63,7 @@ dashboard.example.com {
 ```bash
 DD_MODE=ha
 REDIS_URL=redis://redis:6379
-TRUST_PROXY=caddy                          # or the caddy container IP / subnet
+TRUST_PROXY=172.30.10.5                    # example only: replace with actual Caddy IP/CIDR
 COOKIE_SECURE=true                          # because Caddy provides TLS
 ```
 
@@ -122,7 +122,7 @@ services:
 ```bash
 DD_MODE=ha
 REDIS_URL=redis://redis:6379
-TRUST_PROXY=traefik                        # or the Traefik container subnet
+TRUST_PROXY=172.30.10.5                    # example only: replace with actual Traefik IP/CIDR
 COOKIE_SECURE=true
 ```
 
@@ -192,7 +192,7 @@ backend docker-dash-back
 ```bash
 DD_MODE=ha
 REDIS_URL=redis://redis:6379
-TRUST_PROXY=haproxy
+TRUST_PROXY=172.30.10.5                    # example only: replace with actual HAProxy IP/CIDR
 COOKIE_SECURE=true
 ```
 
@@ -263,7 +263,7 @@ server {
 ```bash
 DD_MODE=ha
 REDIS_URL=redis://redis:6379
-TRUST_PROXY=nginx                          # or the nginx container/host IP
+TRUST_PROXY=172.30.10.5                    # example only: replace with actual nginx IP/CIDR
 COOKIE_SECURE=true
 ```
 
@@ -323,7 +323,7 @@ curl -s https://dashboard.example.com/api/health | jq .role
 | Idle timeout too short | WS disconnects every 30-60s | Set `proxy_read_timeout` / `transport http keepalive` to ≥5 min |
 | Missing WebSocket headers | `/ws` returns 400 Bad Request | Pass `Upgrade` + `Connection: upgrade` headers explicitly |
 | Health check too aggressive | Replicas flap in/out of pool during leader election | Interval ≥10s, timeout ≥3s, fall ≥3 |
-| `TRUST_PROXY` wrong | Docker Dash logs original client IP as the LB IP; rate limiter treats all clients as one | Set `TRUST_PROXY` to the LB container name or subnet CIDR |
+| `TRUST_PROXY` wrong | Docker Dash records the LB IP; its clients share a quota | Set the actual trusted LB IP/CIDR, never its container name; verify header rewriting and direct-access restrictions |
 | `COOKIE_SECURE=true` but LB doesn't terminate TLS | Login cookie rejected; users can't log in | Set `COOKIE_SECURE=false` if LB is HTTP → HTTP to backend; or terminate TLS at LB and keep `COOKIE_SECURE=true` |
 
 ---

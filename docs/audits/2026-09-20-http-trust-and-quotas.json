@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "productionDeployed": false,
+  "validation": {
+    "suites": 361,
+    "passed": 4736,
+    "skipped": 1,
+    "lint": true
+  },
+  "hosts": {
+    "lan": {
+      "at": "2026-09-20T05:44:41.207Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "direct-client-cannot-forge-forwarding-identity",
+        "real-redis-quota-survives-url-case-and-header-rotation",
+        "trusted-proxy-stops-at-closest-untrusted-hop",
+        "stalled-redis-returns-bounded-503-before-mutation",
+        "late-quota-success-does-not-run-abandoned-mutation",
+        "quota-service-recovers-without-bypass",
+        "redis-noeviction-oom-blocks-protected-handler",
+        "clearing-memory-pressure-restores-verified-requests"
+      ],
+      "productionDatabaseUsed": false,
+      "onlyDisposableMutationHandler": true,
+      "marker": "dd-http-quota-c47d3585b4e8",
+      "appImage": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "src/middleware/rateLimit.js": "dbb540f9e1fec6b186af218daef28003d6a908c5e5161f4f43f99a3a962ae96f",
+        "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+        "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+        "scripts/fixtures/http-quota-checks.js": "a41556ec411fa6989eca08bf62f6b33dcc4e20ecb3bb6aaf1864fa23b4da6212"
+      },
+      "publishedPorts": false,
+      "cleanupVerified": true
+    },
+    "vps": {
+      "at": "2026-09-20T05:44:50.107Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "direct-client-cannot-forge-forwarding-identity",
+        "real-redis-quota-survives-url-case-and-header-rotation",
+        "trusted-proxy-stops-at-closest-untrusted-hop",
+        "stalled-redis-returns-bounded-503-before-mutation",
+        "late-quota-success-does-not-run-abandoned-mutation",
+        "quota-service-recovers-without-bypass",
+        "redis-noeviction-oom-blocks-protected-handler",
+        "clearing-memory-pressure-restores-verified-requests"
+      ],
+      "productionDatabaseUsed": false,
+      "onlyDisposableMutationHandler": true,
+      "marker": "dd-http-quota-e896b1767f37",
+      "appImage": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "src/middleware/rateLimit.js": "dbb540f9e1fec6b186af218daef28003d6a908c5e5161f4f43f99a3a962ae96f",
+        "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+        "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+        "scripts/fixtures/http-quota-checks.js": "a41556ec411fa6989eca08bf62f6b33dcc4e20ecb3bb6aaf1864fa23b4da6212"
+      },
+      "publishedPorts": false,
+      "cleanupVerified": true
+    }
+  }
+}

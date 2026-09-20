@@ -9,7 +9,7 @@ const { getClientIp } = require('../utils/helpers');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = Router();
-const runLimiter = rateLimit(10, 60 * 1000);
+const runLimiter = rateLimit(10, 60 * 1000, 'procedure-run');
 
 function actorFrom(req) {
   return {

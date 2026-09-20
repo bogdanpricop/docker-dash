@@ -184,7 +184,7 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 **Impact:** If the application is accidentally exposed without the trusted reverse proxy, an attacker can forge the header and authenticate as any user. This is the most operationally dangerous setting in Docker Dash.
 
-**Mitigation:** Disabled by default (`ENABLE_SSO_HEADERS=false`). `.env.example` contains an explicit WARNING comment. Trust proxy is restricted to `loopback` in production. The feature is documented as requiring a trusted reverse proxy between the application and the internet.
+**Mitigation:** Disabled by default (`ENABLE_SSO_HEADERS=false`). SSO assertions require the immediate socket peer to appear in `SSO_TRUSTED_PROXY_IPS`; a forwarded end-client address cannot grant this trust. `TRUST_PROXY` defaults to `loopback` in every environment and accepts explicit proxy IPs/CIDRs or `false`. The authentication proxy must strip incoming identity headers and set verified values. Restrict direct application access accordingly.
 
 ### 5. Rate limiter backend depends on deployment mode
 
@@ -195,7 +195,9 @@ The following are conscious design decisions, not oversights. Each represents a 
 **Impact:**
 - **Standalone:** rate limits reset on process restart. In a single-replica deploy that's appropriate; restart is rare.
 - **HA (fixed-window):** 2× theoretical burst at bucket boundaries compared to sliding-window standalone. Example: a `10 req/min` limit could allow up to 20 requests in a 2-second window spanning two buckets. Average case is identical; burst matters only for DDoS-class inputs which are not what an internal rate limiter is for anyway.
-- **HA (Redis unreachable mid-request):** fail-open — request is allowed with a `warn` log. Prioritizes availability over strict enforcement. The rate limiter is a fair-use tool, not a security boundary.
+- **HA (Redis unavailable, full, invalid response or delayed beyond three seconds):** fail-closed — HTTP 503 with `Retry-After: 3`; protected handlers do not run. HTTP 429 remains reserved for a confirmed exhausted quota. Late Redis results cannot resume the abandoned request.
+
+Quota keys use a fixed configured scope and the client IP resolved by Express's proxy trust policy. Changing URL parameters, route capitalization, query strings or untrusted forwarding headers cannot create a new quota. The shared API limiter is one per-client budget across its mounted routes; login, MFA, reset and other dedicated limiters use separate named scopes. Configure trusted proxy addresses correctly to avoid grouping clients under a proxy address. This complements account lockout and RBAC; it does not replace them or upstream connection/DDoS controls.
 
 **Mitigation:** Documented in [docs/features/ha-mode.md](docs/features/ha-mode.md#rate-limiter-semantics). Both modes implement the same API surface (`X-RateLimit-Remaining` response header, `Retry-After` on 429), so clients can't tell which backend is serving them. For target audiences (homelab standalone, corporate HA), both enforcement shapes are appropriate.
 

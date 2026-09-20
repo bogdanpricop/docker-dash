@@ -13,7 +13,7 @@ const hostPermissions = require('../services/host-permissions');
 const router = Router();
 
 // Stricter rate limit for git deploy/push operations (5 per minute per IP)
-const gitDeployLimiter = rateLimit(5, 60 * 1000);
+const gitDeployLimiter = rateLimit(5, 60 * 1000, 'git-deploy');
 const ACCESS_RANK = { view: 1, operate: 2, admin: 3 };
 
 function _isAdmin(user) {

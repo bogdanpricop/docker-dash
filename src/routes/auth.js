@@ -17,7 +17,7 @@ const router = Router();
 
 // Login
 router.post('/login',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-login'),
   async (req, res) => {
     try {
       const { username, password } = req.body;
@@ -76,7 +76,7 @@ router.post('/login',
 
 // Verify TOTP code during login
 router.post('/mfa/verify',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-mfa-verify'),
   (req, res) => {
     try {
       const { mfaToken, code } = req.body;
@@ -120,7 +120,7 @@ router.post('/mfa/verify',
 
 // Verify recovery code during login
 router.post('/mfa/recovery',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-mfa-recovery'),
   (req, res) => {
     try {
       const { mfaToken, recoveryCode } = req.body;
@@ -422,7 +422,7 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
 // ─── Public: Request Password Reset (self-service) ──────────
 // Rate-limited. Always returns generic 200 to prevent user enumeration.
 router.post('/request-password-reset',
-  rateLimit(5, 15 * 60 * 1000),
+  rateLimit(5, 15 * 60 * 1000, 'auth-request-reset'),
   async (req, res) => {
     const GENERIC_OK = { ok: true, message: 'If an account exists with that email, a reset link has been sent.' };
     try {
@@ -486,7 +486,7 @@ router.post('/request-password-reset',
 
 // ─── Public: Validate Reset Token ──────────────────────────
 router.post('/validate-reset-token',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-validate-reset'),
   async (req, res) => {
   try {
     const { token } = req.body;
@@ -510,7 +510,7 @@ router.post('/validate-reset-token',
 
 // ─── Public: Reset Password with Token ──────────────────────
 router.post('/reset-password-token',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-reset-password'),
   async (req, res) => {
   try {
     const { token, newPassword } = req.body;

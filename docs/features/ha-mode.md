@@ -162,15 +162,18 @@ ddash:pubsub                       # channel, envelope contains nodeId/appChanne
   `noeviction`. Size the container above that limit for Redis process overhead.
   Rejecting writes at capacity is preferable to evicting an active leader lease.
 
-### Rate-limit failure mode (fail-open)
+### Rate-limit failure mode (fail-closed)
 
-If Redis becomes unreachable mid-request:
+If a quota cannot be confirmed within three seconds, the rate-limited route
+returns HTTP 503 and `Retry-After: 3` before authentication or mutation handlers
+run. This includes Redis outages, memory-capacity errors and malformed responses.
+Late replies cannot resume the abandoned request. HTTP 429 means the backend
+confirmed that the quota was exhausted. Health endpoints outside this middleware
+remain available for diagnostics; restore Redis before retrying protected work.
 
-```
-[warn] Rate limiter failure, allowing request { message: "Redis connection lost" }
-```
-
-Docker Dash chooses **availability over strict rate enforcement**. The request proceeds. Consider this when sizing DDoS protection — the rate limiter is a fair-use tool, not a security boundary.
+Scopes are stable across URLs and replicas. The shared API limiter is one
+per-client quota across its mounts; login, MFA and password reset have their own
+named quotas. Client identity follows Express's explicit trusted-proxy policy.
 
 ### Persistence
 
@@ -198,7 +201,7 @@ Redis itself doesn't expose its internal metrics via the app endpoint. Scrape Re
 
 Leader election is automatic while a single authoritative Redis remains
 available. Failure to confirm a lease stops new leader-gated work. Pub/sub is
-best effort and the rate limiter currently fails open. Follow the
+best effort and rate-limited routes fail closed with HTTP 503. Follow the
 [failover runbook](ha-failover-runbook.md) to inspect roles and reconcile work.
 
 ---

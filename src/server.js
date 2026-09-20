@@ -113,13 +113,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(require('./middleware/csrf'));
 
-// Trust proxy — set to specific proxy IPs or 'loopback' for security
-// 'true' trusts ALL proxies (allows IP spoofing). Use specific IPs in production.
-// Trust proxy — configurable via TRUST_PROXY env var.
-// 'loopback' = trust only localhost proxies (safe default for production)
-// 'true' = trust all (development convenience)
-// '10.0.0.1' = trust specific proxy IP
-app.set('trust proxy', process.env.TRUST_PROXY || (config.app.env === 'production' ? 'loopback' : true));
+// Apply the same bounded proxy trust in every environment. Express validates
+// IPs/CIDRs; container DNS names and blanket 'true' are not supported settings.
+app.set('trust proxy', require('./utils/proxy-trust')(process.env.TRUST_PROXY));
 
 // Request latency tracking + logging + Prometheus metrics
 const metricsService = require('./services/metrics');
@@ -151,10 +147,10 @@ app.use((req, res, next) => {
 // ─── API Routes ─────────────────────────────────────────────
 
 const { rateLimit } = require('./middleware/rateLimit');
-const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs);
+const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs, 'api');
 
 // Git webhook receiver — public, no auth, separate rate limit
-const webhookReceiverLimiter = rateLimit(30, 60 * 1000);
+const webhookReceiverLimiter = rateLimit(30, 60 * 1000, 'webhook-receiver');
 app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
 app.use('/api/automation/webhooks', webhookReceiverLimiter, require('./routes/infrastructure-webhooks'));
 
@@ -198,7 +194,7 @@ app.use('/api/compose-blueprints', apiLimiter, require('./routes/compose-bluepri
 app.use('/api/disk-pressure', apiLimiter, require('./routes/disk-pressure'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
-const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
+const statusPageLimiter = rateLimit(30, 60 * 1000, 'status-page'); // 30/min for public endpoint
 app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
 app.use('/api/groups', apiLimiter, require('./routes/groups'));
 app.use('/api/permissions', apiLimiter, require('./routes/permissions'));

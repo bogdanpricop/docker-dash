@@ -22,7 +22,7 @@ the single-server lease guarantee; jobs require their own durable deduplication.
 |-------|--------------|-----------------|
 | Leader dies ungracefully | TTL expires within 30s; the next reader poll can acquire within another 10s. | Observe roles and reconcile interrupted jobs. |
 | Leader is drained/stopped gracefully | Compare-and-delete releases its own lock; an existing reader polls within 10s. | Drain and stop one replica at a time; verify takeover. |
-| Redis dies | Lease failures demote replicas to reader. New leader-gated work stops; pub/sub fails; the rate limiter still fails open. | Restore Redis and verify election before resuming automation. |
+| Redis dies | Lease failures demote replicas to reader. New leader-gated work stops; pub/sub fails; rate-limited routes return HTTP 503. | Restore Redis and verify election and quota checks before resuming automation. |
 | Partition or Redis failover | A replica without Redis confirmation stops leading. Separate writable Redis histories can still grant conflicting leases. | Keep one coordination history; see §5 and review in-flight operations. |
 | All replicas dead | Service unavailable. | Standard recovery — restart via orchestrator. |
 
@@ -155,10 +155,11 @@ docker_dash_cluster_heartbeat_age_seconds 2  # should drop below 15
 1. The lease connection closes or renewal fails/times out.
 2. The replica transitions to reader immediately on the detected failure; a monotonic local deadline also prevents stale leadership after a process pause.
 3. All replicas are now readers. **No cron runs.** Docker event streams stopped.
-4. Rate limiter fails open (requests allowed with a warn log).
+4. Rate-limited routes fail closed with HTTP 503 and `Retry-After: 3`; no protected handler runs without a quota decision.
 5. WS broadcasts are in-process-only (pub/sub offline).
 
-**Degraded state — service still responds** but automation halts.
+**Degraded state:** automation halts and protected HTTP requests receive 503.
+Health endpoints outside the limiter still support diagnosis.
 
 **Operator action:**
 1. Restore Redis (restart, fix network, whatever's needed).
