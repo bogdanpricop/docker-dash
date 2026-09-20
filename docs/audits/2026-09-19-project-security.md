@@ -1,28 +1,24 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Ulterior deploy-ului 8.96.4, [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md)
-au fost corectate si verificate in containere temporare pe LAN/VPS. Politicile
-anterioare sunt restaurate la esec; rezultatele incerte pastreaza dovezi si
-rezervari pentru recuperare. Interfata pastreaza politica daca dezactivarea esueaza.
-355 suite / 4.613 teste trecute; codul este pentru urmatorul rollout. Acoperirea
-IPv6/UDP, exceptiile private si celelalte limite egress raman deschise.
+Stare actuala: checkpoint-ul 8.96.5 este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP 200 / versiunea 8.96.5. Include
+[tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md) si
+[helper-ul preconstruit cu runtime redus](2026-09-20-egress-helper-runtime.md).
+355 suite / 4.615 teste trecute, un test live omis; lint, npm audit, help si i18n trecute.
+Imaginea exacta a trecut canary-uri Compose si smoke Linux pe ambele hosturi.
+Backup-uri consistente verificate; cheile, configuratia si datele sunt pastrate.
+Helper-ul configurat este fixat la ID-ul verificat pe ambele daemone.
 
-Stare actuala: checkpoint-ul 8.96.4 este urcat pe Git si instalat pe LAN/VPS,
-cu Docker healthy si HTTP 200 / versiunea 8.96.4. Include
-[executia remote a scripturilor cu secrete](2026-09-20-remote-secret-execution.md)
-si [Compose recompilat cu dependente remediate](2026-09-20-compose-rebuild.md).
-Regresia aplicatiei: 354 suite / 4.605 teste in etapa anterioara, apoi 32 teste
-specifice trecute dupa ultima ajustare si din nou la acest checkpoint. Build-ul
-Compose a trecut testele upstream; imaginea exacta a trecut canary-uri Docker
-si smoke Linux pe ambele hosturi. Cheile si configuratia au fost pastrate.
-Trivy: 4 High / 2 Medium / 3 Unknown; Grype: 4 High / 5 Medium. Constatari ramase
-deschise, fara exceptii noi sau praguri dezactivate. Pool-urile implicite de retea
-Docker din LAN sunt epuizate; nu s-a reconfigurat daemonul.
-Dovezi: [deploy 8.96.4](2026-09-20-deployment-8.96.4.md),
-[scanarea imaginii exacte](2026-09-20-image-8.96.4.json).
-Recuperarea la inlocuirea containerelor si checkpoint-ul anterior raman in
-[auditul dedicat](2026-09-20-container-replacement.md) si
-[deploy 8.96.3](2026-09-20-deployment-8.96.3.md).
+Imagine principala: Trivy 4 High / 2 Medium / 3 Unknown; Grype 4 High / 5 Medium.
+Helper: Trivy zero, Grype doua Medium si zero High/Critical dupa eliminarea
+apk-tools si a dependintelor inutile, inclusiv zlib. Nicio exceptie noua sau
+prag dezactivat. Expunerea LAN 2375, IPv6/UDP, exceptiile private si celelalte
+limite egress raman deschise. Pool-urile de retea LAN sunt epuizate; daemonul
+nu a fost reconfigurat.
+Dovezi: [deploy 8.96.5](2026-09-20-deployment-8.96.5.md),
+[scanarea imaginii exacte](2026-09-20-image-8.96.5.json).
+Checkpoint-urile anterioare: [8.96.4](2026-09-20-deployment-8.96.4.md),
+[8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;
 nu certifica securitatea completa.
 

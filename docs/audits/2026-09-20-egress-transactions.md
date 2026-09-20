@@ -1,8 +1,7 @@
 # Egress: tranzactii nftables si recuperare verificata
 
 Aceasta corectie pastreaza politica anterioara daca aplicarea unui filtru esueaza.
-Codul este pregatit pentru urmatorul rollout al aplicatiei; instalatiile live
-raman la checkpoint-ul 8.96.4. Testele de mai jos au modificat exclusiv namespace-uri
+Corectia este inclusa in [deploy-ul 8.96.5 pe LAN/VPS](2026-09-20-deployment-8.96.5.md). Testele de mai jos au modificat exclusiv namespace-uri
 ale containerelor temporare de audit, fara firewall-ul hostului sau aplicatiile
 existente.
 
