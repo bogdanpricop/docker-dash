@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Restrict SCIM to global service tokens carrying explicit scim.read/scim.write scopes.
+  Refuse tenant-scoped credentials on the global endpoint. Expose and mutate only
+  SCIM-managed users/groups; reject local-account/team adoption and unmanaged group
+  members. Commit mutations, mapping changes and HTTP audit together; remove group
+  ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
+
 ## [8.96.10] - 2026-09-20 — External identities and personal credentials (deployment candidate)
 
 Private candidate incorporating the fixes below and the preceding 8.96.9 changes.

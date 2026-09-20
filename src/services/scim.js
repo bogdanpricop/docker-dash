@@ -63,14 +63,14 @@ class ScimService {
     return { field: match[1].toLowerCase(), value: match[2].toLowerCase() };
   }
   listUsers(query = {}) {
-    let users = this._db().prepare('SELECT * FROM users ORDER BY username COLLATE NOCASE').all().map(item => this._user(item));
+    let users = this._db().prepare("SELECT u.* FROM users u JOIN governance_scim_resources s ON s.local_id=u.id AND s.resource_type='User' WHERE u.auth_source='scim' ORDER BY u.username COLLATE NOCASE").all().map(item => this._user(item));
     const filter = this._filter(query.filter);
     if (filter) users = users.filter(item => String(filter.field === 'username' ? item.userName
       : filter.field === 'externalid' ? item.externalId : item.displayName || '').toLowerCase() === filter.value);
     return this._page(users, query.startIndex, query.count);
   }
   getUser(id) {
-    const item = this._db().prepare('SELECT * FROM users WHERE id=?').get(Number(id));
+    const item = this._db().prepare("SELECT u.* FROM users u JOIN governance_scim_resources s ON s.local_id=u.id AND s.resource_type='User' WHERE u.id=? AND u.auth_source='scim'").get(Number(id));
     if (!item) fail('User not found', 404, 'notFound');
     return this._user(item);
   }
@@ -114,7 +114,10 @@ class ScimService {
       const path = String(operation.path || '');
       if (!['add', 'replace', 'remove'].includes(op)) fail('Unsupported PATCH operation');
       if (!path && operation.value && typeof operation.value === 'object') Object.assign(next, operation.value);
-      else if (/^active$/i.test(path)) next.active = op === 'remove' ? false : Boolean(operation.value);
+      else if (/^active$/i.test(path)) {
+        if (op !== 'remove' && typeof operation.value !== 'boolean') fail('active must be a boolean');
+        next.active = op === 'remove' ? false : operation.value;
+      }
       else if (/^displayName$/i.test(path)) next.displayName = op === 'remove' ? next.userName : operation.value;
       else if (/^userName$/i.test(path)) next.userName = operation.value;
       else if (/^externalId$/i.test(path)) next.externalId = op === 'remove' ? null : operation.value;
@@ -133,14 +136,14 @@ class ScimService {
     return { deleted: true };
   }
   listGroups(query = {}) {
-    let groups = this._db().prepare('SELECT * FROM teams ORDER BY name COLLATE NOCASE').all().map(item => this._group(item));
+    let groups = this._db().prepare("SELECT t.* FROM teams t JOIN governance_scim_resources s ON s.local_id=t.id AND s.resource_type='Group' ORDER BY t.name COLLATE NOCASE").all().map(item => this._group(item));
     const filter = this._filter(query.filter);
     if (filter) groups = groups.filter(item => String(filter.field === 'displayname' ? item.displayName
       : filter.field === 'externalid' ? item.externalId : '').toLowerCase() === filter.value);
     return this._page(groups, query.startIndex, query.count);
   }
   getGroup(id) {
-    const item = this._db().prepare('SELECT * FROM teams WHERE id=?').get(Number(id));
+    const item = this._db().prepare("SELECT t.* FROM teams t JOIN governance_scim_resources s ON s.local_id=t.id AND s.resource_type='Group' WHERE t.id=?").get(Number(id));
     if (!item) fail('Group not found', 404, 'notFound');
     return this._group(item);
   }
@@ -150,7 +153,7 @@ class ScimService {
     const insert = db.prepare('INSERT OR IGNORE INTO team_members (team_id,user_id) VALUES (?,?)');
     for (const member of members || []) {
       const userId = Number(member.value);
-      if (!db.prepare('SELECT 1 FROM users WHERE id=?').get(userId)) fail(`User ${member.value} not found`, 400, 'invalidValue');
+      if (!db.prepare("SELECT 1 FROM users u JOIN governance_scim_resources s ON s.local_id=u.id AND s.resource_type='User' WHERE u.id=? AND u.auth_source='scim'").get(userId)) fail('Member must be a SCIM-managed user', 400, 'invalidValue');
       insert.run(groupId, userId);
     }
   }
@@ -188,6 +191,7 @@ class ScimService {
     for (const operation of input.Operations || []) {
       const op = String(operation.op || '').toLowerCase();
       const path = String(operation.path || '');
+      if (!['add','replace','remove'].includes(op)) fail('Unsupported PATCH operation');
       if (/^displayName$/i.test(path)) displayName = operation.value;
       else if (/^members$/i.test(path)) {
         if (op === 'remove') members = [];
@@ -203,8 +207,18 @@ class ScimService {
     this.getGroup(id);
     if (!this._mapping('Group', Number(id))) fail('Only SCIM-managed groups can be deleted', 409, 'mutability');
     this._db().prepare('DELETE FROM teams WHERE id=?').run(Number(id));
+    this._db().prepare("DELETE FROM governance_scim_resources WHERE resource_type='Group' AND local_id=?").run(Number(id));
     return { deleted: true };
   }
+}
+
+// Hold one write lock from the managed-resource check through membership/data
+// changes and mapping updates, including callers outside HTTP routes.
+for (const method of ['createUser','replaceUser','patchUser','deleteUser','createGroup','replaceGroup','patchGroup','deleteGroup']) {
+  const operation = ScimService.prototype[method];
+  ScimService.prototype[method] = function (...args) {
+    return this._db().transaction(() => operation.apply(this,args)).immediate();
+  };
 }
 
 const service = new ScimService();

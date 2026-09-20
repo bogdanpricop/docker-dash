@@ -2,13 +2,21 @@
 
 const { Router } = require('express');
 const { requireAuth, requireFeature, writeable } = require('../middleware/auth');
-const identity = require('../services/identity-governance');
 const scim = require('../services/scim');
+const audit = require('../services/audit');
+const { getDb } = require('../db');
+const { getClientIp } = require('../utils/helpers');
 const router = Router();
 
 router.use(requireFeature('governance'), requireAuth);
 router.use((req, res, next) => {
-  try { identity.requireScope(req.user, ['GET', 'HEAD'].includes(req.method) ? 'scim.read' : 'scim.write'); next(); }
+  try {
+    if (!req.user.serviceToken) throw Object.assign(new Error('SCIM requires a scoped service token'),{status:403});
+    if (req.user.tenantId != null) throw Object.assign(new Error('Tenant-scoped credentials cannot administer global SCIM resources'),{status:403});
+    const scope=['GET','HEAD','OPTIONS'].includes(req.method)?'scim.read':'scim.write';
+    if (!Array.isArray(req.user.scopes) || !req.user.scopes.includes(scope)) throw Object.assign(new Error('SCIM requires '+scope+' scope'),{status:403});
+    next();
+  }
   catch (error) { res.status(error.status || 403).json({ schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'], status: String(error.status || 403), detail: error.message }); }
 });
 
@@ -20,6 +28,16 @@ function route(handler, status = 200) { return (req, res, next) => { try {
   next(error);
 } }; }
 
+function mutation(action, type, handler, status = 200) {
+  return route(req => getDb().transaction(() => {
+    const result = handler(req);
+    audit.log({userId:req.user.id,username:req.user.username,action:'scim_'+action,targetType:type,
+      targetId:String(result?.id || req.params.id),details:{serviceTokenId:req.user.serviceTokenId || null},
+      ip:getClientIp(req),userAgent:req.headers['user-agent']});
+    return result;
+  }).immediate(),status);
+}
+
 router.get('/ServiceProviderConfig', route(() => ({ schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'],
   patch: { supported: true }, bulk: { supported: false, maxOperations: 0, maxPayloadSize: 0 }, filter: { supported: true, maxResults: 200 },
   changePassword: { supported: false }, sort: { supported: false }, etag: { supported: true }, authenticationSchemes: [{ type: 'oauthbearertoken', name: 'Bearer token', primary: true }] })));
@@ -30,15 +48,15 @@ router.get('/Schemas', route(() => ({ schemas: ['urn:ietf:params:scim:api:messag
 
 router.get('/Users', route(req => scim.listUsers(req.query)));
 router.get('/Users/:id', route(req => scim.getUser(req.params.id)));
-router.post('/Users', writeable, route(req => scim.createUser(req.body || {}), 201));
-router.put('/Users/:id', writeable, route(req => scim.replaceUser(req.params.id, req.body || {})));
-router.patch('/Users/:id', writeable, route(req => scim.patchUser(req.params.id, req.body || {})));
-router.delete('/Users/:id', writeable, route(req => { scim.deleteUser(req.params.id); return null; }, 204));
+router.post('/Users', writeable, mutation('user_create','user',req => scim.createUser(req.body || {}), 201));
+router.put('/Users/:id', writeable, mutation('user_replace','user',req => scim.replaceUser(req.params.id, req.body || {})));
+router.patch('/Users/:id', writeable, mutation('user_patch','user',req => scim.patchUser(req.params.id, req.body || {})));
+router.delete('/Users/:id', writeable, mutation('user_delete','user',req => { scim.deleteUser(req.params.id); return null; }, 204));
 router.get('/Groups', route(req => scim.listGroups(req.query)));
 router.get('/Groups/:id', route(req => scim.getGroup(req.params.id)));
-router.post('/Groups', writeable, route(req => scim.createGroup(req.body || {}), 201));
-router.put('/Groups/:id', writeable, route(req => scim.replaceGroup(req.params.id, req.body || {})));
-router.patch('/Groups/:id', writeable, route(req => scim.patchGroup(req.params.id, req.body || {})));
-router.delete('/Groups/:id', writeable, route(req => { scim.deleteGroup(req.params.id); return null; }, 204));
+router.post('/Groups', writeable, mutation('group_create','team',req => scim.createGroup(req.body || {}), 201));
+router.put('/Groups/:id', writeable, mutation('group_replace','team',req => scim.replaceGroup(req.params.id, req.body || {})));
+router.patch('/Groups/:id', writeable, mutation('group_patch','team',req => scim.patchGroup(req.params.id, req.body || {})));
+router.delete('/Groups/:id', writeable, mutation('group_delete','team',req => { scim.deleteGroup(req.params.id); return null; }, 204));
 
 module.exports = router;

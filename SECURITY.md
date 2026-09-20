@@ -5,6 +5,14 @@ The authentication, MFA, credential and session fixes below are bundled in the
 instances remain on 8.96.8. Candidate image findings and the account-email URL
 clarification remain open; the candidate is not publicly published.
 
+The subsequent [SCIM authorization correction](docs/audits/2026-09-20-scim-security.md)
+is not in that candidate. SCIM requires global service tokens with explicit scim.read/scim.write
+scopes and no longer exposes or adopts unmanaged local users/teams. Tenant-scoped
+tokens are refused rather than treated as global. Mutations, ownership mappings and
+HTTP audit commit atomically; audit failure returns 500 and rolls the operation back.
+Existing SCIM ownership records still require review; historical unauthorized changes
+cannot be reconstructed automatically. SCIM-to-OIDC linking remains unsupported.
+
 ## OIDC and personal credentials (included in the 8.96.10 candidate)
 
 The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
