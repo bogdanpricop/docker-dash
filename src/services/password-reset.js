@@ -16,14 +16,20 @@ function link(token, invite = false) {
   return url.href;
 }
 
-function issue(db, userId, type, ttlMs) {
+function issue(db, userId, type, ttlMs, expectedEmail) {
   if (!config.smtp?.host) throw new Error('SMTP is not configured');
   const token = generateToken(32), tokenHash = sha256(token), url = link(token, type === 'invite');
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   db.transaction(() => {
+    // Bind the recipient snapshot to issuance under the same write lock. A
+    // different process may change the address after the caller's initial read.
+    const current = db.prepare('SELECT email,is_active FROM users WHERE id=?').get(userId);
+    if (!current?.is_active || typeof expectedEmail !== 'string' || !expectedEmail || current.email !== expectedEmail) {
+      throw new Error('Account changed before reset issuance');
+    }
     db.prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE user_id=? AND used_at IS NULL").run(userId);
     db.prepare('INSERT INTO password_reset_tokens(user_id,token_hash,type,expires_at) VALUES (?,?,?,?)').run(userId, tokenHash, type, expiresAt);
-  })();
+  }).immediate();
   return { tokenHash, url };
 }
 

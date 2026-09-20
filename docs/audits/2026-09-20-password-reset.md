@@ -55,13 +55,14 @@ tests are committed under `src/__tests__/password-reset-security.test.js` and
 
 ## Remaining boundaries
 
-Public bodies remain generic, but awaiting SMTP still exposes a timing difference
-for existing accounts. A bounded delivery queue/account-specific abuse controls
-remain follow-up work; this checkpoint does not claim enumeration resistance.
+The follow-up [delivery audit](2026-09-20-password-reset-delivery.md) removes SMTP
+from the public response path and adds bounded work/account quotas. This original
+checkpoint's synchronous-delivery timing limitation is superseded by that change.
 Historical reset URLs in old logs/backups are not erased or globally revoked.
 Recovery-page reload now requires reopening the original email link. Real SMTP
-delivery, HTTPS routing, path-prefix proxy rewrites and multi-process native Linux
-contention have not been validated by these tests. The documented LAN Docker API
+delivery, HTTPS routing and path-prefix proxy rewrites have not been validated.
+The follow-up audit adds native cross-process SQLite contention checks on both
+Docker hosts. The documented LAN Docker API
 exposure and image CVEs remain open independently of this change.
 
 The trusted destination, short expiry, one-time token and session-invalidation

@@ -9,6 +9,7 @@ jest.mock('../middleware/auth', () => ({ requireAuth: (req, _res, next) => { req
 const request = require('supertest'), express = require('express'), bcrypt = require('bcrypt');
 const config = require('../config'), { getDb } = require('../db'), { sha256 } = require('../utils/crypto');
 const email = require('../services/email'), audit = require('../services/audit'), log = require('../utils/logger')();
+const delivery = require('../services/password-reset-delivery');
 const app = express(); app.use(express.json()); app.use('/api/auth', require('../routes/auth'));
 let db, userId;
 beforeAll(() => {
@@ -21,7 +22,7 @@ beforeEach(() => {
   db.exec('DELETE FROM password_reset_tokens');
   db.prepare("UPDATE users SET password_hash='old-hash',email='fixture@example.test',is_active=1,must_change_password=1 WHERE id=?").run(userId);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(async () => { await delivery.whenIdle(); jest.restoreAllMocks(); });
 function token(expiry = new Date(Date.now() + 3600000).toISOString()) {
   const value = require('crypto').randomBytes(32).toString('hex');
   db.prepare('INSERT INTO password_reset_tokens(user_id,token_hash,type,expires_at) VALUES (?,?,?,?)').run(userId, sha256(value), 'reset', expiry);
@@ -33,6 +34,7 @@ test.each(['public', 'admin-reset', 'admin-invite'])('%s link ignores body origi
   const route = kind === 'public' ? '/request-password-reset' : '/users/' + userId + (kind === 'admin-reset' ? '/send-reset' : '/send-invite');
   expect((await request(app).post('/api/auth' + route).set('Host', 'evil.example').set('X-Forwarded-Host', 'evil.example')
     .send({ email: 'fixture@example.test', origin: 'https://evil.example/steal' })).status).toBe(200);
+  await delivery.whenIdle();
   const args = (kind === 'admin-invite' ? email.sendInvitation : email.sendPasswordReset).mock.calls[0][0];
   const link = new URL(args.resetUrl || args.inviteUrl);
   expect(link.origin).toBe('https://dashboard.example.test'); expect(link.pathname).toBe('/panel/reset-password.html');
@@ -56,6 +58,7 @@ test('SMTP failure never logs the URL/token and revokes the failed delivery', as
   const warn = jest.spyOn(console, 'warn').mockImplementation(() => {}); let raw;
   email.sendPasswordReset.mockImplementation(async args => { raw = new URL(args.resetUrl).searchParams.get('token'); throw Error('SMTP failed: ' + args.resetUrl); });
   expect((await request(app).post('/api/auth/request-password-reset').send({ email: 'fixture@example.test' })).status).toBe(200);
+  await delivery.whenIdle();
   expect(JSON.stringify([warn.mock.calls, log.error.mock.calls, log.warn.mock.calls])).not.toContain(raw);
   expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).not.toBeNull();
 });
@@ -63,6 +66,7 @@ test('SMTP failure never logs the URL/token and revokes the failed delivery', as
 test('missing SMTP does not mint tokens or invalidate an existing reset link', async () => {
   const raw = token(); config.smtp.host = '';
   expect((await request(app).post('/api/auth/request-password-reset').send({ email: 'fixture@example.test' })).status).toBe(200);
+  await delivery.whenIdle();
   expect(email.sendPasswordReset).not.toHaveBeenCalled();
   expect(db.prepare('SELECT COUNT(*) n FROM password_reset_tokens').get().n).toBe(1);
   expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).toBeNull();
@@ -95,6 +99,7 @@ test('expiry is rechecked after password hashing and audit failure rolls back th
 test.each(['javascript:alert(1)', 'https://user:pass@example.test', 'https://example.test/?redirect=evil', 'https://example.test/#fragment'])('invalid configured URL refuses token issuance: %s', async url => {
   config.app.publicUrl = url;
   expect((await request(app).post('/api/auth/request-password-reset').send({ email: 'fixture@example.test' })).status).toBe(200);
+  await delivery.whenIdle();
   expect(db.prepare('SELECT COUNT(*) n FROM password_reset_tokens').get().n).toBe(0);
   expect(email.sendPasswordReset).not.toHaveBeenCalled();
 });
@@ -147,4 +152,14 @@ test.each(['email', 'disable', 'disable-zero', 'delete'])('%s update permanently
   else auth.deleteUser(userId);
   auth.updateUser(userId, { isActive: true });
   expect((await request(app).post('/api/auth/validate-reset-token').send({ token: raw })).status).toBe(400);
+});
+
+test.each(['email', 'disabled'])('issuance refuses a stale recipient snapshot after %s changes', kind => {
+  const raw = token();
+  if (kind === 'email') db.prepare("UPDATE users SET email='new@example.test' WHERE id=?").run(userId);
+  else db.prepare('UPDATE users SET is_active=0 WHERE id=?').run(userId);
+  expect(() => require('../services/password-reset').issue(db, userId, 'reset', 900000, 'fixture@example.test'))
+    .toThrow('Account changed before reset issuance');
+  expect(db.prepare('SELECT COUNT(*) n FROM password_reset_tokens').get().n).toBe(1);
+  expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).toBeNull();
 });

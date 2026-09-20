@@ -13,8 +13,14 @@ or callers. Previously written logs, backups and reverse-proxy access logs are
 outside this change; a clean application log now does not erase historical tokens.
 
 See [verification and rollout status](docs/audits/2026-09-20-password-reset.md).
-Generic public responses do not yet conceal SMTP delivery timing. This change
-does not certify the broader recovery flow or the deployment's transport security.
+Public responses finish before account lookup or SMTP. Recovery delivery has
+a per-process bound of 32 active/queued jobs and two workers, plus a shared
+three-per-account hourly quota (Redis fixed windows in HA, local sliding windows
+in standalone). Quota errors/timeouts refuse delivery. Pending work is volatile;
+shutdown discards it and revokes in-flight links. Full queues return the same
+generic response, so that response is not a delivery guarantee. Admin-triggered
+email remains authenticated and synchronous. This change does not certify the
+broader recovery flow or the deployment's transport security.
 
 ## Audit 2026-09-19 (working tree, pending release)
 

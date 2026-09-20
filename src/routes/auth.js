@@ -349,7 +349,7 @@ router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), writeabl
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000);
+    const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000, user.email);
     const lang = req.body.lang || 'en';
     const resetUrl = issued.url;
 
@@ -377,7 +377,7 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), writeab
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    const issued = resetTokens.issue(db, user.id, 'invite', 1440 * 60 * 1000);
+    const issued = resetTokens.issue(db, user.id, 'invite', 1440 * 60 * 1000, user.email);
     const lang = req.body.lang || 'en';
     const inviteUrl = issued.url;
 
@@ -399,55 +399,16 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), writeab
 });
 
 // ─── Public: Request Password Reset (self-service) ──────────
-// Rate-limited. Generic bodies conceal account existence; delivery timing is
-// still observable until reset delivery is moved to a bounded background queue.
+// Account lookup and SMTP begin only after the identical response is flushed.
 router.post('/request-password-reset',
   rateLimit(5, 15 * 60 * 1000, 'auth-request-reset'),
-  async (req, res) => {
-    const GENERIC_OK = { ok: true, message: 'If an account exists with that email, a reset link has been sent.' };
-    try {
-      const { email, lang = 'en' } = req.body;
-      if (!email || typeof email !== 'string') {
-        // Still return generic 200 — don't leak validation info
-        return res.json(GENERIC_OK);
-      }
-
-      if (!config.smtp?.host) {
-        log.warn('Password reset delivery unavailable: SMTP is not configured');
-        return res.json(GENERIC_OK);
-      }
-
-      const db = getDb();
-      const user = db.prepare('SELECT id, username, email FROM users WHERE LOWER(email) = LOWER(?) AND is_active = 1')
-        .get(email.trim());
-
-      if (!user) {
-        // No account found — use the same response body.
-        return res.json(GENERIC_OK);
-      }
-
-      const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000);
-      let delivered = false;
-      try {
-        await emailService.sendPasswordReset({ to: user.email, username: user.username, resetUrl: issued.url, lang });
-        delivered = true;
-      } catch {
-        resetTokens.revoke(db, issued.tokenHash);
-        log.error('Password reset email delivery failed', { userId: user.id });
-      }
-
-      auditService.log({
-        userId: user.id, username: user.username,
-        action: 'password_reset_requested', details: { delivered },
-        ip: getClientIp(req),
-      });
-
-      res.json(GENERIC_OK);
-    } catch (err) {
-      log.error('Password reset request failed');
-      // Always return generic 200 — never expose internals
-      res.json(GENERIC_OK);
-    }
+  (req, res) => {
+    const { email, lang } = req.body || {};
+    const ip = getClientIp(req);
+    res.once('finish', () => {
+      require('../services/password-reset-delivery').enqueue({ email, lang, ip });
+    });
+    res.json({ ok: true, message: 'If an account exists with that email, a reset link has been sent.' });
   }
 );
 

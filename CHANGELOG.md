@@ -4,6 +4,11 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Finish the generic public recovery response before account lookup and SMTP.
+  Bound background work to 32 jobs/two active deliveries per process; enforce
+  three deliveries per account per hour across IPs via the shared quota service.
+  Record audit intent before issuing mail, refuse uncertain quotas and revoke
+  in-flight links during shutdown. Pending delivery is volatile across restarts.
 - Build reset/invitation links only from configured PUBLIC_URL (falling back to
   BASE_URL), with no caller-controlled destination. Account email requires SMTP;
   failed delivery revokes its token, and transport errors cannot log message bodies.

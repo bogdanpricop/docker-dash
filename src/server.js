@@ -632,6 +632,7 @@ async function start() {
 
 async function shutdown(signal) {
   log.info(`${signal} received, shutting down...`);
+  require('./services/password-reset-delivery').stop();
 
   const statsService = require('./services/stats');
   statsService.stop();
