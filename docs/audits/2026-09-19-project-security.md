@@ -19,6 +19,10 @@ limite egress raman deschise. Pool-urile de retea LAN sunt epuizate; daemonul
 nu a fost reconfigurat.
 Dovezi: [deploy 8.96.6](2026-09-20-deployment-8.96.6.md),
 [scanarea imaginii exacte](2026-09-20-image-8.96.6.json).
+Verificarea read-only a [binarelor instalate](2026-09-20-installed-scanner-artifacts.md)
+pe ambele hosturi leaga alertele de hash-urile si sursele analizate: dovezi de
+remediere gRPC si absenta codului daemon/OpenPGP pentru artefactele exacte.
+Constatarea zlib ramane deschisa; rapoartele brute si pragurile sunt pastrate.
 Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;

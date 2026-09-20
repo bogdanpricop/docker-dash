@@ -1,0 +1,255 @@
+{
+  "schema": 1,
+  "scope": "Artifact-specific source review; evidence only",
+  "changedAdmissionRules": false,
+  "rawScanEvidence": "docs/audits/2026-09-20-image-8.96.6.json",
+  "reviewLock": "docker/scanners/reviewed-artifacts.json",
+  "observations": {
+    "lan": {
+      "at": "2026-09-20T05:13:37.806Z",
+      "image": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "containerId": "b217144179670713d31625989a7241f35a367659b299db742784e45096c73d2e",
+      "platform": "linux/amd64",
+      "readOnly": true,
+      "changedAdmissionRules": false,
+      "artifacts": {
+        "docker-cli": {
+          "path": "/usr/local/bin/docker",
+          "binarySha256": "7e54c86884f89d4e08881648a25c2abbce0e206231974990ce8c49e91a84d0c9",
+          "bytes": 29032608,
+          "metadataSha256": {
+            "packages.txt": "d521011348615152b9c7d093d6088cea89ca5fc3919bac4d429ae67faa855575",
+            "build-info.txt": "a73c5bd0cab3a281d274c707d38be1fa7ca6f58d5c600676a6319258cba33685",
+            "source.json": "902484f342fb18289c75552631cb1419ecc6273d84c7b8dfc2e856e967425e85"
+          },
+          "compiledPackages": 653,
+          "deprecatedOpenpgpPresent": false,
+          "grpc": {
+            "version": "v1.84.0",
+            "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+            "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+            "regression": "Test/MissingAuthorityAndHostHeader",
+            "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj",
+            "regressionEvidence": "docs/audits/2026-09-20-scanner-rebuild.md",
+            "testRerunByThisCommand": false
+          }
+        },
+        "docker-compose": {
+          "path": "/usr/libexec/docker/cli-plugins/docker-compose",
+          "binarySha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+          "bytes": 28893344,
+          "metadataSha256": {
+            "packages.txt": "b5ac0a6192590ec4ef06b0d8cc8dcdc19a22324e52733270bd003afc48c10cc2",
+            "build-info.txt": "46ee74f8b34b8ce8f23b2e642492142b22cfd345fd4374df4fe80b51b74655e0",
+            "source.json": "74cd67d1a3bfb276beeb856667c8c43ea89087f1a300d468e488934fc23bd657"
+          },
+          "compiledPackages": 827,
+          "deprecatedOpenpgpPresent": false
+        },
+        "trivy": {
+          "path": "/usr/local/bin/trivy",
+          "binarySha256": "d8cb4257ac73dcb262def30c2bbad7303a5b7d55059693288c4f840cd73a3874",
+          "bytes": 171794592,
+          "metadataSha256": {
+            "packages.txt": "bb492c4f950314fc57ae31338d1ab30b940c631750138fc1b38bb882d0e3677b",
+            "build-info.txt": "7c915c6845e69dd6729330215c2c6b7d3809ca535d0eabad9dae1bab37204ec1",
+            "source.json": "221d434debf6c780be1e330d9a481a461030ceb09bccf6c03d77b3bd9e6f413d"
+          },
+          "compiledPackages": 3130,
+          "deprecatedOpenpgpPresent": false,
+          "grpc": {
+            "version": "v1.84.0",
+            "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+            "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+            "regression": "Test/MissingAuthorityAndHostHeader",
+            "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj",
+            "regressionEvidence": "docs/audits/2026-09-20-scanner-rebuild.md",
+            "testRerunByThisCommand": false
+          }
+        },
+        "grype": {
+          "path": "/usr/local/bin/grype",
+          "binarySha256": "91a46ba37aa0fe5b40fd619adc7d450a8d8d942c3f935d0771aa54b00e542542",
+          "bytes": 88719520,
+          "metadataSha256": {
+            "packages.txt": "5418687f61799848fcc89a3cb7adf31459d7b3217934b23e30845f30ab883e8e",
+            "build-info.txt": "5f00b1f3b3b809752a24be083b1d656b50516959bbf3f713d02ec50ab5d83515",
+            "source.json": "2bcbc71b86a98c72eb461a09183eee0b9992b3b52d88f8bbeebc5bb1e45c7c85"
+          },
+          "compiledPackages": 1797,
+          "deprecatedOpenpgpPresent": false,
+          "dockerPackages": [
+            "github.com/moby/moby/api/types",
+            "github.com/moby/moby/api/types/build",
+            "github.com/moby/moby/api/types/checkpoint",
+            "github.com/moby/moby/api/types/common",
+            "github.com/moby/moby/api/types/blkiodev",
+            "github.com/moby/moby/api/types/mount",
+            "github.com/moby/moby/api/types/network",
+            "github.com/moby/moby/api/types/storage",
+            "github.com/moby/moby/api/types/container",
+            "github.com/moby/moby/api/types/events",
+            "github.com/moby/moby/api/types/image",
+            "github.com/moby/moby/api/types/jsonstream",
+            "github.com/moby/moby/api/types/plugin",
+            "github.com/moby/moby/api/types/registry",
+            "github.com/moby/moby/api/types/swarm",
+            "github.com/moby/moby/api/types/volume",
+            "github.com/moby/moby/api/types/system",
+            "github.com/moby/moby/client/internal",
+            "github.com/moby/moby/client/internal/mod",
+            "github.com/moby/moby/client/internal/timestamp",
+            "github.com/moby/moby/client/pkg/versions",
+            "github.com/moby/moby/client",
+            "github.com/docker/docker/api/types/versions",
+            "github.com/docker/docker/api/types/filters",
+            "github.com/docker/docker/api/types/blkiodev",
+            "github.com/docker/docker/api/types/common",
+            "github.com/docker/docker/api/types/mount",
+            "github.com/docker/docker/api/types/network",
+            "github.com/docker/docker/api/types/storage",
+            "github.com/docker/docker/api/types/strslice",
+            "github.com/docker/docker/api/types/container",
+            "github.com/docker/docker/api/types/image",
+            "github.com/docker/docker/api",
+            "github.com/docker/docker/api/types/registry",
+            "github.com/docker/docker/api/types/build",
+            "github.com/docker/docker/api/types/swarm/runtime",
+            "github.com/docker/docker/api/types/swarm",
+            "github.com/docker/docker/api/types/volume",
+            "github.com/docker/docker/api/types",
+            "github.com/docker/docker/api/types/checkpoint",
+            "github.com/docker/docker/api/types/events",
+            "github.com/docker/docker/api/types/system",
+            "github.com/docker/docker/api/types/time",
+            "github.com/docker/docker/client"
+          ],
+          "engineImplementationPresent": false
+        }
+      }
+    },
+    "vps": {
+      "at": "2026-09-20T05:13:48.087Z",
+      "image": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "containerId": "f9e997c0c21388d03c448e8bbf5cdbfc6a8042bd12815841d3a80049a429f4d1",
+      "platform": "linux/amd64",
+      "readOnly": true,
+      "changedAdmissionRules": false,
+      "artifacts": {
+        "docker-cli": {
+          "path": "/usr/local/bin/docker",
+          "binarySha256": "7e54c86884f89d4e08881648a25c2abbce0e206231974990ce8c49e91a84d0c9",
+          "bytes": 29032608,
+          "metadataSha256": {
+            "packages.txt": "d521011348615152b9c7d093d6088cea89ca5fc3919bac4d429ae67faa855575",
+            "build-info.txt": "a73c5bd0cab3a281d274c707d38be1fa7ca6f58d5c600676a6319258cba33685",
+            "source.json": "902484f342fb18289c75552631cb1419ecc6273d84c7b8dfc2e856e967425e85"
+          },
+          "compiledPackages": 653,
+          "deprecatedOpenpgpPresent": false,
+          "grpc": {
+            "version": "v1.84.0",
+            "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+            "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+            "regression": "Test/MissingAuthorityAndHostHeader",
+            "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj",
+            "regressionEvidence": "docs/audits/2026-09-20-scanner-rebuild.md",
+            "testRerunByThisCommand": false
+          }
+        },
+        "docker-compose": {
+          "path": "/usr/libexec/docker/cli-plugins/docker-compose",
+          "binarySha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+          "bytes": 28893344,
+          "metadataSha256": {
+            "packages.txt": "b5ac0a6192590ec4ef06b0d8cc8dcdc19a22324e52733270bd003afc48c10cc2",
+            "build-info.txt": "46ee74f8b34b8ce8f23b2e642492142b22cfd345fd4374df4fe80b51b74655e0",
+            "source.json": "74cd67d1a3bfb276beeb856667c8c43ea89087f1a300d468e488934fc23bd657"
+          },
+          "compiledPackages": 827,
+          "deprecatedOpenpgpPresent": false
+        },
+        "trivy": {
+          "path": "/usr/local/bin/trivy",
+          "binarySha256": "d8cb4257ac73dcb262def30c2bbad7303a5b7d55059693288c4f840cd73a3874",
+          "bytes": 171794592,
+          "metadataSha256": {
+            "packages.txt": "bb492c4f950314fc57ae31338d1ab30b940c631750138fc1b38bb882d0e3677b",
+            "build-info.txt": "7c915c6845e69dd6729330215c2c6b7d3809ca535d0eabad9dae1bab37204ec1",
+            "source.json": "221d434debf6c780be1e330d9a481a461030ceb09bccf6c03d77b3bd9e6f413d"
+          },
+          "compiledPackages": 3130,
+          "deprecatedOpenpgpPresent": false,
+          "grpc": {
+            "version": "v1.84.0",
+            "sum": "h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=",
+            "transportSha256": "6ff2da17e276ba22a782dffe467ec32b664895d12faccfbb5fc1ec40d59cdcf6c",
+            "regression": "Test/MissingAuthorityAndHostHeader",
+            "advisory": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj",
+            "regressionEvidence": "docs/audits/2026-09-20-scanner-rebuild.md",
+            "testRerunByThisCommand": false
+          }
+        },
+        "grype": {
+          "path": "/usr/local/bin/grype",
+          "binarySha256": "91a46ba37aa0fe5b40fd619adc7d450a8d8d942c3f935d0771aa54b00e542542",
+          "bytes": 88719520,
+          "metadataSha256": {
+            "packages.txt": "5418687f61799848fcc89a3cb7adf31459d7b3217934b23e30845f30ab883e8e",
+            "build-info.txt": "5f00b1f3b3b809752a24be083b1d656b50516959bbf3f713d02ec50ab5d83515",
+            "source.json": "2bcbc71b86a98c72eb461a09183eee0b9992b3b52d88f8bbeebc5bb1e45c7c85"
+          },
+          "compiledPackages": 1797,
+          "deprecatedOpenpgpPresent": false,
+          "dockerPackages": [
+            "github.com/moby/moby/api/types",
+            "github.com/moby/moby/api/types/build",
+            "github.com/moby/moby/api/types/checkpoint",
+            "github.com/moby/moby/api/types/common",
+            "github.com/moby/moby/api/types/blkiodev",
+            "github.com/moby/moby/api/types/mount",
+            "github.com/moby/moby/api/types/network",
+            "github.com/moby/moby/api/types/storage",
+            "github.com/moby/moby/api/types/container",
+            "github.com/moby/moby/api/types/events",
+            "github.com/moby/moby/api/types/image",
+            "github.com/moby/moby/api/types/jsonstream",
+            "github.com/moby/moby/api/types/plugin",
+            "github.com/moby/moby/api/types/registry",
+            "github.com/moby/moby/api/types/swarm",
+            "github.com/moby/moby/api/types/volume",
+            "github.com/moby/moby/api/types/system",
+            "github.com/moby/moby/client/internal",
+            "github.com/moby/moby/client/internal/mod",
+            "github.com/moby/moby/client/internal/timestamp",
+            "github.com/moby/moby/client/pkg/versions",
+            "github.com/moby/moby/client",
+            "github.com/docker/docker/api/types/versions",
+            "github.com/docker/docker/api/types/filters",
+            "github.com/docker/docker/api/types/blkiodev",
+            "github.com/docker/docker/api/types/common",
+            "github.com/docker/docker/api/types/mount",
+            "github.com/docker/docker/api/types/network",
+            "github.com/docker/docker/api/types/storage",
+            "github.com/docker/docker/api/types/strslice",
+            "github.com/docker/docker/api/types/container",
+            "github.com/docker/docker/api/types/image",
+            "github.com/docker/docker/api",
+            "github.com/docker/docker/api/types/registry",
+            "github.com/docker/docker/api/types/build",
+            "github.com/docker/docker/api/types/swarm/runtime",
+            "github.com/docker/docker/api/types/swarm",
+            "github.com/docker/docker/api/types/volume",
+            "github.com/docker/docker/api/types",
+            "github.com/docker/docker/api/types/checkpoint",
+            "github.com/docker/docker/api/types/events",
+            "github.com/docker/docker/api/types/system",
+            "github.com/docker/docker/api/types/time",
+            "github.com/docker/docker/client"
+          ],
+          "engineImplementationPresent": false
+        }
+      }
+    }
+  }
+}
