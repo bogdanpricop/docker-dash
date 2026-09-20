@@ -1,11 +1,13 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Stare actuala: checkpoint-ul 8.96.2 este urcat pe Git si instalat pe LAN/VPS.
-Checkpoint-ul 8.96.3 adauga recuperarea la inlocuirea containerelor; validarea
-include 353 suite / 4.580 teste si canary-uri Docker reale pe ambele hosturi.
-Dovezi: [recuperare](2026-09-20-container-replacement.md) si
-[deploy 8.96.2](2026-09-20-checkpoint-deployment.md). Datele de mai jos pastreaza
-rezultatele initiale si evolutia auditului; nu certifica securitatea completa.
+Stare actuala: checkpoint-ul 8.96.3 este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP ok. Recuperarea la inlocuirea containerelor a fost
+verificata prin 353 suite / 4.580 teste si canary-uri Docker reale pe ambele hosturi.
+Dovezi: [recuperare](2026-09-20-container-replacement.md),
+[deploy 8.96.3](2026-09-20-deployment-8.96.3.md) si
+[scanarea imaginii exacte](2026-09-20-image-8.96.3.json).
+Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;
+nu certifica securitatea completa.
 
 ## Rezultat
 
