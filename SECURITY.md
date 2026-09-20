@@ -1,5 +1,10 @@
 # Security Policy
 
+The pending authentication fixes below are bundled in the privately tested
+[8.96.9 deployment candidate](docs/audits/2026-09-20-image-8.96.9.md). Both live
+instances remain on 8.96.8. Candidate image findings and the account-email URL
+clarification remain open; the candidate is not publicly published.
+
 ## MFA replay and attempt limits (pending deployment)
 
 Migration 180 records the last accepted TOTP counter and MFA failure/cooldown state.
