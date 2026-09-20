@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.8', date: '2026-09-20', title: 'Cleanup recovery and quota lifetime', changes: [
+      { type: 'security', text: 'Manual, fleet and disk-pressure cleanup coordinate with container replacements and egress recovery. Pending recovery blocks cleanup; the configured helper image is preserved while pruning.' },
+      { type: 'fix', text: 'An uncertain cleanup result retains its reservation for operator review. Deleting an individual image no longer implicitly prunes untagged parent images.' },
+      { type: 'fix', text: 'Long HTTP quota windows retain their history until the configured expiry. Requests traversing multiple routers consume the shared API quota once, while route-specific limits remain enforced.' },
+      { type: 'improvement', text: 'Updated EN/RO cleanup guidance explains recovery and manual CLI limits. All replicas sharing a daemon must use the new coordination protocol; external Docker commands bypass it.' },
+    ] },
     { version: '8.96.7', date: '2026-09-20', title: 'HTTP trust and HA lease enforcement', changes: [
       { type: 'security', text: 'Client IPs follow the configured proxy policy; SSO checks the connected proxy. Untrusted forwarding headers can no longer change audit or rate-limit identities.' },
       { type: 'security', text: 'Changing resource URLs cannot create fresh API quotas. If Redis cannot verify a quota within three seconds, protected requests return 503 instead of bypassing the limit.' },

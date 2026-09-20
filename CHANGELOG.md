@@ -2,7 +2,7 @@
 
 All notable changes to Docker Dash are documented here.
 
-## [Unreleased]
+## [8.96.8] - 2026-09-20 — Cleanup recovery and quota lifetime
 
 - Coordinate manual/fleet/disk-pressure cleanup with replacement and egress
   reservations. Preserve recovery containers and the configured helper image;

@@ -5,6 +5,8 @@
 const assert = require('node:assert/strict'), crypto = require('node:crypto'), fs = require('node:fs');
 const Docker = require('dockerode'), tar = require('tar-stream');
 const guard = require('../src/services/docker-prune-guard');
+const { hashArchive } = require('./verify-scanner-artifacts');
+const verifyBundled = process.env.DD_SMOKE_VERIFY_BUNDLED === '1';
 const url = new URL(process.env.DD_SMOKE_DOCKER_URL);
 assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.protocol, 'http:');
 const docker = new Docker({ host: url.hostname, port: Number(url.port), timeout: 60000 });
@@ -13,6 +15,7 @@ const owned = [], checks = [], oldImage = process.env.DD_EGRESS_HELPER_IMAGE;
 const filters = { label: [label + '=' + marker] };
 const reservedName = marker + '-reservation';
 let image;
+const bundledSources = {};
 const adapter = {
   getImage: id => docker.getImage(id), listImages: () => docker.listImages({ filters: JSON.stringify(filters) }),
   getContainer: name => docker.getContainer(name === guard.NAME ? reservedName : name),
@@ -30,6 +33,21 @@ async function fixture(name, labels = {}) {
 (async () => {
   try {
     assert.match(oldImage || '', /^sha256:[a-f0-9]{64}$/);
+    if (verifyBundled) {
+      assert.match(process.env.DD_SMOKE_APP_IMAGE || '', /^sha256:[a-f0-9]{64}$/);
+      const sourceContainer = await docker.createContainer({ Image: process.env.DD_SMOKE_APP_IMAGE,
+        Entrypoint: ['/bin/false'], Cmd: [], Labels: { [label]: marker },
+        HostConfig: { NetworkMode: 'none', CapDrop: ['ALL'] } });
+      owned.push(sourceContainer);
+      for (const file of ['src/services/docker-prune-guard.js', 'src/services/docker.js',
+        'src/services/container-replacement.js', 'src/services/egress-runner.js', 'src/services/disk-pressure.js']) {
+        const expected = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        const actual = await hashArchive(await sourceContainer.getArchive({ path: '/app/' + file }), file.split('/').pop());
+        assert.equal(actual.sha256, expected, 'Bundled source mismatch: ' + file);
+        bundledSources[file] = expected;
+      }
+      await sourceContainer.remove({ v: true });
+    }
     const pack = tar.pack();
     pack.entry({ name: 'Dockerfile' }, `FROM ${oldImage}\nLABEL ${label}=${marker}\n`); pack.finalize();
     const stream = await docker.buildImage(pack, { t: marker + ':test', memory: 128 * 1024 ** 2 });
@@ -65,6 +83,7 @@ async function fixture(name, labels = {}) {
     await assert.rejects(guard.assertNoPrune(adapter), { status: 409 });
     checks.push('uncertain-outcome-retains-barrier');
     console.log(JSON.stringify({ at: new Date().toISOString(), marker, checks, fixtureImage: image,
+      appImage: process.env.DD_SMOKE_APP_IMAGE, bundledSourceVerified: verifyBundled, bundledSources,
       sourceSha256: crypto.createHash('sha256').update(fs.readFileSync('src/services/docker-prune-guard.js')).digest('hex'),
       onlyLabeledTestResources: true, productionPruneCalled: false }));
   } finally {
