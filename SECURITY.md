@@ -9,7 +9,16 @@ changes and database failures close the client and its tracked streams. Close co
 4003 returns the browser to login without attempting token-in-URL fallback.
 The [WebSocket audit](docs/audits/2026-09-20-ws-session-revalidation.md) records native
 checks and limits. This does not retract buffered bytes or undo commands already
-executed remotely. The separate provider-console gateway remains under review.
+executed remotely.
+
+The separate `/ws/provider-console` gateway also checks the current global role,
+host operate permission and effective console locks before serial/RFB I/O and on
+a five-second idle sweep. Pending provider connections and handshake channels are
+closed after disconnect/revocation. Storage failures deny access even if recording
+the close audit fails. Fragmented reads yield to transport/timers instead of
+spinning until their deadline. See the [provider-console audit](docs/audits/2026-09-20-provider-console-revalidation.md).
+Provider adapters are mocked in these lifecycle canaries; real hypervisor console
+compatibility, sustained throughput and queue/backpressure limits remain open.
 
 ## Authentication expiry (pending deployment)
 
@@ -19,8 +28,8 @@ security alerts now count the SQLite timestamps written by the production path.
 MFA redemption and session creation share a write transaction, including recovery
 code consumption; OIDC state is consumed atomically before provider requests.
 See [verification and open boundaries](docs/audits/2026-09-20-auth-expiry.md).
-The follow-up WebSocket checkpoint above adds revalidation for the shared `/ws`
-endpoint; the separate provider-console endpoint remains outside that change.
+The follow-up WebSocket checkpoints above add revalidation for the shared `/ws`
+endpoint and the separate provider-console endpoint.
 
 ## Account recovery hardening (pending deployment)
 

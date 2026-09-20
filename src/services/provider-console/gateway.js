@@ -12,6 +12,8 @@ const broker = require('./broker');
 const providers = require('./providers');
 const ByteChannel = require('./byte-channel');
 const rfb = require('./rfb');
+const access = require('./access');
+const { sha256 } = require('../../utils/crypto');
 
 const PATH = '/ws/provider-console';
 const TOKEN_PROTOCOL_PREFIX = 'dd-console.';
@@ -83,7 +85,7 @@ function _connectionCapacity(userId, ip) {
   };
 }
 
-function _waitForAttach(ws) {
+function _waitForAttach(ws, authorize = () => true) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => finish(new Error('Console client attach timed out')), ATTACH_TIMEOUT_MS);
     const finish = err => {
@@ -94,6 +96,7 @@ function _waitForAttach(ws) {
     };
     const onClose = () => finish(new Error('Console client disconnected'));
     const onMessage = (data, isBinary) => {
+      if (!authorize()) return finish(new Error('Console access denied'));
       if (isBinary || data.length > 512) return finish(new Error('Invalid console attach message'));
       try {
         const message = JSON.parse(data.toString('utf8'));
@@ -117,9 +120,10 @@ function _forward(left, right, onFailure) {
   right.startForward(data => left.write(data).catch(fail));
 }
 
-async function _bridgeRfb(ws, upstream) {
-  const browser = new ByteChannel(ws);
-  const provider = new ByteChannel(upstream.socket);
+async function _bridgeRfb(ws, upstream, authorize = () => true, register = () => {}) {
+  const browser = new ByteChannel(ws, authorize);
+  const provider = new ByteChannel(upstream.socket, authorize);
+  register({ browser, provider });
   try {
     await rfb.authenticateUpstream(provider, upstream.password || null);
     await rfb.authenticateBrowser(browser);
@@ -132,9 +136,10 @@ async function _bridgeRfb(ws, upstream) {
   }
 }
 
-function _bridgeSerial(ws, upstream) {
-  const browser = new ByteChannel(ws);
-  const provider = new ByteChannel(upstream.stream || upstream.socket);
+function _bridgeSerial(ws, upstream, authorize = () => true, register = () => {}) {
+  const browser = new ByteChannel(ws, authorize);
+  const provider = new ByteChannel(upstream.stream || upstream.socket, authorize);
+  register({ browser, provider });
   _forward(browser, provider, () => { try { ws.close(1011, 'Console relay failed'); } catch {} });
   return { browser, provider };
 }
@@ -153,7 +158,7 @@ function _audit(session, user, req, action, details = {}) {
 }
 
 async function _start(ws, req, context) {
-  const { session, user } = context;
+  const { session, user, sessionHash } = context;
   const startedAt = Date.now();
   let upstream = null;
   let channels = null;
@@ -162,30 +167,55 @@ async function _start(ws, req, context) {
     if (finalized) return;
     finalized = true;
     clearTimeout(maxTimer);
+    clearInterval(sessionTimer);
     active.delete(session.id);
     try { channels?.browser?.destroy(); } catch {}
     try { channels?.provider?.destroy(); } catch {}
     try { upstream?.close?.(); } catch {}
-    broker.markClosed(session.id, code);
-    _audit(session, user, req, 'provider_vm_console_close', {
-      protocol: upstream?.protocol || null,
-      durationSeconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
-      closeCode: String(code).slice(0, 80),
-    });
+    // Storage errors must not interrupt transport cleanup or escape timers.
+    try { broker.markClosed(session.id, code); }
+    catch { log.warn('Could not persist console close state', { sessionId: session.id }); }
+    try {
+      _audit(session, user, req, 'provider_vm_console_close', {
+        protocol: upstream?.protocol || null,
+        durationSeconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
+        closeCode: String(code).slice(0, 80),
+      });
+    } catch { log.warn('Could not persist console close audit', { sessionId: session.id }); }
+  };
+  const authorize = () => {
+    if (finalized) return false;
+    if (ws.readyState !== WebSocket.OPEN) { finalize('browser_closed'); return false; }
+    try {
+      const current = auth.validateSessionHash(sessionHash);
+      if (current && !current.mustChangePassword && current.id === user.id
+          && current.role === user.role && _canOperate(current, session.host_id)
+          && !access.effective(session.host_id, session.resource_id).locked) return true;
+    } catch { /* Database/permission failures deny the connection. */ }
+    try { ws.close(4003, 'Console access no longer valid'); } catch { try { ws.terminate(); } catch {} }
+    finalize('access_revoked');
+    return false;
   };
   const maxTimer = setTimeout(() => {
     try { ws.close(1000, 'Maximum console duration reached'); } catch {}
     finalize('max_duration');
   }, config.providerConsole.maxSessionSeconds * 1000);
   maxTimer.unref?.();
+  const sessionTimer = setInterval(authorize, 5000);
+  sessionTimer.unref?.();
   active.set(session.id, {
-    ws, session, user, startedAt, finalize,
+    ws, session, user, sessionHash, startedAt, finalize,
     ip: req.socket?.remoteAddress || 'unknown',
   });
   ws.once('close', (code) => finalize(`browser_${code}`));
   ws.once('error', () => finalize('browser_error'));
   try {
-    upstream = await providers.openForSession(session);
+    if (!authorize()) return;
+    const opened = await providers.openForSession(session);
+    // finalize may already have run while provider connection was pending.
+    if (finalized) { try { opened?.close?.(); } catch {} return; }
+    upstream = opened;
+    if (!authorize()) return;
     if (!['rfb', 'serial'].includes(upstream.protocol)) throw new Error('Unsupported console protocol');
     if (ws.readyState !== WebSocket.OPEN) return finalize('browser_closed');
     ws.send(JSON.stringify({
@@ -197,26 +227,31 @@ async function _start(ws, req, context) {
         maxDurationSeconds: config.providerConsole.maxSessionSeconds,
       },
     }));
-    await _waitForAttach(ws);
+    await _waitForAttach(ws, authorize);
+    if (!authorize()) return;
     broker.markConnected(session.id, upstream.protocol);
     _audit(session, user, req, 'provider_vm_console_open', {
       protocol: upstream.protocol, credentialIsolation: 'server-side',
     });
-    channels = upstream.protocol === 'rfb'
-      ? await _bridgeRfb(ws, upstream)
-      : _bridgeSerial(ws, upstream);
+    const register = value => { channels = value; };
+    if (upstream.protocol === 'rfb') await _bridgeRfb(ws, upstream, authorize, register);
+    else _bridgeSerial(ws, upstream, authorize, register);
+    if (!authorize()) return;
     const providerSocket = upstream.stream || upstream.socket;
     providerSocket.once?.('close', () => { try { ws.close(1000, 'Provider console closed'); } catch {} });
     providerSocket.once?.('end', () => { try { ws.close(1000, 'Provider console closed'); } catch {} });
     providerSocket.once?.('error', () => { try { ws.close(1011, 'Provider console failed'); } catch {} });
   } catch (err) {
+    if (finalized) return;
     log.warn('Provider console connection failed', {
       sessionId: session.id, hostId: session.host_id, provider: session.provider_type,
       code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'CONSOLE_CONNECT_FAILED',
     });
-    _audit(session, user, req, 'provider_vm_console_failed', {
-      code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'CONSOLE_CONNECT_FAILED',
-    });
+    try {
+      _audit(session, user, req, 'provider_vm_console_failed', {
+        code: /^[A-Z][A-Z0-9_]{1,79}$/.test(String(err?.code || '')) ? err.code : 'CONSOLE_CONNECT_FAILED',
+      });
+    } catch { log.warn('Could not persist console failure audit', { sessionId: session.id }); }
     if (ws.readyState === WebSocket.OPEN) {
       try { ws.send(JSON.stringify({ type: 'console:error', message: 'Provider console could not be opened' })); } catch {}
       try { ws.close(1011, 'Console unavailable'); } catch {}
@@ -262,8 +297,11 @@ function attach(server) {
     if (!broker.TOKEN_RE.test(String(token || '')) || !_protocols(req).includes('binary')) {
       return _reject(socket, 401, 'Unauthorized');
     }
-    const user = auth.validateSession(_cookie(req, config.session.cookieName));
-    if (!user) return _reject(socket, 401, 'Unauthorized');
+    const sessionToken = _cookie(req, config.session.cookieName);
+    let user;
+    try { user = auth.validateSession(sessionToken); }
+    catch { return _reject(socket, 503, 'Service Unavailable'); }
+    if (!user || user.mustChangePassword) return _reject(socket, 401, 'Unauthorized');
     const ip = req.socket?.remoteAddress || 'unknown';
     if (!_connectionCapacity(user.id, ip).allowed) {
       return _reject(socket, 429, 'Too Many Requests');
@@ -279,7 +317,7 @@ function attach(server) {
     } catch (err) {
       return _reject(socket, [401, 403, 423, 429].includes(err.status) ? err.status : 401, 'Unauthorized');
     }
-    req.providerConsoleContext = { session, user };
+    req.providerConsoleContext = { session, user, sessionHash: sha256(sessionToken) };
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
   });
   wss.on('connection', (ws, req) => _start(ws, req, req.providerConsoleContext));
@@ -296,7 +334,7 @@ module.exports = {
   PATH, attach, terminateSessions, getActiveSessions,
   _internals: {
     active, _cookie, _protocols, _launchToken, _originAllowed, _canOperate,
-    _connectionCapacity, _waitForAttach, _forward, _bridgeRfb, _bridgeSerial,
+    _connectionCapacity, _waitForAttach, _forward, _bridgeRfb, _bridgeSerial, _start,
     reset() { active.clear(); wss = null; },
   },
 };

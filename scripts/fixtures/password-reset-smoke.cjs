@@ -129,10 +129,72 @@ async function main() {
       for(const socket of websocketServer.wss.clients) socket.terminate();
       await new Promise(resolve=>websocketServer.wss.close(resolve));
     }
-    console.log(JSON.stringify({ checks, emailMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
+    await providerConsoleChecks(server, auth, db, id, WebSocket);
+    console.log(JSON.stringify({ checks, emailMocked: true, providerMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();
     await new Promise(resolve => server.close(resolve));
+  }
+}
+
+async function providerConsoleChecks(server, auth, db, id, WebSocket) {
+  const { EventEmitter } = require('node:events');
+  const broker = require('/app/src/services/provider-console/broker');
+  const providers = require('/app/src/services/provider-console/providers');
+  const permissions = require('/app/src/services/host-permissions');
+  const access = require('/app/src/services/provider-console/access');
+  let current, connected = false;
+  broker.consume = () => current;
+  broker.markConnected = () => { connected = true; };
+  broker.markClosed = () => {};
+  permissions.resolveEffectivePermission = () => 'operate';
+  access.effective = () => ({ locked: false });
+  const gateway = require('/app/src/services/provider-console/gateway');
+  const wss = gateway.attach(server);
+  db.prepare("UPDATE users SET role='operator' WHERE id=?").run(id);
+  const host = '127.0.0.1:' + server.address().port;
+  try {
+    for (const mode of ['input', 'output', 'idle']) {
+      connected = false;
+      current = { id: 'native-console-' + mode, host_id: 1, resource_id: 'ddr_vm_' + 'a'.repeat(26), provider_type: 'fixture' };
+      const stream = new EventEmitter(); let writes = 0, closedUpstream = 0;
+      stream.write = (_data, callback) => { writes++; callback?.(); };
+      stream.destroy = () => stream.emit('close');
+      providers.openForSession = async () => ({ protocol: 'serial', stream, close: () => { closedUpstream++; } });
+      const session = auth._createSession({ id, username: 'smoke-reset', role: 'operator' }, '127.0.0.1', 'native-console');
+      const socket = new WebSocket('ws://' + host + gateway.PATH, ['binary', 'dd-console.' + 'A'.repeat(43)], {
+        headers: { origin: 'http://' + host, Cookie: require('/app/src/config').session.cookieName + '=' + session.token },
+      });
+      const closed = new Promise(resolve => socket.once('close', resolve));
+      const messages = []; socket.on('message', data => messages.push(data.toString()));
+      try {
+        await new Promise((resolve, reject) => { socket.once('message', resolve); socket.once('error', reject); });
+        socket.send('{"type":"console:attach"}');
+        const attachDeadline = Date.now() + 1500;
+        while (!connected) { assert.ok(Date.now() < attachDeadline); await new Promise(resolve => setTimeout(resolve, 5)); }
+        auth.logout(session.token);
+        if (mode === 'input') socket.send(Buffer.from('denied'));
+        if (mode === 'output') stream.emit('data', Buffer.from('private'));
+        let timer;
+        try {
+          assert.equal(await Promise.race([closed, new Promise(resolve => { timer = setTimeout(() => resolve('not-closed'), 6500); })]), 4003);
+        } finally { clearTimeout(timer); }
+        assert.equal(writes, 0); assert.equal(closedUpstream, 1);
+        assert.equal(messages.length, 1); assert.equal(JSON.parse(messages[0]).type, 'console:ready');
+        checks.push('real-provider-console-revocation-' + mode);
+      } finally { socket.terminate(); }
+    }
+    const ByteChannel = require('/app/src/services/provider-console/byte-channel');
+    const stream = new EventEmitter(); stream.destroy = () => {};
+    const channel = new ByteChannel(stream);
+    stream.emit('data', Buffer.from([1]));
+    const pending = channel.readExact(2, 1000);
+    setTimeout(() => stream.emit('data', Buffer.from([2])), 20);
+    assert.deepEqual(await pending, Buffer.from([1, 2])); channel.destroy();
+    checks.push('native-fragmented-console-read-allows-transport-progress');
+  } finally {
+    for (const socket of wss.clients) socket.terminate();
+    await new Promise(resolve => wss.close(resolve));
   }
 }
 main().then(() => process.exit(0), error => { console.error(error.message); process.exit(1); });

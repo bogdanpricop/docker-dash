@@ -70,8 +70,8 @@ a detached process or undo commands already issued. Native Docker/ESXi terminal
 behavior was not exercised by this canary; asynchronous boundaries use mocked
 providers in the regression tests.
 
-This change covers `/ws`, not `/ws/provider-console`. Dedicated provider-console
-revocation is the next work item. Fine-grained host/stack permission changes,
+This checkpoint covers `/ws`. A subsequent [provider-console checkpoint](2026-09-20-provider-console-revalidation.md)
+adds dedicated console revocation. Fine-grained host/stack permission changes on `/ws`,
 subscription/channel authorization, resource/backpressure limits and emergency-lock
 changes during later provider awaits also need further review. Global-role changes
 are covered here. HA depends on replicas reading the authoritative session state;

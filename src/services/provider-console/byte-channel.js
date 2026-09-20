@@ -1,8 +1,9 @@
 'use strict';
 
 class ByteChannel {
-  constructor(socket) {
+  constructor(socket, authorize = () => true) {
     this.socket = socket;
+    this.authorize = authorize;
     this.chunks = [];
     this.length = 0;
     this.waiters = [];
@@ -26,7 +27,7 @@ class ByteChannel {
   }
 
   _push(data) {
-    if (!data.length || this.closed) return;
+    if (!data.length || !this._allowed()) return;
     if (this.forward) return this.forward(data);
     this.chunks.push(data);
     this.length += data.length;
@@ -37,12 +38,16 @@ class ByteChannel {
   _close(error) {
     if (this.closed) return;
     this.closed = true;
+    this.chunks = [];
+    this.length = 0;
     const waiters = this.waiters.splice(0);
     waiters.forEach(waiter => waiter.reject(error));
   }
 
   async _wait(timeoutMs) {
-    if (this.length || this.closed) return;
+    // readExact calls this when buffered bytes are insufficient. Returning for
+    // a partial frame spins microtasks until the read deadline, starving I/O.
+    if (this.closed) return;
     await new Promise((resolve, reject) => {
       const waiter = { resolve, reject };
       this.waiters.push(waiter);
@@ -58,12 +63,14 @@ class ByteChannel {
 
   async readExact(size, timeoutMs = 15_000) {
     if (!Number.isInteger(size) || size < 0 || size > 1024 * 1024) throw new Error('Invalid console read size');
+    if (!this._allowed()) throw new Error('Console access denied');
     const deadline = Date.now() + timeoutMs;
     while (this.length < size) {
       if (this.closed) throw new Error('Console stream closed');
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('Console stream timed out');
       await this._wait(remaining);
+      if (!this._allowed()) throw new Error('Console access denied');
     }
     const output = Buffer.allocUnsafe(size);
     let offset = 0;
@@ -81,7 +88,7 @@ class ByteChannel {
 
   write(data) {
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-    if (this.closed) return Promise.reject(new Error('Console stream is closed'));
+    if (!this._allowed()) return Promise.reject(new Error('Console access denied'));
     if (this.isWebSocket) {
       return new Promise((resolve, reject) => {
         this.socket.send(buffer, { binary: true }, err => err ? reject(err) : resolve());
@@ -93,11 +100,22 @@ class ByteChannel {
   }
 
   startForward(callback) {
+    if (!this._allowed()) return;
     if (this.forward) throw new Error('Console stream is already forwarding');
     this.forward = callback;
     const pending = this.chunks.splice(0);
     this.length = 0;
-    pending.forEach(callback);
+    for (const data of pending) {
+      if (!this._allowed()) break;
+      callback(data);
+    }
+  }
+
+  _allowed() {
+    if (this.closed) return false;
+    try { if (this.authorize()) return true; } catch {}
+    this.destroy();
+    return false;
   }
 
   destroy() {

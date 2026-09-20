@@ -4,13 +4,18 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Revalidate provider-console sessions and host permissions before console I/O,
+  during startup/handshake and on a five-second idle sweep. Enforce current console
+  access locks; close pending/late provider resources after revocation/disconnect.
+- Let fragmented RFB reads wait for more transport data instead of spinning until
+  the read deadline. Deny buffered reads and writes after access is revoked.
 - Revalidate established `/ws` sessions before input/output and every five seconds
   while idle. Logout, password reset, expiry, disabled accounts, forced password
   changes, role changes and database failures close attached streams. Late Docker
   and SSH startup results are discarded. Store a session digest in the client map.
 - Revoked WebSockets return the browser to login without token-in-URL fallback.
   Serialize exec startup and close superseded terminal streams to avoid orphaned
-  connections. Dedicated provider-console lifecycle hardening remains open.
+  connections. Provider-console lifecycle checks are covered separately above.
 - Enforce session/MFA/OIDC expiry using parsed SQLite instants, rejecting invalid
   dates. Count production-format login attempts and mixed-format audit entries
   correctly for lockout/security alerts. Expired credential cleanup uses the same
