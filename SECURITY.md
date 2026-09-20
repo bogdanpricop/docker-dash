@@ -7,6 +7,18 @@ clarification remain open; the candidate is not publicly published.
 
 ## OIDC browser binding (source checkpoint, not in the existing candidate)
 
+The [group authorization follow-up](docs/audits/2026-09-20-oidc-group-revocation.md)
+treats an empty group list as authoritative and applies the configured default role.
+When mapping is enabled, absent/malformed/incomplete groups refuse login and revoke
+the exact bound user's sessions, personal API keys, MFA challenges and reset links.
+Mapped role changes also revoke old credentials before the new authorization commits.
+Denial revocation commits before its audit. Role changes resolve the current role
+under one SQLite write lock: a savepoint can roll back new grants while the outer
+transaction still commits revocation after an audit/session failure. Corrected
+claims require a new login and new API keys;
+stored roles on denied logins are retained for review. This observes claims only at
+login, not through continuous IdP polling or back-channel logout.
+
 The subsequent [external identity checkpoint](docs/audits/2026-09-20-external-identities.md)
 adds migration 181: OIDC issuer/subject and trusted-proxy namespace/subject identify
 accounts independently of profile username or email. Collisions provision a separate

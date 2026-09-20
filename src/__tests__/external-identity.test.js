@@ -115,6 +115,19 @@ test('changing external identity revokes sessions, MFA proofs and reset links', 
   expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE user_id=?').get(first.id).used_at).toBeTruthy();
   expect(db.prepare('SELECT auth_version FROM users WHERE id=?').get(first.id).auth_version).toBe(before+1);
 });
+test('OIDC authorization revocation is confined to the exact bound authority and subject', () => {
+  const first=provision('revoke-mapping','revoke-subject');
+  const other=auth.findOrCreateSsoUser('revoke-mapping','viewer','',{identity:{source:'oidc',issuer:'https://other.example.test',subject:'revoke-subject'}});
+  const {apiKeys}=require('../services/misc');
+  const targets=[first,other].map(user=>({user,session:auth._createSession(user,'127.0.0.1','fixture').token,key:apiKeys.create(user.id,{name:'revocation-fixture'}).key}));
+  db.prepare("INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,datetime('now','+1 minute'))").run(sha256('revoked-mfa'),first.id);
+  db.prepare("INSERT INTO password_reset_tokens(token_hash,user_id,type,expires_at) VALUES (?,?,'reset',datetime('now','+1 minute'))").run(sha256('revoked-reset'),first.id);
+  expect(auth.revokeOidcCredentials('https://identity.example.test','revoke-subject','oidc_authorization_denied','127.0.0.1','fixture')).toBe(true);
+  expect(auth.validateSession(targets[0].session)).toBeNull(); expect(apiKeys.validate(targets[0].key)).toBeNull();
+  expect(auth.validateSession(targets[1].session).id).toBe(other.id); expect(apiKeys.validate(targets[1].key).id).toBe(other.id);
+  expect(db.prepare('SELECT COUNT(*) n FROM mfa_tokens WHERE user_id=?').get(first.id).n).toBe(0);
+  expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE user_id=?').get(first.id).used_at).toBeTruthy();
+});
 test.each(['oidc','proxy','sso_legacy','ldap','scim'])('%s credentials cannot be replaced by local recovery or local login', async source => {
   const username='no-local-'+source, password='FixtureSecret123!', hash=bcrypt.hashSync(password,4);
   const id=local(username,source,hash), email=username+'@example.test';

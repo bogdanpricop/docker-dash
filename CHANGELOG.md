@@ -4,6 +4,14 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Apply the configured default role when OIDC explicitly returns an empty group
+  list. If configured group authorization is absent, malformed or incomplete,
+  refuse login and revoke the exact bound account's sessions, personal API keys,
+  MFA challenges and reset links. Mapped role changes revoke old credentials before
+  committing a fresh session. Later audit/session failures cannot roll revocation
+  back; corrected claims never reactivate old keys. Group overage requires corrected
+  IdP emission or a complete app-role claim. [Evidence and operational limits](docs/audits/2026-09-20-oidc-group-revocation.md).
+
 - Separate OIDC issuer/subject identities and trusted-proxy namespaces from local,
   LDAP, SCIM and unbound legacy accounts (migration 181). Matching usernames/emails
   cannot claim another user. Collisions create a separate account; changing profile

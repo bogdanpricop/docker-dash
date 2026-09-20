@@ -653,12 +653,12 @@ function _resolveRoleFromGroups(claims, oidcCfg) {
     + (oidcCfg.operatorGroups?.length || 0)
     + (oidcCfg.viewerGroups?.length || 0) > 0;
   if (!hasAnyList) return null; // group mapping disabled — caller falls back
+  if (!_hasUsableGroupsClaim(claims, oidcCfg)) return null;
 
   const claimName = oidcCfg.groupClaim || 'groups';
   let raw = claims && claims[claimName];
-  if (raw == null) raw = [];
-  if (!Array.isArray(raw)) raw = [String(raw)];
-  const userGroups = new Set(raw.map(g => String(g).toLowerCase()));
+  if (!Array.isArray(raw)) raw = [raw];
+  const userGroups = new Set(raw.map(g => g.toLowerCase()));
 
   const has = (list) => (list || []).some(g => userGroups.has(String(g).toLowerCase()));
   if (has(oidcCfg.adminGroups)) return 'admin';
@@ -668,31 +668,22 @@ function _resolveRoleFromGroups(claims, oidcCfg) {
 }
 
 /**
- * v8.7.8 (security fix) — Did the IdP actually emit a groups claim we can act
- * on? Returns true ONLY when the claim is present AND non-empty AND not the
- * Entra-style "groups overage" indicator (which means the user has >200
- * groups and we'd need a Microsoft Graph API call we don't make).
- *
- * Used by the OIDC callback to gate `updateRole`. WITHOUT this guard, a
- * transient claim absence (Entra overage, app-registration regression,
- * id_token verification fallthrough to userinfo, scope strip by a broker)
- * was silently demoting an existing admin to viewer on their next login
- * because the resolver returned null and the caller fell back to
- * OIDC_DEFAULT_ROLE. The absence of evidence must NOT be treated as
- * evidence of demotion.
+ * A complete groups assertion is a bounded array of non-empty strings (the
+ * empty array explicitly means no groups), or one non-empty string. Missing,
+ * malformed and distributed/overage claims cannot authorize a mapped login.
  */
 function _hasUsableGroupsClaim(claims, oidcCfg) {
   if (!claims || !oidcCfg) return false;
   const claimName = oidcCfg.groupClaim || 'groups';
 
-  // Entra "groups overage": claim itself is missing; instead the token has
-  // `_claim_names: { groups: "src1" }` + `_claim_sources: { src1: { endpoint: <graph URL> } }`.
-  // Treat as no-usable-claim so we don't demote on every login.
-  if (claims._claim_names && claims._claim_names[claimName]) return false;
+  const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+  if (!owns(claims, claimName)) return false;
+  if ((claims._claim_names && owns(claims._claim_names, claimName)) || (claimName === 'groups' && claims.hasgroups === true)) return false;
 
   const raw = claims[claimName];
-  if (Array.isArray(raw)) return raw.length > 0;
-  if (typeof raw === 'string') return raw.length > 0;
+  const valid = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value);
+  if (Array.isArray(raw)) return raw.length <= 10000 && raw.every(valid);
+  if (typeof raw === 'string') return valid(raw);
   return false;
 }
 
@@ -859,14 +850,8 @@ router.get('/oidc/callback', async (req, res) => {
       ? userInfo.preferred_username : email.split('@')[0] || userInfo.sub;
     const displayName = [userInfo.name, userInfo.given_name, username].find(value => typeof value === 'string' && value);
 
-    // v8.7.6 / FIXED v8.7.8 — resolve role from the IdP groups claim when
-    // mapping is configured. CRITICAL: only OVERWRITE an existing user's
-    // role when the IdP actually emitted a usable groups claim. Without
-    // that guard, a transient claim absence (Entra "groups overage",
-    // app-registration regression, userinfo-endpoint fallback that drops
-    // groups, scope strip by an upstream broker) silently demotes an
-    // existing admin to viewer on their next login. Absence of evidence
-    // is NOT evidence of demotion.
+    // A mapped login requires a complete group assertion. An empty list is
+    // authoritative; absence or overage must not preserve usable privileges.
     const mappedRole = _resolveRoleFromGroups(userInfo, config.oidc);
     const groupMappingOn = (config.oidc.adminGroups?.length || 0)
       + (config.oidc.operatorGroups?.length || 0)
@@ -874,38 +859,46 @@ router.get('/oidc/callback', async (req, res) => {
     const groupsClaimUsable = _hasUsableGroupsClaim(userInfo, config.oidc);
     const assignedRole = mappedRole || (config.oidc.defaultRole || 'viewer');
 
-    // Update existing role ONLY when we have evidence: mapping configured
-    // AND the IdP actually sent groups. Otherwise preserve whatever role
-    // the user already has (new users get defaultRole on creation; existing
-    // users are untouched). warn-level so this is visible in ops/audit.
-    const updateRole = groupMappingOn && groupsClaimUsable;
-    if (groupMappingOn && !groupsClaimUsable) {
-      const claimName = config.oidc.groupClaim || 'groups';
-      log.warn('OIDC: groups claim absent or unusable — existing user role preserved (no demotion).', {
-        username,
-        claimName,
-        hasOverageIndicator: !!(userInfo._claim_names && userInfo._claim_names[claimName]),
-      });
-    }
-
     const ip = getClientIp(req);
     const ua = req.headers['user-agent'];
-    // Commit provisioning, permission updates, session and audit together. The
-    // verified issuer/subject identify the account; profile names never do.
+    const updateRole = groupMappingOn && groupsClaimUsable;
+    if (groupMappingOn && !groupsClaimUsable) {
+      authService.revokeOidcCredentials(userInfo.iss,userInfo.sub,'oidc_authorization_denied',ip,ua);
+      log.warn('OIDC authorization refused: groups claim missing, invalid or incomplete');
+      return res.status(403).send('OIDC group authorization is unavailable');
+    }
+    // Resolve the current role under the same write lock as revocation. A
+    // savepoint contains new grants: failure rolls them back while the outer
+    // transaction still commits revocation, without a gap for another writer.
+    let authorizationError;
     const session = db.transaction(() => {
-      const user = authService.findOrCreateSsoUser(username, assignedRole, email, {
-        updateRole, emailVerified:userInfo.email_verified === true,
-        identity:{ source:'oidc', issuer:userInfo.iss, subject:userInfo.sub },
-      });
-      if (!user) return null;
-      if (displayName && displayName !== user.username) {
-        db.prepare('UPDATE users SET display_name=? WHERE id=? AND (display_name IS NULL OR display_name=username)')
-          .run(displayName,user.id);
+      const existing = updateRole ? db.prepare("SELECT id,username,role FROM users WHERE auth_source='oidc' AND external_source='oidc' AND external_issuer=? AND external_subject=?")
+        .get(userInfo.iss,userInfo.sub) : null;
+      const changed = existing && existing.role !== assignedRole;
+      if (changed) authService._revokeUserCredentials(db,existing.id);
+      try {
+        if (changed) auditService.log({ userId:existing.id, username:existing.username, action:'oidc_authorization_changed',
+          targetType:'user', targetId:String(existing.id), ip, userAgent:ua });
+        return db.transaction(() => {
+          const user = authService.findOrCreateSsoUser(username, assignedRole, email, {
+            updateRole, emailVerified:userInfo.email_verified === true,
+            identity:{ source:'oidc', issuer:userInfo.iss, subject:userInfo.sub },
+          });
+          if (!user) return null;
+          if (displayName && displayName !== user.username) {
+            db.prepare('UPDATE users SET display_name=? WHERE id=? AND (display_name IS NULL OR display_name=username)')
+              .run(displayName,user.id);
+          }
+          const created = authService._createSession(user,ip,ua);
+          auditService.log({ userId:user.id, username:user.username, action:'oidc_login', ip, userAgent:ua });
+          return created;
+        }).immediate();
+      } catch (error) {
+        authorizationError = error;
+        return null;
       }
-      const created = authService._createSession(user,ip,ua);
-      auditService.log({ userId:user.id, username:user.username, action:'oidc_login', ip, userAgent:ua });
-      return created;
     }).immediate();
+    if (authorizationError) throw authorizationError;
     if (!session) return res.status(403).send('External account is unavailable');
 
     // Set session cookie and redirect to app

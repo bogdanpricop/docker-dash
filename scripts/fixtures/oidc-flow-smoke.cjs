@@ -63,6 +63,38 @@ module.exports = async function oidcFlowChecks(endpoint, db, checks) {
       assert.equal(db.prepare("SELECT id FROM users WHERE external_subject='native-audit-failure'").get(),undefined);
     } finally { db.exec('DROP TRIGGER fail_oidc_audit'); }
     checks.push('native-oidc-audit-failure-rolls-back-account-and-session');
+    const auth=require('/app/src/services/auth'),{apiKeys}=require('/app/src/services/misc');
+    async function mappedAdmin() {
+      config.oidc.adminGroups=['admins']; config.oidc.groupClaim='groups';
+      const flow=await start(); claims.groups=['admins']; assert.equal((await callback(flow)).status,302);
+      const user=db.prepare("SELECT id,username,role FROM users WHERE external_subject='fixture-subject' AND external_source='oidc'").get();
+      return {user,session:auth._createSession(user,'127.0.0.1','fixture').token,key:apiKeys.create(user.id,{name:'oidc-native-policy'}).key};
+    }
+    const beforeDemotion=await mappedAdmin(), empty=await start(); claims.groups=[];
+    assert.equal((await callback(empty)).status,302);
+    assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(beforeDemotion.user.id).role,'viewer');
+    assert.equal(auth.validateSession(beforeDemotion.session),null); assert.equal(apiKeys.validate(beforeDemotion.key),null);
+    checks.push('native-oidc-empty-groups-demote-and-revoke-personal-credentials');
+    const beforeDenial=await mappedAdmin(), missing=await start();
+    assert.equal((await callback(missing)).status,403);
+    assert.equal(auth.validateSession(beforeDenial.session),null); assert.equal(apiKeys.validate(beforeDenial.key),null);
+    checks.push('native-oidc-missing-groups-refuse-and-revoke-personal-credentials');
+    const beforeAudit=await mappedAdmin(), brokenAudit=await start();
+    db.exec("CREATE TEMP TRIGGER fail_oidc_denial_audit BEFORE INSERT ON audit_log WHEN NEW.action='oidc_authorization_denied' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END");
+    try {
+      assert.equal((await callback(brokenAudit)).status,500);
+      assert.equal(auth.validateSession(beforeAudit.session),null); assert.equal(apiKeys.validate(beforeAudit.key),null);
+    } finally {db.exec('DROP TRIGGER fail_oidc_denial_audit');}
+    checks.push('native-oidc-revocation-survives-denial-audit-failure');
+    const beforeGrantAudit=await mappedAdmin(), failedGrant=await start(); claims.groups=[];
+    db.exec("CREATE TEMP TRIGGER fail_oidc_grant_audit BEFORE INSERT ON audit_log WHEN NEW.action='oidc_login' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END");
+    try {
+      assert.equal((await callback(failedGrant)).status,500);
+      assert.equal(auth.validateSession(beforeGrantAudit.session),null); assert.equal(apiKeys.validate(beforeGrantAudit.key),null);
+      assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(beforeGrantAudit.user.id).role,'admin');
+      assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions WHERE user_id=? AND is_valid=1').get(beforeGrantAudit.user.id).n,0);
+    } finally {db.exec('DROP TRIGGER fail_oidc_grant_audit');}
+    checks.push('native-oidc-savepoint-rolls-back-grant-but-commits-revocation');
   } finally {
     cache.clear(); cache.resetFetcher(); Object.assign(config.oidc, saved);
     config.session.secureCookie = savedSecure; config.security.isStrict = savedStrict;

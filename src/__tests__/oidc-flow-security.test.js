@@ -16,7 +16,7 @@ function sign(payload) {
 }
 beforeAll(() => { db = getDb(); db.exec("CREATE TABLE IF NOT EXISTS oidc_states(state TEXT PRIMARY KEY,created_at TEXT DEFAULT (datetime('now')),expires_at TEXT NOT NULL)"); });
 beforeEach(() => {
-  Object.assign(config.oidc, { enabled: true, issuerUrl: issuer, clientId, clientSecret: 'fixture-secret', redirectUri: 'http://localhost/api/auth/oidc/callback', defaultRole: 'viewer', adminGroups: [], operatorGroups: [], viewerGroups: [] });
+  Object.assign(config.oidc, { enabled: true, issuerUrl: issuer, clientId, clientSecret: 'fixture-secret', redirectUri: 'http://localhost/api/auth/oidc/callback', defaultRole: 'viewer', groupClaim:'groups', adminGroups: [], operatorGroups: [], viewerGroups: [] });
   config.security.isStrict = false; config.session.secureCookie = false;
   db.exec("DELETE FROM sessions; DELETE FROM oidc_states; UPDATE users SET role='viewer' WHERE username='oidc-flow-fixture'");
   claims = {}; tokenBody = null; exchangeBody = null; userInfo = { sub: 'fixture-subject', email: 'fixture@example.test' };
@@ -134,6 +134,78 @@ test('failed login audit leaves neither a session nor a newly provisioned identi
     expect(db.prepare("SELECT id FROM users WHERE external_subject='failed-audit-subject'").get()).toBeUndefined();
     expect(db.prepare("SELECT id FROM audit_log WHERE username='oidc-audit-rollback'").get()).toBeUndefined();
   } finally { db.exec('DROP TRIGGER fail_oidc_audit'); }
+});
+async function loginMappedAdmin() {
+  config.oidc.adminGroups=['admins'];
+  const flow=await start(); claims.groups=['admins'];
+  expect((await callback(flow)).status).toBe(302);
+  const auth=require('../services/auth'), {apiKeys}=require('../services/misc');
+  const user=db.prepare("SELECT id,username,role FROM users WHERE external_source='oidc' AND external_subject='fixture-subject'").get();
+  const session=auth._createSession(user,'127.0.0.1','fixture');
+  const key=apiKeys.create(user.id,{name:'oidc-policy-fixture',permissions:['read','write']}).key;
+  return {auth,apiKeys,user,session,key};
+}
+test('empty group list demotes an existing administrator and revokes old credentials', async () => {
+  const prior=await loginMappedAdmin(), flow=await start(); claims.groups=[];
+  expect((await callback(flow)).status).toBe(302);
+  expect(db.prepare('SELECT role FROM users WHERE id=?').get(prior.user.id).role).toBe('viewer');
+  expect(prior.auth.validateSession(prior.session.token)).toBeNull(); expect(prior.apiKeys.validate(prior.key)).toBeNull();
+  expect(db.prepare('SELECT COUNT(*) n FROM sessions WHERE is_valid=1').get().n).toBe(1);
+});
+test('authorization checks the current role after acquiring its write transaction', async () => {
+  const prior=await loginMappedAdmin(), flow=await start(); claims.groups=[];
+  db.prepare("UPDATE users SET role='viewer' WHERE id=?").run(prior.user.id);
+  const transaction=db.transaction.bind(db); let interleaved=false;
+  const hook=jest.spyOn(db,'transaction').mockImplementation(fn=>{
+    const tx=transaction(fn);
+    return Object.assign((...args)=>tx(...args),{immediate:(...args)=>{
+      if(!interleaved) {
+        expect(db.inTransaction).toBe(false); interleaved=true;
+        // Model another connection committing immediately before BEGIN IMMEDIATE.
+        db.prepare("UPDATE users SET role='admin' WHERE id=?").run(prior.user.id);
+      }
+      return tx.immediate(...args);
+    },deferred:tx.deferred,exclusive:tx.exclusive});
+  });
+  try {
+    expect((await callback(flow)).status).toBe(302); expect(interleaved).toBe(true);
+    expect(db.prepare('SELECT role FROM users WHERE id=?').get(prior.user.id).role).toBe('viewer');
+    expect(prior.auth.validateSession(prior.session.token)).toBeNull(); expect(prior.apiKeys.validate(prior.key)).toBeNull();
+  } finally {hook.mockRestore();}
+});
+test.each(['missing','null','mixed','object','overage','hasgroups'])('unusable groups (%s) deny login and revoke the bound user credentials', async kind => {
+  const prior=await loginMappedAdmin(), flow=await start();
+  if(kind==='null') claims.groups=null;
+  if(kind==='mixed') claims.groups=['admins',42];
+  if(kind==='object') claims.groups={admin:true};
+  if(kind==='overage') {claims.groups=['admins'];claims._claim_names={groups:'src1'};}
+  if(kind==='hasgroups') claims.hasgroups=true;
+  expect((await callback(flow)).status).toBe(403);
+  expect(prior.auth.validateSession(prior.session.token)).toBeNull(); expect(prior.apiKeys.validate(prior.key)).toBeNull();
+  expect(db.prepare('SELECT COUNT(*) n FROM sessions WHERE is_valid=1').get().n).toBe(0);
+  const recovered=await start(); claims.groups=['admins'];
+  expect((await callback(recovered)).status).toBe(302);
+  expect(prior.apiKeys.validate(prior.key)).toBeNull(); expect(prior.auth.validateSession(prior.session.token)).toBeNull();
+});
+test('missing mapped groups never auto-provision a user', async () => {
+  config.oidc.adminGroups=['admins']; const flow=await start(); claims.sub='missing-groups-new-user'; claims.preferred_username='missing-groups-new-user';
+  expect((await callback(flow)).status).toBe(403);
+  expect(db.prepare("SELECT id FROM users WHERE external_subject='missing-groups-new-user'").get()).toBeUndefined();
+});
+test('mapping disabled preserves an explicitly assigned role without requiring groups', async () => {
+  const prior=await loginMappedAdmin(); config.oidc.adminGroups=[];
+  const flow=await start(); expect((await callback(flow)).status).toBe(302);
+  expect(db.prepare('SELECT role FROM users WHERE id=?').get(prior.user.id).role).toBe('admin');
+});
+test.each(['denial','demotion','revocation-audit','login-audit'])('audit failure during %s cannot restore previously revoked credentials', async kind => {
+  const prior=await loginMappedAdmin(), flow=await start(); if(kind!=='denial') claims.groups=[];
+  const action=({denial:'oidc_authorization_denied',demotion:'sso_role_updated','revocation-audit':'oidc_authorization_changed','login-audit':'oidc_login'})[kind];
+  db.exec(`CREATE TEMP TRIGGER fail_authorization_audit BEFORE INSERT ON audit_log WHEN NEW.action='${action}' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END`);
+  try {
+    expect((await callback(flow)).status).toBe(500);
+    expect(prior.auth.validateSession(prior.session.token)).toBeNull(); expect(prior.apiKeys.validate(prior.key)).toBeNull();
+    expect(db.prepare('SELECT COUNT(*) n FROM sessions WHERE is_valid=1').get().n).toBe(0);
+  } finally {db.exec('DROP TRIGGER fail_authorization_audit');}
 });
 test('secure deployments use a Host-prefixed cookie without trusting arbitrary forwarded headers', async () => {
   config.session.secureCookie = true;

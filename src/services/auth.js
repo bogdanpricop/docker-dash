@@ -617,6 +617,31 @@ class AuthService {
     }).immediate();
   }
 
+  /** Caller holds the write transaction and has already resolved the user. */
+  _revokeUserCredentials(db, userId) {
+    if (!db.inTransaction) throw new Error('Credential revocation requires a write transaction');
+    db.prepare('UPDATE sessions SET is_valid=0 WHERE user_id=?').run(userId);
+    db.prepare('UPDATE api_keys SET is_active=0 WHERE user_id=?').run(userId);
+    db.prepare('DELETE FROM mfa_tokens WHERE user_id=?').run(userId);
+    db.prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE user_id=? AND used_at IS NULL").run(userId);
+  }
+
+  /** Revoke a verified OIDC subject's credentials when authorization is denied. */
+  revokeOidcCredentials(issuer, subject, action, ip, userAgent) {
+    const db = getDb();
+    if (db.inTransaction) throw new Error('OIDC revocation requires an independent transaction');
+    const user = db.transaction(() => {
+      const current = db.prepare("SELECT id,username FROM users WHERE auth_source='oidc' AND external_source='oidc' AND external_issuer=? AND external_subject=?").get(issuer,subject);
+      if (!current) return null;
+      this._revokeUserCredentials(db,current.id);
+      return current;
+    }).immediate();
+    // Logging failure refuses this login but cannot undo credential revocation.
+    if (user) require('./audit').log({ userId:user.id, username:user.username, action,
+      targetType:'user', targetId:String(user.id), ip, userAgent });
+    return !!user;
+  }
+
   /** Change password */
   async changePassword(userId, currentPassword, newPassword) {
     const db = getDb();

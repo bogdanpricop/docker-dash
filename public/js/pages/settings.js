@@ -544,6 +544,7 @@ const SettingsPage = {
 
         <h4><i class="fas fa-users"></i> ${i18n.t('pages.settings.help.usersTitle')}</h4>
         <p>${i18n.t('pages.settings.help.usersBody')}</p>
+        <p>${i18n.t('pages.settings.help.oidcGroupsBody')}</p>
 
         <h4><i class="fas fa-bell"></i> ${i18n.t('pages.settings.help.webhooksTitle')}</h4>
         <p>${i18n.t('pages.settings.help.webhooksBody')}</p>
