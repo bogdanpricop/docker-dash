@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.7', date: '2026-09-20', title: 'HTTP trust and HA lease enforcement', changes: [
+      { type: 'security', text: 'Client IPs follow the configured proxy policy; SSO checks the connected proxy. Untrusted forwarding headers can no longer change audit or rate-limit identities.' },
+      { type: 'security', text: 'Changing resource URLs cannot create fresh API quotas. If Redis cannot verify a quota within three seconds, protected requests return 503 instead of bypassing the limit.' },
+      { type: 'fix', text: 'An old HA leader cannot overwrite another replica\'s lease. Local expiry, disconnect handling and ownership-safe shutdown stop stale leadership; Redis profiles no longer evict leases.' },
+      { type: 'improvement', text: 'Review proxy IP/CIDR settings and shared API limits before rollout. HA coordination does not cancel already-started external work; known image findings and remaining audit work stay documented.' },
+    ] },
     { version: '8.96.6', date: '2026-09-20', title: 'Egress capability and shared-policy protection', changes: [
       { type: 'security', text: 'Filtered workloads must explicitly drop NET_RAW, which Docker grants by default. Applying filters and authorizing proxy connections refuse this packet-socket bypass; the network audit now reports it.' },
       { type: 'fix', text: 'Unapply preserves a shared firewall table when another active container or stack policy needs it. The UI explains retained filters, and disabling one policy preserves the others.' },

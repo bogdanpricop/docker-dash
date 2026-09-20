@@ -9,6 +9,8 @@ const tar = require('tar-stream');
 const { Readable } = require('node:stream');
 const yaml = require('yaml');
 const { readOutput } = require('../src/services/egress-runner')._internals;
+const { hashArchive } = require('./verify-scanner-artifacts');
+const verifyBundled = process.env.DD_SMOKE_VERIFY_BUNDLED === '1';
 const image = process.env.DD_SMOKE_APP_IMAGE;
 assert.match(image || '', /^sha256:[a-f0-9]{64}$/);
 const redisImage = 'redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0';
@@ -41,6 +43,11 @@ const sources = ['src/services/cluster.js', 'src/services/cluster-lease.js',
     const pack = tar.pack(), sourceSha256 = {};
     for (const name of sources) {
       const body = fs.readFileSync(name); sourceSha256[name] = crypto.createHash('sha256').update(body).digest('hex');
+      if (verifyBundled && name.startsWith('src/')) {
+        const actual = await hashArchive(await controller.getArchive({ path: '/app/' + name }), name.split('/').pop());
+        assert.equal(actual.sha256, sourceSha256[name], 'Bundled source mismatch: ' + name);
+        continue;
+      }
       pack.entry({ name, mode: 0o644 }, body);
     }
     pack.finalize(); await controller.putArchive(pack, { path: '/app' });
@@ -55,7 +62,7 @@ const sources = ['src/services/cluster.js', 'src/services/cluster-lease.js',
     assert.equal(info.State.ExitCode, 0, 'HA canary failed');
     const match = /^DD_HA_REPORT (.+)$/m.exec(output); assert.ok(match, 'Missing HA proof');
     console.log(JSON.stringify({ ...JSON.parse(match[1]), marker, appImage: image, redisImage,
-      redisImageId: (await backend.inspect()).Image, sourceSha256, publishedPorts: false }));
+      redisImageId: (await backend.inspect()).Image, sourceSha256, bundledSourceVerified: verifyBundled, publishedPorts: false }));
   } finally {
     for (const c of owned.reverse()) {
       const info = await c.inspect(); assert.equal(info.Config.Labels['com.docker-dash.smoke'], marker);

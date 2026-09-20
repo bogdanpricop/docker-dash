@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.7] - 2026-09-20 — HTTP trust and HA lease enforcement
+
+- Resolve client IPs through the configured Express proxy policy. Check SSO
+  assertions against the immediate proxy socket peer. Default proxy trust is
+  loopback in every environment; blanket trust and hop counts are refused.
+- Use stable quota scopes across resource URLs and route casing. The API quota
+  is shared across its mounted routes. Return 503 before protected work when
+  Redis fails, is full or cannot confirm a quota within three seconds.
+- Renew Redis leadership only after an atomic owner comparison; expire stale
+  local roles, bound requests and prevent late callbacks from restoring a
+  stopped coordinator. Configure Redis not to evict the active lease.
+- Validate source hashes in the built image before native HTTP/HA canaries.
+  Update proxy configuration and recovery guidance. Already-started external
+  work still needs its own deduplication; image vulnerabilities remain tracked.
+
 ## [8.96.6] - 2026-09-20 — Egress capability and shared-policy protection
 
 - Require an explicit NET_RAW capability drop before applying an egress filter

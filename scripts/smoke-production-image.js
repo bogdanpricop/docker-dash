@@ -53,6 +53,18 @@ async function main() {
     await container.start(); await ready(container);
     const first = await execute(container, snapshot);
     console.log('PASS production startup, native SQLite migrations and HTTP health');
+    await execute(container, `const assert=require('node:assert/strict');
+      (async()=>{
+        for(let n=0;n<100;n++){
+          const path=n%2?'/api/images/nonexistent-'+n:'/API/containers/nonexistent-'+n;
+          const response=await fetch('http://127.0.0.1:8101'+path+'?probe='+n);
+          assert.equal(response.status,401,'Unexpected protected-route response at '+n);await response.text();
+        }
+        const blocked=await fetch('http://127.0.0.1:8101/api/networks/nonexistent');
+        assert.equal(blocked.status,429);assert.equal(blocked.headers.get('x-ratelimit-remaining'),'0');
+        assert.equal((await fetch('http://127.0.0.1:8101/api/health')).status,200);
+      })().catch(error=>{console.error(error);process.exitCode=1;});`);
+    console.log('PASS built HTTP server shares API quota across paths/case while health remains available');
     await execute(container, `const cp=require('child_process'),assert=require('assert/strict');
       assert.match(cp.execFileSync('docker',['--version'],{encoding:'utf8',timeout:10000}),/Docker version 29\\.7\\.2\\+dd\\.1,/);
       assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.5.1+dd.1');
