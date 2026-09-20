@@ -1,0 +1,4006 @@
+{
+  "date": "2026-09-20",
+  "platform": "linux/amd64",
+  "production": {
+    "prometheus": "3.0.1",
+    "grafana": "11.3.0",
+    "grafanaBootstrapGuard": "deployed-on-LAN-and-VPS"
+  },
+  "candidates": {
+    "prometheus": {
+      "at": "2026-09-20T12:26:24.203Z",
+      "tag": "docker-dash-prometheus:3.14.0-dd.1",
+      "id": "sha256:ec5a1a831b675adc27c43538b3c30cd2c133d9cd0d7c8c631c48904ec88ba788",
+      "version": "3.14.0+dd.1",
+      "user": "nobody",
+      "entrypoint": [
+        "/bin/prometheus"
+      ],
+      "command": [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus"
+      ],
+      "status": "candidate-not-deployed",
+      "identity": {
+        "image": "sha256:ec5a1a831b675adc27c43538b3c30cd2c133d9cd0d7c8c631c48904ec88ba788",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "configId": "sha256:191dc1c805b747dfd14b8198643012bcb55862183bbfe4595121079c05ca96f2",
+        "platform": "linux/amd64",
+        "manifestAndConfigSha256Verified": true,
+        "orderedRootfsLayersVerified": 11,
+        "trivyReportedIdentity": "sha256:ec5a1a831b675adc27c43538b3c30cd2c133d9cd0d7c8c631c48904ec88ba788",
+        "grypeReportedIdentity": "sha256:191dc1c805b747dfd14b8198643012bcb55862183bbfe4595121079c05ca96f2"
+      },
+      "scanners": {
+        "trivy": {
+          "at": "2026-09-20T12:21:28.025Z",
+          "counts": {
+            "UNKNOWN": 2
+          },
+          "reportSha256": "b19d975b83f5a88748f630994d2dc30690ffb6aad1723fa7d8d959fb7d3793a7",
+          "findings": [
+            {
+              "target": "bin/prometheus",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.57.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "bin/promtool",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.57.0",
+              "severity": "UNKNOWN"
+            }
+          ]
+        },
+        "grype": {
+          "at": "2026-09-20T12:23:50.779Z",
+          "counts": {
+            "High": 3
+          },
+          "reportSha256": "5cc8b045f3924f0a03df644611f1efdfdb158344254ccbb738bef9d545255886",
+          "findings": [
+            {
+              "id": "CVE-2026-38754",
+              "package": "busybox",
+              "installed": "1.38.0",
+              "fixed": [],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/bin/busybox",
+                  "layerID": "sha256:53cd0c2915c2f208cd5e51dc3e268522034b42e563c6b8367be4d367a52497ce",
+                  "accessPath": "/bin/busybox",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2026-38755",
+              "package": "busybox",
+              "installed": "1.38.0",
+              "fixed": [],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/bin/busybox",
+                  "layerID": "sha256:53cd0c2915c2f208cd5e51dc3e268522034b42e563c6b8367be4d367a52497ce",
+                  "accessPath": "/bin/busybox",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2026-38753",
+              "package": "busybox",
+              "installed": "1.38.0",
+              "fixed": [],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/bin/busybox",
+                  "layerID": "sha256:53cd0c2915c2f208cd5e51dc3e268522034b42e563c6b8367be4d367a52497ce",
+                  "accessPath": "/bin/busybox",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            }
+          ],
+          "version": "0.119.0+dd.1",
+          "database": {
+            "schemaVersion": "v6.1.9",
+            "built": "2026-09-20T06:27:54Z",
+            "valid": true
+          }
+        }
+      }
+    },
+    "grafana": {
+      "at": "2026-09-20T12:18:54.148Z",
+      "tag": "docker-dash-grafana:13.2.2-dd.1",
+      "id": "sha256:2f07bb21276aaff203a2d524beabbc62f8605c1bd4b8b02eb74a688e0dcecafc",
+      "version": "13.2.2+dd.1",
+      "user": "472",
+      "entrypoint": [
+        "/run.sh"
+      ],
+      "status": "candidate-not-deployed",
+      "identity": {
+        "image": "sha256:2f07bb21276aaff203a2d524beabbc62f8605c1bd4b8b02eb74a688e0dcecafc",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "configId": "sha256:64fe1554e927b8d3d8f200dd6ce07765648fab058d642c0d969288c5dbb9e29f",
+        "platform": "linux/amd64",
+        "manifestAndConfigSha256Verified": true,
+        "orderedRootfsLayersVerified": 12,
+        "trivyReportedIdentity": "sha256:2f07bb21276aaff203a2d524beabbc62f8605c1bd4b8b02eb74a688e0dcecafc",
+        "grypeReportedIdentity": "sha256:64fe1554e927b8d3d8f200dd6ce07765648fab058d642c0d969288c5dbb9e29f"
+      },
+      "scanners": {
+        "trivy": {
+          "at": "2026-09-20T12:19:55.422Z",
+          "counts": {
+            "HIGH": 102,
+            "MEDIUM": 27,
+            "LOW": 23,
+            "UNKNOWN": 6
+          },
+          "reportSha256": "5fcc82c256e68570a8b1339db914c48caaabb966ac9f4d5f1fa9867d32a142ca",
+          "findings": [
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-43871",
+              "package": "github.com/apache/thrift",
+              "installed": "v0.23.1-0.20260429145742-d2acd3c49e58",
+              "fixed": "0.24.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-81871",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+              "installed": "v0.19.0",
+              "fixed": "0.21.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/bin/grafana",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.56.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/elasticsearch/gpx_grafana_elasticsearch_datasource_linux_amd64",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.56.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "golang.org/x/net",
+              "installed": "v0.55.0",
+              "fixed": "0.56.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56852",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": "0.39.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.82.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-39822",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+              "id": "CVE-2026-42505",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/influxdb/gpx_grafana_influxdb_datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/loki/gpx_grafana-loki-datasource_linux_amd64",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.56.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/mssql/gpx_grafana-mssql-datasource_linux_amd64",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.56.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-29181",
+              "package": "go.opentelemetry.io/otel",
+              "installed": "v1.40.0",
+              "fixed": "1.41.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.40.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.40.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39883",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.40.0",
+              "fixed": "1.43.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.40.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-25681",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-27136",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-33814",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.53.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.56.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-25680",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42502",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42506",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": "0.55.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39824",
+              "package": "golang.org/x/sys",
+              "installed": "v0.41.0",
+              "fixed": "0.44.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56852",
+              "package": "golang.org/x/text",
+              "installed": "v0.34.0",
+              "fixed": "0.39.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.82.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-25679",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.8, 1.26.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-27145",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32280",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32281",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32283",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-33811",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-33814",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39820",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39822",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39836",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42499",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42504",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-27142",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.8, 1.26.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32282",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32288",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-32289",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.9, 1.26.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39823",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39825",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-39826",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.10, 1.26.3",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42505",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-42507",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+              "id": "CVE-2026-27139",
+              "package": "stdlib",
+              "installed": "v1.25.7",
+              "fixed": "1.25.8, 1.26.1",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.26.5",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.42.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.42.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56854",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.52.0",
+              "fixed": "0.55.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56855",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.52.0",
+              "fixed": "0.56.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-78662",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.52.0",
+              "fixed": "0.56.0",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "GO-2026-5932",
+              "package": "golang.org/x/crypto",
+              "installed": "v0.52.0",
+              "severity": "UNKNOWN"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "golang.org/x/net",
+              "installed": "v0.55.0",
+              "fixed": "0.56.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56852",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": "0.39.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.82.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-27145",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-39822",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-42504",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-42505",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+              "id": "CVE-2026-42507",
+              "package": "stdlib",
+              "installed": "v1.26.3",
+              "fixed": "1.25.11, 1.26.4",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-21728",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": "2.8.4, 2.9.2, 2.10.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-28377",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": "2.10.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-27878",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": "1.5.1-0.20260303204923-b13f74291d48",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "golang.org/x/net",
+              "installed": "v0.55.0",
+              "fixed": "0.56.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56852",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": "0.39.0",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.82.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-39822",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+              "id": "CVE-2026-42505",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.43.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-81870",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": "1.45.0",
+              "severity": "LOW"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-84304",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.83.1",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-84445",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-84303",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": "1.83.1",
+              "severity": "MEDIUM"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-33818",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-39821",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-39822",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-46600",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-56853",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-56858",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-56859",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-56860",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-56862",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.13, 1.26.6, 1.27.0-rc.3",
+              "severity": "HIGH"
+            },
+            {
+              "target": "usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+              "id": "CVE-2026-42505",
+              "package": "stdlib",
+              "installed": "v1.26.4",
+              "fixed": "1.25.12, 1.26.5, 1.27.0-rc.2",
+              "severity": "MEDIUM"
+            }
+          ]
+        },
+        "grype": {
+          "at": "2026-09-20T12:22:33.304Z",
+          "counts": {
+            "High": 69,
+            "Medium": 30,
+            "Low": 23
+          },
+          "reportSha256": "56d5c26bbf12ede90bcd64b0fc480b54cf8b84c8a967cbb512a0722aedc734d0",
+          "findings": [
+            {
+              "id": "GO-2026-4981",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.10",
+                "1.26.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-mh2q-q3fh-2475",
+              "package": "go.opentelemetry.io/otel",
+              "installed": "v1.40.0",
+              "fixed": [
+                "1.41.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4918",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.10",
+                "1.26.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4601",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.8",
+                "1.26.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "golang.org/x/net",
+              "installed": "v0.51.0",
+              "fixed": [
+                "0.55.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5026",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": [
+                "1.82.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": [
+                "1.83.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/jaeger/gpx_grafana-jaeger-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": [
+                "1.83.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/influxdb/gpx_grafana_influxdb_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/influxdb/gpx_grafana_influxdb_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-2v4p-qf9q-27wj",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.83.1",
+              "fixed": [
+                "1.83.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-postgresql-datasource/gpx_grafana_postgresql_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-p4r4-xvrq-gvmc",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": [
+                "2.8.4"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wv5-x4w7-5gww",
+              "package": "github.com/apache/thrift",
+              "installed": "v0.23.1-0.20260429145742-d2acd3c49e58",
+              "fixed": [
+                "0.24.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4870",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.9",
+                "1.26.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4947",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.9",
+                "1.26.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5037",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.11",
+                "1.26.4"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5037",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.11",
+                "1.26.4"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4971",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.10",
+                "1.26.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6088",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5972",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6089",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6090",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5942",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5942",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5942",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5942",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5942",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5970",
+              "package": "golang.org/x/text",
+              "installed": "v0.34.0",
+              "fixed": [
+                "0.39.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5970",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": [
+                "0.39.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5970",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": [
+                "0.39.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5970",
+              "package": "golang.org/x/text",
+              "installed": "v0.37.0",
+              "fixed": [
+                "0.39.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2026-85091",
+              "package": "zlib",
+              "installed": "1.3.2-r0",
+              "fixed": [],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/lib/apk/db/installed",
+                  "layerID": "sha256:13ebfc140683dd0e73bd055bb806bc7db2beabfef9beaa34b8283abcb3852053",
+                  "accessPath": "/lib/apk/db/installed",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-vp52-pcj8-j9qc",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.82.1",
+              "fixed": [
+                "1.83.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6218",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4946",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.9",
+                "1.26.2"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-6xff-cpcq-vpw2",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": [
+                "1.5.1-0.20260303204923-b13f74291d48"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4980",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.10",
+                "1.26.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5856",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.12",
+                "1.26.5",
+                "1.27.0-rc.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5856",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.12",
+                "1.26.5",
+                "1.27.0-rc.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5856",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.12",
+                "1.26.5",
+                "1.27.0-rc.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5856",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.12",
+                "1.26.5",
+                "1.27.0-rc.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5856",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.12",
+                "1.26.5",
+                "1.27.0-rc.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-hfvc-g4fc-pqhx",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.40.0",
+              "fixed": [
+                "1.43.0"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5039",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.11",
+                "1.26.4"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5039",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.11",
+                "1.26.4"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4603",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.8",
+                "1.26.1"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4982",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.10",
+                "1.26.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-5158",
+              "package": "go.opentelemetry.io/otel",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.42.0",
+                "1.44.0"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.26.3",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.26.4",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-6091",
+              "package": "stdlib",
+              "installed": "go1.26.5",
+              "fixed": [
+                "1.25.13",
+                "1.26.6",
+                "1.27.0-rc.3"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2025-60876",
+              "package": "busybox",
+              "installed": "1.37.0-r31",
+              "fixed": [],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/lib/apk/db/installed",
+                  "layerID": "sha256:13ebfc140683dd0e73bd055bb806bc7db2beabfef9beaa34b8283abcb3852053",
+                  "accessPath": "/lib/apk/db/installed",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2025-60876",
+              "package": "busybox-binsh",
+              "installed": "1.37.0-r31",
+              "fixed": [],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/lib/apk/db/installed",
+                  "layerID": "sha256:13ebfc140683dd0e73bd055bb806bc7db2beabfef9beaa34b8283abcb3852053",
+                  "accessPath": "/lib/apk/db/installed",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2025-60876",
+              "package": "ssl_client",
+              "installed": "1.37.0-r31",
+              "fixed": [],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/lib/apk/db/installed",
+                  "layerID": "sha256:13ebfc140683dd0e73bd055bb806bc7db2beabfef9beaa34b8283abcb3852053",
+                  "accessPath": "/lib/apk/db/installed",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4865",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.9",
+                "1.26.2"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "CVE-2026-58055",
+              "package": "nghttp2-libs",
+              "installed": "1.69.0-r0",
+              "fixed": [],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/lib/apk/db/installed",
+                  "layerID": "sha256:13ebfc140683dd0e73bd055bb806bc7db2beabfef9beaa34b8283abcb3852053",
+                  "accessPath": "/lib/apk/db/installed",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-ffqx-q65f-36jf",
+              "package": "github.com/grafana/tempo",
+              "installed": "v1.5.1-0.20250529124718-87c2dc380cec",
+              "fixed": [
+                "2.10.3"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-w34q-cm8f-9c5x",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+              "installed": "v0.19.0",
+              "fixed": [
+                "0.21.0"
+              ],
+              "severity": "Medium",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GO-2026-4602",
+              "package": "stdlib",
+              "installed": "go1.25.7",
+              "fixed": [
+                "1.25.8",
+                "1.26.1"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.40.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.42.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.40.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.42.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.40.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.43.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/bin/grafana",
+                  "layerID": "sha256:3fbb1cdd50c05ac4419a58189c6f9a9df4d29de27a4172fa983112277480147b",
+                  "accessPath": "/usr/share/grafana/bin/grafana",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-8wmf-6v46-5gfg",
+              "package": "go.opentelemetry.io/otel/sdk",
+              "installed": "v1.44.0",
+              "fixed": [
+                "1.45.0"
+              ],
+              "severity": "Low",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/zipkin/gpx_grafana-zipkin-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.82.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/opentsdb/gpx_grafana-opentsdb-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.79.3",
+              "fixed": [
+                "1.82.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.82.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/grafana-pyroscope-datasource/gpx_grafana-pyroscope-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "GHSA-hrxh-6v49-42gf",
+              "package": "google.golang.org/grpc",
+              "installed": "v1.81.1",
+              "fixed": [
+                "1.82.1"
+              ],
+              "severity": "High",
+              "locations": [
+                {
+                  "path": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "layerID": "sha256:2a4aca2235d31906af3af57de4b95763491b370dc86f7d62fcb357ea319b4fe5",
+                  "accessPath": "/usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_amd64",
+                  "annotations": {
+                    "evidence": "primary"
+                  }
+                }
+              ]
+            }
+          ],
+          "version": "0.119.0+dd.1",
+          "database": {
+            "schemaVersion": "v6.1.9",
+            "built": "2026-09-20T06:27:54Z",
+            "valid": true
+          }
+        }
+      }
+    }
+  },
+  "tests": {
+    "prometheus": {
+      "at": "2026-09-20T12:24:42.438Z",
+      "target": "lan",
+      "image": "sha256:ec5a1a831b675adc27c43538b3c30cd2c133d9cd0d7c8c631c48904ec88ba788",
+      "backupSha256": "cdf8b379b31e89802d2db1c9935a6592c79f2e51bbe37e69fd6f48a5164f47a1",
+      "productionDataUntouched": true,
+      "archiveSha256Verified": true,
+      "first": {
+        "version": "3.14.0+dd.1",
+        "goVersion": "go1.27.1",
+        "scrapeUp": true,
+        "restoredHistory": true,
+        "ruleGroups": 2,
+        "uiAssets": 2
+      },
+      "restart": {
+        "version": "3.14.0+dd.1",
+        "goVersion": "go1.27.1",
+        "scrapeUp": true,
+        "restoredHistory": true,
+        "ruleGroups": 2,
+        "uiAssets": 2
+      }
+    },
+    "grafanaMigration": {
+      "at": "2026-09-20T12:20:32.079Z",
+      "sourceVersion": "11.3.0",
+      "backupSha256": "18a8fb29d90ca4b694ce04566b76c6255a8d85a215c53d4574927ad2c6ab7394",
+      "productionDataUntouched": true,
+      "networkIsolated": true,
+      "stages": [
+        {
+          "version": "11.6.16",
+          "image": "sha256:d67af92050b8d93b393dc741864752a69c9da1ffa39c1bb9af49ad5d9e47d2c3",
+          "http": {
+            "health": {
+              "database": "ok",
+              "version": "11.6.16",
+              "commit": "a26b9d592b2d3309834ae1e59f061fe4d10508f2"
+            },
+            "loginStatus": 200,
+            "uiAssets": 3,
+            "anonymousStatus": 401
+          },
+          "database": {
+            "integrity": "ok",
+            "counts": {
+              "user": 1,
+              "dashboard": 3,
+              "data_source": 1,
+              "alert_rule": 0
+            },
+            "failedMigrations": 0,
+            "migrations": 664,
+            "plugin": {
+              "id": "grafana-lokiexplore-app",
+              "version": "1.0.10"
+            },
+            "datasources": [
+              {
+                "uid": "docker-dash-prom",
+                "type": "prometheus",
+                "is_default": 1
+              }
+            ]
+          }
+        },
+        {
+          "version": "12.4.11",
+          "image": "sha256:3ea272e5cab64a4a62240c682e2c62433b25614d956d44c299a10cb6994f6f2e",
+          "http": {
+            "health": {
+              "database": "ok",
+              "version": "12.4.11",
+              "commit": "96836a94cb5e2e1e196bacd76edfa6d25673d4b4"
+            },
+            "loginStatus": 200,
+            "uiAssets": 3,
+            "anonymousStatus": 401
+          },
+          "database": {
+            "integrity": "ok",
+            "counts": {
+              "user": 1,
+              "dashboard": 3,
+              "data_source": 1,
+              "alert_rule": 0
+            },
+            "failedMigrations": 0,
+            "migrations": 713,
+            "plugin": {
+              "id": "grafana-lokiexplore-app",
+              "version": "2.5.2"
+            },
+            "datasources": [
+              {
+                "uid": "docker-dash-prom",
+                "type": "prometheus",
+                "is_default": 1
+              }
+            ]
+          }
+        },
+        {
+          "version": "13.2.2",
+          "image": "sha256:2f07bb21276aaff203a2d524beabbc62f8605c1bd4b8b02eb74a688e0dcecafc",
+          "http": {
+            "health": {
+              "database": "ok",
+              "version": "13.2.2",
+              "commit": "1bea008f7e4e858b6824c9e364d608bd4d10b13a"
+            },
+            "loginStatus": 200,
+            "uiAssets": 3,
+            "anonymousStatus": 401
+          },
+          "database": {
+            "integrity": "ok",
+            "counts": {
+              "user": 1,
+              "dashboard": 3,
+              "data_source": 1,
+              "alert_rule": 0
+            },
+            "failedMigrations": 0,
+            "migrations": 732,
+            "plugin": {
+              "id": "grafana-lokiexplore-app",
+              "version": "2.5.2"
+            },
+            "datasources": [
+              {
+                "uid": "docker-dash-prom",
+                "type": "prometheus",
+                "is_default": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "grafanaFreshBootstrap": {
+      "image": "sha256:2f07bb21276aaff203a2d524beabbc62f8605c1bd4b8b02eb74a688e0dcecafc",
+      "checks": 7,
+      "passed": true
+    }
+  },
+  "outstanding": [
+    "Remaining vulnerability remediation and assessment",
+    "VPS restored-data tests",
+    "Grafana authenticated dashboard/query validation",
+    "Fresh backups and promotion to both hosts"
+  ]
+}

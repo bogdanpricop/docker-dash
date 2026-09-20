@@ -4,6 +4,11 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Add audited Prometheus 3.14.0 dependency-rebuild and Grafana 13.2.2 Alpine-patch
+  candidates. Native restored-data tests and two-scanner findings are recorded
+  [here](docs/audits/2026-09-20-observability-candidates.md). These candidates do
+  not replace the default or deployed observability images yet.
+
 - Remove Grafana's bundled `admin/admin` bootstrap fallback. Require a private
   password file and reject missing, empty, short, multiline or oversized values
   before starting Grafana. Existing accounts require an explicit password change.
