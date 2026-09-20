@@ -45,6 +45,24 @@ module.exports = async function oidcFlowChecks(endpoint, db, checks) {
     assert.equal((await callback(third)).status, 401);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM sessions JOIN users ON users.id=sessions.user_id WHERE username='native-oidc-fixture'").get().n, 1);
     checks.push('native-oidc-invalid-id-token-no-userinfo-bypass');
+    const owner=Number(db.prepare("INSERT INTO users(username,password_hash,role) VALUES ('native-oidc-owner','fixture-hash','admin')").run().lastInsertRowid);
+    const collision=await start(); badToken=false; claims.sub='native-collision-subject'; claims.preferred_username='native-oidc-owner';
+    assert.equal((await callback(collision)).status,302);
+    const external=db.prepare("SELECT id,role,username FROM users WHERE external_source='oidc' AND external_subject='native-collision-subject'").get();
+    assert.notEqual(external.id,owner); assert.equal(external.role,'viewer');
+    assert.equal(db.prepare('SELECT role FROM users WHERE id=?').get(owner).role,'admin');
+    checks.push('native-oidc-local-admin-collision-isolated');
+    const renamed=await start(); claims.sub='native-collision-subject'; claims.preferred_username='native-changed-profile';
+    assert.equal((await callback(renamed)).status,302);
+    assert.equal(db.prepare("SELECT id FROM users WHERE external_source='oidc' AND external_subject='native-collision-subject'").get().id,external.id);
+    checks.push('native-oidc-stable-subject-survives-profile-rename');
+    const failed=await start(); claims.sub='native-audit-failure'; claims.preferred_username='native-audit-failure';
+    db.exec("CREATE TEMP TRIGGER fail_oidc_audit BEFORE INSERT ON audit_log WHEN NEW.action='oidc_login' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END");
+    try {
+      assert.equal((await callback(failed)).status,500);
+      assert.equal(db.prepare("SELECT id FROM users WHERE external_subject='native-audit-failure'").get(),undefined);
+    } finally { db.exec('DROP TRIGGER fail_oidc_audit'); }
+    checks.push('native-oidc-audit-failure-rolls-back-account-and-session');
   } finally {
     cache.clear(); cache.resetFetcher(); Object.assign(config.oidc, saved);
     config.session.secureCookie = savedSecure; config.security.isStrict = savedStrict;

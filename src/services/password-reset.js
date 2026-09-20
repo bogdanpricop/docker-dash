@@ -23,10 +23,11 @@ function issue(db, userId, type, ttlMs, expectedEmail) {
   db.transaction(() => {
     // Bind the recipient snapshot to issuance under the same write lock. A
     // different process may change the address after the caller's initial read.
-    const current = db.prepare('SELECT email,is_active FROM users WHERE id=?').get(userId);
+    const current = db.prepare('SELECT email,is_active,auth_source FROM users WHERE id=?').get(userId);
     if (!current?.is_active || typeof expectedEmail !== 'string' || !expectedEmail || current.email !== expectedEmail) {
       throw new Error('Account changed before reset issuance');
     }
+    if (current.auth_source !== 'local') throw new Error('Only local accounts support password recovery');
     db.prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE user_id=? AND used_at IS NULL").run(userId);
     db.prepare('INSERT INTO password_reset_tokens(user_id,token_hash,type,expires_at) VALUES (?,?,?,?)').run(userId, tokenHash, type, expiresAt);
   }).immediate();
@@ -43,7 +44,7 @@ function find(db, token) {
   // as instants, never lexically. Invalid dates evaluate to NULL and are denied.
   return db.prepare(`SELECT rt.*,u.id AS uid,u.username FROM password_reset_tokens rt
     JOIN users u ON u.id=rt.user_id WHERE rt.token_hash=? AND rt.used_at IS NULL
-    AND julianday(rt.expires_at)>julianday('now') AND u.is_active=1`).get(sha256(token)) || null;
+    AND julianday(rt.expires_at)>julianday('now') AND u.is_active=1 AND u.auth_source='local'`).get(sha256(token)) || null;
 }
 
 function consume(db, token, hash, onCommit) {

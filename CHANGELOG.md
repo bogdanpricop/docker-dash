@@ -4,6 +4,15 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Separate OIDC issuer/subject identities and trusted-proxy namespaces from local,
+  LDAP, SCIM and unbound legacy accounts (migration 181). Matching usernames/emails
+  cannot claim another user. Collisions create a separate account; changing profile
+  usernames preserves the verified identity. Revoke legacy unbound SSO credentials
+  while preserving records/permissions for review. Restrict local password recovery
+  to local accounts, commit OIDC provisioning/session/audit atomically, and apply
+  trusted-proxy group roles on every request. Settings shows the account source and
+  offers local password actions only where supported. [Evidence and migration limits](docs/audits/2026-09-20-external-identities.md).
+
 - Bind OIDC callbacks to the initiating browser, issuer/client/callback configuration
   and a five-minute HttpOnly cookie; add S256 PKCE and mandatory signed nonce
   verification. Reject invalid ID tokens instead of falling back to userinfo; require

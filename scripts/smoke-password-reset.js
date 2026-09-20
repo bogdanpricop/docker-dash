@@ -11,7 +11,7 @@ const marker = 'dd-reset-smoke-' + crypto.randomBytes(6).toString('hex');
 const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/email.js',
   'src/services/password-reset.js', 'src/services/password-reset-delivery.js', 'src/config/index.js',
   'src/db/migrations/178_auth_time_indexes.js', 'src/db/migrations/179_auth_credential_version.js',
-  'src/db/migrations/180_mfa_replay_and_attempts.js', 'src/utils/totp.js', 'src/ws/index.js',
+  'src/db/migrations/180_mfa_replay_and_attempts.js', 'src/db/migrations/181_external_identities.js', 'src/utils/totp.js', 'src/ws/index.js',
   'src/services/provider-console/gateway.js', 'src/services/provider-console/byte-channel.js'];
 (async () => {
   const c = await docker.createContainer({ name: marker, Image: process.env.DD_SMOKE_APP_IMAGE,

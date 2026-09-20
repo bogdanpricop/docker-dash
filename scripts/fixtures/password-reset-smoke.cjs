@@ -134,6 +134,14 @@ async function main() {
     await credentialLifecycleChecks(auth, db);
     await mfaReplayChecks(auth, db);
     await require('./oidc-flow-smoke.cjs')(endpoint, db, checks);
+    const provisionCode = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
+      process.stdin.once('data',()=>{const user=auth.findOrCreateSsoUser('native-racing-identity','viewer','',{
+        identity:{source:'oidc',issuer:'https://identity.example.test',subject:'native-racing-subject'}});
+        console.log('RESULT:'+JSON.stringify({id:user.id}));db.close();process.exit(0)});console.log('READY');`;
+    const provisioned = await raceRedeem(provisionCode,[{},{}]);
+    assert.equal(provisioned[0].id,provisioned[1].id);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action='sso_user_created' AND user_id=?").get(provisioned[0].id).n,1);
+    checks.push('native-cross-process-single-external-identity-provisioning');
     console.log(JSON.stringify({ checks, emailMocked: true, providerMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();

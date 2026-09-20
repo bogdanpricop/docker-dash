@@ -29,7 +29,7 @@ test('resolved client IP matching the proxy allow-list cannot authenticate an un
 test('an allow-listed socket proxy can forward an external client without granting that client proxy trust', async () => {
   const { server, auth } = app('127.0.0.1,::1');
   const res = await request(server).get('/').set('X-Forwarded-For', '203.0.113.50').set('X-Forwarded-User', 'alice');
-  expect(res.status).toBe(200); expect(auth.findOrCreateSsoUser).toHaveBeenCalledWith('alice', 'viewer', '');
+  expect(res.status).toBe(200); expect(auth.findOrCreateSsoUser).toHaveBeenCalledWith('alice', 'viewer', '', { updateRole: true });
 });
 test('missing SSO proxy configuration refuses asserted identity', async () => {
   const { server, auth } = app('');

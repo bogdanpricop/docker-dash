@@ -119,6 +119,22 @@ test('concurrent matching callbacks create only one session', async () => {
   expect(db.prepare('SELECT COUNT(*) n FROM sessions').get().n).toBe(1);
   expect(fetcher.mock.calls.filter(([url]) => url === discovery.token_endpoint)).toHaveLength(1);
 });
+test('OIDC profile collision cannot authenticate the existing local administrator', async () => {
+  const id=Number(db.prepare("INSERT INTO users(username,password_hash,role) VALUES ('oidc-local-owner','fixture-hash','admin')").run().lastInsertRowid);
+  const flow=await start(); claims.sub='local-collision-subject'; claims.preferred_username='oidc-local-owner';
+  expect((await callback(flow)).status).toBe(302);
+  const session=db.prepare('SELECT user_id FROM sessions').get(); expect(session.user_id).not.toBe(id);
+  expect(db.prepare('SELECT role FROM users WHERE id=?').get(session.user_id).role).toBe('viewer');
+});
+test('failed login audit leaves neither a session nor a newly provisioned identity', async () => {
+  const flow=await start(); claims.sub='failed-audit-subject'; claims.preferred_username='oidc-audit-rollback';
+  db.exec("CREATE TEMP TRIGGER fail_oidc_audit BEFORE INSERT ON audit_log WHEN NEW.action='oidc_login' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END");
+  try {
+    expect((await callback(flow)).status).toBe(500); noSession();
+    expect(db.prepare("SELECT id FROM users WHERE external_subject='failed-audit-subject'").get()).toBeUndefined();
+    expect(db.prepare("SELECT id FROM audit_log WHERE username='oidc-audit-rollback'").get()).toBeUndefined();
+  } finally { db.exec('DROP TRIGGER fail_oidc_audit'); }
+});
 test('secure deployments use a Host-prefixed cookie without trusting arbitrary forwarded headers', async () => {
   config.session.secureCookie = true;
   expect((await start()).response.headers['set-cookie'][0]).toMatch(/^__Host-dd_oidc_flow=.*; Path=\/; .*HttpOnly; Secure; SameSite=Lax$/);

@@ -176,6 +176,8 @@ const auditActionsList = [
   "observability_dashboard_import_failed",
   "observability_dashboard_imported",
   "oidc_login",
+  "sso_user_created",
+  "sso_role_updated",
   "onboarding_export",
   "onboarding_headless_apply",
   "onboarding_replan",

@@ -47,7 +47,7 @@ class ResetDelivery {
   async deliver(job) {
     if (!config.smtp?.host) return;
     const db = getDb();
-    const user = db.prepare('SELECT id,username,email FROM users WHERE LOWER(email)=LOWER(?) AND is_active=1').get(job.email);
+    const user = db.prepare("SELECT id,username,email FROM users WHERE LOWER(email)=LOWER(?) AND is_active=1 AND auth_source='local'").get(job.email);
     if (!user) return;
     let decision, timer;
     try {

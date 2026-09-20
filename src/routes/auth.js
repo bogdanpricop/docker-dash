@@ -314,12 +314,13 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   }
 });
 
-router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const { password } = req.body;
     const pwErr = authService.validatePassword(password);
     if (pwErr) return res.status(400).json({ error: pwErr });
-    await authService.resetPassword(parseInt(req.params.id), password);
+    const result = await authService.resetPassword(parseInt(req.params.id), password);
+    if (result.error) return res.status(400).json({ error: result.error });
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'reset_password',
       targetType: 'user', targetId: req.params.id, ip: getClientIp(req) });
     res.json({ ok: true });
@@ -347,6 +348,7 @@ router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), writeabl
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.auth_source !== 'local') return res.status(400).json({ error: 'Use the identity provider for account recovery' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
     const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000, user.email);
@@ -375,6 +377,7 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), writeab
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.auth_source !== 'local') return res.status(400).json({ error: 'Use the identity provider for account invitations' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
     const issued = resetTokens.issue(db, user.id, 'invite', 1440 * 60 * 1000, user.email);
@@ -851,9 +854,10 @@ router.get('/oidc/callback', async (req, res) => {
     }
 
     // Determine username and email
-    const email = userInfo.email || '';
-    const username = userInfo.preferred_username || email.split('@')[0] || userInfo.sub;
-    const displayName = userInfo.name || userInfo.given_name || username;
+    const email = typeof userInfo.email === 'string' ? userInfo.email : '';
+    const username = typeof userInfo.preferred_username === 'string' && userInfo.preferred_username
+      ? userInfo.preferred_username : email.split('@')[0] || userInfo.sub;
+    const displayName = [userInfo.name, userInfo.given_name, username].find(value => typeof value === 'string' && value);
 
     // v8.7.6 / FIXED v8.7.8 — resolve role from the IdP groups claim when
     // mapping is configured. CRITICAL: only OVERWRITE an existing user's
@@ -884,24 +888,25 @@ router.get('/oidc/callback', async (req, res) => {
       });
     }
 
-    const user = authService.findOrCreateSsoUser(username, assignedRole, email, { updateRole });
-    if (!user) return res.status(403).send('Account is disabled');
-
-    // Update display name if available
-    if (displayName && displayName !== username) {
-      db.prepare('UPDATE users SET display_name = ? WHERE id = ? AND (display_name IS NULL OR display_name = username)')
-        .run(displayName, user.id);
-    }
-
-    // Create session
     const ip = getClientIp(req);
     const ua = req.headers['user-agent'];
-    const session = authService._createSession(
-      { id: user.id, username: user.username, display_name: displayName, role: user.role },
-      ip, ua
-    );
-
-    auditService.log({ userId: user.id, username: user.username, action: 'oidc_login', ip, userAgent: ua });
+    // Commit provisioning, permission updates, session and audit together. The
+    // verified issuer/subject identify the account; profile names never do.
+    const session = db.transaction(() => {
+      const user = authService.findOrCreateSsoUser(username, assignedRole, email, {
+        updateRole, emailVerified:userInfo.email_verified === true,
+        identity:{ source:'oidc', issuer:userInfo.iss, subject:userInfo.sub },
+      });
+      if (!user) return null;
+      if (displayName && displayName !== user.username) {
+        db.prepare('UPDATE users SET display_name=? WHERE id=? AND (display_name IS NULL OR display_name=username)')
+          .run(displayName,user.id);
+      }
+      const created = authService._createSession(user,ip,ua);
+      auditService.log({ userId:user.id, username:user.username, action:'oidc_login', ip, userAgent:ua });
+      return created;
+    }).immediate();
+    if (!session) return res.status(403).send('External account is unavailable');
 
     // Set session cookie and redirect to app
     const isHttps = secure;

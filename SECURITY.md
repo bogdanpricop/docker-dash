@@ -7,6 +7,15 @@ clarification remain open; the candidate is not publicly published.
 
 ## OIDC browser binding (source checkpoint, not in the existing candidate)
 
+The subsequent [external identity checkpoint](docs/audits/2026-09-20-external-identities.md)
+adds migration 181: OIDC issuer/subject and trusted-proxy namespace/subject identify
+accounts independently of profile username or email. Collisions provision a separate
+account instead of linking local, LDAP, SCIM, legacy SSO or another external identity.
+Unbound historical SSO records retain their data/permissions but their credentials are
+revoked; they are never automatically claimed. Password recovery and local password
+changes are restricted to local accounts. OIDC account/session/audit changes are one
+transaction; trusted-proxy roles follow the current asserted groups.
+
 OIDC login now binds state to a five-minute HttpOnly, SameSite=Lax cookie and the
 configured issuer, client and callback. The cookie holds a random PKCE verifier;
 domain-separated HMACs derive state and nonce. HTTPS uses a host-prefixed Secure

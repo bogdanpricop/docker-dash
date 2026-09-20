@@ -182,6 +182,10 @@ class AuthService {
       return { error: 'Account is locked. Try again later.' };
     }
 
+    if (!['local', 'ldap'].includes(user.auth_source)) {
+      this.logAttempt(ip, username, user.id, false, userAgent);
+      return { error: 'Use your identity provider to sign in' };
+    }
     // LDAP accounts have deliberately unusable local hashes. Revalidate with
     // the directory on every login so password/group revocations take effect.
     const valid = user.auth_source === 'ldap'
@@ -576,29 +580,49 @@ class AuthService {
   findOrCreateSsoUser(username, role, email, opts = {}) {
     const db = getDb();
     const resolvedRole = role || 'viewer';
-    let user = db.prepare('SELECT id, username, role, is_active FROM users WHERE username = ?').get(username);
-    if (user) {
-      if (!user.is_active) return null;
-      if (opts.updateRole && resolvedRole && resolvedRole !== user.role) {
-        db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(resolvedRole, now(), user.id);
-        log.info('SSO user role updated from IdP', { username, from: user.role, to: resolvedRole });
-        user = { ...user, role: resolvedRole };
-      }
-      return { id: user.id, username: user.username, role: user.role, sso: true };
+    const identity = opts.identity || { source: 'proxy', issuer: process.env.SSO_IDENTITY_NAMESPACE || 'trusted-proxy', subject: username };
+    const { source, issuer, subject } = identity;
+    const validText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
+    if (!['oidc','proxy'].includes(source) || !validText(issuer,2048) || !validText(subject,255)
+      || !validText(username,255) || !['admin','operator','viewer'].includes(resolvedRole)) return null;
+    if (source === 'oidc') {
+      try { const url = new URL(issuer); if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null; } catch { return null; }
     }
-    // Auto-create SSO user (no password — SSO-only)
-    const r = db.prepare(
-      'INSERT INTO users (username, email, password_hash, role, is_active) VALUES (?, ?, ?, ?, 1)'
-    ).run(username, email || null, 'SSO_NO_PASSWORD', resolvedRole);
-    log.info('SSO user created', { username, role: resolvedRole });
-    return { id: Number(r.lastInsertRowid), username, role: resolvedRole, sso: true };
+    return db.transaction(() => {
+      let user = db.prepare('SELECT * FROM users WHERE external_source=? AND external_issuer=? AND external_subject=?').get(source,issuer,subject);
+      if (user) {
+        if (!user.is_active || user.auth_source !== source) return null;
+        if (opts.updateRole && resolvedRole !== user.role) {
+          db.prepare('UPDATE users SET role=?,updated_at=? WHERE id=?').run(resolvedRole,now(),user.id);
+          require('./audit').log({ userId:user.id, username:user.username, action:'sso_role_updated', targetType:'user', targetId:String(user.id), details:{ source, from:user.role, to:resolvedRole } });
+          user = { ...user, role:resolvedRole };
+        }
+      } else {
+        // Names and email addresses are display/contact data, never proof of
+        // ownership of another account. Resolve collisions to a separate name.
+        let localName = username;
+        if (db.prepare('SELECT id FROM users WHERE username=?').get(localName)) {
+          localName = username.slice(0,80) + '~' + source + '-' + sha256(JSON.stringify([source,issuer,subject]));
+          if (db.prepare('SELECT id FROM users WHERE username=?').get(localName)) return null;
+        }
+        let contact = (source === 'proxy' || opts.emailVerified === true) && validText(email,254) ? email : null;
+        if (contact && db.prepare('SELECT id FROM users WHERE email=?').get(contact)) contact = null;
+        const id = Number(db.prepare(`INSERT INTO users(username,display_name,email,password_hash,role,is_active,auth_source,
+          external_source,external_issuer,external_subject,must_change_password) VALUES (?,?,?,'EXTERNAL_NO_PASSWORD',?,1,?,?,?,?,0)`)
+          .run(localName,username,contact,resolvedRole,source,source,issuer,subject).lastInsertRowid);
+        require('./audit').log({ userId:id, username:localName, action:'sso_user_created', targetType:'user', targetId:String(id), details:{ source, role:resolvedRole } });
+        user = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+      }
+      return { id:user.id, username:user.username, display_name:user.display_name, role:user.role, sso:true, mustChangePassword:!!user.must_change_password };
+    }).immediate();
   }
 
   /** Change password */
   async changePassword(userId, currentPassword, newPassword) {
     const db = getDb();
-    const user = db.prepare('SELECT password_hash, auth_version FROM users WHERE id = ? AND is_active = 1').get(userId);
+    const user = db.prepare('SELECT password_hash, auth_version, auth_source FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return { error: 'User not found' };
+    if (user.auth_source !== 'local') return { error: 'Only local accounts support password changes' };
 
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return { error: 'Current password is incorrect' };
@@ -621,7 +645,7 @@ class AuthService {
   listUsers() {
     const db = getDb();
     return db.prepare(`
-      SELECT id, username, display_name, email, role, is_active, is_locked,
+      SELECT id, username, display_name, email, role, is_active, is_locked, auth_source,
              last_login_at, created_at, updated_at, totp_enabled, mfa_enrolled_at
       FROM users ORDER BY username
     `).all();
@@ -630,7 +654,7 @@ class AuthService {
   getUser(id) {
     const db = getDb();
     return db.prepare(`
-      SELECT id, username, display_name, email, role, is_active, is_locked,
+      SELECT id, username, display_name, email, role, is_active, is_locked, auth_source,
              last_login_at, created_at, updated_at
       FROM users WHERE id = ?
     `).get(id);
@@ -679,6 +703,9 @@ class AuthService {
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
     const timestamp = now();
     return db.transaction(() => {
+      const user = db.prepare('SELECT auth_source FROM users WHERE id=?').get(id);
+      if (!user) return { error: 'User not found' };
+      if (user.auth_source !== 'local') return { error: 'Only local accounts support password resets' };
       db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, password_changed_at = ?, updated_at = ? WHERE id = ?')
         .run(hash, timestamp, timestamp, id);
       db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);

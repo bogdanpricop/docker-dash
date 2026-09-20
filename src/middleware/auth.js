@@ -110,7 +110,7 @@ function requireAuth(req, res, next) {
         if (ssoGroups.includes('admin') || ssoGroups.includes('docker-dash-admin')) role = 'admin';
         else if (ssoGroups.includes('operator') || ssoGroups.includes('docker-dash-operator')) role = 'operator';
         // Auto-create or find SSO user
-        user = authService.findOrCreateSsoUser(ssoUser, role, ssoEmail);
+        user = authService.findOrCreateSsoUser(ssoUser, role, ssoEmail, { updateRole: true });
         req.ssoAuth = true;
       }
       // If not trusted, fall through — user remains null, auth will fail below
