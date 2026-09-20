@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Remove Grafana's bundled `admin/admin` bootstrap fallback. Require a private
+  password file and reject missing, empty, short, multiline or oversized values
+  before starting Grafana. Existing accounts require an explicit password change.
+  Native bootstrap tests, private backup restoration and LAN/VPS rollout are
+  recorded in the [Grafana bootstrap audit](docs/audits/2026-09-20-grafana-bootstrap.md).
+
 - Add administrator-owned collector API keys with only `monitoring.read`.
   They can GET/HEAD metrics and detailed cluster status, but cannot read other
   application data or write. Persistent Prometheus instances can use an ApiKey

@@ -76,19 +76,38 @@ The file configuration follows the documented
 [Prometheus authorization settings](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_config)
 and [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
 
+Grafana also requires `GRAFANA_ADMIN_PASSWORD_FILE`, defaulting to
+`./.secrets/grafana-admin-password`. Its startup guard refuses a missing, empty,
+multiline, whitespace-only or short password file (20-256 characters).
+Generate a unique secret before the first boot. Keep the host parent directory
+0700 and make the individual mounted file readable by Grafana's container UID.
+The file is mounted read-only and its contents are not part of Compose environment
+values. Changing it does **not** reset a password already stored in Grafana's
+database; use Grafana's password-change flow or administrator CLI for that.
+
 ```bash
-# After configuring MONITORING_TOKEN_FILE — adds Prometheus + Grafana
+# Create the private bootstrap file once; do not overwrite an existing secret.
+mkdir -p .secrets
+chmod 700 .secrets
+(umask 077; set -C; openssl rand -base64 36 > .secrets/grafana-admin-password)
+chmod 644 .secrets/grafana-admin-password
+
+# After configuring both credential files — adds Prometheus + Grafana
 docker compose --profile observability up -d
 
-# With custom Grafana admin credentials (set before first boot)
-GRAFANA_ADMIN_USER=ops GRAFANA_ADMIN_PASSWORD=<strong-password> \
+# With a custom bootstrap username and an existing private password file
+GRAFANA_ADMIN_USER=ops GRAFANA_ADMIN_PASSWORD_FILE=/private/grafana-password \
   docker compose --profile observability up -d
 
 # With custom Grafana port (default 3001 to avoid clash with app's 8101 + common :3000)
 GRAFANA_PORT=4000 docker compose --profile observability up -d
 ```
 
-Open Grafana at `http://<host>:3001` (or your `GRAFANA_PORT`). Log in with `admin / admin` (or your custom credentials). Grafana **forces a password change** on first login.
+Open Grafana at `http://<host>:3001` (or your `GRAFANA_PORT`). On a fresh database,
+log in with `GRAFANA_ADMIN_USER` (default `admin`) and the generated password.
+Existing installations retain their stored credentials. There is no bundled
+`admin/admin` fallback. `GRAFANA_ADMIN_PASSWORD` is no longer read by this Compose
+profile: move any bootstrap value from `.env` into the private file.
 
 Dashboard: **Docker Dash → Docker Dash — Overview**. Populates within 30s of first scrape.
 
@@ -193,7 +212,7 @@ curl -X POST https://<grafana>/api/dashboards/db \
 
 Before exposing Grafana beyond your trusted network:
 
-- [ ] **Change default Grafana password**. If using `GRAFANA_ADMIN_PASSWORD=...` in `.env`, use a strong value; it's baked in at first boot.
+- [ ] **Check Grafana credentials**. New installs require the private bootstrap file. Existing databases keep their stored password; explicitly change any legacy default and review active sessions.
 - [ ] **Do NOT expose Prometheus externally.** The default compose config binds Prometheus to the internal network only. Leave it that way unless you have an explicit reason.
 - [ ] **Put Grafana behind HTTPS**. Grafana has its own HTTPS config (`GF_SERVER_PROTOCOL=https`), or terminate TLS at a reverse proxy (Caddy/Traefik). Same-host setup can reuse the `--profile tls` Caddy.
 - [ ] **Disable anonymous access** (default). We set `GF_AUTH_ANONYMOUS_ENABLED=false`.

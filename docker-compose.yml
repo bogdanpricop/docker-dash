@@ -141,7 +141,7 @@ services:
   # and HA mode — the dashboard panels gate HA-only metrics (cluster role,
   # Redis connected) via value mappings.
   #
-  # Grafana default: admin / admin (forced change on first login).
+  # Grafana requires a private bootstrap password file before first boot.
   # Grafana exposed on :${GRAFANA_PORT:-3001}; Prometheus NOT exposed externally.
   # See docs/features/observability.md for hardening + integration with
   # existing Prometheus / Grafana installs.
@@ -174,18 +174,21 @@ services:
     image: grafana/grafana:11.3.0
     container_name: docker-dash-grafana
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "/docker-dash-grafana-start.sh"]
+    secrets:
+      - grafana_admin_password
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
+      - ./docker/observability/grafana/start.sh:/docker-dash-grafana-start.sh:ro
       - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     environment:
-      # Default admin / admin — Grafana FORCES change on first login.
-      # For automated provisioning, set GF_SECURITY_ADMIN_PASSWORD in .env
-      # so the first-login password change is pre-applied.
+      # File-backed bootstrap credential; never fall back to admin/admin.
+      # Existing database passwords are not changed by this setting.
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
       # Disable anonymous access — operators must log in. Flip to true +
       # set Viewer role if you want the dashboard publicly visible.
       - GF_AUTH_ANONYMOUS_ENABLED=false
@@ -222,6 +225,8 @@ services:
       - tls
 
 secrets:
+  grafana_admin_password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:-./.secrets/grafana-admin-password}
   monitoring_token:
     file: ${MONITORING_TOKEN_FILE:-./.secrets/monitoring-token}
 

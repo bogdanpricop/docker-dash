@@ -12,10 +12,15 @@ const program=`const fs=require('fs'),cp=require('child_process'),assert=require
  const config=(args=[])=>JSON.parse(cp.execFileSync('docker',['compose','--env-file','/tmp/.env','-p',${JSON.stringify(marker)},'-f','/tmp/compose.yml',...args,'config','--format','json'],{encoding:'utf8',timeout:20000}));
  const plain=config();assert.ok(plain.services.app);assert.equal(plain.services.app.secrets,undefined);
  fs.mkdirSync('/tmp/.secrets',{mode:0o700});fs.writeFileSync('/tmp/.secrets/monitoring-token','fixture-not-a-credential');
+ fs.writeFileSync('/tmp/.secrets/grafana-admin-password','fixture-not-a-real-password');
  const profile=config(['--profile','observability']);assert.ok(profile.services.prometheus);
  assert.ok(profile.services.prometheus.secrets.some(item=>item.source==='monitoring_token'));
  assert.equal(profile.secrets.monitoring_token.file,'/tmp/.secrets/monitoring-token');
- console.log(JSON.stringify({checks:['compose-provenance','app-config-without-monitoring-credential','observability-secret-mapping'],composeSha256:${JSON.stringify(hash)}}));`;
+ assert.equal(profile.services.grafana.environment.GF_SECURITY_ADMIN_PASSWORD,undefined);
+ assert.equal(profile.services.grafana.environment.GF_SECURITY_ADMIN_PASSWORD__FILE,'/run/secrets/grafana_admin_password');
+ assert.ok(profile.services.grafana.secrets.some(item=>item.source==='grafana_admin_password'));
+ assert.equal(profile.secrets.grafana_admin_password.file,'/tmp/.secrets/grafana-admin-password');
+ console.log(JSON.stringify({checks:['compose-provenance','app-config-without-monitoring-credential','observability-secret-mapping','grafana-requires-private-bootstrap-secret'],composeSha256:${JSON.stringify(hash)}}));`;
 (async()=>{
  const container=await docker.createContainer({name:marker,Image:image,Entrypoint:['node'],Cmd:['-e',program],Labels:{'com.docker-dash.monitoring-config':marker},
   HostConfig:{NetworkMode:'none',Memory:268435456,NanoCpus:1000000000,PidsLimit:64,CapDrop:['ALL'],SecurityOpt:['no-new-privileges']}});
