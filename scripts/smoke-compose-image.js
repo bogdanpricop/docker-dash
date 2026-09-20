@@ -18,11 +18,11 @@ async function main() {
   const fixture = { services: { fixture: {
     image, pull_policy: 'never', entrypoint: ['node'],
     command: ['-e', "require('fs').writeFileSync('/fixture/ready','verified');setInterval(()=>{},1000)"],
-    labels: label, read_only: true, cap_drop: ['ALL'], security_opt: ['no-new-privileges'],
+    labels: label, network_mode: 'none', read_only: true, cap_drop: ['ALL'], security_opt: ['no-new-privileges'],
     mem_limit: '96m', cpus: 0.25, pids_limit: 32,
     healthcheck: { test: ['CMD', 'node', '-e', "if(require('fs').readFileSync('/fixture/ready','utf8')!=='verified')process.exit(1)"], interval: '1s', timeout: '3s', retries: 10 },
     volumes: ['fixture:/fixture'],
-  } }, volumes: { fixture: { labels: label } }, networks: { default: { internal: true, labels: label } } };
+  } }, volumes: { fixture: { labels: label } } };
   const program = `const cp=require('node:child_process'),assert=require('node:assert/strict'),fs=require('node:fs'),crypto=require('node:crypto');
     const binary='/usr/libexec/docker/cli-plugins/docker-compose';
     const hash=crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex');
@@ -34,11 +34,13 @@ async function main() {
       run(['config','--quiet']);
       run(['up','-d','--pull','never','--no-build','--wait','--wait-timeout','30']);
       assert.equal(run(['exec','-T','fixture','node','-p',"require('fs').readFileSync('/fixture/ready','utf8')"]).trim(),'verified');
+      run(['exec','-T','fixture','node','-e',"require('fs').writeFileSync('/fixture/persisted','across-recreate')"]);
       run(['restart','--timeout','5']);
-      run(['up','-d','--pull','never','--no-build','--wait','--wait-timeout','30']);
+      run(['up','-d','--force-recreate','--pull','never','--no-build','--wait','--wait-timeout','30']);
+      assert.equal(run(['exec','-T','fixture','node','-p',"require('fs').readFileSync('/fixture/persisted','utf8')"]).trim(),'across-recreate');
       const ps=JSON.parse(run(['ps','--format','json']).trim());
       assert.equal(ps.State,'running');assert.equal(ps.Health,'healthy');
-      console.log(JSON.stringify({project:${JSON.stringify(project)},image:${JSON.stringify(image)},compose:'5.5.1+dd.1',sha256:hash,checks:['provenance','config','up','health','exec','volume','restart','ps']}));
+      console.log(JSON.stringify({project:${JSON.stringify(project)},image:${JSON.stringify(image)},compose:'5.5.1+dd.1',sha256:hash,checks:['provenance','config','up','health','exec','volume-persistence','restart','recreate','ps']}));
     } finally {run(['down','--volumes','--timeout','5']);}`;
   let controller;
   try {
