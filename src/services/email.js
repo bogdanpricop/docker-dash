@@ -53,8 +53,11 @@ class EmailService {
       log.info('Email sent', { to, subject, messageId: info.messageId });
       return { ok: true, messageId: info.messageId };
     } catch (err) {
-      log.error('Email send failed', { to, subject, error: err.message });
-      throw err;
+      // Transport errors can echo the message body, including reset/invite tokens.
+      const code = ['EAUTH', 'ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EENVELOPE', 'EMESSAGE', 'EDNS'].includes(err.code) ? err.code : 'SEND_FAILED';
+      log.error('Email send failed', { to, subject, code });
+      // Callers may also log errors; never propagate the transport's raw text.
+      throw Object.assign(new Error('Email delivery failed'), { code });
     }
   }
 

@@ -536,11 +536,15 @@ class AuthService {
 
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
     const timestamp = now();
-    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ?').run(hash, timestamp, timestamp, userId);
-
-    // Invalidate all sessions (user must re-login with new password)
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
-    return { success: true };
+    return db.transaction(() => {
+      // A reset/deactivation during bcrypt must invalidate this authorization.
+      const changed = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ? AND password_hash = ? AND is_active = 1')
+        .run(hash, timestamp, timestamp, userId, user.password_hash);
+      if (changed.changes !== 1) return { error: 'Account changed; sign in again before changing your password' };
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(userId);
+      return { success: true };
+    }).immediate();
   }
 
   // ─── User Management (Admin) ──────────────────────────────
@@ -592,7 +596,12 @@ class AuthService {
     sets.push('updated_at = ?'); params.push(now());
     params.push(id);
 
-    db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    db.transaction(() => {
+      db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      if (email !== undefined || (isActive !== undefined && !isActive)) {
+        db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+      }
+    }).immediate();
     return { success: true };
   }
 
@@ -600,17 +609,23 @@ class AuthService {
     const db = getDb();
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
     const timestamp = now();
-    db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, password_changed_at = ?, updated_at = ? WHERE id = ?')
-      .run(hash, timestamp, timestamp, id);
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
-    return { success: true };
+    return db.transaction(() => {
+      db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, password_changed_at = ?, updated_at = ? WHERE id = ?')
+        .run(hash, timestamp, timestamp, id);
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+      return { success: true };
+    }).immediate();
   }
 
   deleteUser(id) {
     const db = getDb();
     // Don't actually delete, just deactivate
-    db.prepare('UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?').run(now(), id);
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?').run(now(), id);
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+    }).immediate();
     return { success: true };
   }
 }

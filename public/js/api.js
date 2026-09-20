@@ -142,8 +142,8 @@ const Api = {
   createUser(data) { return this.post('/auth/users', data); },
   updateUser(id, data) { return this.put(`/auth/users/${id}`, data); },
   deleteUser(id) { return this.delete(`/auth/users/${id}`); },
-  sendPasswordReset(id, lang) { return this.post(`/auth/users/${id}/send-reset`, { lang, origin: window.location.origin }); },
-  sendInvitation(id, lang) { return this.post(`/auth/users/${id}/send-invite`, { lang, origin: window.location.origin }); },
+  sendPasswordReset(id, lang) { return this.post(`/auth/users/${id}/send-reset`, { lang }); },
+  sendInvitation(id, lang) { return this.post(`/auth/users/${id}/send-invite`, { lang }); },
 
   // ─── CLI Transparency ────────────────────────────
   // Read-only: derives the equivalent docker command for an action. POST because

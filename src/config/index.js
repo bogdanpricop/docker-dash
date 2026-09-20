@@ -24,7 +24,7 @@ module.exports = {
     host: env('APP_HOST', '0.0.0.0'),
     secret: env('APP_SECRET', 'change-me-in-production-' + Date.now()),
     baseUrl: env('BASE_URL', 'http://localhost:8101'),
-    publicUrl: env('PUBLIC_URL', 'http://localhost:8101'),
+    publicUrl: env('PUBLIC_URL', env('BASE_URL', 'http://localhost:8101')),
   },
   db: {
     path: env('DB_PATH', '/data/docker-dash.db'),

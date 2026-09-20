@@ -1,5 +1,21 @@
 # Security Policy
 
+## Account recovery hardening (pending deployment)
+
+Reset and invitation emails use the configured `PUBLIC_URL`, falling back to
+`BASE_URL`. Configure the address users can reach, preferably HTTPS; the browser
+can no longer choose the link destination. SMTP must be configured. Reset links
+expire after 15 minutes, invitations after 24 hours. Token redemption rechecks
+expiry and account activity after hashing and commits the password, token/session
+invalidation and audit together. Password/email changes and deactivation revoke
+outstanding account links. SMTP errors no longer expose message bodies to logs
+or callers. Previously written logs, backups and reverse-proxy access logs are
+outside this change; a clean application log now does not erase historical tokens.
+
+See [verification and rollout status](docs/audits/2026-09-20-password-reset.md).
+Generic public responses do not yet conceal SMTP delivery timing. This change
+does not certify the broader recovery flow or the deployment's transport security.
+
 ## Audit 2026-09-19 (working tree, pending release)
 
 See [the audit report](docs/audits/2026-09-19-project-security.md) for changes,

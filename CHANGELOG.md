@@ -2,6 +2,21 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [Unreleased]
+
+- Build reset/invitation links only from configured PUBLIC_URL (falling back to
+  BASE_URL), with no caller-controlled destination. Account email requires SMTP;
+  failed delivery revokes its token, and transport errors cannot log message bodies.
+- Compare token expiry as timestamps and redeem only once in a SQLite write
+  transaction, including session/link invalidation and the reset audit. Recheck
+  expiry and account activity after password hashing; failures roll back.
+- Revoke outstanding links on password/email changes and account deactivation.
+  Reject authenticated password changes whose authorization became stale during
+  hashing. Public resets now match the email's stated 15-minute lifetime.
+- Remove reset tokens from browser history after reading them and send no referrer.
+  Operators must configure a reachable account-email URL before rollout; see
+  docs/audits/2026-09-20-password-reset.md for evidence and remaining limitations.
+
 ## [8.96.8] - 2026-09-20 — Cleanup recovery and quota lifetime
 
 - Coordinate manual/fleet/disk-pressure cleanup with replacement and egress

@@ -9,7 +9,8 @@ const { rateLimit } = require('../middleware/rateLimit');
 const config = require('../config');
 const { getClientIp } = require('../utils/helpers');
 const { getDb } = require('../db');
-const { generateToken, sha256 } = require('../utils/crypto');
+const { sha256 } = require('../utils/crypto');
+const resetTokens = require('../services/password-reset');
 const bcrypt = require('bcrypt');
 const log = require('../utils/logger')('auth');
 
@@ -341,34 +342,23 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 // ─── Email: Send Password Reset ──────────────────────────
-router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    // Generate token (15 min expiry)
-    const token = generateToken(32);
-    const tokenHash = sha256(token);
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-    // Invalidate old tokens
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE user_id = ? AND used_at IS NULL').run(user.id);
-
-    db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-      .run(user.id, tokenHash, 'reset', expiresAt);
-
+    const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000);
     const lang = req.body.lang || 'en';
-    const baseUrl = req.body.origin || config.app.publicUrl || config.app.baseUrl;
-    const resetUrl = `${baseUrl}/reset-password.html?token=${token}`;
+    const resetUrl = issued.url;
 
     await emailService.sendPasswordReset({
       to: user.email,
       username: user.username,
       resetUrl,
       lang,
-    });
+    }).catch(error => { resetTokens.revoke(db, issued.tokenHash); throw error; });
 
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'send_password_reset',
       targetType: 'user', targetId: String(user.id), ip: getClientIp(req) });
@@ -380,27 +370,16 @@ router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), async (r
 });
 
 // ─── Email: Send Invitation ──────────────────────────
-router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    // Generate token (24h expiry)
-    const token = generateToken(32);
-    const tokenHash = sha256(token);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-    // Invalidate old tokens
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE user_id = ? AND used_at IS NULL').run(user.id);
-
-    db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-      .run(user.id, tokenHash, 'invite', expiresAt);
-
+    const issued = resetTokens.issue(db, user.id, 'invite', 1440 * 60 * 1000);
     const lang = req.body.lang || 'en';
-    const baseUrl = req.body.origin || config.app.publicUrl || config.app.baseUrl;
-    const inviteUrl = `${baseUrl}/reset-password.html?token=${token}&invite=1`;
+    const inviteUrl = issued.url;
 
     await emailService.sendInvitation({
       to: user.email,
@@ -408,7 +387,7 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
       inviteUrl,
       invitedBy: req.user.username,
       lang,
-    });
+    }).catch(error => { resetTokens.revoke(db, issued.tokenHash); throw error; });
 
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'send_invitation',
       targetType: 'user', targetId: String(user.id), ip: getClientIp(req) });
@@ -420,15 +399,21 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
 });
 
 // ─── Public: Request Password Reset (self-service) ──────────
-// Rate-limited. Always returns generic 200 to prevent user enumeration.
+// Rate-limited. Generic bodies conceal account existence; delivery timing is
+// still observable until reset delivery is moved to a bounded background queue.
 router.post('/request-password-reset',
   rateLimit(5, 15 * 60 * 1000, 'auth-request-reset'),
   async (req, res) => {
     const GENERIC_OK = { ok: true, message: 'If an account exists with that email, a reset link has been sent.' };
     try {
-      const { email, origin, lang = 'en' } = req.body;
+      const { email, lang = 'en' } = req.body;
       if (!email || typeof email !== 'string') {
         // Still return generic 200 — don't leak validation info
+        return res.json(GENERIC_OK);
+      }
+
+      if (!config.smtp?.host) {
+        log.warn('Password reset delivery unavailable: SMTP is not configured');
         return res.json(GENERIC_OK);
       }
 
@@ -437,47 +422,29 @@ router.post('/request-password-reset',
         .get(email.trim());
 
       if (!user) {
-        // No account found — respond generically (no enumeration)
+        // No account found — use the same response body.
         return res.json(GENERIC_OK);
       }
 
-      // Generate a 32-byte random token; store the SHA-256 hash
-      const token = generateToken(32);
-      const tokenHash = sha256(token);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
-
-      // Invalidate any existing unused tokens for this user
-      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
-        .run(user.id);
-
-      db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-        .run(user.id, tokenHash, 'reset', expiresAt);
-
-      const baseUrl = (origin || config.app.publicUrl || config.app.baseUrl || '').replace(/\/$/, '');
-      const resetUrl = `${baseUrl}/reset-password.html?token=${token}`;
-
-      // Attempt to send email; fall back to stderr log if unconfigured
+      const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000);
+      let delivered = false;
       try {
-        if (config.smtp && config.smtp.host) {
-          await emailService.sendPasswordReset({ to: user.email, username: user.username, resetUrl, lang });
-        } else {
-          console.warn(`[auth] No SMTP configured — password reset URL for ${user.username}: ${resetUrl}`);
-        }
-      } catch (emailErr) {
-        // Log the error but do NOT reveal it to the caller
-        log.error('Password reset email failed', { userId: user.id, error: emailErr.message });
-        console.warn(`[auth] Email send failed — password reset URL for ${user.username}: ${resetUrl}`);
+        await emailService.sendPasswordReset({ to: user.email, username: user.username, resetUrl: issued.url, lang });
+        delivered = true;
+      } catch {
+        resetTokens.revoke(db, issued.tokenHash);
+        log.error('Password reset email delivery failed', { userId: user.id });
       }
 
       auditService.log({
         userId: user.id, username: user.username,
-        action: 'password_reset_requested',
+        action: 'password_reset_requested', details: { delivered },
         ip: getClientIp(req),
       });
 
       res.json(GENERIC_OK);
     } catch (err) {
-      log.error('request-password-reset', err);
+      log.error('Password reset request failed');
       // Always return generic 200 — never expose internals
       res.json(GENERIC_OK);
     }
@@ -493,12 +460,7 @@ router.post('/validate-reset-token',
     if (!token) return res.status(400).json({ error: 'Token required' });
 
     const db = getDb();
-    const tokenHash = sha256(token);
-    const row = db.prepare(`
-      SELECT rt.*, u.username FROM password_reset_tokens rt
-      JOIN users u ON rt.user_id = u.id
-      WHERE rt.token_hash = ? AND rt.used_at IS NULL AND rt.expires_at > datetime('now')
-    `).get(tokenHash);
+    const row = resetTokens.find(db, token);
 
     if (!row) return res.status(400).json({ error: 'Invalid or expired token', valid: false });
 
@@ -519,27 +481,12 @@ router.post('/reset-password-token',
     if (pwErr) return res.status(400).json({ error: pwErr });
 
     const db = getDb();
-    const tokenHash = sha256(token);
-    const row = db.prepare(`
-      SELECT rt.*, u.id as uid, u.username FROM password_reset_tokens rt
-      JOIN users u ON rt.user_id = u.id
-      WHERE rt.token_hash = ? AND rt.used_at IS NULL AND rt.expires_at > datetime('now')
-    `).get(tokenHash);
-
-    if (!row) return res.status(400).json({ error: 'Invalid or expired token' });
-
-    // Set new password
+    if (!resetTokens.find(db, token)) return res.status(400).json({ error: 'Invalid or expired token' });
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
-    db.prepare('UPDATE users SET password_hash = ?, password_changed_at = datetime(\'now\'), failed_attempts = 0, is_locked = 0, locked_until = NULL, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(hash, row.uid);
-
-    // Mark token as used
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE id = ?').run(row.id);
-
-    // Invalidate existing sessions
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(row.uid);
-
-    auditService.log({ userId: row.uid, username: row.username, action: 'password_reset_via_token' });
+    const row = resetTokens.consume(db, token, hash, current => auditService.log({
+      userId: current.uid, username: current.username, action: 'password_reset_via_token', ip: getClientIp(req),
+    }));
+    if (!row) return res.status(400).json({ error: 'Invalid or expired token' });
 
     res.json({ ok: true, username: row.username });
   } catch (err) {
