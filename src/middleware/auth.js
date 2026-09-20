@@ -167,6 +167,15 @@ function enforceApiKeyPermissions(req, res, next) {
   if (req.user?.apiKey && req.user.permissions) {
     const perms = req.user.permissions;
     const isRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    // A collector key is deliberately narrower than a general read API key.
+    // Presence of this permission always restricts the key, even if mixed with
+    // legacy broad permissions in the database.
+    if (perms.includes('monitoring.read')) {
+      const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/\/$/, '').toLowerCase();
+      if (req.user.role === 'admin' && ['GET', 'HEAD'].includes(req.method)
+        && ['/api/metrics', '/api/cluster/status'].includes(path)) return next();
+      return res.status(403).json({error:'Monitoring key cannot access this resource',code:'MONITORING_KEY_SCOPE_DENIED'});
+    }
     if (isRead && !perms.includes('read') && !perms.includes('*')) {
       return res.status(403).json({ error: 'API key lacks read permission' });
     }

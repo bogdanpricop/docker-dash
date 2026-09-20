@@ -8,9 +8,9 @@ module.exports=async(db,checks)=>{
  });
  const app=express();app.use(express.json());app.use(require('cookie-parser')());app.use('/api',require('/app/src/routes/misc'));
  const server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
- const call=async(path,credential,method='GET')=>{
+ const call=async(path,credential,method='GET',scheme='Bearer')=>{
   const response=await fetch('http://127.0.0.1:'+server.address().port+'/api'+path,{method,
-   headers:credential?{authorization:'Bearer '+credential}:{},signal:AbortSignal.timeout(2500)});
+   headers:credential?{authorization:scheme+' '+credential}:{},signal:AbortSignal.timeout(2500)});
   return {status:response.status,type:response.headers.get('content-type'),cache:response.headers.get('cache-control'),body:await response.text()};
  };
  const issue=()=>identity.issueToken({name:'native-monitor',principal:'native-monitor',scopes:['monitoring.read'],ttlSeconds:300},users[0]);
@@ -36,5 +36,17 @@ module.exports=async(db,checks)=>{
   const scoped=identity.issueToken({name:'tenant',principal:'tenant',scopes:['monitoring.read'],tenantId:tenant,ttlSeconds:300},users[0]);
   assert.equal((await call('/metrics',scoped.token)).status,403);assert.equal((await call('/cluster/status',scoped.token)).status,403);
   checks.push('native-monitoring-keeps-health-public-and-denies-tenant-scope');
+  const keys=require('/app/src/services/misc').apiKeys;
+  const key=keys.create(users[0].id,{name:'native-collector',permissions:['monitoring.read']}).key;
+  assert.equal((await call('/metrics',key,'GET','ApiKey')).status,200);
+  assert.equal((await call('/cluster/status',key,'HEAD','ApiKey')).status,200);
+  assert.equal((await call('/settings',key,'GET','ApiKey')).status,403);
+  assert.equal((await call('/api-keys',key,'POST','ApiKey')).status,403);
+  db.prepare('UPDATE users SET role=? WHERE id=?').run('viewer',users[0].id);
+  assert.equal((await call('/metrics',key,'GET','ApiKey')).status,403);
+  db.prepare('UPDATE users SET role=? WHERE id=?').run('admin',users[0].id);
+  db.prepare('UPDATE api_keys SET is_active=0 WHERE key_hash=?').run(require('/app/src/utils/crypto').sha256(key));
+  assert.equal((await call('/metrics',key,'GET','ApiKey')).status,401);
+  checks.push('native-dedicated-collector-key-restriction-demotion-and-revocation');
  }finally{await new Promise(resolve=>server.close(resolve));}
 };

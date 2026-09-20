@@ -85,7 +85,8 @@ const apiKeys = {
     if (!input || typeof input !== 'object' || Array.isArray(input)) invalid('Invalid API key request');
     const {name,expiresAt} = input, permissions = input.permissions === undefined ? ['read'] : input.permissions;
     if (typeof name !== 'string' || !name.trim() || name.length > 100 || /[\x00-\x1f\x7f]/.test(name)) invalid('API key name must contain 1-100 characters');
-    if (!Array.isArray(permissions) || !permissions.length || permissions.length > 3 || !permissions.every(value => ['read','write','*'].includes(value))) invalid('API key permissions must be read, write or *');
+    if (!Array.isArray(permissions) || !permissions.length || permissions.length > 3 || !permissions.every(value => ['read','write','*','monitoring.read'].includes(value))) invalid('API key permissions must be read, write, *, or monitoring.read');
+    if (permissions.includes('monitoring.read') && permissions.length !== 1) invalid('Monitoring keys must use only monitoring.read');
     let expiry = null;
     if (expiresAt !== undefined && expiresAt !== null) {
       const parts = typeof expiresAt === 'string' && expiresAt.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/);
@@ -125,7 +126,7 @@ const apiKeys = {
     if (!key || !key.user_active) return null;
     let permissions;
     try { permissions = JSON.parse(key.permissions); } catch { return null; }
-    if (!Array.isArray(permissions) || !permissions.length || !permissions.every(value => ['read','write','*'].includes(value))) return null;
+    if (!Array.isArray(permissions) || !permissions.length || !permissions.every(value => ['read','write','*','monitoring.read'].includes(value))) return null;
     getDb().prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now(), key.id);
     return { id:key.user_id, username:key.username, role:key.role, apiKey:true, permissions,
       mustChangePassword:require('../utils/account-password-policy').mustChangePassword(key) };

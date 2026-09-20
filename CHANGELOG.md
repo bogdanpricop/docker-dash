@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Add administrator-owned collector API keys with only `monitoring.read`.
+  They can GET/HEAD metrics and detailed cluster status, but cannot read other
+  application data or write. Persistent Prometheus instances can use an ApiKey
+  credential file; short-lived service credentials continue to use Bearer.
+  Collector keys must be replaced during the full legacy-key revocation upgrade.
+
 - Require global monitoring authentication for `/api/metrics` and `/api/cluster/status`.
   Add the dedicated `monitoring.read` service scope, preserve global `api.read` and
   administrator access, and refuse tenant credentials. Keep `/api/health` public.

@@ -212,3 +212,25 @@ The only high-cardinality dimension is `docker_dash_http_errors_total`, which re
 - Route registration: [`src/routes/misc.js`](../../src/routes/misc.js) (`router.get('/metrics', …)`)
 - CHANGELOG: v6.15.0 entry
 - Related: [`docs/features/platform-detection.md`](./platform-detection.md)
+## Dedicated collector API keys
+
+For a persistent collector, an administrator can create an API key through
+`POST /api/api-keys` with `permissions: ["monitoring.read"]`, a descriptive
+`name` and optionally `expiresAt`. This permission allows only GET/HEAD on
+`/api/metrics` and `/api/cluster/status`; it cannot read other application data
+or perform writes. The owner must remain an active administrator. Revoke it
+through API Keys when retiring or rotating the collector.
+
+Use Prometheus `authorization.type: ApiKey` for this key, with
+`credentials_file: /run/secrets/monitoring_token`. Service tokens use
+`authorization.type: Bearer` and expire within 24 hours. Do not use a general
+`read` or `*` API key for this purpose.
+
+A collector key without `expiresAt` has no automatic expiry. Store its file
+inside a host directory with mode 0700, excluded from Git and Docker build
+contexts; mount only the credential file read-only into Prometheus. The file
+must be readable by the container UID (a mode 0644 file inside that private
+parent supports file-backed Compose mounts). Replace and recreate the
+collector when rotating a file-backed secret, then revoke the old key.
+The full authentication upgrade's legacy-key revocation requires reissuing
+collector keys as part of that rollout.

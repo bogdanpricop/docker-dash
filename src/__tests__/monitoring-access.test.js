@@ -54,6 +54,27 @@ describe.each(['/api/metrics','/api/cluster/status'])('%s',path=>{
 test('monitoring scope cannot read arbitrary application data',async()=>{
  expect((await request(app).get('/api/settings').set('Authorization','Bearer '+token(['monitoring.read']))).status).toBe(403);
 });
+test('dedicated collector API keys only allow monitoring GET/HEAD and require an active administrator',async()=>{
+ const keys=require('../services/misc').apiKeys;
+ const raw=keys.create(admin.id,{name:'collector',permissions:['monitoring.read']}).key;
+ const call=(method,path,key=raw)=>request(app)[method](path).set('Authorization','ApiKey '+key);
+ for(const path of ['/api/metrics','/api/cluster/status']) {
+  expect((await call('get',path)).status).toBe(200);
+  expect((await call('head',path.toUpperCase()+'/')).status).toBe(200);
+ }
+ for(const path of ['/api/settings','/api/api-keys','/api/footprint'])expect((await call('get',path)).status).toBe(403);
+ expect((await call('post','/api/api-keys')) .status).toBe(403);
+ const viewerKey=keys.create(viewer.id,{name:'collector-viewer',permissions:['monitoring.read']}).key;
+ expect((await call('get','/api/metrics',viewerKey)).status).toBe(403);
+ const expired=keys.create(admin.id,{name:'collector-expiry',permissions:['monitoring.read']}).key;
+ db.prepare("UPDATE api_keys SET expires_at='2000-01-01T00:00:00Z' WHERE key_hash=?").run(require('../utils/crypto').sha256(expired));
+ expect((await call('get','/api/metrics',expired)).status).toBe(401);
+ db.prepare('UPDATE users SET role=? WHERE id=?').run('viewer',admin.id);
+ try {expect((await call('get','/api/metrics')).status).toBe(403);}
+ finally {db.prepare('UPDATE users SET role=? WHERE id=?').run('admin',admin.id);}
+ db.prepare('UPDATE api_keys SET is_active=0 WHERE key_hash=?').run(require('../utils/crypto').sha256(raw));
+ expect((await call('get','/api/metrics')).status).toBe(401);
+});
 test('denied requests never collect container statistics',async()=>{
  const spy=jest.spyOn(require('../services/stats'),'getOverview');
  try{
