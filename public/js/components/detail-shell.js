@@ -33,6 +33,27 @@ const DetailShell = {
  * per-page Puppeteer regression in Phase 3.1+.
  */
 const _pure = {
+  standardTabKeys: Object.freeze(['overview', 'actions', 'tasks', 'events', 'audit']),
+
+  /** Put the shared operational contract first and preserve resource-specific tabs after it. */
+  standardizeTabs(tabs = []) {
+    const input = tabs.filter(tab => tab && tab.key);
+    const byKey = new Map(input.map(tab => [tab.key, tab]));
+    const labels = { overview: 'Overview', actions: 'Actions', tasks: 'Tasks', events: 'Events', audit: 'Audit' };
+    const icons = { overview: 'fa-info-circle', actions: 'fa-bolt', tasks: 'fa-tasks', events: 'fa-stream', audit: 'fa-history' };
+    const standard = this.standardTabKeys.map(key => byKey.get(key) || {
+      key, label: labels[key], icon: icons[key], unavailable: true,
+    });
+    return standard.concat(input.filter(tab => !this.standardTabKeys.includes(tab.key)));
+  },
+
+  actionExplanation(decision) {
+    if (decision?.available) return 'Available';
+    const blockers = (decision?.blockers || [])
+      .map(blocker => blocker.message || blocker.reason).filter(Boolean);
+    return [...new Set(blockers)].join(' · ') || 'Action is unavailable';
+  },
+
   /** Resolve which tab should be active on first mount. */
   initialTab({ hash = '', tabKeys = [], defaultTab = null, hashRouting = false, id = null } = {}) {
     if (hashRouting && id != null) {
@@ -75,7 +96,12 @@ function _resolve(fnOrVal) {
 }
 
 function _createShell(opts) {
-  const tabs = (opts.tabs || []).filter(t => t && t.key);
+  const tabs = (opts.standardTabs ? _pure.standardizeTabs(opts.tabs || []) : (opts.tabs || []))
+    .filter(t => t && t.key)
+    .map(tab => tab.unavailable ? {
+      ...tab,
+      render: panel => { panel.innerHTML = `<div class="empty-msg"><i class="fas fa-ban"></i>${_esc(tab.label)} is not available for this resource.</div>`; },
+    } : tab);
   const tabByKey = {};
   for (const t of tabs) tabByKey[t.key] = t;
 

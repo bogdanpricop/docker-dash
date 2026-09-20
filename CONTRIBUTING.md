@@ -272,3 +272,29 @@ Use [GitHub Discussions](https://github.com/bogdanpricop/docker-dash/discussions
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+
+## Dependency and browser asset updates
+
+Use the latest patched Node.js 24 LTS (`.nvmrc`). After changing npm dependencies,
+run `npm install`, `npm run build:vendor`, and `npm ci` to verify the lockfile.
+Commit the generated browser assets and `public/vendor/versions.json`; production
+still serves plain JavaScript with no build step.
+
+Run `npm run check:vendor`, `npm run check:browser`, `npm run check:inventory-browser`, `npm run check:syntax`,
+`npm run lint`, `npm test -- --runInBand`, and `npm run audit:dependencies`.
+CodeMirror 6 is bundled from `scripts/vendor/codemirror.mjs`. Browser checks cover
+YAML validation, keyboard editing, forms, read-only and modal disposal. The inventory
+browser gate uses real view routes, auth, CSRF and an ephemeral DB with fixture
+provider data; it does not replace the live-provider release smoke.
+The scoped ioredis-mock peer override is validated by the cluster regression suite;
+production uses ioredis 6 with `protocol: 2` for wire compatibility.
+
+Use npm 11.19.1 (`npm install --global npm@11.19.1 --ignore-scripts`), matching CI
+and the Docker image. This newer security-patched release fixes bundled packages
+still vulnerable in npm's current `latest` tag (12.0.2); revisit the major upgrade
+when its bundled dependencies are patched. npm blocks dependency lifecycle scripts unless
+listed in `package.json#allowScripts`. Approvals are pinned to reviewed versions,
+and `.npmrc` rejects unreviewed script-bearing packages. Review a changed script
+before running `npm install-scripts approve <package>` during an upgrade.
+`better-sqlite3` uses its packaged native prebuilds; its implicit node-gyp fallback
+and protobufjs's advisory-only postinstall are explicitly denied.

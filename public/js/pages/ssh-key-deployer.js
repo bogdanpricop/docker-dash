@@ -72,6 +72,9 @@ const SshKeyDeployer = {
           <div class="form-group" style="flex:0 0 90px"><label>Port</label><input type="number" id="skd-port" class="form-control" value="22"></div>
           <div class="form-group" style="flex:1;min-width:120px"><label>User</label><input type="text" id="skd-user" class="form-control" value="${this._target === 'esxi' || this._target === 'proxmox' ? 'root' : ''}" placeholder="root"></div>
         </div>
+        <div class="form-group"><label for="skd-host-key">${Utils.escapeHtml(i18n.t('pages.hosts.sshHostKeyLabel'))}</label>
+          <input type="text" id="skd-host-key" class="form-control" placeholder="SHA256:..." autocomplete="off">
+          <small class="text-muted">${Utils.escapeHtml(i18n.t('pages.hosts.sshHostKeyHint'))}</small></div>
         <div class="form-group"><label>Initial auth</label>
           <select id="skd-authmode" class="form-control"><option value="password">Password</option><option value="key">Existing private key</option></select></div>
         <div class="form-group" id="skd-pw-wrap"><label>Password</label><input type="password" id="skd-password" class="form-control"></div>
@@ -141,7 +144,7 @@ const SshKeyDeployer = {
   _connFromForm() {
     const body = Modal._content.querySelector('#skd-body');
     const v = (id) => (body.querySelector(id) || {}).value || '';
-    const conn = { host: v('#skd-host').trim(), port: parseInt(v('#skd-port'), 10) || 22, user: v('#skd-user').trim() };
+    const conn = { host: v('#skd-host').trim(), port: parseInt(v('#skd-port'), 10) || 22, user: v('#skd-user').trim(), hostKeySha256: v('#skd-host-key').trim() };
     if (v('#skd-authmode') === 'key') conn.privateKey = v('#skd-existing-key');
     else conn.password = v('#skd-password');
     if (this._target === 'windows') conn.isAdmin = v('#skd-winadmin') !== '0';
@@ -225,7 +228,7 @@ const SshKeyDeployer = {
         const hostId = parseInt(el.querySelector('#skd-attach-host').value, 10);
         if (!hostId) { Toast.error('Pick a vSphere host'); return; }
         try {
-          await Api.attachSshKeyVsphere({ hostId, sshConfig: { host: state.conn.host, port: state.conn.port, user: state.conn.user, privateKey: r.privateKey } });
+          await Api.attachSshKeyVsphere({ hostId, sshConfig: { host: state.conn.host, port: state.conn.port, user: state.conn.user, hostKeySha256: state.conn.hostKeySha256, privateKey: r.privateKey } });
           Toast.success('Private key attached to host — SSH console & Hardware tab are ready');
         } catch (err) { Toast.error(err.message); }
       });

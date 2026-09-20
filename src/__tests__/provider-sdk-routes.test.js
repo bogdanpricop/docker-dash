@@ -1,0 +1,1910 @@
+'use strict';
+
+const express = require('express');
+const request = require('supertest');
+
+const mockCapabilities = jest.fn();
+const mockResources = jest.fn();
+const mockArtifacts = jest.fn();
+const mockRecoveryPoints = jest.fn();
+const mockVmDetail = jest.fn();
+const mockMigrationPreflight = jest.fn();
+const mockMigrationExecutionPreflight = jest.fn();
+const mockMigrationSubmit = jest.fn();
+const mockMaintenancePreflight = jest.fn();
+const mockMaintenanceSubmit = jest.fn();
+const mockMaintenanceList = jest.fn();
+const mockMaintenanceGet = jest.fn();
+const mockMaintenancePause = jest.fn();
+const mockMaintenanceResume = jest.fn();
+const mockMaintenanceCancel = jest.fn();
+const mockMaintenanceExit = jest.fn();
+const mockMaintenanceReconcile = jest.fn();
+const mockHaGet = jest.fn();
+const mockHaHistory = jest.fn();
+const mockStoragePosture = jest.fn();
+const mockSnapshotRiskAssess = jest.fn();
+const mockSnapshotRiskRefresh = jest.fn();
+const mockSnapshotRiskUpdatePolicy = jest.fn();
+const mockStorageTopology = jest.fn();
+const mockStoragePlacementAdvisory = jest.fn();
+const mockStoragePolicyAdvisory = jest.fn();
+const mockNetworkPosture = jest.fn();
+const mockNetworkPolicyAdvisory = jest.fn();
+const mockNetworkAttachmentTopology = jest.fn();
+const mockNetworkPlacementAdvisory = jest.fn();
+const mockNetworkEvidenceCapture = jest.fn();
+const mockPlacementAffinity = jest.fn();
+const mockPlacementRecommend = jest.fn();
+const mockPlacementPlan = jest.fn();
+const mockChangePreflight = jest.fn();
+const mockChangeCreate = jest.fn();
+const mockChangeList = jest.fn();
+const mockChangeGet = jest.fn();
+const mockChangeApprove = jest.fn();
+const mockChangeReject = jest.fn();
+const mockChangeControl = jest.fn();
+const mockChangeRollback = jest.fn();
+const mockAudit = jest.fn();
+const mockConformanceRun = jest.fn();
+const mockConformanceGet = jest.fn();
+const mockConformanceList = jest.fn();
+const mockScorecard = jest.fn();
+const mockExport = jest.fn();
+const mockPowerPreflight = jest.fn();
+const mockPowerPreflightBulk = jest.fn();
+const mockPowerSubmit = jest.fn();
+const mockPowerSubmitBulk = jest.fn();
+const mockSnapshotInventory = jest.fn();
+const mockSnapshotPreflight = jest.fn();
+const mockSnapshotSubmit = jest.fn();
+const mockDiskInventory = jest.fn();
+const mockDiskPreflight = jest.fn();
+const mockDiskSubmit = jest.fn();
+const mockNicInventory = jest.fn();
+const mockNicSafety = jest.fn();
+const mockNicPreflight = jest.fn();
+const mockNicSubmit = jest.fn();
+const mockManagedVolumeList = jest.fn();
+const mockManagedDeletePreflight = jest.fn();
+const mockManagedDeleteSubmit = jest.fn();
+const mockSnapshotPolicyGet = jest.fn();
+const mockSnapshotPolicyRuns = jest.fn();
+const mockSnapshotPolicyUpsert = jest.fn();
+const mockSnapshotPolicyRemove = jest.fn();
+const mockSnapshotPolicyPreview = jest.fn();
+const mockSnapshotPolicyRun = jest.fn();
+const mockActionScheduleList = jest.fn();
+const mockActionScheduleCreate = jest.fn();
+const mockActionScheduleUpdate = jest.fn();
+const mockActionScheduleRemove = jest.fn();
+const mockActionScheduleRuns = jest.fn();
+const mockActionScheduleRun = jest.fn();
+const mockBackupPolicyList = jest.fn();
+const mockBackupPolicyRuns = jest.fn();
+const mockBackupPolicyPreflight = jest.fn();
+const mockBackupPolicyUpsert = jest.fn();
+const mockBackupPolicyRemove = jest.fn();
+const mockBackupPolicyPlan = jest.fn();
+const mockBackupPolicyGet = jest.fn();
+const mockBackupExecutionList = jest.fn();
+const mockBackupExecutionAuthorize = jest.fn();
+const mockBackupExecutionCreate = jest.fn();
+const mockBackupExecutionGet = jest.fn();
+const mockBackupExecutionCancel = jest.fn();
+const mockRecoveryRestorePreflight = jest.fn();
+const mockRecoveryRestoreSubmit = jest.fn();
+const mockRestoreDrillPreflight = jest.fn();
+const mockRestoreDrillSubmit = jest.fn();
+const mockRestoreDrillReconcile = jest.fn();
+const mockRestoreDrillList = jest.fn();
+const mockRestoreDrillGet = jest.fn();
+const mockRestoreDrillPolicyList = jest.fn();
+const mockRestoreDrillPolicyUpsert = jest.fn();
+const mockRestoreDrillPolicyRemove = jest.fn();
+const mockDrOverview = jest.fn();
+const mockDrReplications = jest.fn();
+const mockDrGroupList = jest.fn();
+const mockDrGroupUpsert = jest.fn();
+const mockDrGroupRemove = jest.fn();
+const mockDrPreflight = jest.fn();
+const mockDrRehearse = jest.fn();
+const mockDrRuns = jest.fn();
+const mockRestoreDepthFileList = jest.fn();
+const mockRestoreDepthFileImport = jest.fn();
+const mockRestoreDepthPreflight = jest.fn();
+const mockReplicationPolicyList = jest.fn();
+const mockReplicationPolicyUpsert = jest.fn();
+const mockReplicationPolicyRemove = jest.fn();
+const mockSecurityAssuranceGet = jest.fn();
+const mockSecurityEvidenceUpsert = jest.fn();
+const mockKeyProviderList = jest.fn();
+const mockKeyProviderUpsert = jest.fn();
+const mockKeyProviderRemove = jest.fn();
+const mockConfidentialPreflight = jest.fn();
+const mockSecurityLifecycleGet = jest.fn();
+const mockSecurityCorrelate = jest.fn();
+const mockSecurityExceptionCreate = jest.fn();
+const mockSecurityExceptionRevoke = jest.fn();
+const mockSecurityRemediationPlan = jest.fn();
+const mockSecurityRemediationExecute = jest.fn();
+const mockSecretReferenceValidate = jest.fn();
+const mockPrivilegedComplianceOverview = jest.fn();
+const mockElevationRequest = jest.fn();
+const mockElevationApprove = jest.fn();
+const mockElevationClaim = jest.fn();
+const mockElevationRevoke = jest.fn();
+const mockBreakGlassRequest = jest.fn();
+const mockBreakGlassApprove = jest.fn();
+const mockBreakGlassActivate = jest.fn();
+const mockBreakGlassClose = jest.fn();
+const mockBreakGlassReview = jest.fn();
+const mockClassificationUpsert = jest.fn();
+const mockComplianceMappings = jest.fn();
+const mockRansomwarePosture = jest.fn();
+const mockComplianceExport = jest.fn();
+const mockCriticalOperationAuthorize = jest.fn();
+const mockProvisionPreflight = jest.fn();
+const mockProvisionSubmit = jest.fn();
+const mockHost = { id: 7, name: 'xcp-pool', daemon_type: 'xen', is_active: 1 };
+
+jest.mock('../config', () => {
+  const actual = jest.requireActual('../config');
+  return { ...actual, features: { ...actual.features, providerSdkV2: true, providerHaReadiness: true,
+    providerRecoveryPointInventory: true, providerBackupPolicies: true, providerBackupExecution: true,
+    providerRecoveryRestore: true, providerRestoreDrills: true, providerDrRunbooks: true,
+    providerRestoreReplicationDepth: true,
+    providerSecurityAssurance: true, providerSecurityLifecycle: true,
+    providerPrivilegedCompliance: true,
+    providerCriticalOperationJit: false,
+    providerVmActionSchedules: true } };
+});
+
+jest.mock('../db', () => ({
+  getDb: () => ({ prepare: () => ({ get: id => Number(id) === 7 ? mockHost : undefined }) }),
+}));
+jest.mock('../services/provider-sdk/registry', () => ({
+  capabilitiesForHost: (...args) => mockCapabilities(...args),
+  resourcesForHost: (...args) => mockResources(...args),
+  artifactsForHost: (...args) => mockArtifacts(...args),
+  recoveryPointsForHost: (...args) => mockRecoveryPoints(...args),
+}));
+jest.mock('../services/provider-sdk/vm-detail', () => ({
+  detailForHost: (...args) => mockVmDetail(...args),
+}));
+jest.mock('../services/provider-sdk/vm-migration-preflight', () => ({
+  preflightForHost: (...args) => mockMigrationPreflight(...args),
+}));
+jest.mock('../services/provider-operations/vm-migration', () => ({
+  preflightForHost: (...args) => mockMigrationExecutionPreflight(...args),
+  submitForHost: (...args) => mockMigrationSubmit(...args),
+}));
+jest.mock('../services/provider-operations/host-maintenance', () => ({
+  preflightForHost: (...args) => mockMaintenancePreflight(...args),
+  submitForHost: (...args) => mockMaintenanceSubmit(...args),
+  listForHost: (...args) => mockMaintenanceList(...args),
+  get: (...args) => mockMaintenanceGet(...args),
+  pause: (...args) => mockMaintenancePause(...args),
+  resume: (...args) => mockMaintenanceResume(...args),
+  cancel: (...args) => mockMaintenanceCancel(...args),
+  exit: (...args) => mockMaintenanceExit(...args),
+  reconcileUnknown: (...args) => mockMaintenanceReconcile(...args),
+}));
+jest.mock('../services/provider-sdk/ha-readiness', () => ({
+  getForHost: (...args) => mockHaGet(...args),
+  historyForHost: (...args) => mockHaHistory(...args),
+}));
+jest.mock('../services/provider-sdk/storage-posture', () => ({
+  postureForHost: (...args) => mockStoragePosture(...args),
+}));
+jest.mock('../services/provider-sdk/snapshot-risk', () => ({
+  assessHost: (...args) => mockSnapshotRiskAssess(...args),
+  refreshHost: (...args) => mockSnapshotRiskRefresh(...args),
+  updatePolicy: (...args) => mockSnapshotRiskUpdatePolicy(...args),
+}));
+jest.mock('../services/provider-sdk/storage-topology', () => ({
+  topologyForHost: (...args) => mockStorageTopology(...args),
+}));
+jest.mock('../services/provider-sdk/storage-placement-advisory', () => ({
+  advisoryForHost: (...args) => mockStoragePlacementAdvisory(...args),
+}));
+jest.mock('../services/provider-sdk/storage-policy-advisory', () => ({
+  advisoryForHost: (...args) => mockStoragePolicyAdvisory(...args),
+}));
+jest.mock('../services/provider-sdk/network-posture', () => ({
+  postureForHost: (...args) => mockNetworkPosture(...args),
+}));
+jest.mock('../services/provider-sdk/network-policy-advisory', () => ({
+  advisoryForHost: (...args) => mockNetworkPolicyAdvisory(...args),
+}));
+jest.mock('../services/provider-sdk/network-attachment-topology', () => ({ topologyForHost: (...args) => mockNetworkAttachmentTopology(...args) }));
+jest.mock('../services/provider-sdk/network-placement-advisory', () => ({ advisoryForHost: (...args) => mockNetworkPlacementAdvisory(...args) }));
+jest.mock('../services/provider-sdk/network-evidence-capture', () => ({
+  captureForHost: (...args) => mockNetworkEvidenceCapture(...args),
+}));
+jest.mock('../services/provider-sdk/placement-advisory', () => ({
+  affinityForHost: (...args) => mockPlacementAffinity(...args),
+  recommendForVm: (...args) => mockPlacementRecommend(...args),
+  rebalancePlanForHost: (...args) => mockPlacementPlan(...args),
+}));
+jest.mock('../services/provider-operations/placement-changes', () => ({
+  preflightForHost: (...args) => mockChangePreflight(...args),
+  createForHost: (...args) => mockChangeCreate(...args),
+  listForHost: (...args) => mockChangeList(...args),
+  get: (...args) => mockChangeGet(...args),
+  approveForHost: (...args) => mockChangeApprove(...args),
+  rejectForHost: (...args) => mockChangeReject(...args),
+  controlForHost: (...args) => mockChangeControl(...args),
+  planRollbackForHost: (...args) => mockChangeRollback(...args),
+}));
+jest.mock('../services/provider-operations/vm-power', () => ({
+  ACTIONS: { start: { force: false }, forceShutdown: { force: true } },
+  preflightForHost: (...args) => mockPowerPreflight(...args),
+  preflightManyForHost: (...args) => mockPowerPreflightBulk(...args),
+  submitForHost: (...args) => mockPowerSubmit(...args),
+  submitManyForHost: (...args) => mockPowerSubmitBulk(...args),
+}));
+jest.mock('../services/provider-operations/vm-snapshots', () => ({
+  inventoryForHost: (...args) => mockSnapshotInventory(...args),
+  preflightForHost: (...args) => mockSnapshotPreflight(...args),
+  submitForHost: (...args) => mockSnapshotSubmit(...args),
+}));
+jest.mock('../services/provider-operations/vm-disks', () => ({
+  inventoryForHost: (...args) => mockDiskInventory(...args),
+  preflightForHost: (...args) => mockDiskPreflight(...args),
+  submitForHost: (...args) => mockDiskSubmit(...args),
+  listManagedForHost: (...args) => mockManagedVolumeList(...args),
+  preflightDeleteForHost: (...args) => mockManagedDeletePreflight(...args),
+  submitDeleteForHost: (...args) => mockManagedDeleteSubmit(...args),
+}));
+jest.mock('../services/provider-operations/vm-nics', () => ({
+  inventoryForHost: (...args) => mockNicInventory(...args),
+  declareSafetyForHost: (...args) => mockNicSafety(...args),
+  preflightForHost: (...args) => mockNicPreflight(...args),
+  submitForHost: (...args) => mockNicSubmit(...args),
+}));
+jest.mock('../services/provider-operations/snapshot-policies', () => ({
+  getForVm: (...args) => mockSnapshotPolicyGet(...args),
+  listRuns: (...args) => mockSnapshotPolicyRuns(...args),
+  upsertForHost: (...args) => mockSnapshotPolicyUpsert(...args),
+  removeForVm: (...args) => mockSnapshotPolicyRemove(...args),
+  previewForHost: (...args) => mockSnapshotPolicyPreview(...args),
+  runForHost: (...args) => mockSnapshotPolicyRun(...args),
+}));
+jest.mock('../services/provider-operations/vm-action-schedules', () => {
+  class VmActionScheduleError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'VmActionScheduleError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    VmActionScheduleError,
+    listForVm: (...args) => mockActionScheduleList(...args),
+    createForHost: (...args) => mockActionScheduleCreate(...args),
+    updateForHost: (...args) => mockActionScheduleUpdate(...args),
+    removeForVm: (...args) => mockActionScheduleRemove(...args),
+    listRuns: (...args) => mockActionScheduleRuns(...args),
+    runNow: (...args) => mockActionScheduleRun(...args),
+  };
+});
+jest.mock('../services/provider-operations/backup-policies', () => {
+  class BackupPolicyError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'BackupPolicyError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    BackupPolicyError,
+    listForHost: (...args) => mockBackupPolicyList(...args),
+    listRuns: (...args) => mockBackupPolicyRuns(...args),
+    preflightForHost: (...args) => mockBackupPolicyPreflight(...args),
+    upsertForHost: (...args) => mockBackupPolicyUpsert(...args),
+    removeForHost: (...args) => mockBackupPolicyRemove(...args),
+    planForHost: (...args) => mockBackupPolicyPlan(...args),
+    get: (...args) => mockBackupPolicyGet(...args),
+  };
+});
+jest.mock('../services/provider-operations/backup-executions', () => {
+  class BackupExecutionError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'BackupExecutionError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    BackupExecutionError,
+    listForHost: (...args) => mockBackupExecutionList(...args),
+    getForHost: (...args) => mockBackupExecutionGet(...args),
+    authorizeForHost: (...args) => mockBackupExecutionAuthorize(...args),
+    createForHost: (...args) => mockBackupExecutionCreate(...args),
+    cancelForHost: (...args) => mockBackupExecutionCancel(...args),
+  };
+});
+jest.mock('../services/provider-operations/recovery-restore', () => {
+  class RecoveryRestoreError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RecoveryRestoreError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    RecoveryRestoreError,
+    preflightForHost: (...args) => mockRecoveryRestorePreflight(...args),
+    submitForHost: (...args) => mockRecoveryRestoreSubmit(...args),
+  };
+});
+jest.mock('../services/provider-operations/restore-drills', () => {
+  class RestoreDrillError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RestoreDrillError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    RestoreDrillError,
+    preflightForHost: (...args) => mockRestoreDrillPreflight(...args),
+    submitForHost: (...args) => mockRestoreDrillSubmit(...args),
+    reconcile: (...args) => mockRestoreDrillReconcile(...args),
+    listRuns: (...args) => mockRestoreDrillList(...args),
+    getRun: (...args) => mockRestoreDrillGet(...args),
+    listPolicies: (...args) => mockRestoreDrillPolicyList(...args),
+    upsertPolicyForHost: (...args) => mockRestoreDrillPolicyUpsert(...args),
+    removePolicyForHost: (...args) => mockRestoreDrillPolicyRemove(...args),
+  };
+});
+jest.mock('../services/provider-operations/dr-runbooks', () => {
+  class DrRunbookError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'DrRunbookError'; this.code = code; this.status = status; this.details = details;
+    }
+  }
+  return {
+    DrRunbookError,
+    overviewForHost: (...args) => mockDrOverview(...args),
+    listReplicationsForHost: (...args) => mockDrReplications(...args),
+    listGroups: (...args) => mockDrGroupList(...args),
+    upsertGroup: (...args) => mockDrGroupUpsert(...args),
+    removeGroup: (...args) => mockDrGroupRemove(...args),
+    preflightForHost: (...args) => mockDrPreflight(...args),
+    rehearseForHost: (...args) => mockDrRehearse(...args),
+    listRuns: (...args) => mockDrRuns(...args),
+  };
+});
+jest.mock('../services/provider-operations/restore-replication-depth', () => {
+  class RestoreReplicationDepthError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'RestoreReplicationDepthError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    RestoreReplicationDepthError,
+    listFileEntries: (...args) => mockRestoreDepthFileList(...args),
+    importFileCatalog: (...args) => mockRestoreDepthFileImport(...args),
+    preflightDepthForHost: (...args) => mockRestoreDepthPreflight(...args),
+    listReplicationPolicies: (...args) => mockReplicationPolicyList(...args),
+    upsertReplicationPolicy: (...args) => mockReplicationPolicyUpsert(...args),
+    removeReplicationPolicy: (...args) => mockReplicationPolicyRemove(...args),
+  };
+});
+jest.mock('../services/provider-sdk/security-assurance', () => {
+  class ProviderSecurityAssuranceError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'ProviderSecurityAssuranceError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    ProviderSecurityAssuranceError,
+    assuranceForHost: (...args) => mockSecurityAssuranceGet(...args),
+    upsertEvidence: (...args) => mockSecurityEvidenceUpsert(...args),
+    listKeyProviders: (...args) => mockKeyProviderList(...args),
+    upsertKeyProvider: (...args) => mockKeyProviderUpsert(...args),
+    removeKeyProvider: (...args) => mockKeyProviderRemove(...args),
+    preflightConfidentialProvisioning: (...args) => mockConfidentialPreflight(...args),
+  };
+});
+jest.mock('../services/provider-sdk/security-lifecycle', () => {
+  class ProviderSecurityLifecycleError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'ProviderSecurityLifecycleError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    ProviderSecurityLifecycleError,
+    overview: (...args) => mockSecurityLifecycleGet(...args),
+    correlate: (...args) => mockSecurityCorrelate(...args),
+    createException: (...args) => mockSecurityExceptionCreate(...args),
+    revokeException: (...args) => mockSecurityExceptionRevoke(...args),
+    planRemediation: (...args) => mockSecurityRemediationPlan(...args),
+    executeLowRisk: (...args) => mockSecurityRemediationExecute(...args),
+    validateSecretReferences: (...args) => mockSecretReferenceValidate(...args),
+  };
+});
+jest.mock('../services/provider-sdk/privileged-compliance', () => {
+  class PrivilegedComplianceError extends Error {
+    constructor(message, code, status, details = null) {
+      super(message); this.name = 'PrivilegedComplianceError'; this.code = code;
+      this.status = status; this.details = details;
+    }
+  }
+  return {
+    PrivilegedComplianceError,
+    overview: (...args) => mockPrivilegedComplianceOverview(...args),
+    requestElevation: (...args) => mockElevationRequest(...args),
+    approveElevation: (...args) => mockElevationApprove(...args),
+    claimElevation: (...args) => mockElevationClaim(...args),
+    revokeElevation: (...args) => mockElevationRevoke(...args),
+    requestBreakGlass: (...args) => mockBreakGlassRequest(...args),
+    approveBreakGlass: (...args) => mockBreakGlassApprove(...args),
+    activateBreakGlass: (...args) => mockBreakGlassActivate(...args),
+    closeBreakGlass: (...args) => mockBreakGlassClose(...args),
+    reviewBreakGlass: (...args) => mockBreakGlassReview(...args),
+    upsertClassification: (...args) => mockClassificationUpsert(...args),
+    importMappings: (...args) => mockComplianceMappings(...args),
+    recordRansomwarePosture: (...args) => mockRansomwarePosture(...args),
+    createComplianceExport: (...args) => mockComplianceExport(...args),
+    authorizeCriticalOperation: (...args) => mockCriticalOperationAuthorize(...args),
+  };
+});
+jest.mock('../services/provider-operations/vm-provision', () => ({
+  preflightForHost: (...args) => mockProvisionPreflight(...args),
+  submitForHost: (...args) => mockProvisionSubmit(...args),
+}));
+jest.mock('../services/provider-conformance', () => ({
+  runForHost: (...args) => mockConformanceRun(...args),
+  get: (...args) => mockConformanceGet(...args),
+  listForHost: (...args) => mockConformanceList(...args),
+  scorecard: (...args) => mockScorecard(...args),
+  exportEvidence: (...args) => mockExport(...args),
+  manifests: { listManifests: () => [{ providerType: 'xen', manifestHash: 'abc' }] },
+}));
+jest.mock('../services/audit', () => ({ log: (...args) => mockAudit(...args) }));
+jest.mock('../middleware/auth', () => ({
+  requireAuth: (req, _res, next) => {
+    req.user = { id: 1, username: 'tester', role: req.headers['x-test-role'] || 'admin' };
+    next();
+  },
+  requireRole: (...roles) => (req, res, next) => roles.includes(req.user.role)
+    ? next() : res.status(403).json({ error: 'Insufficient permissions' }),
+  writeable: (req, _res, next) => next(),
+}));
+jest.mock('../middleware/hostAccess', () => ({
+  requireHostAccess: () => (req, _res, next) => {
+    req.hostAccess = req.headers['x-test-host-access'] || 'admin';
+    next();
+  },
+}));
+
+const config = require('../config');
+const routes = require('../routes/providers');
+const app = express();
+app.use(express.json());
+app.use('/api/providers', routes);
+
+describe('Provider SDK routes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    config.features.providerCriticalOperationJit = false;
+    mockCapabilities.mockResolvedValue({
+      schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      probe: { status: 'reachable', durationMs: 10 }, features: {},
+    });
+    mockResources.mockResolvedValue({
+      schemaVersion: '1.0', kind: 'virtualMachine', provider: { type: 'xen', endpointId: 7 },
+      count: 0, totalObserved: 0, truncated: false, items: [],
+    });
+    mockArtifacts.mockResolvedValue({ schemaVersion: '1.0', count: 0, totalObserved: 0, truncated: false, items: [] });
+    mockRecoveryPoints.mockResolvedValue({ schemaVersion: '1.0', count: 0, totalObserved: 0, truncated: false, repositories: [], items: [] });
+    mockVmDetail.mockResolvedValue({
+      schemaVersion: '1.0',
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      freshness: { state: 'fresh' }, actions: [], sections: {}, activity: [],
+    });
+    const diskPlan = {
+      schemaVersion: '1.0', providerType: 'xen', action: 'create', allowed: true,
+      planHash: '4'.repeat(64), vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      disk: null, managedVolume: null, request: { label: 'data', sizeBytes: 1073741824 },
+      storage: { id: `ddr_storage_${'c'.repeat(26)}`, displayName: 'sr-a' },
+    };
+    mockDiskInventory.mockResolvedValue({ schemaVersion: '1.0', disks: [], managedVolumes: [] });
+    mockDiskPreflight.mockResolvedValue(diskPlan);
+    mockDiskSubmit.mockResolvedValue({ plan: diskPlan, operation: { id: `op_${'4'.repeat(26)}` } });
+    const nicPlan = {
+      schemaVersion: '1.0', providerType: 'xen', action: 'disconnect', allowed: true,
+      planHash: '6'.repeat(64), vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      nic: { id: `ddh_nic_${'b'.repeat(26)}`, label: 'NIC 0' }, safety: { state: 'valid' },
+    };
+    mockNicInventory.mockResolvedValue({ schemaVersion: '1.0', nics: [], release: { enabled: false } });
+    mockNicSafety.mockResolvedValue({ vm: nicPlan.vm, nic: nicPlan.nic, safety: nicPlan.safety });
+    mockNicPreflight.mockResolvedValue(nicPlan);
+    mockNicSubmit.mockResolvedValue({ plan: nicPlan, operation: { id: `op_${'6'.repeat(26)}` } });
+    mockManagedVolumeList.mockReturnValue([]);
+    const volumePlan = { ...diskPlan, action: 'delete', disk: null,
+      managedVolume: { id: `ddv_vol_${'f'.repeat(26)}`, label: 'data' }, storage: null };
+    mockManagedDeletePreflight.mockResolvedValue(volumePlan);
+    mockManagedDeleteSubmit.mockResolvedValue({ plan: volumePlan, operation: { id: `op_${'5'.repeat(26)}` } });
+    mockMigrationPreflight.mockResolvedValue({
+      schemaVersion: '1.0', generatedAt: '2026-07-26T12:00:00.000Z',
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      scope: { sameEndpointOnly: true, executionEnabled: false }, candidates: [],
+      planHash: '8'.repeat(64),
+    });
+    mockMigrationExecutionPreflight.mockResolvedValue({
+      schemaVersion: '1.0', allowed: true, mode: 'live', planHash: '7'.repeat(64),
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      target: { id: `ddr_host_${'b'.repeat(26)}`, displayName: 'xcp-b' }, targetStorage: null,
+    });
+    mockMigrationSubmit.mockResolvedValue({
+      plan: {
+        mode: 'live', vm: { id: `ddr_vm_${'a'.repeat(26)}` },
+        target: { id: `ddr_host_${'b'.repeat(26)}` }, targetStorage: null,
+      },
+      operation: { id: `op_${'7'.repeat(26)}` },
+    });
+    const maintenanceRun = {
+      id: `hmr_${'6'.repeat(26)}`, provider: { type: 'xen', endpointId: 7 },
+      sourceHost: { id: `ddr_host_${'b'.repeat(26)}`, displayName: 'xcp-a' },
+      goal: 'enter', state: 'draining', waveSize: 2, counts: { deferred: 0 }, items: [],
+    };
+    mockMaintenancePreflight.mockResolvedValue({
+      schemaVersion: '1.0', sourceHost: maintenanceRun.sourceHost, goal: 'enter',
+      waveSize: 2, itemCount: 1, deferredCount: 0, allowed: true, planHash: '6'.repeat(64),
+    });
+    mockMaintenanceSubmit.mockResolvedValue({ plan: { planHash: '6'.repeat(64) }, run: maintenanceRun, deduplicated: false });
+    mockMaintenanceList.mockReturnValue([maintenanceRun]);
+    mockMaintenanceGet.mockReturnValue(maintenanceRun);
+    for (const action of [mockMaintenancePause, mockMaintenanceResume, mockMaintenanceCancel, mockMaintenanceExit, mockMaintenanceReconcile]) {
+      action.mockResolvedValue(maintenanceRun);
+    }
+    mockHaGet.mockResolvedValue({
+      schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      state: 'ready', score: 90, domains: [], snapshotHash: '4'.repeat(64),
+    });
+    mockHaHistory.mockReturnValue([{ id: 1, state: 'ready', score: 90 }]);
+    mockPlacementAffinity.mockResolvedValue({
+      schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      capability: { state: 'conditional' }, rules: [], nativeRecommendations: [], limitations: [],
+    });
+    mockPlacementRecommend.mockResolvedValue({
+      schemaVersion: '1.0', vm: { id: `ddr_vm_${'a'.repeat(26)}` }, candidates: [], planHash: '3'.repeat(64),
+    });
+    mockPlacementPlan.mockResolvedValue({
+      schemaVersion: '1.0', moves: [], skipped: [], planHash: '2'.repeat(64), expiresAt: '2026-07-26T12:05:00.000Z',
+    });
+    const placementChange = {
+      id: `pcr_${'5'.repeat(26)}`, provider: { type: 'xen', endpointId: 7 },
+      changeKind: 'rebalance_apply', action: 'apply', state: 'pending_approval',
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' },
+      planHash: '5'.repeat(64), operationId: null, items: [], counts: {},
+    };
+    mockChangePreflight.mockResolvedValue({ schemaVersion: '1.0', changeKind: 'rebalance_apply',
+      allowed: true, diff: [], moves: [], planHash: '5'.repeat(64) });
+    mockChangeCreate.mockResolvedValue({ change: placementChange, deduplicated: false });
+    mockChangeList.mockReturnValue([placementChange]);
+    mockChangeGet.mockReturnValue(placementChange);
+    mockChangeApprove.mockResolvedValue({ change: { ...placementChange, state: 'approved', operationId: `op_${'5'.repeat(26)}` },
+      operation: { id: `op_${'5'.repeat(26)}` }, deduplicated: false });
+    mockChangeReject.mockReturnValue({ ...placementChange, state: 'rejected' });
+    mockChangeControl.mockReturnValue({ ...placementChange, state: 'paused' });
+    mockChangeRollback.mockResolvedValue({ rollbackOf: placementChange.id,
+      request: { changeKind: 'rebalance_apply', rollbackOf: placementChange.id },
+      plan: { planHash: '6'.repeat(64), allowed: true } });
+    mockPowerPreflight.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, action: 'start', allowed: true,
+      resource: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'a'.repeat(64),
+    });
+    mockPowerPreflightBulk.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, action: 'start', count: 1, allowed: true, plans: [],
+    });
+    mockPowerSubmit.mockResolvedValue({
+      plan: { action: 'start', planHash: 'a'.repeat(64), resource: { id: `ddr_vm_${'a'.repeat(26)}` } },
+      operation: { id: `op_${'d'.repeat(26)}` },
+    });
+    mockPowerSubmitBulk.mockResolvedValue({
+      preflight: { action: 'start', plans: [] }, operations: [{ id: `op_${'e'.repeat(26)}` }],
+    });
+    mockSnapshotInventory.mockResolvedValue({
+      schemaVersion: '1.0', hostId: 7, count: 0, items: [], protection: { isBackup: false },
+    });
+    mockSnapshotPreflight.mockResolvedValue({
+      schemaVersion: '1.0', action: 'create', allowed: true, name: 'before-upgrade',
+      vm: { id: `ddr_vm_${'a'.repeat(26)}`, displayName: 'vm-a' }, planHash: 'b'.repeat(64),
+    });
+    mockSnapshotSubmit.mockResolvedValue({
+      plan: {
+        action: 'create', name: 'before-upgrade', consistency: 'crash',
+        vm: { id: `ddr_vm_${'a'.repeat(26)}` }, snapshot: { id: `dds_snap_${'b'.repeat(26)}` },
+      },
+      operation: { id: `op_${'f'.repeat(26)}` },
+    });
+    mockProvisionPreflight.mockResolvedValue({
+      schemaVersion: '1.0', allowed: true, name: 'app-01',
+      artifact: { id: `dda_art_${'a'.repeat(26)}`, displayName: 'Debian Gold' },
+      mode: { requested: 'auto', effective: 'linked' },
+      placement: { selected: { storageId: null, targetNode: null }, candidates: [] },
+      confirmation: { expected: 'app-01' }, planHash: '9'.repeat(64),
+    });
+    mockProvisionSubmit.mockResolvedValue({
+      plan: {
+        name: 'app-01', artifact: { id: `dda_art_${'a'.repeat(26)}` },
+        mode: { effective: 'linked' }, placement: { selected: { storageId: null } },
+      },
+      operation: { id: `op_${'9'.repeat(26)}` },
+    });
+    mockSnapshotPolicyGet.mockReturnValue(null);
+    mockSnapshotPolicyRuns.mockReturnValue([]);
+    mockSnapshotPolicyUpsert.mockResolvedValue({
+      created: true,
+      policy: {
+        id: `vmsp_${'a'.repeat(26)}`, enabled: false, mode: 'dry_run', retainCount: 3,
+        maxAgeDays: 3, schedule: { frequency: 'daily' },
+      },
+    });
+    mockSnapshotPolicyRemove.mockReturnValue({ id: `vmsp_${'a'.repeat(26)}` });
+    mockSnapshotPolicyPreview.mockResolvedValue({
+      policyId: `vmsp_${'a'.repeat(26)}`,
+      retention: { managedCount: 2, candidates: [{ id: `dds_snap_${'b'.repeat(26)}` }] },
+      protection: { isBackup: false },
+    });
+    mockSnapshotPolicyRun.mockResolvedValue({
+      id: `vspr_${'a'.repeat(26)}`, policyId: `vmsp_${'a'.repeat(26)}`,
+      state: 'previewed', currentOperationId: null,
+    });
+    const actionSchedule = {
+      id: `vmas_${'c'.repeat(26)}`, hostId: 7, vmId: `ddr_vm_${'a'.repeat(26)}`,
+      vmDisplayName: 'vm-a', name: 'weekday-start', action: 'start', cron: '0 7 * * 1-5',
+      timezone: 'Europe/Bucharest', dstPolicy: 'first', mode: 'dry_run', enabled: true,
+      version: 1, failureThreshold: 3, consecutiveFailures: 0,
+    };
+    mockActionScheduleList.mockReturnValue([actionSchedule]);
+    mockActionScheduleCreate.mockResolvedValue(actionSchedule);
+    mockActionScheduleUpdate.mockResolvedValue({ ...actionSchedule, version: 2 });
+    mockActionScheduleRemove.mockReturnValue(actionSchedule);
+    mockActionScheduleRuns.mockReturnValue([{ id: `vmar_${'d'.repeat(26)}`, state: 'previewed' }]);
+    mockActionScheduleRun.mockResolvedValue({ id: `vmar_${'e'.repeat(26)}`, state: 'previewed', operationId: null });
+    const backupPolicy = {
+      id: `pbp_${'a'.repeat(26)}`, hostId: 7, repositoryId: `ddr_repo_${'a'.repeat(26)}`,
+      name: 'Production GFS', enabled: false, mode: 'plan_only', policyHash: '1'.repeat(64),
+    };
+    const backupPlan = {
+      schemaVersion: '1.0', allowed: true, planHash: '2'.repeat(64),
+      summary: { blockers: 0, warnings: 0, selectedWorkloads: 2 },
+      execution: { authorized: false }, findings: [],
+    };
+    mockBackupPolicyList.mockReturnValue([backupPolicy]);
+    mockBackupPolicyRuns.mockReturnValue([]);
+    mockBackupPolicyPreflight.mockResolvedValue(backupPlan);
+    mockBackupPolicyUpsert.mockResolvedValue({ created: true, policy: backupPolicy, preflight: backupPlan });
+    mockBackupPolicyRemove.mockReturnValue(backupPolicy);
+    mockBackupPolicyPlan.mockResolvedValue({ id: `pbpr_${'b'.repeat(26)}`, policyId: backupPolicy.id,
+      state: 'planned', planHash: backupPlan.planHash, plan: backupPlan });
+    mockBackupPolicyGet.mockReturnValue(backupPolicy);
+    const execution = { schemaVersion: '1.0', id: `pbex_${'c'.repeat(26)}`, policyId: backupPolicy.id,
+      planRunId: `pbpr_${'b'.repeat(26)}`, planHash: 'c'.repeat(64), trigger: 'manual', state: 'running',
+      summary: { total: 1, retentionMutationAuthorized: false }, items: [] };
+    mockBackupExecutionList.mockReturnValue([execution]);
+    mockBackupExecutionAuthorize.mockReturnValue({ ...backupPolicy,
+      execution: { mode: 'manual', authorizedBy: 1, authorizedAt: '2026-07-26T12:00:00Z' } });
+    mockBackupExecutionCreate.mockResolvedValue({ execution, deduplicated: false });
+    mockBackupExecutionGet.mockReturnValue(execution);
+    mockBackupExecutionCancel.mockResolvedValue({ ...execution, state: 'running' });
+    const restorePlan = {
+      schemaVersion: '1.0', kind: 'vm', allowed: true, planHash: '4'.repeat(64),
+      source: { recoveryPointId: `ddr_rp_${'d'.repeat(26)}` },
+      target: { nodeId: `ddr_host_${'e'.repeat(26)}`, storageId: `ddr_storage_${'f'.repeat(26)}`, vmid: 9123 },
+      verificationOverride: { requested: false }, blockers: [],
+    };
+    mockRecoveryRestorePreflight.mockResolvedValue(restorePlan);
+    mockRecoveryRestoreSubmit.mockResolvedValue({ plan: restorePlan,
+      operation: { id: `op_${'4'.repeat(26)}`, state: 'queued', deduplicated: false } });
+    const drillPlan = {
+      schemaVersion: '1.0', kind: 'providerRestoreDrillPlan', allowed: true,
+      planHash: '5'.repeat(64), source: restorePlan.source, target: restorePlan.target,
+      cleanup: { mode: 'on_success', automaticCleanupAuthorized: true }, blockers: [],
+    };
+    const drillRun = { id: `pdrr_${'6'.repeat(26)}`, state: 'queued',
+      operationId: `op_${'6'.repeat(26)}`, target: { vmid: 9123 }, compliance: 'unknown' };
+    mockRestoreDrillPreflight.mockResolvedValue(drillPlan);
+    mockRestoreDrillSubmit.mockResolvedValue({ plan: drillPlan, run: drillRun,
+      operation: { id: drillRun.operationId, state: 'queued' }, deduplicated: false });
+    mockRestoreDrillReconcile.mockResolvedValue({ updated: [] });
+    mockRestoreDrillList.mockReturnValue([drillRun]);
+    mockRestoreDrillGet.mockReturnValue(drillRun);
+    const drillPolicy = { id: `pdrp_${'7'.repeat(26)}`, backupPolicyId: backupPolicy.id,
+      enabled: true, authorization: { automaticCleanup: true } };
+    mockRestoreDrillPolicyList.mockReturnValue([drillPolicy]);
+    mockRestoreDrillPolicyUpsert.mockResolvedValue({ policy: drillPolicy, created: true });
+    mockRestoreDrillPolicyRemove.mockReturnValue(drillPolicy);
+    const drGroup = { id: `pdrg_${'8'.repeat(26)}`, name: 'Payments DR', primaryHostId: 7,
+      recoveryHostId: 7, strategy: 'backup_restore', enabled: true,
+      members: [{ vmId: `ddr_vm_${'a'.repeat(26)}` }] };
+    const drPlan = { schemaVersion: '1.0', group: drGroup, mode: 'test', executionType: 'rehearsal',
+      allowed: true, planHash: '8'.repeat(64), blockers: [], warnings: [], steps: [] };
+    const drRun = { id: `pdrun_${'9'.repeat(26)}`, groupId: drGroup.id, mode: 'test',
+      state: 'succeeded', compliance: 'met', evidenceHash: '9'.repeat(64) };
+    mockDrOverview.mockResolvedValue({ schemaVersion: '1.0', summary: { groups: 1 }, groups: [drGroup] });
+    mockDrReplications.mockResolvedValue({ schemaVersion: '1.0', capability: { state: 'unsupported' },
+      count: 0, items: [] });
+    mockDrGroupList.mockReturnValue([drGroup]);
+    mockDrGroupUpsert.mockReturnValue({ group: drGroup, created: true });
+    mockDrGroupRemove.mockReturnValue(drGroup);
+    mockDrPreflight.mockResolvedValue(drPlan);
+    mockDrRehearse.mockResolvedValue({ plan: drPlan, run: drRun });
+    mockDrRuns.mockReturnValue([drRun]);
+    const fileCatalog = { id: `prfc_${'a'.repeat(26)}`, entryCount: 1,
+      manifestHash: 'a'.repeat(64), state: 'complete' };
+    mockRestoreDepthFileList.mockReturnValue({ schemaVersion: '1.0', catalog: fileCatalog,
+      count: 1, items: [{ path: '/etc/app.conf', type: 'file' }] });
+    mockRestoreDepthFileImport.mockReturnValue({ created: true, catalog: fileCatalog });
+    mockRestoreDepthPreflight.mockResolvedValue({ schemaVersion: '1.0', id: `prdp_${'b'.repeat(26)}`,
+      request: { kind: 'instant' }, planHash: 'b'.repeat(64), allowed: false,
+      blockers: [{ code: 'EXECUTION_ADAPTER_UNAVAILABLE', reason: 'adapter missing' }] });
+    const replicationPolicy = { id: `prpl_${'c'.repeat(26)}`, targetHostId: 8,
+      mode: 'async', enabled: false, policyHash: 'c'.repeat(64) };
+    mockReplicationPolicyList.mockReturnValue([replicationPolicy]);
+    mockReplicationPolicyUpsert.mockResolvedValue({ created: true, policy: replicationPolicy });
+    mockReplicationPolicyRemove.mockReturnValue(replicationPolicy);
+    const securityEvidence = { id: `psec_${'d'.repeat(26)}`, resourceKind: 'endpoint',
+      resourceId: 'endpoint:7', pack: { key: 'xen-security' }, source: 'imported_evidence',
+      evidenceHash: 'd'.repeat(64) };
+    const keyProvider = { id: `pkpr_${'e'.repeat(26)}`, providerKind: 'external_kms',
+      evidenceHash: 'e'.repeat(64), health: { state: 'healthy' } };
+    mockSecurityAssuranceGet.mockResolvedValue({ schemaVersion: '1.0', evidenceCount: 1,
+      items: [securityEvidence], keyProviders: [keyProvider] });
+    mockSecurityEvidenceUpsert.mockReturnValue({ created: true, evidence: securityEvidence,
+      networkCallsStarted: 0 });
+    mockKeyProviderList.mockReturnValue([keyProvider]);
+    mockKeyProviderUpsert.mockReturnValue({ created: true, keyProvider, networkCallsStarted: 0 });
+    mockKeyProviderRemove.mockReturnValue(keyProvider);
+    mockConfidentialPreflight.mockResolvedValue({ id: `pcvp_${'f'.repeat(26)}`,
+      request: { mode: 'sev_snp' }, planHash: 'f'.repeat(64), allowed: false,
+      blockers: [{ code: 'HOST_CONFIDENTIAL_MODE_UNSUPPORTED' }], executionAuthorized: false });
+    const finding = { id: `psfd_${'1'.repeat(26)}`, state: 'open',
+      exception: null, priorityScore: 100 };
+    const exception = { id: `psfx_${'2'.repeat(26)}`, exceptionHash: '2'.repeat(64),
+      expiresAt: '2026-08-31T10:00:00Z' };
+    const remediationPlan = { id: `psrp_${'3'.repeat(26)}`, planHash: '3'.repeat(64),
+      risk: 'low', allowed: true, executionAuthorized: false };
+    mockSecurityLifecycleGet.mockReturnValue({ schemaVersion: '1.0', counts: { open: 1 },
+      findings: [finding] });
+    mockSecurityCorrelate.mockReturnValue({ matched: 1, skipped: 0, source: 'official_catalog',
+      findings: [finding] });
+    mockSecurityExceptionCreate.mockReturnValue({ ...finding, state: 'excepted', exception });
+    mockSecurityExceptionRevoke.mockReturnValue(finding);
+    mockSecurityRemediationPlan.mockReturnValue(remediationPlan);
+    mockSecurityRemediationExecute.mockResolvedValue({ id: `psrr_${'4'.repeat(26)}`,
+      state: 'succeeded', providerMutationsStarted: true });
+    mockSecretReferenceValidate.mockReturnValue({ id: `psrv_${'5'.repeat(26)}`,
+      documentHash: '5'.repeat(64), state: 'invalid', referenceCount: 0,
+      documentStored: false, findings: [{ code: 'INLINE_SECRET_FIELD' }] });
+    const grant = { id: `pegr_${'6'.repeat(26)}`, scopeId: 1,
+      permissionKey: 'compliance.evidence.export', grantHash: '6'.repeat(64),
+      mfaVerifiedAt: '2026-07-31T10:00:00Z', expiresAt: '2026-07-31T10:10:00Z' };
+    mockPrivilegedComplianceOverview.mockReturnValue({ schemaVersion: '1.0',
+      capabilities: { privilegedElevation: 'partial' }, elevations: [grant] });
+    mockElevationRequest.mockReturnValue({ tokenIssued: false, grant: { ...grant, state: 'pending' } });
+    mockElevationApprove.mockReturnValue({ tokenIssued: false,
+      grant: { ...grant, state: 'active', approvedBy: 2 } });
+    mockElevationClaim.mockReturnValue({ token: 'sensitive-jit-token', tokenShownOnce: true,
+      grant: { ...grant, state: 'active' } });
+    mockElevationRevoke.mockReturnValue({ ...grant, state: 'revoked' });
+    const breakGlass = { id: `pbgr_${'7'.repeat(26)}`, scopeId: 1, state: 'pending',
+      ticketRef: 'INC-2026-0042', notificationRefs: ['oncall:security'], recordingPolicy: 'metadata',
+      expiresAt: '2026-07-31T10:10:00Z', temporaryIdentity: 'break-glass:1' };
+    mockBreakGlassRequest.mockReturnValue({ notificationsDispatched: false, request: breakGlass });
+    mockBreakGlassApprove.mockReturnValue({ activationIssued: false,
+      request: { ...breakGlass, state: 'approved', approvedBy: 2 } });
+    mockBreakGlassActivate.mockReturnValue({ token: 'sensitive-break-glass-token',
+      request: { ...breakGlass, state: 'active' } });
+    mockBreakGlassClose.mockReturnValue({ ...breakGlass, state: 'closed' });
+    mockBreakGlassReview.mockReturnValue({ ...breakGlass, state: 'reviewed',
+      reviewOutcome: 'expected', reviewedBy: 2 });
+    mockClassificationUpsert.mockReturnValue({ created: true, classification: {
+      id: `prcl_${'8'.repeat(26)}`, scopeId: 1, resourceKind: 'endpoint', resourceId: 'endpoint:7',
+      classification: 'confidential', classificationHash: '8'.repeat(64) } });
+    mockComplianceMappings.mockReturnValue({ count: 1, duplicatedFindingsCreated: 0, mappings: [] });
+    mockRansomwarePosture.mockReturnValue({ posture: { id: `prpo_${'9'.repeat(26)}`,
+      scopeId: 1, score: 75, confidence: 'medium', evidenceHash: '9'.repeat(64) } });
+    mockComplianceExport.mockReturnValue({ export: { id: `pcex_${'a'.repeat(26)}`,
+      scopeId: 1, format: 'json', classification: 'confidential', bundleHash: 'a'.repeat(64),
+      signature: 'b'.repeat(64), signatureAlgorithm: 'HMAC-SHA256' },
+    bundle: { exportMode: 'redacted' } });
+    mockConformanceList.mockReturnValue([]);
+    mockScorecard.mockReturnValue([{ providerType: 'xen', counts: { shipped: 7, partial: 1, planned: 21 } }]);
+    mockExport.mockReturnValue({ schemaVersion: '1.0', format: 'docker-dash-provider-conformance', integrityHash: 'e'.repeat(64), runs: [] });
+    mockConformanceRun.mockResolvedValue({
+      schemaVersion: '1.0', id: `pcr_${'a'.repeat(26)}`, hostId: 7,
+      providerType: 'xen', mode: 'live_readonly', grade: 'certified', score: 100, maxScore: 100,
+      evidenceHash: 'f'.repeat(64), checks: [],
+    });
+    mockStoragePosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass' }, storages: [] });
+    const snapshotRisk = { schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 },
+      summary: { state: 'warning', snapshotCount: 2 }, coverage: { collection: { attemptedVms: 1, failedVms: 0 } },
+      policy: { version: 0 }, items: [], history: [], transitions: [] };
+    mockSnapshotRiskAssess.mockReturnValue(snapshotRisk);
+    mockSnapshotRiskRefresh.mockResolvedValue(snapshotRisk);
+    mockSnapshotRiskUpdatePolicy.mockReturnValue({ version: 1, warningAgeDays: 7, criticalAgeDays: 30,
+      warningChainDepth: 3, criticalChainDepth: 8, warningGrowthPercent: 20, criticalGrowthPercent: 50 });
+    mockStoragePlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, storages: [] });
+    mockStoragePolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, storages: [] });
+    mockNetworkPosture.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { state: 'pass', networkCount: 1 }, networks: [] });
+    mockNetworkPolicyAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { compliantCount: 1 }, networks: [] });
+    mockNetworkAttachmentTopology.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { networkCount: 1 }, networks: [] });
+    mockNetworkPlacementAdvisory.mockResolvedValue({ schemaVersion: '1.0', provider: { type: 'xen', endpointId: 7 }, summary: { candidateCount: 1 }, networks: [] });
+    mockNetworkEvidenceCapture.mockResolvedValue({ schemaVersion: '1.0',
+      provider: { type: 'xen', endpointId: 7 }, features: [
+        { featureId: 'B118', state: 'captured' },
+        { featureId: 'B120', state: 'captured' },
+        { featureId: 'B121', state: 'not_observed' },
+      ], summary: { captured: 2, notObserved: 1, unavailable: 0,
+        providerReadsStarted: 3, providerMutationsStarted: 0, activeProbesStarted: 0 },
+      evidenceHash: 'e'.repeat(64) });
+    mockConformanceGet.mockReturnValue(null);
+  });
+
+  it('returns host-scoped capabilities', async () => {
+    const response = await request(app).get('/api/providers/7/capabilities');
+    expect(response.status).toBe(200);
+    expect(response.body.schemaVersion).toBe('1.0');
+    expect(mockCapabilities).toHaveBeenCalledWith(mockHost, { refresh: false });
+  });
+
+  it('requires admin for a live refresh', async () => {
+    const response = await request(app).get('/api/providers/7/capabilities?refresh=true')
+      .set('x-test-role', 'viewer');
+    expect(response.status).toBe(403);
+    expect(mockCapabilities).not.toHaveBeenCalled();
+  });
+
+  it('audits an admin refresh without credential details', async () => {
+    const response = await request(app).get('/api/providers/7/capabilities?refresh=true');
+    expect(response.status).toBe(200);
+    expect(mockCapabilities).toHaveBeenCalledWith(mockHost, { refresh: true });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_capability_refresh', targetId: '7',
+      details: { provider: 'xen', status: 'reachable', durationMs: 10 },
+    }));
+  });
+
+  it('rejects invalid and missing provider hosts', async () => {
+    expect((await request(app).get('/api/providers/0/capabilities')).status).toBe(400);
+    expect((await request(app).get('/api/providers/8/capabilities')).status).toBe(404);
+  });
+
+  it('returns a host-scoped resource inventory with a bounded limit', async () => {
+    const response = await request(app).get('/api/providers/7/resources/virtual-machines?limit=25');
+    expect(response.status).toBe(200);
+    expect(response.body.kind).toBe('virtualMachine');
+    expect(mockResources).toHaveBeenCalledWith(mockHost, 'virtual-machines', { limit: 25 });
+  });
+
+  it('returns read-only storage posture scoped to the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/storage-posture').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.state).toBe('pass');
+    expect(mockStoragePosture).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('returns cached snapshot risk to endpoint viewers', async () => {
+    const response = await request(app).get('/api/providers/7/snapshot-risk').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.state).toBe('warning');
+    expect(mockSnapshotRiskAssess).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('restricts snapshot-risk refresh and policy updates to admins and audits bounded evidence', async () => {
+    expect((await request(app).post('/api/providers/7/snapshot-risk/refresh').set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).post('/api/providers/7/snapshot-risk/refresh');
+    expect(refreshed.status).toBe(200);
+    expect(mockSnapshotRiskRefresh).toHaveBeenCalledWith(mockHost, { actor: expect.objectContaining({ id: 1 }) });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_snapshot_risk_refresh', targetId: '7',
+      details: expect.objectContaining({ snapshotCount: 2, transitionCount: 0 }),
+    }));
+
+    const policy = { warningAgeDays: 7, criticalAgeDays: 30, warningChainDepth: 3,
+      criticalChainDepth: 8, warningGrowthPercent: 20, criticalGrowthPercent: 50, version: 0 };
+    expect((await request(app).put('/api/providers/7/snapshot-risk/policy').set('x-test-role', 'viewer').send(policy)).status).toBe(403);
+    expect((await request(app).put('/api/providers/7/snapshot-risk/policy').send(policy)).status).toBe(200);
+    expect(mockSnapshotRiskUpdatePolicy).toHaveBeenCalledWith(mockHost, policy, expect.objectContaining({ id: 1 }));
+  });
+
+  it('does not expose raw provider errors from snapshot-risk refresh', async () => {
+    mockSnapshotRiskRefresh.mockRejectedValueOnce(new Error('connect https://root:secret@provider.invalid failed'));
+    const response = await request(app).post('/api/providers/7/snapshot-risk/refresh');
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Provider snapshot risk refresh failed', code: 'SNAPSHOT_RISK_PROVIDER_ERROR' });
+    expect(JSON.stringify(response.body)).not.toContain('provider.invalid');
+    expect(JSON.stringify(response.body)).not.toContain('secret');
+  });
+
+  it('returns a bounded read-only storage placement advisory', async () => {
+    const response = await request(app).get('/api/providers/7/storage-placement-advisory?requiredBytes=1073741824').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.candidateCount).toBe(1);
+    expect(mockStoragePlacementAdvisory).toHaveBeenCalledWith(mockHost, { requestedBytes: '1073741824' });
+    expect((await request(app).get('/api/providers/7/storage-placement-advisory?requiredBytes=1.5')).status).toBe(400);
+  });
+
+  it('returns an operator-selected read-only storage policy assessment', async () => {
+    const response = await request(app).get('/api/providers/7/storage-policy-advisory?minFreeBytes=1073741824&requireShared=true').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.compliantCount).toBe(1);
+    expect(mockStoragePolicyAdvisory).toHaveBeenCalledWith(mockHost, { minFreeBytes: '1073741824', requireShared: true });
+    expect((await request(app).get('/api/providers/7/storage-policy-advisory?requireShared=maybe')).status).toBe(400);
+  });
+
+  it('returns read-only virtual network posture for the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/network-posture').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.networkCount).toBe(1);
+    expect(mockNetworkPosture).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('returns an operator-selected read-only network policy assessment', async () => {
+    const response = await request(app).get('/api/providers/7/network-policy-advisory?minMtu=1500&requireManaged=true&requireVlan=true').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200);
+    expect(response.body.summary.compliantCount).toBe(1);
+    expect(mockNetworkPolicyAdvisory).toHaveBeenCalledWith(mockHost, { minMtu: '1500', requireManaged: true, requireVlan: true });
+    expect((await request(app).get('/api/providers/7/network-policy-advisory?requireVlan=maybe')).status).toBe(400);
+  });
+
+  it('returns read-only VM network attachment topology for the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/network-attachment-topology').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200); expect(response.body.summary.networkCount).toBe(1); expect(mockNetworkAttachmentTopology).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('returns read-only virtual-network placement evidence for the visible provider host', async () => {
+    const response = await request(app).get('/api/providers/7/network-placement-advisory').set('x-test-role', 'viewer');
+    expect(response.status).toBe(200); expect(response.body.summary.candidateCount).toBe(1); expect(mockNetworkPlacementAdvisory).toHaveBeenCalledWith(mockHost);
+  });
+
+  it('captures B118/B120/B121 provider evidence only for administrators and audits zero mutations', async () => {
+    expect((await request(app).post('/api/providers/7/network-evidence/capture')
+      .set('x-test-role', 'viewer').send({})).status).toBe(403);
+    const response = await request(app).post('/api/providers/7/network-evidence/capture').send({});
+    expect(response.status).toBe(201);
+    expect(response.body.summary).toEqual(expect.objectContaining({ captured: 2,
+      providerMutationsStarted: 0, activeProbesStarted: 0 }));
+    expect(mockNetworkEvidenceCapture).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ id: 1, role: 'admin' }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_network_evidence_capture', targetType: 'provider_host', targetId: '7',
+      details: expect.objectContaining({ featureIds: ['B118', 'B120', 'B121'],
+        providerReadsStarted: 3, providerMutationsStarted: 0, activeProbesStarted: 0 }),
+    }));
+  });
+
+  it('rejects malformed inventory limits before provider access', async () => {
+    expect((await request(app).get('/api/providers/7/resources/virtual-machines?limit=2x')).status).toBe(400);
+    expect((await request(app).get('/api/providers/7/resources/virtual-machines?limit=501')).status).toBe(400);
+    expect(mockResources).not.toHaveBeenCalled();
+  });
+
+  it('returns safe resource errors', async () => {
+    mockResources.mockRejectedValue(Object.assign(new Error('upstream secret'), {
+      status: 502, code: 'PROVIDER_RESOURCE_READ_FAILED',
+    }));
+    const response = await request(app).get('/api/providers/7/resources/virtual-machines');
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Provider resource inventory failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('returns canonical common VM detail and passes effective operate access', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'operate');
+    expect(response.status).toBe(200);
+    expect(response.body.resource.id).toBe(id);
+    expect(mockVmDetail).toHaveBeenCalledWith(mockHost, id, { refresh: false, canOperate: true });
+  });
+
+  it('requires admin for VM detail refresh and validates refresh values', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=yes`)).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=true`)
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).get(`/api/providers/7/virtual-machines/${id}?refresh=true`);
+    expect(refreshed.status).toBe(200);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_vm_detail_refresh', targetId: id,
+    }));
+  });
+
+  it('returns safe common VM detail errors', async () => {
+    const id = `ddr_vm_${'b'.repeat(26)}`;
+    mockVmDetail.mockRejectedValue(Object.assign(new Error('upstream secret'), {
+      status: 502, code: 'PROVIDER_RESOURCE_READ_FAILED',
+    }));
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}`);
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({ error: 'Provider VM detail failed', code: 'PROVIDER_RESOURCE_READ_FAILED' });
+  });
+
+  it('returns a read-only VM migration preflight to viewers', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}/migration-preflight`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(response.status).toBe(200);
+    expect(response.body.scope).toEqual(expect.objectContaining({ sameEndpointOnly: true, executionEnabled: false }));
+    expect(mockMigrationPreflight).toHaveBeenCalledWith(mockHost, id);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes VM migration preflight provider failures', async () => {
+    const id = `ddr_vm_${'b'.repeat(26)}`;
+    mockMigrationPreflight.mockRejectedValue(Object.assign(new Error('upstream secret'), {
+      status: 502, code: 'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED',
+    }));
+    const response = await request(app).get(`/api/providers/7/virtual-machines/${id}/migration-preflight`);
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({
+      error: 'Provider VM migration preflight failed', code: 'PROVIDER_MIGRATION_PREFLIGHT_READ_FAILED',
+    });
+  });
+
+  it('operator-gates, preflights and audits native VM migration submission', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const targetId = `ddr_host_${'b'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${id}/migration/preflight`)
+      .set('x-test-role', 'viewer').send({ targetId, mode: 'live' })).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${id}/migration/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate').send({ targetId, mode: 'live' });
+    expect(preflight.status).toBe(200);
+    expect(mockMigrationExecutionPreflight).toHaveBeenCalledWith(mockHost, id,
+      { targetId, mode: 'live' }, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${id}/migration`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'migration-request-1')
+      .send({ targetId, mode: 'live', confirm: true, confirmName: 'vm-a', planHash: '7'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockMigrationSubmit).toHaveBeenCalledWith(mockHost, id, expect.objectContaining({
+      targetId, mode: 'live', idempotencyKey: 'migration-request-1',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_migrate' }));
+  });
+
+  it('preflights and submits host-scoped VM power with operate access', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${id}/power/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate').send({ action: 'start' });
+    expect(preflight.status).toBe(200);
+    expect(mockPowerPreflight).toHaveBeenCalledWith(mockHost, id, 'start', { canOperate: true });
+
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'power-request-123').send({ action: 'start', confirm: true, planHash: 'a'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockPowerSubmit).toHaveBeenCalledWith(mockHost, id, expect.objectContaining({
+      action: 'start', idempotencyKey: 'power-request-123',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_power_submit' }));
+  });
+
+  it('enforces granular JIT headers only for allowlisted critical provider mutations', async () => {
+    config.features.providerCriticalOperationJit = true;
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    const required = new (require('../services/provider-sdk/privileged-compliance').PrivilegedComplianceError)(
+      'Scoped elevation required', 'CRITICAL_OPERATION_JIT_REQUIRED', 403,
+      { operationKey: 'provider.vm.power.force', permissionKey: 'provider.vm.power.force' });
+    mockCriticalOperationAuthorize.mockImplementationOnce(() => { throw required; });
+    const denied = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ action: 'forceShutdown', confirm: true, planHash: 'a'.repeat(64) });
+    expect(denied.status).toBe(403);
+    expect(denied.body).toEqual(expect.objectContaining({
+      code: 'CRITICAL_OPERATION_JIT_REQUIRED',
+      details: expect.objectContaining({ permissionKey: 'provider.vm.power.force' }),
+    }));
+    expect(mockPowerSubmit).not.toHaveBeenCalled();
+
+    mockCriticalOperationAuthorize.mockReturnValueOnce({
+      operationKey: 'provider.vm.power.force', permissionKey: 'provider.vm.power.force',
+      mode: 'jit', scopeId: 41, grantId: 'ppjg_safe', expiresAt: '2026-08-02T12:00:00Z',
+    });
+    mockPowerSubmit.mockResolvedValueOnce({
+      plan: { action: 'forceShutdown', planHash: 'a'.repeat(64), resource: { id } },
+      operation: { id: `op_${'d'.repeat(26)}` },
+    });
+    const allowed = await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('X-Docker-Dash-Privileged-Scope', '41')
+      .set('X-Docker-Dash-Privileged-Grant', 'f'.repeat(64))
+      .send({ action: 'forceShutdown', confirm: true, planHash: 'a'.repeat(64) });
+    expect(allowed.status).toBe(202);
+    expect(mockCriticalOperationAuthorize).toHaveBeenLastCalledWith(mockHost, {
+      operationKey: 'provider.vm.power.force', scopeId: '41', grantToken: 'f'.repeat(64),
+    }, expect.objectContaining({ role: 'operator' }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_critical_operation_authorized',
+      details: expect.not.objectContaining({ grantToken: expect.anything() }),
+    }));
+
+    await request(app).post(`/api/providers/7/virtual-machines/${id}/power`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ action: 'start', confirm: true, planHash: 'a'.repeat(64) });
+    expect(mockCriticalOperationAuthorize).toHaveBeenCalledTimes(2);
+  });
+
+  it('admin-gates, audits and controls durable host maintenance runs', async () => {
+    const sourceHostId = `ddr_host_${'b'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/host-maintenance/preflight')
+      .set('x-test-role', 'operator').send({ sourceHostId, goal: 'enter', waveSize: 2 })).status).toBe(403);
+    const preflight = await request(app).post('/api/providers/7/host-maintenance/preflight')
+      .send({ sourceHostId, goal: 'enter', waveSize: 2 });
+    expect(preflight.status).toBe(200);
+    expect(mockMaintenancePreflight).toHaveBeenCalledWith(mockHost,
+      { sourceHostId, goal: 'enter', waveSize: 2 }, { canOperate: true });
+
+    const submit = await request(app).post('/api/providers/7/host-maintenance/runs')
+      .set('Idempotency-Key', 'host-maintenance-one')
+      .send({ sourceHostId, goal: 'enter', waveSize: 2, planHash: '6'.repeat(64), confirm: true, confirmName: 'xcp-a' });
+    expect(submit.status).toBe(202);
+    expect(mockMaintenanceSubmit).toHaveBeenCalledWith(mockHost, expect.objectContaining({
+      idempotencyKey: 'host-maintenance-one', sourceHostId,
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_host_maintenance_start' }));
+
+    expect((await request(app).get('/api/providers/7/host-maintenance/runs')).status).toBe(200);
+    const runId = `hmr_${'6'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/host-maintenance/runs/${runId}`)).status).toBe(200);
+    const pause = await request(app).post(`/api/providers/7/host-maintenance/runs/${runId}/pause`);
+    expect(pause.status).toBe(200);
+    expect(mockMaintenancePause).toHaveBeenCalledWith(runId, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_host_maintenance_pause' }));
+  });
+
+  it('serves HA readiness/history and admin-gates audited live refresh', async () => {
+    const current = await request(app).get('/api/providers/7/ha/readiness').set('x-test-role', 'viewer');
+    expect(current.status).toBe(200);
+    expect(current.body.state).toBe('ready');
+    expect(mockHaGet).toHaveBeenCalledWith(mockHost);
+
+    expect((await request(app).post('/api/providers/7/ha/readiness/refresh')
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const refreshed = await request(app).post('/api/providers/7/ha/readiness/refresh');
+    expect(refreshed.status).toBe(200);
+    expect(mockHaGet).toHaveBeenCalledWith(mockHost, { refresh: true });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_ha_readiness_refresh' }));
+
+    const history = await request(app).get('/api/providers/7/ha/readiness/history?limit=12');
+    expect(history.status).toBe(200);
+    expect(history.body.count).toBe(1);
+    expect(mockHaHistory).toHaveBeenCalledWith(7, { limit: 12 });
+  });
+
+  it('serves placement evidence and admin-gates an audited read-only rebalance plan', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).get('/api/providers/7/placement/affinity')).status).toBe(200);
+    expect(mockPlacementAffinity).toHaveBeenCalledWith(mockHost);
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${vmId}/placement/recommendations`)).status).toBe(200);
+    expect(mockPlacementRecommend).toHaveBeenCalledWith(mockHost, vmId);
+    expect((await request(app).post('/api/providers/7/placement/rebalance/plan')
+      .set('x-test-role', 'operator').send({})).status).toBe(403);
+    const response = await request(app).post('/api/providers/7/placement/rebalance/plan')
+      .send({ sourceThresholdPercent: 85, targetThresholdPercent: 75 });
+    expect(response.status).toBe(200);
+    expect(mockPlacementPlan).toHaveBeenCalledWith(mockHost, { sourceThresholdPercent: 85, targetThresholdPercent: 75 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_placement_rebalance_plan', targetId: '7',
+      details: expect.objectContaining({ moveCount: 0, planHash: '2'.repeat(64) }),
+    }));
+  });
+
+  it('admin-gates placement change request, approval, controls and semantic rollback planning', async () => {
+    const changeId = `pcr_${'5'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/placement/changes/preflight')
+      .set('x-test-role', 'viewer').send({ changeKind: 'rebalance_apply' })).status).toBe(403);
+    const preflight = await request(app).post('/api/providers/7/placement/changes/preflight')
+      .send({ changeKind: 'rebalance_apply' });
+    expect(preflight.status).toBe(200);
+    expect(mockChangePreflight).toHaveBeenCalledWith(mockHost, { changeKind: 'rebalance_apply' }, { canOperate: true });
+
+    const created = await request(app).post('/api/providers/7/placement/changes')
+      .set('Idempotency-Key', 'placement-change-route').send({ changeKind: 'rebalance_apply' });
+    expect(created.status).toBe(202);
+    expect(mockChangeCreate).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ changeKind: 'rebalance_apply', idempotencyKey: 'placement-change-route' }),
+      { canOperate: true, createdBy: 1 });
+    expect((await request(app).get('/api/providers/7/placement/changes')).body.count).toBe(1);
+    expect((await request(app).get(`/api/providers/7/placement/changes/${changeId}`)).status).toBe(200);
+
+    const approved = await request(app).post(`/api/providers/7/placement/changes/${changeId}/approve`)
+      .send({ comment: 'reviewed' });
+    expect(approved.status).toBe(202);
+    expect(mockChangeApprove).toHaveBeenCalledWith(mockHost, changeId,
+      { actorId: 1, comment: 'reviewed', canOperate: true });
+    const paused = await request(app).post(`/api/providers/7/placement/changes/${changeId}/pause`).send({});
+    expect(paused.status).toBe(200);
+    expect(mockChangeControl).toHaveBeenCalledWith(mockHost, changeId, 'pause', { actorId: 1 });
+
+    const rollback = await request(app).post(`/api/providers/7/placement/changes/${changeId}/rollback/plan`).send({ waveSize: 1 });
+    expect(rollback.status).toBe(200);
+    expect(mockChangeRollback).toHaveBeenCalledWith(mockHost, changeId,
+      { waveSize: 1, windowEndsAt: undefined, canOperate: true });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_placement_change_rollback_requested' }));
+  });
+
+  it('redacts unexpected placement failures at the route boundary', async () => {
+    mockPlacementAffinity.mockRejectedValueOnce(new Error('https://admin:secret@xapi.test token=leak'));
+    const response = await request(app).get('/api/providers/7/placement/affinity');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Provider placement advisory request failed', code: 'PLACEMENT_ADVISORY_ERROR',
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(/secret|token=leak/);
+  });
+
+  it('redacts untrusted HA provider errors at the route boundary', async () => {
+    mockHaGet.mockRejectedValueOnce(Object.assign(
+      new Error('connect https://root:secret@provider.invalid failed'),
+      { status: 400, code: 'PROVIDER_RAW_ERROR' },
+    ));
+    const response = await request(app).get('/api/providers/7/ha/readiness');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({
+      error: 'Provider HA readiness request failed', code: 'HA_READINESS_ERROR',
+    });
+    expect(JSON.stringify(response.body)).not.toContain('secret');
+  });
+
+  it('preflights and submits an atomic bulk VM power request', async () => {
+    const id = `ddr_vm_${'a'.repeat(26)}`;
+    expect((await request(app).post('/api/providers/7/virtual-machines/power/preflight')
+      .set('x-test-role', 'viewer').send({ action: 'start', resourceIds: [id] })).status).toBe(403);
+    const submit = await request(app).post('/api/providers/7/virtual-machines/power')
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'bulk-power-request').send({ action: 'start', resourceIds: [id], confirm: true });
+    expect(submit.status).toBe(202);
+    expect(submit.body.count).toBe(1);
+    expect(mockPowerSubmitBulk).toHaveBeenCalledWith(mockHost, [id], expect.objectContaining({
+      idempotencyKey: 'bulk-power-request',
+    }), { canOperate: true, createdBy: 1 });
+  });
+
+  it('lists, preflights and submits host-scoped common VM snapshots', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const inventory = await request(app).get(`/api/providers/7/virtual-machines/${vmId}/snapshots`)
+      .set('x-test-role', 'viewer');
+    expect(inventory.status).toBe(200);
+    expect(inventory.body.protection.isBackup).toBe(false);
+    expect(mockSnapshotInventory).toHaveBeenCalledWith(mockHost, vmId);
+
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/preflight`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .send({ name: 'before-upgrade', consistency: 'crash' });
+    expect(preflight.status).toBe(200);
+    expect(mockSnapshotPreflight).toHaveBeenCalledWith(mockHost, vmId, 'create',
+      { name: 'before-upgrade', consistency: 'crash' }, null, { canOperate: true });
+
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-request-1')
+      .send({ name: 'before-upgrade', consistency: 'crash', planHash: 'b'.repeat(64), confirm: true });
+    expect(submit.status).toBe(202);
+    expect(mockSnapshotSubmit).toHaveBeenCalledWith(mockHost, vmId, 'create', expect.objectContaining({
+      idempotencyKey: 'snapshot-request-1',
+    }), null, { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_create' }));
+  });
+
+  it('requires operate access and audits typed snapshot revert/delete submissions', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const snapshotId = `dds_snap_${'b'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/preflight`)
+      .set('x-test-role', 'viewer').send({ name: 'blocked' })).status).toBe(403);
+
+    mockSnapshotSubmit.mockResolvedValueOnce({
+      plan: { action: 'revert', vm: { id: vmId }, snapshot: { id: snapshotId } },
+      operation: { id: `op_${'1'.repeat(26)}` },
+    });
+    const revert = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/snapshots/${snapshotId}/revert`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-revert-1')
+      .send({ confirm: true, confirmName: 'vm-a', planHash: 'c'.repeat(64) });
+    expect(revert.status).toBe(202);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_revert' }));
+
+    mockSnapshotSubmit.mockResolvedValueOnce({
+      plan: { action: 'delete', vm: { id: vmId }, snapshot: { id: snapshotId } },
+      operation: { id: `op_${'2'.repeat(26)}` },
+    });
+    const deletion = await request(app).delete(`/api/providers/7/virtual-machines/${vmId}/snapshots/${snapshotId}`)
+      .set('x-test-role', 'operator').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'snapshot-delete-1')
+      .send({ confirm: true, confirmName: 'before-upgrade', planHash: 'd'.repeat(64) });
+    expect(deletion.status).toBe(202);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_delete' }));
+  });
+
+  it('manages and previews persistent VM snapshot policies with admin authorization', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const base = `/api/providers/7/virtual-machines/${vmId}/snapshot-policy`;
+
+    expect((await request(app).put(base).set('x-test-role', 'operator').send({})).status).toBe(403);
+    const created = await request(app).put(base).send({ enabled: false, mode: 'dry_run' });
+    expect(created.status).toBe(201);
+    expect(mockSnapshotPolicyUpsert).toHaveBeenCalledWith(mockHost, vmId,
+      { enabled: false, mode: 'dry_run' }, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_policy_create' }));
+
+    const preview = await request(app).post(`${base}/preview`).send({ draft: { retainCount: 3 } });
+    expect(preview.status).toBe(200);
+    expect(preview.body.protection.isBackup).toBe(false);
+    expect(mockSnapshotPolicyPreview).toHaveBeenCalledWith(mockHost, vmId, { retainCount: 3 });
+
+    const run = await request(app).post(`${base}/run`).send({ confirm: false });
+    expect(run.status).toBe(200);
+    expect(mockSnapshotPolicyRun).toHaveBeenCalledWith(mockHost, vmId, expect.objectContaining({
+      trigger: 'manual', confirm: false, createdBy: 1,
+    }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_snapshot_policy_run' }));
+
+    expect((await request(app).get(`${base}/runs?limit=201`)).status).toBe(400);
+    expect((await request(app).delete(base)).status).toBe(200);
+    expect(mockSnapshotPolicyRemove).toHaveBeenCalledWith(7, vmId);
+  });
+
+  it('host-scopes scheduled VM action CRUD, history and manual runs with admin mutation gates', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const scheduleId = `vmas_${'c'.repeat(26)}`;
+    const base = `/api/providers/7/virtual-machines/${vmId}/action-schedules`;
+    const listed = await request(app).get(base).set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200);
+    expect(listed.body.automation).toEqual(expect.objectContaining({ executeEnabled: true }));
+    expect(mockActionScheduleList).toHaveBeenCalledWith(7, vmId);
+
+    expect((await request(app).post(base).set('x-test-role', 'operator').send({})).status).toBe(403);
+    const body = { name: 'weekday-start', action: 'start', cron: '0 7 * * 1-5',
+      timezone: 'Europe/Bucharest', enabled: true, mode: 'dry_run' };
+    const created = await request(app).post(base).send(body);
+    expect(created.status).toBe(201);
+    expect(mockActionScheduleCreate).toHaveBeenCalledWith(mockHost, vmId, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_action_schedule_create' }));
+
+    const updated = await request(app).put(`${base}/${scheduleId}`).send({ ...body, version: 1 });
+    expect(updated.status).toBe(200);
+    expect(mockActionScheduleUpdate).toHaveBeenCalledWith(mockHost, vmId, scheduleId,
+      { ...body, version: 1 }, { createdBy: 1 });
+    const history = await request(app).get(`${base}/${scheduleId}/runs?limit=20`).set('x-test-role', 'viewer');
+    expect(history.status).toBe(200); expect(history.body.count).toBe(1);
+    expect(mockActionScheduleRuns).toHaveBeenCalledWith(scheduleId, { limit: '20' });
+
+    const run = await request(app).post(`${base}/${scheduleId}/run`).send({});
+    expect(run.status).toBe(200);
+    expect(mockActionScheduleRun).toHaveBeenCalledWith(scheduleId, {}, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_action_schedule_run',
+      details: expect.objectContaining({ emergencyOverrideUsed: false }) }));
+    expect((await request(app).delete(`${base}/${scheduleId}`)).status).toBe(200);
+    expect(mockActionScheduleRemove).toHaveBeenCalledWith(7, vmId, scheduleId);
+  });
+
+  it('publishes provider manifests and an evidence-backed scorecard', async () => {
+    const manifests = await request(app).get('/api/providers/manifests');
+    expect(manifests.status).toBe(200);
+    expect(manifests.body.manifests[0].providerType).toBe('xen');
+    const scorecard = await request(app).get('/api/providers/scorecard');
+    expect(scorecard.status).toBe(200);
+    expect(scorecard.body.providers[0].counts.shipped).toBe(7);
+  });
+
+  it('scopes and validates read-only artifact inventory', async () => {
+    const response = await request(app).get('/api/providers/7/artifacts?kind=vmTemplate&q=debian&limit=25');
+    expect(response.status).toBe(200);
+    expect(mockArtifacts).toHaveBeenCalledWith(mockHost, { limit: 25, kind: 'vmTemplate', query: 'debian' });
+    expect((await request(app).get('/api/providers/7/artifacts?limit=501')).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/artifacts?q=${'a'.repeat(121)}`)).status).toBe(400);
+  });
+
+  it('scopes and validates read-only recovery-point inventory', async () => {
+    const repositoryId = `ddr_repo_${'a'.repeat(26)}`;
+    const response = await request(app).get(`/api/providers/7/recovery-points?limit=25&verification=verified&repository=${repositoryId}&q=database`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(response.status).toBe(200);
+    expect(mockRecoveryPoints).toHaveBeenCalledWith(mockHost, {
+      limit: 25, query: 'database', repositoryId, workloadId: undefined,
+      verification: 'verified', from: undefined, to: undefined,
+    });
+    expect((await request(app).get('/api/providers/7/recovery-points?limit=501')).status).toBe(400);
+    expect((await request(app).get(`/api/providers/7/recovery-points?q=${'a'.repeat(121)}`)).status).toBe(400);
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes recovery-point upstream failures', async () => {
+    mockRecoveryPoints.mockRejectedValue(Object.assign(new Error('https://token@pbs.internal'), {
+      name: 'ProviderAdapterError', status: 502, code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
+    }));
+    const response = await request(app).get('/api/providers/7/recovery-points');
+    expect(response.status).toBe(502);
+    expect(response.body).toEqual({
+      error: 'Provider recovery-point inventory failed', code: 'PROVIDER_RECOVERY_POINT_READ_FAILED',
+    });
+  });
+
+  it('admin-gates, preflights and audits create-only recovery restore submission', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const body = {
+      kind: 'vm', targetNodeId: `ddr_host_${'e'.repeat(26)}`,
+      targetStorageId: `ddr_storage_${'f'.repeat(26)}`, targetVmid: 9123,
+    };
+    expect((await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore/preflight`)
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore/preflight`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate').send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockRecoveryRestorePreflight).toHaveBeenCalledWith(mockHost, pointId, body, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'restore-route-request-1')
+      .send({ ...body, planHash: '4'.repeat(64), confirm: true, confirmText: 'RESTORE 9123' });
+    expect(submit.status).toBe(202);
+    expect(mockRecoveryRestoreSubmit).toHaveBeenCalledWith(mockHost, pointId,
+      expect.objectContaining({ idempotencyKey: 'restore-route-request-1', targetVmid: 9123 }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_recovery_restore_submitted', targetType: 'recovery_point', targetId: pointId,
+      details: expect.objectContaining({ targetVmid: 9123, overwrite: false,
+        startAfterRestore: false, automaticCleanupAuthorized: false }),
+    }));
+  });
+
+  it('scopes file evidence, advanced restore plans and replication policy drafts', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const files = await request(app).get(`/api/providers/7/recovery-points/${pointId}/files?parent=%2F&limit=20`)
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(files.status).toBe(200); expect(files.body.count).toBe(1);
+    expect(mockRestoreDepthFileList).toHaveBeenCalledWith(7, pointId,
+      { limit: '20', query: undefined, parent: '/' });
+    expect((await request(app).put(`/api/providers/7/recovery-points/${pointId}/files`)
+      .set('x-test-role', 'viewer').send({ entries: [] })).status).toBe(403);
+    const imported = await request(app).put(`/api/providers/7/recovery-points/${pointId}/files`)
+      .send({ entries: [{ path: '/etc/app.conf', type: 'file' }] });
+    expect(imported.status).toBe(201);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_depth_catalog_created', targetType: 'recovery_point', targetId: pointId,
+    }));
+    const plan = await request(app).post(`/api/providers/7/recovery-points/${pointId}/restore-depth/preflight`)
+      .send({ kind: 'instant', networkIsolation: true });
+    expect(plan.status).toBe(200); expect(plan.body.allowed).toBe(false);
+    expect(mockRestoreDepthPreflight).toHaveBeenCalledWith(mockHost, pointId,
+      { kind: 'instant', networkIsolation: true }, { canOperate: true, createdBy: 1 });
+
+    const policies = await request(app).get('/api/providers/7/dr/replication-policies?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(policies.status).toBe(200); expect(policies.body.executionAuthorized).toBe(false);
+    expect(mockReplicationPolicyList).toHaveBeenCalledWith(7, { limit: 25 });
+    const policyBody = { name: 'DR draft', targetHostId: 8, mode: 'async',
+      rpoTargetSeconds: 900, workloadIds: [`ddr_vm_${'a'.repeat(26)}`], enabled: false };
+    expect((await request(app).post('/api/providers/7/dr/replication-policies')
+      .set('x-test-role', 'viewer').send(policyBody)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/dr/replication-policies').send(policyBody);
+    expect(created.status).toBe(201);
+    const policyId = created.body.policy.id;
+    expect((await request(app).delete(`/api/providers/7/dr/replication-policies/${policyId}`)).status).toBe(200);
+    expect(mockReplicationPolicyRemove).toHaveBeenCalledWith(7, policyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_depth_replication_policy_deleted',
+      details: expect.objectContaining({ providerMutationAuthorized: false }),
+    }));
+  });
+
+  it('scopes and audits security evidence, key providers and confidential compatibility plans', async () => {
+    const assurance = await request(app).get('/api/providers/7/security-assurance')
+      .set('x-test-role', 'viewer');
+    expect(assurance.status).toBe(200); expect(assurance.body.evidenceCount).toBe(1);
+    expect(mockSecurityAssuranceGet).toHaveBeenCalledWith(mockHost);
+    const evidenceBody = { resourceKind: 'endpoint', facts: {
+      hardening: { baselineKey: 'baseline-v1', checks: [{ id: 'tls', state: 'unknown' }] },
+    } };
+    expect((await request(app).put('/api/providers/7/security-assurance/evidence')
+      .set('x-test-role', 'viewer').send(evidenceBody)).status).toBe(403);
+    const evidence = await request(app).put('/api/providers/7/security-assurance/evidence')
+      .send(evidenceBody);
+    expect(evidence.status).toBe(201);
+    expect(mockSecurityEvidenceUpsert).toHaveBeenCalledWith(mockHost, evidenceBody, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_evidence_created', targetType: 'endpoint',
+      targetId: 'endpoint:7', details: expect.objectContaining({
+        providerMutationAuthorized: false, networkCallsStarted: 0,
+      }),
+    }));
+
+    const keys = await request(app).get('/api/providers/7/security-assurance/key-providers')
+      .set('x-test-role', 'viewer');
+    expect(keys.status).toBe(200); expect(keys.body.count).toBe(1);
+    const keyBody = { name: 'Primary KMS', providerKind: 'external_kms',
+      endpointOrigin: 'https://kms.example.test', secretRef: 'vault://virtualization/kms/client' };
+    const key = await request(app).post('/api/providers/7/security-assurance/key-providers').send(keyBody);
+    expect(key.status).toBe(201);
+    const keyId = key.body.keyProvider.id;
+    expect((await request(app).delete(`/api/providers/7/security-assurance/key-providers/${keyId}`)).status)
+      .toBe(200);
+    expect(mockKeyProviderRemove).toHaveBeenCalledWith(7, keyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_key_provider_deleted',
+      details: expect.objectContaining({ providerMutationAuthorized: false }),
+    }));
+
+    const planBody = { artifactId: `dda_art_${'a'.repeat(26)}`,
+      targetHostId: `ddr_host_${'b'.repeat(26)}`, mode: 'sev_snp' };
+    const plan = await request(app)
+      .post('/api/providers/7/security-assurance/confidential-provisioning/preflight')
+      .send(planBody);
+    expect(plan.status).toBe(200); expect(plan.body.executionAuthorized).toBe(false);
+    expect(mockConfidentialPreflight).toHaveBeenCalledWith(mockHost, planBody,
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_assurance_confidential_preflight',
+      details: expect.objectContaining({ executionAuthorized: false }),
+    }));
+  });
+
+  it('admin-gates and audits advisory, exception, remediation and secret-reference lifecycle routes', async () => {
+    const findingId = `psfd_${'1'.repeat(26)}`; const exceptionId = `psfx_${'2'.repeat(26)}`;
+    const planId = `psrp_${'3'.repeat(26)}`;
+    const overview = await request(app).get('/api/providers/7/security-lifecycle')
+      .set('x-test-role', 'viewer');
+    expect(overview.status).toBe(200); expect(overview.body.counts.open).toBe(1);
+    expect(mockSecurityLifecycleGet).toHaveBeenCalledWith(mockHost);
+    expect((await request(app).post('/api/providers/7/security-lifecycle/correlate')
+      .set('x-test-role', 'viewer')).status).toBe(403);
+    const correlated = await request(app).post('/api/providers/7/security-lifecycle/correlate');
+    expect(correlated.status).toBe(200); expect(correlated.body.matched).toBe(1);
+    expect(mockSecurityCorrelate).toHaveBeenCalledWith(mockHost, { canOperate: true, createdBy: 1 });
+
+    const exceptionBody = { owner: 'security', reason: 'qualification',
+      expiresAt: '2026-08-31T10:00:00Z', compensatingControls: ['isolation'] };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions`)
+      .set('x-test-role', 'viewer').send(exceptionBody)).status).toBe(403);
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions`)
+      .send(exceptionBody)).status).toBe(201);
+    expect((await request(app).delete(`/api/providers/7/security-lifecycle/findings/${findingId}/exceptions/${exceptionId}`)).status).toBe(200);
+
+    const remediationBody = { actionKey: 'disable_legacy_protocol', steps: ['Disable TLS 1.0'],
+      downtimeSeconds: 0, dependencies: [], rollback: { strategy: 'Restore', verified: true },
+      dryRun: { passed: true, evidence: 'passed' } };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/findings/${findingId}/remediation-plans`)
+      .send(remediationBody)).status).toBe(201);
+    const executeBody = { planHash: '3'.repeat(64), adapterKey: 'xen.protocol',
+      confirmation: `EXECUTE SECURITY PLAN ${planId}` };
+    expect((await request(app).post(`/api/providers/7/security-lifecycle/remediation-plans/${planId}/execute`)
+      .send(executeBody)).status).toBe(202);
+    const validation = await request(app).post('/api/providers/7/security-lifecycle/secret-references/validate')
+      .send({ documentKind: 'manifest', document: { password: 'inline' } });
+    expect(validation.status).toBe(422); expect(validation.body.documentStored).toBe(false);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_lifecycle_remediation_executed',
+      details: expect.objectContaining({ providerMutationAuthorized: true,
+        providerMutationsStarted: true }),
+    }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_security_lifecycle_secret_references_validated',
+      details: expect.objectContaining({ documentStored: false, state: 'invalid' }),
+    }));
+  });
+
+  it('routes privileged access and signed compliance evidence without auditing raw credentials', async () => {
+    const overview = await request(app).get('/api/providers/7/privileged-compliance')
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(overview.status).toBe(200);
+    expect(mockPrivilegedComplianceOverview).toHaveBeenCalledWith(mockHost,
+      expect.objectContaining({ id: 1, role: 'viewer' }));
+
+    const elevationBody = { scopeId: 1, permissionKey: 'compliance.evidence.export',
+      reason: 'Quarterly evidence', ttlSeconds: 600, totpCode: '123456' };
+    const elevation = await request(app).post('/api/providers/7/privileged-compliance/elevations')
+      .set('x-test-host-access', 'operate').send(elevationBody);
+    expect(elevation.status).toBe(201);
+    expect(mockElevationRequest).toHaveBeenCalledWith(mockHost, elevationBody,
+      expect.objectContaining({ id: 1 }));
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_jit_requested',
+      details: expect.not.objectContaining({ totpCode: expect.anything() }),
+    }));
+
+    const grantId = elevation.body.grant.id;
+    const claimed = await request(app)
+      .post(`/api/providers/7/privileged-compliance/elevations/${grantId}/claim`)
+      .set('x-test-host-access', 'operate');
+    expect(claimed.status).toBe(200); expect(claimed.body.token).toBe('sensitive-jit-token');
+    const claimAudit = mockAudit.mock.calls.map(call => call[0]).find(entry =>
+      entry.action === 'provider_privileged_compliance_jit_claimed');
+    expect(claimAudit.details).not.toHaveProperty('token');
+    expect(claimAudit.details).toEqual(expect.objectContaining({ tokenShownOnce: true,
+      tokenStoredRaw: false, secretMaterialStored: false }));
+
+    const exported = await request(app).post('/api/providers/7/privileged-compliance/exports')
+      .set('x-test-host-access', 'operate').send({ scopeId: 1, format: 'json' });
+    expect(exported.status).toBe(201); expect(exported.body.bundle.exportMode).toBe('redacted');
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_privileged_compliance_evidence_exported',
+      details: expect.objectContaining({ bundleStored: false, secretMaterialStored: false }),
+    }));
+  });
+
+  it('admin-gates isolated restore drills and exposes scoped run evidence', async () => {
+    const pointId = `ddr_rp_${'d'.repeat(26)}`;
+    const body = { kind: 'vm', targetNodeId: `ddr_host_${'e'.repeat(26)}`,
+      targetStorageId: `ddr_storage_${'f'.repeat(26)}`, targetVmid: 9123,
+      cleanupMode: 'on_success', allowAutomaticCleanup: true };
+    expect((await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill/preflight`)
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill/preflight`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate').send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockRestoreDrillPreflight).toHaveBeenCalledWith(mockHost, pointId, body, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/recovery-points/${pointId}/drill`)
+      .set('x-test-role', 'admin').set('x-test-host-access', 'operate')
+      .set('Idempotency-Key', 'restore-drill-route-1').send({ ...body, planHash: '5'.repeat(64),
+        confirm: true, confirmText: 'DRILL 9123', cleanupConfirmText: 'DRILL DELETE 9123' });
+    expect(submit.status).toBe(202);
+    expect(mockRestoreDrillSubmit).toHaveBeenCalledWith(mockHost, pointId,
+      expect.objectContaining({ idempotencyKey: 'restore-drill-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    const listed = await request(app).get('/api/providers/7/restore-drills?limit=20')
+      .set('x-test-role', 'viewer').set('x-test-host-access', 'view');
+    expect(listed.status).toBe(200); expect(listed.body.count).toBe(1);
+    expect(mockRestoreDrillReconcile).toHaveBeenCalledWith({ hostId: 7 });
+    expect(mockRestoreDrillList).toHaveBeenCalledWith(7, { limit: 20, policyId: null });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_drill_submitted', targetType: 'recovery_point', targetId: pointId,
+      details: expect.objectContaining({ allNicsDisconnectedBeforeBoot: true,
+        arbitraryGuestCommandsAuthorized: false, automaticCleanupAuthorized: true }),
+    }));
+  });
+
+  it('admin-gates and audits restore-drill policy lifecycle', async () => {
+    const body = { name: 'Weekly recovery proof', enabled: true,
+      backupPolicyId: `pbp_${'a'.repeat(26)}` };
+    const listed = await request(app).get('/api/providers/7/restore-drill-policies')
+      .set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.count).toBe(1);
+    expect((await request(app).post('/api/providers/7/restore-drill-policies')
+      .set('x-test-role', 'viewer').send(body)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/restore-drill-policies').send(body);
+    expect(created.status).toBe(201);
+    expect(mockRestoreDrillPolicyUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    const policyId = `pdrp_${'7'.repeat(26)}`;
+    expect((await request(app).delete(`/api/providers/7/restore-drill-policies/${policyId}`)).status).toBe(200);
+    expect(mockRestoreDrillPolicyRemove).toHaveBeenCalledWith(7, policyId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_restore_drill_policy_deleted',
+    }));
+  });
+
+  it('exposes DR posture, replication evidence, protection groups and rehearsal history read-only', async () => {
+    const overview = await request(app).get('/api/providers/7/dr/overview').set('x-test-role', 'viewer');
+    expect(overview.status).toBe(200); expect(overview.body.summary.groups).toBe(1);
+    expect(mockDrOverview).toHaveBeenCalledWith(mockHost);
+    const replications = await request(app).get('/api/providers/7/dr/replications').set('x-test-role', 'viewer');
+    expect(replications.status).toBe(200); expect(replications.body.count).toBe(0);
+    expect(mockDrReplications).toHaveBeenCalledWith(mockHost);
+    const groups = await request(app).get('/api/providers/7/dr/protection-groups?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(groups.status).toBe(200); expect(groups.body.count).toBe(1);
+    expect(mockDrGroupList).toHaveBeenCalledWith(7, { limit: 25 });
+    const groupId = groups.body.items[0].id;
+    const runs = await request(app).get(`/api/providers/7/dr/runs?limit=20&group=${groupId}`)
+      .set('x-test-role', 'viewer');
+    expect(runs.status).toBe(200); expect(runs.body.count).toBe(1);
+    expect(mockDrRuns).toHaveBeenCalledWith(7, { limit: 20, groupId });
+  });
+
+  it('admin-gates and audits DR protection-group lifecycle and deterministic rehearsal', async () => {
+    const body = { name: 'Payments DR', recoveryHostId: 7, strategy: 'backup_restore',
+      members: [{ vmId: `ddr_vm_${'a'.repeat(26)}`, bootStage: 1, dependsOn: [] }] };
+    expect((await request(app).post('/api/providers/7/dr/protection-groups')
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+    const created = await request(app).post('/api/providers/7/dr/protection-groups').send(body);
+    expect(created.status).toBe(201);
+    expect(mockDrGroupUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_dr_group_created', targetType: 'dr_protection_group',
+      details: expect.objectContaining({ memberCount: 1, enabled: true }),
+    }));
+    const groupId = created.body.group.id;
+    const preflightBody = { mode: 'test', executionType: 'rehearsal' };
+    expect((await request(app).post(`/api/providers/7/dr/protection-groups/${groupId}/preflight`)
+      .set('x-test-role', 'operator').send(preflightBody)).status).toBe(403);
+    const preflight = await request(app)
+      .post(`/api/providers/7/dr/protection-groups/${groupId}/preflight`).send(preflightBody);
+    expect(preflight.status).toBe(200); expect(preflight.body.planHash).toBe('8'.repeat(64));
+    expect(mockDrPreflight).toHaveBeenCalledWith(mockHost, groupId, preflightBody,
+      { canOperate: true, executionType: 'rehearsal' });
+    const rehearsalBody = { mode: 'test', planHash: '8'.repeat(64), confirm: true,
+      confirmationText: 'REHEARSE Payments DR' };
+    const rehearsed = await request(app)
+      .post(`/api/providers/7/dr/protection-groups/${groupId}/rehearse`).send(rehearsalBody);
+    expect(rehearsed.status).toBe(201); expect(rehearsed.body.run.state).toBe('succeeded');
+    expect(mockDrRehearse).toHaveBeenCalledWith(mockHost, groupId, rehearsalBody,
+      { canOperate: true, createdBy: 1 });
+    const removed = await request(app).delete(`/api/providers/7/dr/protection-groups/${groupId}`);
+    expect(removed.status).toBe(200); expect(mockDrGroupRemove).toHaveBeenCalledWith(7, groupId);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_dr_group_deleted' }));
+  });
+
+  it('sanitizes untrusted DR runbook failures', async () => {
+    mockDrOverview.mockRejectedValue(new Error('https://secret@recovery.internal'));
+    const response = await request(app).get('/api/providers/7/dr/overview');
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Provider DR runbook request failed', code: 'DR_RUNBOOK_ERROR' });
+  });
+
+  it('admin-gates and audits plan-only backup policy lifecycle', async () => {
+    const policyId = `pbp_${'a'.repeat(26)}`;
+    const repositoryId = `ddr_repo_${'a'.repeat(26)}`;
+    const body = { name: 'Production GFS', repositoryId, mode: 'plan_only' };
+    const listed = await request(app).get('/api/providers/7/backup-policies').set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.executionAuthorized).toBe(false);
+    expect(mockBackupPolicyList).toHaveBeenCalledWith(7, { limit: 100 });
+    expect((await request(app).post('/api/providers/7/backup-policies/preflight')
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+
+    const preflight = await request(app).post('/api/providers/7/backup-policies/preflight').send(body);
+    expect(preflight.status).toBe(200); expect(preflight.body.execution.authorized).toBe(false);
+    expect(mockBackupPolicyPreflight).toHaveBeenCalledWith(mockHost, body);
+    const created = await request(app).post('/api/providers/7/backup-policies').send(body);
+    expect(created.status).toBe(201);
+    expect(mockBackupPolicyUpsert).toHaveBeenCalledWith(mockHost, body, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_backup_policy_created' }));
+
+    const planned = await request(app).post(`/api/providers/7/backup-policies/${policyId}/plan`).send({});
+    expect(planned.status).toBe(201); expect(planned.body.run.state).toBe('planned');
+    expect(mockBackupPolicyPlan).toHaveBeenCalledWith(mockHost, policyId, { createdBy: 1, trigger: 'manual' });
+    expect((await request(app).delete(`/api/providers/7/backup-policies/${policyId}`)).status).toBe(200);
+    expect(mockBackupPolicyRemove).toHaveBeenCalledWith(7, policyId);
+  });
+
+  it('sanitizes untrusted backup-policy failures', async () => {
+    mockBackupPolicyPreflight.mockRejectedValue(new Error('https://secret@provider.internal'));
+    const response = await request(app).post('/api/providers/7/backup-policies/preflight').send({});
+    expect(response.status).toBe(500);
+    expect(response.body).toEqual({ error: 'Provider backup policy request failed', code: 'PROVIDER_BACKUP_POLICY_ERROR' });
+  });
+
+  it('admin-gates and audits separately authorized idempotent backup execution', async () => {
+    const policyId = `pbp_${'a'.repeat(26)}`;
+    const listed = await request(app).get('/api/providers/7/backup-policies/executions?limit=25')
+      .set('x-test-role', 'viewer');
+    expect(listed.status).toBe(200); expect(listed.body.retentionMutationAuthorized).toBe(false);
+    expect(mockBackupExecutionList).toHaveBeenCalledWith(7, { limit: 25, policyId: null });
+    expect((await request(app).post(`/api/providers/7/backup-policies/${policyId}/execute`)
+      .set('x-test-role', 'operator').send({ confirmName: 'Production GFS' })).status).toBe(403);
+    const authorization = await request(app)
+      .post(`/api/providers/7/backup-policies/${policyId}/execution-authorization`)
+      .send({ mode: 'manual', confirmName: 'Production GFS' });
+    expect(authorization.status).toBe(200);
+    expect(mockBackupExecutionAuthorize).toHaveBeenCalledWith(mockHost, policyId,
+      { mode: 'manual', confirmName: 'Production GFS' }, { createdBy: 1 });
+    const started = await request(app).post(`/api/providers/7/backup-policies/${policyId}/execute`)
+      .set('Idempotency-Key', 'manual-backup-run-1').send({ confirmName: 'Production GFS' });
+    expect(started.status).toBe(202); expect(started.body.execution.state).toBe('running');
+    expect(mockBackupExecutionCreate).toHaveBeenCalledWith(mockHost, policyId,
+      { confirmName: 'Production GFS' }, { createdBy: 1, idempotencyKey: 'manual-backup-run-1' });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_backup_execution_started' }));
+    const cancelled = await request(app)
+      .post(`/api/providers/7/backup-policies/executions/${started.body.execution.id}/cancel`)
+      .send({ confirmName: 'Production GFS' });
+    expect(cancelled.status).toBe(202);
+    expect(mockBackupExecutionCancel).toHaveBeenCalledWith(mockHost, started.body.execution.id,
+      { confirmName: 'Production GFS' }, { createdBy: 1 });
+  });
+
+  it('admin-gates, preflights and audits durable create-from-template submission', async () => {
+    const artifactId = `dda_art_${'a'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone/preflight`)
+      .set('x-test-role', 'operator').send({ name: 'app-01' })).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone/preflight`)
+      .send({ name: 'app-01', mode: 'auto' });
+    expect(preflight.status).toBe(200);
+    expect(mockProvisionPreflight).toHaveBeenCalledWith(mockHost, artifactId,
+      { name: 'app-01', mode: 'auto' }, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/artifacts/${artifactId}/clone`)
+      .set('Idempotency-Key', 'provision-app-01')
+      .send({ name: 'app-01', mode: 'auto', confirm: true, confirmName: 'app-01', planHash: '9'.repeat(64) });
+    expect(submit.status).toBe(202);
+    expect(mockProvisionSubmit).toHaveBeenCalledWith(mockHost, artifactId, expect.objectContaining({
+      idempotencyKey: 'provision-app-01', confirmName: 'app-01',
+    }), { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_provision_submit' }));
+  });
+
+  it('exposes disk inventory and admin-gates durable lifecycle submissions', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const diskId = `ddh_disk_${'b'.repeat(26)}`;
+    const storageId = `ddr_storage_${'c'.repeat(26)}`;
+    const inventory = await request(app).get(`/api/providers/7/virtual-machines/${vmId}/disks`)
+      .set('x-test-role', 'viewer');
+    expect(inventory.status).toBe(200);
+    expect(mockDiskInventory).toHaveBeenCalledWith(mockHost, vmId);
+    const body = { label: 'data', sizeBytes: 1073741824, targetStorageId: storageId };
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/preflight`)
+      .set('x-test-role', 'operator').send(body)).status).toBe(403);
+    const preflight = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/preflight`).send(body);
+    expect(preflight.status).toBe(200);
+    expect(mockDiskPreflight).toHaveBeenCalledWith(mockHost, vmId, 'create', body, null, { canOperate: true });
+    const submit = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks`)
+      .set('Idempotency-Key', 'disk-create-route-1').send({ ...body, planHash: '4'.repeat(64), confirm: true, confirmName: 'vm-a' });
+    expect(submit.status).toBe(202);
+    expect(mockDiskSubmit).toHaveBeenCalledWith(mockHost, vmId, 'create',
+      expect.objectContaining({ idempotencyKey: 'disk-create-route-1' }), null,
+      { canOperate: true, createdBy: 1 });
+    mockDiskPreflight.mockResolvedValueOnce({ schemaVersion: '1.0', providerType: 'xen', action: 'resize',
+      allowed: true, planHash: '3'.repeat(64), vm: { id: vmId, displayName: 'vm-a' },
+      disk: { id: diskId, label: 'data' }, managedVolume: null,
+      request: { sizeBytes: 2147483648 }, storage: null });
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/disks/${diskId}/preflight`)
+      .send({ action: 'resize', sizeBytes: 2147483648 })).status).toBe(200);
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_disk_create_submit' }));
+  });
+
+  it('exposes NIC inventory while admin-gating safety declarations and link mutation', async () => {
+    const vmId = `ddr_vm_${'a'.repeat(26)}`;
+    const nicId = `ddh_nic_${'b'.repeat(26)}`;
+    expect((await request(app).get(`/api/providers/7/virtual-machines/${vmId}/nics`)
+      .set('x-test-role', 'viewer')).status).toBe(200);
+    expect(mockNicInventory).toHaveBeenCalledWith(mockHost, vmId);
+    const safety = { managementRole: 'non_management', bootDependency: 'not_required',
+      guestDependency: 'not_required', validForHours: 1, reason: 'Reviewed workload dependencies' };
+    expect((await request(app).put(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/safety`)
+      .set('x-test-role', 'operator').send(safety)).status).toBe(403);
+    expect((await request(app).put(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/safety`)
+      .send(safety)).status).toBe(200);
+    expect(mockNicSafety).toHaveBeenCalledWith(mockHost, vmId, nicId, safety,
+      { canOperate: true, createdBy: 1 });
+    expect((await request(app).post(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/preflight`)
+      .send({ action: 'disconnect' })).status).toBe(200);
+    const submitted = await request(app).post(`/api/providers/7/virtual-machines/${vmId}/nics/${nicId}/actions`)
+      .set('Idempotency-Key', 'nic-disconnect-route-1')
+      .send({ action: 'disconnect', planHash: '6'.repeat(64), confirm: true, confirmText: 'vm-a/NIC 0' });
+    expect(submitted.status).toBe(202);
+    expect(mockNicSubmit).toHaveBeenCalledWith(mockHost, vmId, nicId,
+      expect.objectContaining({ idempotencyKey: 'nic-disconnect-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({ action: 'provider_vm_nic_disconnect_submit' }));
+  });
+
+  it('separately admin-gates permanent managed-volume deletion', async () => {
+    const volumeId = `ddv_vol_${'f'.repeat(26)}`;
+    expect((await request(app).post(`/api/providers/7/managed-volumes/${volumeId}/delete/preflight`)
+      .set('x-test-role', 'operator').send({})).status).toBe(403);
+    expect((await request(app).post(`/api/providers/7/managed-volumes/${volumeId}/delete/preflight`).send({})).status).toBe(200);
+    const submitted = await request(app).delete(`/api/providers/7/managed-volumes/${volumeId}`)
+      .set('Idempotency-Key', 'managed-delete-route-1')
+      .send({ planHash: '4'.repeat(64), confirm: true, confirmPhrase: 'DELETE VOLUME data' });
+    expect(submitted.status).toBe(202);
+    expect(mockManagedDeleteSubmit).toHaveBeenCalledWith(mockHost, volumeId,
+      expect.objectContaining({ idempotencyKey: 'managed-delete-route-1' }),
+      { canOperate: true, createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_vm_disk_delete_submit',
+      details: expect.objectContaining({ permanentDelete: true }),
+    }));
+  });
+
+  it('exports portable conformance evidence only for admins', async () => {
+    expect((await request(app).get('/api/providers/conformance/export').set('x-test-role', 'viewer')).status).toBe(403);
+    const response = await request(app).get('/api/providers/conformance/export?limit=25');
+    expect(response.status).toBe(200);
+    expect(response.body.integrityHash).toHaveLength(64);
+    expect(mockExport).toHaveBeenCalledWith(undefined, { limit: 25 });
+  });
+
+  it('requires admin and only accepts live_readonly conformance', async () => {
+    expect((await request(app).post('/api/providers/7/conformance').set('x-test-role', 'viewer')).status).toBe(403);
+    expect((await request(app).post('/api/providers/7/conformance').send({ mode: 'mutation' })).status).toBe(400);
+    const response = await request(app).post('/api/providers/7/conformance').send({ mode: 'live_readonly' });
+    expect(response.status).toBe(201);
+    expect(mockConformanceRun).toHaveBeenCalledWith(mockHost, { createdBy: 1 });
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'provider_conformance_run', targetId: '7',
+    }));
+  });
+
+  it('keeps conformance results host scoped', async () => {
+    const run = { id: `pcr_${'b'.repeat(26)}`, hostId: 7, checks: [] };
+    mockConformanceGet.mockReturnValue(run);
+    expect((await request(app).get(`/api/providers/7/conformance/${run.id}`)).status).toBe(200);
+    mockConformanceGet.mockReturnValue({ ...run, hostId: 8 });
+    expect((await request(app).get(`/api/providers/7/conformance/${run.id}`)).status).toBe(404);
+  });
+});

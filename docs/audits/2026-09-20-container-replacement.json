@@ -1,0 +1,71 @@
+{
+  "date": "2026-09-20",
+  "version": "8.96.3",
+  "suite": {
+    "suites": 353,
+    "passed": 4580,
+    "skipped": 1
+  },
+  "canaries": [
+    {
+      "time": "2026-09-20T02:24:46.521Z",
+      "host": "192.168.13.20",
+      "results": [
+        {
+          "mode": "success",
+          "passed": true,
+          "originalRestored": false,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        },
+        {
+          "mode": "create-failure",
+          "passed": true,
+          "originalRestored": true,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        },
+        {
+          "mode": "health-failure",
+          "passed": true,
+          "originalRestored": true,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        }
+      ]
+    },
+    {
+      "time": "2026-09-20T02:29:56.978Z",
+      "host": "89.37.212.66",
+      "results": [
+        {
+          "mode": "success",
+          "passed": true,
+          "originalRestored": false,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        },
+        {
+          "mode": "create-failure",
+          "passed": true,
+          "originalRestored": true,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        },
+        {
+          "mode": "health-failure",
+          "passed": true,
+          "originalRestored": true,
+          "volumePreserved": true,
+          "staticIpPreserved": true,
+          "aliasesPreserved": true
+        }
+      ]
+    }
+  ]
+}

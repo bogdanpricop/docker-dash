@@ -435,9 +435,9 @@ describe('execute — calls registryService', () => {
     expect(result.deleted.length).toBe(2);
     expect(result.errors).toEqual([]);
     expect(fakeRegistry.deleteTag).toHaveBeenCalledTimes(2);
-    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(1, 1, 'lib/foo', 'a');
-    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(2, 1, 'lib/foo', 'b');
-    expect(auditService.log).toHaveBeenCalledTimes(1);
+    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(1, 1, 'lib/foo', 'a', { expectedDigest: 'sha256:a' });
+    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(2, 1, 'lib/foo', 'b', { expectedDigest: 'sha256:b' });
+    expect(auditService.log).toHaveBeenCalledTimes(3);
     expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'retention_executed',
       targetType: 'registry-repo',
@@ -513,4 +513,14 @@ describe('execute — calls registryService', () => {
     expect(result.errors[0].error).toMatch(/not implemented/i);
     expect(fakeRegistry.deleteTag).toHaveBeenCalledTimes(1);
   });
+});
+
+test('retention preserves all aliases of a kept manifest', () => {
+  const plan = evaluate({ tags: [
+    tag({ tag: 'latest', digest: 'sha256:shared' }),
+    tag({ tag: 'temporary', digest: 'sha256:shared' }),
+    tag({ tag: 'disposable', digest: 'sha256:other' }),
+  ], rule: { minTagsToKeep: 1, deleteTagPatterns: ['*'] } });
+  expect(plan.toDelete.map(t => t.tag)).toEqual(['disposable']);
+  expect(plan.toKeep).toContainEqual(expect.objectContaining({ tag: 'temporary', reason: 'shared-kept-digest' }));
 });

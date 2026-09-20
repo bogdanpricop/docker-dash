@@ -1,5 +1,7 @@
 'use strict';
 
+const { normalizeCapability, hasRawSocketCapability } = require('./egress-capabilities');
+
 // Egress Audit (v6.6.2)
 //
 // Analyzes each container's network configuration and flags containers that
@@ -155,13 +157,16 @@ function analyzeContainer(inspect, networksByName) {
   }
 
   // Dangerous capability that enables raw socket / firewall manipulation
-  const caps = hostConfig.CapAdd || [];
-  if (caps.includes('NET_ADMIN') || caps.includes('NET_RAW')) {
+  const caps = (hostConfig.CapAdd || []).map(normalizeCapability);
+  const networkCaps = [];
+  if (hostConfig.Privileged || caps.includes('ALL') || caps.includes('NET_ADMIN')) networkCaps.push('NET_ADMIN');
+  if (hasRawSocketCapability(hostConfig)) networkCaps.push('NET_RAW');
+  if (networkCaps.length) {
     score -= 15;
     findings.push({
       severity: 'warning',
-      message: `Has network-privileged capability: ${caps.filter(c => c === 'NET_ADMIN' || c === 'NET_RAW').join(', ')}`,
-      fix: 'Drop NET_ADMIN/NET_RAW unless the container is an intentional proxy/VPN.',
+      message: `Has network-privileged capability: ${networkCaps.join(', ')} (including Docker defaults)`,
+      fix: 'Explicitly drop NET_RAW (Docker grants it by default) and remove added NET_ADMIN/ALL before applying an egress filter. Recreate the container to change capabilities.',
     });
   }
 

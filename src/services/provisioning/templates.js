@@ -30,6 +30,7 @@ const path = require('path');
 const { getDb } = require('../../db');
 const log = require('../../utils/logger')('onboarding-templates');
 const catalog = require('./catalog');
+const { assertSecretReferenceAdmission } = require('../secret-reference-admission');
 
 const TEMPLATES_DIR = path.join(__dirname, '..', '..', 'db', 'onboarding-templates');
 
@@ -279,6 +280,7 @@ function validateTemplateSpec(spec) {
   if (spec === undefined || spec === null) throw new Error('spec is required');
   if (typeof spec !== 'object' || Array.isArray(spec)) throw new Error('spec must be an object');
   _assertSafeKeys(spec, 'spec');
+  assertSecretReferenceAdmission({ documentKind: 'template', document: spec });
 
   const out = {};
 

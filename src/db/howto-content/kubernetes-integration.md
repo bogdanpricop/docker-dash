@@ -93,17 +93,13 @@ kubectl -n kube-system get secret docker-dash-readonly-token -o jsonpath='{.data
 
 Copy the output — that's your bearer token.
 
-### 3. Get the CA cert (optional but recommended)
+### 3. Get the verified CA certificate (required for a private CA)
 
 ```bash
 kubectl -n kube-system get secret docker-dash-readonly-token -o jsonpath='{.data.ca\.crt}' | base64 -d > k8s-ca.crt
 ```
 
-Or, if the cluster uses a self-signed cert and you're OK with `skipTlsVerify` (testing only):
-
-```bash
-# In production this SHOULD stay false. Only flip during initial testing.
-```
+Run this through an already trusted kubectl context. Docker Dash requires server verification. A private CA must be supplied explicitly; a publicly trusted server certificate can use system CAs. Kubeconfig export preserves this verification policy.
 
 ### 4. Register the host in Docker Dash
 
@@ -142,7 +138,7 @@ console.log("Kubernetes host registered");
 ## Security notes
 
 - **Bearer token is encrypted at rest** via AES-256-GCM (`enc:` prefix on `daemon_config`) — same helper used for Incus / Proxmox / git credentials
-- **`skipTlsVerify: false` is strongly recommended** — set the `caCert` from the cluster instead
+- **TLS verification is mandatory** — supply the verified cluster `caCert` when its issuer is private.
 - **Least-privilege by design** — use the built-in `view` ClusterRole for alpha.1's read-only routes. Rotate the token by re-generating the Secret and re-registering (or updating `daemon_config`)
 - **No Secret viewing** in docker-dash. If someone gets access to the token they get the same view an operator with `view` role gets — no access to Secret contents (Kubernetes RBAC enforces that server-side even if the token has some scope)
 - **Every read route requires `requireAuth`** (docker-dash session). No unauthenticated proxying to the apiserver
@@ -169,7 +165,7 @@ kubectl cluster-info | grep 'is running at'
 
 **Certificate errors**
 
-Either provide the correct `caCert` (from step 3), or set `skipTlsVerify: true` **temporarily** and never leave it that way in production.
+Provide the verified `caCert` from step 3 and confirm that the server certificate is unexpired and valid for the configured endpoint. Legacy `skipTlsVerify: true` configurations are rejected.
 
 ## Alpha caveats
 

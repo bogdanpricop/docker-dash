@@ -41,8 +41,10 @@ function _isSsoTrusted(req) {
     log.warn('SSO headers present but SSO_TRUSTED_PROXY_IPS is not configured — ignoring SSO headers (fail closed)');
     return false;
   }
-  const clientIp = _normalizeIp(req.ip || '');
-  return trustedIps.has(clientIp);
+  // SSO assertions belong to the immediate authenticated proxy connection,
+  // not to the end-client address resolved from forwarding headers.
+  const peerIp = _normalizeIp(req.socket?.remoteAddress || '');
+  return trustedIps.has(peerIp);
 }
 
 // ─── Password-change-required allow-list (FIX #21) ────────────────────────────
@@ -88,11 +90,14 @@ function requireAuth(req, res, next) {
       user = apiKeys.validate(token);
     } else {
       user = authService.validateSession(token);
+      if (!user && source === 'bearer' && token.startsWith('ddst_')) {
+        try { user = require('../services/identity-governance').validateToken(token); } catch { user = null; }
+      }
     }
   }
 
   // SSO header-based auth (Authelia, Authentik, Caddy forward_auth, Traefik)
-  // FIX #12: Only trust SSO headers when req.ip is in the SSO_TRUSTED_PROXY_IPS allow-list.
+  // Only trust SSO headers from a socket peer in SSO_TRUSTED_PROXY_IPS.
   // If the env var is not set, fail closed — SSO headers are never trusted.
   if (!user && config.features.ssoHeaders) {
     const ssoUser = req.headers['x-forwarded-user'] || req.headers['remote-user'];
@@ -105,7 +110,7 @@ function requireAuth(req, res, next) {
         if (ssoGroups.includes('admin') || ssoGroups.includes('docker-dash-admin')) role = 'admin';
         else if (ssoGroups.includes('operator') || ssoGroups.includes('docker-dash-operator')) role = 'operator';
         // Auto-create or find SSO user
-        user = authService.findOrCreateSsoUser(ssoUser, role, ssoEmail);
+        user = authService.findOrCreateSsoUser(ssoUser, role, ssoEmail, { updateRole: true });
         req.ssoAuth = true;
       }
       // If not trusted, fall through — user remains null, auth will fail below
@@ -129,6 +134,7 @@ function requireAuth(req, res, next) {
 
   // Enforce API key permissions (read-only keys blocked from mutations)
   if (user.apiKey) return enforceApiKeyPermissions(req, res, next);
+  if (user.serviceToken) return enforceServiceTokenPermissions(req, res, next);
 
   next();
 }
@@ -138,6 +144,9 @@ function optionalAuth(req, res, next) {
   const { token, source } = extractToken(req);
   if (token) {
     req.user = source === 'apikey' ? apiKeys.validate(token) : authService.validateSession(token);
+    if (!req.user && source === 'bearer' && token.startsWith('ddst_')) {
+      try { req.user = require('../services/identity-governance').validateToken(token); } catch { req.user = null; }
+    }
   }
   next();
 }
@@ -158,6 +167,15 @@ function enforceApiKeyPermissions(req, res, next) {
   if (req.user?.apiKey && req.user.permissions) {
     const perms = req.user.permissions;
     const isRead = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+    // A collector key is deliberately narrower than a general read API key.
+    // Presence of this permission always restricts the key, even if mixed with
+    // legacy broad permissions in the database.
+    if (perms.includes('monitoring.read')) {
+      const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/\/$/, '').toLowerCase();
+      if (req.user.role === 'admin' && ['GET', 'HEAD'].includes(req.method)
+        && ['/api/metrics', '/api/cluster/status'].includes(path)) return next();
+      return res.status(403).json({error:'Monitoring key cannot access this resource',code:'MONITORING_KEY_SCOPE_DENIED'});
+    }
     if (isRead && !perms.includes('read') && !perms.includes('*')) {
       return res.status(403).json({ error: 'API key lacks read permission' });
     }
@@ -173,7 +191,41 @@ function writeable(req, res, next) {
   if (config.features.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return res.status(403).json({ error: 'System is in read-only mode' });
   }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    try {
+      const decision = require('../services/provider-operations/policy').globalHttpGate();
+      if (!decision.allowed) {
+        return res.status(423).json({ error: decision.reason, code: decision.code });
+      }
+      const approvalId = require('../services/governance-approvals').authorizeHttp(req);
+      if (approvalId) {
+        res.once('finish', () => {
+          try { require('../services/governance-approvals').finishHttpClaim(approvalId, res.statusCode); } catch { /* response already sent */ }
+        });
+      }
+    } catch (err) {
+      if (err.name === 'ApprovalError') {
+        return res.status(err.status || 400).json({ error: err.message, code: err.code, details: err.details });
+      }
+      return next(err);
+    }
+  }
   next();
+}
+
+/** Enforce the deliberately small scope catalog used by short-lived tokens. */
+function enforceServiceTokenPermissions(req, res, next) {
+  if (!req.user?.serviceToken) return next();
+  const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/\/$/,'').toLowerCase();
+  const read = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  const family = ['/api/metrics','/api/cluster/status'].includes(path) ? 'monitoring' : path.startsWith('/api/scim/') ? 'scim'
+    : path.startsWith('/api/governance/') ? 'governance' : 'api';
+  const required = `${family}.${read ? 'read' : 'write'}`;
+  const scopes = new Set(req.user.scopes || []);
+  if (!scopes.has(required) && !(family !== 'api' && scopes.has(`api.${read ? 'read' : 'write'}`))) {
+    return res.status(403).json({ error: `Service token lacks ${required} scope`, code: 'SERVICE_SCOPE_DENIED' });
+  }
+  return require('../services/service-token-policy').enforceHttp(req,res,next);
 }
 
 /** Require feature flag */
@@ -186,4 +238,4 @@ function requireFeature(feature) {
   };
 }
 
-module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature, enforceApiKeyPermissions };
+module.exports = { requireAuth, optionalAuth, requireRole, writeable, requireFeature, enforceApiKeyPermissions, enforceServiceTokenPermissions };

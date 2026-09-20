@@ -84,7 +84,14 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '2mb' })); // Reduced from 10mb — increase per-route if needed
+app.use(express.json({
+  limit: '2mb', // Reduced from 10mb — increase per-route if needed
+  verify: (req, _res, buf) => {
+    if (req.url.startsWith('/api/git/webhook') || req.url.startsWith('/api/automation/webhooks')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 
 // Global prototype pollution protection on all JSON bodies
 app.use((req, res, next) => {
@@ -106,13 +113,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(require('./middleware/csrf'));
 
-// Trust proxy — set to specific proxy IPs or 'loopback' for security
-// 'true' trusts ALL proxies (allows IP spoofing). Use specific IPs in production.
-// Trust proxy — configurable via TRUST_PROXY env var.
-// 'loopback' = trust only localhost proxies (safe default for production)
-// 'true' = trust all (development convenience)
-// '10.0.0.1' = trust specific proxy IP
-app.set('trust proxy', process.env.TRUST_PROXY || (config.app.env === 'production' ? 'loopback' : true));
+// Apply the same bounded proxy trust in every environment. Express validates
+// IPs/CIDRs; container DNS names and blanket 'true' are not supported settings.
+app.set('trust proxy', require('./utils/proxy-trust')(process.env.TRUST_PROXY));
 
 // Request latency tracking + logging + Prometheus metrics
 const metricsService = require('./services/metrics');
@@ -144,13 +147,20 @@ app.use((req, res, next) => {
 // ─── API Routes ─────────────────────────────────────────────
 
 const { rateLimit } = require('./middleware/rateLimit');
-const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs);
+const apiLimiter = rateLimit(config.rateLimit.apiMaxRequests, config.rateLimit.apiWindowMs, 'api');
+
+// Exact GET/HEAD health route precedes quotas; prefix lookalikes remain limited.
+app.get('/api/health', require('./routes/health'));
 
 // Git webhook receiver — public, no auth, separate rate limit
-const webhookReceiverLimiter = rateLimit(30, 60 * 1000);
+const webhookReceiverLimiter = rateLimit(30, 60 * 1000, 'webhook-receiver');
 app.use('/api/git/webhook', webhookReceiverLimiter, require('./routes/gitWebhook'));
+app.use('/api/automation/webhooks', webhookReceiverLimiter, require('./routes/infrastructure-webhooks'));
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/identity-federation', apiLimiter, require('./routes/identity-federation'));
+app.use('/api/workload-identity', apiLimiter, require('./routes/workload-identity'));
+app.use('/api/scim/v2', apiLimiter, require('./routes/scim'));
 app.use('/api/containers', apiLimiter, require('./routes/containers'));
 app.use('/api/images', apiLimiter, require('./routes/images'));
 app.use('/api/volumes', apiLimiter, require('./routes/volumes'));
@@ -160,18 +170,34 @@ app.use('/api/networks', apiLimiter, require('./routes/networks'));
 app.use('/api/system/update-check', apiLimiter, require('./routes/update-check'));
 app.use('/api/system', apiLimiter, require('./routes/system'));
 app.use('/api/stats', apiLimiter, require('./routes/stats'));
+app.use('/api/cli-preview', apiLimiter, require('./routes/cli-preview'));
+app.use('/api/diagnostics', apiLimiter, require('./routes/diagnostics'));
 app.use('/api/alerts', apiLimiter, require('./routes/alerts'));
 app.use('/api/webhooks', apiLimiter, require('./routes/webhooks'));
 app.use('/api/registries', apiLimiter, require('./routes/registries'));
 app.use('/api/hosts', apiLimiter, require('./routes/hosts'));
+app.use('/api/providers', apiLimiter, require('./routes/providers'));
+app.use('/api/storage-repositories', apiLimiter, require('./routes/storage-repositories'));
+app.use('/api/provider-console', apiLimiter, require('./routes/provider-console'));
+app.use('/api/operations', apiLimiter, require('./routes/operations'));
+app.use('/api/experience', apiLimiter, require('./routes/infrastructure-experience'));
+app.use('/api/self-service', apiLimiter, require('./routes/self-service'));
 app.use('/api/git', apiLimiter, require('./routes/git'));
 app.use('/api/notification-channels', apiLimiter, require('./routes/notificationChannels'));
 app.use('/api/maintenance', apiLimiter, require('./routes/maintenance'));
 app.use('/api/templates', apiLimiter, require('./routes/templates'));
 app.use('/api/workflows', apiLimiter, require('./routes/workflows'));
+app.use('/api/procedures', apiLimiter, require('./routes/procedures'));
+app.use('/api/fleet', apiLimiter, require('./routes/fleet'));
+app.use('/api/workstation-fleet', apiLimiter, require('./routes/workstation-fleet'));
+app.use('/api/gitops', apiLimiter, require('./routes/gitops'));
+app.use('/api/previews', apiLimiter, require('./routes/previews'));
+app.use('/api/oci-compose', apiLimiter, require('./routes/oci-compose'));
+app.use('/api/compose-blueprints', apiLimiter, require('./routes/compose-blueprints'));
+app.use('/api/disk-pressure', apiLimiter, require('./routes/disk-pressure'));
 app.use('/api/migrate', apiLimiter, require('./routes/migration'));
 app.use('/api/bundles', apiLimiter, require('./routes/stackBundle'));
-const statusPageLimiter = rateLimit(30, 60 * 1000); // 30/min for public endpoint
+const statusPageLimiter = rateLimit(30, 60 * 1000, 'status-page'); // 30/min for public endpoint
 app.use('/api/status-page', statusPageLimiter, require('./routes/statusPage'));
 app.use('/api/groups', apiLimiter, require('./routes/groups'));
 app.use('/api/permissions', apiLimiter, require('./routes/permissions'));
@@ -224,6 +250,9 @@ app.use('/api/teams', apiLimiter, require('./routes/teams'));
 app.use('/api/host-permissions', apiLimiter, require('./routes/host-permissions'));
 // v8.9.11-alpha.1 — VMware vSphere / ESXi read-only alpha
 app.use('/api/vsphere', apiLimiter, require('./routes/vsphere'));
+// Unified Xen integration: Xen Orchestra, XenAPI (XCP-ng/XenServer/Citrix
+// Hypervisor) and standalone Xen Project libxl hosts.
+app.use('/api/xen', apiLimiter, require('./routes/xen'));
 // v8.9.16-alpha.1 — SSH Key Deployer (System → Tools)
 app.use('/api/ssh-keys', apiLimiter, require('./routes/ssh-keys'));
 app.use('/api/firewall', apiLimiter, require('./routes/firewall'));
@@ -233,6 +262,10 @@ app.use('/api/copilot', apiLimiter, require('./routes/copilot'));
 // v8.15.0 — Onboarding & Provisioning Wizard (Phase 1 backend): tenant model +
 // provisioning saga engine. All routes admin-gated + audited; secrets redacted.
 app.use('/api/onboarding', apiLimiter, require('./routes/onboarding'));
+// v8.49.0 — V4.6a scoped roles, projects, invitations and resource quotas.
+app.use('/api/governance', apiLimiter, require('./routes/governance'));
+// v8.66.0 — B326-B345 edge sovereignty, resilient remote-hands and BMC planning.
+app.use('/api/edge', apiLimiter, require('./routes/edge-platform'));
 
 // v7.4.0 — Sample feature for contributors (gated by env so it can be
 // hidden from production deployments). See examples/sample-feature/README.md
@@ -408,6 +441,7 @@ async function start() {
   // Attach WebSocket server
   const wsServer = require('./ws');
   wsServer.attach(server);
+  require('./services/provider-console/gateway').attach(server);
 
   // v7.4.0 — Wire the sample-feature broadcaster (contributor demo).
   // Demonstrates the standard "service emits event → ws broadcasts →
@@ -424,6 +458,21 @@ async function start() {
   acmeService.setWsBroadcaster(
     (channel, data) => wsServer.broadcast('acme:job:update', data, channel)
   );
+
+  // Durable Provider SDK operation worker. Database state is authoritative;
+  // WebSocket delivery only accelerates Activity Center updates.
+  const providerOperations = require('./services/provider-operations');
+  providerOperations.setBroadcaster(data => {
+    wsServer.broadcast('provider:operation:update', data, 'provider:operations');
+    if (data?.id) wsServer.broadcast('provider:operation:update', data, `provider:operation:${data.id}`);
+  });
+  providerOperations.start();
+
+  // Any conformance run still marked running belongs to a process that no
+  // longer exists. Close it with explicit failure evidence before accepting
+  // new certifications; never let an interrupted probe look successful.
+  const recoveredConformanceRuns = require('./services/provider-conformance').recoverInterrupted();
+  if (recoveredConformanceRuns) log.warn('Recovered interrupted provider conformance runs', { count: recoveredConformanceRuns });
 
   // ACME watcher: transitions stuck 'running' jobs to success/failed so the
   // LE Wizard UI doesn't hang indefinitely.
@@ -488,6 +537,18 @@ async function start() {
   try { require('./services/reconciler/monitor').start(); }
   catch (e) { require('./utils/logger')('reconciler').debug('reconciler monitor start skipped', { error: e.message }); }
 
+  // v8.56.0 / B240 — opt-in continuous infrastructure drift evaluation.
+  // It only creates evidence plans and pauses on conflict; it never starts a
+  // provider mutation or external Terraform process.
+  try { require('./services/infrastructure-reconcile-monitor').start(); }
+  catch (e) { require('./utils/logger')('infrastructure-reconcile').debug('monitor start skipped', { error: e.message }); }
+
+  // v8.57.0 / B246-B247 — leader-gated schedule and approval deadline
+  // evaluation. Ready schedules create durable evidence only; approval expiry or
+  // escalation never authorizes or starts an apply.
+  try { require('./services/infrastructure-operations-monitor').start(); }
+  catch (e) { require('./utils/logger')('infrastructure-operations').debug('monitor start skipped', { error: e.message }); }
+
   // v8.18.0 (Onboarding Phase 4) — trial-expiry lifecycle. Hourly: suspend
   // expired trial tenants + notify, warn a few days out. Best-effort, unref'd.
   try { require('./services/provisioning/trial-monitor').start(); }
@@ -499,15 +560,6 @@ async function start() {
   // who don't run the sidecar).
   if (process.env.DD_EGRESS_BLOCKLOG_INGESTER === '1') {
     require('./services/egress-blocklog-ingester').start();
-  }
-
-  // Egress Filter boot sync (v6.7.0-rc.2): if Docker Dash restarted while
-  // policies existed, the sidecar's on-disk policy.json may be stale. Write
-  // it once at startup so the sidecar (if running) picks up via SIGHUP.
-  try {
-    require('./services/egress-filter').writePolicyFile();
-  } catch (e) {
-    require('./utils/logger')('egress-filter').debug('boot-time policy sync skipped', { error: e.message });
   }
 
   // Egress Filter (v6.7.0-alpha.2): after each policy write, SIGHUP the sidecar.
@@ -531,6 +583,15 @@ async function start() {
       }
     }
   });
+
+  try {
+    await require('./services/egress-authorization').start();
+  } catch (e) {
+    require('./utils/logger')('egress-filter').error('egress authorization unavailable; new scoped connections will be denied', { error: e.message });
+  }
+  // Publish schema 2 even if socket setup fails, then signal the running sidecar.
+  // Never leave the legacy global union active because authorization is down.
+  egressFilter.writePolicyFile();
 
   // Start stats collector
   const statsService = require('./services/stats');
@@ -571,6 +632,7 @@ async function start() {
 
 async function shutdown(signal) {
   log.info(`${signal} received, shutting down...`);
+  require('./services/password-reset-delivery').stop();
 
   const statsService = require('./services/stats');
   statsService.stop();
@@ -579,6 +641,7 @@ async function shutdown(signal) {
   dockerService2.stopHealthChecks();
 
   try { require('./services/ssh-tunnel').closeAll(); } catch {}
+  try { await require('./services/egress-authorization').stop(); } catch {}
   try { require('./services/log-forwarder').stopAll(); } catch {}
   // v8.7.38 — stop the remediation scheduler. start() is called above at
   // line 384; the symmetric stop was missing, so the setInterval kept
@@ -588,6 +651,9 @@ async function shutdown(signal) {
   // to write to a closing DB or fire runJob against a tearing-down
   // dockerService.
   try { require('./services/remediation-scheduler').stop(); } catch {}
+  try { require('./services/provider-operations').stop(); } catch {}
+  try { require('./services/infrastructure-reconcile-monitor').stop(); } catch {}
+  try { require('./services/infrastructure-operations-monitor').stop(); } catch {}
 
   const jobs = require('./jobs');
   jobs.stopAll();

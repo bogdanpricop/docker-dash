@@ -72,27 +72,7 @@ docker compose up -d app
 
 ### 2. Înregistrează hostul în Docker Dash
 
-Nu există UI pentru adăugat host-uri non-Docker încă (limitare alpha). Înregistrează rândul manual. Log în containerul docker-dash:
-
-```bash
-docker exec -it docker-dash sh
-```
-
-Apoi rulează SQL-ul pe SQLite DB:
-
-```bash
-sqlite3 /data/docker-dash.db <<'SQL'
-INSERT INTO docker_hosts (name, connection_type, daemon_type, daemon_config, is_default, is_active)
-VALUES (
-  'Local Incus',
-  'socket',
-  'incus',
-  '{"transport":"unix","socket":"/var/lib/incus/unix.socket"}',
-  0,  -- not default
-  1   -- active
-);
-SQL
-```
+Deschide **Hosts → Non-Docker host → Incus**, alege **Unix socket (local)** si introdu calea montata `/var/lib/incus/unix.socket`. Testeaza conexiunea si salveaza. Pentru HTTPS remote, foloseste acelasi formular cu certificatul/cheia client si CA-ul verificat al serverului; configuratia este criptata la salvare.
 
 ### 3. Verifică
 
@@ -156,7 +136,9 @@ JSON-ul `daemon_config` are nevoie de endpoint + PEM cert + key inline:
 }
 ```
 
-Inserează în DB la fel ca la cazul local. **Notă**: cheia e stocată necriptată în alpha; criptarea-at-rest pentru credențialele Incus ajunge într-un release următor.
+Foloseste formularul Hosts pentru a salva credentialele criptat. Adauga `caCert` cu CA-ul emitent verificat sau certificatul de server autosemnat de incredere, obtinut printr-un canal de administrare sigur. Certificatul serverului trebuie sa fie valid pentru numele endpoint-ului. Certificatul client autentifica Docker Dash la Incus; nu autentifica serverul Incus.
+
+Evita inserarea credentialelor necriptate direct in SQLite. Formularul Hosts cripteaza configuratia providerului.
 
 ## Ce funcționează și ce nu
 

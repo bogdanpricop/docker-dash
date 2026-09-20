@@ -48,3 +48,25 @@ sudo chown root:docker /etc/myapp/secrets/db_password.txt</code></pre>
 <pre><code># Fișierele apar la /run/secrets/&lt;name&gt;
 docker exec mycontainer ls -la /run/secrets/
 docker exec mycontainer cat /run/secrets/db_password</code></pre>
+
+
+<h2>Executie la distanta din Secrets Wizard</h2>
+<p>Sunt necesare rolul administrator, modul cu scriere si un host SSH configurat
+cu amprenta de incredere. Scriptul este transmis criptat, verificat integral prin
+SHA-256 pe host si executat fara crearea unui fisier de script. Continutul nu apare
+in argumentele proceselor sau in audit. Hostul necesita Bash, sha256sum si /dev/fd;
+optiunea sudo necesita acces fara parola, neinteractiv. Comenzile scriptului primesc
+EOF pe intrarea standard si nu pot cere parole. Scriptul in sine poate crea fisiere.</p>
+<p>Limita de timp este 120 de secunde; scriptul si output-ul combinat stdout/stderr
+sunt limitate la 1 MiB. Auditul pastreaza ID-ul operatiei, hash-ul si metadatele
+executiei inainte si dupa incercare, fara continutul scriptului sau output.
+Output-ul este returnat doar administratorului solicitant, fara stocare in cache.</p>
+<p>Conexiunea pierduta, timeout-ul sau output-ul excesiv nu dovedesc oprirea
+procesului remote. Raspunsul avertizeaza cand executia nu poate fi confirmata.
+Verifica hostul si operatia din audit inainte de repetare. Efectele comenzilor nu
+sunt anulate automat. Hash-ul diferit impiedica executia unui transfer incomplet.</p>
+<p>Versiunile vechi pot fi lasat fisiere docker-dash-secrets-*.sh in /tmp sau
+fragmente de script in exporturi/backup-uri de audit. Modificarea nu le sterge.
+Administratorul trebuie sa confirme ca apartin unor operatii incheiate si sa aplice
+politica de retentie a secretelor. Nu sterge scripturi necunoscute si nu rescrie
+lantul de hash-uri al auditului pentru a ascunde evenimente.</p>

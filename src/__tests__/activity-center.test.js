@@ -1,0 +1,39 @@
+'use strict';
+
+global.Utils = { formatDuration: seconds => `${seconds}s` };
+
+const page = require('../../public/js/pages/activity-center');
+
+describe('Provider operation Activity Center presentation helpers', () => {
+  it('renders explicit user and system ownership', () => {
+    expect(page._ownerLabel({ owner: { type: 'user', id: 7, username: 'operator-a' } })).toBe('operator-a');
+    expect(page._ownerLabel({ owner: { type: 'user', id: 7, username: null } })).toBe('User #7');
+    expect(page._ownerLabel({ owner: { type: 'system', id: null, username: null } })).toBe('System');
+  });
+
+  it('derives bounded operation duration from public timestamps', () => {
+    expect(page._duration({ startedAt: null })).toBe('—');
+    expect(page._duration({
+      startedAt: '2026-07-26T12:00:00.000Z', completedAt: '2026-07-26T12:01:05.000Z',
+    })).toBe('65s');
+    expect(page._duration({ startedAt: 'invalid', completedAt: 'invalid' })).toBe('—');
+  });
+
+  it('routes artifact-backed provisioning operations back to the VM catalog', () => {
+    expect(page._resourceHref({ resource: { kind: 'artifact', id: `dda_art_${'a'.repeat(26)}` } }))
+      .toBe('#/virtualization-catalog');
+    expect(page._resourceHref({ provider: { endpointId: 7 }, resource: { kind: 'virtualMachine', id: 'vm-1' } }))
+      .toBe('#/virtual-machines/7/vm-1');
+  });
+
+  it('B355 prefers backend deep links and summarizes persistent long tasks', () => {
+    expect(page._resourceHref({ links: { resource: '#/virtual-machines/9/vm-safe' } }))
+      .toBe('#/virtual-machines/9/vm-safe');
+    expect(page._summary([
+      { state: 'running', progress: 20, permissions: { canCancel: true } },
+      { state: 'waiting_retry', progress: 60, permissions: { canCancel: false } },
+      { state: 'failed', progress: 30 }, { state: 'unknown', progress: 80 },
+      { state: 'succeeded', progress: 100 },
+    ])).toEqual({ total: 5, active: 2, failed: 2, succeeded: 1, cancellable: 1, averageProgress: 40 });
+  });
+});

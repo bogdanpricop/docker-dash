@@ -17,7 +17,9 @@ const DashboardPage = {
     // Render a vSphere-specific summary for that host instead.
     const _curHost = await this._resolveCurrentHost();
     if (_curHost && _curHost.daemonType === 'vsphere') {
-      return this._renderVSphereDashboard(container, _curHost);
+      this._renderVSphereDashboard(container, _curHost);
+      this._loadInfrastructureHome(container);
+      return;
     }
 
     container.innerHTML = `
@@ -42,6 +44,7 @@ const DashboardPage = {
         </div>
       </div>
 
+      <div id="compose-first-banner" style="display:none;margin-bottom:16px"></div>
       <div id="dash-error" style="display:none;margin-bottom:12px"></div>
 
       <!-- Summary Cards -->
@@ -89,6 +92,14 @@ const DashboardPage = {
             <div id="health-detail-text" style="font-size:9px;color:var(--text-dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
           </div>
         </div>
+        <a href="#/multi-host" class="stat-card" id="fleet-health-card" style="display:none;min-width:250px;text-decoration:none;color:inherit">
+          <div class="stat-icon blue"><i class="fas fa-network-wired"></i></div>
+          <div class="stat-body" style="min-width:0;flex:1">
+            <div class="stat-value" id="fleet-health-value" style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+            <div class="stat-label">Fleet health · 24h</div>
+            <div style="height:34px;margin-top:3px"><canvas id="chart-fleet-health" role="img" aria-label="Connected, degraded, and disconnected hosts over 24 hours"></canvas></div>
+          </div>
+        </a>
       </div>
 
       <!-- Host Info -->
@@ -162,6 +173,8 @@ const DashboardPage = {
     // Restore saved widget order
     this._restoreWidgetOrder();
 
+    this._loadComposeFirstBanner();
+    this._loadInfrastructureHome(container);
     await this._load();
     this._loadPosturePill();
     this._refreshTimer = setInterval(() => this._load(), 30000);
@@ -180,53 +193,157 @@ const DashboardPage = {
     });
   },
 
-  async _load() {
+  async _loadInfrastructureHome(container) {
+    let target = container.querySelector('#infrastructure-home');
+    if (!target) {
+      target = document.createElement('div');
+      target.id = 'infrastructure-home';
+      target.style.marginBottom = '16px';
+      container.querySelector('.page-header')?.insertAdjacentElement('afterend', target);
+    }
+    target.innerHTML = '<div class="card" style="padding:12px"><i class="fas fa-spinner fa-spin"></i> Loading unified infrastructure health…</div>';
     try {
-      const [containers, images, volumes, overview, sysInfo, health] = await Promise.all([
-        Api.getContainers(true),
-        Api.getImages(),
-        Api.getVolumes(),
+      const data = await Api.getInfrastructureHome();
+      if (!target.isConnected) return;
+      const endpointHealth = data.endpoints?.health || {};
+      const workload = data.workloads || {};
+      const cost = data.cost?.amount == null ? 'Not rated' : `${data.cost.amount.toFixed(2)} ${Utils.escapeHtml(data.cost.currency || '')}`;
+      const stateLabel = item => item?.state === 'unknown' || item?.state === 'partial'
+        ? `${item.count} · ${item.state}` : `${item?.count ?? 0}`;
+      target.innerHTML = `<div class="card" style="padding:16px">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px"><div><strong><i class="fas fa-layer-group" style="margin-right:7px"></i>Unified infrastructure</strong>
+          <div class="text-muted text-sm">Permission-filtered persisted evidence; unknown coverage stays explicit</div></div>
+          <a class="btn btn-sm btn-secondary" href="#/activity">${data.operations?.active || 0} active task(s)</a></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px">
+          <div><span class="text-muted text-sm">Endpoints</span><br><strong>${data.endpoints?.total || 0}</strong> <span class="text-muted text-sm">${endpointHealth.healthy || 0} healthy · ${endpointHealth.unhealthy || 0} unhealthy · ${endpointHealth.unknown || 0} unknown</span></div>
+          <div><span class="text-muted text-sm">Virtual machines</span><br><strong>${Utils.escapeHtml(stateLabel(workload.virtualMachines))}</strong></div>
+          <div><span class="text-muted text-sm">Containers</span><br><strong>${Utils.escapeHtml(stateLabel(workload.containers))}</strong></div>
+          <div><span class="text-muted text-sm">Kubernetes endpoints</span><br><strong>${Utils.escapeHtml(stateLabel(workload.kubernetes))}</strong></div>
+          <div><span class="text-muted text-sm">Open risks</span><br><strong>${data.risks?.count || 0}</strong></div>
+          <div><span class="text-muted text-sm">Latest rated cost</span><br><strong>${cost}</strong></div>
+        </div>
+        ${(data.recentChanges || []).length ? `<div class="text-muted text-sm" style="margin-top:12px">Recent: ${(data.recentChanges || []).slice(0, 3).map(item => `<a href="${item.deepLink}">${Utils.escapeHtml(item.action)} · ${Utils.escapeHtml(item.state)}</a>`).join(' · ')}</div>` : ''}
+      </div>`;
+    } catch {
+      if (target.isConnected) target.innerHTML = '<div class="card text-muted text-sm" style="padding:12px">Unified infrastructure evidence is temporarily unavailable.</div>';
+    }
+  },
+
+  async _loadComposeFirstBanner() {
+    const banner = document.getElementById('compose-first-banner');
+    if (!banner) return;
+    const localKey = `dd-compose-first-dismissed-${App.user?.id || 'user'}`;
+    if (localStorage.getItem(localKey) === '1') return;
+
+    try {
+      const prefs = await Api.getUserPreferences();
+      if (prefs.composeFirstBannerDismissed === 'true') {
+        localStorage.setItem(localKey, '1');
+        return;
+      }
+    } catch { /* local dismissal still prevents repeated display offline */ }
+
+    if (!document.getElementById('compose-first-banner')) return;
+    banner.style.display = '';
+    banner.innerHTML = `
+      <div class="compose-first-card">
+        <div class="compose-first-icon"><i class="fas fa-layer-group"></i></div>
+        <div style="min-width:0;flex:1">
+          <strong>${i18n.t('pages.dashboard.composeFirstTitle')}</strong>
+          <div class="text-sm text-muted">${i18n.t('pages.dashboard.composeFirstSubtitle')}</div>
+        </div>
+        <a class="btn btn-sm btn-primary" href="#/stacks"><i class="fas fa-arrow-right"></i> ${i18n.t('pages.dashboard.manageStacks')}</a>
+        <a class="btn btn-sm btn-secondary" href="?mode=simple#/stacks"><i class="fas fa-compress-alt"></i> ${i18n.t('pages.dashboard.simpleMode')}</a>
+        <button class="btn-icon" id="compose-first-dismiss" title="${i18n.t('common.close')}" aria-label="${i18n.t('common.close')}"><i class="fas fa-times"></i></button>
+      </div>`;
+    banner.querySelector('#compose-first-dismiss')?.addEventListener('click', () => {
+      localStorage.setItem(localKey, '1');
+      banner.remove();
+      Api.saveUserPreference('composeFirstBannerDismissed', 'true').catch(() => {});
+    });
+  },
+
+  async _load() {
+    // The three core lists used to be un-caught inside Promise.all, so a single
+    // failing endpoint threw away the whole page — charts, host info and cluster
+    // health included — and replaced it with a banner that named no cause. Each
+    // one now degrades on its own: whatever loaded is rendered, whatever failed
+    // leaves its tile at "---" and reports the server's reason.
+    const failures = [];
+    const soft = (promise, label) => promise.catch(err => {
+      if (err?.isAuthError) throw err;      // 401 is handled globally; let it through
+      failures.push({ label, message: err?.message || String(err) });
+      return null;
+    });
+
+    try {
+      const [containers, images, volumes, overview, sysInfo, health, fleetHealth] = await Promise.all([
+        soft(Api.getContainers(true), i18n.t('pages.dashboard.containers')),
+        soft(Api.getImages(), i18n.t('pages.dashboard.images')),
+        soft(Api.getVolumes(), i18n.t('pages.dashboard.volumes')),
         Api.getStatsOverview().catch(() => null),
         Api.getSystemInfo().catch(() => null),
         Api.getClusterHealth().catch(() => null),
+        App.user?.role === 'admin' ? Api.getFleetHealth(24).catch(() => null) : Promise.resolve(null),
       ]);
 
       // Backend returns lowercase keys: state, not State
-      const running = containers.filter(c => c.state === 'running').length;
-      const stopped = containers.length - running;
+      if (Array.isArray(containers)) {
+        const running = containers.filter(c => c.state === 'running').length;
+        this._animateNumber('stat-running', running);
+        this._animateNumber('stat-stopped', containers.length - running);
+        this._renderStateChart(containers);
+      } else {
+        // Reset rather than leave the previous refresh's numbers looking current.
+        this._animateNumber('stat-running', '---');
+        this._animateNumber('stat-stopped', '---');
+      }
 
-      this._animateNumber('stat-running', running);
-      this._animateNumber('stat-stopped', stopped);
-      this._animateNumber('stat-images', images.length);
+      this._animateNumber('stat-images', Array.isArray(images) ? images.length : '---');
       // volumes is an array from the API (listVolumes returns mapped array)
-      const volList = Array.isArray(volumes) ? volumes : (volumes.Volumes || volumes || []);
-      this._animateNumber('stat-volumes', volList.length);
+      const volList = Array.isArray(volumes) ? volumes : (volumes?.Volumes || null);
+      this._animateNumber('stat-volumes', Array.isArray(volList) ? volList.length : '---');
 
-      this._renderStateChart(containers);
       this._renderCpuChart(overview);
       this._renderMemoryChart(overview);
       this._renderEvents();
       this._renderHostInfo(sysInfo);
       this._renderClusterHealth(health);
+      this._renderFleetHealth(fleetHealth);
 
       // Update "last updated" indicator
       const updEl = document.getElementById('dash-last-updated');
       if (updEl) updEl.textContent = new Date().toLocaleTimeString();
-      const errBanner = document.getElementById('dash-error');
-      if (errBanner) errBanner.style.display = 'none';
+      this._renderLoadError(failures);
     } catch (err) {
+      if (err?.isAuthError) return;
       console.error('Dashboard load error:', err);
-      // Show user-facing error banner
-      const banner = document.getElementById('dash-error');
-      if (banner) {
-        banner.style.display = 'block';
-        banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:center;gap:8px">
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>Failed to load dashboard data. <button class="btn btn-sm" style="margin-left:8px" id="dash-retry-btn">Retry</button></span>
-        </div>`;
-        banner.querySelector('#dash-retry-btn')?.addEventListener('click', () => DashboardPage._load());
-      }
+      this._renderLoadError([{ label: 'dashboard', message: err?.message || String(err) }]);
     }
+  },
+
+  /** Show (or clear) the banner listing which parts of the dashboard failed and why. */
+  _renderLoadError(failures) {
+    const banner = document.getElementById('dash-error');
+    if (!banner) return;
+    if (!failures.length) {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+      return;
+    }
+    // Distinct messages only: one broken host makes all three calls fail identically.
+    const reasons = [...new Set(failures.map(f => f.message))];
+    const parts = failures.map(f => Utils.escapeHtml(f.label)).join(', ');
+    banner.style.display = 'block';
+    banner.innerHTML = `<div style="padding:12px 16px;background:rgba(248,81,73,0.1);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);display:flex;align-items:flex-start;gap:8px">
+      <i class="fas fa-exclamation-triangle" style="margin-top:3px"></i>
+      <div style="flex:1;min-width:0">
+        <div><strong>${Utils.escapeHtml(i18n.t('pages.dashboard.loadFailed'))}</strong> ${parts}</div>
+        ${reasons.map(r => `<div style="margin-top:4px;font-size:0.9em;opacity:0.9;word-break:break-word">${Utils.escapeHtml(r)}</div>`).join('')}
+      </div>
+      <button class="btn btn-sm" id="dash-retry-btn">${Utils.escapeHtml(i18n.t('common.retry'))}</button>
+    </div>`;
+    banner.querySelector('#dash-retry-btn')?.addEventListener('click', () => DashboardPage._load());
   },
 
   _animateNumber(id, target) {
@@ -270,6 +387,105 @@ const DashboardPage = {
     });
 
     this._renderDoughnut('chart-states', labels, data, colors);
+  },
+
+  _renderFleetHealth(data) {
+    const card = document.getElementById('fleet-health-card');
+    if (!card) return;
+    if (!data?.current || data.current.total_hosts < 3) {
+      card.style.display = 'none';
+      if (this._charts['chart-fleet-health']) {
+        this._charts['chart-fleet-health'].destroy();
+        delete this._charts['chart-fleet-health'];
+      }
+      return;
+    }
+    card.style.display = 'flex';
+    const current = data.current;
+    // The card is 250px wide and this string runs past it, so it gets cut by the
+    // card's overflow:hidden. Ellipsis makes the cut deliberate and the title
+    // gives the operator a way to read the rest — before, it was just severed.
+    const fleetValue = document.getElementById('fleet-health-value');
+    const fleetSummary = `${current.connected} connected · ${current.degraded} degraded · ${current.disconnected} down`;
+    fleetValue.textContent = fleetSummary;
+    fleetValue.title = fleetSummary;
+    const canvas = document.getElementById('chart-fleet-health');
+    if (!canvas) return;
+    if (this._charts['chart-fleet-health']) this._charts['chart-fleet-health'].destroy();
+    const points = data.history || [];
+    this._charts['chart-fleet-health'] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: points.map(point => point.bucket),
+        datasets: [
+          { label: 'Connected', data: points.map(point => point.connected), borderColor: '#3fb950', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+          { label: 'Degraded', data: points.map(point => point.degraded), borderColor: '#d29922', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+          { label: 'Disconnected', data: points.map(point => point.disconnected), borderColor: '#f85149', backgroundColor: 'transparent', tension: .25, pointRadius: 0, borderWidth: 2 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { display: false }, y: { display: false, beginAtZero: true, suggestedMax: current.total_hosts } },
+        plugins: {
+          legend: { display: false },
+          // Chart.js draws its built-in tooltip INSIDE the canvas. This sparkline
+          // is 34px tall and sits in a .stat-card with overflow:hidden, so a
+          // three-series tooltip has nowhere to go and gets clipped to nothing.
+          // Render it as a fixed-position node on <body> instead, which escapes
+          // both the canvas and the card. v8.94.1.
+          tooltip: { enabled: false, external: DashboardPage._sparklineTooltip },
+        },
+        interaction: { intersect: false, mode: 'index' },
+      },
+    });
+  },
+
+  // Singleton tooltip node, reused across hovers and kept out of the card so
+  // nothing can clip it. pointer-events:none so it never blocks the card's link.
+  _sparklineTooltipEl() {
+    let el = document.getElementById('dash-sparkline-tooltip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'dash-sparkline-tooltip';
+      el.setAttribute('role', 'tooltip');
+      el.style.cssText = [
+        'position:fixed', 'pointer-events:none', 'z-index:9999', 'opacity:0',
+        'transition:opacity .12s ease', 'background:var(--surface2)',
+        'color:var(--text)', 'border:1px solid var(--border)', 'border-radius:6px',
+        'padding:6px 9px', 'font-size:11px', 'line-height:1.5', 'white-space:nowrap',
+        'box-shadow:var(--shadow-md)',
+      ].join(';');
+      document.body.appendChild(el);
+    }
+    return el;
+  },
+
+  _sparklineTooltip(context) {
+    const el = DashboardPage._sparklineTooltipEl();
+    const tt = context.tooltip;
+    if (!tt || !tt.opacity) { el.style.opacity = '0'; return; }
+
+    const title = (tt.title || []).map(t => Utils.escapeHtml(t)).join(' ');
+    const rows = (tt.body || []).map((b, i) => {
+      // Only accept a literal hex colour into the style attribute. Chart.js can
+      // hand back a CanvasGradient here, and an unvalidated value interpolated
+      // into CSS is an injection vector — the dataset colours are hex literals,
+      // so anything else is a bug and falls back rather than being trusted.
+      const raw = tt.labelColors && tt.labelColors[i] && tt.labelColors[i].borderColor;
+      const dot = typeof raw === 'string' && /^#[0-9a-f]{3,8}$/i.test(raw) ? raw : 'currentColor';
+      const text = Utils.escapeHtml((b.lines || []).join(' '));
+      return `<div><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${dot};margin-right:6px"></span>${text}</div>`;
+    }).join('');
+    el.innerHTML = (title ? `<div style="color:var(--text-dim);margin-bottom:3px">${title}</div>` : '') + rows;
+
+    const rect = context.chart.canvas.getBoundingClientRect();
+    el.style.opacity = '1';
+    // Measure only after the content is in place, then flip left near the right
+    // edge so the tooltip never runs off-screen on a narrow window.
+    const width = el.offsetWidth;
+    const right = rect.left + tt.caretX + 12 + width;
+    el.style.left = `${right > window.innerWidth - 8 ? rect.left + tt.caretX - width - 12 : rect.left + tt.caretX + 12}px`;
+    el.style.top = `${Math.max(8, rect.top + tt.caretY - el.offsetHeight / 2)}px`;
   },
 
   _renderCpuChart(overview) {
@@ -435,7 +651,10 @@ const DashboardPage = {
       if (b.cpuUsage !== undefined) parts.push(`CPU ${b.cpuUsage}%`);
       if (b.memoryUsage !== undefined) parts.push(`RAM ${b.memoryUsage}%`);
       if (b.unhealthy > 0) parts.push(`${b.unhealthy} unhealthy`);
+      // This line is deliberately ellipsized, but it carried no title — so the
+      // truncated half was unreachable. Same fix as the fleet summary above.
       detailText.textContent = parts.join(' · ');
+      detailText.title = parts.join(' · ');
       statusText.style.color = color;
     }
   },
@@ -856,7 +1075,7 @@ const DashboardPage = {
         hostsEl.innerHTML = hostsA.length ? hostsA.map(h => `
           <div class="card" style="padding:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-              <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(h.name || '—')}</strong>
+              <strong title="${Utils.escapeHtml(h.name || '')}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(h.name || '—')}</strong>
               <span class="badge" style="background:${h.connectionState === 'connected' ? '#3fb950' : '#f85149'};color:#fff;font-size:10px">${Utils.escapeHtml(h.connectionState || '?')}</span>
             </div>
             ${this._vBar('CPU', h.cpuPercent, `${h.cpuUsageMHz || 0} / ${h.cpuTotalMHz || 0} MHz`)}
@@ -899,8 +1118,8 @@ const DashboardPage = {
             return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;min-width:0">
               <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex:0 0 auto"></span>
               <div style="min-width:0;flex:1">
-                <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
-                <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
+                <div title="${Utils.escapeHtml(vm.name || '')}" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.name || '—')}</div>
+                <div title="${Utils.escapeHtml(vm.guestOS || '')}" style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${Utils.escapeHtml(vm.guestOS || '')}</div>
               </div>
               <div style="font-size:11px;color:var(--text-dim);text-align:right;flex:0 0 auto">${vm.numCPU || '?'}vCPU<br>${vm.memoryMB ? (vm.memoryMB / 1024).toFixed(vm.memoryMB >= 1024 ? 0 : 1) + 'G' : '—'}</div>
             </div>`;

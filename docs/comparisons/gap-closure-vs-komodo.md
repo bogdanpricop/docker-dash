@@ -2,10 +2,10 @@
 
 **Source doc:** [vs-komodo.md](vs-komodo.md)
 **Baseline version:** v8.9.6-alpha.1 (2026-07-05)
-**Current version:** v8.9.10-alpha.1 (2026-07-06)
+**Current version:** v8.21.4 (2026-07-25)
 **Owner:** Bogdan
-**Status:** Executing — 4 of 9 open gaps closed
-**Last reviewed:** 2026-07-06
+**Status:** Executing — 8 of 9 actionable gaps closed
+**Last reviewed:** 2026-07-26
 
 ## Executive summary
 
@@ -15,31 +15,33 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 
 | Priority | Total | Open | In progress | Closed | Won't-do |
 |---|---:|---:|---:|---:|---:|
-| P0 | 1 | 0 | 1 | 0 | 0 |
-| P1 | 3 | 2 | 0 | 1 | 0 |
-| P2 | 3 | 2 | 0 | 1 | 0 |
+| P0 | 1 | 0 | 0 | 1 | 0 |
+| P1 | 3 | 0 | 0 | 3 | 0 |
+| P2 | 3 | 1 | 0 | 2 | 0 |
 | P3 | 2 | 0 | 0 | 2 | 0 |
 | Won't-do | 2 | 0 | 0 | 0 | 2 |
-| **Total** | **11** | **4** | **1** | **4** | **2** |
+| **Total** | **11** | **1** | **0** | **8** | **2** |
 
-**Closure summary (as of v8.9.10-alpha.1):**
+**Closure summary (as of v8.21.4):**
 - **v8.9.7-alpha.1:** G02 (Host groups); G01 partial (Multi-host git schema + basic API)
+- **Current:** G01 completed (multi-host deploy, progressive rollout/health gates, target rollback, UI, per-target status/audit/drift, RBAC); G03 completed (staged parallel procedures, dependencies, live/cancellable runs, history, templates, RBAC); G04 completed (group-aware navigation, fuzzy host search, bulk fleet operations, compact hosts, health history); G07 completed (versioned YAML export, semantic plan, hash-bound apply, symbolic secrets, guarded deletion)
+- **Current integration polish:** G02 groups are visible in the sidebar, Hosts, and Multi-host pages and remain filtered by effective host access
 - **v8.9.9-alpha.1:** G05 (Builder host schema), G09 (Alerter routing)
 - **Already shipped:** G08 (git.js:rollbackStack)
-- **Deferred:** G03 (procedures), G04 (fleet UX polish), G06 (cross-host pipeline), G07 (GitOps export)
+- **Deferred:** G06 (cross-host pipeline)
 - **Won't-do:** G10 (Rust rewrite), G11 (MongoDB)
 
 ## Gap inventory
 
 | ID | Gap | Priority | Effort | Status |
 |---|---|---|---|---|
-| G01 | Git stacks target a single host — no fleet/group targeting | P0 | M | `[~]` v8.9.7-alpha.1 (schema + basic fan-out API done; UI + polish pending) |
+| G01 | Git stacks target a single host — no fleet/group targeting | P0 | M | `[x]` Multi-host target fan-out completed; group shortcuts remain optional G02 UX |
 | G02 | No host groups (only container groups) | P1 | S | `[x]` v8.9.7-alpha.1 |
-| G03 | No user-invoked ordered procedures (workflows are event-triggered only) | P1 | M | `[ ]` |
-| G04 | Fleet-first UX polish — adding host N feels heavier than host 2 | P1 | S | `[ ]` |
+| G03 | No user-invoked ordered procedures (workflows are event-triggered only) | P1 | M | `[x]` v8.21.4 |
+| G04 | Fleet-first UX polish — adding host N feels heavier than host 2 | P1 | S | `[x]` v8.21.4 |
 | G05 | No dedicated "builder host" concept | P2 | S | `[x]` v8.9.9-alpha.1 (is_builder + default_registry_id columns; build dispatch in follow-up) |
 | G06 | No cross-host build-and-deploy pipeline (build on A → deploy to B/C) | P2 | L | `[ ]` |
-| G07 | No GitOps-native resource files (declare stack + host + alerter in YAML) | P2 | M | `[ ]` |
+| G07 | No GitOps-native resource files (declare stack + host + alerter in YAML) | P2 | M | `[x]` v8.21.4 declarative fleet export/plan/apply |
 | G08 | Git stack rollback is manual (revert commit + redeploy) | P3 | S | `[x]` already shipped (git.js:rollbackStack) |
 | G09 | Alerter routing is per-rule, not per-scope (host/group/tag) | P3 | S | `[x]` v8.9.9-alpha.1 |
 | G10 | Rust backend / single static binary | — | XL | `[-]` |
@@ -49,7 +51,7 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 
 ### G01 — Git stacks target a single host — no fleet/group targeting
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P0
 - **Effort:** M (1 week)
 - **Dependencies:** G02 (host groups) — nice-to-have but not blocking
@@ -57,7 +59,7 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 
 **Closure approach**
 
-1. **Schema (migration 073):** add a `git_stack_targets` join table: `(stack_id, host_id, PRIMARY KEY (stack_id, host_id))`. Keep `git_stacks.host_id` for backward compatibility, but treat it as "primary/legacy target" only. `git_stack_targets` is the new source of truth; migration 073 backfills one row per existing stack.
+1. **Schema (migrations 074 + 095):** add a `git_stack_targets` join table: `(stack_id, host_id, PRIMARY KEY (stack_id, host_id))`. Keep `git_stacks.host_id` for backward compatibility, but treat it as "primary/legacy target" only. Migration 074 backfills existing stacks and 095 repairs the legacy local-host alias where needed.
 2. **Service (`src/services/git.js`):** extend `listStacks()`, `getStack()`, `createStack()`, `updateStack()` to accept `target_host_ids: number[]` and read/write the join table. `triggerDeploy(stackId, source)` becomes fan-out: iterate targets, run compose-up per host, aggregate results, report per-host status. Deploy remains sequential (not parallel) — parallelism is a follow-up in G06.
 3. **Routes (`src/routes/git.js`):** accept `target_host_ids` on POST/PUT. Return per-target status in GET responses.
 4. **Frontend (`public/js/pages/git-stacks.js`):**
@@ -68,13 +70,13 @@ Komodo (mbecker20's Rust-based Docker/GitOps orchestrator) and Docker Dash targe
 6. **Audit:** every fan-out deploy logs one entry per target with `details.target_host_id` so the audit trail is precise.
 
 **Acceptance criteria**
-- [ ] Migration 073 applies cleanly on fresh + existing DB
-- [ ] Existing single-host stacks continue to work unchanged (backward compat verified)
-- [ ] Create-stack form allows selecting ≥1 host from all registered Docker/Podman/Swarm hosts
-- [ ] Webhook / polling / manual deploy fans out to all targets
-- [ ] Per-target success/failure surfaced in UI + audit log
-- [ ] Documentation added to `git-integration.md` howto
-- [ ] Jest coverage: multi-target list/create/update/deploy paths
+- [x] Migrations 074/095 apply cleanly on fresh + existing DB, including legacy `host_id=0`
+- [x] Existing single-host stacks continue to work unchanged
+- [x] Create-stack form requires ≥1 active Docker-compatible host
+- [x] Webhook / polling / manual deploy and rollback fan out sequentially to all targets
+- [x] Per-target success/failure is surfaced in UI + audit log
+- [x] Documentation added to `docs/features/git-integration.md`
+- [x] Jest coverage: target persistence, filtering, updates, fan-out, partial failure, Docker CLI contexts, and drift
 
 **Notes**
 
@@ -84,7 +86,7 @@ Deploy fan-out is sequential by default; document the trade-off. Users needing p
 
 ### G02 — No host groups (only container groups)
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P1
 - **Effort:** S (1-3 days)
 - **Dependencies:** none
@@ -92,19 +94,20 @@ Deploy fan-out is sequential by default; document the trade-off. Users needing p
 
 **Closure approach**
 
-1. **Schema (migration 074):** extend `container_groups` semantics OR add a new `host_groups` table with `(id, name, color, icon, sort_order, created_by)` plus `host_group_members(group_id, host_id)`. New table is cleaner — container groups and host groups have different member types and different scopes (container groups are per-user + global; host groups should only be global).
+1. **Schema (migration 073):** dedicated `host_groups` and `host_group_members` tables keep host organization separate from per-user container groups.
 2. **Service:** `src/services/host-groups.js` — mirror of `groups.js` shape but for hosts. CRUD + membership + list.
 3. **Routes:** `src/routes/host-groups.js` — `/api/host-groups/*` with the same RBAC pattern (`requireAuth` + `requireRole('admin')` on writes).
-4. **Frontend (`public/js/pages/hosts.js`):** add "Manage groups" button next to "Add host" and "Non-Docker host". Group badges on host cards. Filter chip row above the grid.
-5. **Wire into G01:** git-stack target selector supports "Group: production" as a target, resolved at deploy time.
-6. **Wire into `multihost.js`:** add group filter chip alongside search box.
+4. **Frontend:** full group management lives under **Settings → Access**, with a **Manage groups** shortcut and group badges on the Hosts page.
+5. **Fleet integration:** the sidebar renders a group-aware host tree and `multihost.js` exposes group filter chips. Read responses remove hosts and memberships outside the user's effective host ACL.
+6. **Git integration:** Git stacks persist explicit host targets. Group shortcuts remain an optional future convenience so group membership changes cannot silently expand a production deployment.
 
 **Acceptance criteria**
-- [ ] Migration 074 applies cleanly
-- [ ] CRUD works for host groups from Hosts page
-- [ ] Host cards show group badges
-- [ ] Multi-host overview page supports group filter
-- [ ] Documented in an updated `hosts-multi-host.md` howto
+- [x] Migration 073 applies cleanly
+- [x] CRUD works from Settings → Access and is linked from the Hosts page
+- [x] Host cards show group badges
+- [x] Multi-host overview supports group filters
+- [x] Sidebar tree and group reads honor per-host access
+- [x] Documented in `docs/features/fleet-operations.md`
 
 **Notes**
 
@@ -114,7 +117,7 @@ Keep host-group RBAC simple: admin creates and edits, everyone reads. No per-gro
 
 ### G03 — No user-invoked ordered procedures (workflows are event-triggered only)
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P1
 - **Effort:** M (1 week)
 - **Dependencies:** none (works standalone; deeper with G01 for cross-host steps)
@@ -122,7 +125,7 @@ Keep host-group RBAC simple: admin creates and edits, everyone reads. No per-gro
 
 **Closure approach**
 
-1. **Schema (migration 075):** `procedures(id, name, description, steps_json, created_by, created_at)`, `procedure_runs(id, procedure_id, status, started_at, finished_at, log_json, triggered_by)`. `steps_json` is an ordered array of `{action_type, action_config, target_host_id, target_container?, on_error: 'stop'|'continue'}`.
+1. **Schema (migration 096):** `procedures(id, name, description, steps_json, created_by, created_at)`, `procedure_runs(id, procedure_id, status, started_at, finished_at, log_json, started_by)`. `steps_json` is an ordered array of `{action_type, action_config, target_host_id, on_error: 'stop'|'continue'}`.
 2. **Service (`src/services/procedures.js`):** `run(procedureId, {user, ip})` executes steps serially, streams progress via WS to any subscribed clients, halts on `on_error='stop'`, writes to `procedure_runs`.
 3. **Action types (v1 minimum):** `pull_image`, `restart_container`, `stop_container`, `start_container`, `deploy_stack` (compose up), `notify_channel`, `webhook`, `wait_seconds`, `run_git_stack` (integrates with G01). Extension point pattern like `workflows.js:_executeAction`.
 4. **Routes:** `POST /api/procedures/:id/run` — RBAC gated `admin|operator`. `GET /api/procedures/:id/runs` for history.
@@ -130,12 +133,13 @@ Keep host-group RBAC simple: admin creates and edits, everyone reads. No per-gro
 6. **Sidebar entry:** "Procedures" gated on `data-fleet-daemon="docker,podman"` (any host that runs containers).
 
 **Acceptance criteria**
-- [ ] CRUD for procedures via UI
-- [ ] Step builder supports the v1 action types
-- [ ] Run streams live progress + logs
-- [ ] Run history + audit-logged execution
-- [ ] Sample procedures included: "Blue/green deploy", "Roll all containers", "Emergency stop stack"
-- [ ] Jest coverage: procedure service + serial execution + error handling
+- [x] CRUD for procedures via UI
+- [x] Step builder supports the v1 action types
+- [x] Run streams live progress + logs, with polling fallback and cancellation
+- [x] Run history + audit-logged execution
+- [x] Sample procedures included: "Blue/green deploy", "Roll all containers", "Emergency stop stack"
+- [x] Jest coverage: validation, CRUD, serial execution, cancellation, error policies, RBAC, and audit
+- [x] Documentation added to `docs/features/procedures.md`
 
 **Notes**
 
@@ -145,7 +149,7 @@ Overlaps deliberately with `deployment_pipelines` (v6.16.0 pipeline). Consider w
 
 ### G04 — Fleet-first UX polish — adding host N feels heavier than host 2
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P1
 - **Effort:** S (1-3 days)
 - **Dependencies:** G02 (groups make this easier)
@@ -153,28 +157,30 @@ Overlaps deliberately with `deployment_pipelines` (v6.16.0 pipeline). Consider w
 
 **Closure approach**
 
-1. **Sidebar host switcher (`public/js/main.js` or wherever the sidebar renders):** replace the flat list with a group-aware collapsible tree using G02 groups. Show connection status dots. Keyboard shortcut `⌘K` to fuzzy-search hosts.
-2. **Multi-host overview as default landing for admins with ≥3 hosts:** detect host count on login, redirect to `/multihost` instead of the current dashboard for fleet-shaped users. Add a settings toggle to override.
-3. **Bulk host actions:** `multihost.js` gains checkbox column + bulk-restart / bulk-prune / bulk-pull. Confirm modal shows per-host preview.
-4. **Cards-per-host consistency:** hosts.js grid gains "compact mode" for >10 hosts (icon + name + status + 1 metric only).
-5. **"Fleet health at a glance" widget** on the dashboard: sparkline of connected/degraded/disconnected host count over 24h.
+1. **Sidebar host switcher (`public/js/app.js`):** the flat selector is replaced with an ACL-filtered, group-aware collapsible tree with connection dots and inline search. `Ctrl/⌘+K` fuzzy-searches cached and server-provided hosts.
+2. **Fleet entry points:** the existing Multi-host page remains an explicit navigation target. The dashboard adds fleet health and links to Multi-host rather than forcing an unexpected post-login redirect.
+3. **Bulk host actions:** `multihost.js` provides admin-only multi-select restart and prune, a per-host preview, typed confirmation for prune, system-container exclusion, preserved volumes, partial results, and audit records.
+4. **Cards-per-host consistency:** `hosts.js` adds a persisted compact mode and defaults to it above ten hosts.
+5. **Fleet health at a glance:** migration 097 stores five-minute health buckets, a leader-only job samples in the background, and the admin dashboard renders connected/degraded/disconnected history for fleets of at least three hosts.
 
 **Acceptance criteria**
-- [ ] Sidebar host tree renders groups + status
-- [ ] `⌘K` opens a fuzzy host search palette
-- [ ] Multi-host overview supports bulk restart / prune with per-host preview
-- [ ] Dashboard shows fleet health widget when host count ≥ 3
-- [ ] All new UI keyboard-navigable and screen-reader labelled
+- [x] Sidebar host tree renders groups + status
+- [x] `Ctrl/⌘+K` opens a fuzzy host search palette
+- [x] Multi-host overview supports bulk restart / prune with per-host preview
+- [x] Dashboard shows fleet health widget when host count ≥ 3
+- [x] New controls are keyboard-navigable and screen-reader labelled
+- [x] Backend validation and fleet health persistence have Jest coverage
+- [x] Documentation added to `docs/features/fleet-operations.md`
 
 **Notes**
 
-Do this AFTER G02 so groups are the axis for organization. Doing it before means designing the sidebar tree twice.
+The dashboard stays the default landing page. This preserves existing navigation expectations while surfacing the fleet widget and a direct Multi-host link.
 
 ---
 
 ### G05 — No dedicated "builder host" concept
 
-- **Status:** `[ ]` Open
+- **Status:** `[x]` Completed
 - **Priority:** P2
 - **Effort:** S (1-3 days)
 - **Dependencies:** none
@@ -246,19 +252,19 @@ This is the biggest single gap in effort. Consider deferring to v9.0 if v8.9 foc
 
 **Closure approach**
 
-1. **Export/Import first, syncing later:**
-   - `GET /api/system/config-export` — dump `docker_hosts`, `git_stacks`, `git_stack_targets`, `notification_channels`, `alert_rules`, `workflow_rules`, `host_groups` as one YAML/JSON document. Secrets stay `enc:` (encrypted-at-rest) so exports are safe to commit.
-   - `POST /api/system/config-import` — parse + upsert. Diff view before apply, RBAC `admin`.
+1. **Export/plan/apply first, syncing later:**
+   - `GET /api/gitops/export` exports hosts, groups, Git stacks/targets, staged procedures, and notification references as versioned YAML/JSON. Secrets are omitted and represented only by symbolic references.
+   - `POST /api/gitops/plan` validates and produces a semantic diff; `POST /api/gitops/apply` accepts only the reviewed anti-stale plan hash.
 2. **Later phase — declarative sync:** point Docker Dash at a Git repo containing `docker-dash.yaml` and let it reconcile on push. This is a bigger design decision — leave as a follow-up.
-3. **Frontend:** `system-templates.js` gets a "Config export/import" section, or new page `settings-gitops.js`.
-4. **Encryption strategy:** exported secrets remain encrypted with the current `ENCRYPTION_KEY`. Rewrap on import if the destination key differs — reuse the `secretsRotations` machinery.
+3. **Frontend:** the Git Stacks page includes a Fleet GitOps YAML editor, download, plan summary, blocked actions, and guarded apply flow.
+4. **Secret strategy:** encrypted values never leave the database; exported symbolic references preserve existing local secrets and block unsafe cross-install creation.
 
 **Acceptance criteria**
-- [ ] YAML export of all reconcilable resources
-- [ ] YAML import with dry-run diff
-- [ ] Round-trip test: export → wipe → import → identical state
-- [ ] Secrets remain encrypted through the round trip
-- [ ] Howto `config-as-code.md`
+- [x] YAML export of all first-slice reconcilable resources
+- [x] YAML/JSON input with normalized dry-run diff
+- [x] Round-trip plan/apply coverage with stale-plan rejection
+- [x] Secrets omitted and represented by symbolic references
+- [x] Documentation: `docs/features/declarative-gitops.md`
 
 **Notes**
 

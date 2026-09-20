@@ -153,7 +153,7 @@ ssh -i /data/pve-migration-key root@192.168.13.21 "hostname"
 6. Endpoint: `https://192.168.13.21:8006`
 7. API token ID: `root@pam!docker-dash` (from step 6)
 8. API token secret: the UUID from step 6
-9. Skip TLS verification: ☑ **checked** (self-signed cert)
+9. Provider CA certificate: paste the verified Proxmox cluster CA from a trusted administrative session. The certificate must match the endpoint host; TLS verification is mandatory.
 10. Submit
 
 Sidebar → **Proxmox (alpha)** now appears. Click it — you should see the info card with the Proxmox version and 5 tabs (Nodes / VMs / LXC / Storages / Backups).

@@ -11,8 +11,15 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: read
+
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
   build:
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,22 +27,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # `latest` added explicitly so install.sh can pull a known-good image
@@ -50,16 +49,83 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - name: Build candidate image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: production
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          tags: docker-dash:ci-${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify production startup and secret persistence
+        env:
+          CANDIDATE: docker-dash:ci-${{ github.sha }}
+        run: |
+          docker run --rm --network none --cap-drop=ALL \
+            --security-opt=no-new-privileges --cpus=1 --memory=512m \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            -v "$PWD/scripts:/audit:ro" \
+            -e NODE_PATH=/app/node_modules -e DD_SMOKE_APP_IMAGE="$CANDIDATE" \
+            --entrypoint node "$CANDIDATE" /audit/smoke-production-image.js
+
+      - name: Verify rebuilt scanner provenance and functionality
+        env:
+          CANDIDATE: docker-dash:ci-${{ github.sha }}
+        run: |
+          IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$CANDIDATE")
+          docker run --rm --network none --cap-drop=ALL \
+            --security-opt=no-new-privileges --cpus=1 --memory=512m \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            -v "$PWD/scripts:/audit:ro" \
+            -e NODE_PATH=/app/node_modules -e DD_SMOKE_APP_IMAGE="$IMAGE_ID" \
+            --entrypoint node "$IMAGE_ID" /audit/smoke-scanner-image.js
+
+      - name: Gate final image vulnerabilities
+        env:
+          CANDIDATE: docker-dash:ci-${{ github.sha }}
+        # The npm lockfile does not cover npm's own bundle or embedded Go
+        # dependencies in scanners. Scan the actual candidate before registry login.
+        run: |
+          status=0
+          docker run --rm --cpus=2 --memory=2g \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            --entrypoint trivy "$CANDIDATE" image \
+            --image-src docker --scanners vuln --timeout 10m \
+            --ignorefile /dev/null --severity HIGH,CRITICAL,UNKNOWN --exit-code 1 \
+            "$CANDIDATE" || status=1
+          # Grype's database can contain advisories absent from Trivy's distro
+          # feed. Run both gates, even if the first one reports findings.
+          docker run --rm --cpus=2 --memory=2g \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            --entrypoint grype "$CANDIDATE" \
+            --fail-on high "docker:$CANDIDATE" || status=1
+          exit "$status"
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the scanned image
+        if: github.event_name != 'pull_request'
+        env:
+          CANDIDATE: docker-dash:ci-${{ github.sha }}
+          RELEASE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$CANDIDATE" "$tag"
+            docker push "$tag"
+          done <<< "$RELEASE_TAGS"
 
       - name: Image summary
         if: github.event_name != 'pull_request'

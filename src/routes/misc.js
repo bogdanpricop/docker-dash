@@ -8,10 +8,14 @@ const { Router } = require('express');
 const auditService = require('../services/audit');
 const settingsService = require('../services/settings');
 const statsService = require('../services/stats');
-const { requireAuth, optionalAuth, requireRole, writeable } = require('../middleware/auth');
+const { requireAuth, requireRole, writeable } = require('../middleware/auth');
+const monitoringAccess=require('../middleware/monitoring-access');
 const { getClientIp, formatBytes } = require('../utils/helpers');
 const { getDb } = require('../db');
 const dockerService = require('../services/docker');
+const hostPermissions = require('../services/host-permissions');
+const providerResourceSnapshots = require('../services/provider-sdk/resource-snapshots');
+const hostGroups = require('../services/host-groups');
 const log = require('../utils/logger')('misc');
 
 const router = Router();
@@ -21,26 +25,7 @@ const _pkgVersion = require('../version');
 
 // ─── Health ─────────────────────────────────────────────────
 
-router.get('/health', (req, res) => {
-  try {
-    getDb().prepare('SELECT 1').get();
-    // v7.0.0: expose cluster role so load balancers can route writes
-    // to the leader (sticky-session LBs use this via health-check-conditional
-    // routing; e.g. Caddy `health_uri` + `health_headers` matchers).
-    const cluster = require('../services/cluster');
-    const status = cluster.getStatus();
-    res.json({
-      status: 'ok',
-      version: _pkgVersion,
-      timestamp: new Date().toISOString(),
-      mode: status.mode,
-      role: status.role,
-      nodeId: status.nodeId,
-    });
-  } catch {
-    res.status(503).json({ status: 'error', message: 'Database unavailable' });
-  }
-});
+router.get('/health', require('./health'));
 
 // ─── Cluster Status (v7.0.0) ─────────────────────────────────
 //
@@ -50,14 +35,14 @@ router.get('/health', (req, res) => {
 //   - Load-balancer health check scripts that need more than `role`
 //   - Failover troubleshooting (heartbeatAgeMs surfaces a stalled leader)
 
-router.get('/cluster/status', optionalAuth, (req, res) => {
+router.get('/cluster/status', monitoringAccess, (req, res) => {
   const cluster = require('../services/cluster');
   res.json(cluster.getStatus());
 });
 
 // ─── Prometheus Metrics ─────────────────────────────────────
 
-router.get('/metrics', optionalAuth, (req, res) => {
+router.get('/metrics', monitoringAccess, (req, res) => {
   try {
     const overview = statsService.getOverview();
     const metricsService = require('../services/metrics');
@@ -103,7 +88,7 @@ router.get('/metrics', optionalAuth, (req, res) => {
       `docker_dash_cluster_redis_connected ${cs.redisConnected === true ? 1 : 0}`,
     ];
 
-    res.type('text/plain').send(lines.join('\n') + '\n' + appMetrics + clusterLines.join('\n') + '\n');
+    res.set('Content-Type','text/plain; version=0.0.4; charset=utf-8').send(lines.join('\n') + '\n' + appMetrics + clusterLines.join('\n') + '\n');
   } catch (err) {
     res.status(500).send('# Error generating metrics\n');
   }
@@ -363,6 +348,27 @@ router.get('/search', requireAuth, async (req, res) => {
       }
     } catch (err) { /* search section failed, skip */ }
 
+    // Search normalized VM snapshots only. This intentionally avoids provider
+    // network fan-out while the command palette is open.
+    try {
+      const db = getDb();
+      const providerHosts = db.prepare(`SELECT id FROM docker_hosts
+        WHERE is_active = 1 AND daemon_type IN ('proxmox', 'vsphere', 'xen')
+        ORDER BY id LIMIT 500`).all().map(row => row.id);
+      const isAdmin = req.user.role === 'admin'
+        || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+      const visibleHostIds = hostPermissions.filterVisibleHosts(req.user.id, isAdmin, providerHosts);
+      for (const vm of providerResourceSnapshots.search(query, visibleHostIds, 20, db)) {
+        results.push({
+          type: 'virtual-machine', id: vm.id, name: vm.displayName,
+          host_id: vm.hostId,
+          detail: `${vm.providerType} · ${vm.powerState}`,
+          url: `#/virtual-machines/${vm.hostId}/${vm.id}`,
+          icon: 'fas fa-desktop',
+        });
+      }
+    } catch (err) { /* search section failed, skip */ }
+
     // Search Git stacks
     try {
       const db = getDb();
@@ -374,6 +380,30 @@ router.get('/search', requireAuth, async (req, res) => {
           type: 'git-stack', id: s.id, name: s.stack_name,
           detail: `${s.repo_url} (${s.status})`,
           url: `#/git-stacks/${s.id}`, icon: 'fab fa-git-alt',
+        });
+      }
+    } catch (err) { /* search section failed, skip */ }
+
+    // Search visible hosts. Returning host_id lets the command palette switch
+    // context directly instead of merely opening the Hosts administration page.
+    try {
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT id, name, environment, daemon_type, conn_state
+        FROM docker_hosts
+        WHERE name LIKE ? OR environment LIKE ? OR daemon_type LIKE ?
+        ORDER BY is_default DESC, name LIMIT 20
+      `).all(`%${query}%`, `%${query}%`, `%${query}%`);
+      const isAdmin = req.user.role === 'admin'
+        || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+      const visibleIds = new Set(hostPermissions.filterVisibleHosts(
+        req.user.id, isAdmin, rows.map(row => row.id)
+      ));
+      for (const host of rows.filter(row => visibleIds.has(row.id))) {
+        results.push({
+          type: 'host', id: host.id, host_id: host.id, name: host.name,
+          detail: `${host.environment || 'development'} · ${host.daemon_type || 'docker'} · ${host.conn_state || 'unknown'}`,
+          url: '#/dashboard', icon: 'fas fa-server',
         });
       }
     } catch (err) { /* search section failed, skip */ }
@@ -393,7 +423,11 @@ router.get('/search', requireAuth, async (req, res) => {
       }
     } catch (err) { /* search section failed, skip */ }
 
-    res.json({ results: results.slice(0, 30), query: q, total: results.length });
+    const prioritized = [
+      ...results.filter(item => item.type === 'virtual-machine'),
+      ...results.filter(item => item.type !== 'virtual-machine'),
+    ];
+    res.json({ results: prioritized.slice(0, 30), query: q, total: results.length });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -891,7 +925,10 @@ router.get('/settings', requireAuth, requireRole('admin'), (req, res) => {
   res.json(settingsService.getAll());
 });
 
-router.put('/settings', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/settings', requireAuth, requireRole('admin'), writeable, (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'ldap_config')) {
+    return res.status(400).json({ error: 'Use /api/auth/ldap to update LDAP credentials securely' });
+  }
   settingsService.setBulk(req.body, req.user.id);
   auditService.log({ userId: req.user.id, username: req.user.username,
     action: 'settings_update', details: Object.keys(req.body), ip: getClientIp(req) });
@@ -1100,7 +1137,7 @@ router.get('/docker-versions', requireAuth, async (req, res) => {
 // ─── Multi-Host Overview ────────────────────────────────────
 
 // v8.9.11-alpha.4 — non-Docker enrichment helper. For hosts with
-// daemon_type ∈ {vsphere, incus, lxd, proxmox, kubernetes, nomad}, do
+// daemon_type ∈ {vsphere, xen, incus, lxd, proxmox, kubernetes, nomad}, do
 // a best-effort read to populate a small summary the multi-host tab
 // can render. Returns { daemonType, daemonName, resources: {...},
 // version } or { daemonType, error }.
@@ -1138,6 +1175,38 @@ async function _nonDockerOverview(row) {
             },
           };
         } finally { await client.logout().catch(() => {}); }
+      }
+      case 'xen': {
+        const { clientForHost } = require('../services/xen');
+        const client = clientForHost(row);
+        const [info, vms, xenHosts, pools, storages] = await Promise.all([
+          client.info(),
+          client.listVMs().catch(() => []),
+          client.listHosts().catch(() => []),
+          client.listPools().catch(() => []),
+          client.listStorages().catch(() => []),
+        ]);
+        const running = vms.filter(vm => /running|poweredon/i.test(vm.powerState || '')).length;
+        const totalBytes = storages.reduce((sum, storage) => sum + (storage.totalBytes || 0), 0);
+        const usedBytes = storages.reduce((sum, storage) => sum + (storage.usedBytes || 0), 0);
+        return {
+          daemonType: 'xen', daemonName: info.product || 'Xen',
+          version: info.version || null,
+          apiVersion: info.apiVersion || info.protocol || null,
+          productFullName: `${info.product || 'Xen'} · ${client.provider}`,
+          capabilities: info.capabilities || client.capabilities(),
+          resources: {
+            vms: vms.length, vmsRunning: running, vmsStopped: vms.length - running,
+            xenHosts: xenHosts.length, pools: pools.length, storages: storages.length,
+            capacityGiB: totalBytes ? Math.round(totalBytes / (1024 ** 3)) : 0,
+            usedGiB: usedBytes ? Math.round(usedBytes / (1024 ** 3)) : 0,
+            topVMs: vms.slice(0, 8).map(vm => ({
+              id: vm.id, name: vm.name, powerState: vm.powerState,
+              cpu: vm.cpus, memoryGiB: vm.memoryBytes ? Math.round(vm.memoryBytes / (1024 ** 3)) : 0,
+              ipAddress: vm.ipAddress || null,
+            })),
+          },
+        };
       }
       case 'incus':
       case 'lxd': {
@@ -1248,18 +1317,25 @@ async function _nonDockerOverview(row) {
 router.get('/multi-host/overview', requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const dbHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const configuredHosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
+    const isAdmin = req.user.role === 'admin'
+      || (Array.isArray(req.user.roles) && req.user.roles.includes('admin'));
+    const visibleIds = new Set(hostPermissions.filterVisibleHosts(
+      req.user.id, isAdmin, configuredHosts.map(host => host.id)
+    ));
+    const dbHosts = configuredHosts.filter(host => visibleIds.has(host.id));
 
     // If no hosts configured, use the default local connection (id=0)
     // Otherwise, use only what's in the DB to avoid duplicates
-    const hostList = dbHosts.length > 0
+    const hostList = configuredHosts.length > 0
       ? dbHosts.map(h => ({
           id: h.id, name: h.name, connectionType: h.connection_type,
           environment: h.environment || 'production',
           daemonType: h.daemon_type || 'docker',
+          groups: hostGroups.groupsForHost(h.id),
           _row: h,
         }))
-      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production', daemonType: 'docker' }];
+      : [{ id: 0, name: 'Local', connectionType: 'socket', environment: 'production', daemonType: 'docker', groups: [] }];
 
     // Fetch data from all hosts in parallel
     const results = await Promise.allSettled(hostList.map(async (host) => {
@@ -1271,6 +1347,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
           id: host.id, name: host.name, environment: host.environment,
           connectionType: host.connectionType,
           daemonType: host.daemonType,
+          groups: host.groups,
           healthy: !summary.error,
           nonDocker: summary,
           info: { hostname: host.name, os: summary.productFullName || '',
@@ -1283,8 +1360,8 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
       const docker = dockerService.getDocker(host.id);
 
       const [containers, info, statsOverview] = await Promise.all([
-        dockerService.listContainers(host.id).catch(() => []),
-        docker.info().catch(() => ({})),
+        dockerService.listContainers(host.id),
+        docker.info(),
         statsService.getOverview(host.id),
       ]);
 
@@ -1294,6 +1371,7 @@ router.get('/multi-host/overview', requireAuth, async (req, res) => {
         environment: host.environment,
         connectionType: host.connectionType,
         daemonType: host.daemonType || 'docker',
+        groups: host.groups,
         healthy: true,
         info: {
           hostname: info.Name || host.name,

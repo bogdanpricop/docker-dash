@@ -108,14 +108,17 @@ async function _runOne(policy) {
 /**
  * Gather tags + metadata for a repo. The Distribution V2 API requires
  * a manifest fetch per tag to get size + pushed-at; for repos with many
- * tags this is N requests. We cap by listing tags first and stop at 1000
- * (the typical operator scale; bigger repos should split into sub-paths).
+ * tags this is N requests. Refuse repositories above 1000 tags rather than
+ * making a deletion plan from a truncated inventory.
  */
 async function _gatherTagsWithMetadata(registryId, repoPath) {
   // For now, list tags only — pushedAt + sizeBytes come from manifests.
-  // The cron tolerates missing metadata (evaluate() handles it).
+  // Missing timestamps are allowed; missing manifests are not safe to ignore.
   const tagNames = await registryService.tags(registryId, repoPath);
   if (!Array.isArray(tagNames) || tagNames.length === 0) return [];
+  if (tagNames.length > 1000) {
+    throw new Error('Retention requires a complete inventory; repositories above 1000 tags are not supported');
+  }
 
   const out = [];
   for (const tag of tagNames.slice(0, 1000)) {
@@ -137,7 +140,9 @@ async function _gatherTagsWithMetadata(registryId, repoPath) {
       log.warn('Failed to fetch manifest for tag during retention sweep', {
         repo: repoPath, tag, error: err.message,
       });
-      // Skip this tag — better than failing the whole sweep
+      // An unread tag might share a digest with a deletion candidate. Without
+      // its metadata we cannot enforce protected aliases or the minimum floor.
+      throw new Error('Retention requires complete manifest metadata; no deletions were planned');
     }
   }
   return out;

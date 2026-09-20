@@ -72,27 +72,7 @@ docker compose up -d app
 
 ### 2. Register the host in Docker Dash
 
-There is no UI to add non-Docker hosts yet (alpha limitation). Register the row manually. Log into the docker-dash container:
-
-```bash
-docker exec -it docker-dash sh
-```
-
-Then run this SQL against the SQLite DB:
-
-```bash
-sqlite3 /data/docker-dash.db <<'SQL'
-INSERT INTO docker_hosts (name, connection_type, daemon_type, daemon_config, is_default, is_active)
-VALUES (
-  'Local Incus',
-  'socket',
-  'incus',
-  '{"transport":"unix","socket":"/var/lib/incus/unix.socket"}',
-  0,  -- not default
-  1   -- active
-);
-SQL
-```
+Open **Hosts → Non-Docker host → Incus**, choose **Unix socket (local)** and enter the mounted socket path `/var/lib/incus/unix.socket`. Test the connection and save. For remote HTTPS connections, use the same form with a client certificate/key and verified server CA; configuration is encrypted at rest.
 
 ### 3. Verify
 
@@ -156,7 +136,9 @@ The `daemon_config` JSON needs the endpoint + PEM cert + key inline:
 }
 ```
 
-Insert into the DB the same way as the local case. **Note**: the key is stored unencrypted in the SQL row in alpha; encryption-at-rest for Incus creds ships in the follow-up release.
+Use the Hosts form to save the credential with encryption at rest. Also supply `caCert` with the verified issuer CA or trusted self-signed server certificate obtained through an independent trusted channel. The server certificate must be valid for the endpoint host. The client certificate above authenticates Docker Dash to Incus; it does not authenticate Incus to Docker Dash.
+
+Avoid inserting raw credential JSON into SQLite. The Hosts form encrypts the saved provider configuration.
 
 ## What works and what doesn't
 

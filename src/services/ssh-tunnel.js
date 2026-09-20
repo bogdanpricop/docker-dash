@@ -1,6 +1,7 @@
 'use strict';
 
 const net = require('net');
+const { hostKeyOptions } = require('../utils/ssh-host-key');
 const log = require('../utils/logger')('ssh-tunnel');
 
 // Validate docker socket path — must be an absolute path with safe characters only (FIX #13)
@@ -20,6 +21,7 @@ class SshTunnelService {
   async createTunnel(hostConfig) {
     const { id, sshConfig } = hostConfig;
     if (!sshConfig) throw new Error('SSH configuration is required');
+    const identity = hostKeyOptions(sshConfig);
 
     // Validate dockerSocket path (FIX #13)
     if (sshConfig.dockerSocket && !SOCKET_RE.test(sshConfig.dockerSocket)) {
@@ -38,6 +40,7 @@ class SshTunnelService {
       let resolved = false;
 
       const connectOpts = {
+        ...identity,
         host: sshConfig.host,
         port: sshConfig.port || 22,
         username: sshConfig.username,
@@ -279,6 +282,7 @@ class SshTunnelService {
 
   /** Test SSH connection without creating persistent tunnel */
   async testConnection(sshConfig) {
+    const identity = hostKeyOptions(sshConfig);
     // Validate dockerSocket path (FIX #13)
     if (sshConfig.dockerSocket && !SOCKET_RE.test(sshConfig.dockerSocket)) {
       throw new Error('Invalid dockerSocket path');
@@ -333,6 +337,7 @@ class SshTunnelService {
       });
 
       const opts = {
+        ...identity,
         host: sshConfig.host,
         port: sshConfig.port || 22,
         username: sshConfig.username,

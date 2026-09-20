@@ -123,9 +123,7 @@ describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
     expect(allowedY.allowed).toBe(true);
   });
 
-  it('isLeader() returns true in HA v6.17.1 (election stubbed until v7.0.0-rc.1)', async () => {
-    // Documented limitation — every node claims leader. Users are instructed
-    // NOT to run multi-replica in HA mode until leader election ships.
+  it('isLeader() elects a single node against the Redis mock', async () => {
     expect(await cluster.isLeader()).toBe(true);
   });
 

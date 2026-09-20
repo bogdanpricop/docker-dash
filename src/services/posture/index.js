@@ -53,12 +53,28 @@ function _activeMuteKeys(db) {
   return new Set(rows.map(r => r.finding_key));
 }
 
+// Resolves to the host's daemon info, or null if it errors or takes too long.
+const DAEMON_INFO_TIMEOUT_MS = 3000;
+function _boundedInfo(hostId) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), DAEMON_INFO_TIMEOUT_MS);
+    if (timer.unref) timer.unref();
+    require('../docker').getInfo(hostId)
+      .then((info) => { clearTimeout(timer); resolve(info); })
+      .catch(() => { clearTimeout(timer); resolve(null); });
+  });
+}
+
 async function scan() {
   const db = _db();
   const hosts = db.prepare('SELECT * FROM docker_hosts WHERE is_active = 1').all();
   // Per-scan firewall cache so fw-drift and fw-exposed-port share ONE listRules
   // (SSH) call per host instead of two.
   const _fwCache = new Map();
+  // v8.94.0 — same idea for daemon info: the isolation check needs the host's
+  // registered OCI runtimes, and any future check that wants `docker info`
+  // should share the one call rather than adding another round trip per host.
+  const _infoCache = new Map();
   const ctx = {
     db, hosts, log,
     firewall: {
@@ -68,6 +84,17 @@ async function scan() {
           catch { _fwCache.set(hostId, null); }
         }
         return _fwCache.get(hostId);
+      },
+    },
+    docker: {
+      // Bounded and best-effort. `docker info` against an unreachable daemon can
+      // sit for a long time, and this scan feeds the Copilot context, which has
+      // its own latency budget — an unreachable host must degrade the scan, not
+      // stall it. The promise is cached rather than the value so concurrent
+      // checks share one call instead of racing to start their own.
+      info(hostId) {
+        if (!_infoCache.has(hostId)) _infoCache.set(hostId, _boundedInfo(hostId));
+        return _infoCache.get(hostId);
       },
     },
   };

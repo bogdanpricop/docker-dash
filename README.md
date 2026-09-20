@@ -9,11 +9,9 @@
     <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/bogdanpricop/docker-dash/releases/latest"><img src="https://img.shields.io/github/v/release/bogdanpricop/docker-dash?color=blue" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/bogdanpricop/docker-dash" alt="License"></a>
-    <a href="https://github.com/bogdanpricop/docker-dash/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-1398%20passing%20(100%25)-brightgreen" alt="Tests"></a>
-    <img src="https://img.shields.io/badge/version-8.2.0-blue" alt="Version">
-    <a href="SECURITY.md#security-audit-history"><img src="https://img.shields.io/badge/production%20readiness-9.9%2F10-brightgreen" alt="Production Readiness"></a>
+    <img src="https://img.shields.io/github/package-json/v/bogdanpricop/docker-dash" alt="Version">
     <a href="SECURITY.md"><img src="https://img.shields.io/badge/security-audited-brightgreen" alt="Security Audited"></a>
-    <img src="https://img.shields.io/badge/Docker-~180MB-blue" alt="Image Size">
+    <img src="https://img.shields.io/badge/Docker-multi--stage-blue" alt="Docker build">
     <img src="https://img.shields.io/badge/RAM-~50MB-blue" alt="RAM Usage">
   </p>
   <p align="center">
@@ -173,8 +171,9 @@ Deep reading: [HA Mode reference](docs/features/ha-mode.md) · [Failover runbook
 - **Notifications Center** — Dedicated page with filters, pagination, bulk mark-read/delete
 
 ### Security
-- **Vulnerability Scanning** — Trivy + Grype + Docker Scout with automatic detection and fallback
-- **Safe-Pull Updates** — Pull new image → scan for vulns → only swap if clean (blocks critical CVEs)
+- **Vulnerability Scanning** — Trivy + Grype with automatic detection and fallback
+  Docker Scout is temporarily excluded because the published binary includes vulnerable dependencies and its plugin source is not available for a security rebuild. Trivy and Grype remain the supported engines. [Reason, impact and return criteria](docs/audits/2026-09-20-scout-exclusion.md).
+- **Safe-Pull Updates** — Pull the new image, verify that exact image with both Trivy and Grype, and swap only when neither reports Critical, High or Unknown findings. Missing or failed scans block the update.
 - **Deployment Pipelines** — Staged pull → scan → swap → verify → notify with full history
 - **Security Dashboard** — Scan history, per-image status, AI-assisted remediation prompts
 - **AI Container Doctor** — Diagnostics + 30 log pattern matchers + Ask AI (OpenAI/Ollama) directly from modal
@@ -207,6 +206,8 @@ Deep reading: [HA Mode reference](docs/features/ha-mode.md) · [Failover runbook
 - **Cloud vendor badges** (v6.12.1) — Optional DMI probe (`/sys/class/dmi/id/sys_vendor` + `product_name`) identifies AWS EC2, Google Cloud, Azure VM, DigitalOcean, Hetzner, Linode, Vultr, Oracle Cloud, Scaleway, OVHcloud, plus on-prem hypervisors (VMware, VirtualBox, KVM/QEMU, Xen, Parallels). Renders as a second colored pill on the Multi-Host card
 
 ### Operations
+- **Compose Catalog** — Curated OCI Compose blueprints with immutable versions, Cosign-only publication, typed secret-reference-safe parameters, deterministic previews, version diff/restore and a separate reviewed deploy step. See [the runbook](docs/features/compose-blueprint-catalog.md)
+- **Workstation Fleet** — Read-only Foreman/Katello inventory, bootc OCI trust/SBOM evidence, Edge Site mapping, security posture and default-off guarded update/rollback workflows. See [the runbook](docs/features/workstation-fleet.md)
 - **Stacks Page** — Unified Compose + Git stacks management with actions (up/down/restart/pull)
 - **Docker Swarm Mode** — Full UI for Nodes, Services, Tasks; init/leave swarm, scale services, drain nodes, join tokens
 - **Docker Compose Editor** — Edit, validate, save & deploy compose configs inline
@@ -224,7 +225,7 @@ Deep reading: [HA Mode reference](docs/features/ha-mode.md) · [Failover runbook
 - **Persistent Sandbox** — Isolated container with resource limits that survives stop/restart
 - **Project Source (GitHub)** — Paste a GitHub repo URL; Docker Dash downloads the tarball, auto-detects the tech stack (Node/Python/Go/Ruby/static), installs dependencies, and starts the app
 - **Project Source (Upload)** — Upload a .tar/.tar.gz archive; same auto-detect + auto-run flow
-- **Auto-detect Stack** — Recognizes package.json, requirements.txt, go.mod, Gemfile, index.html and selects the right base image (node:20-alpine, python:3.12-alpine, etc.)
+- **Auto-detect Stack** — Recognizes package.json, requirements.txt, go.mod, Gemfile, index.html and selects the right base image (node:24-alpine, python:3.12-alpine, etc.)
 - **Security Defaults** — Sandbox containers run with `no-new-privileges`, dedicated internal `dd-sandbox` network, resource limits, restart: no
 - **TTL Auto-cleanup** — Background timer removes expired sandboxes every 30 seconds with WebSocket notification
 - **Visual Badges** — `EPHEMERAL` (red + countdown) or `SANDBOX` (yellow) badges in containers list, detail card with Extend +1h / Remove buttons
@@ -392,7 +393,7 @@ See the [HA Mode reference](docs/features/ha-mode.md) for the full enablement pr
 
 - Docker Engine 20.10+ (or Docker Desktop 4.x+)
 - Docker Compose v2
-- ~50MB RAM, minimal CPU, ~180MB disk for the image (includes Trivy + Grype + Docker Scout binaries for built-in vulnerability scanning)
+- ~50MB RAM, minimal CPU, disk space for the image and scanner databases (size varies by platform and build; includes Trivy + Grype binaries)
 
 ### HA mode (additional)
 
@@ -679,11 +680,11 @@ SSH tunnels run per-replica (readers need them to serve HTTP reads). No active-a
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Node.js 20, Express 5, dockerode, better-sqlite3, ws, ssh2, ldapts |
+| Backend | Node.js 24 LTS, Express 5, dockerode, better-sqlite3, ws, ssh2, ldapts |
 | Frontend | Vanilla JavaScript SPA, Chart.js, xterm.js, Font Awesome (CDN) |
 | Database | SQLite with WAL mode, auto-aggregation, configurable retention |
 | Security | bcrypt, Helmet CSP, rate limiting, session-based auth, Bearer token fallback |
-| Scanning | Trivy (OSS), Grype (Anchore), Docker Scout (SARIF format) |
+| Scanning | Trivy (OSS), Grype (Anchore) |
 
 **Zero build step** — no webpack, no bundler, no transpiler. Frontend files are served as-is.
 
@@ -736,7 +737,12 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 | `STATS_RAW_RETENTION_HOURS` | `24` | Keep raw stats for N hours |
 | `EVENT_RETENTION_DAYS` | `7` | Keep Docker events for N days |
 | `ENABLE_EXEC` | `true` | Allow terminal exec into containers |
+| `DD_TERMINAL_ACCESS_OVERRIDE` | `managed` | Out-of-band terminal policy: `managed`, force `deny`, or recovery `allow` |
 | `READ_ONLY_MODE` | `false` | Disable all write operations |
+| `DD_PROVIDER_SDK_V2` | `true` | Expose the versioned, read-only provider capability contract and Storage Posture assessment; it never enables storage mutation, QoS enforcement or path probes |
+| `DD_PROVIDER_VM_DISK_LIFECYCLE` | `false` | Opt in to reviewed VM-disk create, detach, grow and storage-move operations |
+| `DD_PROVIDER_VM_DISK_DELETE` | `false` | Separately opt in to permanent deletion of a verified Docker Dash-managed detached volume |
+| `DD_PROVIDER_VM_SNAPSHOT_CONSOLIDATION` | `false` | Separately opt in to vSphere-only snapshot disk consolidation after live evidence and typed VM-name confirmation |
 | `DD_MODE` | *(unset — standalone)* | Set to `ha` to enable HA mode. Requires `REDIS_URL`. |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL. Only consulted when `DD_MODE=ha`. |
 | `TRUST_PROXY` | `loopback` (prod) / `true` (dev) | Trusted proxy range for `X-Forwarded-*` headers. Set to your load balancer's IP/CIDR in HA. |
@@ -808,7 +814,7 @@ docker-dash/
 | **Dependency Map** | ✅ | — | — | — | — | — | — | — |
 | Real-time Stats | ✅ | ✅ | ✅ | ✅ | basic | ✅ | basic | ✅ |
 | Terminal (xterm.js) | ✅ | ✅ | ✅ | ✅ | — | ✅ | ✅ | ✅ |
-| Vulnerability Scanning | Trivy + Grype + Scout | — | — | — | — | NeuVector | — | Grype + Trivy |
+| Vulnerability Scanning | Trivy + Grype | — | — | — | — | NeuVector | — | Grype + Trivy |
 | **Safe-Pull + Pipeline** | **5-stage** | — | — | — | — | — | — | basic |
 | **Container Rollback** | ✅ | — | — | ✅ | — | ✅ | — | — |
 | Multi-Host (agentless) | ✅ | agent req. | agent req. | agent | — | ✅ | agent | ✅ |
@@ -837,7 +843,7 @@ docker-dash/
 | Command Palette | ✅ | — | — | — | — | — | — | — |
 | Mobile Responsive | ✅ | ✅ | ✅ | ✅ | ✅ | partial | ✅ | ✅ |
 | Build Step | **None** | Angular | Angular | required | none | none | required | required |
-| Container Size | **~180MB** (incl. Trivy + Grype + Scout) | ~250MB | ~250MB | ~200MB | ~100MB | ~500MB+ | ~100MB | ~80MB |
+| Container Size | Build-dependent (incl. Trivy + Grype) | ~250MB | ~250MB | ~200MB | ~100MB | ~500MB+ | ~100MB | ~80MB |
 | RAM Usage | **~50MB** | ~200MB | ~200MB | ~150MB | ~50MB | ~500MB+ | ~50MB | ~60MB |
 | License | **MIT** | Zlib | commercial | Apache 2.0 | MIT | Apache 2.0 | MIT | BSL 1.1 |
 

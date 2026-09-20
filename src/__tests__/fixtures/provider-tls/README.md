@@ -1,0 +1,1 @@
+Public, disposable TLS test credentials. Never use these keys or trust this CA outside isolated tests. No production credential is included. Valid fixtures expire in 2046; the expired fixture expired in 2021. The CA signing key was discarded.

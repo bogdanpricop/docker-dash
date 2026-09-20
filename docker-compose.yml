@@ -3,9 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
       args:
-        APP_VERSION: "${APP_VERSION:-8.21.4}"
-    image: docker-dash:${APP_VERSION:-8.21.4}
+        APP_VERSION: "${APP_VERSION:-8.96.10}"
+    image: docker-dash:${APP_VERSION:-8.96.10}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -19,12 +20,14 @@ services:
       - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock:ro
       # Persistent data (SQLite DB, stats)
       - docker-dash-data:/data
+      # Compose projects discovered on disk (read/write for editor + deploy).
+      - ${DD_STACKS_HOST_DIR:-/opt/stacks}:/opt/stacks
       # Shared certs dir — Caddyfile written here by the app, read by Caddy
       - caddy-certs:/data/certs
       # Shared policy.json dir for the v6.7 egress filter sidecar (if running)
       - egress-policy:/data/egress-policy
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${APP_PORT:-8101}/api/health"]
+      test: ["CMD-SHELL", "curl --fail --silent --max-time 4 http://localhost:${APP_PORT:-8101}/api/health > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -39,22 +42,26 @@ services:
       - no-new-privileges:true
 
   # Optional Outbound Network Filter sidecar (v6.7+) — enable with:
-  #   docker compose --profile egress up -d
+  #   docker compose --profile egress up -d --build dd-egress-filter
   # Configure via Docker Dash UI: System → Egress → per-row "Enable filter"
   #
   # Before starting: set these envs on the `app` service (via .env):
-  #   DD_EGRESS_SIDECAR_ENDPOINT=dd-egress-filter:29193
+  #   DD_EGRESS_SIDECAR_ENDPOINT=<sidecar IPv4>:29193
   #   DD_EGRESS_SIDECAR_NAME=dd-egress-filter
   #   DD_EGRESS_BLOCKLOG_INGESTER=1
+  #   DD_EGRESS_HELPER_IMAGE=<verified helper image ID> (optional immutable pin)
   #
   # The sidecar peeks TLS SNI + HTTP Host on every connection, compares to
   # the policy allowlist (written by Docker Dash into /etc/dd-egress/policy.json
   # via the shared egress-policy volume), and forwards or resets. IMDS is
   # always blocked. No TLS decryption.
   dd-egress-filter:
+    depends_on:
+      dd-egress-helper:
+        condition: service_completed_successfully
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.21.4}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.96.10}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can
@@ -68,6 +75,7 @@ services:
     environment:
       DD_EGRESS_LISTEN: ":29193"
       DD_EGRESS_POLICY_PATH: /etc/dd-egress/policy.json
+      DD_EGRESS_RESOLVER_SOCKET: /etc/dd-egress/resolver.sock
       DD_EGRESS_BLOCKLOG_PATH: /var/log/dd-egress/denied.log
       DD_EGRESS_METRICS_LISTEN: ":9191"
     # Deliberately NO `ports:` here — sidecar must not be exposed to the host
@@ -75,6 +83,22 @@ services:
     # within filtered containers' netns.
     security_opt:
       - no-new-privileges:true
+    profiles:
+      - egress
+
+  # Build and validate the local default used by the runner's per-target helpers.
+  # This bootstrap container has no namespace privileges, sockets or host mounts.
+  dd-egress-helper:
+    build:
+      context: ./docker/egress-helper
+    image: docker-dash-egress-helper:local
+    entrypoint: ["/bin/true"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
     profiles:
       - egress
 
@@ -95,7 +119,8 @@ services:
     image: redis:7-alpine
     container_name: docker-dash-redis
     restart: unless-stopped
-    command: redis-server --save 60 1000 --maxmemory 128mb --maxmemory-policy allkeys-lru
+    # Evicting the leader key before its TTL can grant two replicas leadership.
+    command: redis-server --save 60 1000 --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
     healthcheck:
@@ -116,7 +141,7 @@ services:
   # and HA mode — the dashboard panels gate HA-only metrics (cluster role,
   # Redis connected) via value mappings.
   #
-  # Grafana default: admin / admin (forced change on first login).
+  # Grafana requires a private bootstrap password file before first boot.
   # Grafana exposed on :${GRAFANA_PORT:-3001}; Prometheus NOT exposed externally.
   # See docs/features/observability.md for hardening + integration with
   # existing Prometheus / Grafana installs.
@@ -124,6 +149,8 @@ services:
     image: prom/prometheus:v3.0.1
     container_name: docker-dash-prometheus
     restart: unless-stopped
+    secrets:
+      - monitoring_token
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -147,18 +174,21 @@ services:
     image: grafana/grafana:11.3.0
     container_name: docker-dash-grafana
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "/docker-dash-grafana-start.sh"]
+    secrets:
+      - grafana_admin_password
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
+      - ./docker/observability/grafana/start.sh:/docker-dash-grafana-start.sh:ro
       - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     environment:
-      # Default admin / admin — Grafana FORCES change on first login.
-      # For automated provisioning, set GF_SECURITY_ADMIN_PASSWORD in .env
-      # so the first-login password change is pre-applied.
+      # File-backed bootstrap credential; never fall back to admin/admin.
+      # Existing database passwords are not changed by this setting.
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
       # Disable anonymous access — operators must log in. Flip to true +
       # set Viewer role if you want the dashboard publicly visible.
       - GF_AUTH_ANONYMOUS_ENABLED=false
@@ -193,6 +223,12 @@ services:
       - app
     profiles:
       - tls
+
+secrets:
+  grafana_admin_password:
+    file: ${GRAFANA_ADMIN_PASSWORD_FILE:-./.secrets/grafana-admin-password}
+  monitoring_token:
+    file: ${MONITORING_TOKEN_FILE:-./.secrets/monitoring-token}
 
 volumes:
   docker-dash-data:

@@ -325,8 +325,8 @@ const RegistryBrowsePage = {
       </p>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn btn-sm" data-tpl="keepLast10"><i class="fas fa-history"></i> Keep last 10</button>
-        <button class="btn btn-sm" data-tpl="untagged30"><i class="fas fa-clock"></i> Delete untagged > 30d</button>
-        <button class="btn btn-sm" data-tpl="aggressive"><i class="fas fa-bolt"></i> Aggressive (5 + 7d)</button>
+        <button class="btn btn-sm" disabled title="Distribution does not provide an untagged-manifest inventory; this operation is unavailable."><i class="fas fa-clock"></i> Untagged cleanup unavailable</button>
+        <button class="btn btn-sm" data-tpl="aggressive"><i class="fas fa-bolt"></i> Keep last 5</button>
         <button class="btn btn-sm" data-tpl="reset"><i class="fas fa-undo"></i> Reset</button>
       </div>
       <textarea id="rb-rule-json" class="form-control mono" rows="6" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.4">${Utils.escapeHtml(JSON.stringify(currentRule, null, 2))}</textarea>
@@ -356,8 +356,7 @@ const RegistryBrowsePage = {
         const ta = document.getElementById('rb-rule-json');
         const tpls = {
           keepLast10:  { keepLastN: 10, minTagsToKeep: 3 },
-          untagged30:  { deleteUntaggedAfterDays: 30, minTagsToKeep: 3 },
-          aggressive:  { keepLastN: 5, deleteUntaggedAfterDays: 7, protectTagPatterns: ['latest', 'v*', 'main', 'prod-*'], minTagsToKeep: 3 },
+          aggressive:  { keepLastN: 5, protectTagPatterns: ['latest', 'v*', 'main', 'prod-*'], minTagsToKeep: 3 },
           reset:       { keepLastN: 10, minTagsToKeep: 3 },
         };
         ta.value = JSON.stringify(tpls[tpl], null, 2);

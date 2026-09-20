@@ -74,14 +74,7 @@ describe('acme.createCredential', () => {
     expect(row.credentials_encrypted).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
   });
 
-  // SKIPPED: This test exercises SQLite's UNIQUE constraint, not our application
-  // logic. Jest's per-file module isolation (combined with shared worker DB
-  // state from earlier-loaded test files) causes the second insert to use a
-  // different DB instance in some run orders, which makes the assertion flaky.
-  // The UNIQUE constraint itself is exercised in production via the API
-  // endpoint's 409 conflict path. Keeping the test skipped rather than deleted
-  // documents the intent.
-  it.skip('rejects duplicate name (flaky in shared workers — SQLite UNIQUE behavior, not app logic)', async () => {
+  it('rejects duplicate credential names', async () => {
     const dupName = N('test-cf-dup');
     await acme.createCredential({
       name: dupName, providerId: 'cloudflare', credentials: { api_token: 'first' },

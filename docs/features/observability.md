@@ -4,7 +4,7 @@
 **Optional — opt-in via `docker compose --profile observability up -d`**
 **Works in both standalone and HA mode.**
 
-Docker Dash ships an opt-in observability stack that deploys Prometheus (scraping `/api/metrics`) + Grafana (with a pre-provisioned dashboard) alongside the app. Zero UI configuration required — after `docker compose --profile observability up -d`, open Grafana and the dashboard is already populated.
+Docker Dash ships an opt-in observability stack that deploys Prometheus (scraping `/api/metrics`) + Grafana (with a pre-provisioned dashboard) alongside the app. Configure the monitoring credential before starting this profile; Grafana dashboards and its datasource are provisioned automatically.
 
 For operators who already run Prometheus or Grafana: skip this profile and integrate manually — [see §5 below](#5-integrating-with-an-existing-prometheusgrafana).
 
@@ -47,19 +47,67 @@ Instead of learning Prometheus + Grafana config from scratch, navigate to **Syst
 
 ## 2. Enabling
 
+Start the app first and sign in as an administrator. In **Identity & Policy**, issue
+a service token with only `monitoring.read`, no tenant, and a suitable lifetime
+(maximum 24 hours). Save its raw value in a private host file. Set
+`MONITORING_TOKEN_FILE` to that file; the default is `./.secrets/monitoring-token`.
+The Compose profile mounts it only into Prometheus as `/run/secrets/monitoring_token`.
+The `.secrets` directory is excluded from Git and Docker build contexts.
+
+Keep the parent directory owner-only (0700 on Linux). The file must be readable by
+the Prometheus container user: Compose file-backed secrets preserve host file
+permissions. For example, a 0644 file inside that private 0700 directory remains
+inaccessible to other host users while the explicitly mounted file is readable in
+Prometheus. Never make the parent directory public or commit the token.
+
+Arrange credential rotation before expiry. Rotation revokes the old token immediately;
+update the existing file contents promptly. Replacing the host file by rename can
+leave a Compose bind mount on the old inode; recreate Prometheus after such a replacement.
+Without a valid credential, scrapes return 401/403 and dashboards stop receiving data.
+Running the app without the observability profile does not require this secret.
+
+Existing scrapers must configure authentication before rollout. Global `api.read`
+service credentials remain compatible; prefer the narrower `monitoring.read` for
+new integrations. Metrics contain container names and operational data. Use HTTPS
+with certificate verification when scraping over an untrusted network; the bundled
+`app:8101` target is the internal Compose connection.
+
+The file configuration follows the documented
+[Prometheus authorization settings](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#http_config)
+and [Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
+
+Grafana also requires `GRAFANA_ADMIN_PASSWORD_FILE`, defaulting to
+`./.secrets/grafana-admin-password`. Its startup guard refuses a missing, empty,
+multiline, whitespace-only or short password file (20-256 characters).
+Generate a unique secret before the first boot. Keep the host parent directory
+0700 and make the individual mounted file readable by Grafana's container UID.
+The file is mounted read-only and its contents are not part of Compose environment
+values. Changing it does **not** reset a password already stored in Grafana's
+database; use Grafana's password-change flow or administrator CLI for that.
+
 ```bash
-# Minimum — adds Prometheus + Grafana, default passwords
+# Create the private bootstrap file once; do not overwrite an existing secret.
+mkdir -p .secrets
+chmod 700 .secrets
+(umask 077; set -C; openssl rand -base64 36 > .secrets/grafana-admin-password)
+chmod 644 .secrets/grafana-admin-password
+
+# After configuring both credential files — adds Prometheus + Grafana
 docker compose --profile observability up -d
 
-# With custom Grafana admin credentials (set before first boot)
-GRAFANA_ADMIN_USER=ops GRAFANA_ADMIN_PASSWORD=<strong-password> \
+# With a custom bootstrap username and an existing private password file
+GRAFANA_ADMIN_USER=ops GRAFANA_ADMIN_PASSWORD_FILE=/private/grafana-password \
   docker compose --profile observability up -d
 
 # With custom Grafana port (default 3001 to avoid clash with app's 8101 + common :3000)
 GRAFANA_PORT=4000 docker compose --profile observability up -d
 ```
 
-Open Grafana at `http://<host>:3001` (or your `GRAFANA_PORT`). Log in with `admin / admin` (or your custom credentials). Grafana **forces a password change** on first login.
+Open Grafana at `http://<host>:3001` (or your `GRAFANA_PORT`). On a fresh database,
+log in with `GRAFANA_ADMIN_USER` (default `admin`) and the generated password.
+Existing installations retain their stored credentials. There is no bundled
+`admin/admin` fallback. `GRAFANA_ADMIN_PASSWORD` is no longer read by this Compose
+profile: move any bootstrap value from `.env` into the private file.
 
 Dashboard: **Docker Dash → Docker Dash — Overview**. Populates within 30s of first scrape.
 
@@ -130,6 +178,9 @@ Append to your `prometheus.yml`:
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     static_configs:
       - targets: ['docker-dash-host:8101']      # DNS name or IP
         labels:
@@ -161,7 +212,7 @@ curl -X POST https://<grafana>/api/dashboards/db \
 
 Before exposing Grafana beyond your trusted network:
 
-- [ ] **Change default Grafana password**. If using `GRAFANA_ADMIN_PASSWORD=...` in `.env`, use a strong value; it's baked in at first boot.
+- [ ] **Check Grafana credentials**. New installs require the private bootstrap file. Existing databases keep their stored password; explicitly change any legacy default and review active sessions.
 - [ ] **Do NOT expose Prometheus externally.** The default compose config binds Prometheus to the internal network only. Leave it that way unless you have an explicit reason.
 - [ ] **Put Grafana behind HTTPS**. Grafana has its own HTTPS config (`GF_SERVER_PROTOCOL=https`), or terminate TLS at a reverse proxy (Caddy/Traefik). Same-host setup can reuse the `--profile tls` Caddy.
 - [ ] **Disable anonymous access** (default). We set `GF_AUTH_ANONYMOUS_ENABLED=false`.
@@ -215,6 +266,9 @@ If you run Docker Dash in HA mode with N replicas, Prometheus needs to scrape ea
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     static_configs:
       - targets: ['dd-1:8101', 'dd-2:8101', 'dd-3:8101']
         labels:
@@ -226,6 +280,9 @@ scrape_configs:
 scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s

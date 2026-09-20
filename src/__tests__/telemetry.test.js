@@ -3,11 +3,8 @@
 // WHY: Closing self-introduced test debt from the v8.2.x post-audit
 // remediation pass.
 //
-// `src/services/telemetry.js` shipped as a SCAFFOLD in v8.2.x — the
-// public API exists, call sites can be sprinkled around the codebase,
-// but the module is OFF by default and the actual collector + Settings
-// UI ship in v8.3.0. The danger of a scaffold is that nobody tests it,
-// so the day v8.3.0 lands the contract has silently drifted.
+// v8.69 upgrades the old no-op scaffold into explicit, local-only daily
+// product-feedback aggregates. There is still no network collector.
 //
 // This suite locks down the v8.2.x scaffold contract so the v8.3.0
 // upgrade can rip out the no-op branches without re-discovering the
@@ -28,7 +25,7 @@ process.env.DB_PATH = ':memory:';
 
 const Database = require('better-sqlite3');
 
-describe('Telemetry scaffold (v8.2.x — off by default)', () => {
+describe('Product feedback telemetry (v8.69 — local and opt-in)', () => {
   let db;
   let telemetry;
 
@@ -40,7 +37,19 @@ describe('Telemetry scaffold (v8.2.x — off by default)', () => {
       CREATE TABLE settings (
         key TEXT PRIMARY KEY,
         value TEXT
-      )
+      );
+      CREATE TABLE product_feedback_preferences (
+        user_id INTEGER PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0,
+        usage_enabled INTEGER NOT NULL DEFAULT 1, failure_enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE product_feedback_daily (
+        event_date TEXT NOT NULL, event_key TEXT NOT NULL, outcome TEXT NOT NULL,
+        provider_type TEXT NOT NULL DEFAULT 'unknown', event_count INTEGER NOT NULL DEFAULT 0,
+        first_recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY(event_date,event_key,outcome,provider_type)
+      );
     `);
 
     // Re-require with a fresh module cache so internal `_enabled` and
@@ -55,6 +64,8 @@ describe('Telemetry scaffold (v8.2.x — off by default)', () => {
 
   beforeEach(() => {
     db.prepare('DELETE FROM settings').run();
+    db.prepare('DELETE FROM product_feedback_preferences').run();
+    db.prepare('DELETE FROM product_feedback_daily').run();
     // Reset module-level state by reloading the module — the scaffold
     // caches `_enabled` and `_installId` between calls.
     jest.resetModules();
@@ -167,20 +178,22 @@ describe('Telemetry scaffold (v8.2.x — off by default)', () => {
 
   // ── describePayload() ──────────────────────────────────────────────
 
-  it('describePayload returns the documented anonymous shape', () => {
+  it('describePayload returns the documented aggregate-only shape', () => {
     const p = telemetry.describePayload(db);
     expect(p).toMatchObject({
-      install_id: expect.any(String),
+      destination: 'local SQLite aggregate only',
+      networkTransmission: false,
+      installId: expect.any(String),
       version: expect.any(String),
       mode: 'standalone',
-      period_seconds: 86400,
-      sample_event: {
-        feature: expect.any(String),
-        count: expect.any(Number),
-        meta: expect.any(Object),
+      periodSeconds: 86400,
+      sampleCounter: {
+        eventKey: 'catalog.view',
+        outcome: 'success',
+        providerType: 'unknown',
+        increment: 1,
       },
-      endpoint: expect.any(String),
-      notice: expect.any(String),
+      excluded: expect.arrayContaining(['username', 'ip', 'error text']),
     });
     // No PII keys
     expect(p).not.toHaveProperty('hostname');
@@ -189,15 +202,29 @@ describe('Telemetry scaffold (v8.2.x — off by default)', () => {
     expect(p).not.toHaveProperty('email');
   });
 
-  it('describePayload notice mentions "v8.2.x scaffold" and "off by default"', () => {
+  it('describePayload explicitly reports zero network transmission', () => {
     const p = telemetry.describePayload(db);
-    expect(p.notice.toLowerCase()).toContain('off by default');
-    expect(p.notice.toLowerCase()).toContain('v8.2.x');
+    expect(p.networkTransmission).toBe(false);
+    expect(p.destination).toContain('local');
   });
 
   it('describePayload accepts a non-default mode', () => {
     const p = telemetry.describePayload(db, 'ha');
     expect(p.mode).toBe('ha');
+  });
+
+  it('records only an allowlisted daily counter after explicit user opt-in', () => {
+    expect(telemetry.record(db, 7, 'catalog.view')).toEqual({ recorded: false, reason: 'opt_in_required' });
+    telemetry.setPreference(db, 7, { enabled: true, usageEnabled: true, failureEnabled: true });
+    expect(telemetry.record(db, 7, 'catalog.view', { outcome: 'success', providerType: 'proxmox' })).toMatchObject({ recorded: true });
+    expect(telemetry.record(db, 7, 'catalog.view', { outcome: 'success', providerType: 'proxmox' })).toMatchObject({ recorded: true });
+    expect(db.prepare('SELECT event_count FROM product_feedback_daily').get().event_count).toBe(2);
+  });
+
+  it('rejects arbitrary event, provider and payload dimensions', () => {
+    telemetry.setPreference(db, 7, { enabled: true });
+    expect(() => telemetry.record(db, 7, 'container.name', { outcome: 'success' })).toThrow('allowlisted');
+    expect(() => telemetry.record(db, 7, 'catalog.view', { outcome: 'success', providerType: 'private-hostname' })).toThrow('provider');
   });
 
   // ── Module loads cleanly with no DB available ──────────────────────

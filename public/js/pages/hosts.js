@@ -5,12 +5,15 @@
 
 const HostsPage = {
   _hosts: [],
+  _compactMode: null,
 
   async render(container) {
     container.innerHTML = `
       <div class="page-header">
         <h2><i class="fas fa-server"></i> ${i18n.t('pages.hosts.title')}</h2>
         <div class="page-actions">
+          ${App.user?.role === 'admin' ? '<button class="btn btn-sm btn-secondary" id="host-manage-groups"><i class="fas fa-layer-group"></i> Manage groups</button>' : ''}
+          <button class="btn btn-sm btn-secondary" id="host-compact" aria-pressed="false"><i class="fas fa-compress"></i> Compact</button>
           <button class="btn btn-sm btn-primary" id="host-add"><i class="fas fa-plus"></i> ${i18n.t('pages.hosts.addHost')}</button>
           <button class="btn btn-sm btn-secondary" id="host-add-non-docker"><i class="fas fa-cubes"></i> Non-Docker host <span class="badge badge-warning" style="font-size:9px">alpha</span></button>
           <button class="btn btn-sm btn-secondary" id="host-refresh"><i class="fas fa-sync-alt"></i></button>
@@ -36,6 +39,17 @@ const HostsPage = {
     container.querySelector('#host-add').addEventListener('click', () => this._addHostDialog());
     container.querySelector('#host-add-non-docker').addEventListener('click', () => this._addNonDockerHostDialog());
     container.querySelector('#host-refresh').addEventListener('click', () => this._load());
+    container.querySelector('#host-manage-groups')?.addEventListener('click', () => {
+      App.navigate('/settings');
+      setTimeout(() => document.querySelector('#settings-tabs [data-tab="access"]')?.click(), 250);
+    });
+    container.querySelector('#host-compact').addEventListener('click', event => {
+      this._compactMode = !this._compactMode;
+      localStorage.setItem('dd-hosts-compact', String(this._compactMode));
+      event.currentTarget.setAttribute('aria-pressed', String(this._compactMode));
+      event.currentTarget.classList.toggle('btn-primary', this._compactMode);
+      this._renderGrid();
+    });
 
     // v8.9.11-alpha.1 — Wire the 3-tab switcher for the docs section.
     // Selected tab persists to localStorage so the user's last view survives
@@ -65,6 +79,15 @@ const HostsPage = {
 
     try {
       this._hosts = await Api.getHosts();
+      if (this._compactMode === null) {
+        const stored = localStorage.getItem('dd-hosts-compact');
+        this._compactMode = stored === null ? this._hosts.length > 10 : stored === 'true';
+      }
+      const compactBtn = document.getElementById('host-compact');
+      if (compactBtn) {
+        compactBtn.setAttribute('aria-pressed', String(this._compactMode));
+        compactBtn.classList.toggle('btn-primary', this._compactMode);
+      }
       this._renderGrid();
     } catch (err) {
       grid.innerHTML = `<div class="empty-msg">${i18n.t('common.error')}: ${err.message}</div>`;
@@ -80,7 +103,17 @@ const HostsPage = {
       return;
     }
 
-    grid.innerHTML = this._hosts.map(h => {
+    grid.classList.toggle('compact', !!this._compactMode);
+    grid.innerHTML = this._compactMode ? this._hosts.map(h => {
+      const status = h.connPaused ? 'needs-attention' : h.healthy === true ? 'online' : h.healthy === false ? 'offline' : 'pending';
+      const dot = h.healthy === true ? 'online' : h.healthy === false ? 'offline' : 'pending';
+      const groups = (h.groups || []).map(group => `<span class="badge" style="font-size:9px">${Utils.escapeHtml(group.name)}</span>`).join('');
+      return `<div class="host-card ${status} ${Api.getHostId() === h.id || (Api.getHostId() === 0 && h.isDefault) ? 'selected' : ''}" data-host-id="${h.id}">
+        <div class="host-compact-main"><span class="host-tree-status ${dot}" aria-label="${dot}"></span><strong>${Utils.escapeHtml(h.name)}</strong><span class="text-xs text-muted">${Utils.escapeHtml(h.daemonType || 'docker')} · ${Utils.escapeHtml(h.environment || 'development')}</span></div>
+        <div class="host-compact-groups">${groups}</div>
+        <div class="host-card-actions"><button class="btn btn-xs btn-primary host-select" data-id="${h.id}" title="${i18n.t('pages.hosts.switchTo')}"><i class="fas fa-exchange-alt"></i></button><button class="btn btn-xs btn-secondary host-test" data-id="${h.id}" title="${i18n.t('pages.hosts.testConnection')}"><i class="fas fa-plug"></i></button><button class="btn btn-xs btn-secondary host-edit" data-id="${h.id}" title="${i18n.t('common.edit')}"><i class="fas fa-edit"></i></button></div>
+      </div>`;
+    }).join('') : this._hosts.map(h => {
       const isOnline = h.healthy === true;
       const isOffline = h.healthy === false;
       const isPending = h.healthy === null;
@@ -98,9 +131,9 @@ const HostsPage = {
       // instead of the (missing) Docker host/port.
       const isNonDocker = h.daemonType && h.daemonType !== 'docker' && h.daemonType !== 'podman';
       const daemonIconMap = { incus: 'fa-cubes', lxd: 'fa-cubes', proxmox: 'fa-server',
-        kubernetes: 'fa-dharmachakra', nomad: 'fa-tasks', vsphere: 'fa-server' };
+        kubernetes: 'fa-dharmachakra', nomad: 'fa-tasks', vsphere: 'fa-server', xen: 'fa-cloud' };
       const daemonPrefixMap = { incus: 'Incus', lxd: 'LXD', proxmox: 'Proxmox',
-        kubernetes: 'K8s', nomad: 'Nomad', vsphere: 'vSphere' };
+        kubernetes: 'K8s', nomad: 'Nomad', vsphere: 'vSphere', xen: 'Xen' };
       const connIcon = isNonDocker ? (daemonIconMap[h.daemonType] || 'fa-plug')
                      : h.connectionType === 'tcp' ? 'fa-globe'
                      : h.connectionType === 'ssh' ? 'fa-terminal' : 'fa-plug';
@@ -121,6 +154,7 @@ const HostsPage = {
             <div class="host-status"><i class="fas ${statusIcon}"></i> ${statusText}</div>
             <div style="display:flex;gap:6px;align-items:center">
               <span class="badge" style="font-size:9px;background:${envColor};color:#fff;padding:2px 6px;border-radius:3px">${envLabel}</span>
+              ${(h.groups || []).map(group => `<span class="badge" style="font-size:9px">${Utils.escapeHtml(group.name)}</span>`).join('')}
               ${h.isDefault ? `<span class="badge badge-info">${i18n.t('pages.hosts.default')}</span>` : ''}
             </div>
           </div>
@@ -167,7 +201,10 @@ const HostsPage = {
         try {
           const result = await Api.testHost(hostId);
           if (result.ok) {
-            Toast.success(`${i18n.t('pages.hosts.connectionOk')} (${result.latency}ms) — Docker ${result.dockerVersion}`);
+            const product = result.product
+              ? `${result.product}${result.version ? ` ${result.version}` : ''}`
+              : `Docker ${result.dockerVersion}`;
+            Toast.success(`${i18n.t('pages.hosts.connectionOk')} (${result.latency}ms) — ${product}`);
           } else {
             Toast.error(`${i18n.t('pages.hosts.connectionFailed')}: ${result.error}`);
           }
@@ -207,8 +244,8 @@ const HostsPage = {
                 <tr><td>API</td><td>${na(info.apiVersion)}</td></tr>
                 <tr><td>Kernel</td><td>${na(info.kernelVersion)}</td></tr>
                 <tr><td>CPUs</td><td>${info.cpus || 0}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.memory')}</td><td>${Utils.formatBytes(info.memTotal || 0)}</td></tr>
-                <tr><td>${i18n.t('pages.dashboard.containers')}</td><td>${info.containersRunning || 0}/${info.containers || 0}</td></tr>
+                <tr><td>${i18n.t('pages.containers.memory')}</td><td>${Utils.formatBytes(info.memTotal || 0)}</td></tr>
+                <tr><td>${i18n.t('nav.containers')}</td><td>${info.containersRunning || 0}/${info.containers || 0}</td></tr>
                 <tr><td>${i18n.t('nav.images')}</td><td>${info.images || 0}</td></tr>
                 <tr><td>Storage</td><td>${na(info.storageDriver)}</td></tr>
               </table>`;
@@ -328,6 +365,7 @@ const HostsPage = {
           <option value="kubernetes">Kubernetes (k3s / k0s / MicroK8s / kubeadm)</option>
           <option value="nomad">Nomad (HashiCorp workload orchestrator)</option>
           <option value="vsphere">VMware vSphere / ESXi (VMs, hosts, datastores — read-only)</option>
+          <option value="xen">Xen / XCP-ng / XenServer (XO, XAPI or raw libxl)</option>
         </select>
         <small class="text-muted">Each type has its own configuration shape below.</small>
       </div>
@@ -376,12 +414,24 @@ const HostsPage = {
       trSel.addEventListener('change', apply);
       apply();
     };
+    const wireXenProviderToggle = () => {
+      const providerSel = fieldsEl.querySelector('#ndh-xen-provider');
+      if (!providerSel) return;
+      const apply = () => {
+        fieldsEl.querySelectorAll('[data-xen-provider]').forEach(el => {
+          el.style.display = el.getAttribute('data-xen-provider') === providerSel.value ? '' : 'none';
+        });
+      };
+      providerSel.addEventListener('change', apply);
+      apply();
+    };
     const renderFields = () => {
       const type = typeSel.value;
       fieldsEl.innerHTML = this._renderNonDockerFields(type);
       wireTransportToggle();
+      wireXenProviderToggle();
       // v8.9.15-alpha.2 — wire the "Test SSH" button when vSphere is chosen.
-      if (type === 'vsphere') this._wireSshTest(content);
+      if (type === 'vsphere' || type === 'proxmox') this._wireSshTest(content);
       // v8.9.11-alpha.3 — reset test result on any type change
       const resultEl = content.querySelector('#ndh-test-result');
       if (resultEl) { resultEl.textContent = ''; resultEl.style.color = 'var(--text-dim)'; }
@@ -469,9 +519,7 @@ const HostsPage = {
             <label>Client key (PEM)</label>
             <textarea id="ndh-key" class="form-control" rows="3" placeholder="-----BEGIN PRIVATE KEY-----&#10;..."></textarea>
           </div>
-          <div class="form-group" data-transport="https" style="display:none">
-            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
-          </div>
+          <div data-transport="https" style="display:none">${this._providerTlsField()}</div>
         `;
       }
       case 'proxmox':
@@ -489,9 +537,8 @@ const HostsPage = {
             <label>API token secret (UUID)</label>
             <input type="password" id="ndh-token-secret" class="form-control" placeholder="a1b2c3d4-e5f6-..." required>
           </div>
-          <div class="form-group">
-            <label><input type="checkbox" id="ndh-skip-tls" checked> Skip TLS verification (self-signed cert)</label>
-          </div>
+          ${this._providerTlsField()}
+          ${this._sshAccessFields()}
         `;
       case 'kubernetes':
         return `
@@ -504,13 +551,7 @@ const HostsPage = {
             <textarea id="ndh-token" class="form-control" rows="2" placeholder="eyJhbG..." required></textarea>
             <small class="text-muted">See <a href="#/howto/kubernetes-integration">Kubernetes integration howto</a> for the ServiceAccount + ClusterRoleBinding YAML.</small>
           </div>
-          <div class="form-group">
-            <label>CA certificate (PEM, optional)</label>
-            <textarea id="ndh-ca" class="form-control" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;..."></textarea>
-          </div>
-          <div class="form-group">
-            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
-          </div>
+          ${this._providerTlsField()}
         `;
       case 'nomad':
         return `
@@ -523,13 +564,7 @@ const HostsPage = {
             <input type="password" id="ndh-token" class="form-control" placeholder="SECRET-ID-UUID">
             <small class="text-muted">Leave empty if ACL is disabled on the cluster.</small>
           </div>
-          <div class="form-group">
-            <label>CA certificate (PEM, optional)</label>
-            <textarea id="ndh-ca" class="form-control" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;..."></textarea>
-          </div>
-          <div class="form-group">
-            <label><input type="checkbox" id="ndh-skip-tls"> Skip TLS verification (testing only)</label>
-          </div>
+          ${this._providerTlsField()}
         `;
       case 'vsphere':
         return `
@@ -546,13 +581,84 @@ const HostsPage = {
             <label>Password</label>
             <input type="password" id="ndh-password" class="form-control" required>
           </div>
+          ${this._providerTlsField()}
+          ${this._sshAccessFields()}
+        `;
+      case 'xen':
+        return `
           <div class="form-group">
-            <label><input type="checkbox" id="ndh-skip-tls" checked> Skip TLS verification (default; ESXi ships with a self-signed cert)</label>
+            <label>Management plane</label>
+            <select id="ndh-xen-provider" class="form-control">
+              <option value="xo">Xen Orchestra REST API (recommended)</option>
+              <option value="xapi">XAPI — XCP-ng / XenServer / Citrix Hypervisor</option>
+              <option value="raw">Raw Xen Project — xl/libxl over SSH</option>
+            </select>
+            <small class="text-muted">Capabilities are detected per provider and version; unsupported actions stay hidden.</small>
           </div>
+          <div data-xen-provider="xo">
+            <div class="form-group"><label>Xen Orchestra endpoint</label>
+              <input type="text" id="ndh-xen-xo-endpoint" class="form-control" placeholder="https://xo.example.com"></div>
+            <div class="form-group"><label>Authentication token (recommended)</label>
+              <input type="password" id="ndh-xen-xo-token" class="form-control" placeholder="XO authentication token"></div>
+            <details><summary style="cursor:pointer;font-size:13px">Username/password fallback</summary>
+              <div class="form-group"><label>Username</label><input type="text" id="ndh-xen-xo-username" class="form-control"></div>
+              <div class="form-group"><label>Password</label><input type="password" id="ndh-xen-xo-password" class="form-control"></div>
+            </details>
+            ${this._providerTlsField('ndh-xen-xo-ca')}
+          </div>
+          <div data-xen-provider="xapi" style="display:none">
+            <div class="form-group"><label>Pool master / host endpoint</label>
+              <input type="text" id="ndh-xen-xapi-endpoint" class="form-control" placeholder="https://xcp-pool.example.com"></div>
+            <div class="form-group"><label>Username</label>
+              <input type="text" id="ndh-xen-xapi-username" class="form-control" placeholder="read-only service account or root"></div>
+            <div class="form-group"><label>Password</label><input type="password" id="ndh-xen-xapi-password" class="form-control"></div>
+            <div class="form-group"><label>Wire protocol</label>
+              <select id="ndh-xen-xapi-protocol" class="form-control"><option value="auto">Auto: JSON-RPC, then XML-RPC</option><option value="json">JSON-RPC</option><option value="xml">XML-RPC (legacy)</option></select></div>
+            ${this._providerTlsField('ndh-xen-xapi-ca')}
+          </div>
+          <div data-xen-provider="raw" style="display:none">
+            <div style="padding:8px 10px;margin-bottom:10px;border-left:3px solid var(--yellow);background:var(--surface2);font-size:12px">Runs a strict allowlist of <code>xl</code> commands. Domain-0 is always protected. Snapshots are not exposed because raw libxl has no portable snapshot contract.</div>
+            <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label>SSH host</label><input type="text" id="ndh-xen-ssh-host" class="form-control"></div>
+              <div class="form-group" style="flex:0 0 100px"><label>Port</label><input type="number" id="ndh-xen-ssh-port" class="form-control" value="22"></div></div>
+            <div class="form-group"><label>SSH username</label><input type="text" id="ndh-xen-ssh-username" class="form-control"></div>
+            <div class="form-group"><label>SSH password</label><input type="password" id="ndh-xen-ssh-password" class="form-control"></div>
+            <div class="form-group"><label>SSH private key (PEM/OpenSSH)</label><textarea id="ndh-xen-ssh-key" class="form-control" rows="4"></textarea></div>
+            <div class="form-group"><label>Key passphrase (optional)</label><input type="password" id="ndh-xen-ssh-passphrase" class="form-control"></div>
+            ${this._sshTrustField('ndh-xen-host-key')}
+            <div class="form-group"><label><input type="checkbox" id="ndh-xen-sudo"> Use passwordless sudo for xl</label></div>
+          </div>
+        `;
+      default:
+        return '';
+    }
+  },
+
+  // v8.9.15-alpha.2 — collect the SSH access fields into an sshConfig, or
+  // null when incomplete. hostFallback lets the host default to the endpoint.
+  _providerTlsField(id = 'ndh-ca') {
+    return `<div class="form-group"><label for="${id}">${Utils.escapeHtml(i18n.t('pages.hosts.providerCaLabel'))}</label>
+      <textarea id="${id}" class="form-control" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+      <small class="text-muted">${Utils.escapeHtml(i18n.t('pages.hosts.providerTlsHint'))}</small>
+      <label><input type="checkbox" id="${id}-clear"> ${Utils.escapeHtml(i18n.t('pages.hosts.providerCaClear'))}</label></div>`;
+  },
+
+  _collectProviderCa(content, id = 'ndh-ca') {
+    return content.querySelector(`#${id}-clear`)?.checked ? null
+      : content.querySelector(`#${id}`)?.value.trim() || undefined;
+  },
+
+  _sshTrustField(id, value = '') {
+    return `<div class="form-group"><label for="${id}">${Utils.escapeHtml(i18n.t('pages.hosts.sshHostKeyLabel'))}</label>
+      <input type="text" id="${id}" class="form-control" value="${Utils.escapeHtml(value)}" placeholder="SHA256:..." autocomplete="off">
+      <small class="text-muted">${Utils.escapeHtml(i18n.t('pages.hosts.sshHostKeyHint'))}</small></div>`;
+  },
+
+  _sshAccessFields() {
+    return `
           <details style="margin-top:6px">
-            <summary style="cursor:pointer;font-size:13px">SSH access (optional — unlocks hardware sensors / VIBs / NICs)</summary>
+            <summary style="cursor:pointer;font-size:13px">SSH access (optional — telemetry / migration)</summary>
             <div style="padding:8px 0">
-              <small class="text-muted">Requires the SSH service enabled on the ESXi host. Used only for read-only esxcli telemetry.</small>
+              <small class="text-muted">Requires SSH on the target. Used for ESXi telemetry/console or Proxmox migration.</small>
               <div class="form-group"><label>SSH host</label>
                 <input type="text" id="ndh-ssh-host" class="form-control" placeholder="(defaults to the endpoint host)"></div>
               <div style="display:flex;gap:10px">
@@ -561,6 +667,7 @@ const HostsPage = {
                 <div class="form-group" style="flex:1"><label>SSH user</label>
                   <input type="text" id="ndh-ssh-user" class="form-control" value="root"></div>
               </div>
+              ${this._sshTrustField('ndh-ssh-host-key')}
               <div class="form-group"><label>SSH password</label>
                 <input type="password" id="ndh-ssh-password" class="form-control" placeholder="(or paste a private key below)"></div>
               <div class="form-group"><label>SSH private key (PEM, optional)</label>
@@ -571,14 +678,9 @@ const HostsPage = {
               </div>
             </div>
           </details>
-        `;
-      default:
-        return '';
-    }
+    `;
   },
 
-  // v8.9.15-alpha.2 — collect the SSH access fields into an sshConfig, or
-  // null when incomplete. hostFallback lets the host default to the endpoint.
   _collectSshConfigFromForm(content, endpoint) {
     const val = (sel) => { const el = content.querySelector(sel); return el ? el.value : ''; };
     const user = val('#ndh-ssh-user').trim();
@@ -592,6 +694,7 @@ const HostsPage = {
     if (!host || !user) return null;
     return {
       host, port: parseInt(val('#ndh-ssh-port'), 10) || 22, user,
+      hostKeySha256: val('#ndh-ssh-host-key').trim(),
       ...(password ? { password } : {}),
       ...(key ? { privateKey: key } : {}),
     };
@@ -617,9 +720,9 @@ const HostsPage = {
       resultEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing SSH…';
       resultEl.style.color = 'var(--text-dim)';
       try {
-        const r = await Api.testHostSsh(cfg, hostId);
+        const r = await Api.testHostSsh(cfg, hostId, content.querySelector('#ndh-type')?.value);
         if (r && r.ok) {
-          resultEl.innerHTML = `<i class="fas fa-check-circle"></i> Connected — ${Utils.escapeHtml(r.product || 'ESXi')} ${Utils.escapeHtml(r.version || '')}`.trim();
+          resultEl.innerHTML = `<i class="fas fa-check-circle"></i> Connected — ${Utils.escapeHtml(r.product || r.whoami || 'SSH')} ${Utils.escapeHtml(r.version || '')}`.trim();
           resultEl.style.color = 'var(--green,#22c55e)';
         } else {
           resultEl.innerHTML = `<i class="fas fa-times-circle"></i> ${Utils.escapeHtml((r && r.error) || 'SSH failed')}`;
@@ -665,17 +768,20 @@ const HostsPage = {
         daemonConfig.tokenId = val('#ndh-token-id').trim();
         daemonConfig.tokenSecret = val('#ndh-token-secret').trim();
         daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
+        if (val('#ndh-ssh-host-key').trim() || val('#ndh-ssh-password') || val('#ndh-ssh-key').trim()) {
+          daemonConfig.sshConfig = this._collectSshConfigFromForm(content, daemonConfig.endpoint);
+        }
         break;
       case 'kubernetes':
         daemonConfig.endpoint = val('#ndh-endpoint').trim();
         daemonConfig.token = val('#ndh-token').trim();
-        daemonConfig.caCert = val('#ndh-ca').trim() || undefined;
+        daemonConfig.caCert = this._collectProviderCa(content);
         daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
       case 'nomad':
         daemonConfig.endpoint = val('#ndh-endpoint').trim();
         daemonConfig.token = val('#ndh-token').trim() || undefined;
-        daemonConfig.caCert = val('#ndh-ca').trim() || undefined;
+        daemonConfig.caCert = this._collectProviderCa(content);
         daemonConfig.skipTlsVerify = chk('#ndh-skip-tls');
         break;
       case 'vsphere': {
@@ -689,7 +795,7 @@ const HostsPage = {
         const sshUser = val('#ndh-ssh-user').trim();
         const sshPassword = val('#ndh-ssh-password');
         const sshKey = val('#ndh-ssh-key').trim();
-        if (sshUser && (sshPassword || sshKey)) {
+        if (sshUser && (sshPassword || sshKey || val('#ndh-ssh-host-key').trim())) {
           let host = sshHost;
           if (!host && daemonConfig.endpoint) {
             try { host = new URL(daemonConfig.endpoint.match(/^https?:\/\//) ? daemonConfig.endpoint : 'https://' + daemonConfig.endpoint).hostname; }
@@ -697,13 +803,44 @@ const HostsPage = {
           }
           daemonConfig.sshConfig = {
             host, port: parseInt(val('#ndh-ssh-port'), 10) || 22, user: sshUser,
+            hostKeySha256: val('#ndh-ssh-host-key').trim(),
             ...(sshPassword ? { password: sshPassword } : {}),
             ...(sshKey ? { privateKey: sshKey } : {}),
           };
         }
         break;
       }
+      case 'xen': {
+        const provider = val('#ndh-xen-provider') || 'xo';
+        daemonConfig.provider = provider;
+        if (provider === 'xo') {
+          daemonConfig.endpoint = val('#ndh-xen-xo-endpoint').trim();
+          daemonConfig.token = val('#ndh-xen-xo-token').trim();
+          daemonConfig.username = val('#ndh-xen-xo-username').trim();
+          daemonConfig.password = val('#ndh-xen-xo-password');
+          daemonConfig.caCert = this._collectProviderCa(content, 'ndh-xen-xo-ca');
+          daemonConfig.skipTlsVerify = chk('#ndh-xen-xo-skip-tls');
+        } else if (provider === 'xapi') {
+          daemonConfig.endpoint = val('#ndh-xen-xapi-endpoint').trim();
+          daemonConfig.username = val('#ndh-xen-xapi-username').trim();
+          daemonConfig.password = val('#ndh-xen-xapi-password');
+          daemonConfig.protocol = val('#ndh-xen-xapi-protocol') || 'auto';
+          daemonConfig.caCert = this._collectProviderCa(content, 'ndh-xen-xapi-ca');
+          daemonConfig.skipTlsVerify = chk('#ndh-xen-xapi-skip-tls');
+        } else {
+          daemonConfig.sshHost = val('#ndh-xen-ssh-host').trim();
+          daemonConfig.sshPort = parseInt(val('#ndh-xen-ssh-port'), 10) || 22;
+          daemonConfig.sshUsername = val('#ndh-xen-ssh-username').trim();
+          daemonConfig.sshPassword = val('#ndh-xen-ssh-password');
+          daemonConfig.sshPrivateKey = val('#ndh-xen-ssh-key').trim();
+          daemonConfig.sshPassphrase = val('#ndh-xen-ssh-passphrase');
+          daemonConfig.hostKeySha256 = val('#ndh-xen-host-key').trim() || undefined;
+          daemonConfig.useSudo = chk('#ndh-xen-sudo');
+        }
+        break;
+      }
     }
+    if (content.querySelector('#ndh-ca')) daemonConfig.caCert = this._collectProviderCa(content);
     return { name, daemonType, daemonConfig };
   },
 
@@ -801,6 +938,13 @@ const HostsPage = {
                 <td>Yes (alpha.1)</td>
                 <td><a href="#/howto/vsphere-integration">vSphere</a></td>
               </tr>
+              <tr>
+                <td><i class="fas fa-cloud"></i> <strong>Xen / XCP-ng / XenServer</strong></td>
+                <td>XO token, XAPI credentials, or restricted SSH</td>
+                <td>Pools, hosts, VMs, SRs, networks, async tasks, power lifecycle and snapshots (provider-dependent).</td>
+                <td>Yes, capability-gated</td>
+                <td><a href="#/xen-resources">Xen resources</a></td>
+              </tr>
             </tbody>
           </table>
           <div style="margin-top:12px;font-size:13px" class="text-muted">
@@ -819,7 +963,7 @@ const HostsPage = {
   /** Shared form HTML builder for add/edit */
   _buildFormHtml(opts = {}) {
     const { name = '', type = 'tcp', host = '', port, socketPath, sshHost = '', sshPort,
-            sshUsername = '', sshDockerSocket, hasTls, showActive, isActive, environment = 'development' } = opts;
+            sshUsername = '', sshHostKeySha256 = '', sshDockerSocket, hasTls, showActive, isActive, environment = 'development' } = opts;
     const esc = (v) => Utils.escapeHtml(v || '');
     return `
       <div class="form-group">
@@ -863,6 +1007,7 @@ const HostsPage = {
         </div>
       </div>
       <div id="h-ssh-fields" ${type !== 'ssh' ? 'style="display:none"' : ''}>
+        ${this._sshTrustField('h-ssh-host-key', sshHostKeySha256)}
         <div class="form-group">
           <label>SSH Host</label>
           <input type="text" id="h-ssh-host" class="form-control" value="${esc(sshHost)}" placeholder="192.168.1.100">
@@ -953,6 +1098,14 @@ const HostsPage = {
           trSel.addEventListener('change', apply);
           apply();
         }
+        const xenProviderSel = fieldsEl.querySelector('#ndh-xen-provider');
+        if (xenProviderSel) {
+          const apply = () => fieldsEl.querySelectorAll('[data-xen-provider]').forEach(el => {
+            el.style.display = el.getAttribute('data-xen-provider') === xenProviderSel.value ? '' : 'none';
+          });
+          xenProviderSel.addEventListener('change', apply);
+          apply();
+        }
         // Pre-fill values from current daemon_config.
         // Non-secret scalars use their real values; secrets get placeholder
         // "(already set — leave blank to keep)" and stay empty so a blank
@@ -971,14 +1124,23 @@ const HostsPage = {
             set('#ndh-socket', dc.socket);
             set('#ndh-endpoint', dc.endpoint);
             setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            setPlaceholder('#ndh-ca', dc.caCertPresent);
             setPlaceholder('#ndh-cert', dc.certPresent);
             setPlaceholder('#ndh-key', dc.keyPresent);
             break;
           case 'proxmox':
+            setPlaceholder('#ndh-ca', dc.caCertPresent);
             set('#ndh-endpoint', dc.endpoint);
             set('#ndh-token-id', dc.tokenId);
             setPlaceholder('#ndh-token-secret', dc.tokenSecretPresent);
             setChecked('#ndh-skip-tls', dc.skipTlsVerify);
+            set('#ndh-ssh-host', dc.sshHost);
+            set('#ndh-ssh-port', dc.sshPort || 22);
+            set('#ndh-ssh-user', dc.sshUser);
+            set('#ndh-ssh-host-key', dc.sshHostKeySha256);
+            setPlaceholder('#ndh-ssh-password', dc.sshPasswordPresent);
+            setPlaceholder('#ndh-ssh-key', dc.sshKeyPresent);
+            this._wireSshTest(content, host.id);
             break;
           case 'kubernetes':
             set('#ndh-endpoint', dc.endpoint);
@@ -993,6 +1155,7 @@ const HostsPage = {
             setChecked('#ndh-skip-tls', dc.skipTlsVerify);
             break;
           case 'vsphere':
+            setPlaceholder('#ndh-ca', dc.caCertPresent);
             set('#ndh-endpoint', dc.endpoint);
             set('#ndh-username', dc.username);
             setPlaceholder('#ndh-password', dc.passwordPresent);
@@ -1001,10 +1164,40 @@ const HostsPage = {
             set('#ndh-ssh-host', dc.sshHost);
             if (dc.sshPort) set('#ndh-ssh-port', dc.sshPort);
             set('#ndh-ssh-user', dc.sshUser);
+            set('#ndh-ssh-host-key', dc.sshHostKeySha256);
             setPlaceholder('#ndh-ssh-password', dc.sshPasswordPresent);
             setPlaceholder('#ndh-ssh-key', dc.sshKeyPresent);
             this._wireSshTest(content, host.id);
             break;
+          case 'xen': {
+            const provider = dc.provider || 'xo';
+            set('#ndh-xen-provider', provider);
+            xenProviderSel?.dispatchEvent(new Event('change'));
+            if (provider === 'xo') {
+              set('#ndh-xen-xo-endpoint', dc.endpoint);
+              set('#ndh-xen-xo-username', dc.username);
+              setPlaceholder('#ndh-xen-xo-token', dc.tokenPresent);
+              setPlaceholder('#ndh-xen-xo-password', dc.passwordPresent);
+              setPlaceholder('#ndh-xen-xo-ca', dc.caCertPresent);
+              setChecked('#ndh-xen-xo-skip-tls', dc.skipTlsVerify);
+            } else if (provider === 'xapi') {
+              set('#ndh-xen-xapi-endpoint', dc.endpoint);
+              set('#ndh-xen-xapi-username', dc.username);
+              set('#ndh-xen-xapi-protocol', dc.protocol || 'auto');
+              setPlaceholder('#ndh-xen-xapi-password', dc.passwordPresent);
+              setPlaceholder('#ndh-xen-xapi-ca', dc.caCertPresent);
+              setChecked('#ndh-xen-xapi-skip-tls', dc.skipTlsVerify);
+            } else {
+              set('#ndh-xen-ssh-host', dc.sshHost);
+              set('#ndh-xen-ssh-port', dc.sshPort || 22);
+              set('#ndh-xen-ssh-username', dc.sshUsername || dc.username);
+              set('#ndh-xen-host-key', dc.hostKeySha256);
+              setPlaceholder('#ndh-xen-ssh-password', dc.sshPasswordPresent);
+              setPlaceholder('#ndh-xen-ssh-key', dc.sshKeyPresent);
+              setChecked('#ndh-xen-sudo', dc.useSudo);
+            }
+            break;
+          }
         }
         // Wire test connection button — same behavior as create wizard.
         const testBtn = content.querySelector('#ndh-test-btn');
@@ -1064,6 +1257,7 @@ const HostsPage = {
       sshHost: host.sshHost,
       sshPort: host.sshPort,
       sshUsername: host.sshUsername,
+      sshHostKeySha256: host.sshHostKeySha256,
       sshDockerSocket: host.sshDockerSocket,
       hasTls: host.hasTls,
       showActive: true,
@@ -1080,7 +1274,7 @@ const HostsPage = {
         data.isActive = content.querySelector('#h-active')?.checked ?? true;
         return data;
       },
-      onMount: (content) => this._setupFormToggle(content),
+      onMount: (content) => this._setupFormToggle(content, host.id),
     });
 
     if (result) {
@@ -1092,7 +1286,7 @@ const HostsPage = {
     }
   },
 
-  _setupFormToggle(content) {
+  _setupFormToggle(content, hostId) {
     const typeSelect = content.querySelector('#h-type');
     const tcpFields = content.querySelector('#h-tcp-fields');
     const socketFields = content.querySelector('#h-socket-fields');
@@ -1116,6 +1310,8 @@ const HostsPage = {
         testResult.textContent = '';
         try {
           const data = this._collectFormData(content);
+          if (!data) return;
+          if (hostId) data.hostId = hostId;
           const r = await Api.testHostConnection(data);
           if (r.ok) {
             let msg = `<span style="color:var(--green)"><i class="fas fa-check"></i> OK (${r.latency || 0}ms) — Docker ${r.dockerVersion || 'connected'}</span>`;
@@ -1158,6 +1354,7 @@ const HostsPage = {
       data.sshHost = content.querySelector('#h-ssh-host').value.trim();
       data.sshPort = parseInt(content.querySelector('#h-ssh-port').value) || 22;
       data.sshUsername = content.querySelector('#h-ssh-user').value.trim();
+      data.sshHostKeySha256 = content.querySelector('#h-ssh-host-key').value.trim();
       data.sshPassword = content.querySelector('#h-ssh-pass').value;
       const key = content.querySelector('#h-ssh-key').value.trim();
       if (key) data.sshPrivateKey = key;

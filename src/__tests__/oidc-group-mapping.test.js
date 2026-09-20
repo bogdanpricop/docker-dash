@@ -74,12 +74,10 @@ describe('_resolveRoleFromGroups', () => {
   });
 });
 
-// v8.7.8 (security fix) — the helper that prevents silent admin demotion
-// when the IdP returns no groups claim. Distinguishes "IdP didn't tell us"
-// from "user has groups, just not the ones we care about".
+// Complete group assertions authorize mapping, including an empty group list.
 const { _hasUsableGroupsClaim } = require('../routes/auth');
 
-describe('_hasUsableGroupsClaim — the demotion guard', () => {
+describe('_hasUsableGroupsClaim — complete group assertions', () => {
   const cfg = { groupClaim: 'groups', adminGroups: ['A'], operatorGroups: [], viewerGroups: [] };
 
   it('true when the array claim is present and non-empty', () => {
@@ -88,8 +86,8 @@ describe('_hasUsableGroupsClaim — the demotion guard', () => {
   it('false when the claim is entirely absent (the bug case — Entra Token config regression / scope strip)', () => {
     expect(_hasUsableGroupsClaim({ sub: 'x' }, cfg)).toBe(false);
   });
-  it('false when the claim is an empty array', () => {
-    expect(_hasUsableGroupsClaim({ groups: [] }, cfg)).toBe(false);
+  it('true when the claim explicitly declares no groups', () => {
+    expect(_hasUsableGroupsClaim({ groups: [] }, cfg)).toBe(true);
   });
   it('false on Entra "groups overage" indicator (>200 groups → Graph lookup required)', () => {
     expect(_hasUsableGroupsClaim({
@@ -109,5 +107,18 @@ describe('_hasUsableGroupsClaim — the demotion guard', () => {
   it('defensive against null inputs', () => {
     expect(_hasUsableGroupsClaim(null, cfg)).toBe(false);
     expect(_hasUsableGroupsClaim({}, null)).toBe(false);
+  });
+  it.each([[['A',1]], [[null]], [[{}]], [[' ']], [['A\n']], [true], [{}]])('rejects malformed claim %j', raw => {
+    expect(_hasUsableGroupsClaim({groups:raw},cfg)).toBe(false);
+    expect(_resolveRoleFromGroups({groups:raw},cfg)).toBeNull();
+  });
+  it('refuses partial groups alongside either overage indicator', () => {
+    expect(_hasUsableGroupsClaim({groups:['A'],_claim_names:{groups:'src1'}},cfg)).toBe(false);
+    expect(_hasUsableGroupsClaim({groups:['A'],hasgroups:true},cfg)).toBe(false);
+  });
+  it('an unrelated groups overage does not invalidate a complete custom roles claim', () => {
+    const custom={...cfg,groupClaim:'roles'};
+    expect(_hasUsableGroupsClaim({roles:['A'],hasgroups:true,_claim_names:{groups:'src1'}},custom)).toBe(true);
+    expect(_resolveRoleFromGroups({roles:['A'],hasgroups:true},custom)).toBe('admin');
   });
 });

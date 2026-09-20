@@ -14,7 +14,8 @@
 # Integration with Docker Dash (from rc1): docker-compose.yml wires the sidecar
 # with SHARED_VOLUME mount + signals SIGHUP on policy changes.
 
-ARG GO_VERSION=1.22
+ARG GO_VERSION=1.27.1
+ARG BUILDPLATFORM
 
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
 
@@ -24,10 +25,14 @@ ARG TARGETARCH
 WORKDIR /src
 COPY go.mod .
 # COPY go.sum . — none yet; stdlib-only for v6.7-alpha.2
-COPY main.go .
+COPY *.go ./
+
+# Run the local protocol/security regressions on the builder architecture before
+# cross-compiling either production target. No external endpoints are contacted.
+RUN CGO_ENABLED=0 go test ./... && go vet ./...
 
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /out/dd-egress-proxy main.go
+    go build -trimpath -ldflags="-s -w" -o /out/dd-egress-proxy .
 
 FROM scratch
 

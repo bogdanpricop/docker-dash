@@ -1,10 +1,238 @@
 # Security Policy
 
+The authentication, MFA, credential and session fixes below are bundled in the
+[8.96.10 deployment candidate](docs/audits/2026-09-20-image-8.96.10.md). Both live
+instances remain on 8.96.8. Candidate image findings and the account-email URL
+clarification remain open; the candidate is not publicly published.
+
+The subsequent [SCIM authorization correction](docs/audits/2026-09-20-scim-security.md)
+is not in that candidate. SCIM requires global service tokens with explicit scim.read/scim.write
+scopes and no longer exposes or adopts unmanaged local users/teams. Tenant-scoped
+tokens are refused rather than treated as global. Mutations, ownership mappings and
+HTTP audit commit atomically; audit failure returns 500 and rolls the operation back.
+Existing SCIM ownership records still require review; historical unauthorized changes
+cannot be reconstructed automatically. SCIM-to-OIDC linking remains unsupported.
+
+## Subsequent workload and service credential corrections (not yet bundled)
+
+The subsequent [workload replay correction](docs/audits/2026-09-20-workload-replay-security.md)
+is also outside the built candidate. Migration 183 revokes previously issued workload
+tokens and their rotation descendants. Active legacy replay history requires proofs
+issued after the migration timestamp plus 60 seconds; the issuer must obtain a new
+proof (up to 61 seconds before an integer iat exceeds this cutoff). Manual tokens
+are retained. Signed content and issuer/jti replay keys survive trust deletion and
+remain until the accepted proof expires. Issuers must generate unique jti values;
+this is not indefinite storage of previously used ids. Exchange and audit commit atomically.
+
+The [service credential follow-up](docs/audits/2026-09-20-service-token-security.md)
+adds migration 184 with workload trust/proof lineage. Changing trust authorization
+or deleting a trust revokes its tokens and rotations; changing only its name does
+not. Workload rotation cannot broaden scopes or outlive the proof. Legacy workload
+lineages are revoked because their original trust cannot be reconstructed safely.
+Manual credentials remain independent. Identity/credential administration requires
+a signed-in administrator, refusing personal API keys and service credentials.
+Token rotation and validation hold a SQLite write transaction while checking state.
+Revocation also reaches rotation descendants, including after concurrent rotation.
+
+HTTP issuance, rotation and trust/realm changes commit with their audit entries.
+Audit failure returns 500 and rolls these operations back, including a requested
+trust disable/delete: repair audit and retry, or explicitly revoke the token.
+Explicit token revocation stays committed even when its subsequent audit fails.
+Credential administration responses carry no-store.
+
+The [tenant service-token follow-up](docs/audits/2026-09-20-service-token-tenant.md)
+adds an explicit route boundary to required service authentication. Tenant credentials
+can read their own project/scopes, capacity and filtered approval records. Policies
+and blackouts include applicable ancestors/global rules. Capacity accounting writes
+require governance.write or api.write and commit with audit. Other authenticated
+routes remain denied for tenant credentials until ownership enforcement is implemented.
+This is a supported route catalog, not automatic tenant support for every provider API.
+Migration 185 permanently revokes tenant tokens on suspension and backfills existing
+inactive tenants. Issuance, rotation and exchange refuse inactive tenants; reactivation
+does not restore old credentials. Global service credentials remain explicitly global.
+
+The subsequent [monitoring correction](docs/audits/2026-09-20-monitoring-access.md)
+requires authentication for `/api/metrics` and `/api/cluster/status`. Only global
+monitoring.read/api.read service credentials or administrators (sessions or read API
+keys) can access them. Tenant credentials and restricted users are refused; no-store
+also covers denied requests. `/api/health` retains its public liveness/role metadata.
+Prometheus now requires a mounted credential file and renewal before expiry. These
+changes are not yet bundled or live. Existing user/team RBAC elsewhere still needs
+its applicable controls; this does not certify complete project security.
+
+## OIDC and personal credentials (included in the 8.96.10 candidate)
+
+The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
+upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests
+run per process, without a waiting queue. TLS certificates remain verified with
+TLS 1.2 minimum. Redirects, compressed bodies, non-200 responses and non-object JSON
+are refused. Discovery must match the configured issuer and contain valid HTTPS
+endpoints. Discovery/JWKS misses share one in-flight request per issuer and cache
+only validated results. This is a per-request resource bound, not a full-login
+deadline or a restriction to public destination IPs; private identity providers
+remain supported through the configured trust store.
+
+The [personal API key follow-up](docs/audits/2026-09-20-api-key-security.md) adds
+migration 182. Changes to passwords, account activation, authentication source or
+external identity revoke personal keys. Inactive and legacy accounts are backfilled;
+past password changes cannot be reconstructed. Expiry and permission parsing fail
+closed. Keys obey required password changes and local password age, interpreted in
+UTC with creation time as the initial password age. Key creation/revocation requires
+user authentication and writable mode. Creation and audit commit together; revocation
+stays effective if its audit fails (HTTP 500). These fixes are included in 8.96.10.
+
+The [group authorization follow-up](docs/audits/2026-09-20-oidc-group-revocation.md)
+treats an empty group list as authoritative and applies the configured default role.
+When mapping is enabled, absent/malformed/incomplete groups refuse login and revoke
+the exact bound user's sessions, personal API keys, MFA challenges and reset links.
+Mapped role changes also revoke old credentials before the new authorization commits.
+Denial revocation commits before its audit. Role changes resolve the current role
+under one SQLite write lock: a savepoint can roll back new grants while the outer
+transaction still commits revocation after an audit/session failure. Corrected
+claims require a new login and new API keys;
+stored roles on denied logins are retained for review. This observes claims only at
+login, not through continuous IdP polling or back-channel logout.
+
+The subsequent [external identity checkpoint](docs/audits/2026-09-20-external-identities.md)
+adds migration 181: OIDC issuer/subject and trusted-proxy namespace/subject identify
+accounts independently of profile username or email. Collisions provision a separate
+account instead of linking local, LDAP, SCIM, legacy SSO or another external identity.
+Unbound historical SSO records retain their data/permissions but their credentials are
+revoked; they are never automatically claimed. Password recovery and local password
+changes are restricted to local accounts. OIDC account/session/audit changes are one
+transaction; trusted-proxy roles follow the current asserted groups.
+
+OIDC login now binds state to a five-minute HttpOnly, SameSite=Lax cookie and the
+configured issuer, client and callback. The cookie holds a random PKCE verifier;
+domain-separated HMACs derive state and nonce. HTTPS uses a host-prefixed Secure
+cookie. The callback validates browser binding before atomically consuming state,
+sends the S256 verifier and requires a signed ID token with the matching nonce,
+issuer, audience/authorized party, subject and numeric lifetime claims. An invalid
+or missing ID token cannot fall back to userinfo. Userinfo must have the same
+subject and can only supplement missing profile fields, not role claims.
+
+Only the most recent login started in the same browser cookie scope can complete.
+In-flight logins from before the update must restart. Existing sessions are not
+revoked by this change. Provider errors are not reflected in HTTP responses.
+See [OIDC evidence and remaining boundaries](docs/audits/2026-09-20-oidc-browser-binding.md).
+The existing 8.96.9 candidate must be rebuilt before these changes can be deployed.
+
+## MFA replay and attempt limits (pending deployment)
+
+Migration 180 records the last accepted TOTP counter and MFA failure/cooldown state.
+Enrollment, login and privileged step-up share one counter boundary. A challenge
+allows five attempts across TOTP/recovery requests; the account budget spans fresh
+challenges and factor endpoints. It uses LOCKOUT_ATTEMPTS and LOCKOUT_DURATION_MS
+(defaults: ten failures, thirty minutes), separately from password failures.
+Recovery codes also honor the MFA cooldown. Correct factors reset failures;
+password verification alone cannot do so. Transaction failures roll back factor
+consumption along with credential issuance.
+
+With synchronized clocks, enrolled users may need to wait up to 60 seconds immediately
+after upgrade because pre-upgrade code acceptance was not recorded. Replacing the encrypted
+authenticator secret resets its replay/cooldown state. See the
+[MFA verification audit](docs/audits/2026-09-20-mfa-replay-and-attempts.md).
+
+## Credential lifecycle (pending deployment)
+
+Migration 179 adds a credential version checked after asynchronous password/LDAP
+verification and before session/challenge issuance. Database triggers revoke pending
+MFA challenges on password, authentication-source, account activity or TOTP enrollment
+changes. Password/source/activity changes also invalidate existing sessions and reset
+links, so reactivation cannot restore them. Concurrent login failures are serialized.
+Password changes and MFA disable operations refuse stale credential snapshots.
+
+Existing MFA enrollment cannot be replaced through setup or repeated enable calls;
+it must first be disabled through the authenticated flow. MFA configuration routes
+apply the writeable policy gate. Migration 179 clears pre-upgrade pending MFA
+challenges, requiring those users to repeat login; established sessions are preserved
+by the migration itself. See [evidence and limits](docs/audits/2026-09-20-auth-credential-lifecycle.md).
+
+## Established WebSocket sessions (pending deployment)
+
+The shared `/ws` endpoint revalidates its session digest before messages and
+outbound data, after asynchronous stream startup and on a five-second idle sweep.
+Revoked/expired sessions, inactive accounts, changed global roles, required password
+changes and database failures close the client and its tracked streams. Close code
+4003 returns the browser to login without attempting token-in-URL fallback.
+The [WebSocket audit](docs/audits/2026-09-20-ws-session-revalidation.md) records native
+checks and limits. This does not retract buffered bytes or undo commands already
+executed remotely.
+
+The separate `/ws/provider-console` gateway also checks the current global role,
+host operate permission and effective console locks before serial/RFB I/O and on
+a five-second idle sweep. Pending provider connections and handshake channels are
+closed after disconnect/revocation. Storage failures deny access even if recording
+the close audit fails. Fragmented reads yield to transport/timers instead of
+spinning until their deadline. See the [provider-console audit](docs/audits/2026-09-20-provider-console-revalidation.md).
+Provider adapters are mocked in these lifecycle canaries; real hypervisor console
+compatibility, sustained throughput and queue/backpressure limits remain open.
+
+## Authentication expiry (pending deployment)
+
+Session, MFA challenge and OIDC state expiry is compared as parsed instants rather
+than mixed-format strings. Invalid expiry values are refused. Login lockout and
+security alerts now count the SQLite timestamps written by the production path.
+MFA redemption and session creation share a write transaction, including recovery
+code consumption; OIDC state is consumed atomically before provider requests.
+See [verification and open boundaries](docs/audits/2026-09-20-auth-expiry.md).
+The follow-up WebSocket checkpoints above add revalidation for the shared `/ws`
+endpoint and the separate provider-console endpoint.
+
+## Account recovery hardening (pending deployment)
+
+Reset and invitation emails use the configured `PUBLIC_URL`, falling back to
+`BASE_URL`. Configure the address users can reach, preferably HTTPS; the browser
+can no longer choose the link destination. SMTP must be configured. Reset links
+expire after 15 minutes, invitations after 24 hours. Token redemption rechecks
+expiry and account activity after hashing and commits the password, token/session
+invalidation and audit together. Password/email changes and deactivation revoke
+outstanding account links. SMTP errors no longer expose message bodies to logs
+or callers. Previously written logs, backups and reverse-proxy access logs are
+outside this change; a clean application log now does not erase historical tokens.
+
+See [verification and rollout status](docs/audits/2026-09-20-password-reset.md).
+Public responses finish before account lookup or SMTP. Recovery delivery has
+a per-process bound of 32 active/queued jobs and two workers, plus a shared
+three-per-account hourly quota (Redis fixed windows in HA, local sliding windows
+in standalone). Quota errors/timeouts refuse delivery. Pending work is volatile;
+shutdown discards it and revokes in-flight links. Full queues return the same
+generic response, so that response is not a delivery guarantee. Admin-triggered
+email remains authenticated and synchronous. This change does not certify the
+broader recovery flow or the deployment's transport security.
+
+## Audit 2026-09-19 (working tree, pending release)
+
+See [the audit report](docs/audits/2026-09-19-project-security.md) for changes,
+validation evidence, dependency exceptions and deployment checks still required.
+The historical audit entries below describe their original releases, not the
+current vulnerability state. A clean dependency scan is not a security guarantee.
+
+Outbound HTTPS/SMTP connections now verify certificates. For internal PKI, set
+`NODE_EXTRA_CA_CERTS` to a PEM CA bundle readable inside the container; mount the
+bundle read-only. Do not use `NODE_TLS_REJECT_UNAUTHORIZED=0`. LDAP requires
+verified LDAPS or StartTLS before any bind. The legacy TLS-verification bypass
+is rejected; configure a verified CA in the LDAP settings for private PKI.
+See the built-in `ldap-tls` guide for migration and certificate rotation.
+
+LDAP service-account passwords are encrypted by migration 174 on startup. Keep
+`ENCRYPTION_KEY` stable and backed up. Existing database backups/WAL snapshots may
+still contain the old plaintext password; protect them and rotate that credential.
+LDAP group restrictions now require the complete group DN (case-insensitive).
+
+Container rollback snapshots are encrypted by migration 176 and on every new
+history write. Authentication binds the snapshot to its host/container/image
+identity; corrupt, plaintext or mismatched snapshots are refused before Docker
+mutation. Encryption or storage failure also stops the update. Preserve the
+installation key for recovery. This protects live records, not historical backup,
+WAL or free-page copies, and does not make Docker replacement transactional. See
+the built-in `rollback-history` guide for recovery and retention boundaries.
+
 ## Supported Versions
 
 | Version | Supported          |
 |---------|--------------------|
-| 8.2.x   | :white_check_mark: (current) |
+| 8.96.x  | :white_check_mark: (current) |
 | 8.1.x   | :white_check_mark: (security fixes only) |
 | 8.0.x   | :white_check_mark: (security fixes only) |
 | 7.x     | :warning: (best-effort security fixes; please upgrade to 8.x) |
@@ -47,7 +275,7 @@ If you discover a security vulnerability in Docker Dash, please report it respon
 - **SSO support** — Authelia, Authentik, Caddy forward_auth, Traefik (X-Forwarded-User headers)
 - **API key authentication** as alternative to session-based auth
 - **Forced password change** on first login for default admin
-- **Password policy** — minimum 8 characters + at least one digit + common password rejection, enforced via single `validatePassword()` on all password-setting flows (change-password, reset-password, create-user, token-based reset)
+- **Password policy** — minimum 12 characters + uppercase, lowercase, digit and symbol + common password rejection, enforced via single `validatePassword()` on all password-setting flows (change-password, reset-password, create-user, token-based reset)
 
 ### Encryption & Secrets
 - **AES-256-GCM** encryption for credentials at rest (Git tokens, SSH keys, registry passwords, notification tokens)
@@ -157,7 +385,7 @@ The following are conscious design decisions, not oversights. Each represents a 
 
 **Impact:** If the application is accidentally exposed without the trusted reverse proxy, an attacker can forge the header and authenticate as any user. This is the most operationally dangerous setting in Docker Dash.
 
-**Mitigation:** Disabled by default (`ENABLE_SSO_HEADERS=false`). `.env.example` contains an explicit WARNING comment. Trust proxy is restricted to `loopback` in production. The feature is documented as requiring a trusted reverse proxy between the application and the internet.
+**Mitigation:** Disabled by default (`ENABLE_SSO_HEADERS=false`). SSO assertions require the immediate socket peer to appear in `SSO_TRUSTED_PROXY_IPS`; a forwarded end-client address cannot grant this trust. `TRUST_PROXY` defaults to `loopback` in every environment and accepts explicit proxy IPs/CIDRs or `false`. The authentication proxy must strip incoming identity headers and set verified values. Restrict direct application access accordingly.
 
 ### 5. Rate limiter backend depends on deployment mode
 
@@ -168,7 +396,11 @@ The following are conscious design decisions, not oversights. Each represents a 
 **Impact:**
 - **Standalone:** rate limits reset on process restart. In a single-replica deploy that's appropriate; restart is rare.
 - **HA (fixed-window):** 2× theoretical burst at bucket boundaries compared to sliding-window standalone. Example: a `10 req/min` limit could allow up to 20 requests in a 2-second window spanning two buckets. Average case is identical; burst matters only for DDoS-class inputs which are not what an internal rate limiter is for anyway.
-- **HA (Redis unreachable mid-request):** fail-open — request is allowed with a `warn` log. Prioritizes availability over strict enforcement. The rate limiter is a fair-use tool, not a security boundary.
+- **HA (Redis unavailable, full, invalid response or delayed beyond three seconds):** fail-closed — HTTP 503 with `Retry-After: 3`; protected handlers do not run. HTTP 429 remains reserved for a confirmed exhausted quota. Late Redis results cannot resume the abandoned request.
+
+Quota keys use a fixed configured scope and the client IP resolved by Express's proxy trust policy. Changing URL parameters, route capitalization, query strings or untrusted forwarding headers cannot create a new quota. The shared API limiter is one per-client budget across its mounted routes; login, MFA, reset and other dedicated limiters use separate named scopes. Configure trusted proxy addresses correctly to avoid grouping clients under a proxy address. This complements account lockout and RBAC; it does not replace them or upstream connection/DDoS controls.
+
+A successful admission is reused only when the same limiter instance sees the same HTTP request again during router fallthrough. Other limiter instances still enforce their own quotas. Standalone cleanup follows each stored window's configured duration, including durations longer than an hour; it cannot replenish an unexpired budget. Expired client entries are reclaimed by the periodic cleanup. See the [quota lifecycle audit](docs/audits/2026-09-20-quota-lifecycle.md) for validation and deployment status.
 
 **Mitigation:** Documented in [docs/features/ha-mode.md](docs/features/ha-mode.md#rate-limiter-semantics). Both modes implement the same API surface (`X-RateLimit-Remaining` response header, `Retry-After` on 429), so clients can't tell which backend is serving them. For target audiences (homelab standalone, corporate HA), both enforcement shapes are appropriate.
 

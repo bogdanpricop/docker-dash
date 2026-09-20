@@ -35,6 +35,8 @@ i18n.register('ja', 'JP', "日本語", {
     inactive: "無効",
     enabled: "有効",
     disabled: "無効",
+    yes: "はい",
+    no: "いいえ",
     test: "テスト",
     prune: "整理",
     unlimited: "無制限",
@@ -84,6 +86,7 @@ i18n.register('ja', 'JP', "日本語", {
     "registry-browse": "レジストリ",
     onboarding: "環境セットアップ",
     posture: "セキュリティ態勢",
+    procedures: "プロシージャ",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD（アルファ）",
@@ -91,7 +94,25 @@ i18n.register('ja', 'JP', "日本語", {
     "migration-vm": "VM 移行（アルファ）",
     "kubernetes-resources": "Kubernetes（アルファ）",
     "nomad-jobs": "Nomad（アルファ）",
-    "vsphere-resources": "vSphere / ESXi（アルファ）"
+    "vsphere-resources": "vSphere / ESXi（アルファ）",
+    "virtual-machines": "仮想マシン",
+    "high-availability": "高可用性",
+    "storage-posture": "ストレージ状態",
+    "network-posture": "ネットワーク状態",
+    "provider-security-posture": "プロバイダーセキュリティ",
+    "placement-advisor": "配置アドバイザー",
+    "recovery-points": "復旧ポイント",
+    "backup-policies": "バックアップポリシー",
+    "disaster-recovery": "災害復旧",
+    "virtualization-catalog": "VM カタログ",
+    activity: "アクティビティセンター",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "ガバナンス",
+    "self-service": "セルフサービス",
+    "governance-controls": "ID とポリシー",
+    "edge-platform": "エッジとオフライン環境",
+    "workstation-fleet": "ワークステーションフリート",
+    "compose-catalog": "Compose カタログ"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('ja', 'JP', "日本語", {
     checkFailed: "確認に失敗しました",
     upToDate: "最新バージョンをご利用中です",
     refreshed: "更新確認を更新しました"
-  }
+  },
+  selfService: {
+    title: 'インフラストラクチャ・セルフサービス', requestQuota: 'クォータを申請', acknowledge: '確認済みにする', pause: '通知を一時停止',
+    tabs: { catalog: 'カタログ', project: 'プロジェクト', requests: '申請', incidents: 'インシデント', guidance: 'ガイダンス' },
+    actions: { start: '起動', shutdown: 'シャットダウン', reboot: '再起動', snapshot: 'スナップショット', console: 'コンソール' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'インフラストラクチャの変更には、個別の保護された確認が必要です。', mobile: '安全なモバイル表示:' },
+  },
 });

@@ -1,0 +1,125 @@
+{
+  "date": "2026-09-20",
+  "host": "192.168.13.20",
+  "controllerImage": "sha256:dc9c89e982d53bf5a0cf074925fd4146acd4efd1e904b73b45011f59913d8ef6",
+  "source": "scripts/smoke-image-admission.js",
+  "temporaryControllerRemoved": true,
+  "archiveCleanupVerified": true,
+  "existingWorkloadsModified": false,
+  "results": [
+    {
+      "scanner": "trivy+grype",
+      "imageId": "sha256:a577627bbf803c7265e4f17e333cb4005a94ce099011146588f277fa65d2fe2c",
+      "counting": "scanner-findings",
+      "checks": [
+        {
+          "scanner": "trivy",
+          "imageId": "sha256:a577627bbf803c7265e4f17e333cb4005a94ce099011146588f277fa65d2fe2c",
+          "critical": 0,
+          "high": 39,
+          "medium": 25,
+          "low": 9,
+          "unknown": 3,
+          "passed": false,
+          "status": "blocked"
+        },
+        {
+          "scanner": "grype",
+          "imageId": "sha256:a577627bbf803c7265e4f17e333cb4005a94ce099011146588f277fa65d2fe2c",
+          "critical": 3,
+          "high": 50,
+          "medium": 40,
+          "low": 14,
+          "unknown": 2,
+          "negligible": 0,
+          "passed": false,
+          "status": "blocked"
+        }
+      ],
+      "critical": 3,
+      "high": 89,
+      "medium": 65,
+      "low": 23,
+      "unknown": 5,
+      "negligible": 0,
+      "passed": false,
+      "status": "blocked"
+    },
+    {
+      "scanner": "trivy+grype",
+      "imageId": "sha256:165fd462687eb7b6b7530f0998526531c7477e63239c983606cb40073fb89ecf",
+      "counting": "scanner-findings",
+      "checks": [
+        {
+          "scanner": "trivy",
+          "imageId": "sha256:165fd462687eb7b6b7530f0998526531c7477e63239c983606cb40073fb89ecf",
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unknown": 0,
+          "passed": true,
+          "status": "passed"
+        },
+        {
+          "scanner": "grype",
+          "imageId": "sha256:165fd462687eb7b6b7530f0998526531c7477e63239c983606cb40073fb89ecf",
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unknown": 0,
+          "negligible": 0,
+          "passed": true,
+          "status": "passed"
+        }
+      ],
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "unknown": 0,
+      "negligible": 0,
+      "passed": true,
+      "status": "passed"
+    },
+    {
+      "scanner": "trivy+grype",
+      "imageId": "sha256:597a7dd63c55288219d6ee1c3cd2c712ce90c59ccc7a1ffda52e3ad3a9df6563",
+      "counting": "scanner-findings",
+      "checks": [
+        {
+          "scanner": "trivy",
+          "imageId": "sha256:597a7dd63c55288219d6ee1c3cd2c712ce90c59ccc7a1ffda52e3ad3a9df6563",
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unknown": 0,
+          "passed": true,
+          "status": "passed"
+        },
+        {
+          "scanner": "grype",
+          "imageId": "sha256:597a7dd63c55288219d6ee1c3cd2c712ce90c59ccc7a1ffda52e3ad3a9df6563",
+          "critical": 0,
+          "high": 1,
+          "medium": 3,
+          "low": 0,
+          "unknown": 0,
+          "negligible": 0,
+          "passed": false,
+          "status": "blocked"
+        }
+      ],
+      "critical": 0,
+      "high": 1,
+      "medium": 3,
+      "low": 0,
+      "unknown": 0,
+      "negligible": 0,
+      "passed": false,
+      "status": "blocked"
+    }
+  ]
+}

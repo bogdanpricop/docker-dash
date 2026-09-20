@@ -45,6 +45,69 @@ beforeEach(() => {
 const auth = () => ({ Authorization: `Bearer ${authToken}` });
 const CONTAINER_ID = 'a1b2c3d4e5f6789012345678';  // valid 24-hex
 
+describe('egress enforcement outcomes', () => {
+  afterEach(() => jest.restoreAllMocks());
+  async function stackPolicy() {
+    const result = await request(app).post('/api/egress-filter/policies').set(auth())
+      .send({ scopeType: 'stack', scopeKey: 'transaction-test', preset: 'registry-only' });
+    expect(result.status).toBe(201); return result.body.policyId;
+  }
+  test('container status preserves a legacy NET_RAW safety warning', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    jest.spyOn(require('../services/egress-runner'), 'isApplied').mockResolvedValue({ applied: true, safeToFilter: false, safetyError: 'Drop NET_RAW', details: 'table present' });
+    const result = await request(app).get(`/api/egress-filter/policies/${policyId}/status`).set(auth());
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ applied: true, safeToFilter: false, safetyError: 'Drop NET_RAW' });
+  });
+  test('apply refuses the default NET_RAW capability before reaching the runner', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    jest.spyOn(require('../services/docker'), 'getDocker').mockReturnValue({ getContainer: () => ({ inspect: async () => ({ HostConfig: { NetworkMode: 'bridge', CapAdd: [], CapDrop: null } }) }) });
+    const runner = jest.spyOn(require('../services/egress-runner'), 'applyToContainer');
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/apply`).set(auth());
+    expect(result.status).toBe(422); expect(result.body.error).toContain('NET_RAW');
+    expect(runner).not.toHaveBeenCalled();
+  });
+  test('unapply passes policy identity and reports retained filters truthfully', async () => {
+    const { policyId } = require('../services/egress-filter').createPolicy({ scopeType: 'container', scopeKey: CONTAINER_ID, preset: 'registry-only' });
+    const runner = jest.spyOn(require('../services/egress-runner'), 'removeFromContainer').mockResolvedValue({ ok: true, removed: false, retained: true, applied: true, retainedFor: [991], output: 'Shared filter retained' });
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/unapply`).set(auth());
+    expect(result.status).toBe(200);expect(result.body).toMatchObject({ applied: true, retained: true, retainedFor: [991] });
+    expect(runner).toHaveBeenCalledWith({ containerId: CONTAINER_ID, hostId: 0, policyId });
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action='egress_filter_retained'").get().n).toBeGreaterThan(0);
+  });
+  test('stack response keeps removed and retained targets separate', async () => {
+    const policyId = await stackPolicy();
+    const runner = jest.spyOn(require('../services/egress-runner'), 'removeFromStack').mockResolvedValue({ removed: [{ id: 'a' }], retained: [{ id: 'b', applied: true, retainedFor: [991] }], failed: [] });
+    const result = await request(app).post(`/api/egress-filter/policies/${policyId}/unapply`).set(auth());
+    expect(result.status).toBe(200);expect(result.body.retained).toHaveLength(1);expect(result.body.removed).toHaveLength(1);
+    expect(runner).toHaveBeenCalledWith({ stackName: 'transaction-test', hostId: 0, policyId });
+  });
+  test('failed audit intent prevents firewall mutation', async () => {
+    const id = await stackPolicy();
+    const runner = jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockResolvedValue({ applied: [], skipped: [] });
+    jest.spyOn(require('../services/audit'), 'log').mockImplementation(() => { throw new Error('Audit unavailable'); });
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/apply`).set(auth());
+    expect(result.status).toBe(500);expect(runner).not.toHaveBeenCalled();
+  });
+  test('recovery failure returns helper identities and actual rollback results', async () => {
+    const id = await stackPolicy();
+    jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockRejectedValue(Object.assign(new Error('Rollback failed'), {
+      operationId: 'operation-test', recoveryRequired: true, recoveryHelpers: ['dd-egress-lock-test'], rollback: { restored: ['a'], failed: ['b'] },
+    }));
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/apply`).set(auth());
+    expect(result.status).toBe(500);expect(result.body.recoveryRequired).toBe(true);
+    expect(result.body.error).toContain('dd-egress-lock-test');expect(result.body.rollback.failed).toEqual(['b']);
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action='egress_policy_apply_started'").get().n).toBeGreaterThan(0);
+  });
+  test('partial removal is an API failure and leaves the policy active', async () => {
+    const id = await stackPolicy();
+    jest.spyOn(require('../services/egress-runner'), 'removeFromStack').mockResolvedValue({ removed: [{ id: 'a' }], failed: [{ id: 'b', error: 'offline' }] });
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/unapply`).set(auth());
+    expect(result.status).toBe(500);expect(result.body.ok).toBe(false);
+    expect(getDb().prepare('SELECT active FROM egress_policies WHERE id=?').get(id).active).toBe(1);
+  });
+});
+
 describe('GET /api/egress-filter/presets', () => {
   it('requires auth', async () => {
     const res = await request(app).get('/api/egress-filter/presets');

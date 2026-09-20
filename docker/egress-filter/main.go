@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,9 +40,9 @@ import (
 // ─── Config ──────────────────────────────────────────
 
 type listenerCfg struct {
-	addr       string
-	policyPath string
-	metricsAddr string
+	addr         string
+	policyPath   string
+	metricsAddr  string
 	blockLogPath string
 }
 
@@ -49,7 +50,7 @@ func loadCfg() listenerCfg {
 	return listenerCfg{
 		addr:         envOr("DD_EGRESS_LISTEN", ":29193"),
 		policyPath:   envOr("DD_EGRESS_POLICY_PATH", "/etc/dd-egress/policy.json"),
-		metricsAddr:  envOr("DD_EGRESS_METRICS_LISTEN", ""),  // empty → disabled
+		metricsAddr:  envOr("DD_EGRESS_METRICS_LISTEN", ""), // empty → disabled
 		blockLogPath: envOr("DD_EGRESS_BLOCKLOG_PATH", "/var/log/dd-egress/denied.log"),
 	}
 }
@@ -67,19 +68,21 @@ func envOr(k, d string) string {
 // Keeping it minimal: one flat allowlist for the whole sidecar. If we need
 // per-container policies later, the keyed-by-source-IP shape is a superset.
 type Policy struct {
-	Version    int      `json:"version"`
-	Mode       string   `json:"mode"` // "enforce" | "audit-only"
-	Allowlist  []string `json:"allowlist"`
-	UpdatedAt  string   `json:"updated_at"`
+	SchemaVersion int      `json:"schema_version"`
+	Version       int      `json:"version"`
+	Mode          string   `json:"mode"` // "enforce" | "audit-only"
+	Allowlist     []string `json:"allowlist"`
+	UpdatedAt     string   `json:"updated_at"`
 }
 
 var policy atomic.Pointer[Policy]
 
 // IMDS endpoints are ALWAYS blocked (deep-spec §13 decision 7).
 var imdsEndpoints = map[string]struct{}{
-	"169.254.169.254":           {},
-	"metadata.google.internal":  {},
-	"169.254.170.2":             {}, // ECS task role
+	"169.254.169.254":          {},
+	"metadata.google.internal": {},
+	"169.254.170.2":            {}, // ECS task role
+	"fd00:ec2::254":            {}, // AWS IPv6 metadata
 }
 
 func loadPolicy(path string) (*Policy, error) {
@@ -88,37 +91,59 @@ func loadPolicy(path string) (*Policy, error) {
 		return nil, err
 	}
 	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 65537))
+	if err != nil || len(data) > 65536 {
+		return nil, errors.New("policy unreadable or larger than 64 KiB")
+	}
 	var p Policy
-	if err := json.NewDecoder(f).Decode(&p); err != nil {
+	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("parse policy: %w", err)
 	}
+	if p.SchemaVersion < 0 || p.SchemaVersion > 2 {
+		return nil, errors.New("unsupported policy schema")
+	}
+	if err := normalizePolicy(&p); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func normalizePolicy(p *Policy) error {
 	if p.Mode == "" {
 		p.Mode = "enforce"
 	}
+	if p.Mode != "enforce" && p.Mode != "audit-only" {
+		return errors.New("unsupported policy mode")
+	}
 	// Lower-case for case-insensitive matching.
 	for i, h := range p.Allowlist {
-		p.Allowlist[i] = strings.ToLower(strings.TrimSpace(h))
+		prefix := ""
+		h = strings.ToLower(strings.TrimSpace(h))
+		if strings.HasPrefix(h, "*.") {
+			prefix, h = "*.", h[2:]
+		}
+		name, port, err := destination(h, "")
+		if err != nil || port != "" || (prefix != "" && net.ParseIP(name) != nil) {
+			return fmt.Errorf("invalid allowlist entry %q", h)
+		}
+		p.Allowlist[i] = prefix + name
 	}
-	return &p, nil
+	return nil
 }
 
 // matchAllowlist returns true if hostname is allowed by current policy.
 // Supports exact match and leading-wildcard (*.example.com matches a.example.com, a.b.example.com).
 func matchAllowlist(allowlist []string, hostname string) bool {
-	h := strings.ToLower(strings.TrimSpace(hostname))
-	if h == "" {
+	h, _, err := destination(hostname, "")
+	if err != nil {
 		return false
-	}
-	// Strip port if present
-	if i := strings.Index(h, ":"); i != -1 {
-		h = h[:i]
 	}
 	for _, entry := range allowlist {
 		if entry == h {
 			return true
 		}
 		if strings.HasPrefix(entry, "*.") {
-			suffix := entry[1:]  // ".example.com"
+			suffix := entry[1:] // ".example.com"
 			if strings.HasSuffix(h, suffix) && len(h) > len(suffix) {
 				return true
 			}
@@ -132,24 +157,110 @@ func matchAllowlist(allowlist []string, hostname string) bool {
 }
 
 func isIMDS(host string) bool {
-	h := strings.ToLower(strings.TrimSpace(host))
-	if i := strings.Index(h, ":"); i != -1 {
-		h = h[:i]
+	h, _, err := destination(host, "")
+	if err != nil {
+		return true
 	}
 	_, ok := imdsEndpoints[h]
 	return ok
 }
 
+// Normalize once for policy checks and dialing, including IPv4-mapped IPv6.
+func destination(authority, defaultPort string) (string, string, error) {
+	h, port := strings.ToLower(authority), defaultPort
+	if host, explicitPort, err := net.SplitHostPort(h); err == nil {
+		h, port = host, explicitPort
+		if port == "" {
+			return "", "", errors.New("empty port")
+		}
+	} else if strings.HasPrefix(h, "[") && strings.HasSuffix(h, "]") {
+		h = h[1 : len(h)-1]
+	}
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", "", errors.New("invalid port")
+		}
+		port = strconv.Itoa(n)
+	}
+	h = strings.TrimSuffix(h, ".")
+	if ip := net.ParseIP(h); ip != nil {
+		return ip.String(), port, nil
+	}
+	if len(h) == 0 || len(h) > 253 {
+		return "", "", errors.New("invalid hostname")
+	}
+	for _, label := range strings.Split(h, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", "", errors.New("invalid hostname label")
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return "", "", errors.New("invalid hostname character")
+			}
+		}
+	}
+	return h, port, nil
+}
+
+func policyDecision(p *Policy, host string) (allowed, audit bool, reason string) {
+	if isIMDS(host) {
+		return false, false, "imds-pin"
+	}
+	if p == nil {
+		return false, false, "no-policy"
+	}
+	if p.Mode != "enforce" && p.Mode != "audit-only" {
+		return false, false, "invalid-policy-mode"
+	}
+	if matchAllowlist(p.Allowlist, host) {
+		return true, false, ""
+	}
+	if p.Mode == "audit-only" {
+		return true, true, "not-in-allowlist"
+	}
+	return false, false, "not-in-allowlist"
+}
+
+var errMetadataAddress = errors.New("resolved destination is a metadata endpoint")
+
+// Resolve exactly once; inspect every answer, then dial only validated IPs.
+// This prevents DNS aliases and rebinding between validation and connection.
+func dialResolved(ctx context.Context, host, port string,
+	lookup func(context.Context, string) ([]net.IPAddr, error),
+	dial func(context.Context, string, string) (net.Conn, error)) (net.Conn, error) {
+	addresses, err := lookup(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("DNS returned no addresses")
+	}
+	for _, address := range addresses {
+		if address.Zone != "" || address.IP == nil || isIMDS(address.IP.String()) {
+			return nil, errMetadataAddress
+		}
+	}
+	for _, address := range addresses {
+		var conn net.Conn
+		conn, err = dial(ctx, "tcp", net.JoinHostPort(address.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+	}
+	return nil, err
+}
+
 // ─── Peek the first packet ─────────────────────────
 
-// peekHostname reads up to 2KB from r, tries to extract a hostname, and
+// peekHostname reads one bounded ClientHello record or HTTP header, extracts a hostname, and
 // returns (hostname, consumed_bytes, error).
 //
 // Detection order:
-//   1. TLS ClientHello SNI (first byte 0x16, 0x17, 0x15, 0x14 = TLS record)
-//   2. HTTP plaintext Host header
-//   3. HTTP CONNECT <host:port>
-//   4. Fallback: empty → caller decides (block unless in audit-only)
+//  1. TLS ClientHello SNI (first byte 0x16, 0x17, 0x15, 0x14 = TLS record)
+//  2. HTTP plaintext Host header
+//  3. HTTP CONNECT <host:port>
+//  4. Fallback: empty → caller decides (block unless in audit-only)
 func peekHostname(r *bufio.Reader) (string, []byte, error) {
 	peek, err := r.Peek(5)
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -164,8 +275,7 @@ func peekHostname(r *bufio.Reader) (string, []byte, error) {
 		}
 		full, err := r.Peek(5 + recordLen)
 		if err != nil {
-			// Not enough data yet. Settle for what we have.
-			full, _ = r.Peek(r.Buffered())
+			return "", nil, err
 		}
 		host := parseSNI(full)
 		if host != "" {
@@ -175,13 +285,26 @@ func peekHostname(r *bufio.Reader) (string, []byte, error) {
 	}
 
 	// HTTP plaintext: look for "GET ", "POST ", "HEAD ", "CONNECT " etc.
-	peek16, _ := r.Peek(16)
-	if looksLikeHTTP(peek16) {
-		// Read up to 4KB (HTTP headers). Do NOT consume — we'll splice after.
-		big, _ := r.Peek(4096)
-		host := parseHTTPHost(big)
+	if looksLikeHTTP(peek) {
+		// Read only through the header terminator, not a fixed byte count (which
+		// deadlocks short CONNECT requests waiting for the client's TLS data).
+		header := make([]byte, 0, 1024)
+		for len(header) < 16384 {
+			b, err := r.ReadByte()
+			if err != nil {
+				return "", nil, err
+			}
+			header = append(header, b)
+			if bytes.HasSuffix(header, []byte("\r\n\r\n")) {
+				break
+			}
+		}
+		if !bytes.HasSuffix(header, []byte("\r\n\r\n")) {
+			return "", nil, errors.New("HTTP header too large")
+		}
+		host := parseHTTPHost(header)
 		if host != "" {
-			return host, nil, nil
+			return host, header, nil
 		}
 		return "", nil, errors.New("http without Host header")
 	}
@@ -202,33 +325,11 @@ func looksLikeHTTP(b []byte) bool {
 }
 
 func parseHTTPHost(b []byte) string {
-	// First line = request line. CONNECT host:port HTTP/1.1
-	lineEnd := bytes.Index(b, []byte("\r\n"))
-	if lineEnd < 0 {
+	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(b)))
+	if err != nil {
 		return ""
 	}
-	line := string(b[:lineEnd])
-	parts := strings.Fields(line)
-	if len(parts) >= 2 && strings.EqualFold(parts[0], "CONNECT") {
-		return parts[1]
-	}
-	// Otherwise scan headers for Host:
-	rest := b[lineEnd+2:]
-	for {
-		i := bytes.Index(rest, []byte("\r\n"))
-		if i < 0 {
-			break
-		}
-		header := string(rest[:i])
-		if strings.HasPrefix(strings.ToLower(header), "host:") {
-			return strings.TrimSpace(header[5:])
-		}
-		if header == "" {
-			break
-		}
-		rest = rest[i+2:]
-	}
-	return ""
+	return req.Host
 }
 
 // parseSNI extracts server_name from a (partial) TLS ClientHello.
@@ -326,43 +427,42 @@ func handleConn(ctx context.Context, client net.Conn, metrics *metrics) {
 	defer client.Close()
 	_ = client.SetDeadline(time.Now().Add(30 * time.Second))
 
-	br := bufio.NewReaderSize(client, 8192)
-	host, _, err := peekHostname(br)
+	br := bufio.NewReaderSize(client, 32768)
+	host, header, err := peekHostname(br)
 	if err != nil {
 		metrics.denied.Add(1)
 		logDenied("unknown", 0, "protocol", err)
 		return
 	}
 
-	// Strip port from host for the allow check (we re-add for dialing)
-	dialHost := host
-	port := "443"
-	if i := strings.Index(host, ":"); i != -1 {
-		port = host[i+1:]
-		host = host[:i]
-	} else {
-		dialHost = host + ":" + port
+	connect := bytes.HasPrefix(header, []byte("CONNECT "))
+	defaultPort := "443"
+	if len(header) > 0 && !connect {
+		defaultPort = "80"
 	}
-
-	p := policy.Load()
-	mode := "enforce"
-	allowed := false
-	reason := ""
-	switch {
-	case p == nil:
-		reason = "no policy loaded"
-	case isIMDS(host):
-		reason = "imds-pin"
-	case matchAllowlist(p.Allowlist, host):
-		allowed = true
-	default:
-		reason = "not-in-allowlist"
+	host, port, err := destination(host, defaultPort)
+	if err != nil {
+		metrics.denied.Add(1)
+		logDenied("invalid", 0, "invalid-destination", err)
+		return
 	}
-	if p != nil {
-		mode = p.Mode
+	currentPolicy := policy.Load()
+	allowed, audit, reason := policyDecision(currentPolicy, host)
+	if currentPolicy != nil && currentPolicy.SchemaVersion == 2 {
+		source, _, splitErr := net.SplitHostPort(client.RemoteAddr().String())
+		if splitErr != nil {
+			source = ""
+		}
+		lookupCtx, lookupCancel := context.WithTimeout(ctx, 4*time.Second)
+		auth, lookupErr := resolveAuthorization(lookupCtx, resolverClient(envOr("DD_EGRESS_RESOLVER_SOCKET", "/etc/dd-egress/resolver.sock")), source)
+		lookupCancel()
+		if lookupErr != nil {
+			allowed, audit, reason = false, false, "source-authorization-unavailable"
+		} else {
+			allowed, audit, reason = scopedDecision(auth, host)
+		}
 	}
-
-	if !allowed && mode == "enforce" {
+	if !allowed {
 		metrics.denied.Add(1)
 		logDenied(host, port, reason, nil)
 		if tcp, ok := client.(*net.TCPConn); ok {
@@ -370,28 +470,42 @@ func handleConn(ctx context.Context, client net.Conn, metrics *metrics) {
 		}
 		return
 	}
-	if !allowed && mode == "audit-only" {
-		metrics.auditOnly.Add(1)
-		logDenied(host, port, reason+" (audit-only — not blocked)", nil)
-		// fall through to forward
-	}
-	metrics.allowed.Add(1)
-
 	// Dial the real destination.
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var d net.Dialer
-	upstream, err := d.DialContext(dialCtx, "tcp", dialHost)
+	upstream, err := dialResolved(dialCtx, host, port, net.DefaultResolver.LookupIPAddr, d.DialContext)
 	if err != nil {
+		if errors.Is(err, errMetadataAddress) {
+			metrics.denied.Add(1)
+			logDenied(host, port, "imds-pin", err)
+			return
+		}
 		metrics.upstreamError.Add(1)
 		logDenied(host, port, "upstream-dial-failed: "+err.Error(), nil)
 		return
 	}
 	defer upstream.Close()
+	_ = upstream.SetDeadline(time.Now().Add(30 * time.Second))
+	if audit {
+		metrics.auditOnly.Add(1)
+		logDenied(host, port, reason+" (audit-only — not blocked)", nil)
+	}
+	metrics.allowed.Add(1)
+	stop := context.AfterFunc(ctx, func() { _ = client.Close(); _ = upstream.Close() })
+	defer stop()
+	if connect {
+		// CONNECT is consumed by this proxy; the target receives only tunnel data.
+		if _, err := io.WriteString(client, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+			return
+		}
+	} else if len(header) > 0 {
+		if _, err := upstream.Write(header); err != nil {
+			return
+		}
+	}
 
 	// Replay the peeked buffer, then bidirectional copy.
-	_ = client.SetDeadline(time.Time{})  // clear
-	_ = upstream.SetDeadline(time.Time{})
 	if buffered := br.Buffered(); buffered > 0 {
 		peeked, _ := br.Peek(buffered)
 		if _, werr := upstream.Write(peeked); werr != nil {
@@ -399,10 +513,29 @@ func handleConn(ctx context.Context, client net.Conn, metrics *metrics) {
 		}
 		_, _ = br.Discard(buffered)
 	}
+	_ = client.SetDeadline(time.Time{})
+	_ = upstream.SetDeadline(time.Time{})
 
 	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(upstream, br); done <- struct{}{} }()
-	go func() { _, _ = io.Copy(client, upstream); done <- struct{}{} }()
+	go func() {
+		_, _ = io.Copy(upstream, br)
+		if tcp, ok := upstream.(*net.TCPConn); ok {
+			_ = tcp.CloseWrite()
+		} else {
+			_ = upstream.Close()
+		}
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(client, upstream)
+		if tcp, ok := client.(*net.TCPConn); ok {
+			_ = tcp.CloseWrite()
+		} else {
+			_ = client.Close()
+		}
+		done <- struct{}{}
+	}()
+	<-done
 	<-done
 }
 
@@ -434,7 +567,7 @@ func logDenied(host, port interface{}, reason string, extraErr error) {
 		line += " err=" + extraErr.Error()
 	}
 	line += "\n"
-	log.Print(line)  // stderr
+	log.Print(line) // stderr
 	denyLogMu.Lock()
 	defer denyLogMu.Unlock()
 	if denyLog != nil {

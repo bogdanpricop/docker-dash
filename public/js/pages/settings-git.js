@@ -5,6 +5,13 @@
 'use strict';
 
 const SettingsPageGit = {
+  _gitKnownHostsField(value = '') {
+    return `<div class="form-group">
+      <label>${i18n.t('pages.settings.gitKnownHostsLabel')} *</label>
+      <textarea id="gc-known-hosts" class="form-control" rows="4" spellcheck="false">${Utils.escapeHtml(value)}</textarea>
+      <small class="text-muted">${i18n.t('pages.settings.gitKnownHostsHint')}</small>
+    </div>`;
+  },
   async _renderGitCredentials(el) {
     try {
       const creds = await Api.getGitCredentials();
@@ -82,6 +89,7 @@ const SettingsPageGit = {
                     placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
           <small class="text-muted">Paste your SSH private key. It will be encrypted at rest.</small>
         </div>
+        ${this._gitKnownHostsField()}
       </div>
     `, {
       title: i18n.t('pages.settings.newCredentialTitle'),
@@ -95,6 +103,8 @@ const SettingsPageGit = {
         if (auth_type === 'ssh_key') {
           data.ssh_private_key = content.querySelector('#gc-ssh-key').value;
           if (!data.ssh_private_key) { Toast.warning('SSH private key is required'); return false; }
+          data.ssh_known_hosts = content.querySelector('#gc-known-hosts').value.trim();
+          if (!data.ssh_known_hosts) { Toast.warning(i18n.t('pages.settings.gitKnownHostsRequired')); return false; }
         } else {
           data.username = content.querySelector('#gc-username').value.trim();
           data.password = content.querySelector('#gc-password').value;
@@ -151,6 +161,7 @@ const SettingsPageGit = {
                       placeholder="Leave blank to keep current key"></textarea>
           </div>
           ${cred.ssh_public_key ? `<div class="form-group"><label>Current Public Key</label><div class="mono text-sm" style="word-break:break-all;padding:8px;background:var(--surface2);border-radius:4px">${Utils.escapeHtml(cred.ssh_public_key)}</div></div>` : ''}
+          ${this._gitKnownHostsField(cred.ssh_known_hosts || '')}
         `}
       `, {
         title: i18n.t('pages.settings.editCredentialTitle'),
@@ -165,6 +176,10 @@ const SettingsPageGit = {
           if (password) data.password = password;
           const sshKey = content.querySelector('#gc-ssh-key')?.value;
           if (sshKey) data.ssh_private_key = sshKey;
+          if (cred.auth_type === 'ssh_key') {
+            data.ssh_known_hosts = content.querySelector('#gc-known-hosts').value.trim();
+            if (!data.ssh_known_hosts) { Toast.warning(i18n.t('pages.settings.gitKnownHostsRequired')); return false; }
+          }
           return data;
         },
       });

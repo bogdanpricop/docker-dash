@@ -16,8 +16,12 @@ const _windows = new Map();
 function tick(key, maxRequests, windowMs) {
   const now = Date.now();
   const cutoff = now - windowMs;
-  let times = _windows.get(key);
-  if (!times) { times = []; _windows.set(key, times); }
+  let entry = _windows.get(key);
+  if (!entry) { entry = { times: [], windowMs }; _windows.set(key, entry); }
+  // A scope has one configured window. Never silently reset a live budget
+  // when callers accidentally reuse its key with a different duration.
+  if (entry.windowMs !== windowMs) throw new Error('Conflicting rate-limit window for scope');
+  const times = entry.times;
   // In-place filter (avoids allocating a new array on the hot path).
   let w = 0;
   for (let r = 0; r < times.length; r++) {
@@ -35,11 +39,10 @@ function tick(key, maxRequests, windowMs) {
 
 /** Drop keys whose windows are fully expired. Called periodically. */
 function _cleanup(nowOverride) {
-  const now = nowOverride || Date.now();
-  for (const [k, times] of _windows) {
-    const filtered = times.filter(t => t > now - 3600000);
-    if (filtered.length === 0) _windows.delete(k);
-    else _windows.set(k, filtered);
+  const now = nowOverride ?? Date.now();
+  for (const [k, entry] of _windows) {
+    entry.times = entry.times.filter(t => t > now - entry.windowMs);
+    if (entry.times.length === 0) _windows.delete(k);
   }
 }
 

@@ -1,0 +1,98 @@
+{
+  "version": "8.96.3",
+  "build": {
+    "tag": "docker-dash:8.96.3-audit-9cfa369",
+    "id": "sha256:cecc9a75b71ed5b471a08e87a296dfa8cca08a10dea0563f85e391845528e4a3",
+    "host": "192.168.13.20",
+    "revision": "9cfa369ca101ef1d5dd34f4feb215f56ee7ea412",
+    "version": "8.96.3"
+  },
+  "externalHealthVerifiedAt": "2026-09-20T02:52:06.368663+00:00",
+  "deployments": [
+    {
+      "target": "lan",
+      "version": "8.96.3",
+      "revision": "9cfa369ca101ef1d5dd34f4feb215f56ee7ea412",
+      "image": "sha256:cecc9a75b71ed5b471a08e87a296dfa8cca08a10dea0563f85e391845528e4a3",
+      "containerId": "bee21ab3a120dffbccaf0a7e07d59ad543ba05330ab621bb1d25217567d6255c",
+      "at": "2026-09-20T02:48:19.325Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 5,
+      "hosts": 7,
+      "migration": "177_container_replacements.js",
+      "localDockerContainers": 148,
+      "backupDirectory": "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.3-9cfa369/backup",
+      "composeFiles": [
+        "/home/localadmin-a/docker-dash/docker-compose.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.3-9cfa369/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "integrity": "ok",
+        "sha256": "2fbd73f5a2e54a5ecd9aeaecf7157a82b96923de6bb35b1e445aba46ab9a0e33",
+        "size": 3942309888,
+        "mode": 384,
+        "rss": 116400128,
+        "target": "lan",
+        "at": "2026-09-20T02:47:42.793Z",
+        "directory": "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.3-9cfa369/backup"
+      },
+      "externalHttpHealth": {
+        "status": "ok",
+        "version": "8.96.3"
+      }
+    },
+    {
+      "target": "vps",
+      "version": "8.96.3",
+      "revision": "9cfa369ca101ef1d5dd34f4feb215f56ee7ea412",
+      "image": "sha256:cecc9a75b71ed5b471a08e87a296dfa8cca08a10dea0563f85e391845528e4a3",
+      "containerId": "0f6a34d20b85a0331bb13579ca737cf9c5d07ac6f2491b9683ae74d874895092",
+      "at": "2026-09-20T02:49:41.537Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 2,
+      "hosts": 1,
+      "migration": "177_container_replacements.js",
+      "localDockerContainers": 89,
+      "backupDirectory": "/opt/docker-dash/checkpoints/8.96.3-9cfa369/backup",
+      "composeFiles": [
+        "/opt/docker-dash/docker-compose.yml",
+        "/opt/docker-dash/docker-compose.override.yml",
+        "/opt/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml",
+        "/opt/docker-dash/checkpoints/8.96.3-9cfa369/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "integrity": "ok",
+        "sha256": "9fcc1bfe77e836f8a7927b814307f6f8a29144e0f16c2160e7bbf5a54446a979",
+        "size": 615849984,
+        "mode": 384,
+        "rss": 85954560,
+        "target": "vps",
+        "at": "2026-09-20T02:48:48.898Z",
+        "directory": "/opt/docker-dash/checkpoints/8.96.3-9cfa369/backup"
+      },
+      "externalHttpHealth": {
+        "status": "ok",
+        "version": "8.96.3"
+      }
+    }
+  ],
+  "scans": {
+    "trivy": {
+      "MEDIUM": 3,
+      "UNKNOWN": 3,
+      "HIGH": 4
+    },
+    "grype": {
+      "High": 4,
+      "Medium": 6
+    }
+  },
+  "scanIdentityEvidence": "2026-09-20-image-8.96.3.json"
+}

@@ -13,8 +13,8 @@
 // HA mode (DD_MODE=ha):
 //   - Lazy-connects to Redis (REDIS_URL, default redis://localhost:6379)
 //   - rateLimitTick → Redis INCR + PEXPIRE
-//   - publish/subscribe / isLeader remain stubs in v6.17.0 (see deep-spec §8);
-//     wired in v7.0.0-alpha.1 and v7.0.0-rc.1 respectively.
+//   - pub/sub broadcasts between replicas; an ownership-checked Redis lease
+//     gates scheduled work. A lease does not fence already-running external I/O.
 //
 // See plans/deep-spec-ha-mode.md for architecture + rollout plan.
 
@@ -46,18 +46,35 @@ async function redis() {
       log.error(msg);
       throw new Error(msg);
     }
-    _redis = new Redis(REDIS_URL, {
+    const client = new Redis(REDIS_URL, {
+      // Preserve the deployed Redis protocol when upgrading ioredis to v6.
+      protocol: 2,
       lazyConnect: false,
       maxRetriesPerRequest: 3,
       retryStrategy: (times) => Math.min(times * 200, 2000),
     });
-    _redis.on('connect', () => log.info('Redis connected', {
-      // Redact credentials in the URL before logging
-      url: REDIS_URL.replace(/:\/\/[^@]*@/, '://***@'),
-      nodeId: NODE_ID,
-    }));
-    _redis.on('error', (e) => log.error('Redis error', { message: e.message }));
-    return _redis;
+    _redis = client;
+
+    // v8.95.1 — the handlers check they are still the current client before
+    // logging. `connect` fires on a later tick, so it can land after the client
+    // has been discarded by shutdown() or _reset(): in production that is noise
+    // about a connection nobody is using, and under Jest it lands after the suite
+    // has torn down, where Jest attributes the stray write to whichever test
+    // happens to be running and fails it. That was the source of an intermittent
+    // 2-4 test failures across the whole suite, unrelated to the tests it hit.
+    client.on('connect', () => {
+      if (_redis !== client) return;
+      log.info('Redis connected', {
+        // Redact credentials in the URL before logging
+        url: REDIS_URL.replace(/:\/\/[^@]*@/, '://***@'),
+        nodeId: NODE_ID,
+      });
+    });
+    client.on('error', (e) => {
+      if (_redis !== client) return;
+      log.error('Redis error', { message: e.message });
+    });
+    return client;
   })();
   return _redisPromise;
 }
@@ -127,7 +144,7 @@ async function _ensureSubscriber() {
     let Redis;
     try { Redis = require('ioredis'); }
     catch { throw new Error('ioredis missing — install it or unset DD_MODE'); }
-    const c = new Redis(REDIS_URL, { lazyConnect: false, maxRetriesPerRequest: 3 });
+    const c = new Redis(REDIS_URL, { protocol: 2, lazyConnect: false, maxRetriesPerRequest: 3 });
     c.on('error', (e) => log.error('Redis subscriber error', { message: e.message }));
     c.on('message', (_chan, raw) => {
       let env;
@@ -181,8 +198,8 @@ function subscribe(appChannel, handler) {
 //     ours, no need for app prefix on the hot path)
 //   - Value: NODE_ID (UUID)
 //   - TTL: LEADER_TTL_MS (30s — tolerates a stalled heartbeat round)
-//   - Heartbeat: every LEADER_HEARTBEAT_MS (10s) the leader extends
-//     the TTL with SET XX PX (only if still owned)
+//   - Heartbeat: every LEADER_HEARTBEAT_MS (10s) an atomic Lua script
+//     extends the TTL only when the stored owner matches this node.
 //   - Reader poll: every LEADER_HEARTBEAT_MS readers try to acquire
 //     (in case leader died)
 //
@@ -191,12 +208,13 @@ function subscribe(appChannel, handler) {
 // cron, ws/index.js to start/stop the Docker event stream, and
 // gitPolling.js to start/stop per-stack polling.
 
-const LEADER_KEY = 'leader';
+const ClusterLease = require('./cluster-lease');
 const LEADER_TTL_MS = 30000;
 const LEADER_HEARTBEAT_MS = 10000;
 
 let _leaderState = 'unknown';       // 'leader' | 'reader' | 'unknown'
-let _leaderTimer = null;
+let _leaseClient = null;
+let _lease = null;
 let _leaderSince = null;             // ms timestamp since last transition TO leader
 let _lastHeartbeatAt = null;         // ms timestamp of last successful heartbeat / election
 const _onLeaderCbs = [];
@@ -205,56 +223,29 @@ const _onReaderCbs = [];
 /** Return cached role. In standalone mode, always leader. */
 async function isLeader() {
   if (!isHa()) return true;  // standalone IS its own cluster-of-1 leader
-  // Start the election loop lazily on first `isLeader()` call so we don't
-  // incur Redis traffic if the app isn't in HA mode yet.
-  if (!_leaderTimer && _leaderState === 'unknown') {
-    await _electOnce();
-    _leaderTimer = setInterval(() => _electOnce().catch(() => {}), LEADER_HEARTBEAT_MS);
-    if (typeof _leaderTimer.unref === 'function') _leaderTimer.unref();
-  }
-  return _leaderState === 'leader';
+  return _getLease().start();
 }
 
-async function _electOnce() {
-  if (!isHa()) return;
-  let r;
-  try { r = await redis(); }
-  catch { _transitionTo('reader'); return; }
+function _getLease() {
+  if (!_lease) _lease = new ClusterLease({ client: _leaseRedis, token: NODE_ID,
+    onRole: _transitionTo, onPoll: () => { _lastHeartbeatAt = Date.now(); } });
+  return _lease;
+}
 
-  const wasLeader = (_leaderState === 'leader');
-
-  if (wasLeader) {
-    // Extend our existing lock (XX = only if key exists; silently fails if
-    // the lock has expired and was grabbed by someone else).
-    const ok = await r.set(LEADER_KEY, NODE_ID, 'XX', 'PX', LEADER_TTL_MS).catch(() => null);
-    if (ok === 'OK') { _lastHeartbeatAt = Date.now(); return; }  // still leader
-    // Lock lost — check who has it
-    const holder = await r.get(LEADER_KEY).catch(() => null);
-    if (holder === NODE_ID) { _lastHeartbeatAt = Date.now(); return; }  // race: still ours
-    _transitionTo('reader');
-    return;
-  }
-
-  // Reader path — try to acquire
-  const ok = await r.set(LEADER_KEY, NODE_ID, 'NX', 'PX', LEADER_TTL_MS).catch(() => null);
-  if (ok === 'OK') {
-    _lastHeartbeatAt = Date.now();
-    _transitionTo('leader');
-    return;
-  }
-  // NX failed — check whether we already hold it (e.g. after an internal
-  // state reset in tests, or a brief event-loop hiccup across heartbeats).
-  // If the holder is our NODE_ID, re-claim the role without SET and refresh
-  // the TTL to our intended value.
-  const holder = await r.get(LEADER_KEY).catch(() => null);
-  if (holder === NODE_ID) {
-    await r.pexpire(LEADER_KEY, LEADER_TTL_MS).catch(() => null);
-    _lastHeartbeatAt = Date.now();
-    _transitionTo('leader');
-  } else {
-    _lastHeartbeatAt = Date.now();
-    _transitionTo('reader');
-  }
+async function _leaseRedis() {
+  if (_leaseClient) return _leaseClient;
+  const Redis = require('ioredis');
+  // Coordination has a dedicated connection: queued rate-limit/pubsub commands
+  // must not delay renewals. Never queue or replay a lease command on reconnect.
+  const c = new Redis(REDIS_URL, { protocol: 2, lazyConnect: true,
+    enableOfflineQueue: false, autoResendUnfulfilledCommands: false,
+    maxRetriesPerRequest: 0, connectTimeout: 3000, commandTimeout: 3000,
+    retryStrategy: times => Math.min(times * 200, 2000) });
+  _leaseClient = c;
+  c.on('error', () => { if (_leaseClient === c) _lease?.invalidate(); });
+  c.on('close', () => { if (_leaseClient === c) _lease?.invalidate(); });
+  await c.connect();
+  return c;
 }
 
 function _transitionTo(role) {
@@ -274,6 +265,7 @@ function _transitionTo(role) {
 /** Return a plain-object snapshot of cluster state for /api/cluster/status
  *  and /api/metrics. Safe to call from any thread; no I/O. */
 function getStatus() {
+  if (isHa()) _lease?.isLeader(); // expire stale cached role before exposing it
   const now = Date.now();
   return {
     mode: isHa() ? 'ha' : 'standalone',
@@ -287,7 +279,7 @@ function getStatus() {
     leaderLockTtlMs: isHa() ? LEADER_TTL_MS : null,
     heartbeatIntervalMs: isHa() ? LEADER_HEARTBEAT_MS : null,
     // Redis connection health (true/false/null for standalone)
-    redisConnected: !isHa() ? null : !!(_redis && _redis.status === 'ready'),
+    redisConnected: !isHa() ? null : !!((_leaseClient || _redis)?.status === 'ready'),
   };
 }
 
@@ -309,17 +301,11 @@ function onBecomeReader(fn) {
 }
 
 async function shutdown() {
-  if (_leaderTimer) { clearInterval(_leaderTimer); _leaderTimer = null; }
-  // Release the leader lock proactively on graceful shutdown so another
-  // replica can pick it up within milliseconds instead of waiting for TTL.
-  if (_leaderState === 'leader' && _redis) {
-    try {
-      // Delete only if we still own it (Lua to avoid clobbering a new leader
-      // that acquired right before our DEL lands).
-      const script = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`;
-      await _redis.eval(script, 1, LEADER_KEY, NODE_ID);
-    } catch { /* ignore */ }
-  }
+  // Mark the coordinator closed before I/O, so a delayed response cannot
+  // resurrect leadership or install a new heartbeat loop during shutdown.
+  if (isHa()) await _getLease().release(_leaseClient);
+  const leaseClient = _leaseClient; _leaseClient = null;
+  leaseClient?.disconnect();
   if (_subClient) {
     try { await _subClient.quit(); } catch { /* ignore */ }
     _subClient = null;
@@ -342,12 +328,24 @@ module.exports = {
   shutdown,
   // test-only: reset internal state
   _reset() {
-    if (_leaderTimer) { clearInterval(_leaderTimer); _leaderTimer = null; }
+    _lease?.stop(); _lease = null;
+    // Detach before dropping the reference: an orphaned client keeps its
+    // listeners, and a mock that emits `connect` on a later tick would otherwise
+    // still reach the logger long after the test that created it finished.
+    for (const c of [_redis, _subClient, _leaseClient]) {
+      if (c && typeof c.removeAllListeners === 'function') {
+        try { c.removeAllListeners(); } catch { /* best effort */ }
+      }
+      try { c?.disconnect(); } catch { /* best effort */ }
+    }
     _redis = null;
     _redisPromise = null;
     _subClient = null;
     _subClientPromise = null;
+    _leaseClient = null;
     _leaderState = 'unknown';
+    _leaderSince = null;
+    _lastHeartbeatAt = null;
     _subscribers.clear();
     _onLeaderCbs.length = 0;
     _onReaderCbs.length = 0;

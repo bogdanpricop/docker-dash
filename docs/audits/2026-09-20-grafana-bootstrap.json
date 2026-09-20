@@ -1,0 +1,78 @@
+{
+  "date": "2026-09-20",
+  "status": "bootstrap-deployed-version-upgrade-pending",
+  "tests": {
+    "jestSuites": 2,
+    "jestPassed": 56,
+    "composeChecksPerHost": 4,
+    "nativeBootstrapChecksPerVersion": 7,
+    "nativeBootstrapVersions": [
+      "11.3.0",
+      "13.2.2"
+    ]
+  },
+  "targets": [
+    {
+      "at": "2026-09-20T12:13:29.274Z",
+      "target": "lan",
+      "image": "sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3",
+      "container": "70b4e89ed41b030af666033cc05045e8246a242eac4c41fe91552fcca49cab50",
+      "version": "11.3.0",
+      "guardSha256": "4117f5d6433225daa94de9c3caf69f16795f5bc16d4a2b0f578f5baa77e4967b",
+      "backup": "/home/localadmin-a/.local/share/docker-dash/checkpoints/observability-20260920-1789905811594",
+      "rollbackContainer": "docker-dash-grafana-rollback-grafana-bootstrap-1789906405868",
+      "override": "/home/localadmin-a/.local/share/docker-dash/checkpoints/observability-20260920-1789905811594/grafana-bootstrap-1789906405868/compose-bootstrap.json",
+      "bootstrapFile": "/home/localadmin-a/.local/share/docker-dash/checkpoints/observability-20260920-1789905811594/grafana-bootstrap-1789906405868/bootstrap-password",
+      "privateParentMode": "700",
+      "secretFileMode": "644",
+      "originalEnvironmentPreservedExceptBootstrap": true,
+      "originalMountsAndPortsPreserved": true,
+      "restarts": 0,
+      "anonymousStatus": 401,
+      "defaultPasswordStatus": 401,
+      "collectorUp": true,
+      "backupVerification": {
+        "archive": "/home/localadmin-a/.local/share/docker-dash/checkpoints/observability-20260920-1789905811594/grafana-data.tar",
+        "sha256": "18a8fb29d90ca4b694ce04566b76c6255a8d85a215c53d4574927ad2c6ab7394",
+        "bytes": 14727168,
+        "mode": "600",
+        "stoppedSnapshot": true,
+        "integrity": "ok",
+        "verifiedAt": "2026-09-20T12:06:07.394Z"
+      },
+      "accountsPreserved": true,
+      "countsPreserved": true
+    },
+    {
+      "at": "2026-09-20T12:13:42.716Z",
+      "target": "vps",
+      "image": "sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3",
+      "container": "47712c81deda7896c68453bb5b29b4209b7e5724ba1758ebbdb4f27b1a1fdba8",
+      "version": "11.3.0",
+      "guardSha256": "4117f5d6433225daa94de9c3caf69f16795f5bc16d4a2b0f578f5baa77e4967b",
+      "backup": "/opt/docker-dash/checkpoints/observability-20260920-1789906310014",
+      "rollbackContainer": "docker-dash-grafana-rollback-grafana-bootstrap-1789906418398",
+      "override": "/opt/docker-dash/checkpoints/observability-20260920-1789906310014/grafana-bootstrap-1789906418398/compose-bootstrap.json",
+      "bootstrapFile": "/opt/docker-dash/checkpoints/observability-20260920-1789906310014/grafana-bootstrap-1789906418398/bootstrap-password",
+      "privateParentMode": "700",
+      "secretFileMode": "644",
+      "originalEnvironmentPreservedExceptBootstrap": true,
+      "originalMountsAndPortsPreserved": true,
+      "restarts": 0,
+      "anonymousStatus": 401,
+      "defaultPasswordStatus": 401,
+      "collectorUp": true,
+      "backupVerification": {
+        "archive": "/opt/docker-dash/checkpoints/observability-20260920-1789906310014/grafana-data.tar",
+        "sha256": "54846b47ce2956f823589531523810aaa6d508decb1245f9c68cbf53985636b3",
+        "bytes": 14731264,
+        "mode": "600",
+        "stoppedSnapshot": true,
+        "integrity": "ok",
+        "verifiedAt": "2026-09-20T12:12:09.914Z"
+      },
+      "accountsPreserved": true,
+      "countsPreserved": true
+    }
+  ]
+}

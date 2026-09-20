@@ -1,0 +1,527 @@
+{
+  "at": "2026-09-20T04:29:54.731Z",
+  "build": {
+    "tag": "docker-dash:8.96.5-audit-1edb02e",
+    "id": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+    "host": "192.168.13.20",
+    "revision": "1edb02e56a9f1581f8030a065a46cfbdd649d372",
+    "version": "8.96.5",
+    "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5"
+  },
+  "identity": {
+    "image": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "configId": "sha256:8323fedbf59744ba1f23b5049af89e1f4339d765f71391a8d99be7fe9b6482fd",
+    "platform": "linux/amd64",
+    "manifestAndConfigSha256Verified": true,
+    "orderedRootfsLayersVerified": 20,
+    "trivyReportedIdentity": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+    "grypeReportedIdentity": "sha256:8323fedbf59744ba1f23b5049af89e1f4339d765f71391a8d99be7fe9b6482fd"
+  },
+  "trivy": {
+    "image": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+    "counts": {
+      "UNKNOWN": 3,
+      "HIGH": 4,
+      "MEDIUM": 2
+    },
+    "vulnerabilities": [
+      {
+        "target": "usr/libexec/docker/cli-plugins/docker-compose",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/docker",
+        "id": "CVE-2026-84445",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-41567",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-42306",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-33997",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "fixed": "29.3.1",
+        "severity": "MEDIUM"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-41568",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "MEDIUM"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/trivy",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/trivy",
+        "id": "CVE-2026-84445",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+        "severity": "HIGH"
+      }
+    ]
+  },
+  "grype": {
+    "image": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+    "counts": {
+      "High": 4,
+      "Medium": 5
+    },
+    "vulnerabilities": [
+      {
+        "id": "GO-2026-4887",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "locations": [
+          {
+            "path": "/usr/local/bin/grype",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/grype",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "locations": [
+          {
+            "path": "/usr/local/bin/docker",
+            "layerID": "sha256:1acb285aaf140b3e19d219f07b4533a3e7fdb7a4004666b5655736db3cddcf80",
+            "accessPath": "/usr/local/bin/docker",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [
+            "1.85.0-dev.0.20260825072537-93e31b48545e"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "1.85.0-dev.0.20260825072537-93e31b48545e",
+              "date": "2026-09-09",
+              "kind": "first-observed"
+            }
+          ]
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "locations": [
+          {
+            "path": "/usr/local/bin/trivy",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/trivy",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [
+            "1.85.0-dev.0.20260825072537-93e31b48545e"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "1.85.0-dev.0.20260825072537-93e31b48545e",
+              "date": "2026-09-09",
+              "kind": "first-observed"
+            }
+          ]
+        },
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-85091",
+        "pkg": "zlib",
+        "installed": "1.3.2-r0",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-pxq6-2prw-chj9",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "locations": [
+          {
+            "path": "/usr/local/bin/grype",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/grype",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": "not-fixed"
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "busybox",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "busybox-binsh",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "ssl_client",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2026-58055",
+        "pkg": "nghttp2-libs",
+        "installed": "1.69.0-r0",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      }
+    ]
+  },
+  "compose": {
+    "version": "5.5.1+dd.1",
+    "source": {
+      "module": "github.com/docker/compose/v5",
+      "version": "v5.5.1",
+      "sum": "h1:saWlMxB0tfQ+FVUlWGIUjLvR0jF5cfTU18KI5zKLD/M=",
+      "commit": "5f94fb0aa42a2cd1248c6e6c7fafb87546b9c8de"
+    },
+    "binarySha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+    "go": "1.27.1",
+    "containerd": "2.3.5",
+    "crypto": "0.57.0",
+    "grpc": "1.83.2",
+    "packageGraphSha256": "b5ac0a6192590ec4ef06b0d8cc8dcdc19a22324e52733270bd003afc48c10cc2",
+    "openpgpPackagePresent": false,
+    "upstreamTestsPreviouslyVerifiedIn": "2026-09-20-compose-rebuild.md",
+    "upstreamTestPackages": [
+      "pkg/compose",
+      "pkg/api",
+      "cmd/compose"
+    ],
+    "canaries": {
+      "lan": {
+        "project": "dd-compose-smoke-9165b6e3c0e59dfb",
+        "image": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+        "compose": "5.5.1+dd.1",
+        "sha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+        "checks": [
+          "provenance",
+          "config",
+          "up",
+          "health",
+          "exec",
+          "volume-persistence",
+          "restart",
+          "recreate",
+          "ps"
+        ],
+        "resourcesRemoved": true
+      },
+      "vps": {
+        "project": "dd-compose-smoke-0c5e6c7fa04d15f4",
+        "image": "sha256:51743b84c30a60b90758a85c2ffaa1e43470d185a66ba2488734dfcd067594f2",
+        "compose": "5.5.1+dd.1",
+        "sha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+        "checks": [
+          "provenance",
+          "config",
+          "up",
+          "health",
+          "exec",
+          "volume-persistence",
+          "restart",
+          "recreate",
+          "ps"
+        ],
+        "resourcesRemoved": true
+      }
+    }
+  },
+  "helperRuntime": {
+    "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+    "configId": "sha256:841fe60e0e4592964e549346308e27c68b8f9adc14aebe7c5aaa5b5328ea2fa1",
+    "manifestConfigSha256Verified": true,
+    "orderedRootfsLayersVerified": 2,
+    "platform": "linux/amd64",
+    "trivy": {
+      "scanner": "trivy",
+      "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "findings": []
+    },
+    "grype": {
+      "scanner": "grype",
+      "image": "sha256:841fe60e0e4592964e549346308e27c68b8f9adc14aebe7c5aaa5b5328ea2fa1",
+      "findings": [
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox-binsh",
+          "severity": "Medium"
+        }
+      ]
+    },
+    "packages": [
+      {
+        "name": "alpine-baselayout",
+        "version": "3.7.2-r1"
+      },
+      {
+        "name": "alpine-baselayout-data",
+        "version": "3.7.2-r1"
+      },
+      {
+        "name": "alpine-keys",
+        "version": "2.6-r0"
+      },
+      {
+        "name": "alpine-release",
+        "version": "3.24.2-r0"
+      },
+      {
+        "name": "busybox",
+        "version": "1.37.0-r31"
+      },
+      {
+        "name": "busybox-binsh",
+        "version": "1.37.0-r31"
+      },
+      {
+        "name": "gmp",
+        "version": "6.3.0-r4"
+      },
+      {
+        "name": "jansson",
+        "version": "2.15.0-r0"
+      },
+      {
+        "name": "libmnl",
+        "version": "1.0.5-r2"
+      },
+      {
+        "name": "libncursesw",
+        "version": "6.6_p20260516-r0"
+      },
+      {
+        "name": "libnftnl",
+        "version": "1.3.1-r0"
+      },
+      {
+        "name": "musl",
+        "version": "1.2.6-r2"
+      },
+      {
+        "name": "musl-utils",
+        "version": "1.2.6-r2"
+      },
+      {
+        "name": "ncurses-terminfo-base",
+        "version": "6.6_p20260516-r0"
+      },
+      {
+        "name": "nftables",
+        "version": "1.1.6-r1"
+      },
+      {
+        "name": "readline",
+        "version": "8.3.3-r1"
+      },
+      {
+        "name": "scanelf",
+        "version": "1.3.9-r1"
+      }
+    ],
+    "date": "2026-09-20",
+    "tests": {
+      "suites": 355,
+      "passed": 4615,
+      "skipped": 1,
+      "lint": true,
+      "npmAudit": 0
+    },
+    "nativeCanaries": {
+      "lan": {
+        "marker": "dd-egress-atomic-0fc01cfee98b",
+        "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+        "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+        "checks": [
+          "kernel-reject-preserves-original-table",
+          "stack-failure-restores-preexisting-tables",
+          "apply-reapply-and-status-preserve-unrelated-tables",
+          "daemon-reservation-refuses-concurrent-operation",
+          "rollback-restores-absent-table",
+          "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+        ],
+        "modifiedOnlyDisposableNamespaces": true
+      },
+      "vps": {
+        "marker": "dd-egress-atomic-63c12c355723",
+        "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+        "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+        "checks": [
+          "kernel-reject-preserves-original-table",
+          "stack-failure-restores-preexisting-tables",
+          "apply-reapply-and-status-preserve-unrelated-tables",
+          "daemon-reservation-refuses-concurrent-operation",
+          "rollback-restores-absent-table",
+          "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+        ],
+        "modifiedOnlyDisposableNamespaces": true
+      }
+    },
+    "composeCanaries": {
+      "lan": {
+        "project": "dd-helper-profile-ee1dc7e2507c",
+        "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+        "bootstrapCompleted": true,
+        "dependentCompleted": true,
+        "packageDatabaseRetained": true,
+        "apkAndZlibAbsent": true
+      },
+      "vps": {
+        "project": "dd-helper-profile-a2dea5250629",
+        "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+        "bootstrapCompleted": true,
+        "dependentCompleted": true,
+        "packageDatabaseRetained": true,
+        "apkAndZlibAbsent": true
+      }
+    }
+  },
+  "applicationTests": {
+    "suites": 355,
+    "passed": 4615,
+    "skipped": 1,
+    "lint": true,
+    "npmAudit": 0
+  },
+  "noScannerExceptionsAdded": true,
+  "noAdmissionGatesDisabled": true
+}
