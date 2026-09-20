@@ -10,7 +10,16 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
   <li><strong>Exfiltrează date</strong> către host-uri controlate de atacator</li>
   <li><strong>Contactează C2</strong> pentru persistență</li>
 </ul>
-<p>Outbound Filter îți dă un allowlist de hostname-uri per container sau stack. Restul e blocat. IMDS e blocat indiferent de ce zice allowlist-ul — apărare negociabilă.</p>
+<p>Outbound Filter autorizeaza conexiunile IPv4 TCP care trec prin proxy, per container sau stack. Firewall-ul curent exclude DNS, loopback si destinatiile RFC1918; IPv6 si traficul non-TCP nu sunt acoperite. Nu este o izolare completa de retea. Protectia metadata din proxy nu dovedeste blocarea tuturor cailor alternative.</p>
+
+<h2>Aplicarea regulilor si recuperarea unui esec</h2>
+<p>Tabela IPv4 a fiecarui container este inlocuita intr-o singura tranzactie nftables. Regulile invalide pastreaza tabela anterioara. Un stack este actualizat secvential: toate tintele sunt rezervate si politicile salvate inaintea primei modificari; la esec, tintele deja incercate sunt restaurate din acele copii. Nu exista o tranzactie atomica intre toate containerele. Contoarele si conexiunile active nu sunt restaurate.</p>
+<p>API-ul raporteaza rezultatele reale ale restaurarii. Daca recuperarea sau curatarea nu poate fi confirmata, pastreaza helper-ul <code>dd-egress-lock-&lt;id-complet-container&gt;</code> si incearca sa il opreasca. Fisierul sau <code>/tmp/dd-before.nft</code> contine politica anterioara; un fisier gol inseamna ca tabela nu exista. Rezervarea impiedica suprascrierea dovezilor printr-o operatie noua. Nu sterge automat helper-ele si nu forta repetarea prin alta unealta.</p>
+<p>Pentru recuperare, administratorul compara etichetele helper-ului <code>com.docker-dash.egress-target</code>, <code>com.docker-dash.egress-started-at</code> si <code>com.docker-dash.egress-pid</code> cu ID-ul, ora pornirii si PID-ul tintei curente. Restartul schimba namespace-ul de retea: nu restaura automat copia veche acolo. Pastreaza copia privata, restaureaza sau reconciliaza politica dorita, verifica tabela si abia apoi elimina rezervarea. Intreruperea aplicatiei lasa aceleasi dovezi pentru reconciliere manuala.</p>
+<p>Construieste helper-ul pe fiecare daemon Docker selectat, pentru ca regulile existente sa nu poata impiedica instalarea pachetelor:</p>
+<pre><code>docker build -t docker-dash-egress-helper:local docker/egress-helper
+# Configureaza DD_EGRESS_HELPER_IMAGE cu ID-ul sha256 al acestei imagini.</code></pre>
+<p>Fallback-ul Alpine instaleaza nftables inaintea modificarilor si refuza operatia fara a schimba regulile daca pregatirea nu reuseste. Comenzile au limita de observare de 45 secunde si 128 KiB de output combinat. Timeout-ul inseamna rezultat incert, nu ca executia nu a avut loc. Dezactivarea de urgenta pastreaza politica daca eliminarea firewall-ului esueaza.</p>
 
 <h2>Arhitectura</h2>
 <p>Trei piese mobile:</p>
@@ -23,12 +32,9 @@ summary: Restricționează la ce host-uri externe poate ajunge un container. All
 <h2>Setup — doi pași</h2>
 
 <h3>1. Pornește sidecar-ul</h3>
-<pre><code>cd docker/egress-filter
-docker build -t dd-egress-filter:v6.7 .
-mkdir -p /data/egress-policy && echo '{"version":1,"mode":"enforce","allowlist":[],"updated_at":"2026-01-01T00:00:00Z"}' > /data/egress-policy/policy.json
-docker run -d --name dd-egress-filter \
-  -v /data/egress-policy/policy.json:/etc/dd-egress/policy.json \
-  dd-egress-filter:v6.7</code></pre>
+<p>Foloseste profilul Compose din radacina proiectului, pe acelasi host Docker cu aplicatia si containerele filtrate:</p>
+<pre><code>docker compose --profile egress up -d --build dd-egress-filter</code></pre>
+<p>Aplicatia si sidecar-ul impart directorul politicilor si socket-ul privat <code>resolver.sock</code>. Docker Dash scrie schema 2 si autorizeaza fiecare sursa TCP prin identitatea live a containerului si intersectia politicilor. Nu inlocui configuratia cu un fisier standalone schema 1 si nu monta doar <code>policy.json</code>: acestea nu ofera autorizarea aplicatiei per container. Sidecar-ul nu publica porturi si nu primeste socket-ul Docker.</p>
 
 <h3>2. Configurează Docker Dash</h3>
 <pre><code>services:
@@ -36,6 +42,7 @@ docker run -d --name dd-egress-filter \
     environment:
       DD_EGRESS_SIDECAR_ENDPOINT: "172.17.0.5:29193"
       DD_EGRESS_SIDECAR_NAME: "dd-egress-filter"
+      DD_EGRESS_HELPER_IMAGE: "sha256:ID_IMAGINE_HELPER_VERIFICATA"
       DD_EGRESS_BLOCKLOG_INGESTER: "1"</code></pre>
 <p>Restart Docker Dash. Sidecar-ul primește SIGHUP la fiecare schimbare de policy automat.</p>
 
@@ -106,4 +113,3 @@ docker run -d --name dd-egress-filter \
   <li><strong>Routing per-container allowlist</strong> în sidecar bazat pe source-IP — azi sidecar-ul rulează un singur policy agregat (union din toate active). Dacă ai nevoie de policy-uri izolate per container, rulează mai multe sidecar-uri denumite (dd-egress-filter-api, dd-egress-filter-db, etc.)</li>
   <li><strong>IPv6</strong> — IPv4 only în acest release</li>
 </ul>
-

@@ -45,6 +45,39 @@ beforeEach(() => {
 const auth = () => ({ Authorization: `Bearer ${authToken}` });
 const CONTAINER_ID = 'a1b2c3d4e5f6789012345678';  // valid 24-hex
 
+describe('egress enforcement outcomes', () => {
+  afterEach(() => jest.restoreAllMocks());
+  async function stackPolicy() {
+    const result = await request(app).post('/api/egress-filter/policies').set(auth())
+      .send({ scopeType: 'stack', scopeKey: 'transaction-test', preset: 'registry-only' });
+    expect(result.status).toBe(201); return result.body.policyId;
+  }
+  test('failed audit intent prevents firewall mutation', async () => {
+    const id = await stackPolicy();
+    const runner = jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockResolvedValue({ applied: [], skipped: [] });
+    jest.spyOn(require('../services/audit'), 'log').mockImplementation(() => { throw new Error('Audit unavailable'); });
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/apply`).set(auth());
+    expect(result.status).toBe(500);expect(runner).not.toHaveBeenCalled();
+  });
+  test('recovery failure returns helper identities and actual rollback results', async () => {
+    const id = await stackPolicy();
+    jest.spyOn(require('../services/egress-runner'), 'applyToStack').mockRejectedValue(Object.assign(new Error('Rollback failed'), {
+      operationId: 'operation-test', recoveryRequired: true, recoveryHelpers: ['dd-egress-lock-test'], rollback: { restored: ['a'], failed: ['b'] },
+    }));
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/apply`).set(auth());
+    expect(result.status).toBe(500);expect(result.body.recoveryRequired).toBe(true);
+    expect(result.body.error).toContain('dd-egress-lock-test');expect(result.body.rollback.failed).toEqual(['b']);
+    expect(getDb().prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action='egress_policy_apply_started'").get().n).toBeGreaterThan(0);
+  });
+  test('partial removal is an API failure and leaves the policy active', async () => {
+    const id = await stackPolicy();
+    jest.spyOn(require('../services/egress-runner'), 'removeFromStack').mockResolvedValue({ removed: [{ id: 'a' }], failed: [{ id: 'b', error: 'offline' }] });
+    const result = await request(app).post(`/api/egress-filter/policies/${id}/unapply`).set(auth());
+    expect(result.status).toBe(500);expect(result.body.ok).toBe(false);
+    expect(getDb().prepare('SELECT active FROM egress_policies WHERE id=?').get(id).active).toBe(1);
+  });
+});
+
 describe('GET /api/egress-filter/presets', () => {
   it('requires auth', async () => {
     const res = await request(app).get('/api/egress-filter/presets');

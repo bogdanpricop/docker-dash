@@ -50,6 +50,9 @@ is not provided by this change.
   does not inherit identity, recreating a removed policy succeeds and unavailable
   authorization revokes a previously allowed destination. All 12 scenarios passed. Resources were
   removed after the test. This exercises real production modules and Unix sockets.
-- Runner atomic replacement, IPv6/non-TCP handling, helper bounds and truthful
-  rollback remain separate required enforcement work. Passing local authorization
-  tests alone does not close full egress enforcement.
+- Runner atomic table replacement, bounded helpers and truthful snapshot recovery
+  subsequently passed disposable Docker canaries on LAN and VPS. See
+  [transaction evidence](../../../audits/2026-09-20-egress-transactions.md).
+  IPv6/non-TCP handling, private exceptions, restart reconciliation and log
+  attribution remain required work. Passing these tests does not close full
+  egress enforcement.

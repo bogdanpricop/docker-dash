@@ -445,7 +445,7 @@ const SystemPageEgress = {
       mc.querySelector('#ef-emergency-disable').addEventListener('click', async () => {
         if (!confirm('Emergency disable this policy? This unapplies the filter AND deletes the policy. The container regains full outbound.')) return;
         try {
-          await Api.egressFilterUnapply(policyId).catch(() => {});  // best-effort
+          await Api.egressFilterUnapply(policyId);
           await Api.egressFilterDeletePolicy(policyId, 'emergency-disable');
           Toast.warning('Egress policy removed');
           Modal.close();
@@ -459,4 +459,3 @@ const SystemPageEgress = {
 };
 
 if (typeof window !== 'undefined') window.SystemPageEgress = SystemPageEgress;
-

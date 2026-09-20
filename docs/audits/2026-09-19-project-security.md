@@ -1,5 +1,12 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
+Ulterior deploy-ului 8.96.4, [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md)
+au fost corectate si verificate in containere temporare pe LAN/VPS. Politicile
+anterioare sunt restaurate la esec; rezultatele incerte pastreaza dovezi si
+rezervari pentru recuperare. Interfata pastreaza politica daca dezactivarea esueaza.
+355 suite / 4.613 teste trecute; codul este pentru urmatorul rollout. Acoperirea
+IPv6/UDP, exceptiile private si celelalte limite egress raman deschise.
+
 Stare actuala: checkpoint-ul 8.96.4 este urcat pe Git si instalat pe LAN/VPS,
 cu Docker healthy si HTTP 200 / versiunea 8.96.4. Include
 [executia remote a scripturilor cu secrete](2026-09-20-remote-secret-execution.md)
@@ -177,8 +184,11 @@ Acțiunile GitHub sunt actualizate și fixate la SHA-ul commit-ului release-ului
    live per sursă prin Unix socket. Canary-ul Docker a demonstrat izolarea
    containerelor, intersecția politicilor container/stack, revocarea și refuzul
    moștenirii politicii după reutilizarea IP-ului. Rămân de închis regulile
-   nftables (IPv6/UDP și excepții private), înlocuirea atomică, rollback-ul și
-   atribuirea logurilor. IP-ul sursă presupune o rețea de încredere; nu este
+   nftables (IPv6/UDP și excepții private) si atribuirea logurilor. Inlocuirea
+   atomica per tabela si restaurarea politicilor au fost verificate ulterior;
+   restarturile si recuperarile incerte necesita reconciliere, conform
+   [auditului tranzactiilor](2026-09-20-egress-transactions.md).
+   IP-ul sursă presupune o rețea de încredere; nu este
    identitate criptografică. Domeniul de autorizare acoperă o singură gazdă.
 8. **Acces Docker LAN:** API-ul de la `192.168.13.20:2375` permite administrarea
    fără autentificare/TLS din rețeaua stației de audit. Pe VPS nu s-a observat
