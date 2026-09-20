@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Enforce session/MFA/OIDC expiry using parsed SQLite instants, rejecting invalid
+  dates. Count production-format login attempts and mixed-format audit entries
+  correctly for lockout/security alerts. Expired credential cleanup uses the same
+  time semantics; valid ISO and SQLite timestamp formats remain supported.
+- Consume MFA challenges/recovery codes together with session creation in a write
+  transaction. Consume OIDC state in one conditional DELETE before provider I/O.
 - Finish the generic public recovery response before account lookup and SMTP.
   Bound background work to 32 jobs/two active deliveries per process; enforce
   three deliveries per account per hour across IPs via the shared quota service.

@@ -1,5 +1,16 @@
 # Security Policy
 
+## Authentication expiry (pending deployment)
+
+Session, MFA challenge and OIDC state expiry is compared as parsed instants rather
+than mixed-format strings. Invalid expiry values are refused. Login lockout and
+security alerts now count the SQLite timestamps written by the production path.
+MFA redemption and session creation share a write transaction, including recovery
+code consumption; OIDC state is consumed atomically before provider requests.
+See [verification and open boundaries](docs/audits/2026-09-20-auth-expiry.md).
+Existing WebSocket connections still need ongoing session revalidation; this
+checkpoint does not claim to disconnect already-open streams on session revocation.
+
 ## Account recovery hardening (pending deployment)
 
 Reset and invitation emails use the configured `PUBLIC_URL`, falling back to

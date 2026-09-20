@@ -417,15 +417,9 @@ describe('AuthService — IP rate limiting', () => {
     db.prepare('DELETE FROM login_attempts WHERE ip = ?').run(ip);
     expect(authService.isIpLocked(ip)).toBe(false);
 
-    // Insert explicit ISO timestamps so the windowStart comparison matches.
-    // (The default `datetime('now')` produces a SQLite format that lex-sorts
-    // differently than `.toISOString()`, which can hide rate-limit hits in tests.)
-    const stmt = db.prepare(
-      'INSERT INTO login_attempts (ip, username, user_id, success, user_agent, attempted_at) VALUES (?, ?, ?, 0, ?, ?)'
-    );
-    const nowIso = new Date().toISOString();
+    // Exercise the production writer and its SQLite-default timestamp.
     for (let i = 0; i < config.rateLimit.loginMaxAttempts; i++) {
-      stmt.run(ip, 'attacker', null, 'jest', nowIso);
+      authService.logAttempt(ip, 'attacker', null, false, 'jest');
     }
     expect(authService.isIpLocked(ip)).toBe(true);
   });

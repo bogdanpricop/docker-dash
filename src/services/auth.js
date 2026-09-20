@@ -260,93 +260,99 @@ class AuthService {
   /** Verify MFA token and TOTP code, create full session */
   verifyMfa(mfaToken, code, ip, userAgent) {
     const db = getDb();
-    const tokenHash = sha256(mfaToken);
+    if (typeof mfaToken !== 'string' || !mfaToken) return { error: 'Invalid or expired MFA token' };
+    return db.transaction(() => {
+      const tokenHash = sha256(mfaToken);
 
-    const row = db.prepare(`
-      SELECT * FROM mfa_tokens
-      WHERE token_hash = ? AND used = 0 AND expires_at > datetime('now')
-    `).get(tokenHash);
+      const row = db.prepare(`
+        SELECT * FROM mfa_tokens
+        WHERE token_hash = ? AND used = 0 AND julianday(expires_at) > julianday('now')
+      `).get(tokenHash);
 
-    if (!row) return { error: 'Invalid or expired MFA token' };
+      if (!row) return { error: 'Invalid or expired MFA token' };
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-    if (!user) return { error: 'User not found' };
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
+      if (!user) return { error: 'User not found' };
 
-    // Decrypt TOTP secret and verify code
-    let secret;
-    try {
-      secret = decrypt(user.totp_secret);
-    } catch {
-      return { error: 'MFA configuration error' };
-    }
+      // Decrypt TOTP secret and verify code
+      let secret;
+      try {
+        secret = decrypt(user.totp_secret);
+      } catch {
+        return { error: 'MFA configuration error' };
+      }
 
-    if (!totp.verifyTOTP(secret, code)) {
-      return { error: 'Invalid TOTP code' };
-    }
+      if (!totp.verifyTOTP(secret, code)) {
+        return { error: 'Invalid TOTP code' };
+      }
 
-    // Mark MFA token as used
-    db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
+      // Mark MFA token as used
+      db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
 
-    return this._createSession(user, ip, userAgent);
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Verify MFA using a recovery code */
   verifyMfaRecovery(mfaToken, recoveryCode, ip, userAgent) {
     const db = getDb();
-    const tokenHash = sha256(mfaToken);
+    if (typeof mfaToken !== 'string' || !mfaToken) return { error: 'Invalid or expired MFA token' };
+    return db.transaction(() => {
+      const tokenHash = sha256(mfaToken);
 
-    const row = db.prepare(`
-      SELECT * FROM mfa_tokens
-      WHERE token_hash = ? AND used = 0 AND expires_at > datetime('now')
-    `).get(tokenHash);
+      const row = db.prepare(`
+        SELECT * FROM mfa_tokens
+        WHERE token_hash = ? AND used = 0 AND julianday(expires_at) > julianday('now')
+      `).get(tokenHash);
 
-    if (!row) return { error: 'Invalid or expired MFA token' };
+      if (!row) return { error: 'Invalid or expired MFA token' };
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-    if (!user || !user.recovery_codes) return { error: 'No recovery codes available' };
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
+      if (!user || !user.recovery_codes) return { error: 'No recovery codes available' };
 
-    // Decrypt recovery codes and check
-    let codes;
-    try {
-      codes = JSON.parse(decrypt(user.recovery_codes));
-    } catch {
-      return { error: 'Recovery code configuration error' };
-    }
-
-    // v8.7.11 (security fix) — constant-time lookup. The previous
-    // `codes.indexOf(normalizedInput)` did short-circuit string equality, so
-    // an attacker with a valid mfaToken (e.g. obtained via stolen username
-    // +password) could use response timing to determine prefix matches of
-    // recovery codes — meaningfully accelerating brute force against the
-    // small recovery-code search space. Now we always iterate ALL codes
-    // (no early-break) and use crypto.timingSafeEqual per comparison.
-    const normalizedInput = recoveryCode.toLowerCase().trim();
-    const inputBuf = Buffer.from(normalizedInput, 'utf8');
-    let codeIndex = -1;
-    for (let i = 0; i < codes.length; i++) {
-      const candidateBuf = Buffer.from(String(codes[i]), 'utf8');
-      // timingSafeEqual throws on mismatched length; recovery codes are
-      // fixed-length so a length-mismatch is structurally impossible for
-      // well-formed input — the guard is defensive only.
-      if (candidateBuf.length === inputBuf.length
-          && crypto.timingSafeEqual(candidateBuf, inputBuf)) {
-        codeIndex = i;
-        // do NOT break — total time must be independent of match position
+      // Decrypt recovery codes and check
+      let codes;
+      try {
+        codes = JSON.parse(decrypt(user.recovery_codes));
+      } catch {
+        return { error: 'Recovery code configuration error' };
       }
-    }
-    if (codeIndex === -1) return { error: 'Invalid recovery code' };
 
-    // Remove used code, re-encrypt and store
-    codes.splice(codeIndex, 1);
-    db.prepare('UPDATE users SET recovery_codes = ? WHERE id = ?')
-      .run(encrypt(JSON.stringify(codes)), user.id);
+      // v8.7.11 (security fix) — constant-time lookup. The previous
+      // `codes.indexOf(normalizedInput)` did short-circuit string equality, so
+      // an attacker with a valid mfaToken (e.g. obtained via stolen username
+      // +password) could use response timing to determine prefix matches of
+      // recovery codes — meaningfully accelerating brute force against the
+      // small recovery-code search space. Now we always iterate ALL codes
+      // (no early-break) and use crypto.timingSafeEqual per comparison.
+      const normalizedInput = recoveryCode.toLowerCase().trim();
+      const inputBuf = Buffer.from(normalizedInput, 'utf8');
+      let codeIndex = -1;
+      for (let i = 0; i < codes.length; i++) {
+        const candidateBuf = Buffer.from(String(codes[i]), 'utf8');
+        // timingSafeEqual throws on mismatched length; recovery codes are
+        // fixed-length so a length-mismatch is structurally impossible for
+        // well-formed input — the guard is defensive only.
+        if (candidateBuf.length === inputBuf.length
+            && crypto.timingSafeEqual(candidateBuf, inputBuf)) {
+          codeIndex = i;
+          // do NOT break — total time must be independent of match position
+        }
+      }
+      if (codeIndex === -1) return { error: 'Invalid recovery code' };
 
-    // Mark MFA token as used
-    db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
+      // Remove used code, re-encrypt and store
+      codes.splice(codeIndex, 1);
+      db.prepare('UPDATE users SET recovery_codes = ? WHERE id = ?')
+        .run(encrypt(JSON.stringify(codes)), user.id);
 
-    log.warn('Recovery code used for MFA', { username: user.username, codesRemaining: codes.length });
+      // Mark MFA token as used
+      db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
 
-    return this._createSession(user, ip, userAgent);
+      log.warn('Recovery code used for MFA', { username: user.username, codesRemaining: codes.length });
+
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Setup MFA: generate secret and return otpauth URI */
@@ -431,20 +437,20 @@ class AuthService {
   cleanMfaTokens() {
     const db = getDb();
     try {
-      db.prepare("DELETE FROM mfa_tokens WHERE expires_at < datetime('now') OR used = 1").run();
+      db.prepare("DELETE FROM mfa_tokens WHERE COALESCE(julianday(expires_at),0) <= julianday('now') OR used = 1").run();
     } catch { /* table may not exist yet */ }
   }
 
   /** Validate session token, return user */
   validateSession(token) {
-    if (!token) return null;
+    if (typeof token !== 'string' || !token) return null;
     const db = getDb();
     const tokenHash = sha256(token);
     const row = db.prepare(`
       SELECT s.*, u.id as uid, u.username, u.display_name, u.role, u.is_active, u.must_change_password,
              u.password_changed_at, u.totp_enabled
       FROM sessions s JOIN users u ON s.user_id = u.id
-      WHERE s.token_hash = ? AND s.is_valid = 1 AND s.expires_at > datetime('now')
+      WHERE s.token_hash = ? AND s.is_valid = 1 AND julianday(s.expires_at) > julianday('now')
     `).get(tokenHash);
 
     if (!row || !row.is_active) return null;
@@ -478,7 +484,7 @@ class AuthService {
     const db = getDb();
     const windowStart = new Date(Date.now() - config.rateLimit.loginWindowMs).toISOString();
     const count = db.prepare(
-      'SELECT COUNT(*) as c FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+      'SELECT COUNT(*) as c FROM login_attempts WHERE ip = ? AND success = 0 AND julianday(attempted_at) > julianday(?)'
     ).get(ip, windowStart).c;
     return count >= config.rateLimit.loginMaxAttempts;
   }
@@ -493,7 +499,7 @@ class AuthService {
   /** Clean expired sessions */
   cleanSessions() {
     const db = getDb();
-    const result = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now') OR is_valid = 0").run();
+    const result = db.prepare("DELETE FROM sessions WHERE COALESCE(julianday(expires_at),0) <= julianday('now') OR is_valid = 0").run();
     if (result.changes > 0) log.debug('Cleaned sessions', { count: result.changes });
   }
 

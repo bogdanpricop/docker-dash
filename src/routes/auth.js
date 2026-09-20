@@ -749,9 +749,8 @@ router.get('/oidc/callback', async (req, res) => {
 
     // Validate state
     const db = getDb();
-    const stateRow = db.prepare("SELECT * FROM oidc_states WHERE state = ? AND expires_at > datetime('now')").get(state);
+    const stateRow = db.prepare("DELETE FROM oidc_states WHERE state = ? AND julianday(expires_at) > julianday('now') RETURNING state").get(state);
     if (!stateRow) return res.status(400).send('Invalid or expired state parameter');
-    db.prepare('DELETE FROM oidc_states WHERE state = ?').run(state);
 
     // Discover endpoints
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
@@ -882,7 +881,7 @@ router.get('/sessions', requireAuth, requireRole('admin'), (req, res) => {
       SELECT s.id, s.user_id, u.username, s.token_hash, s.created_at, s.ip, s.user_agent
       FROM sessions s
       LEFT JOIN users u ON s.user_id = u.id
-      WHERE s.is_valid = 1 AND s.expires_at > datetime('now')
+      WHERE s.is_valid = 1 AND julianday(s.expires_at) > julianday('now')
       ORDER BY s.created_at DESC
     `).all();
 

@@ -10,6 +10,28 @@ const email = require('/app/src/services/email');
 const tokens = require('/app/src/services/password-reset');
 const checks = [];
 
+async function raceRedeem(code, environments) {
+    const children = environments.map(environment => {
+      const child = spawn(process.execPath, ['-e', code], { env: { ...process.env, ...environment }, stdio: ['pipe', 'pipe', 'pipe'] });
+      let output = '', error = '';
+      const ready = new Promise((resolve, reject) => {
+        child.on('error', reject); child.stdout.on('data', chunk => { output += chunk; if (output.includes('READY')) resolve(); });
+        child.on('exit', code => { if (!output.includes('READY')) reject(Error('Child exited before ready: ' + code)); });
+      });
+      child.stderr.on('data', chunk => { error += chunk; });
+      const done = new Promise((resolve, reject) => {
+        child.on('error', reject); child.on('exit', code => {
+          if (code !== 0) return reject(Error('SQLite child failed: ' + error));
+          try { resolve(JSON.parse(output.split('\n').find(line => line.startsWith('RESULT:')).slice(7))); } catch (e) { reject(e); }
+        });
+      });
+      return { child, ready, done };
+    });
+    await Promise.all(children.map(child => child.ready));
+    children.forEach(({ child }) => child.stdin.end('go'));
+    return Promise.all(children.map(child => child.done));
+}
+
 async function main() {
   const db = getDb();
   const id = Number(db.prepare("INSERT INTO users(username,email,password_hash,role,is_active) VALUES ('smoke-reset','fixture@example.test','old-hash','viewer',1)").run().lastInsertRowid);
@@ -43,29 +65,37 @@ async function main() {
     const childCode = `const tokens=require('/app/src/services/password-reset'),db=require('/app/src/db').getDb();
       process.stdin.once('data',()=>{const row=tokens.consume(db,process.env.SMOKE_TOKEN,process.env.SMOKE_HASH,current=>require('/app/src/services/audit').log({userId:current.uid,username:current.username,action:'smoke_reset_committed'}));
       console.log('RESULT:'+JSON.stringify({redeemed:!!row}));db.close();process.exit(0)});console.log('READY');`;
-    const children = ['first-hash', 'second-hash'].map(hash => {
-      const child = spawn(process.execPath, ['-e', childCode], { env: { ...process.env, SMOKE_TOKEN: raw, SMOKE_HASH: hash }, stdio: ['pipe', 'pipe', 'pipe'] });
-      let output = '', error = '';
-      const ready = new Promise((resolve, reject) => {
-        child.on('error', reject); child.stdout.on('data', chunk => { output += chunk; if (output.includes('READY')) resolve(); });
-        child.on('exit', code => { if (!output.includes('READY')) reject(Error('Child exited before ready: ' + code)); });
-      });
-      child.stderr.on('data', chunk => { error += chunk; });
-      const done = new Promise((resolve, reject) => {
-        child.on('error', reject); child.on('exit', code => {
-          if (code !== 0) return reject(Error('SQLite child failed: ' + error));
-          try { resolve(JSON.parse(output.split('\n').find(line => line.startsWith('RESULT:')).slice(7))); } catch (e) { reject(e); }
-        });
-      });
-      return { child, ready, done };
-    });
-    await Promise.all(children.map(child => child.ready));
-    children.forEach(({ child }) => child.stdin.end('go'));
-    const results = await Promise.all(children.map(child => child.done));
+    const results = await raceRedeem(childCode, ['first-hash','second-hash'].map(hash => ({ SMOKE_TOKEN: raw, SMOKE_HASH: hash })));
     assert.equal(results.filter(result => result.redeemed).length, 1);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action='smoke_reset_committed'").get().n, 1);
     assert.equal(tokens.find(db, raw), null);
     checks.push('native-sqlite-cross-process-single-redemption-and-audit');
+
+    const auth = require('/app/src/services/auth'), { sha256, encrypt } = require('/app/src/utils/crypto');
+    const expired = new Date(Date.now() - 1000).toISOString();
+    db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256('expired-session'),id,expired);
+    assert.equal(auth.validateSession('expired-session'), null);
+    const denied = await fetch(endpoint + '/api/auth/me', { headers: { Authorization: 'Bearer expired-session' } });
+    assert.equal(denied.status, 401);
+    checks.push('expired-iso-session-refused-by-real-http-auth');
+    db.prepare('INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,?)').run(sha256('expired-mfa'),id,expired);
+    assert.equal(auth.verifyMfaRecovery('expired-mfa','fixture','127.0.0.1','native').error, 'Invalid or expired MFA token');
+    checks.push('expired-iso-mfa-refused');
+    for (let n=0;n<require('/app/src/config').rateLimit.loginMaxAttempts;n++) auth.logAttempt('192.0.2.9','fixture',id,false,'native');
+    assert.equal(auth.isIpLocked('192.0.2.9'), true);
+    checks.push('production-login-timestamps-enforce-ip-lockout');
+
+    db.prepare('UPDATE users SET totp_enabled=1,recovery_codes=? WHERE id=?').run(encrypt(JSON.stringify(['native-recovery-fixture'])),id);
+    for (const challenge of ['mfa-race-one','mfa-race-two']) db.prepare('INSERT INTO mfa_tokens(token_hash,user_id,expires_at) VALUES (?,?,?)')
+      .run(sha256(challenge),id,new Date(Date.now()+60000).toISOString());
+    const before = db.prepare('SELECT COUNT(*) n FROM sessions').get().n;
+    const mfaChild = `const auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
+      process.stdin.once('data',()=>{const result=auth.verifyMfaRecovery(process.env.SMOKE_CHALLENGE,'native-recovery-fixture','127.0.0.1','native');
+      console.log('RESULT:'+JSON.stringify({redeemed:!!result.token}));db.close();process.exit(0)});console.log('READY');`;
+    const mfaResults = await raceRedeem(mfaChild,['mfa-race-one','mfa-race-two'].map(challenge => ({ SMOKE_CHALLENGE: challenge })));
+    assert.equal(mfaResults.filter(result => result.redeemed).length, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions').get().n, before + 1);
+    checks.push('native-cross-process-recovery-code-consumed-once');
     console.log(JSON.stringify({ checks, emailMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();
