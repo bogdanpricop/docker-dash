@@ -1,18 +1,21 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Actualizare ulterioara checkpoint-ului: [executia remote a scripturilor cu secrete](2026-09-20-remote-secret-execution.md)
-elimina fisierul temporar, verifica transferul integral si raporteaza explicit
-rezultatele incerte. Regresie: 354 suite / 4.605 teste; ultima ajustare verificata
-prin 32 teste specifice. Codul este pentru urmatorul rollout; instantierea live
-ramane 8.96.3. Pe ambele hosturi, inventarul curent a gasit zero evenimente vechi
-ale acestui flux si zero scripturi temporare cu prefixul sau in /tmp.
-
-Stare actuala: checkpoint-ul 8.96.3 este urcat pe Git si instalat pe LAN/VPS,
-cu Docker healthy si HTTP ok. Recuperarea la inlocuirea containerelor a fost
-verificata prin 353 suite / 4.580 teste si canary-uri Docker reale pe ambele hosturi.
-Dovezi: [recuperare](2026-09-20-container-replacement.md),
-[deploy 8.96.3](2026-09-20-deployment-8.96.3.md) si
-[scanarea imaginii exacte](2026-09-20-image-8.96.3.json).
+Stare actuala: checkpoint-ul 8.96.4 este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP 200 / versiunea 8.96.4. Include
+[executia remote a scripturilor cu secrete](2026-09-20-remote-secret-execution.md)
+si [Compose recompilat cu dependente remediate](2026-09-20-compose-rebuild.md).
+Regresia aplicatiei: 354 suite / 4.605 teste in etapa anterioara, apoi 32 teste
+specifice trecute dupa ultima ajustare si din nou la acest checkpoint. Build-ul
+Compose a trecut testele upstream; imaginea exacta a trecut canary-uri Docker
+si smoke Linux pe ambele hosturi. Cheile si configuratia au fost pastrate.
+Trivy: 4 High / 2 Medium / 3 Unknown; Grype: 4 High / 5 Medium. Constatari ramase
+deschise, fara exceptii noi sau praguri dezactivate. Pool-urile implicite de retea
+Docker din LAN sunt epuizate; nu s-a reconfigurat daemonul.
+Dovezi: [deploy 8.96.4](2026-09-20-deployment-8.96.4.md),
+[scanarea imaginii exacte](2026-09-20-image-8.96.4.json).
+Recuperarea la inlocuirea containerelor si checkpoint-ul anterior raman in
+[auditul dedicat](2026-09-20-container-replacement.md) si
+[deploy 8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;
 nu certifica securitatea completa.
 
