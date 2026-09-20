@@ -96,6 +96,39 @@ async function main() {
     assert.equal(mfaResults.filter(result => result.redeemed).length, 1);
     assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions').get().n, before + 1);
     checks.push('native-cross-process-recovery-code-consumed-once');
+
+    const { WsServer } = require('/app/src/ws'), WebSocket = require('ws');
+    const websocketServer = new WsServer();
+    // No Docker event sources are needed for this isolated session-lifecycle test.
+    websocketServer._startAllEventStreams = () => {};
+    websocketServer.attach(server);
+    try {
+      for (const mode of ['input','broadcast','idle-expiry']) {
+        const session = auth._createSession({id,username:'smoke-reset',role:'viewer'},'127.0.0.1','native-ws');
+        const socket = new WebSocket('ws://127.0.0.1:'+server.address().port+'/ws', {
+          headers: {Cookie:require('/app/src/config').session.cookieName+'='+session.token},
+        });
+        const messages=[]; socket.on('message',data=>messages.push(JSON.parse(data)));
+        const closed = new Promise(resolve=>socket.once('close',code=>resolve(code)));
+        try {
+          await new Promise((resolve,reject)=>{socket.once('message',resolve);socket.once('error',reject);});
+          if(mode==='idle-expiry') db.prepare("UPDATE sessions SET expires_at=datetime('now','-1 second') WHERE token_hash=?").run(sha256(session.token));
+          else auth.logout(session.token);
+          if(mode==='input') socket.send(JSON.stringify({type:'ping'}));
+          if(mode==='broadcast') websocketServer._localBroadcastAll('private',{value:'not-delivered'});
+          let deadline;
+          try {
+            const code = await Promise.race([closed,new Promise(resolve=>{deadline=setTimeout(()=>resolve('not-closed'),mode==='idle-expiry'?6500:1500);})]);
+            assert.equal(code,4003,'WebSocket must close after '+mode);
+          } finally { clearTimeout(deadline); }
+          assert.deepEqual(messages.map(message=>message.type),['connected']);
+          checks.push('real-websocket-revocation-'+mode);
+        } finally { socket.terminate(); }
+      }
+    } finally {
+      for(const socket of websocketServer.wss.clients) socket.terminate();
+      await new Promise(resolve=>websocketServer.wss.close(resolve));
+    }
     console.log(JSON.stringify({ checks, emailMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();

@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Revalidate established `/ws` sessions before input/output and every five seconds
+  while idle. Logout, password reset, expiry, disabled accounts, forced password
+  changes, role changes and database failures close attached streams. Late Docker
+  and SSH startup results are discarded. Store a session digest in the client map.
+- Revoked WebSockets return the browser to login without token-in-URL fallback.
+  Serialize exec startup and close superseded terminal streams to avoid orphaned
+  connections. Dedicated provider-console lifecycle hardening remains open.
 - Enforce session/MFA/OIDC expiry using parsed SQLite instants, rejecting invalid
   dates. Count production-format login attempts and mixed-format audit entries
   correctly for lockout/security alerts. Expired credential cleanup uses the same

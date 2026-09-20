@@ -10,6 +10,7 @@ const log = require('../utils/logger')('ws');
 const { tryParseJson } = require('../utils/helpers');
 const cluster = require('../services/cluster');
 const terminalAccess = require('../services/terminal-access');
+const { sha256 } = require('../utils/crypto');
 
 class WsServer {
   constructor() {
@@ -102,6 +103,12 @@ class WsServer {
         try { ws.ping(); } catch {}
       }
     }, 30000);
+    this._sessionInterval = setInterval(() => this._revalidateSessions(), 5000);
+    this._sessionInterval.unref?.();
+    this.wss.once('close', () => {
+      clearInterval(this._heartbeatInterval);
+      clearInterval(this._sessionInterval);
+    });
 
     this.wss.on('connection', (ws, req) => {
       // Authenticate via cookie (preferred) or query param (fallback for blocked cookies)
@@ -124,20 +131,22 @@ class WsServer {
           log.debug('WS auth via query param (cookie blocked)', { ip: req.socket?.remoteAddress });
         }
       }
-      const user = authService.validateSession(token);
+      let user;
+      try { user = authService.validateSession(token); } catch { /* refuse on storage failure */ }
 
-      if (!user) {
-        ws.close(4001, 'Authentication required');
+      if (!user || user.mustChangePassword) {
+        ws.close(user ? 4003 : 4001, 'Authentication required');
         return;
       }
 
       // v8.7.18 — capture connection IP so exec/audit events can attribute correctly.
       const ip = req.socket?.remoteAddress || 'unknown';
       const client = {
-        user, ip, subscriptions: new Set(), logStreams: new Map(),
+        user, ip, sessionHash: sha256(token), subscriptions: new Set(), logStreams: new Map(),
         isAlive: true, msgCount: 0, msgResetTime: Date.now(),
       };
       this.clients.set(ws, client);
+      this._bindSession(ws, client);
       log.debug('Client connected', { username: user.username });
       // v6.15.0: Prometheus gauge
       try { require('../services/metrics').recordWsConnection(1); } catch { /* best-effort */ }
@@ -199,6 +208,36 @@ class WsServer {
     log.info('WebSocket server attached', { mode: cluster.isHa() ? 'ha' : 'standalone', nodeId: cluster.nodeId() });
   }
 
+  _authorizeClient(ws, client) {
+    if (!client || this.clients.get(ws) !== client || ws.readyState !== 1) return false;
+    let current;
+    try { current = authService.validateSessionHash(client.sessionHash); } catch { /* fail closed */ }
+    if (!current || current.id !== client.user.id || current.role !== client.user.role || current.mustChangePassword) {
+      this._cleanupClient(ws);
+      try { ws.close(4003, 'Session no longer valid'); } catch { try { ws.terminate(); } catch {} }
+      return false;
+    }
+    return true;
+  }
+
+  _bindSession(ws, client) {
+    const send = ws.send.bind(ws);
+    // Covers broadcasts and every streaming callback, including asynchronous
+    // callbacks that would otherwise keep forwarding after session revocation.
+    ws.send = (...args) => {
+      if (!this._authorizeClient(ws, client)) {
+        const callback = args.at(-1);
+        if (typeof callback === 'function') callback(new Error('Session no longer valid'));
+        return;
+      }
+      return send(...args);
+    };
+  }
+
+  _revalidateSessions() {
+    for (const [ws, client] of this.clients) this._authorizeClient(ws, client);
+  }
+
   /** Stop all Docker event streams. Used on leader→reader transition. */
   _stopAllEventStreams() {
     for (const [hostId, stream] of this._eventStreams) {
@@ -243,6 +282,7 @@ class WsServer {
   }
 
   async _subscribeClientLogs(ws, client, { containerId, hostId, tail }) {
+    if (!this._authorizeClient(ws, client)) return;
     const id = String(containerId || '').trim();
     if (!id) throw Object.assign(new Error('containerId is required'), { status: 400 });
     if (id.length > 128 || /[\x00-\x1f]/.test(id)) {
@@ -254,12 +294,14 @@ class WsServer {
     if (!(await this._canViewContainerLogs(client, id, hostId))) {
       throw Object.assign(new Error('Insufficient permissions for container logs'), { status: 403 });
     }
+    if (!this._authorizeClient(ws, client)) return;
 
     const container = dockerService.getDocker(hostId).getContainer(id);
     const stream = await container.logs({
       follow: true, stdout: true, stderr: true,
       tail, timestamps: true,
     });
+    if (!this._authorizeClient(ws, client)) { stream.destroy(); return; }
     client.logStreams.set(id, stream);
     let ended = false;
     let pending = Buffer.alloc(0);
@@ -329,7 +371,7 @@ class WsServer {
     if (!msg) return;
 
     const client = this.clients.get(ws);
-    if (!client) return;
+    if (!this._authorizeClient(ws, client)) return;
 
     // Rate limiting: max 100 messages per second
     const now = Date.now();
@@ -591,32 +633,33 @@ class WsServer {
 
   async _handleExecInput(ws, msg) {
     const client = this.clients.get(ws);
-    if (!client?.execStream) return;
+    if (!this._authorizeClient(ws, client) || !client.execStream) return;
     try { client.execStream.write(msg.data); } catch { /* ignore */ }
   }
 
   async _handleExecResize(ws, msg) {
     const client = this.clients.get(ws);
-    if (!client?.exec) return;
+    if (!this._authorizeClient(ws, client) || !client.exec) return;
     try { await client.exec.resize({ w: msg.cols, h: msg.rows }); } catch { /* ignore */ }
   }
 
   // ─── vSphere/ESXi SSH console (v8.9.15-alpha.1) ─────────────
   _handleSshInput(ws, msg) {
     const c = this.clients.get(ws);
-    if (!c || !c.sshStream) return;
+    if (!this._authorizeClient(ws, c) || !c.sshStream) return;
     try { c.sshStream.write(msg.data); } catch { /* ignore */ }
   }
 
   _handleSshResize(ws, msg) {
     const c = this.clients.get(ws);
-    if (!c || !c.sshStream) return;
+    if (!this._authorizeClient(ws, c) || !c.sshStream) return;
     try { c.sshStream.setWindow(msg.rows, msg.cols, 0, 0); } catch { /* ignore */ }
   }
 
   /** Open an interactive SSH shell to a vSphere host's ESXi over ssh2. */
   async startVsphereSsh(ws, hostId, cols = 80, rows = 24) {
     const client = this.clients.get(ws);
+    if (!this._authorizeClient(ws, client)) return;
     // SSH to the hypervisor is powerful — admin only.
     if (!client || client.user.role !== 'admin') {
       ws.send(JSON.stringify({ type: 'ssh:error', message: 'Admin role required for the SSH console' }));
@@ -639,20 +682,29 @@ class WsServer {
       return;
     }
     const { Client: SshClient } = require('ssh2');
+    if (client.sshStream) { try { client.sshStream.close(); } catch {} client.sshStream = null; }
+    if (client.sshConn) { try { client.sshConn.end(); } catch {} client.sshConn = null; }
     const conn = new SshClient();
+    // Track the connection before ready, so logout also closes pending SSH.
+    client.sshConn = conn;
     conn.on('ready', () => {
+      if (!this._authorizeClient(ws, client) || client.sshConn !== conn) { conn.end(); return; }
       conn.shell({ term: 'xterm-256color', cols, rows }, (err, stream) => {
+        if (!this._authorizeClient(ws, client) || client.sshConn !== conn) {
+          try { stream?.close(); } catch {} try { conn.end(); } catch {} return;
+        }
         if (err) { ws.send(JSON.stringify({ type: 'ssh:error', message: err.message })); try { conn.end(); } catch { /* ignore */ } return; }
         client.sshConn = conn;
         client.sshStream = stream;
         ws.send(JSON.stringify({ type: 'ssh:ready' }));
-        const send = (d) => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ssh:output', data: d.toString('utf8') })); };
+        const send = (d) => { if (ws.readyState === 1 && client.sshStream === stream) ws.send(JSON.stringify({ type: 'ssh:output', data: d.toString('utf8') })); };
         stream.on('data', send);
         if (stream.stderr) stream.stderr.on('data', send);
         stream.on('close', () => {
+          if (client.sshConn !== conn) return;
           if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'ssh:end' }));
           try { conn.end(); } catch { /* ignore */ }
-          client.sshConn = null; client.sshStream = null;
+          if (client.sshConn === conn) { client.sshConn = null; client.sshStream = null; }
         });
       });
       try {
@@ -683,55 +735,30 @@ class WsServer {
     }
 
     const client = this.clients.get(ws);
+    if (!this._authorizeClient(ws, client)) return;
     if (!client || client.user.role === 'viewer') {
       ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient permissions' }));
       return;
     }
 
-    let access;
-    try {
-      access = terminalAccess.effective(hostId);
-    } catch (err) {
-      ws.send(JSON.stringify({ type: 'exec:error', code: 'terminal_access_invalid_host', message: err.message }));
+    if (client.execOpening) {
+      ws.send(JSON.stringify({ type: 'exec:error', message: 'Terminal startup already in progress' }));
       return;
     }
-    if (access.locked) {
-      ws.send(JSON.stringify({
-        type: 'exec:error',
-        code: 'terminal_access_locked',
-        message: access.reason || 'Terminal access is locked by an administrator',
-        source: access.source,
-      }));
-      return;
-    }
-
-    // v8.7.18 SECURITY — per-stack permission check, matching the HTTP
-    // pattern for container actions in src/routes/containers.js:329-334.
-    // Without this, an operator restricted to specific stacks via the
-    // per-stack permission system (admins set this via Settings → Users →
-    // Stack Permissions) could exec into a container on ANY stack via
-    // WebSocket. The HTTP container-action route (start/stop/restart) has
-    // always checked this; the WS exec gate was the gap.
+    client.execOpening = true;
     try {
-      const permService = require('../services/permissions');
-      const inspect = await dockerService.inspectContainer(containerId, hostId);
-      const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
-      const effectiveRole = permService.getEffectiveRole(client.user.id, stack, client.user.role);
-      if (!permService.hasPermission(effectiveRole, 'operate')) {
-        ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient stack permissions for exec' }));
+      if (client.execStream) {
+        const previous = client.execStream;
+        client.execStream = null; client.exec = null;
+        try { previous.destroy(); } catch {}
+      }
+      let access;
+      try {
+        access = terminalAccess.effective(hostId);
+      } catch (err) {
+        ws.send(JSON.stringify({ type: 'exec:error', code: 'terminal_access_invalid_host', message: err.message }));
         return;
       }
-    } catch (err) {
-      // inspect failed — container missing, host unreachable, etc.
-      // Treat as deny rather than allow; surface the original error.
-      ws.send(JSON.stringify({ type: 'exec:error', message: err.message || 'Container inspect failed' }));
-      return;
-    }
-
-    try {
-      // Close the inspect→exec race: a lock may have been enabled while the
-      // permission inspection was in flight.
-      access = terminalAccess.effective(hostId);
       if (access.locked) {
         ws.send(JSON.stringify({
           type: 'exec:error',
@@ -741,60 +768,104 @@ class WsServer {
         }));
         return;
       }
-      const exec = await dockerService.createExec(containerId, shell, hostId);
-      const stream = await exec.start({ hijack: true, stdin: true, Tty: true });
 
-      client.exec = exec;
-      client.execStream = stream;
-      client.execHostId = access.hostId;
-      client.execContainerId = containerId;
-      client.execStartedAt = new Date().toISOString();
-
-      // Try to set initial terminal size
-      try { await exec.resize({ w: cols, h: rows }); } catch {}
-
-      stream.on('data', (chunk) => {
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'exec:output', data: chunk.toString() }));
-        }
-      });
-
-      stream.on('end', () => {
-        if (client.execStream !== stream) return;
-        ws.send(JSON.stringify({ type: 'exec:end' }));
-        client.exec = null;
-        client.execStream = null;
-        client.execHostId = null;
-        client.execContainerId = null;
-        client.execStartedAt = null;
-      });
-
-      // v8.7.18 — audit exec session start. The HTTP container actions
-      // (start/stop/restart/remove) all audit; WS exec was the only state-
-      // changing action that didn't, leaving operators able to run arbitrary
-      // commands inside containers with no audit trail.
+      // v8.7.18 SECURITY — per-stack permission check, matching the HTTP
+      // pattern for container actions in src/routes/containers.js:329-334.
+      // Without this, an operator restricted to specific stacks via the
+      // per-stack permission system (admins set this via Settings → Users →
+      // Stack Permissions) could exec into a container on ANY stack via
+      // WebSocket. The HTTP container-action route (start/stop/restart) has
+      // always checked this; the WS exec gate was the gap.
       try {
-        const auditService = require('../services/audit');
-        auditService.log({
-          userId: client.user.id,
-          username: client.user.username,
-          action: 'container_exec',
-          targetType: 'container',
-          targetId: containerId,
-          details: { hostId, shell },
-          ip: client.ip,
-        });
-      } catch { /* audit best-effort; don't break the session if logging fails */ }
+        const permService = require('../services/permissions');
+        const inspect = await dockerService.inspectContainer(containerId, hostId);
+        if (!this._authorizeClient(ws, client)) return;
+        const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+        const effectiveRole = permService.getEffectiveRole(client.user.id, stack, client.user.role);
+        if (!permService.hasPermission(effectiveRole, 'operate')) {
+          ws.send(JSON.stringify({ type: 'exec:error', message: 'Insufficient stack permissions for exec' }));
+          return;
+        }
+      } catch (err) {
+        // inspect failed — container missing, host unreachable, etc.
+        // Treat as deny rather than allow; surface the original error.
+        ws.send(JSON.stringify({ type: 'exec:error', message: err.message || 'Container inspect failed' }));
+        return;
+      }
 
-      ws.send(JSON.stringify({ type: 'exec:started', containerId }));
-    } catch (err) {
-      ws.send(JSON.stringify({ type: 'exec:error', message: err.message }));
-    }
+      try {
+        // Close the inspect→exec race: a lock may have been enabled while the
+        // permission inspection was in flight.
+        access = terminalAccess.effective(hostId);
+        if (access.locked) {
+          ws.send(JSON.stringify({
+            type: 'exec:error',
+            code: 'terminal_access_locked',
+            message: access.reason || 'Terminal access is locked by an administrator',
+            source: access.source,
+          }));
+          return;
+        }
+        const exec = await dockerService.createExec(containerId, shell, hostId);
+        if (!this._authorizeClient(ws, client)) return;
+        const stream = await exec.start({ hijack: true, stdin: true, Tty: true });
+        if (!this._authorizeClient(ws, client)) { stream.destroy(); return; }
+
+        client.exec = exec;
+        client.execStream = stream;
+        client.execHostId = access.hostId;
+        client.execContainerId = containerId;
+        client.execStartedAt = new Date().toISOString();
+
+        // Try to set initial terminal size
+        try { await exec.resize({ w: cols, h: rows }); } catch {}
+        if (!this._authorizeClient(ws, client)) return;
+
+        stream.on('data', (chunk) => {
+          if (ws.readyState === 1 && client.execStream === stream) {
+            ws.send(JSON.stringify({ type: 'exec:output', data: chunk.toString() }));
+          }
+        });
+
+        stream.on('end', () => {
+          if (client.execStream !== stream) return;
+          ws.send(JSON.stringify({ type: 'exec:end' }));
+          client.exec = null;
+          client.execStream = null;
+          client.execHostId = null;
+          client.execContainerId = null;
+          client.execStartedAt = null;
+        });
+
+        // v8.7.18 — audit exec session start. The HTTP container actions
+        // (start/stop/restart/remove) all audit; WS exec was the only state-
+        // changing action that didn't, leaving operators able to run arbitrary
+        // commands inside containers with no audit trail.
+        try {
+          const auditService = require('../services/audit');
+          auditService.log({
+            userId: client.user.id,
+            username: client.user.username,
+            action: 'container_exec',
+            targetType: 'container',
+            targetId: containerId,
+            details: { hostId, shell },
+            ip: client.ip,
+          });
+        } catch { /* audit best-effort; don't break the session if logging fails */ }
+
+        ws.send(JSON.stringify({ type: 'exec:started', containerId }));
+      } catch (err) {
+        ws.send(JSON.stringify({ type: 'exec:error', message: err.message }));
+      }
+    } finally { client.execOpening = false; }
   }
 
   _cleanupClient(ws) {
     const client = this.clients.get(ws);
     if (!client) return;
+    // Detach first: destroying streams can synchronously emit output/close events.
+    this.clients.delete(ws);
     if (client.execStream) {
       const stream = client.execStream;
       client.execStream = null;
@@ -807,7 +878,6 @@ class WsServer {
     this._stopClientLogStreams(client);
     if (client.sshStream) { try { client.sshStream.close(); } catch {} client.sshStream = null; }
     if (client.sshConn) { try { client.sshConn.end(); } catch {} client.sshConn = null; }
-    this.clients.delete(ws);
     log.debug('Client cleaned up', { username: client.user?.username });
   }
 

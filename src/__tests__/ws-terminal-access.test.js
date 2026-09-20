@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('../services/auth', () => ({ validateSessionHash: jest.fn() }));
 
 jest.mock('../services/cluster', () => ({
   publish: jest.fn(async () => {}), subscribe: jest.fn(),
@@ -31,11 +32,13 @@ const wsServer = require('../ws');
 function addClient(hostId = null) {
   const ws = { readyState: 1, send: jest.fn() };
   wsServer.clients.set(ws, {
+    sessionHash: 'a'.repeat(64),
     user: { id: 7, username: 'terminal-admin', role: 'admin' },
     subscriptions: new Set(), logStreams: new Map(),
     msgCount: 0, msgResetTime: Date.now(), isAlive: true,
     execHostId: hostId,
   });
+  require('../services/auth').validateSessionHash.mockReturnValue({ id: 7, username: 'terminal-admin', role: 'admin' });
   return ws;
 }
 

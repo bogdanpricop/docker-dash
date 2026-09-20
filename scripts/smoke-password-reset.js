@@ -10,7 +10,7 @@ const docker = new Docker({ host: url.hostname, port: Number(url.port), timeout:
 const marker = 'dd-reset-smoke-' + crypto.randomBytes(6).toString('hex');
 const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/email.js',
   'src/services/password-reset.js', 'src/services/password-reset-delivery.js', 'src/config/index.js',
-  'src/db/migrations/178_auth_time_indexes.js'];
+  'src/db/migrations/178_auth_time_indexes.js', 'src/ws/index.js'];
 (async () => {
   const c = await docker.createContainer({ name: marker, Image: process.env.DD_SMOKE_APP_IMAGE,
     Entrypoint: ['node'], Cmd: ['/app/scripts/fixtures/password-reset-smoke.cjs'], WorkingDir: '/app',

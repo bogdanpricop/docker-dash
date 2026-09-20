@@ -444,8 +444,13 @@ class AuthService {
   /** Validate session token, return user */
   validateSession(token) {
     if (typeof token !== 'string' || !token) return null;
+    return this.validateSessionHash(sha256(token));
+  }
+
+  // Long-lived transports retain the digest, never the reusable bearer token.
+  validateSessionHash(tokenHash) {
+    if (typeof tokenHash !== 'string' || !/^[a-f0-9]{64}$/.test(tokenHash)) return null;
     const db = getDb();
-    const tokenHash = sha256(token);
     const row = db.prepare(`
       SELECT s.*, u.id as uid, u.username, u.display_name, u.role, u.is_active, u.must_change_password,
              u.password_changed_at, u.totp_enabled

@@ -64,11 +64,11 @@ The companion JSON preserves native results and source hashes.
 
 ## Open audit work
 
-`src/ws/index.js` currently authenticates once and caches the user. Existing exec,
-SSH and log streams need ongoing revocation/expiry/role checks, including checks
-after asynchronous starts. The provider-console gateway also needs review of its
-active-session lifecycle. Fixing validateSession expiry helps new checks but does
-not revoke these already-open channels. This is the next authentication work item.
+The subsequent [WebSocket checkpoint](2026-09-20-ws-session-revalidation.md) adds
+ongoing revocation/expiry/global-role checks to the shared `/ws` endpoint, including
+checks after asynchronous starts. The provider-console gateway still needs review
+of its active-session lifecycle. The expiry correction alone did not revoke
+already-open channels; the follow-up is required for that behavior.
 
 Further authentication review must cover login/password-change races, invalidating
 pending MFA challenges on credential changes, TOTP replay across distinct challenges,

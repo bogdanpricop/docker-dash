@@ -1,5 +1,16 @@
 # Security Policy
 
+## Established WebSocket sessions (pending deployment)
+
+The shared `/ws` endpoint revalidates its session digest before messages and
+outbound data, after asynchronous stream startup and on a five-second idle sweep.
+Revoked/expired sessions, inactive accounts, changed global roles, required password
+changes and database failures close the client and its tracked streams. Close code
+4003 returns the browser to login without attempting token-in-URL fallback.
+The [WebSocket audit](docs/audits/2026-09-20-ws-session-revalidation.md) records native
+checks and limits. This does not retract buffered bytes or undo commands already
+executed remotely. The separate provider-console gateway remains under review.
+
 ## Authentication expiry (pending deployment)
 
 Session, MFA challenge and OIDC state expiry is compared as parsed instants rather
@@ -8,8 +19,8 @@ security alerts now count the SQLite timestamps written by the production path.
 MFA redemption and session creation share a write transaction, including recovery
 code consumption; OIDC state is consumed atomically before provider requests.
 See [verification and open boundaries](docs/audits/2026-09-20-auth-expiry.md).
-Existing WebSocket connections still need ongoing session revalidation; this
-checkpoint does not claim to disconnect already-open streams on session revocation.
+The follow-up WebSocket checkpoint above adds revalidation for the shared `/ws`
+endpoint; the separate provider-console endpoint remains outside that change.
 
 ## Account recovery hardening (pending deployment)
 

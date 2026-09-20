@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('../services/auth', () => ({ validateSessionHash: jest.fn() }));
 
 jest.mock('../services/cluster', () => ({
   publish: jest.fn(async () => {}), subscribe: jest.fn(),
@@ -46,10 +47,12 @@ const wsServer = require('../ws');
 function makeClient(role = 'admin') {
   const ws = { readyState: 1, send: jest.fn() };
   wsServer.clients.set(ws, {
+    sessionHash: require('crypto').createHash('sha256').update(role).digest('hex'),
     user: { id: 9, username: `log-${role}`, role },
     subscriptions: new Set(), logStreams: new Map(),
     msgCount: 0, msgResetTime: Date.now(), isAlive: true,
   });
+  require('../services/auth').validateSessionHash.mockImplementation(hash => [...wsServer.clients.values()].find(client => client.sessionHash === hash)?.user);
   return ws;
 }
 

@@ -66,13 +66,14 @@ test('Proxmox migration applies the verifier before running any remote command',
 test('ESXi terminal applies the verifier and never opens a shell on rejection', async () => {
   const hostId = insertHost('vsphere');
   const socket = { send: jest.fn(), readyState: 1 };
-  ws.clients.set(socket, { user: { id: 1, username: 'admin', role: 'admin' } });
+  const validate = jest.spyOn(require('../services/auth'), 'validateSessionHash').mockReturnValue({ id: 1, username: 'admin', role: 'admin' });
+  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' } });
   try {
     await ws.startVsphereSsh(socket, hostId);
     await new Promise(resolve => setImmediate(resolve));
     expect(mockConnect).toHaveBeenCalledTimes(1); expect(mockExec).not.toHaveBeenCalled();
     expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('Host denied'));
-  } finally { ws.clients.delete(socket); }
+  } finally { ws._cleanupClient(socket); validate.mockRestore(); }
 });
 
 test('remote secrets deploy decrypts SSH config and refuses a rejected server before upload', async () => {
