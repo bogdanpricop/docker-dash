@@ -2,6 +2,7 @@
 // Romanian translations — regenerated with full key parity to en.js
 i18n.register('ro', 'RO', "Română", {
   common: {
+    replacementCleanup: 'Inlocuitorul este activ, dar resursele pastrate pentru recuperare necesita curatare de catre administrator. Operatie: {{operation}}. Consulta ghidul de recuperare rollback.',
     newVersionAvailable: "Versiune nouă {{version}} disponibilă",
     reload: "Reîncarcă",
     close: "Inchide",

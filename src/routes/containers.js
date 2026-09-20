@@ -21,6 +21,8 @@ const cliTransparency = require('../services/cli-transparency');
 const isolationPosture = require('../services/isolation-posture');
 const imageAdmission = require('../services/image-admission');
 const containerHistory = require('../services/container-history');
+const containerReplacement = require('../services/container-replacement');
+const { imageReference } = require('../utils/container-config');
 const requireContainerAccess = require('../middleware/containerAccess');
 
 const router = Router();
@@ -956,89 +958,24 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
   res.json({ results });
 });
 
-// Update container (pull latest + recreate)
+// Update one container on the selected daemon; stack changes use the stack workflow.
 router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
-  const { id } = req.params;
   const docker = dockerService.getDocker(req.hostId);
-    const container = docker.getContainer(id);
-    const inspect = await container.inspect();
-    const image = inspect.Config.Image;
-    const name = inspect.Name.replace(/^\//, '');
-
-    if (dockerService.isSelf(inspect.Id)) {
-      return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
-    }
-
-    // Persist an encrypted rollback record before any container mutation.
-    containerHistory.record({ inspect, hostId: req.hostId || 0, action: 'update', username: req.user.username });
-
-    // Check if part of compose project
-    const project = inspect.Config.Labels?.['com.docker.compose.project'];
-    const workingDir = inspect.Config.Labels?.['com.docker.compose.project.working_dir'];
-
-    if (project && workingDir) {
-      // Use docker compose for stack containers — sanitize labels to prevent injection
-      const safeDir = sanitizeShellArg(workingDir);
-      const service = sanitizeShellArg(inspect.Config.Labels?.['com.docker.compose.service'] || '');
-
-      if (!safeDir || !fs.existsSync(safeDir)) {
-        return res.status(400).json({ error: 'Invalid compose working directory' });
-      }
-
-      const pullArgs = service
-        ? ['compose', 'pull', service]
-        : ['compose', 'pull'];
-      const upArgs = service
-        ? ['compose', 'up', '-d', service]
-        : ['compose', 'up', '-d'];
-
-      execFileSync('docker', pullArgs, { cwd: safeDir, timeout: 120000, encoding: 'utf8' });
-      const output = execFileSync('docker', upArgs, { cwd: safeDir, timeout: 60000, encoding: 'utf8' });
-
-      auditService.log({
-        userId: req.user.id, username: req.user.username,
-        action: 'container_update', targetType: 'container', targetId: name,
-        details: { image, method: 'compose', project }, ip: getClientIp(req),
-      });
-      return res.json({ ok: true, method: 'compose', output });
-    }
-
-    // Manual pull + recreate for standalone containers — v8.7.28 timeout
-    await require('../utils/docker-pull').pullImage(docker, image);
-
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    const createOpts = {
-      name,
-      Image: inspect.Config.Image,
-      Cmd: inspect.Config.Cmd,
-      Env: inspect.Config.Env,
-      ExposedPorts: inspect.Config.ExposedPorts,
-      Labels: inspect.Config.Labels,
-      WorkingDir: inspect.Config.WorkingDir,
-      Entrypoint: inspect.Config.Entrypoint,
-      Volumes: inspect.Config.Volumes,
-      Hostname: inspect.Config.Hostname,
-      User: inspect.Config.User,
-      HostConfig: inspect.HostConfig,
-      NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-    };
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
+  const inspect = await docker.getContainer(req.params.id).inspect();
+  const image = imageReference(inspect), name = inspect.Name.replace(/^\//, '');
+  if (dockerService.isSelf(inspect.Id)) return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
+  await require('../utils/docker-pull').pullImage(docker, image);
+  const candidate = await docker.getImage(image).inspect();
+  const result = await containerReplacement.replace({ docker, inspect, imageId: candidate.Id,
+    hostId: req.hostId || 0, action: 'update', username: req.user.username,
+    commit: (newId, operationId) => auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_update', targetType: 'container', targetId: name,
-      details: { image, method: 'recreate', newId: newContainer.id },
-      ip: getClientIp(req),
-    });
-
-  res.json({ ok: true, method: 'recreate', newId: newContainer.id });
+      details: { image, method: 'recreate', newId, operationId }, ip: getClientIp(req),
+    }),
+  });
+  res.json({ ok: true, method: 'recreate', newId: result.id, operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // Export container config
 router.get('/:id/export', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const data = await dockerService.inspectContainer(req.params.id, req.hostId);
@@ -1295,15 +1232,12 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
   const docker = dockerService.getDocker(req.hostId);
   const container = docker.getContainer(id);
   const inspect = await container.inspect();
-    const image = inspect.Config.Image;
+    const image = imageReference(inspect);
     const name = inspect.Name.replace(/^\//, '');
 
     if (dockerService.isSelf(inspect.Id)) {
       return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
     }
-
-    // Persist an encrypted rollback record before any container mutation.
-    containerHistory.record({ inspect, hostId: req.hostId || 0, action: 'safe-update', username: req.user.username });
 
     // Step 1: Pull new image — v8.7.28 shared 10-min timeout
     await require('../utils/docker-pull').pullImage(docker, image);
@@ -1327,40 +1261,17 @@ router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), w
       });
     }
 
-    // Step 4: Recreate only with the immutable image admitted above.
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    const createOpts = {
-      name,
-      Image: candidate.Id,
-      Cmd: inspect.Config.Cmd,
-      Env: inspect.Config.Env,
-      ExposedPorts: inspect.Config.ExposedPorts,
-      Labels: inspect.Config.Labels,
-      WorkingDir: inspect.Config.WorkingDir,
-      Entrypoint: inspect.Config.Entrypoint,
-      Volumes: inspect.Config.Volumes,
-      Hostname: inspect.Config.Hostname,
-      User: inspect.Config.User,
-      HostConfig: inspect.HostConfig,
-      NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-    };
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
-      userId: req.user.id, username: req.user.username,
-      action: 'container_safe_update', targetType: 'container', targetId: name,
-      details: JSON.stringify({ image, scan: scanSummary, newId: newContainer.id }),
-      ip: getClientIp(req),
+    const result = await containerReplacement.replace({ docker, inspect, imageId: candidate.Id,
+      hostId: req.hostId || 0, action: 'safe-update', username: req.user.username,
+      commit: (newId, operationId) => auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'container_safe_update', targetType: 'container', targetId: name,
+        details: { image, scan: scanSummary, newId, operationId }, ip: getClientIp(req),
+      }),
     });
-
-  res.json({ ok: true, method: 'safe-pull', scan: scanSummary, newId: newContainer.id });
+  res.json({ ok: true, method: 'safe-pull', scan: scanSummary, newId: result.id,
+    operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // ─── Troubleshooting Wizard ───────────────────────────
 
 router.get('/:id/diagnose', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
@@ -2091,66 +2002,18 @@ router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writ
       return res.status(400).json({ error: 'Previous image no longer exists locally. Re-pull the tag first.' });
     }
 
-    // Preserve current configuration before rollback, with authenticated encryption.
-    containerHistory.record({ inspect, hostId: req.hostId || 0, action: 'rollback', username: req.user.username });
-
-    // Recreate with old image
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    // Parse config from history or rebuild from current
-    let createOpts;
-    if (historicalConfig) {
-        const cfg = historicalConfig;
-        createOpts = {
-          name,
-          Image: entry.image_id,
-          Cmd: cfg.Cmd,
-          Env: cfg.Env,
-          ExposedPorts: cfg.ExposedPorts,
-          Labels: cfg.Labels,
-          WorkingDir: cfg.WorkingDir,
-          Entrypoint: cfg.Entrypoint,
-          Volumes: cfg.Volumes,
-          Hostname: cfg.Hostname,
-          User: cfg.User,
-          HostConfig: cfg.HostConfig,
-          NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-        };
-    }
-
-    if (!createOpts) {
-      createOpts = {
-        name,
-        Image: entry.image_id,
-        Cmd: inspect.Config.Cmd,
-        Env: inspect.Config.Env,
-        ExposedPorts: inspect.Config.ExposedPorts,
-        Labels: inspect.Config.Labels,
-        WorkingDir: inspect.Config.WorkingDir,
-        Entrypoint: inspect.Config.Entrypoint,
-        Volumes: inspect.Config.Volumes,
-        Hostname: inspect.Config.Hostname,
-        User: inspect.Config.User,
-        HostConfig: inspect.HostConfig,
-        NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-      };
-    }
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
-      userId: req.user.id, username: req.user.username,
-      action: 'container_rollback', targetType: 'container', targetId: name,
-      details: { fromImage: inspect.Config.Image, toImage: entry.image_name, toImageId: entry.image_id },
-      ip: getClientIp(req),
+    const result = await containerReplacement.replace({ docker, inspect, imageId: entry.image_id,
+      hostId: req.hostId || 0, action: 'rollback', username: req.user.username, saved: historicalConfig,
+      commit: (newId, operationId) => auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'container_rollback', targetType: 'container', targetId: name,
+        details: { fromImage: imageReference(inspect), toImage: entry.image_name, toImageId: entry.image_id, newId, operationId },
+        ip: getClientIp(req),
+      }),
     });
-
-  res.json({ ok: true, newId: newContainer.id, rolledBackTo: entry.image_name });
+  res.json({ ok: true, newId: result.id, rolledBackTo: entry.image_name,
+    operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // ─── Deployment Pipeline ─────────────────────────────
 
 router.post('/:id/pipeline/start', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {

@@ -9,6 +9,12 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.3', date: '2026-09-20', title: 'Recoverable container updates', changes: [
+      { type: 'fix', text: 'Update, safe update, pipeline and rollback retain the original container until the replacement passes verification and the audit is saved. Failures attempt to restore the original.' },
+      { type: 'security', text: 'A Docker daemon reservation prevents competing replacements. Interrupted operations keep a recovery journal and require explicit reconciliation; reservations never expire automatically.' },
+      { type: 'fix', text: 'Anonymous volume identities, healthchecks and configured network addresses/aliases are preserved. A missing historical data volume blocks rollback. Shared application-data writes still require independent backups.' },
+      { type: 'improvement', text: 'Single-container updates use the selected Docker host, including Compose-labelled containers. EN/RO recovery guidance and cleanup warnings explain retained resources.' },
+    ] },
     { version: '8.96.2', date: '2026-09-20', title: 'Security audit checkpoint', changes: [
       { type: 'security', text: 'SSH and Git connections verify server identity; LDAP requires verified LDAPS or StartTLS, and providers require verified HTTPS. Existing trust-bypass configurations need migration.' },
       { type: 'security', text: 'LDAP passwords and rollback snapshots are encrypted. Container authorization, image admission, CSRF and HTML escaping have additional checks.' },

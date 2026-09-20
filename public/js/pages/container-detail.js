@@ -302,6 +302,10 @@ const ContainersPageDetail = {
     }
   },
 
+  _replacementNotice(result) {
+    if (result.cleanupRequired) Toast.warning(i18n.t('common.replacementCleanup', { operation: result.operationId }));
+  },
+
   async _updateContainer(id, image) {
     const ok = await Modal.confirm(
       `Pull latest image for <strong>${Utils.escapeHtml(image)}</strong> and recreate this container with the same configuration?`,
@@ -313,6 +317,7 @@ const ContainersPageDetail = {
     try {
       const result = await Api.updateContainer(id);
       Toast.success(`Container updated via ${result.method}`);
+      this._replacementNotice(result);
       // Reload detail or go back to list
       if (result.newId) {
         this._detailId = result.newId;
@@ -461,6 +466,7 @@ const ContainersPageDetail = {
     try {
       const result = await Api.safeUpdateContainer(id);
       if (result.ok) {
+        this._replacementNotice(result);
         Toast.success(`Safe update complete. Scan: ${result.scan?.critical || 0} critical, ${result.scan?.high || 0} high`);
         if (result.newId) this._detailId = result.newId;
         await this._loadDetail();
@@ -2852,6 +2858,8 @@ const ContainersPageDetail = {
             Toast.info('Rolling back...');
             const result = await Api.rollbackContainer(containerId, parseInt(historyId));
             Toast.success(`Rolled back to ${result.rolledBackTo || 'previous version'}`);
+            this._replacementNotice(result);
+            if (result.newId) this._detailId = result.newId;
             Modal.close();
             await this._loadDetail();
           } catch (err) {

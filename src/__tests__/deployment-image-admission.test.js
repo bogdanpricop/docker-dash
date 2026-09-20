@@ -24,7 +24,9 @@ const { getDb } = require('../db');
 const { sealSnapshot, readSnapshot } = require('../utils/history-snapshot');
 const app = express(); app.use(express.json()); app.use('/containers', require('../routes/containers'));
 const imageId = `sha256:${'b'.repeat(64)}`;
-let docker, old;
+const daemon = require('./helpers/replacement-daemon');
+jest.setTimeout(20000);
+let docker, old, fixture;
 
 beforeEach(() => {
   jest.clearAllMocks(); getDb().prepare('DELETE FROM deployment_pipelines').run();
@@ -32,11 +34,7 @@ beforeEach(() => {
   getDb().prepare("INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (201, 'restricted', 'test-only', 'operator')").run();
   getDb().prepare("INSERT OR REPLACE INTO stack_permissions (user_id, stack_name, permission) VALUES (201, 'restricted-stack', 'none')").run();
   dockerService.inspectContainer.mockResolvedValue({ id: 'old-container', name: 'old', labels: { 'com.docker.compose.project': 'restricted-stack' } });
-  old = { inspect: jest.fn(async () => ({ Id: 'old-container', Name: '/old', Image: `sha256:${'a'.repeat(64)}`,
-    Config: { Image: 'example/app:mutable', Env: [] }, State: { Running: true }, HostConfig: {}, NetworkSettings: {} })),
-  stop: jest.fn(), remove: jest.fn() };
-  docker = { getContainer: jest.fn(() => old), getImage: jest.fn(() => ({ inspect: async () => ({ Id: imageId, Size: 10 }) })),
-    createContainer: jest.fn(async () => ({ id: 'new-container', start: jest.fn() })) };
+  fixture = daemon(); ({ docker, old } = fixture);
   dockerService.getDocker.mockReturnValue(docker);
   admission.scanImage.mockResolvedValue({ imageId, scanner: 'trivy', passed: false, status: 'unavailable' });
 });
@@ -86,11 +84,20 @@ test.each(['exited', 'unhealthy', 'unavailable'])('pipeline cannot report succes
   jest.useFakeTimers();
   try {
     admission.scanImage.mockResolvedValue({ imageId, passed: true, critical: 0, high: 0, unknown: 0 });
-    const replacement = { inspect: jest.fn(async () => {
-      if (state === 'unavailable') throw new Error('Docker unreachable');
-      return { State: state === 'exited' ? { Running: false } : { Running: true, Health: { Status: 'unhealthy' } } };
-    }) };
-    docker.getContainer.mockImplementation(id => id === 'new-container' ? replacement : old);
+    const create = docker.createContainer.getMockImplementation();
+    docker.createContainer.mockImplementation(async opts => {
+      const handle = await create(opts);
+      if (opts.name === 'old') {
+        const inspect = handle.inspect.getMockImplementation();
+        handle.inspect.mockImplementationOnce(async () => {
+          if (state === 'unavailable') throw new Error('Docker unreachable');
+          const value = await inspect();
+          value.State = state === 'exited' ? { Running: false } : { Running: true, Health: { Status: 'unhealthy' } };
+          return value;
+        });
+      }
+      return handle;
+    });
     const pending = pipelines.start({ containerId: 'old-container', hostId: 42 });
     await jest.runAllTimersAsync();
     const result = await pending;
@@ -252,7 +259,7 @@ test.each(['update', 'safe-update', 'rollback', 'pipeline'])('%s persists an enc
   expect(row.config_snapshot).not.toContain('current-secret'); expect(readSnapshot(row).Env).toEqual(['TOKEN=current-secret']);
 });
 
-test.each(['update', 'safe-update', 'rollback', 'pipeline'])('%s aborts before Docker mutation if history persistence fails', async endpoint => {
+test.each(['update', 'safe-update', 'rollback', 'pipeline'])('%s aborts before workload mutation if history persistence fails', async endpoint => {
   const historyId = endpoint === 'rollback' ? historyRow() : undefined;
   admission.scanImage.mockResolvedValue({ imageId, passed: true });
   const db = getDb();
@@ -263,10 +270,11 @@ test.each(['update', 'safe-update', 'rollback', 'pipeline'])('%s aborts before D
       expect(result.status).toBe('failed'); expect(result.error).toContain('storage unavailable');
     } else {
       const result = await request(app).post(`/containers/old-container/${endpoint}`).send({ historyId });
-      expect(result.status).toBe(500);
+      expect(result.status).toBe(502);
     }
     expect(old.stop).not.toHaveBeenCalled(); expect(old.remove).not.toHaveBeenCalled();
-    expect(docker.createContainer).not.toHaveBeenCalled();
+    expect(docker.createContainer.mock.calls.every(([opts]) => opts.name.startsWith('dd-replacement-lock-'))).toBe(true);
+    expect(fixture.states.size).toBe(1);
   } finally { db.exec('DROP TRIGGER fail_history_insert'); }
 });
 

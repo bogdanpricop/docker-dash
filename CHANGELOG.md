@@ -2,6 +2,22 @@
 
 All notable changes to Docker Dash are documented here.
 
+## [8.96.3] - 2026-09-20 — Recoverable container replacement
+
+- Retain the original container through create/start/health verification and the
+  transactional audit commit in update, safe update, pipeline and rollback.
+  Failures restore the original where possible; interrupted operations retain a
+  daemon-level reservation and durable recovery journal for manual reconciliation.
+- Preserve anonymous data volume identities, healthchecks, stop signals, network
+  aliases/static addresses and restart policies. Refuse missing historical volumes
+  rather than silently recreating empty data volumes. Shared data writes are not
+  rolled back automatically.
+- Update Compose-labelled containers through the selected Docker daemon; stack
+  changes remain in the stack workflow. Preserve the pull reference while creating
+  from the selected immutable image ID.
+- Explain recovery and cleanup limitations in EN/RO, surface retained-resource
+  warnings, and load the replacement ID after a successful rollback.
+
 ## [8.96.2] - 2026-09-20 — Security audit checkpoint
 
 - Update application dependencies, Node LTS and vendored browser libraries; pin

@@ -5,7 +5,8 @@ const dockerService = require('./docker');
 const auditService = require('./audit');
 const { formatBytes } = require('../utils/helpers');
 const imageAdmission = require('./image-admission');
-const containerHistory = require('./container-history');
+const containerReplacement = require('./container-replacement');
+const { imageReference } = require('../utils/container-config');
 
 /**
  * Deployment Pipeline Service
@@ -30,7 +31,7 @@ class PipelineService {
     const container = docker.getContainer(containerId);
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
-    const image = inspect.Config.Image;
+    const image = imageReference(inspect);
 
     if (dockerService.isSelf(inspect.Id)) {
       throw new Error('Cannot run pipeline on Docker Dash itself');
@@ -103,95 +104,40 @@ class PipelineService {
         }
       }
 
-      // ── Stage 3: Swap ─────────────────────────
+      // Swap, verification and audit form one recoverable operation.
       updateStage('swap', 'running');
-      let newContainerId;
+      let failingStage = 'swap';
       try {
-        // Encryption/storage failure must not destroy the current container.
-        containerHistory.record({ inspect, hostId, action: 'pipeline', username: user?.username || 'system' });
-
-        const wasRunning = inspect.State.Running;
-        if (wasRunning) await container.stop();
-        await container.remove();
-
-        const createOpts = {
-          name,
-          Image: candidateId,
-          Cmd: inspect.Config.Cmd,
-          Env: inspect.Config.Env,
-          ExposedPorts: inspect.Config.ExposedPorts,
-          Labels: inspect.Config.Labels,
-          WorkingDir: inspect.Config.WorkingDir,
-          Entrypoint: inspect.Config.Entrypoint,
-          Volumes: inspect.Config.Volumes,
-          Hostname: inspect.Config.Hostname,
-          User: inspect.Config.User,
-          HostConfig: inspect.HostConfig,
-          NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-        };
-
-        const newContainer = await docker.createContainer(createOpts);
-        if (wasRunning) await newContainer.start();
-        newContainerId = newContainer.id;
-
-        db.prepare('UPDATE deployment_pipelines SET image_after = ? WHERE id = ?').run(candidateId, pipelineId);
-        updateStage('swap', 'success', `Container recreated (${newContainerId.substring(0, 12)})`);
-      } catch (err) {
-        updateStage('swap', 'failed', err.message);
-        failPipeline('Swap failed: ' + err.message);
-        return this._getResult(pipelineId);
-      }
-
-      // ── Stage 4: Verify ───────────────────────
-      if (!skipVerify && newContainerId && !inspect.State.Running) {
-        updateStage('verify', 'skipped', 'Original container was stopped; replacement remains stopped');
-      } else if (!skipVerify && newContainerId) {
-        updateStage('verify', 'running');
-        try {
-          // Wait up to 30 seconds for healthy status
-          let healthy = false;
-          for (let i = 0; i < 6; i++) {
-            await new Promise(r => setTimeout(r, 5000));
-            try {
-              const newInspect = await docker.getContainer(newContainerId).inspect();
-              if (!newInspect.State?.Running) break;
-              const healthStatus = newInspect.State?.Health?.Status;
-              if (!newInspect.State?.Health) { healthy = true; break; } // No health check defined
-              if (healthStatus === 'healthy') { healthy = true; break; }
-              if (healthStatus === 'unhealthy') break;
-            } catch { break; }
-          }
-          updateStage('verify', healthy ? 'success' : 'failed', healthy ? 'Container is healthy' : 'Health check failed');
-          if (!healthy) {
-            failPipeline('Replacement container failed verification');
-            return this._getResult(pipelineId);
-          }
-        } catch (err) {
-          updateStage('verify', 'failed', err.message);
-          failPipeline('Replacement container verification could not be completed');
-          return this._getResult(pipelineId);
-        }
-      }
-
-      // ── Stage 5: Notify ───────────────────────
-      updateStage('notify', 'running');
-      try {
-        auditService.log({
-          userId: user?.id, username: user?.username || 'system',
-          action: 'pipeline_deploy', targetType: 'container', targetId: name,
-          details: JSON.stringify({ pipelineId, image, scan: scanSummary, newId: newContainerId }),
-          ip: clientIp,
+        const result = await containerReplacement.replace({ docker, inspect, imageId: candidateId,
+          hostId, action: 'pipeline', username: user?.username || 'system', skipHealth: skipVerify,
+          onPhase: phase => {
+            if (phase === 'verifying') {
+              updateStage('swap', 'success', 'Candidate created; original retained for recovery');
+              failingStage = 'verify';
+              updateStage('verify', skipVerify || !inspect.State.Running ? 'skipped' : 'running',
+                !inspect.State.Running ? 'Original container was stopped; replacement remains stopped' : undefined);
+            }
+          },
+          commit: (newId, operationId) => {
+            if (!skipVerify && inspect.State.Running) updateStage('verify', 'success', 'Container passed verification');
+            failingStage = 'notify';
+            updateStage('notify', 'running');
+            auditService.log({ userId: user?.id, username: user?.username || 'system',
+              action: 'pipeline_deploy', targetType: 'container', targetId: name,
+              details: { pipelineId, image, scan: scanSummary, newId, operationId }, ip: clientIp });
+            updateStage('notify', 'success', 'Audit logged');
+            db.prepare("UPDATE deployment_pipelines SET image_after=?, status='success', completed_at=datetime('now') WHERE id=?")
+              .run(candidateId, pipelineId);
+          },
         });
-        updateStage('notify', 'success', 'Audit logged');
+        if (result.cleanupRequired) {
+          try { updateStage('swap', 'success', `Replacement active; retained recovery requires cleanup (operation ${result.operationId})`); }
+          catch { /* The deployment and operation commit are already durable. */ }
+        }
       } catch (err) {
-        updateStage('notify', 'failed', err.message);
-        failPipeline('Deployment audit could not be recorded');
-        return this._getResult(pipelineId);
+        updateStage(failingStage, 'failed', err.message);
+        failPipeline(err.message);
       }
-
-      // Mark pipeline complete
-      db.prepare("UPDATE deployment_pipelines SET status = ?, completed_at = datetime('now') WHERE id = ?")
-        .run('success', pipelineId);
 
       return this._getResult(pipelineId);
     } catch (err) {

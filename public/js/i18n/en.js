@@ -3,6 +3,7 @@
 // This is the base/fallback language. All keys must be defined here.
 i18n.register('en', 'EN', 'English', {
   common: {
+    replacementCleanup: 'Replacement is active, but retained recovery resources need administrator cleanup. Operation: {{operation}}. See the rollback recovery guide.',
     newVersionAvailable: 'New version {{version}} available', reload: 'Reload',
     close: 'Close', cancel: 'Cancel', confirm: 'Confirm', save: 'Save',
     remove: 'Remove', delete: 'Delete', create: 'Create', edit: 'Edit',
