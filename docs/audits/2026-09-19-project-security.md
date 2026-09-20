@@ -1,15 +1,12 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Ulterior deploy-ului 8.96.5, [bypass-ul prin NET_RAW implicit](2026-09-20-egress-net-raw.md)
-a fost reprodus pe LAN/VPS si corectat in cod. Aplicarea si autorizarea proxy cer
-eliminarea explicita a capabilitatii; auditul afiseaza implicitul Docker.
-355 suite / 4.639 teste trecute. Corectia asteapta urmatorul rollout.
-
-Stare actuala: checkpoint-ul 8.96.5 este urcat pe Git si instalat pe LAN/VPS,
-cu Docker healthy si HTTP 200 / versiunea 8.96.5. Include
+Stare actuala: checkpoint-ul 8.96.6 este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP 200 / versiunea 8.96.6. Include
+[protectia NET_RAW](2026-09-20-egress-net-raw.md),
+[pastrarea filtrelor suprapuse](2026-09-20-egress-overlap.md),
 [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md) si
 [helper-ul preconstruit cu runtime redus](2026-09-20-egress-helper-runtime.md).
-355 suite / 4.615 teste trecute, un test live omis; lint, npm audit, help si i18n trecute.
+356 suite / 4.668 teste trecute, un test live omis; lint, npm audit, help si i18n trecute.
 Imaginea exacta a trecut canary-uri Compose si smoke Linux pe ambele hosturi.
 Backup-uri consistente verificate; cheile, configuratia si datele sunt pastrate.
 Helper-ul configurat este fixat la ID-ul verificat pe ambele daemone.
@@ -20,9 +17,9 @@ apk-tools si a dependintelor inutile, inclusiv zlib. Nicio exceptie noua sau
 prag dezactivat. Expunerea LAN 2375, IPv6/UDP, exceptiile private si celelalte
 limite egress raman deschise. Pool-urile de retea LAN sunt epuizate; daemonul
 nu a fost reconfigurat.
-Dovezi: [deploy 8.96.5](2026-09-20-deployment-8.96.5.md),
-[scanarea imaginii exacte](2026-09-20-image-8.96.5.json).
-Checkpoint-urile anterioare: [8.96.4](2026-09-20-deployment-8.96.4.md),
+Dovezi: [deploy 8.96.6](2026-09-20-deployment-8.96.6.md),
+[scanarea imaginii exacte](2026-09-20-image-8.96.6.json).
+Checkpoint-urile anterioare: [8.96.5](2026-09-20-deployment-8.96.5.md), [8.96.4](2026-09-20-deployment-8.96.4.md),
 [8.96.3](2026-09-20-deployment-8.96.3.md).
 Datele de mai jos pastreaza rezultatele initiale si evolutia auditului;
 nu certifica securitatea completa.

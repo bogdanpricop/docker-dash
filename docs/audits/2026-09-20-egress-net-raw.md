@@ -31,8 +31,8 @@ Eliminarea explicita a NET_RAW a produs EPERM la crearea socket-ului AF_PACKET.
 La upgrade, conexiunile proxy noi ale tintelor legacy cu NET_RAW sunt refuzate.
 Operatorul trebuie sa elimine capabilitatea explicit. Verificarea read-only a
 instalatiilor LAN/VPS la acest checkpoint a gasit zero politici egress active si
-niciun endpoint sidecar configurat. Aplicatiile live raman la 8.96.5; corectia
-este pregatita pentru urmatorul rollout, fara modificarea workload-urilor live.
+niciun endpoint sidecar configurat. Corectia a fost instalata prin [deploy-ul 8.96.6](2026-09-20-deployment-8.96.6.md),
+fara recrearea workload-urilor filtrate.
 
 ## Validare
 

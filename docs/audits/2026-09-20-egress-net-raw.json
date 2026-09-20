@@ -1,7 +1,7 @@
 {
   "at": "2026-09-20T04:42:37.227Z",
-  "status": "verified-source-change-pending-rollout",
-  "liveVersion": "8.96.5",
+  "status": "verified-source-and-deployed",
+  "liveVersion": "8.96.6",
   "tests": {
     "suites": 355,
     "passed": 4639,
@@ -105,5 +105,6 @@
     "src/routes/egress-filter.js": "7af7c83c92a5220e3883a6a8cd83ee7c201dc3caeb6f74b53741f57ae7898f74",
     "scripts/smoke-egress-capabilities.js": "89cd942bce4bcd337ee7cc37e2062c76b139b28bd0090acd2f2d05275dd6649a",
     "scripts/fixtures/egress-packet-probe.go": "929a9b685a806d5933df1259239b02ae4b87de84909d07a688c86fd3d94b1626"
-  }
+  },
+  "deploymentEvidence": "2026-09-20-deployment-8.96.6.json"
 }
