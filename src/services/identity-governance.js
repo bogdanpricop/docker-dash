@@ -63,7 +63,10 @@ function domain(value) {
 class IdentityGovernanceService {
   constructor(dbProvider = getDb) { this._dbProvider = dbProvider; }
   _db() { return this._dbProvider(); }
-  _admin(actor) { if (actor?.role !== 'admin') fail('Administrator access required', 403, 'ADMIN_REQUIRED'); }
+  _admin(actor) {
+    if (actor?.role !== 'admin') fail('Administrator access required', 403, 'ADMIN_REQUIRED');
+    if (actor.apiKey || actor.serviceToken) fail('Sign in as an administrator to manage identities and credentials',403,'USER_AUTH_REQUIRED');
+  }
 
   listRealms({ publicOnly = false } = {}) {
     const where = publicOnly ? 'WHERE r.enabled=1' : '';
@@ -129,15 +132,16 @@ class IdentityGovernanceService {
     return { ...item, domain: routedDomain };
   }
 
-  _issueToken({ name, principal, scopes, tenantId, ttlSeconds, issuedVia, rotatedFrom, createdBy, maximumExpiry }) {
-    const ttl = int(ttlSeconds, 'ttlSeconds', issuedVia === 'workload_exchange' ? 1 : 60, issuedVia === 'workload_exchange' ? 3600 : 86400);
+  _issueToken({ name, principal, scopes, tenantId, ttlSeconds, issuedVia, rotatedFrom, createdBy, maximumExpiry, workloadTrustId }) {
+    const ttl = int(ttlSeconds, 'ttlSeconds', workloadTrustId ? 1 : 60, workloadTrustId ? 3600 : 86400);
     const raw = `ddst_${generateToken(32)}`;
     const expiresAt = new Date(Math.min(Date.now() + ttl * 1000, maximumExpiry ?? Infinity)).toISOString();
     const result = this._db().prepare(`INSERT INTO governance_service_tokens
-      (name,principal,token_prefix,token_hash,scopes_json,tenant_id,expires_at,rotated_from,issued_via,created_by)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(clean(name, 'name', 120), clean(principal, 'principal', 300), raw.slice(0, 13), sha256(raw),
+      (name,principal,token_prefix,token_hash,scopes_json,tenant_id,expires_at,rotated_from,issued_via,created_by,workload_trust_id,workload_expires_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(clean(name, 'name', 120), clean(principal, 'principal', 300), raw.slice(0, 13), sha256(raw),
       JSON.stringify(safeScopes(scopes)), tenantId == null ? null : int(tenantId, 'tenantId', 1, Number.MAX_SAFE_INTEGER),
-      expiresAt, rotatedFrom || null, issuedVia || 'manual', createdBy || null);
+      expiresAt, rotatedFrom || null, issuedVia || 'manual', createdBy || null, workloadTrustId || null,
+      workloadTrustId ? new Date(maximumExpiry).toISOString() : null);
     return { ...this.tokenInfo(result.lastInsertRowid), token: raw };
   }
 
@@ -149,7 +153,7 @@ class IdentityGovernanceService {
 
   tokenInfo(id) {
     const item = this._db().prepare(`SELECT id,name,principal,token_prefix,scopes_json,tenant_id,expires_at,last_used_at,revoked_at,
-      rotated_from,issued_via,created_by,created_at FROM governance_service_tokens WHERE id=?`).get(Number(id));
+      rotated_from,issued_via,created_by,created_at,workload_trust_id,workload_expires_at FROM governance_service_tokens WHERE id=?`).get(Number(id));
     if (!item) fail('Service token not found', 404);
     return { ...item, scopes: parseJson(item.scopes_json, []) };
   }
@@ -157,13 +161,16 @@ class IdentityGovernanceService {
   listTokens(actor) {
     this._admin(actor);
     return this._db().prepare(`SELECT id,name,principal,token_prefix,scopes_json,tenant_id,expires_at,last_used_at,revoked_at,
-      rotated_from,issued_via,created_by,created_at FROM governance_service_tokens ORDER BY created_at DESC`).all()
+      rotated_from,issued_via,created_by,created_at,workload_trust_id,workload_expires_at FROM governance_service_tokens ORDER BY created_at DESC`).all()
       .map(item => ({ ...item, scopes: parseJson(item.scopes_json, []) }));
   }
 
   revokeToken(id, actor) {
     this._admin(actor);
-    const result = this._db().prepare("UPDATE governance_service_tokens SET revoked_at=datetime('now') WHERE id=? AND revoked_at IS NULL")
+    const result = this._db().prepare(`WITH RECURSIVE descendants(id) AS (
+      SELECT id FROM governance_service_tokens WHERE id=?
+      UNION SELECT token.id FROM governance_service_tokens token JOIN descendants ON token.rotated_from=descendants.id
+    ) UPDATE governance_service_tokens SET revoked_at=datetime('now') WHERE id IN (SELECT id FROM descendants) AND revoked_at IS NULL`)
       .run(int(id, 'id', 1, Number.MAX_SAFE_INTEGER));
     if (!result.changes) fail('Active service token not found', 404);
     return { revoked: true };
@@ -171,25 +178,45 @@ class IdentityGovernanceService {
 
   rotateToken(id, input, actor) {
     this._admin(actor);
-    const previous = this.tokenInfo(id);
-    if (previous.revoked_at || Date.parse(previous.expires_at) <= Date.now()) fail('Service token is not active', 409);
     return this._db().transaction(() => {
+      const previous = this.tokenInfo(int(id,'id',1,Number.MAX_SAFE_INTEGER));
+      if (previous.revoked_at || !(Date.parse(previous.expires_at) > Date.now())) fail('Service token is not active', 409);
+      let ttlSeconds=int(input.ttlSeconds ?? 3600,'ttlSeconds',60,86400),maximumExpiry;
+      const scopes=safeScopes(input.scopes ?? previous.scopes);
+      if (previous.workload_trust_id || previous.workload_expires_at || previous.issued_via==='workload_exchange') {
+        const trust=this._db().prepare('SELECT * FROM governance_workload_identity_trusts WHERE id=? AND enabled=1').get(previous.workload_trust_id);
+        maximumExpiry=Date.parse(previous.workload_expires_at);
+        if (!trust || !(maximumExpiry>Date.now())) fail('Workload proof or trust is no longer active',409);
+        const allowed=safeScopes(parseJson(trust.scopes_json,[]));
+        if (scopes.some(scope=>!previous.scopes.includes(scope)||!allowed.includes(scope))) fail('Workload rotation cannot expand proof scopes',403,'WORKLOAD_SCOPE_DENIED');
+        ttlSeconds=Math.min(ttlSeconds,trust.token_ttl_seconds,Math.ceil((maximumExpiry-Date.now())/1000));
+      }
       const replacement = this._issueToken({ name: input.name || previous.name, principal: previous.principal,
-        scopes: input.scopes || previous.scopes, tenantId: previous.tenant_id,
-        ttlSeconds: input.ttlSeconds || 3600, issuedVia: 'rotation', rotatedFrom: previous.id, createdBy: actor.id });
+        scopes, tenantId: previous.tenant_id, ttlSeconds, maximumExpiry, workloadTrustId:previous.workload_trust_id,
+        issuedVia: 'rotation', rotatedFrom: previous.id, createdBy: actor.id });
       this._db().prepare("UPDATE governance_service_tokens SET revoked_at=datetime('now') WHERE id=?").run(previous.id);
       return replacement;
-    })();
+    }).immediate();
   }
 
   validateToken(raw) {
-    if (!String(raw || '').startsWith('ddst_')) return null;
+    if (typeof raw!=='string'||!/^ddst_[a-f0-9]{64}$/.test(raw)) return null;
+    return this._db().transaction(() => {
     const item = this._db().prepare(`SELECT * FROM governance_service_tokens WHERE token_hash=? AND revoked_at IS NULL
-      AND datetime(expires_at)>datetime('now')`).get(sha256(raw));
+      AND julianday(expires_at)>julianday('now')`).get(sha256(raw));
     if (!item) return null;
+    const scopes=parseJson(item.scopes_json,null);
+    if (!Array.isArray(scopes)||!scopes.length||scopes.some(scope=>typeof scope!=='string'||!SERVICE_SCOPES.has(scope))) return null;
+    if (item.workload_trust_id || item.workload_expires_at || item.issued_via==='workload_exchange') {
+      const trust=this._db().prepare('SELECT * FROM governance_workload_identity_trusts WHERE id=? AND enabled=1').get(item.workload_trust_id);
+      const allowed=trust&&parseJson(trust.scopes_json,null);
+      if (!trust || !(Date.parse(item.workload_expires_at)>Date.now()) || !Array.isArray(allowed)
+        || scopes.some(scope=>!allowed.includes(scope)) || item.tenant_id!==trust.tenant_id) return null;
+    }
     this._db().prepare("UPDATE governance_service_tokens SET last_used_at=datetime('now') WHERE id=?").run(item.id);
     return { id: null, username: item.principal, displayName: item.name, role: 'viewer', serviceToken: true,
-      serviceTokenId: item.id, scopes: parseJson(item.scopes_json, []), tenantId: item.tenant_id, mustChangePassword: false };
+      serviceTokenId: item.id, scopes, tenantId: item.tenant_id, mustChangePassword: false };
+    }).immediate();
   }
 
   requireScope(user, scope) {
@@ -314,7 +341,7 @@ class IdentityGovernanceService {
       }
       const token = this._issueToken({ name: trust.name, principal: `workload:${claims.sub}`, scopes: parseJson(trust.scopes_json, []),
         tenantId: trust.tenant_id, ttlSeconds: Math.min(trust.token_ttl_seconds, claims.exp - Math.floor(Date.now() / 1000)),
-        issuedVia: 'workload_exchange', createdBy: null, maximumExpiry: claims.exp * 1000 });
+        issuedVia: 'workload_exchange', createdBy: null, maximumExpiry: claims.exp * 1000, workloadTrustId:trust.id });
       if (onCommit?.(token,trust)?.then) throw new Error('Workload exchange audit must be synchronous');
       return { accessToken: token.token, tokenType: 'Bearer', expiresAt: token.expires_at, scopes: token.scopes, tenantId: token.tenant_id };
     }).immediate();

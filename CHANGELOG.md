@@ -4,6 +4,13 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Require user administrator authentication for identity and service-credential
+  management. Commit issuance/rotation and trust/realm changes with audit; explicit
+  token revocation survives audit failure and reaches rotated descendants. Migration
+  184 links workload credentials to trust/proof lifetime, revokes them on authority
+  changes, and bounds rotation scopes/expiry. Serialize rotation and validation
+  against revocation. [Evidence and upgrade impact](docs/audits/2026-09-20-service-token-security.md).
+
 - Prevent workload JWT replay through alternative signature encodings, ECDSA
   signatures or reused issuer/JWT ids. Validate JWT types and pinned key algorithms;
   commit trust verification, replay history, bounded token issuance and HTTP audit

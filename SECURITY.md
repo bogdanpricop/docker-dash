@@ -13,7 +13,7 @@ HTTP audit commit atomically; audit failure returns 500 and rolls the operation 
 Existing SCIM ownership records still require review; historical unauthorized changes
 cannot be reconstructed automatically. SCIM-to-OIDC linking remains unsupported.
 
-## OIDC and personal credentials (included in the 8.96.10 candidate)
+## Subsequent workload and service credential corrections (not yet bundled)
 
 The subsequent [workload replay correction](docs/audits/2026-09-20-workload-replay-security.md)
 is also outside the built candidate. Migration 183 revokes previously issued workload
@@ -22,8 +22,26 @@ issued after the migration timestamp plus 60 seconds; the issuer must obtain a n
 proof (up to 61 seconds before an integer iat exceeds this cutoff). Manual tokens
 are retained. Signed content and issuer/jti replay keys survive trust deletion and
 remain until the accepted proof expires. Issuers must generate unique jti values;
-this is not indefinite storage of previously used ids. Trust edits do not yet revoke
-outstanding workload tokens automatically. Exchange and audit commit atomically.
+this is not indefinite storage of previously used ids. Exchange and audit commit atomically.
+
+The [service credential follow-up](docs/audits/2026-09-20-service-token-security.md)
+adds migration 184 with workload trust/proof lineage. Changing trust authorization
+or deleting a trust revokes its tokens and rotations; changing only its name does
+not. Workload rotation cannot broaden scopes or outlive the proof. Legacy workload
+lineages are revoked because their original trust cannot be reconstructed safely.
+Manual credentials remain independent. Identity/credential administration requires
+a signed-in administrator, refusing personal API keys and service credentials.
+Token rotation and validation hold a SQLite write transaction while checking state.
+Revocation also reaches rotation descendants, including after concurrent rotation.
+
+HTTP issuance, rotation and trust/realm changes commit with their audit entries.
+Audit failure returns 500 and rolls these operations back, including a requested
+trust disable/delete: repair audit and retry, or explicitly revoke the token.
+Explicit token revocation stays committed even when its subsequent audit fails.
+Credential administration responses carry no-store. This does not establish general
+service-token tenant isolation across other API routes.
+
+## OIDC and personal credentials (included in the 8.96.10 candidate)
 
 The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
 upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests

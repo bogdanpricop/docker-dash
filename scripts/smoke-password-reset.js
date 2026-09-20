@@ -14,6 +14,7 @@ const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/ema
   'src/utils/oidc-http.js',
   'src/services/scim.js', 'src/routes/scim.js', 'src/services/identity-governance.js',
   'src/routes/workload-identity.js', 'src/db/migrations/183_workload_replay_identity.js',
+  'src/routes/governance-controls.js', 'src/db/migrations/184_service_token_lineage.js',
   'src/services/password-reset.js', 'src/services/password-reset-delivery.js', 'src/config/index.js',
   'src/db/migrations/178_auth_time_indexes.js', 'src/db/migrations/179_auth_credential_version.js',
   'src/db/migrations/180_mfa_replay_and_attempts.js', 'src/db/migrations/181_external_identities.js', 'src/utils/totp.js', 'src/ws/index.js',
@@ -33,7 +34,7 @@ const sources = ['src/routes/auth.js', 'src/services/auth.js', 'src/services/ema
     const tlsFixtures=['ca.pem','server.pem','server.key','wrong-name.pem'].map(name=>'src/__tests__/fixtures/provider-tls/'+name);
     for (const path of ['scripts/fixtures/password-reset-smoke.cjs', 'scripts/fixtures/oidc-flow-smoke.cjs', 'scripts/fixtures/api-key-smoke.cjs',
       'scripts/fixtures/oidc-transport-smoke.cjs', 'scripts/fixtures/scim-security-smoke.cjs',
-      'scripts/fixtures/workload-replay-smoke.cjs', ...tlsFixtures, ...(overlay ? sources : [])]) {
+      'scripts/fixtures/workload-replay-smoke.cjs', 'scripts/fixtures/service-token-smoke.cjs', ...tlsFixtures, ...(overlay ? sources : [])]) {
       pack.entry({ name: path, mode: 0o644, uid: 1000, gid: 1000 }, fs.readFileSync(path));
     }
     pack.finalize(); await c.putArchive(pack, { path: '/app' });

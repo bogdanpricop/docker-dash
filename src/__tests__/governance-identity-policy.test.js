@@ -36,6 +36,7 @@ function database() {
   migration124.up(db);
   migration125.up(db);
   require('../db/migrations/183_workload_replay_identity').up(db);
+  require('../db/migrations/184_service_token_lineage').up(db);
   return db;
 }
 

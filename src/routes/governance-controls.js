@@ -7,6 +7,7 @@ const capacity = require('../services/governance-capacity');
 const identity = require('../services/identity-governance');
 const auditService = require('../services/audit');
 const { getClientIp } = require('../utils/helpers');
+const { getDb } = require('../db');
 
 const router = Router();
 router.use(requireAuth, requireFeature('governance'));
@@ -25,6 +26,18 @@ function audit(req, action, targetType, targetId, details = {}) {
   auditService.log({ userId: req.user.id, username: req.user.username, action, targetType,
     targetId: String(targetId), details, ip: getClientIp(req) });
 }
+function auditedIdentityChange(req, action, targetType, change, details = () => ({})) {
+  return getDb().transaction(() => {
+    const result=change();
+    audit(req,action,targetType,result.id ?? req.params.id,details(result));
+    return result;
+  }).immediate();
+}
+router.use(['/identity-realms','/service-tokens','/workload-trusts'],(req,res,next)=>{
+  res.set('Cache-Control','no-store');
+  try {identity._admin(req.user);next();}
+  catch(error){res.status(error.status||403).json({error:error.message,code:error.code});}
+});
 
 router.get('/catalog', route((_req, res) => res.json({
   capacityMetrics: capacity.EXTENDED_METRICS,
@@ -105,30 +118,28 @@ router.delete('/blackouts/:id', writeable, route((req, res) => {
 
 router.get('/identity-realms', route((req, res) => { identity._admin(req.user); res.json({ realms: identity.listRealms() }); }));
 router.post('/identity-realms', writeable, route((req, res) => {
-  const realm = identity.saveRealm(null, req.body || {}, req.user);
-  audit(req, 'identity_realm_create', 'identity_realm', realm.id, { slug: realm.slug, protocol: realm.protocol, domains: realm.domains });
+  const realm = auditedIdentityChange(req,'identity_realm_create','identity_realm',()=>identity.saveRealm(null,req.body||{},req.user),
+    item=>({slug:item.slug,protocol:item.protocol,domains:item.domains}));
   res.status(201).json({ realm });
 }));
 router.put('/identity-realms/:id', writeable, route((req, res) => {
-  const realm = identity.saveRealm(req.params.id, req.body || {}, req.user);
-  audit(req, 'identity_realm_update', 'identity_realm', realm.id);
+  const realm = auditedIdentityChange(req,'identity_realm_update','identity_realm',()=>identity.saveRealm(req.params.id,req.body||{},req.user));
   res.json({ realm });
 }));
 router.delete('/identity-realms/:id', writeable, route((req, res) => {
-  const result = identity.deleteRealm(req.params.id, req.user);
-  audit(req, 'identity_realm_delete', 'identity_realm', req.params.id);
+  const result = auditedIdentityChange(req,'identity_realm_delete','identity_realm',()=>identity.deleteRealm(req.params.id,req.user));
   res.json(result);
 }));
 
 router.get('/service-tokens', route((req, res) => res.json({ tokens: identity.listTokens(req.user) })));
 router.post('/service-tokens', writeable, route((req, res) => {
-  const token = identity.issueToken(req.body || {}, req.user);
-  audit(req, 'service_token_issue', 'service_token', token.id, { scopes: token.scopes, expiresAt: token.expires_at });
+  const token = auditedIdentityChange(req,'service_token_issue','service_token',()=>identity.issueToken(req.body||{},req.user),
+    item=>({scopes:item.scopes,expiresAt:item.expires_at}));
   res.status(201).json({ token });
 }));
 router.post('/service-tokens/:id/rotate', writeable, route((req, res) => {
-  const token = identity.rotateToken(req.params.id, req.body || {}, req.user);
-  audit(req, 'service_token_rotate', 'service_token', token.id, { rotatedFrom: req.params.id });
+  const token = auditedIdentityChange(req,'service_token_rotate','service_token',()=>identity.rotateToken(req.params.id,req.body||{},req.user),
+    ()=>({rotatedFrom:req.params.id}));
   res.status(201).json({ token });
 }));
 router.delete('/service-tokens/:id', writeable, route((req, res) => {
@@ -139,18 +150,16 @@ router.delete('/service-tokens/:id', writeable, route((req, res) => {
 
 router.get('/workload-trusts', route((req, res) => res.json({ trusts: identity.listTrusts(req.user) })));
 router.post('/workload-trusts', writeable, route((req, res) => {
-  const trust = identity.saveTrust(null, req.body || {}, req.user);
-  audit(req, 'workload_trust_create', 'workload_identity_trust', trust.id, { issuer: trust.issuer, audience: trust.audience });
+  const trust = auditedIdentityChange(req,'workload_trust_create','workload_identity_trust',()=>identity.saveTrust(null,req.body||{},req.user),
+    item=>({issuer:item.issuer,audience:item.audience}));
   res.status(201).json({ trust });
 }));
 router.put('/workload-trusts/:id', writeable, route((req, res) => {
-  const trust = identity.saveTrust(req.params.id, req.body || {}, req.user);
-  audit(req, 'workload_trust_update', 'workload_identity_trust', trust.id);
+  const trust = auditedIdentityChange(req,'workload_trust_update','workload_identity_trust',()=>identity.saveTrust(req.params.id,req.body||{},req.user));
   res.json({ trust });
 }));
 router.delete('/workload-trusts/:id', writeable, route((req, res) => {
-  const result = identity.deleteTrust(req.params.id, req.user);
-  audit(req, 'workload_trust_delete', 'workload_identity_trust', req.params.id);
+  const result = auditedIdentityChange(req,'workload_trust_delete','workload_identity_trust',()=>identity.deleteTrust(req.params.id,req.user));
   res.json(result);
 }));
 
