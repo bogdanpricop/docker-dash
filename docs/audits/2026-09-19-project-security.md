@@ -1,13 +1,17 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
-Stare actuala: checkpoint-ul 8.96.6 este urcat pe Git si instalat pe LAN/VPS,
-cu Docker healthy si HTTP 200 / versiunea 8.96.6. Include
+Stare actuala: [checkpoint-ul 8.96.7](2026-09-20-deployment-8.96.7.md) este urcat pe Git si instalat pe LAN/VPS,
+cu Docker healthy si HTTP 200 / versiunea 8.96.7. Include
+[corectiile HTTP/proxy si cote](2026-09-20-http-trust-and-quotas.md),
+[lease-ul HA](2026-09-20-ha-lease.md), health independent de cota API,
 [protectia NET_RAW](2026-09-20-egress-net-raw.md),
 [pastrarea filtrelor suprapuse](2026-09-20-egress-overlap.md),
 [tranzactiile egress si recuperarea](2026-09-20-egress-transactions.md) si
 [helper-ul preconstruit cu runtime redus](2026-09-20-egress-helper-runtime.md).
-356 suite / 4.668 teste trecute, un test live omis; lint, npm audit, help si i18n trecute.
-Imaginea exacta a trecut canary-uri Compose si smoke Linux pe ambele hosturi.
+361 suite / 4.736 teste trecute, un test live omis; lint si npm audit trecute,
+zero dependente directe npm outdated. Help si i18n au trecut la validarile anterioare.
+Imaginea exacta a trecut canary-uri Compose, smoke Linux, 10 scenarii HA si 8 HTTP
+pe fiecare host. Aplicatiile live raman standalone; HA nu este activat in productie.
 Backup-uri consistente verificate; cheile, configuratia si datele sunt pastrate.
 Helper-ul configurat este fixat la ID-ul verificat pe ambele daemone.
 

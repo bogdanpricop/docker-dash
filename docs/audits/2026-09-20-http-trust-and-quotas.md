@@ -1,7 +1,9 @@
 # HTTP identity and quota enforcement, 20 September 2026
 
-Status: implemented and validated in source and disposable Linux controllers;
-not yet deployed to the live 8.96.6 application containers.
+Status: deployed in [8.96.7 on LAN and VPS](2026-09-20-deployment-8.96.7.md).
+Both applications remain standalone, with SSO disabled and no custom proxy trust.
+Eight HTTP/Redis scenarios per host passed against hash-verified bundled sources
+in the [final image](2026-09-20-image-8.96.7.md).
 
 ## Corrected trust boundaries
 
@@ -85,8 +87,10 @@ Named keys differ from legacy URL keys, so this rollout begins new quota windows
 mixed application versions do not share equivalent counters. Drain/restart
 replicas in a controlled rollout and retain account lockout/proxy controls.
 
-Redis outages intentionally reduce availability of rate-limited routes. Health
-and other routes outside this middleware remain available. A timed-out Redis
+Redis outages intentionally reduce availability of rate-limited routes. Final-image
+testing found that health was still mounted behind the shared API limiter; this
+was corrected before deployment. Exact GET/HEAD `/api/health` probes now precede
+the limiter; health-prefix lookalikes remain limited. A timed-out Redis
 command may still consume quota later; it cannot resume protected work. The
 lease connection's no-replay behavior is separate from the general quota client.
 Fixed-window HA bursts, standalone resets after restart, distributed-source
@@ -101,4 +105,4 @@ La indisponibilitatea Redis, cererile limitate primesc 503 in cel mult aproximat
 trei secunde; operatia protejata nu porneste. Schimbarea URL-ului sau a literelor
 din ruta nu mai creeaza un buget nou. Verifica IP-urile proxy-urilor si limitele
 configurate inainte de deploy. Corectiile sunt testate pe ambele hosturi in
-containere temporare; aplicatiile live sunt inca la 8.96.6.
+containere temporare si instalate in aplicatiile live 8.96.7.
