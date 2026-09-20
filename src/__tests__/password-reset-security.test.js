@@ -129,7 +129,8 @@ test.each(['password', 'deactivation'])('authenticated change refuses stale auth
   });
   expect((await require('../services/auth').changePassword(userId, 'old', 'new')).error).toBeDefined();
   expect(db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId).password_hash).not.toBe('stale-change');
-  expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).toBeNull();
+  // The concurrent credential mutation itself revokes outstanding links.
+  expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).not.toBeNull();
 });
 
 test('failed session invalidation rolls back password change and link consumption', async () => {
@@ -161,5 +162,7 @@ test.each(['email', 'disabled'])('issuance refuses a stale recipient snapshot af
   expect(() => require('../services/password-reset').issue(db, userId, 'reset', 900000, 'fixture@example.test'))
     .toThrow('Account changed before reset issuance');
   expect(db.prepare('SELECT COUNT(*) n FROM password_reset_tokens').get().n).toBe(1);
-  expect(db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at).toBeNull();
+  const usedAt = db.prepare('SELECT used_at FROM password_reset_tokens WHERE token_hash=?').get(sha256(raw)).used_at;
+  if (kind === 'disabled') expect(usedAt).not.toBeNull();
+  else expect(usedAt).toBeNull();
 });

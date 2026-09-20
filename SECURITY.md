@@ -1,5 +1,20 @@
 # Security Policy
 
+## Credential lifecycle (pending deployment)
+
+Migration 179 adds a credential version checked after asynchronous password/LDAP
+verification and before session/challenge issuance. Database triggers revoke pending
+MFA challenges on password, authentication-source, account activity or TOTP enrollment
+changes. Password/source/activity changes also invalidate existing sessions and reset
+links, so reactivation cannot restore them. Concurrent login failures are serialized.
+Password changes and MFA disable operations refuse stale credential snapshots.
+
+Existing MFA enrollment cannot be replaced through setup or repeated enable calls;
+it must first be disabled through the authenticated flow. MFA configuration routes
+apply the writeable policy gate. Migration 179 clears pre-upgrade pending MFA
+challenges, requiring those users to repeat login; established sessions are preserved
+by the migration itself. See [evidence and limits](docs/audits/2026-09-20-auth-credential-lifecycle.md).
+
 ## Established WebSocket sessions (pending deployment)
 
 The shared `/ws` endpoint revalidates its session digest before messages and

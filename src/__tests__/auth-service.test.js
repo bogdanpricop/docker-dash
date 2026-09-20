@@ -311,9 +311,8 @@ describe('AuthService — MFA / TOTP setup flow', () => {
   });
 
   it('verifyStepUpMfa validates enrolled local TOTP without creating a session', () => {
-    const setup = authService.mfaSetup(mfaUserId);
-    const validCode = totp.generateTOTP(setup.secret);
-    expect(authService.mfaEnable(mfaUserId, validCode).success).toBe(true);
+    const enrolled = db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(mfaUserId);
+    const validCode = totp.generateTOTP(require('../utils/crypto').decrypt(enrolled.totp_secret));
     const sessionsBefore = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
       .get(mfaUserId).count;
     expect(authService.verifyStepUpMfa(mfaUserId, validCode)).toEqual(expect.objectContaining({

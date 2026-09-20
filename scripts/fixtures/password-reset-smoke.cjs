@@ -10,7 +10,7 @@ const email = require('/app/src/services/email');
 const tokens = require('/app/src/services/password-reset');
 const checks = [];
 
-async function raceRedeem(code, environments) {
+async function raceRedeem(code, environments, beforeRelease = async () => {}) {
     const children = environments.map(environment => {
       const child = spawn(process.execPath, ['-e', code], { env: { ...process.env, ...environment }, stdio: ['pipe', 'pipe', 'pipe'] });
       let output = '', error = '';
@@ -28,6 +28,7 @@ async function raceRedeem(code, environments) {
       return { child, ready, done };
     });
     await Promise.all(children.map(child => child.ready));
+    await beforeRelease();
     children.forEach(({ child }) => child.stdin.end('go'));
     return Promise.all(children.map(child => child.done));
 }
@@ -130,11 +131,45 @@ async function main() {
       await new Promise(resolve=>websocketServer.wss.close(resolve));
     }
     await providerConsoleChecks(server, auth, db, id, WebSocket);
+    await credentialLifecycleChecks(auth, db);
     console.log(JSON.stringify({ checks, emailMocked: true, providerMocked: true, externalNetwork: false, sqlite: db.prepare('SELECT sqlite_version() version').get().version }));
   } finally {
     release({ ok: true }); delivery.stop(); await delivery.whenIdle();
     await new Promise(resolve => server.close(resolve));
   }
+}
+
+async function credentialLifecycleChecks(auth, db) {
+  const bcrypt = require('bcrypt');
+  const { encrypt } = require('/app/src/utils/crypto');
+  const totp = require('/app/src/utils/totp');
+  const hash = bcrypt.hashSync('NativeCredential123!', 4);
+  const id = Number(db.prepare("INSERT INTO users(username,password_hash,role,is_active,must_change_password,totp_enabled,totp_secret,recovery_codes) VALUES ('native-credentials',?,'viewer',1,0,1,?,?)")
+    .run(hash, encrypt(totp.generateSecret()), encrypt(JSON.stringify(['native-lifecycle-recovery']))).lastInsertRowid);
+  const pending = await auth.login('native-credentials', 'NativeCredential123!', '192.0.2.100', 'native');
+  assert.ok(pending.mfaToken);
+  await auth.resetPassword(id, 'ReplacedCredential123!');
+  assert.ok(auth.verifyMfaRecovery(pending.mfaToken, 'native-lifecycle-recovery', '192.0.2.100', 'native').error);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM mfa_tokens WHERE user_id=?').get(id).n, 0);
+  checks.push('native-reset-revokes-outstanding-mfa-proof');
+
+  const loginCode = `const bcrypt=require('bcrypt'),compare=bcrypt.compare,auth=require('/app/src/services/auth'),db=require('/app/src/db').getDb();
+    bcrypt.compare=async(...args)=>{const valid=await compare(...args); console.log('READY'); await new Promise(resolve=>process.stdin.once('data',resolve));return valid;};
+    auth.login('native-credentials',process.env.SMOKE_PASSWORD,process.env.SMOKE_IP,'native-concurrent').then(result=>{
+      console.log('RESULT:'+JSON.stringify({token:!!result.token,mfa:!!result.mfaToken,error:!!result.error}));db.close();process.exit(0);
+    },()=>process.exit(1));`;
+  const raced = await raceRedeem(loginCode, [{ SMOKE_PASSWORD: 'ReplacedCredential123!', SMOKE_IP: '192.0.2.101' }],
+    () => auth.resetPassword(id, 'FinalCredential123!'));
+  assert.deepEqual(raced, [{ token: false, mfa: false, error: true }]);
+  checks.push('native-cross-process-login-cannot-outlive-password-reset');
+
+  const attempts = await raceRedeem(loginCode, [1, 2].map(n => ({
+    SMOKE_PASSWORD: 'wrong', SMOKE_IP: '192.0.2.' + (110+n), LOCKOUT_ATTEMPTS: '2',
+  })));
+  assert.ok(attempts.every(result => result.error && !result.token && !result.mfa));
+  const locked = db.prepare('SELECT failed_attempts,is_locked FROM users WHERE id=?').get(id);
+  assert.deepEqual(locked, { failed_attempts: 2, is_locked: 1 });
+  checks.push('native-cross-process-failures-enforce-account-lockout');
 }
 
 async function providerConsoleChecks(server, auth, db, id, WebSocket) {

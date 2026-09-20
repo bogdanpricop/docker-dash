@@ -4,6 +4,15 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Bind asynchronous password/LDAP checks to the current credential version before
+  issuing sessions or MFA challenges. Count concurrent failures atomically and
+  recheck account/IP lockout before accepting a completed login.
+- Migration 179 revokes pending MFA proofs on credential/account changes and
+  permanently invalidates sessions/reset links on password, authentication-source
+  or activity changes. Existing in-progress MFA logins must restart after upgrade.
+- Refuse overwriting an enabled authenticator or regenerating recovery codes via
+  repeated enrollment. Recheck credential version before password change/MFA
+  disable; apply the writeable policy gate to all MFA configuration routes.
 - Revalidate provider-console sessions and host permissions before console I/O,
   during startup/handshake and on a five-second idle sweep. Enforce current console
   access locks; close pending/late provider resources after revocation/disconnect.

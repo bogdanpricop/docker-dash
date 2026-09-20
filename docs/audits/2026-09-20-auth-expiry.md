@@ -66,13 +66,14 @@ The companion JSON preserves native results and source hashes.
 
 The subsequent [WebSocket checkpoint](2026-09-20-ws-session-revalidation.md) adds
 ongoing revocation/expiry/global-role checks to the shared `/ws` endpoint, including
-checks after asynchronous starts. The provider-console gateway still needs review
-of its active-session lifecycle. The expiry correction alone did not revoke
+checks after asynchronous starts. The [provider-console follow-up](2026-09-20-provider-console-revalidation.md)
+adds its dedicated lifecycle checks. The expiry correction alone did not revoke
 already-open channels; the follow-up is required for that behavior.
 
-Further authentication review must cover login/password-change races, invalidating
-pending MFA challenges on credential changes, TOTP replay across distinct challenges,
-and OIDC browser binding/PKCE. This checkpoint does not certify the entire login flow.
+The [credential-lifecycle follow-up](2026-09-20-auth-credential-lifecycle.md) covers
+login/password-change races and pending MFA revocation on credential changes.
+Further authentication review must cover TOTP replay across distinct challenges and
+OIDC browser binding/PKCE. These checkpoints do not certify the entire login flow.
 Other raw expiry comparisons found in posture mutes, provider security exceptions,
 trial monitoring and provider-lock diagnostics require their own format/behavior
 review; they were not changed indiscriminately. Wall-clock jumps and multi-host

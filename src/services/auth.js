@@ -187,49 +187,67 @@ class AuthService {
     const valid = user.auth_source === 'ldap'
       ? ldapVerified || !!(await this._tryLdapLogin(username, password))
       : await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      const fails = user.failed_attempts + 1;
-      if (fails >= config.security.lockoutAttempts) {
-        const lockUntil = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
-        db.prepare('UPDATE users SET failed_attempts = ?, is_locked = 1, locked_until = ? WHERE id = ?')
-          .run(fails, lockUntil, user.id);
-        log.warn('Account locked', { username, attempts: fails });
-      } else {
-        db.prepare('UPDATE users SET failed_attempts = ? WHERE id = ?').run(fails, user.id);
+    // Password/directory verification is asynchronous. Serialize its result with
+    // credential changes and read fresh account state before issuing any token.
+    return db.transaction(() => {
+      const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+      if (!current || !current.is_active || current.auth_version !== user.auth_version) {
+        this.logAttempt(ip, username, current?.id || null, false, userAgent);
+        return { error: 'Invalid credentials' };
       }
-      this.logAttempt(ip, username, user.id, false, userAgent);
-      return { error: 'Invalid credentials' };
-    }
+      user = current;
+      if (this.isIpLocked(ip)) {
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Too many attempts. Try again later.', locked: true };
+      }
+      if (user.is_locked && user.locked_until && new Date(user.locked_until) > new Date()) {
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Account is locked. Try again later.' };
+      }
+      if (!valid) {
+        const fails = user.failed_attempts + 1;
+        if (fails >= config.security.lockoutAttempts) {
+          const lockUntil = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
+          db.prepare('UPDATE users SET failed_attempts = ?, is_locked = 1, locked_until = ? WHERE id = ?')
+            .run(fails, lockUntil, user.id);
+          log.warn('Account locked', { username, attempts: fails });
+        } else {
+          db.prepare('UPDATE users SET failed_attempts = ? WHERE id = ?').run(fails, user.id);
+        }
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Invalid credentials' };
+      }
 
-    // Success - reset failed attempts
-    db.prepare('UPDATE users SET failed_attempts = 0, is_locked = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
-      .run(now(), user.id);
+      // Success - reset failed attempts
+      db.prepare('UPDATE users SET failed_attempts = 0, is_locked = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
+        .run(now(), user.id);
 
-    // Check if MFA is enabled for this user
-    if (user.totp_enabled) {
-      // Create a temporary MFA token (5 min TTL)
-      const mfaToken = generateToken(32);
-      const mfaTokenHash = sha256(mfaToken);
-      const mfaExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      // Check if MFA is enabled for this user
+      if (user.totp_enabled) {
+        // Create a temporary MFA token (5 min TTL)
+        const mfaToken = generateToken(32);
+        const mfaTokenHash = sha256(mfaToken);
+        const mfaExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-      db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
-        .run(mfaTokenHash, user.id, ip, userAgent, mfaExpiresAt);
+        db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
+          .run(mfaTokenHash, user.id, ip, userAgent, mfaExpiresAt);
 
-      this.logAttempt(ip, username, user.id, true, userAgent);
-      log.info('Login pending MFA', { username, ip });
+        this.logAttempt(ip, username, user.id, true, userAgent);
+        log.info('Login pending MFA', { username, ip });
 
-      return {
-        mfaRequired: true,
-        mfaToken,
-        user: {
-          id: user.id, username: user.username, displayName: user.display_name, role: user.role,
-          mustChangePassword: !!user.must_change_password,
-        },
-      };
-    }
+        return {
+          mfaRequired: true,
+          mfaToken,
+          user: {
+            id: user.id, username: user.username, displayName: user.display_name, role: user.role,
+            mustChangePassword: !!user.must_change_password,
+          },
+        };
+      }
 
-    // No MFA — create full session
-    return this._createSession(user, ip, userAgent);
+      // No MFA — create full session
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Create a full session for a user (shared by login and MFA verify) */
@@ -272,7 +290,7 @@ class AuthService {
       if (!row) return { error: 'Invalid or expired MFA token' };
 
       const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-      if (!user) return { error: 'User not found' };
+      if (!user || !user.totp_enabled) return { error: 'MFA is not enabled' };
 
       // Decrypt TOTP secret and verify code
       let secret;
@@ -308,7 +326,7 @@ class AuthService {
       if (!row) return { error: 'Invalid or expired MFA token' };
 
       const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-      if (!user || !user.recovery_codes) return { error: 'No recovery codes available' };
+      if (!user || !user.totp_enabled || !user.recovery_codes) return { error: 'No recovery codes available' };
 
       // Decrypt recovery codes and check
       let codes;
@@ -358,45 +376,36 @@ class AuthService {
   /** Setup MFA: generate secret and return otpauth URI */
   mfaSetup(userId) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, totp_enabled FROM users WHERE id = ?').get(userId);
-    if (!user) return { error: 'User not found' };
-
-    const secret = totp.generateSecret();
-    const otpauthUri = totp.generateOtpauthURI(secret, user.username);
-
-    // Store encrypted secret (not yet enabled)
-    db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?')
-      .run(encrypt(secret), user.id);
-
-    return { secret, otpauthUri };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT id, username, totp_enabled FROM users WHERE id = ? AND is_active = 1').get(userId);
+      if (!user) return { error: 'User not found' };
+      if (user.totp_enabled) return { error: 'Disable existing MFA before enrolling a new authenticator' };
+      const secret = totp.generateSecret();
+      const otpauthUri = totp.generateOtpauthURI(secret, user.username);
+      db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(encrypt(secret), user.id);
+      return { secret, otpauthUri };
+    }).immediate();
   }
 
   /** Enable MFA after verifying first code */
   mfaEnable(userId, code) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, totp_secret FROM users WHERE id = ?').get(userId);
-    if (!user || !user.totp_secret) return { error: 'MFA not set up. Call /mfa/setup first.' };
-
-    let secret;
-    try {
-      secret = decrypt(user.totp_secret);
-    } catch {
-      return { error: 'MFA configuration error' };
-    }
-
-    if (!totp.verifyTOTP(secret, code)) {
-      return { error: 'Invalid TOTP code. Make sure your authenticator app is synced.' };
-    }
-
-    // Generate recovery codes
-    const recoveryCodes = totp.generateRecoveryCodes();
-
-    db.prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, mfa_enrolled_at = ? WHERE id = ?')
-      .run(encrypt(JSON.stringify(recoveryCodes)), now(), user.id);
-
-    log.info('MFA enabled', { username: user.username });
-
-    return { success: true, recoveryCodes };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT id, username, totp_secret, totp_enabled FROM users WHERE id = ? AND is_active = 1').get(userId);
+      if (!user || !user.totp_secret) return { error: 'MFA not set up. Call /mfa/setup first.' };
+      if (user.totp_enabled) return { error: 'MFA is already enabled' };
+      let secret;
+      try { secret = decrypt(user.totp_secret); }
+      catch { return { error: 'MFA configuration error' }; }
+      if (!totp.verifyTOTP(secret, code)) {
+        return { error: 'Invalid TOTP code. Make sure your authenticator app is synced.' };
+      }
+      const recoveryCodes = totp.generateRecoveryCodes();
+      db.prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, mfa_enrolled_at = ? WHERE id = ?')
+        .run(encrypt(JSON.stringify(recoveryCodes)), now(), user.id);
+      log.info('MFA enabled', { username: user.username });
+      return { success: true, recoveryCodes };
+    }).immediate();
   }
 
   /** Verify a local TOTP as a fresh step-up factor without creating a session. */
@@ -419,14 +428,15 @@ class AuthService {
   /** Disable MFA (requires password confirmation) */
   async mfaDisable(userId, password) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, password_hash FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT id, username, password_hash, auth_version FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return { error: 'User not found' };
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return { error: 'Invalid password' };
 
-    db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = NULL, mfa_enrolled_at = NULL WHERE id = ?')
-      .run(user.id);
+    const changed = db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = NULL, mfa_enrolled_at = NULL WHERE id = ? AND auth_version = ? AND password_hash = ? AND is_active = 1')
+      .run(user.id, user.auth_version, user.password_hash);
+    if (changed.changes !== 1) return { error: 'Account changed; sign in again before disabling MFA' };
 
     log.info('MFA disabled', { username: user.username });
 
@@ -539,7 +549,7 @@ class AuthService {
   /** Change password */
   async changePassword(userId, currentPassword, newPassword) {
     const db = getDb();
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT password_hash, auth_version FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return { error: 'User not found' };
 
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
@@ -549,8 +559,8 @@ class AuthService {
     const timestamp = now();
     return db.transaction(() => {
       // A reset/deactivation during bcrypt must invalidate this authorization.
-      const changed = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ? AND password_hash = ? AND is_active = 1')
-        .run(hash, timestamp, timestamp, userId, user.password_hash);
+      const changed = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ? AND password_hash = ? AND auth_version = ? AND is_active = 1')
+        .run(hash, timestamp, timestamp, userId, user.password_hash, user.auth_version);
       if (changed.changes !== 1) return { error: 'Account changed; sign in again before changing your password' };
       db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
       db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(userId);

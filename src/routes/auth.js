@@ -164,7 +164,7 @@ router.post('/mfa/recovery',
 );
 
 // Setup MFA (generate secret, return otpauth URI)
-router.post('/mfa/setup', requireAuth, (req, res) => {
+router.post('/mfa/setup', requireAuth, writeable, (req, res) => {
   try {
     const result = authService.mfaSetup(req.user.id);
     if (result.error) return res.status(400).json({ error: result.error });
@@ -176,7 +176,7 @@ router.post('/mfa/setup', requireAuth, (req, res) => {
 });
 
 // Enable MFA (verify first code)
-router.post('/mfa/enable', requireAuth, (req, res) => {
+router.post('/mfa/enable', requireAuth, writeable, (req, res) => {
   try {
     const { code } = req.body;
     if (!code) return res.status(400).json({ error: 'TOTP code required' });
@@ -192,7 +192,7 @@ router.post('/mfa/enable', requireAuth, (req, res) => {
 });
 
 // Disable MFA (requires password confirmation)
-router.post('/mfa/disable', requireAuth, async (req, res) => {
+router.post('/mfa/disable', requireAuth, writeable, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password) return res.status(400).json({ error: 'Password required to disable MFA' });
@@ -208,7 +208,7 @@ router.post('/mfa/disable', requireAuth, async (req, res) => {
 });
 
 // Admin: force-disable MFA for any user
-router.delete('/users/:id/mfa', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/users/:id/mfa', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(parseInt(req.params.id));
