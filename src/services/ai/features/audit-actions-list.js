@@ -260,6 +260,8 @@ const auditActionsList = [
   "secret_rotation_scan",
   "secret_update",
   "secrets_deploy_remote",
+  "secrets_deploy_remote_started",
+  "secrets_deploy_remote_failed",
   "storage_repository_create",
   "storage_repository_delete",
   "storage_repository_health_probe",

@@ -3,6 +3,7 @@
 // This is the base/fallback language. All keys must be defined here.
 i18n.register('en', 'EN', 'English', {
   common: {
+    remoteSecretExecution: 'Transmit and execute through verified SSH without saving a temporary script. If interrupted, check the host before retrying. Configure SSH access on the Hosts page.',
     replacementCleanup: 'Replacement is active, but retained recovery resources need administrator cleanup. Operation: {{operation}}. See the rollback recovery guide.',
     newVersionAvailable: 'New version {{version}} available', reload: 'Reload',
     close: 'Close', cancel: 'Cancel', confirm: 'Confirm', save: 'Save',

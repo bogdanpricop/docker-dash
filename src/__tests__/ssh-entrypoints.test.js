@@ -90,24 +90,23 @@ test('remote secrets deploy requires trust and respects read-only mode', async (
   expect(readonly.status).toBe(403); expect(mockConnect).not.toHaveBeenCalled();
 });
 
-test('remote secret script uses exclusive private creation and audit contains only its hash', async () => {
+test('remote secret script uses stdin without SFTP and audit contains only its hash', async () => {
   mockConnect.mockImplementation((options, client) => { verify(options); setImmediate(() => client.emit('ready')); });
-  const write = jest.fn((file, options) => {
-    expect(file).toMatch(/^\/tmp\/docker-dash-secrets-[a-f0-9]{32}\.sh$/);
-    expect(options).toEqual({ mode: 0o600, flags: 'wx' });
-    const stream = new EventEmitter();
-    stream.end = () => setImmediate(() => stream.emit('close'));
-    return stream;
-  });
-  mockSftp.mockImplementation(callback => callback(null, { createWriteStream: write }));
-  mockExec.mockImplementation((_command, callback) => {
-    const channel = new EventEmitter(); channel.stderr = new EventEmitter();
-    callback(null, channel); setImmediate(() => channel.emit('close', 0));
-  });
   const script = 'TOKEN=never-record-this-secret\ntrue';
+  mockExec.mockImplementation((command, callback) => {
+    expect(command).not.toContain('never-record-this-secret');
+    const marker = command.match(/DD_SCRIPT_VERIFIED_[a-f0-9]{32}/)[0];
+    const channel = new EventEmitter(); channel.stderr = new EventEmitter();
+    channel.end = data => {
+      expect(data.toString()).toBe(script);
+      setImmediate(() => { channel.emit('data', Buffer.from(marker + '\n')); channel.emit('close', 0); });
+    };
+    callback(null, channel);
+  });
   const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script });
   expect(response.status).toBe(200); expect(response.body.ok).toBe(true);
-  expect(write).toHaveBeenCalledTimes(1);
+  expect(response.headers['cache-control']).toBe('no-store');
+  expect(mockSftp).not.toHaveBeenCalled();
   expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'secrets_deploy_remote',
     details: expect.objectContaining({ scriptSha256: expect.stringMatching(/^[a-f0-9]{64}$/) }) }));
   expect(JSON.stringify(audit.log.mock.calls)).not.toContain('never-record-this-secret');
@@ -120,13 +119,45 @@ test('remote secrets deploy bounds stdout and stderr together and terminates exc
     const stream = new EventEmitter(); stream.end = () => setImmediate(() => stream.emit('close')); return stream;
   } }));
   mockExec.mockImplementation((_command, callback) => {
-    const channel = new EventEmitter(); channel.stderr = new EventEmitter(); callback(null, channel);
+    const channel = new EventEmitter(); channel.stderr = new EventEmitter(); channel.end = () => {}; callback(null, channel);
     setImmediate(() => {
       channel.emit('data', Buffer.alloc(600000)); channel.stderr.emit('data', Buffer.alloc(600000));
     });
   });
   const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script: 'true' });
   expect(response.status).toBe(500); expect(mockEnd).toHaveBeenCalled();
-  expect(audit.log).not.toHaveBeenCalled();
+  expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'secrets_deploy_remote_failed' }));
   expect(response.body.output).toBeUndefined();
+});
+
+
+test.each([{ useSudo: 'false' }, { script: 'contains\0NUL' }])('remote secret execution rejects invalid input before SSH: %j', async fields => {
+  const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script: 'true', ...fields });
+  expect(response.status).toBe(400); expect(mockConnect).not.toHaveBeenCalled();
+});
+
+test('remote secret execution does not start when intent audit cannot be saved', async () => {
+  audit.log.mockImplementationOnce(() => { throw new Error('storage unavailable'); });
+  const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script: 'true' });
+  expect(response.status).toBe(500); expect(mockConnect).not.toHaveBeenCalled();
+});
+
+
+test.each(['1garbage', '1.5', '0', '-1', '9007199254740992'])('remote deploy refuses ambiguous host ID %s', async hostId => {
+  const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId, script: 'true' });
+  expect(response.status).toBe(400); expect(mockConnect).not.toHaveBeenCalled();
+});
+
+test('an interrupted execution is reported as uncertain and audited without output', async () => {
+  mockConnect.mockImplementation((options, client) => { verify(options); setImmediate(() => client.emit('ready')); });
+  mockExec.mockImplementation((_command, callback) => {
+    const channel = new EventEmitter(); channel.stderr = new EventEmitter();
+    channel.end = () => setImmediate(() => channel.emit('error', new Error('secret-should-not-be-logged')));
+    callback(null, channel);
+  });
+  const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script: 'true' });
+  expect(response.status).toBe(500); expect(response.body.outcomeUnknown).toBe(true);
+  expect(response.body.error).toContain('check the host before retrying');
+  expect(response.body.operationId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(JSON.stringify(audit.log.mock.calls)).not.toContain('secret-should-not-be-logged');
 });

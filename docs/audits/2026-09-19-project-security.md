@@ -1,5 +1,12 @@
 # Audit proiect și securitate — 19 septembrie 2026
 
+Actualizare ulterioara checkpoint-ului: [executia remote a scripturilor cu secrete](2026-09-20-remote-secret-execution.md)
+elimina fisierul temporar, verifica transferul integral si raporteaza explicit
+rezultatele incerte. Regresie: 354 suite / 4.605 teste; ultima ajustare verificata
+prin 32 teste specifice. Codul este pentru urmatorul rollout; instantierea live
+ramane 8.96.3. Pe ambele hosturi, inventarul curent a gasit zero evenimente vechi
+ale acestui flux si zero scripturi temporare cu prefixul sau in /tmp.
+
 Stare actuala: checkpoint-ul 8.96.3 este urcat pe Git si instalat pe LAN/VPS,
 cu Docker healthy si HTTP ok. Recuperarea la inlocuirea containerelor a fost
 verificata prin 353 suite / 4.580 teste si canary-uri Docker reale pe ambele hosturi.

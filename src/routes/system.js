@@ -1007,13 +1007,17 @@ router.post('/secrets-wizard/generate-script', requireAuth, requireRole('admin')
   }
 });
 
-// POST /secrets-wizard/deploy-remote — upload + execute script on a remote SSH host
+// POST /secrets-wizard/deploy-remote — verify in memory, then execute over SSH
 router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), writeable, async (req, res) => {
+  let auditContext, executionAttempted = false;
+  res.set('Cache-Control', 'no-store');
   try {
     const crypto = require('crypto');
     const { hostId, appName = 'myapp', script, useSudo = true } = req.body;
-    if (!hostId) return res.status(400).json({ error: 'hostId required' });
+    if (!/^[1-9][0-9]*$/.test(String(hostId)) || !Number.isSafeInteger(Number(hostId))) return res.status(400).json({ error: 'A valid positive hostId is required' });
     if (!script || typeof script !== 'string') return res.status(400).json({ error: 'script required' });
+
+    if (typeof useSudo !== 'boolean' || script.includes('\0')) return res.status(400).json({ error: 'useSudo must be boolean; script must not contain NUL characters' });
 
     // FIX #6.1 — validate appName against allowlist regex (prevents path traversal)
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(appName)) {
@@ -1043,7 +1047,8 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
     // FIX #6.5 — per-host authorization via allowed_deploy_roles
     if (host.allowed_deploy_roles) {
       let allowedRoles;
-      try { allowedRoles = JSON.parse(host.allowed_deploy_roles); } catch { allowedRoles = []; }
+      try { allowedRoles = JSON.parse(host.allowed_deploy_roles); } catch { return res.status(403).json({ error: 'Invalid host deployment authorization' }); }
+      if (!Array.isArray(allowedRoles) || allowedRoles.some(role => typeof role !== 'string')) return res.status(403).json({ error: 'Invalid host deployment authorization' });
       if (Array.isArray(allowedRoles) && allowedRoles.length > 0) {
         if (!allowedRoles.includes(req.user.role)) {
           return res.status(403).json({
@@ -1058,87 +1063,33 @@ router.post('/secrets-wizard/deploy-remote', requireAuth, requireRole('admin'), 
     catch { return res.status(400).json({ error: 'Invalid SSH configuration' }); }
     if (!sshConfig.host || !sshConfig.username) return res.status(400).json({ error: 'SSH host/username missing' });
 
-    let identity;
-    try { identity = require('../utils/ssh-host-key').hostKeyOptions(sshConfig); }
+    try { require('../utils/ssh-host-key').hostKeyOptions(sshConfig); }
     catch (error) { return res.status(400).json({ error: error.message }); }
-    const { Client } = require('ssh2');
-    const client = new Client();
-    const connectOpts = {
-      ...identity,
-      host: sshConfig.host,
-      port: sshConfig.port || 22,
-      username: sshConfig.username,
-      readyTimeout: 15000,
-    };
-    if (sshConfig.privateKey) {
-      connectOpts.privateKey = sshConfig.privateKey;
-      if (sshConfig.passphrase) connectOpts.passphrase = sshConfig.passphrase;
-    } else if (sshConfig.password) {
-      connectOpts.password = sshConfig.password;
-    } else {
-      return res.status(400).json({ error: 'SSH host has no authentication configured' });
-    }
+    if (!sshConfig.privateKey && !sshConfig.password) return res.status(400).json({ error: 'SSH host has no authentication configured' });
 
-    const remotePath = '/tmp/docker-dash-secrets-' + crypto.randomBytes(16).toString('hex') + '.sh';
+    auditContext = { userId: req.user.id, username: req.user.username,
+      targetType: 'host', targetId: String(hostId), ip: getClientIp(req),
+      details: { operationId: crypto.randomUUID(), appName, useSudo, scriptSha256, scriptWarnings } };
+    // Refuse to execute if the durable intent cannot be recorded.
+    auditService.log({ ...auditContext, action: 'secrets_deploy_remote_started' });
+    executionAttempted = true;
+    const result = await require('../services/remote-secret-script').execute({ connection: sshConfig, script, useSudo });
 
-    const result = await new Promise((resolve, reject) => {
-      let output = '';
-      const timeout = setTimeout(() => { try { client.end(); } catch {} reject(new Error('Remote execution timeout (120s)')); }, 120000);
+    auditService.log({ ...auditContext, action: 'secrets_deploy_remote',
+      details: { ...auditContext.details, exitCode: result.exitCode, outputLen: Buffer.byteLength(result.output) } });
 
-      client.on('ready', () => {
-        client.sftp((err, sftp) => {
-          if (err) { clearTimeout(timeout); client.end(); return reject(new Error('SFTP init failed: ' + err.message)); }
-
-          const stream = sftp.createWriteStream(remotePath, { mode: 0o600, flags: 'wx' });
-          stream.on('error', (e) => { clearTimeout(timeout); client.end(); reject(new Error('SFTP write failed: ' + e.message)); });
-          stream.on('close', () => {
-            // Execute the private file through bash; executable mode is unnecessary.
-            const execCmd = (useSudo ? 'sudo -n bash ' : 'bash ') + remotePath + ' 2>&1; RC=$?; rm -f ' + remotePath + '; exit $RC';
-            client.exec(execCmd, { pty: false }, (err2, ch) => {
-              if (err2) { clearTimeout(timeout); client.end(); return reject(new Error('exec failed: ' + err2.message)); }
-              let outputBytes = 0;
-              const append = d => {
-                outputBytes += d.length;
-                if (outputBytes > 1024 * 1024) {
-                  clearTimeout(timeout); client.end(); reject(new Error('Remote output exceeds 1 MiB')); return;
-                }
-                output += d.toString();
-              };
-              ch.on('data', append);
-              ch.stderr.on('data', append);
-              ch.on('close', (code) => {
-                clearTimeout(timeout);
-                client.end();
-                resolve({ output, exitCode: code });
-              });
-            });
-          });
-          stream.end(script);
-        });
-      });
-
-      client.on('error', (e) => { clearTimeout(timeout); client.end(); reject(e); });
-      client.connect(connectOpts);
-    });
-
-    auditService.log({
-      userId: req.user.id, username: req.user.username,
-      action: 'secrets_deploy_remote', targetType: 'host', targetId: String(hostId),
-      details: {
-        appName,
-        exitCode: result.exitCode,
-        useSudo,
-        outputLen: result.output.length,
-        scriptSha256,
-        scriptWarnings,
-      },
-      ip: getClientIp(req),
-    });
-
-    res.json({ ok: result.exitCode === 0, exitCode: result.exitCode, output: result.output });
+    res.json({ ok: result.exitCode === 0, exitCode: result.exitCode, output: result.output, operationId: auditContext.details.operationId });
   } catch (err) {
-    log.error('secrets deploy-remote', err);
-    res.status(500).json({ error: 'Internal server error' });
+    const outcomeUnknown = typeof err.outcomeUnknown === 'boolean' ? err.outcomeUnknown : executionAttempted;
+    if (auditContext) {
+      try { auditService.log({ ...auditContext, action: 'secrets_deploy_remote_failed',
+        details: { ...auditContext.details, outcomeUnknown, errorCode: err.code || 'AUDIT_OR_EXECUTION_FAILED' } }); }
+      catch { /* The durable start record remains when result recording fails. */ }
+    }
+    log.error('secrets deploy-remote', { code: err.code || 'AUDIT_OR_EXECUTION_FAILED' });
+    res.status(500).json({ error: outcomeUnknown
+      ? 'Remote execution could not be confirmed. The script may have run; check the host before retrying.'
+      : 'Remote deployment did not start.', outcomeUnknown, operationId: auditContext?.details.operationId });
   }
 });
 

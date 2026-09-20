@@ -2,6 +2,7 @@
 // Romanian translations — regenerated with full key parity to en.js
 i18n.register('ro', 'RO', "Română", {
   common: {
+    remoteSecretExecution: 'Transmite si executa prin SSH verificat, fara salvarea unui script temporar. La intrerupere, verifica hostul inainte de a repeta. Configureaza accesul SSH in pagina Hosts.',
     replacementCleanup: 'Inlocuitorul este activ, dar resursele pastrate pentru recuperare necesita curatare de catre administrator. Operatie: {{operation}}. Consulta ghidul de recuperare rollback.',
     newVersionAvailable: "Versiune nouă {{version}} disponibilă",
     reload: "Reîncarcă",

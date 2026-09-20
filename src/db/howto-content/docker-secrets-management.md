@@ -51,3 +51,26 @@ sudo chown root:docker /etc/myapp/secrets/db_password.txt</code></pre>
 <pre><code># Files appear at /run/secrets/&lt;name&gt;
 docker exec mycontainer ls -la /run/secrets/
 docker exec mycontainer cat /run/secrets/db_password</code></pre>
+
+
+<h2>Remote execution from the Secrets Wizard</h2>
+<p>The wizard requires an administrator, writable mode and a configured SSH host
+with a trusted host fingerprint. It sends the script through the encrypted channel,
+verifies the complete SHA-256 on the host, then executes it without creating a
+script file. The script is absent from command arguments and the audit log.
+The host needs Bash, sha256sum and /dev/fd; the sudo option requires passwordless,
+non-interactive sudo. Script commands receive EOF on standard input and cannot
+prompt for passwords. The script's own commands can still create files.</p>
+<p>The deadline is 120 seconds; scripts and combined stdout/stderr are limited to
+1 MiB. The audit records an operation ID, hash and execution metadata before and
+after the attempt. Script contents and output are not recorded there. Output is
+returned only to the requesting administrator with cache storage disabled.</p>
+<p>A dropped connection, timeout or output overflow is not proof that the remote
+process stopped. The response warns when execution cannot be confirmed. Inspect
+the host and audit operation before retrying; remote shell effects are not rolled
+back automatically. A hash mismatch prevents execution of an incomplete upload.</p>
+<p>Older releases may have left docker-dash-secrets-*.sh files in /tmp or script
+previews in old audit exports/backups. This change does not erase them. Review them
+as an administrator, confirm they belong to a finished deployment and handle them
+under your secret-retention policy. Do not delete unknown scripts or rewrite a
+hash-chained audit log to hide old events.</p>
