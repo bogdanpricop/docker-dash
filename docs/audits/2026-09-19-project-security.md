@@ -465,6 +465,20 @@ cu `CVE-2026-85091`. Publicarea ramane blocata; nu au fost introduse exceptii gl
 [Rezultatele si hash-urile rapoartelor](2026-09-20-rollback-snapshot-encryption.json)
 completeaza dovezile de test, fara sa echivaleze cu securizarea integrala.
 
+## Checkpoint Git si deploy autorizat — 20 septembrie
+
+La solicitarea utilizatorului, codul verificat a fost comis si urcat pe branch-ul
+`agent/advanced-compose-gitops` (`36fa8e6`). Versiunea 8.96.2 ruleaza pe LAN si VPS,
+cu aceeasi imagine production, backup-uri private verificate, chei pastrate si
+migrarea 176 aplicata. HTTP 200 / health ok si ID-ul imaginii au fost verificate
+pe ambele hosturi. VPS foloseste acum codul din imagine, fara montarea sursei din host.
+
+[Raportul deploy-ului](2026-09-20-checkpoint-deployment.md) include procedura si
+limitele. Acest checkpoint autorizat actualizeaza starea anterioara „fara deploy”.
+Nu s-a publicat imaginea in registrul public, nu s-au dezactivat pragurile CI si
+nu s-a reconfigurat daemonul Docker LAN. Constatarile ramase ale auditului sunt
+in continuare deschise.
+
 ## Reproducere
 
 ```sh
