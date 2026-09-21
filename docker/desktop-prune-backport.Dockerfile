@@ -1,5 +1,5 @@
 # Narrow patch on the deployed monitoring image. No dependency/schema changes.
-FROM sha256:d525e7e556aab759c6315894306f13a7e7fb6591d0ea70c5f821a2f367672753 AS production
+FROM docker-dash:8.96.8-monitoring.1-audit-caf8b19 AS production
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY src/version.js ./src/version.js
