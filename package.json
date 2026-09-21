@@ -1,6 +1,6 @@
 {
   "name": "docker-dash",
-  "version": "8.96.8+monitoring.1",
+  "version": "8.96.8+monitoring.1.prune.1",
   "description": "Full-featured Docker management dashboard",
   "main": "src/server.js",
   "scripts": {

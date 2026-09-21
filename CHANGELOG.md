@@ -1,5 +1,15 @@
 # Changelog
 
+## 8.96.8+monitoring.1.prune.1 - 2026-09-21 (private backport)
+
+- Refuse dashboard/fleet/disk-pressure prune while Desktop Streamer release
+  operators, reservations or retired-owner evidence are retained. A running
+  application alone is not a cleanup reservation. New coordinated publishers
+  use the shared exclusion label and check the daemon prune barrier before start.
+- Preserve the deployed monitoring patch, database schema and dependencies.
+  External Docker commands and uncoordinated older publishers remain outside
+  the concurrent-cleanup guarantee.
+
 ## 8.96.8+monitoring.1 - 2026-09-20 (private backport)
 
 - Require global monitoring authority for metrics and detailed cluster status;

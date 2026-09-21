@@ -33,10 +33,25 @@ test.each([
   { Names: ['/dd-recovery-old'] }, { Names: ['/dd-replacement-lock-old'] }, { Names: ['/dd-egress-lock-old'] },
   { Labels: { 'com.docker-dash.replacement.role': 'lock' } },
   { Labels: { 'com.docker-dash.egress-operation': 'operation' } },
+  ...['created', 'running', 'exited', 'dead', undefined].flatMap(State => [
+    { State, Labels: { 'com.desktop-streamer.release-operation': 'operation' } },
+    { State, Labels: { 'com.desktop-streamer.release-reservation': 'reservation' } },
+  ]),
+  ...['created', 'exited', 'dead', undefined].map(State => ({ State,
+    Labels: { 'com.desktop-streamer.cutover-owner': 'owner' } })),
+  { State: 'running', Names: ['/ds-cutover-host-legacy-1'], Labels: { 'com.desktop-streamer.cutover-owner': 'owner' } },
 ])('refuses prune for active or retained recovery evidence: %p', async item => {
   entries.push(item);
   await expect(withPrune(docker, action)).rejects.toMatchObject({ status: 409 });
   expect(action).not.toHaveBeenCalled(); expect(guard).toBeNull();
+});
+
+test('a running Desktop Streamer application alone does not reserve prune', async () => {
+  entries.push({ State: 'running', Names: ['/ds-prod-app-v2-current'], Labels: {
+    'com.desktop-streamer.cutover-owner': 'owner', 'com.desktop-streamer.release-candidate': 'owner',
+  } });
+  await expect(withPrune(docker, action)).resolves.toMatchObject({ SpaceReclaimed: 42 });
+  expect(action).toHaveBeenCalledTimes(1);
 });
 
 test('concurrent prune cannot adopt or remove another invocation reservation', async () => {

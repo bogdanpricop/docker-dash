@@ -7,9 +7,17 @@ const Docker = require('dockerode'), tar = require('tar-stream');
 const guard = require('../src/services/docker-prune-guard');
 const { hashArchive } = require('./verify-scanner-artifacts');
 const verifyBundled = process.env.DD_SMOKE_VERIFY_BUNDLED === '1';
-const url = new URL(process.env.DD_SMOKE_DOCKER_URL);
-assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.protocol, 'http:');
-const docker = new Docker({ host: url.hostname, port: Number(url.port), timeout: 60000 });
+let connection;
+if (process.env.DD_SMOKE_DOCKER_SOCKET) {
+  assert.equal(process.env.DD_SMOKE_DOCKER_SOCKET, '/var/run/docker.sock');
+  assert.equal(process.env.DD_SMOKE_DOCKER_URL, undefined);
+  connection = { socketPath: process.env.DD_SMOKE_DOCKER_SOCKET };
+} else {
+  const url = new URL(process.env.DD_SMOKE_DOCKER_URL);
+  assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.protocol, 'http:');
+  connection = { host: url.hostname, port: Number(url.port) };
+}
+const docker = new Docker({ ...connection, timeout: 60000 });
 const marker = 'dd-prune-smoke-' + crypto.randomBytes(6).toString('hex'), label = 'com.docker-dash.prune-smoke';
 const owned = [], checks = [], oldImage = process.env.DD_EGRESS_HELPER_IMAGE;
 const filters = { label: [label + '=' + marker] };
@@ -63,11 +71,12 @@ async function fixture(name, labels = {}) {
       const victim = await fixture(marker + '-victim');
       const lateLock = await fixture(marker + '-late-lock', { 'com.docker-dash.replacement.role': 'lock', [guard.PROTECT_LABEL]: 'true' });
       const lateEgress = await fixture(marker + '-late-egress', { 'com.docker-dash.egress-operation': marker, [guard.PROTECT_LABEL]: 'true' });
+      const lateDesktop = await fixture(marker + '-late-desktop', { 'com.desktop-streamer.release-operation': marker, [guard.PROTECT_LABEL]: 'true' });
       const result = await docker.pruneContainers({ filters: JSON.stringify({ ...filters, ...guard.CONTAINER_FILTERS }) });
       assert.deepEqual(result.ContainersDeleted, [victim.id]);
-      await lateLock.inspect(); await lateEgress.inspect(); await adapter.getContainer(guard.NAME).inspect();
+      await lateLock.inspect(); await lateEgress.inspect(); await lateDesktop.inspect(); await adapter.getContainer(guard.NAME).inspect();
       checks.push('real-container-prune-keeps-guard-and-late-operation-reservations');
-      await lateLock.remove({ v: true }); await lateEgress.remove({ v: true });
+      await lateLock.remove({ v: true }); await lateEgress.remove({ v: true }); await lateDesktop.remove({ v: true });
       await docker.pruneImages({ filters: JSON.stringify({ ...filters, dangling: ['false'] }) });
       await docker.getImage(image).inspect();
       checks.push('real-image-prune-preserves-helper-referenced-only-by-guard');
@@ -78,6 +87,12 @@ async function fixture(name, labels = {}) {
     await assert.rejects(guard.withPrune(adapter, async () => assert.fail('pruned recovery')), { status: 409 });
     await recovery.inspect(); await recovery.remove({ v: true });
     checks.push('retained-original-blocks-prune-before-deletion');
+    for (const role of ['release-operation', 'release-reservation', 'cutover-owner']) {
+      const evidence = await fixture(marker + '-desktop-' + role, { ['com.desktop-streamer.' + role]: marker });
+      await assert.rejects(guard.withPrune(adapter, async () => assert.fail('pruned Desktop Streamer evidence')), { status: 409 });
+      await evidence.inspect(); await evidence.remove({ v: true });
+      checks.push('desktop-' + role + '-blocks-prune-before-deletion');
+    }
     await assert.rejects(guard.withPrune(adapter, async () => { throw Error('simulated lost response, no prune dispatched'); }),
       { recoveryRequired: true, recoveryContainer: guard.NAME });
     await assert.rejects(guard.assertNoPrune(adapter), { status: 409 });
