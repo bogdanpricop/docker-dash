@@ -1,6 +1,6 @@
 # Desktop Streamer Prune Coordination
 
-Status: implementation checkpoint; deployment evidence must be recorded separately.
+Status: deployed and verified on the VPS; LAN deployment is not claimed.
 
 The user approved this cross-project correction after the VPS audit showed two
 `system_prune` operations of type `all` on 2026-09-21. The request at 17:50:26 UTC
@@ -60,3 +60,35 @@ on the exact deployed image
 Production backup, bundled-source identity, native canary and health checks are
 required before claiming this patch installed. Existing image vulnerability
 findings and unrelated audit work remain open.
+
+## VPS Deployment
+
+Source `05f6cf2bd2059f03a887bb506e59a6896f650f90` is deployed as
+`8.96.8+monitoring.1.prune.1`, image
+`sha256:ac2f9a054418b5cf1fc1a61143a22e8515806372cd872c60bc20a426279ac226`.
+All eight native Docker canary checks passed with the complete base layer prefix
+and dependency lock preserved. Exact hashes of all seven copied runtime files
+match the immutable source archive. A second check against the module bundled
+in the running application returned 409 for a real Desktop Streamer reservation
+without invoking the supplied action. No global prune was executed.
+
+The private SQLite backup is 651,038,720 bytes, integrity OK, SHA-256
+`fcad64d21427a42aceffa3bf871f9ab22f5bec03ca796bfaae61215f48e0ba6b`.
+User/host counts remain 2/1 and the migration count remains 177. Environment,
+keys, mounts, network aliases and runtime configuration are preserved. Anonymous
+metrics and cluster status still return 401; Prometheus completed a fresh
+authenticated scrape after restart. Desktop Streamer application/database/proxy
+and Docker Dash monitoring containers retained their exact runtime fingerprints.
+
+Two verification interruptions were reconciled without weakening the contract:
+BuildKit required the existing local image tag instead of a bare image ID in
+FROM, so the qualifier verifies that tag against the expected immutable ID;
+Compose reordered environment and bind arrays, whose contents were verified
+identical after sorting. The latter verification resumed against the same new
+container without restarting it. Owned temporary reservations were removed only
+after inspection, while old/new image pins remain for explicit recovery.
+
+Private qualification, backup and deployment receipts are under
+`/opt/docker-dash/checkpoints/8.96.8+monitoring.1.prune.1-05f6cf2b/`.
+The paired Desktop Streamer start handshake still needs its own integrated
+qualification and tooling publication; this deployment does not qualify it.
