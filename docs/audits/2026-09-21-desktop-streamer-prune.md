@@ -1,5 +1,21 @@
 # Desktop Streamer Prune Coordination
 
+## Non-Disruptive Refusal Follow-Up
+
+At 19:56:39 and 19:57:00 UTC on 2026-09-21, two more `Prune all` requests
+(audit 127/128) were rejected before dispatching cleanup. The first transient
+barrier nevertheless fenced a new Desktop Streamer qualification operator:
+its journal stopped at `created`, before any start intent. No cleanup action
+was accepted. The temporary barrier was released by its original owner.
+
+Version `8.96.8+monitoring.1.prune.2` first inventories retained recovery work
+and refuses without creating a barrier when the exclusion is already known.
+This early read is only a non-disruptive rejection path, not authorization:
+prune still creates its barrier and repeats the full inventory before dispatch.
+An uncertain read fails closed. The native canary checks both no-barrier refusal
+and a reservation appearing between the two reads; no global prune is used.
+Runtime deployment evidence for this follow-up must be recorded separately.
+
 Status: deployed and verified on the VPS; LAN deployment is not claimed.
 
 The user approved this cross-project correction after the VPS audit showed two

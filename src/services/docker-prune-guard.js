@@ -34,6 +34,11 @@ function recoveryContainer(container) {
 }
 
 async function withPrune(docker, action) {
+  // Reject known recovery work without briefly fencing its next operator.
+  // The second inventory under the barrier still closes concurrent-start races.
+  if ((await docker.listContainers({ all: true })).some(recoveryContainer)) {
+    throw conflict('Container replacement, egress or Desktop Streamer release evidence is retained; reconcile it before pruning');
+  }
   const helperRef = process.env.DD_EGRESS_HELPER_IMAGE || 'docker-dash-egress-helper:local';
   let image, helperAvailable = true;
   try { image = (await docker.getImage(helperRef).inspect()).Id; }

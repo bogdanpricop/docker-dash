@@ -22,13 +22,14 @@ const marker = 'dd-prune-smoke-' + crypto.randomBytes(6).toString('hex'), label 
 const owned = [], checks = [], oldImage = process.env.DD_EGRESS_HELPER_IMAGE;
 const filters = { label: [label + '=' + marker] };
 const reservedName = marker + '-reservation';
-let image;
+let image, reservationCreates = 0;
 const bundledSources = {};
 const adapter = {
   getImage: id => docker.getImage(id), listImages: () => docker.listImages({ filters: JSON.stringify(filters) }),
   getContainer: name => docker.getContainer(name === guard.NAME ? reservedName : name),
   listContainers: () => docker.listContainers({ all: true, filters: JSON.stringify(filters) }),
   createContainer: async options => {
+    reservationCreates++;
     const c = await docker.createContainer({ ...options, name: reservedName,
       Labels: { ...options.Labels, [label]: marker } }); owned.push(c); return c;
   },
@@ -89,10 +90,26 @@ async function fixture(name, labels = {}) {
     checks.push('retained-original-blocks-prune-before-deletion');
     for (const role of ['release-operation', 'release-reservation', 'cutover-owner']) {
       const evidence = await fixture(marker + '-desktop-' + role, { ['com.desktop-streamer.' + role]: marker });
+      const createdBefore = reservationCreates;
       await assert.rejects(guard.withPrune(adapter, async () => assert.fail('pruned Desktop Streamer evidence')), { status: 409 });
+      assert.equal(reservationCreates, createdBefore, 'Known deployment must not be fenced by a prune barrier');
       await evidence.inspect(); await evidence.remove({ v: true });
       checks.push('desktop-' + role + '-blocks-prune-before-deletion');
     }
+    let concurrentEvidence, inventories = 0;
+    const racingAdapter = { ...adapter, listContainers: async () => {
+      const snapshot = await adapter.listContainers();
+      if (++inventories === 1) concurrentEvidence = await fixture(marker + '-concurrent-desktop', {
+        'com.desktop-streamer.release-reservation': marker, [guard.PROTECT_LABEL]: 'true',
+      });
+      return snapshot;
+    } };
+    const createdBefore = reservationCreates;
+    await assert.rejects(guard.withPrune(racingAdapter, async () => assert.fail('pruned concurrent deployment')), { status: 409 });
+    assert.equal(inventories, 2); assert.equal(reservationCreates, createdBefore + 1);
+    await guard.assertNoPrune(adapter);
+    await concurrentEvidence.inspect(); await concurrentEvidence.remove({ v: true });
+    checks.push('concurrent-reservation-rechecked-under-barrier-without-prune');
     await assert.rejects(guard.withPrune(adapter, async () => { throw Error('simulated lost response, no prune dispatched'); }),
       { recoveryRequired: true, recoveryContainer: guard.NAME });
     await assert.rejects(guard.assertNoPrune(adapter), { status: 409 });

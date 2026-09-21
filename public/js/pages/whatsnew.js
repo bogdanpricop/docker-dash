@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.8+monitoring.1.prune.2', date: '2026-09-21', title: 'Non-disruptive cleanup refusal', changes: [
+      { type: 'fix', text: 'A cleanup request now rejects already-retained deployment evidence before creating a cleanup barrier, so a refused cleanup does not interrupt the next deploy operator. A second check under the barrier still protects against simultaneous starts.' },
+    ] },
     { version: '8.96.8+monitoring.1.prune.1', date: '2026-09-21', title: 'Desktop Streamer recovery protection', changes: [
       { type: 'fix', text: 'Dashboard cleanup refuses retained Desktop Streamer release operators and retired-owner evidence. A running application alone does not block cleanup. Retained evidence requires explicit reconciliation, not deletion based on age.' },
       { type: 'security', text: 'Coordinated publishers protect newly created containers before checking the daemon cleanup reservation. External Docker commands and older publishers do not participate in this protocol.' },
