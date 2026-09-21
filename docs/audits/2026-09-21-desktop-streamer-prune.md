@@ -14,7 +14,30 @@ This early read is only a non-disruptive rejection path, not authorization:
 prune still creates its barrier and repeats the full inventory before dispatch.
 An uncertain read fails closed. The native canary checks both no-barrier refusal
 and a reservation appearing between the two reads; no global prune is used.
-Runtime deployment evidence for this follow-up must be recorded separately.
+This follow-up is deployed from source
+`58ce5a4cfe2218a5791924f923fd04eb3fc68dc8`, image
+`sha256:2a8c967836bb8c93a58b303bc55f45377b136ca1cc6aed4868286ac19eb2f722`,
+container `e499dd04ff98b4825cb3d13124bbed85868754ebad756220d200498e254d40c1`.
+All 363 suites / 4,816 tests pass (one existing skip), along with lint,
+60/60 help coverage and nine real-Docker canary checks. The full test invocation
+uses the explicit synthetic encryption key required by the existing store test;
+an initial run without it failed that test and passed the other 4,815.
+
+The running module separately refused the real Desktop Streamer qualification
+reservation with one inventory, zero barrier-create calls and zero action calls.
+Its SHA-256 is
+`a48a5e2e8cbd674a6f54b82d622399b93f0b7465d79d18979f227866543d0b9e`,
+matching the qualified source. The 651,038,720-byte SQLite backup passed integrity
+checks; users/hosts/migrations remain 2/1/177. Configuration and the exact Desktop
+Streamer/monitoring runtime fingerprints are unchanged. Anonymous metrics and
+cluster status remain 401; a fresh authenticated Prometheus scrape is up.
+Desktop Streamer full public HTTPS smoke also passes.
+
+Private receipts and backup are under
+`/opt/docker-dash/checkpoints/8.96.8+monitoring.1.prune.2-58ce5a4c/`;
+deployment receipt time is `2026-09-21T20:08:38.429278+00:00`.
+This does not turn the interrupted Desktop Streamer qualification into a pass;
+that test requires a fresh isolated fixture, not revival of cleaned resources.
 
 Status: deployed and verified on the VPS; LAN deployment is not claimed.
 
