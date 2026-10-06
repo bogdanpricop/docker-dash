@@ -354,6 +354,30 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
     });
   });
 
+  describe('deleteManifest', () => {
+    it('deletes the exact immutable digest and accepts an already-absent manifest', async () => {
+      const id = makeRegistry();
+      const digest = `sha256:${'a'.repeat(64)}`;
+      const spy = jest.spyOn(registryService, '_apiCall').mockResolvedValue({ status: 404, headers: {} });
+      try {
+        await expect(registryService.deleteManifest(id, 'team/app', digest))
+          .resolves.toEqual({ ok: true, digest });
+        expect(spy).toHaveBeenCalledWith(expect.any(Object), `/v2/team/app/manifests/${digest}`,
+          { method: 'DELETE' });
+      } finally { spy.mockRestore(); }
+    });
+
+    it('rejects a non-sha256 digest without contacting the registry', async () => {
+      const id = makeRegistry();
+      const spy = jest.spyOn(registryService, '_apiCall');
+      try {
+        await expect(registryService.deleteManifest(id, 'team/app', 'sha256:not-a-digest'))
+          .rejects.toThrow(/Valid sha256/);
+        expect(spy).not.toHaveBeenCalled();
+      } finally { spy.mockRestore(); }
+    });
+  });
+
   // ── listRepos ────────────────────────────────────────────────────────
 
   describe('listRepos', () => {

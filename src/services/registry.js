@@ -198,6 +198,25 @@ class RegistryService {
     return { ok: true, digest };
   }
 
+  /** Delete a manifest that is already identified by its immutable digest. */
+  async deleteManifest(id, repo, digest) {
+    const reg = this.get(id);
+    if (!reg) throw new Error('Registry not found');
+    if (!repo) throw new Error('repo required');
+    if (!/^sha256:[a-f0-9]{64}$/i.test(String(digest || ''))) {
+      throw new Error('Valid sha256 manifest digest required');
+    }
+
+    const del = await this._apiCall(reg, `/v2/${repo}/manifests/${digest}`, { method: 'DELETE' });
+    if (del.status === 405 || del.status === 501) {
+      throw new Error('Registry has deletion disabled. Set REGISTRY_STORAGE_DELETE_ENABLED=true and restart it.');
+    }
+    if (del.status !== 404 && del.status >= 400) {
+      throw new Error(`Delete failed (HTTP ${del.status})`);
+    }
+    return { ok: true, digest };
+  }
+
   /**
    * Build the X-Registry-Auth header value for dockerode.push().
    * Returns the dockerode `authconfig` object (NOT the encoded header).

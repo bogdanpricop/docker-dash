@@ -2,8 +2,8 @@
   "date": "2026-10-07",
   "images": {
     "dockerDash": {
-      "tag": "docker-dash:8.96.10-secure",
-      "id": "sha256:55ff24b5277fa46b102daaee0111bd3cbe389dca6b66d2b5c2f5576673cd4878",
+      "tag": "docker-dash:8.96.11-secure",
+      "id": "sha256:9361bf3974d7780a3d7421e9680bcc63cdecf6f213cb85fd1708303e237d8dd4",
       "runtimeNpmPresent": false,
       "trivyActionableFindings": 0,
       "grypeActionableFindings": 0
@@ -39,7 +39,8 @@
     "composeLifecycleSmoke": "pass",
     "busyboxPatchChecksums": "pass",
     "busyboxRegressionTests": "pass",
-    "compiledPackageReachability": "pass"
+    "compiledPackageReachability": "pass",
+    "untaggedManifestRetention": "pass"
   },
   "nonActionableScannerRecords": {
     "GO-2026-5932": "openpgp package absent from all compiled package inventories",

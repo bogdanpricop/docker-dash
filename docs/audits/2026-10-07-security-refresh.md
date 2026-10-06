@@ -11,7 +11,7 @@ isolated container before deployment.
 
 | Component | Verified version |
 | --- | --- |
-| Docker Dash | 8.96.10 |
+| Docker Dash | 8.96.11 |
 | Node.js | 24.21.0 |
 | npm used to create the production dependency layer | 12.2.0 |
 | Trivy | 0.75.0+dd.2 |
@@ -31,6 +31,11 @@ ships dependencies reported by container scanners, so npm and npx are removed
 from the final runtime stage. Application dependencies remain installed from the
 lockfile by npm 12.2.0. `npm audit` reports zero vulnerabilities and `npm outdated`
 reports no outdated project packages.
+
+The registry retention executor now deletes untagged OCI manifests by their
+validated immutable SHA-256 digest. This closes the previous gap where the
+policy selected those manifests but returned a `not implemented` error during
+execution. Per-manifest and summary audit events remain mandatory.
 
 ## Image verification
 

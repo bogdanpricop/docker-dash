@@ -158,7 +158,7 @@ Evita inserarea credentialelor necriptate direct in SQLite. Formularul Hosts cri
 | Storage pools | Neimplementat |
 | Networks | Neimplementat |
 | Cluster routing | Neimplementat (merge pe un singur nod) |
-| Criptare credențiale at rest | Neimplementat (amânat) |
+| Criptare credențiale în repaus | Implementată cu anvelopa AES-GCM a aplicației |
 
 ## Depanare
 

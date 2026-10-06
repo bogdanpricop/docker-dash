@@ -158,7 +158,7 @@ Avoid inserting raw credential JSON into SQLite. The Hosts form encrypts the sav
 | Storage pools | Not implemented |
 | Networks | Not implemented |
 | Cluster routing | Not implemented (works against a single node) |
-| Credential encryption at rest | Not implemented (deferred) |
+| Credential encryption at rest | Implemented with the application AES-GCM envelope |
 
 ## Troubleshooting
 
