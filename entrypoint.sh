@@ -8,6 +8,13 @@ umask 077
 
 export ENV_FILE="${ENV_FILE:-/data/.env}"
 
+# SQLite aggregation queries can spill temporary B-trees to disk. Keep those
+# files on the writable data volume: the hardened runtime deliberately limits
+# /tmp to a small tmpfs, which is insufficient for larger monitoring databases.
+export SQLITE_TMPDIR="${SQLITE_TMPDIR:-/data/sqlite-tmp}"
+mkdir -p "$SQLITE_TMPDIR"
+chmod 700 "$SQLITE_TMPDIR"
+
 is_placeholder() {
   case "$1" in
     ''|'generate-a-random-string-here'|'change-me'|'CHANGE_ME'|'change-me-to-a-random-32-char-hex') return 0 ;;

@@ -11,7 +11,7 @@ isolated container before deployment.
 
 | Component | Verified version |
 | --- | --- |
-| Docker Dash | 8.96.11 |
+| Docker Dash | 8.96.12 |
 | Node.js | 24.21.0 |
 | npm used to create the production dependency layer | 12.2.0 |
 | Trivy | 0.75.0+dd.2 |
@@ -36,6 +36,10 @@ The registry retention executor now deletes untagged OCI manifests by their
 validated immutable SHA-256 digest. This closes the previous gap where the
 policy selected those manifests but returned a `not implemented` error during
 execution. Per-manifest and summary audit events remain mandatory.
+
+SQLite spill files now use a mode-0700 directory on the persistent data volume.
+This keeps large statistics rollups operational when the hardened container uses
+a deliberately small `/tmp` tmpfs, without weakening the read-only root filesystem.
 
 ## Image verification
 
