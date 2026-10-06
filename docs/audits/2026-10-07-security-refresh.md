@@ -87,3 +87,13 @@ the runtime filesystem. Docker Scout remains excluded because its latest
 published plugin embeds vulnerable dependencies and no corresponding plugin
 source is available for a verified rebuild.
 
+The 8.96.12 deployment runs with a read-only root filesystem, all capabilities
+dropped and `no-new-privileges` on both the LAN host and VPS. VPS application and
+Grafana ports bind only to loopback. Persisted bootstrap secrets use mode 0600,
+stale plaintext backup copies were removed, and the LAN encryption key was
+restored from the last release proven to decrypt all three stored SSH host
+configurations. Fingerprints from already trusted OpenSSH records were pinned for
+the LAN host and VPS; the remaining `192.168.12.40` host stays fail-closed until
+its fingerprint is verified out of band. Audit retention was raised from 7 to 90
+days on both deployments.
+

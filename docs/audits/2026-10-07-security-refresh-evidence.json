@@ -41,7 +41,13 @@
     "busyboxRegressionTests": "pass",
     "compiledPackageReachability": "pass",
     "untaggedManifestRetention": "pass",
-    "sqliteSpillOnWritableDataVolume": "pass"
+    "sqliteSpillOnWritableDataVolume": "pass",
+    "lanStoredSshCredentialsDecryptable": "3/3",
+    "lanStoredSshHostKeysPinned": "2/3; 192.168.12.40 requires out-of-band verification",
+    "persistedBootstrapSecretMode": "0600",
+    "staleBootstrapSecretBackupsRemoved": true,
+    "auditRetentionDays": 90,
+    "vpsPublishedPorts": "loopback-only"
   },
   "nonActionableScannerRecords": {
     "GO-2026-5932": "openpgp package absent from all compiled package inventories",
