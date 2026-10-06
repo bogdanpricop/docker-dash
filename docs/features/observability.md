@@ -14,10 +14,13 @@ For operators who already run Prometheus or Grafana: skip this profile and integ
 
 | Service | Image | Purpose | Exposed |
 |---------|-------|---------|:-------:|
-| `prometheus` | `prom/prometheus:v3.0.1` | Scrapes `/api/metrics` every 15s, 7-day retention | No (internal only) |
-| `grafana` | `grafana/grafana:11.3.0` | Queries Prometheus, serves the pre-provisioned dashboard | Yes (`:3001` by default) |
+| `prometheus` | `docker-dash-prometheus:3.15.0-dd.4` | Scrapes `/api/metrics` every 15s, 7-day retention | No (internal only) |
+| `grafana` | `docker-dash-grafana:13.2.3-dd.4` | Queries Prometheus, serves the pre-provisioned dashboard | Yes (`:3001` by default) |
 
-Both services run with `no-new-privileges:true`. Data persists across restarts via named Docker volumes (`docker-dash-prometheus-data`, `docker-dash-grafana-data`).
+Both services run with `no-new-privileges:true` and all Linux capabilities dropped.
+The repository builds them from verified upstream releases, locked Go modules and
+a checksum-pinned BusyBox security backport set. Data persists across restarts via
+named Docker volumes (`docker-dash-prometheus-data`, `docker-dash-grafana-data`).
 
 ## 1a. In-app wizard (v7.2.0+)
 

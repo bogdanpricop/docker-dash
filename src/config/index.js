@@ -4,7 +4,7 @@ const path = require('path');
 
 // Load .env from project root
 const envPath = process.env.ENV_FILE || path.join(__dirname, '..', '..', '.env');
-try { require('dotenv').config({ path: envPath }); } catch { /* dotenv optional */ }
+try { require('dotenv').config({ path: envPath, quiet: true }); } catch { /* dotenv optional */ }
 
 const env = (key, fallback) => process.env[key] ?? fallback;
 const int = (key, fallback) => parseInt(env(key, fallback), 10);

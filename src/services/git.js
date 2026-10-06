@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 // child_process used via _execFile method (execFileSync)
-const simpleGit = require('simple-git');
+const { simpleGit } = require('simple-git');
 const { getDb } = require('../db');
 const { encrypt, decrypt, generateToken } = require('../utils/crypto');
 const { now } = require('../utils/helpers');
@@ -35,13 +35,19 @@ const DEFAULT_ROLLOUT_POLICY = Object.freeze({
 //   - Interactive endpoints (/git/stacks/:id/{check,deploy,rollback}) tie up
 //     an express worker for the same forever.
 //   - Initial clone hangs leave the stack in `deploying` status indefinitely.
-// simple-git 3.x honors `timeout: { block: <ms> }` on the constructor.
+// simple-git honors `timeout: { block: <ms> }` on the constructor.
 const GIT_FETCH_TIMEOUT_MS = 120_000;       // 2 min — fetch / pull / log / checkForUpdates
 const GIT_CLONE_TIMEOUT_MS = 300_000;       // 5 min — initial clone (large repos)
 const GIT_REMOTE_PROBE_TIMEOUT_MS = 30_000; // 30 sec — listRemote (credential test)
 // Only the application-generated SSH command and /dev/null global config are
 // permitted. No caller-provided command/config path enters these options.
+const GIT_ALLOWED_ENVIRONMENT = Object.freeze([
+  'GIT_TERMINAL_PROMPT', 'GIT_SSH_VARIANT', 'GIT_CONFIG_NOSYSTEM',
+  'GIT_CONFIG_GLOBAL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL',
+  'GIT_SSH_COMMAND', 'GIT_SSL_CAINFO', 'GIT_SSL_NO_VERIFY',
+]);
 const _gitOpts = (ms = GIT_FETCH_TIMEOUT_MS) => ({ timeout: { block: ms },
+  allowEnvironment: GIT_ALLOWED_ENVIRONMENT,
   unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
 
 class GitService {

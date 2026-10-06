@@ -1,14 +1,14 @@
 # Scanner security rebuilds
 
-These build modules use upstream Trivy 0.74.0 and Grype 0.119.0 source
+These build modules use upstream Trivy 0.75.0 and Grype 0.120.1 source
 with fixed dependency versions and Go 1.27.1. The root Dockerfile consumes this
 build stage. Integration alone is not a claim that the production image is clean;
 the final image vulnerability gate remains mandatory.
-The same artifact stage also builds Docker CLI 29.7.2 from its verified upstream
+The same artifact stage also builds Docker CLI 29.8.2 from its verified upstream
 module with Go 1.27.1 and pinned gRPC/telemetry updates. Its version is
-`29.7.2+dd.1`; `build-cli.sh` records its source and binary provenance separately.
-Compose 5.5.1 is also rebuilt from its verified upstream module, without source
-patches, using containerd 2.3.5 and x/crypto 0.57.0. Its version is `5.5.1+dd.1`.
+`29.8.2+dd.2`; `build-cli.sh` records its source and binary provenance separately.
+Compose 5.6.0 is also rebuilt from its verified upstream module, without source
+patches, using containerd 2.4.1 and x/crypto 0.57.0. Its version is `5.6.0+dd.2`.
 `build-compose.sh` runs the upstream Compose lifecycle/API/CLI unit tests with
 the selected dependencies before compiling with the official `e2e` build tag.
 Its binary is installed at `/usr/libexec/docker/cli-plugins/docker-compose`;
@@ -16,20 +16,13 @@ source checksum, dependency graph, build module, license and binary hash live
 alongside the other provenance files. `scripts/smoke-compose-image.js` validates
 an immutable image against a real Docker daemon in a disposable Compose project.
 This update does not constitute an exception for scanner findings in other tools.
-Application versions carry `+dd.1`. Grype's embedded Go metadata retains the
-upstream module version/checksum and actual dependency versions. Trivy discloses
-an explicit local source replacement; its verified upstream identity and patched
-files are included separately in the build artifacts.
+Application versions carry `+dd.2`. Embedded Go metadata retains the upstream
+module version/checksum and the actual dependency versions.
 
-Trivy additionally requires the documented Go 1.27 JSON migration from
-`json.SkipFunc` to `errors.ErrUnsupported` in two source files. A source-hash-checked
-compiler overlay applies the compatibility changes to a verified source copy,
-without modifying the module cache. The patched files are included in the
-artifacts for review. The source module's Go directive is also raised from 1.26.3
-to 1.27.1 to enable the new standard library API. All three upstream files have
-fixed expected hashes; an unexpected source version aborts the build.
-The build runs the upstream JSON/parser tests and the gRPC missing-authority
-regression test before emitting Trivy.
+Trivy 0.75.0 includes the Go 1.27 `json.SkipFunc` to
+`errors.ErrUnsupported` migration upstream, so the prior compiler overlay has
+been removed. The build runs the upstream JSON/parser tests and the gRPC
+missing-authority regression test before emitting Trivy.
 
 Build from the repository root:
 

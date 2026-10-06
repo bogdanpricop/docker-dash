@@ -1,6 +1,6 @@
 'use strict';
 
-const Redis = require('ioredis-mock');
+const Redis = require('./helpers/redis-mock');
 const ClusterLease = require('../services/cluster-lease');
 
 describe('HA lease ownership and local validity', () => {

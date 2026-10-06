@@ -29,7 +29,7 @@ async function main() {
     assert.equal(hash,fs.readFileSync('/usr/share/docker-dash/scanners/docker-compose.sha256','utf8').trim().split(/\\s+/)[0]);
     const run=(args)=>cp.execFileSync('docker',['compose','-p',${JSON.stringify(project)},'-f','/tmp/fixture.json',...args],{encoding:'utf8',timeout:90000,maxBuffer:1024*1024});
     fs.writeFileSync('/tmp/fixture.json',${JSON.stringify(JSON.stringify(fixture))});
-    assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8'}).trim(),'5.5.1+dd.1');
+    assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8'}).trim(),'5.6.0+dd.2');
     try {
       run(['config','--quiet']);
       run(['up','-d','--pull','never','--no-build','--wait','--wait-timeout','30']);
@@ -40,7 +40,7 @@ async function main() {
       assert.equal(run(['exec','-T','fixture','node','-p',"require('fs').readFileSync('/fixture/persisted','utf8')"]).trim(),'across-recreate');
       const ps=JSON.parse(run(['ps','--format','json']).trim());
       assert.equal(ps.State,'running');assert.equal(ps.Health,'healthy');
-      console.log(JSON.stringify({project:${JSON.stringify(project)},image:${JSON.stringify(image)},compose:'5.5.1+dd.1',sha256:hash,checks:['provenance','config','up','health','exec','volume-persistence','restart','recreate','ps']}));
+      console.log(JSON.stringify({project:${JSON.stringify(project)},image:${JSON.stringify(image)},compose:'5.6.0+dd.2',sha256:hash,checks:['provenance','config','up','health','exec','volume-persistence','restart','recreate','ps']}));
     } finally {run(['down','--volumes','--timeout','5']);}`;
   let controller;
   try {

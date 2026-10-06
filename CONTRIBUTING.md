@@ -286,13 +286,12 @@ CodeMirror 6 is bundled from `scripts/vendor/codemirror.mjs`. Browser checks cov
 YAML validation, keyboard editing, forms, read-only and modal disposal. The inventory
 browser gate uses real view routes, auth, CSRF and an ephemeral DB with fixture
 provider data; it does not replace the live-provider release smoke.
-The scoped ioredis-mock peer override is validated by the cluster regression suite;
+The focused in-repo Redis test double is validated by the cluster regression suite;
 production uses ioredis 6 with `protocol: 2` for wire compatibility.
 
-Use npm 11.19.1 (`npm install --global npm@11.19.1 --ignore-scripts`), matching CI
-and the Docker image. This newer security-patched release fixes bundled packages
-still vulnerable in npm's current `latest` tag (12.0.2); revisit the major upgrade
-when its bundled dependencies are patched. npm blocks dependency lifecycle scripts unless
+Use npm 12.2.0 (`npm install --global npm@12.2.0 --ignore-scripts`), matching CI
+and the Docker image. The package manager is pinned because its bundled dependencies
+are included in production image scans. npm blocks dependency lifecycle scripts unless
 listed in `package.json#allowScripts`. Approvals are pinned to reviewed versions,
 and `.npmrc` rejects unreviewed script-bearing packages. Review a changed script
 before running `npm install-scripts approve <package>` during an upgrade.

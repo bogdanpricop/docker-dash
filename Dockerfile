@@ -1,6 +1,5 @@
-FROM golang:1.27.1-alpine AS scanner-build
+FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS scanner-build
 COPY docker/scanners/build.sh /build.sh
-COPY docker/scanners/trivy-json-compat.go /trivy-json-compat.go
 WORKDIR /src/grype
 COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
 RUN sh /build.sh grype
@@ -18,11 +17,10 @@ RUN sh /build-compose.sh
 
 
 ### Base ###
-FROM node:24.21.0-alpine AS base
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS base
 
-# npm 11.19.1 includes security fixes absent from the current npm 12.0.2 bundle.
-# Keep aligned with package.json and CI; reassess when npm 12 ships those fixes.
-RUN npm install --global npm@11.19.1 --ignore-scripts
+# Keep the package manager itself pinned and audited alongside application code.
+RUN npm install --global npm@12.2.0 --ignore-scripts
 
 # SECURITY: Upgrade all Alpine packages to get latest security patches
 RUN apk update && apk upgrade --no-cache
@@ -32,11 +30,11 @@ RUN apk update && apk upgrade --no-cache
 # pull-request previews, and OCI Compose artifacts.
 RUN apk add --no-cache tini curl git openssh-client openssl
 
-# Alpine's Docker CLI 29.5.3 predates the go-archive path traversal fix.
+# Use the verified source build instead of Alpine's independently packaged CLI.
 COPY --from=scanner-build /out/docker-cli /usr/local/bin/docker
 COPY docker/scanners/docker-cli.LICENSE /usr/share/licenses/docker-cli/LICENSE
 
-# Verified upstream Compose 5.5.1 source with patched containerd dependencies.
+# Verified upstream Compose 5.6.0 source with current containerd dependencies.
 # Build provenance is included with the other security rebuilds below.
 COPY --from=scanner-build /out/docker-compose /usr/libexec/docker/cli-plugins/docker-compose
 
@@ -77,7 +75,11 @@ COPY src/ ./src/
 COPY public/ ./public/
 COPY entrypoint.sh ./
 COPY package.json README.md LICENSE CONTRIBUTING.md .env.example .gitignore ./
-RUN mkdir -p /data && chmod +x /app/entrypoint.sh
+# npm is needed only in the dependency stage. Removing it from the runtime image
+# avoids shipping its package graph and reduces the production attack surface.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    && mkdir -p /data \
+    && chmod +x /app/entrypoint.sh
 
 # Version label — read from package.json at build time
 ARG APP_VERSION=unknown

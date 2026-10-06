@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-07",
+  "images": {
+    "dockerDash": {
+      "tag": "docker-dash:8.96.10-secure",
+      "id": "sha256:55ff24b5277fa46b102daaee0111bd3cbe389dca6b66d2b5c2f5576673cd4878",
+      "runtimeNpmPresent": false,
+      "trivyActionableFindings": 0,
+      "grypeActionableFindings": 0
+    },
+    "prometheus": {
+      "tag": "docker-dash-prometheus:3.15.0-dd.4",
+      "id": "sha256:eb1c9ea7216aa911e336fe26e3bdae94eeff9d11be4ca5168f1e94eaf09e5656",
+      "trivyActionableFindings": 0,
+      "grypeActionableFindings": 0
+    },
+    "grafana": {
+      "tag": "docker-dash-grafana:13.2.3-dd.4",
+      "id": "sha256:fd24249d185dd127ac78c698f53f5b9a0d0eb606b54876e6b4cc7372c4c75ab8",
+      "trivyActionableFindings": 0,
+      "grypeActionableFindings": 0
+    }
+  },
+  "versions": {
+    "node": "24.21.0",
+    "npmBuildTool": "12.2.0",
+    "trivy": "0.75.0+dd.2",
+    "grype": "0.120.1+dd.2",
+    "dockerCli": "29.8.2+dd.2",
+    "dockerCompose": "5.6.0+dd.2",
+    "prometheus": "3.15.0+dd.4",
+    "grafana": "13.2.3+dd.4",
+    "go": "1.27.1"
+  },
+  "checks": {
+    "npmAuditVulnerabilities": 0,
+    "npmOutdatedPackages": 0,
+    "productionSmoke": "pass",
+    "composeLifecycleSmoke": "pass",
+    "busyboxPatchChecksums": "pass",
+    "busyboxRegressionTests": "pass",
+    "compiledPackageReachability": "pass"
+  },
+  "nonActionableScannerRecords": {
+    "GO-2026-5932": "openpgp package absent from all compiled package inventories",
+    "mobyDaemonAdvisoriesInGrype": "only API types and client packages are compiled; affected daemon and plugin implementations are absent",
+    "busyboxCpeRecords": "checksum-verified source patches and security regressions are present",
+    "alpineZlibAndBusyboxCpeRecords": "Alpine-aware Trivy scan reports the installed revisions fixed"
+  }
+}

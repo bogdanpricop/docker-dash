@@ -146,7 +146,11 @@ services:
   # See docs/features/observability.md for hardening + integration with
   # existing Prometheus / Grafana installs.
   prometheus:
-    image: prom/prometheus:v3.0.1
+    build:
+      context: .
+      dockerfile: docker/observability/prometheus/Dockerfile
+      target: production
+    image: docker-dash-prometheus:3.15.0-dd.4
     container_name: docker-dash-prometheus
     restart: unless-stopped
     secrets:
@@ -167,11 +171,17 @@ services:
     #   - "${PROMETHEUS_PORT:-9091}:9090"
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     profiles:
       - observability
 
   grafana:
-    image: grafana/grafana:11.3.0
+    build:
+      context: .
+      dockerfile: docker/observability/grafana/Dockerfile
+      target: production
+    image: docker-dash-grafana:13.2.3-dd.4
     container_name: docker-dash-grafana
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/docker-dash-grafana-start.sh"]
@@ -199,6 +209,8 @@ services:
       - prometheus
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     profiles:
       - observability
 

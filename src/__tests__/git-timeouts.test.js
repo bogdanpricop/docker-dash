@@ -51,12 +51,18 @@ describe('git service — per-operation timeouts (v8.7.10)', () => {
   it('build() helper produces the exact shape simple-git expects', () => {
     const opts = _gitTimeouts.build(5000);
     expect(opts).toEqual({ timeout: { block: 5000 },
+      allowEnvironment: ['GIT_TERMINAL_PROMPT', 'GIT_SSH_VARIANT', 'GIT_CONFIG_NOSYSTEM',
+        'GIT_CONFIG_GLOBAL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL',
+        'GIT_SSH_COMMAND', 'GIT_SSL_CAINFO', 'GIT_SSL_NO_VERIFY'],
       unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
   });
 
   it('build() defaults to the fetch timeout when called with no args', () => {
     const opts = _gitTimeouts.build();
     expect(opts).toEqual({ timeout: { block: _gitTimeouts.fetch },
+      allowEnvironment: ['GIT_TERMINAL_PROMPT', 'GIT_SSH_VARIANT', 'GIT_CONFIG_NOSYSTEM',
+        'GIT_CONFIG_GLOBAL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL',
+        'GIT_SSH_COMMAND', 'GIT_SSL_CAINFO', 'GIT_SSL_NO_VERIFY'],
       unsafe: { allowUnsafeSshCommand: true, allowUnsafeConfigPaths: true } });
   });
 

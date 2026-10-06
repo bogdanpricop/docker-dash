@@ -68,8 +68,8 @@ async function main() {
       })().catch(error=>{console.error(error);process.exitCode=1;});`);
     console.log('PASS built HTTP server shares API quota across paths/case while health remains available');
     await execute(container, `const cp=require('child_process'),assert=require('assert/strict');
-      assert.match(cp.execFileSync('docker',['--version'],{encoding:'utf8',timeout:10000}),/Docker version 29\\.7\\.2\\+dd\\.1,/);
-      assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.5.1+dd.1');
+      assert.match(cp.execFileSync('docker',['--version'],{encoding:'utf8',timeout:10000}),/Docker version 29\\.8\\.2\\+dd\\.2,/);
+      assert.equal(cp.execFileSync('docker',['compose','version','--short'],{encoding:'utf8',timeout:10000}).trim(),'5.6.0+dd.2');
       const input='services:\\n  smoke:\\n    image: alpine:3.24\\n    read_only: true\\n    cap_drop: [ALL]\\n';
       const result=JSON.parse(cp.execFileSync('docker',['compose','-f','-','config','--format','json'],{input,encoding:'utf8',timeout:10000}));
       assert.equal(result.services.smoke.read_only,true);assert.deepEqual(result.services.smoke.cap_drop,['ALL']);
@@ -77,7 +77,7 @@ async function main() {
     console.log('PASS pinned Compose plugin parses configuration offline and curl health probe succeeds');
     await execute(container, `
       const assert=require('node:assert/strict'),fs=require('node:fs'),{Server,utils}=require('ssh2');
-      const git=require('simple-git'),{createSession}=require('./src/utils/git-ssh');
+      const {simpleGit:git}=require('simple-git'),{createSession}=require('./src/utils/git-ssh');
       const {generateKeyPair}=require('./src/services/ssh-keygen');
       const host=generateKeyPair({type:'ed25519'}),identity=generateKeyPair({type:'ed25519'});
       const expected=utils.parseKey(identity.privateKey),clients=new Set();let auth=0,commands=0;
@@ -104,7 +104,10 @@ async function main() {
             try{
               assert.equal(fs.statSync(session.directory).mode&0o777,0o700);
               assert.equal(fs.statSync(session.directory+'/identity').mode&0o777,0o600);
-              const probe=git({timeout:{block:15000},unsafe:{allowUnsafeSshCommand:true,allowUnsafeConfigPaths:true}})
+              const probe=git({timeout:{block:15000},allowEnvironment:['GIT_TERMINAL_PROMPT','GIT_SSH_VARIANT',
+                'GIT_CONFIG_NOSYSTEM','GIT_CONFIG_GLOBAL','GIT_COMMITTER_NAME','GIT_COMMITTER_EMAIL',
+                'GIT_SSH_COMMAND','GIT_SSL_CAINFO','GIT_SSL_NO_VERIFY'],
+                unsafe:{allowUnsafeSshCommand:true,allowUnsafeConfigPaths:true}})
                 .env(session.env).listRemote(['--heads',url]);
               if(trusted){assert.equal(await probe,'');assert.ok(auth>0);assert.equal(commands,1);}
               else{await assert.rejects(probe,/HOST IDENTIFICATION HAS CHANGED/);assert.equal(auth,0);assert.equal(commands,0);}

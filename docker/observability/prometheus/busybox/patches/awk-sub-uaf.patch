@@ -1,0 +1,30 @@
+diff --git a/editors/awk.c b/editors/awk.c
+index f15832b..8a51827 100644
+--- a/editors/awk.c
++++ b/editors/awk.c
+@@ -2555,6 +2555,7 @@ static char *awk_printf(node *n, size_t *len)
+ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,int subexp*/)
+ {
+ 	char *resbuf;
++	char *repl_copy;
+ 	const char *sp;
+ 	int match_no, residx, replen, resbufsize;
+ 	int regexec_flags;
+@@ -2572,7 +2573,9 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,in
+ 	resbuf = NULL;
+ 	residx = 0;
+ 	match_no = 0;
++	repl_copy = xstrdup(repl);
+ 	regex = as_regex(rn, &sreg);
++	repl = repl_copy;
+ 	sp = getvar_s(src ? src : intvar[F0]);
+ #if defined(REG_STARTEND)
+ 	src_string = sp;
+@@ -2662,6 +2665,7 @@ static int awk_sub(node *rn, const char *repl, int nm, var *src, var *dest /*,in
+ 	setvar_p(dest ? dest : intvar[F0], resbuf);
+ 	if (regex == &sreg)
+ 		regfree(regex);
++	free(repl_copy);
+ 	return match_no;
+ }
+ 
