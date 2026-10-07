@@ -751,8 +751,8 @@ All config via environment variables. See [`.env.example`](.env.example) for the
 ## Development
 
 ```bash
-# Install dependencies
-npm install
+# Install the locked dependency tree and reject unreviewed lifecycle scripts
+npm ci --strict-allow-scripts
 
 # Start in development mode (auto-reload on file changes)
 npm run dev

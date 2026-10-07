@@ -55,6 +55,20 @@ All notable changes to Docker Dash are documented here.
   members. Commit mutations, mapping changes and HTTP audit together; remove group
   ownership mappings on deletion. [Evidence and compatibility](docs/audits/2026-09-20-scim-security.md).
 
+## [8.96.13] - 2026-10-07 — Toolchain and HTTPS image refresh
+
+- Align local, Docker and CI installs on npm 12.2.0 and require the reviewed
+  lifecycle-script allowlist for every dependency install. Add an automated check
+  that rejects drift in the Node.js, npm, Docker and CI pins.
+- Upgrade the custom Caddy image to 2.11.7, pin all base images and nine DNS
+  provider modules, and publish only after amd64/arm64 smoke tests plus Trivy and
+  Grype gates. The 22 MB runtime supports a read-only filesystem, drops every
+  capability and uses `no-new-privileges`.
+- Pin generated Caddy deployment recipes to the verified image and preserve the
+  HA Redis `noeviction` policy when regenerating static examples.
+- Record dependency, image, reachability and deployment evidence in the
+  [2026-10-07 security refresh](docs/audits/2026-10-07-security-refresh.md).
+
 ## [8.96.10] - 2026-09-20 — External identities and personal credentials (deployment candidate)
 
 Private candidate incorporating the fixes below and the preceding 8.96.9 changes.

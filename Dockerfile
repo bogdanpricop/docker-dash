@@ -47,7 +47,7 @@ COPY --from=scanner-build /out/*.txt /out/*.json /out/*.sha256 /out/*.LICENSE /o
 # a security rebuild. See docs/audits/2026-09-20-scout-exclusion.md.
 
 WORKDIR /app
-COPY package*.json .npmrc ./
+COPY package*.json ./
 ENV NODE_ENV=production
 
 ### Development ###
@@ -56,7 +56,7 @@ ENV NODE_ENV=development
 # The development image provides source bind mounts + node --watch at runtime.
 # Test-only native packages (notably canvas) need a full compiler toolchain and
 # are intentionally kept in CI/local test environments, not this runtime image.
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --strict-allow-scripts
 COPY . .
 RUN mkdir -p /data
 EXPOSE 8101
@@ -66,7 +66,7 @@ CMD ["node", "--watch", "src/server.js"]
 ### Production dependencies ###
 FROM base AS deps
 # Install the audited, reproducible production dependency tree.
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --strict-allow-scripts
 
 ### Production ###
 FROM base AS production

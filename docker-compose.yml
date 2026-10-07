@@ -5,8 +5,8 @@ services:
       dockerfile: Dockerfile
       target: production
       args:
-        APP_VERSION: "${APP_VERSION:-8.96.12}"
-    image: docker-dash:${APP_VERSION:-8.96.12}
+        APP_VERSION: "${APP_VERSION:-8.96.13}"
+    image: docker-dash:${APP_VERSION:-8.96.13}
     container_name: docker-dash
     restart: unless-stopped
     env_file:
@@ -61,7 +61,7 @@ services:
         condition: service_completed_successfully
     build:
       context: ./docker/egress-filter
-    image: docker-dash-egress-filter:${APP_VERSION:-8.96.12}
+    image: docker-dash-egress-filter:${APP_VERSION:-8.96.13}
     container_name: dd-egress-filter
     restart: unless-stopped
     # Uses the default bridge so target containers on the default bridge can
@@ -223,7 +223,9 @@ services:
   # Optional HTTPS reverse proxy — enable with: docker compose --profile tls up -d
   # Configure via Docker Dash UI: System → SSL/TLS → Enable HTTPS
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ./docker/caddy
+    image: ghcr.io/bogdanpricop/docker-dash-caddy:${CADDY_IMAGE_TAG:-2.11.7}
     container_name: docker-dash-caddy
     restart: unless-stopped
     ports:
@@ -236,9 +238,21 @@ services:
       - caddy-config:/config
       # Bootstrap Caddyfile — used when no Caddyfile has been configured yet
       - ./caddy-bootstrap:/bootstrap:ro
-    command: sh -c '[ -f /data/certs/Caddyfile ] || cp /bootstrap/Caddyfile.default /data/certs/Caddyfile; exec caddy run --config /data/certs/Caddyfile --adapter caddyfile'
+    command: sh -c 'if [ -f /data/certs/Caddyfile ]; then exec caddy run --config /data/certs/Caddyfile --adapter caddyfile; else exec caddy run --config /bootstrap/Caddyfile.default --adapter caddyfile; fi'
     depends_on:
       - app
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     profiles:
       - tls
 

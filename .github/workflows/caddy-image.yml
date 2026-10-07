@@ -30,7 +30,11 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/docker-dash-caddy
-  CADDY_VERSION: '2.11.4'
+  CADDY_VERSION: '2.11.7'
+  CADDY_BUILDER_DIGEST: 'sha256:80331d37e7d4d230f186f2707079e279f32552924f101ee659e8cae9f9877c26'
+  CADDY_RUNTIME_DIGEST: 'sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f'
+  ALPINE_RUNTIME_VERSION: '3.24'
+  ALPINE_RUNTIME_DIGEST: 'sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6'
 
 jobs:
   build:
@@ -64,13 +68,105 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ env.CADDY_VERSION }},enable={{is_default_branch}}
-            type=raw,value=6.5,enable={{is_default_branch}}
+            type=raw,value=latest
+            type=raw,value=${{ env.CADDY_VERSION }}
+            type=raw,value=6.5
             type=ref,event=branch
             type=sha,format=short
 
-      - name: Build and (optionally) push
+      - name: Build amd64 candidate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker/caddy
+          file: docker/caddy/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: docker-dash-caddy:ci-amd64
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            CADDY_VERSION=${{ env.CADDY_VERSION }}
+            CADDY_BUILDER_DIGEST=${{ env.CADDY_BUILDER_DIGEST }}
+            CADDY_RUNTIME_DIGEST=${{ env.CADDY_RUNTIME_DIGEST }}
+            ALPINE_RUNTIME_VERSION=${{ env.ALPINE_RUNTIME_VERSION }}
+            ALPINE_RUNTIME_DIGEST=${{ env.ALPINE_RUNTIME_DIGEST }}
+
+      - name: Smoke test (amd64) — verify all 9 DNS plugins loaded
+        run: |
+          set -e
+          MODULES=$(docker run --rm --network none --cap-drop=ALL \
+            --security-opt=no-new-privileges docker-dash-caddy:ci-amd64 \
+            caddy list-modules 2>/dev/null | grep dns.providers || true)
+          echo "amd64 DNS providers loaded:"
+          echo "$MODULES"
+          for p in cloudflare route53 digitalocean hetzner linode namecheap gandi porkbun ovh; do
+            echo "$MODULES" | grep -q "dns.providers.$p" || { echo "MISSING amd64 plugin: $p"; exit 1; }
+          done
+          echo "✓ amd64 — all 9 plugins present"
+
+      - name: Scan amd64 candidate with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: docker-dash-caddy:ci-amd64
+          version: v0.75.0
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: 1
+
+      - name: Scan amd64 candidate with Grype
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: docker-dash-caddy:ci-amd64
+          grype-version: v0.120.1
+          output-format: table
+          severity-cutoff: high
+          only-fixed: false
+          fail-build: true
+
+      - name: Verify image size is reasonable (<250 MB)
+        run: |
+          SIZE=$(docker image inspect docker-dash-caddy:ci-amd64 --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB} MB"
+          [ $SIZE_MB -lt 250 ] || { echo "Image too large (${SIZE_MB}MB > 250MB target)"; exit 1; }
+          echo "✓ Image size within budget"
+
+      - name: Build arm64 candidate
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: docker/caddy
+          file: docker/caddy/Dockerfile
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: docker-dash-caddy:ci-arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          build-args: |
+            CADDY_VERSION=${{ env.CADDY_VERSION }}
+            CADDY_BUILDER_DIGEST=${{ env.CADDY_BUILDER_DIGEST }}
+            CADDY_RUNTIME_DIGEST=${{ env.CADDY_RUNTIME_DIGEST }}
+            ALPINE_RUNTIME_VERSION=${{ env.ALPINE_RUNTIME_VERSION }}
+            ALPINE_RUNTIME_DIGEST=${{ env.ALPINE_RUNTIME_DIGEST }}
+
+      - name: Smoke test (arm64) — verify all 9 DNS plugins loaded
+        run: |
+          set -e
+          MODULES=$(docker run --rm --platform linux/arm64 --network none \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            docker-dash-caddy:ci-arm64 caddy list-modules 2>/dev/null \
+            | grep dns.providers || true)
+          echo "arm64 DNS providers loaded:"
+          echo "$MODULES"
+          for p in cloudflare route53 digitalocean hetzner linode namecheap gandi porkbun ovh; do
+            echo "$MODULES" | grep -q "dns.providers.$p" || { echo "MISSING arm64 plugin: $p"; exit 1; }
+          done
+          echo "✓ arm64 — all 9 plugins present"
+
+      - name: Build and optionally publish verified multi-arch image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: docker/caddy
@@ -83,38 +179,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             CADDY_VERSION=${{ env.CADDY_VERSION }}
-
-      - name: Smoke test (amd64) — verify all 5 DNS plugins loaded
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.push_to_ghcr == 'true'
-        run: |
-          set -e
-          docker pull --platform linux/amd64 ${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}
-          MODULES=$(docker run --rm --platform linux/amd64 ${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }} caddy list-modules 2>/dev/null | grep dns.providers || true)
-          echo "amd64 DNS providers loaded:"
-          echo "$MODULES"
-          for p in cloudflare route53 digitalocean hetzner linode; do
-            echo "$MODULES" | grep -q "dns.providers.$p" || { echo "MISSING amd64 plugin: $p"; exit 1; }
-          done
-          echo "✓ amd64 — all 5 plugins present"
-
-      - name: Smoke test (arm64) — verify all 5 DNS plugins loaded
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.push_to_ghcr == 'true'
-        run: |
-          set -e
-          docker pull --platform linux/arm64 ${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }}
-          MODULES=$(docker run --rm --platform linux/arm64 ${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }} caddy list-modules 2>/dev/null | grep dns.providers || true)
-          echo "arm64 DNS providers loaded:"
-          echo "$MODULES"
-          for p in cloudflare route53 digitalocean hetzner linode; do
-            echo "$MODULES" | grep -q "dns.providers.$p" || { echo "MISSING arm64 plugin: $p"; exit 1; }
-          done
-          echo "✓ arm64 — all 5 plugins present"
-
-      - name: Verify image size is reasonable (<250 MB)
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.push_to_ghcr == 'true'
-        run: |
-          SIZE=$(docker image inspect ${{ env.IMAGE_NAME }}:${{ env.CADDY_VERSION }} --format='{{.Size}}')
-          SIZE_MB=$((SIZE / 1024 / 1024))
-          echo "Image size: ${SIZE_MB} MB"
-          [ $SIZE_MB -lt 250 ] || { echo "Image too large (${SIZE_MB}MB > 250MB target)"; exit 1; }
-          echo "✓ Image size within budget"
+            CADDY_BUILDER_DIGEST=${{ env.CADDY_BUILDER_DIGEST }}
+            CADDY_RUNTIME_DIGEST=${{ env.CADDY_RUNTIME_DIGEST }}
+            ALPINE_RUNTIME_VERSION=${{ env.ALPINE_RUNTIME_VERSION }}
+            ALPINE_RUNTIME_DIGEST=${{ env.ALPINE_RUNTIME_DIGEST }}
