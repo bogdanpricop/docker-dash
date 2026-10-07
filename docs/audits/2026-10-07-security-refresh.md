@@ -116,3 +116,9 @@ the LAN host and VPS; the remaining `192.168.12.40` host stays fail-closed until
 its fingerprint is verified out of band. Audit retention was raised from 7 to 90
 days on both deployments.
 
+The LAN Caddy sidecar now runs the verified 2.11.7 image on port 8443 with its
+existing certificate volumes, a read-only root filesystem, every capability
+dropped, `no-new-privileges`, and bounded JSON logs. Its operator-owned Caddyfile
+still contains the `YOUR_HOST` placeholder, so a real LAN hostname remains an
+operator configuration requirement for a usable hostname-verified TLS endpoint.
+

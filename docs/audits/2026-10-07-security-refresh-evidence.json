@@ -59,6 +59,8 @@
     "persistedBootstrapSecretMode": "0600",
     "staleBootstrapSecretBackupsRemoved": true,
     "auditRetentionDays": 90,
+    "lanCaddyRuntime": "2.11.7; read-only; cap-drop ALL; no-new-privileges; port 8443",
+    "lanCaddyHostname": "YOUR_HOST placeholder; operator configuration required",
     "vpsPublishedPorts": "loopback-only"
   },
   "nonActionableScannerRecords": {
