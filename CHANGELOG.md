@@ -62,6 +62,9 @@ All notable changes to Docker Dash are documented here.
   that rejects drift in the Node.js, npm, Docker and CI pins.
 - Run Puppeteer smoke checks without Chromium's unavailable process sandbox only
   on isolated CI runners; local browser checks keep the normal sandbox.
+- Classify missing Caddy configuration by its structured HTTP status instead of
+  matching `404` anywhere in an error message, so socket failures cannot be
+  silently treated as an absent configuration path.
 - Upgrade the custom Caddy image to 2.11.7, pin all base images and nine DNS
   provider modules, and publish only after amd64/arm64 smoke tests plus Trivy and
   Grype gates. The 22 MB runtime supports a read-only filesystem, drops every
