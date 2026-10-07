@@ -34,6 +34,16 @@ evidence hashes are respectively
 and `cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095`.
 The reviewed-artifact registry and the narrowly scoped OpenPGP applicability
 entry are bound to this exact binary; the prior 5.5.1 hash is historical only.
+The same deployed-image/build-candidate comparison produced these current binary
+hashes for the other source builds:
+
+- Docker CLI 29.8.2+dd.2: `ce66dc156c240d9d64cbba1e7d983f26be3a15b627277f8bb0755773fe5fad35`
+- Trivy 0.75.0+dd.2: `a613fc946626628b6e62bf682c89527f2acfd5eb4d5249a0ab68c88702bf20a7`
+- Grype 0.120.1+dd.2: `42affbaa745caadd72e2827a13a130968eed4311147fa7b216328e783082fb89`
+
+Their compiled-package, build-info and module-source hashes are pinned in
+`docker/scanners/reviewed-artifacts.json` and are re-hashed from the installed
+files by the final image gate.
 
 The Go and Node base image indexes are pinned by digest. Docker CLI 29.8.2 is
 built from its verified module source using its upstream `vendor.mod` dependency
