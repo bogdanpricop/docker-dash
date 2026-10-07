@@ -96,6 +96,9 @@ jobs:
       - name: Smoke test (amd64) — verify all 9 DNS plugins loaded
         run: |
           set -e
+          docker run --rm --network none --cap-drop=ALL \
+            --security-opt=no-new-privileges docker-dash-caddy:ci-amd64 \
+            sh -c 'command -v tee >/dev/null'
           MODULES=$(docker run --rm --network none --cap-drop=ALL \
             --security-opt=no-new-privileges docker-dash-caddy:ci-amd64 \
             caddy list-modules 2>/dev/null | grep dns.providers || true)
@@ -155,6 +158,9 @@ jobs:
       - name: Smoke test (arm64) — verify all 9 DNS plugins loaded
         run: |
           set -e
+          docker run --rm --platform linux/arm64 --network none \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            docker-dash-caddy:ci-arm64 sh -c 'command -v tee >/dev/null'
           MODULES=$(docker run --rm --platform linux/arm64 --network none \
             --cap-drop=ALL --security-opt=no-new-privileges \
             docker-dash-caddy:ci-arm64 caddy list-modules 2>/dev/null \

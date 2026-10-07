@@ -59,10 +59,11 @@ remaining scanner records are accounted for below.
 
 The custom Caddy image is a 22 MB minimal runtime containing the statically
 linked Caddy binary, CA roots, MIME types, and only the BusyBox/musl files needed
-by the Compose bootstrap command. Caddy 2.11.7 and all nine DNS providers are
-pinned. It passed an HTTP smoke test with a read-only root filesystem, every
-capability dropped, and `no-new-privileges`; both scanners report zero actionable
-HIGH or CRITICAL findings.
+by the Compose bootstrap and internal-CA paths. Caddy 2.11.7 and all nine DNS
+providers are pinned. It passed HTTP and internal-TLS reverse-proxy smoke tests
+with a read-only root filesystem, every capability dropped, and
+`no-new-privileges`; both scanners report zero actionable HIGH or CRITICAL
+findings.
 
 ### Go module reachability
 

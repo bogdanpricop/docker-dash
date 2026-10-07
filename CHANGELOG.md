@@ -63,7 +63,8 @@ All notable changes to Docker Dash are documented here.
 - Upgrade the custom Caddy image to 2.11.7, pin all base images and nine DNS
   provider modules, and publish only after amd64/arm64 smoke tests plus Trivy and
   Grype gates. The 22 MB runtime supports a read-only filesystem, drops every
-  capability and uses `no-new-privileges`.
+  capability, uses `no-new-privileges`, and retains the minimal BusyBox command
+  surface required by Caddy's internal-CA bootstrap.
 - Pin generated Caddy deployment recipes to the verified image and preserve the
   HA Redis `noeviction` policy when regenerating static examples.
 - Record dependency, image, reachability and deployment evidence in the

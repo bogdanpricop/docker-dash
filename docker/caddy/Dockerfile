@@ -55,6 +55,7 @@ RUN apk update && apk upgrade --no-cache \
   && cp -a /lib/ld-musl-*.so.1 /rootfs/lib/ \
   && ln -s busybox /rootfs/bin/sh \
   && ln -s busybox /rootfs/bin/cp \
+  && ln -s busybox /rootfs/bin/tee \
   && cp /etc/ssl/certs/ca-certificates.crt /rootfs/etc/ssl/certs/ca-certificates.crt \
   && cp /etc/mime.types /rootfs/etc/mime.types \
   && chmod 1777 /rootfs/config/caddy /rootfs/data/caddy

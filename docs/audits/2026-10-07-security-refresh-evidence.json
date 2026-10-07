@@ -22,8 +22,8 @@
     },
     "caddy": {
       "tag": "docker-dash-caddy:2.11.7-audit",
-      "id": "sha256:c19aca5449281e9b964dc68a344726b5dd734556f603c3925b604f9c81b99654",
-      "sizeBytes": 22001725,
+      "id": "sha256:40595264b3f5fd2f10a1e945a2f917a93d54bea17e9f5ba739b64c27c9ef2943",
+      "sizeBytes": 22001729,
       "dnsProviders": 9,
       "trivyActionableFindings": 0,
       "grypeActionableFindings": 0
@@ -48,6 +48,7 @@
     "toolchainPinConsistency": "pass",
     "productionSmoke": "pass",
     "composeLifecycleSmoke": "pass",
+    "caddyInternalTlsSmoke": "pass",
     "busyboxPatchChecksums": "pass",
     "busyboxRegressionTests": "pass",
     "compiledPackageReachability": "pass",
