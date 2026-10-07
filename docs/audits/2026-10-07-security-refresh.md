@@ -128,14 +128,18 @@ published plugin embeds vulnerable dependencies and no corresponding plugin
 source is available for a verified rebuild.
 
 The 8.96.13 deployment runs with a read-only root filesystem, all capabilities
-dropped and `no-new-privileges` on both the LAN host and VPS. VPS application and
-Grafana ports bind only to loopback. Persisted bootstrap secrets use mode 0600,
-stale plaintext backup copies were removed, and the LAN encryption key was
-restored from the last release proven to decrypt all three stored SSH host
-configurations. Fingerprints from already trusted OpenSSH records were pinned for
-the LAN host and VPS; the remaining `192.168.12.40` host stays fail-closed until
-its fingerprint is verified out of band. Audit retention was raised from 7 to 90
-days on both deployments.
+dropped and `no-new-privileges` on both the LAN host and VPS. Grafana remains bound
+to VPS loopback. On 7 October 2026 the operator explicitly restored direct VPS
+access to Docker Dash at `http://89.37.212.66:8101`; the app port therefore binds
+to `0.0.0.0:8101` and UFW allows TCP/8101. The public root and health endpoint were
+verified after the app-only recreation. This direct endpoint is plain HTTP and
+cannot use Secure cookies; migrate it behind an approved HTTPS hostname when one
+is available. Persisted bootstrap secrets use mode 0600, stale plaintext backup
+copies were removed, and the LAN encryption key was restored from the last release
+proven to decrypt all three stored SSH host configurations. Fingerprints from
+already trusted OpenSSH records were pinned for the LAN host and VPS; the remaining
+`192.168.12.40` host stays fail-closed until its fingerprint is verified out of
+band. Audit retention was raised from 7 to 90 days on both deployments.
 
 The LAN Caddy sidecar now runs the verified 2.11.7 image on port 8443 with its
 existing certificate volumes, a read-only root filesystem, every capability
