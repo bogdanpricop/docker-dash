@@ -1,22 +1,24 @@
 # Security Policy
 
-The authentication, MFA, credential and session fixes below are bundled in the
-[8.96.10 deployment candidate](docs/audits/2026-09-20-image-8.96.10.md). Both live
-instances remain on 8.96.8. Candidate image findings and the account-email URL
-clarification remain open; the candidate is not publicly published.
+The authentication, MFA, credential and session fixes below are included in
+8.96.13 and deployed on both verified installations. The current production-image,
+dependency and runtime-hardening evidence is recorded in the
+[2026-10-07 security refresh](docs/audits/2026-10-07-security-refresh.md). The
+[8.96.10 candidate report](docs/audits/2026-09-20-image-8.96.10.md) remains as
+historical evidence for the earlier build.
 
-The subsequent [SCIM authorization correction](docs/audits/2026-09-20-scim-security.md)
-is not in that candidate. SCIM requires global service tokens with explicit scim.read/scim.write
+The [SCIM authorization correction](docs/audits/2026-09-20-scim-security.md) is
+included in 8.96.13. SCIM requires global service tokens with explicit scim.read/scim.write
 scopes and no longer exposes or adopts unmanaged local users/teams. Tenant-scoped
 tokens are refused rather than treated as global. Mutations, ownership mappings and
 HTTP audit commit atomically; audit failure returns 500 and rolls the operation back.
 Existing SCIM ownership records still require review; historical unauthorized changes
 cannot be reconstructed automatically. SCIM-to-OIDC linking remains unsupported.
 
-## Subsequent workload and service credential corrections (not yet bundled)
+## Workload and service credential corrections
 
-The subsequent [workload replay correction](docs/audits/2026-09-20-workload-replay-security.md)
-is also outside the built candidate. Migration 183 revokes previously issued workload
+The [workload replay correction](docs/audits/2026-09-20-workload-replay-security.md)
+is included in 8.96.13. Migration 183 revokes previously issued workload
 tokens and their rotation descendants. Active legacy replay history requires proofs
 issued after the migration timestamp plus 60 seconds; the issuer must obtain a new
 proof (up to 61 seconds before an integer iat exceeds this cutoff). Manual tokens
@@ -57,10 +59,11 @@ monitoring.read/api.read service credentials or administrators (sessions or read
 keys) can access them. Tenant credentials and restricted users are refused; no-store
 also covers denied requests. `/api/health` retains its public liveness/role metadata.
 Prometheus now requires a mounted credential file and renewal before expiry. These
-changes are not yet bundled or live. Existing user/team RBAC elsewhere still needs
-its applicable controls; this does not certify complete project security.
+changes are included in 8.96.13 and are active on both verified deployments.
+Existing user/team RBAC elsewhere still needs its applicable controls; this does not
+certify every external identity-provider or tenant integration.
 
-## OIDC and personal credentials (included in the 8.96.10 candidate)
+## OIDC and personal credentials
 
 The [OIDC transport follow-up](docs/audits/2026-09-20-oidc-transport.md) caps each
 upstream request at 10 seconds, 1 MiB body and 16 KiB headers. At most eight requests
@@ -79,7 +82,7 @@ past password changes cannot be reconstructed. Expiry and permission parsing fai
 closed. Keys obey required password changes and local password age, interpreted in
 UTC with creation time as the initial password age. Key creation/revocation requires
 user authentication and writable mode. Creation and audit commit together; revocation
-stays effective if its audit fails (HTTP 500). These fixes are included in 8.96.10.
+stays effective if its audit fails (HTTP 500). These fixes are included in 8.96.13.
 
 The [group authorization follow-up](docs/audits/2026-09-20-oidc-group-revocation.md)
 treats an empty group list as authoritative and applies the configured default role.
@@ -115,9 +118,9 @@ Only the most recent login started in the same browser cookie scope can complete
 In-flight logins from before the update must restart. Existing sessions are not
 revoked by this change. Provider errors are not reflected in HTTP responses.
 See [OIDC evidence and remaining boundaries](docs/audits/2026-09-20-oidc-browser-binding.md).
-The existing 8.96.9 candidate must be rebuilt before these changes can be deployed.
+These changes are included in the deployed 8.96.13 image.
 
-## MFA replay and attempt limits (pending deployment)
+## MFA replay and attempt limits
 
 Migration 180 records the last accepted TOTP counter and MFA failure/cooldown state.
 Enrollment, login and privileged step-up share one counter boundary. A challenge
@@ -133,7 +136,7 @@ after upgrade because pre-upgrade code acceptance was not recorded. Replacing th
 authenticator secret resets its replay/cooldown state. See the
 [MFA verification audit](docs/audits/2026-09-20-mfa-replay-and-attempts.md).
 
-## Credential lifecycle (pending deployment)
+## Credential lifecycle
 
 Migration 179 adds a credential version checked after asynchronous password/LDAP
 verification and before session/challenge issuance. Database triggers revoke pending
@@ -148,7 +151,7 @@ apply the writeable policy gate. Migration 179 clears pre-upgrade pending MFA
 challenges, requiring those users to repeat login; established sessions are preserved
 by the migration itself. See [evidence and limits](docs/audits/2026-09-20-auth-credential-lifecycle.md).
 
-## Established WebSocket sessions (pending deployment)
+## Established WebSocket sessions
 
 The shared `/ws` endpoint revalidates its session digest before messages and
 outbound data, after asynchronous stream startup and on a five-second idle sweep.
@@ -168,7 +171,7 @@ spinning until their deadline. See the [provider-console audit](docs/audits/2026
 Provider adapters are mocked in these lifecycle canaries; real hypervisor console
 compatibility, sustained throughput and queue/backpressure limits remain open.
 
-## Authentication expiry (pending deployment)
+## Authentication expiry
 
 Session, MFA challenge and OIDC state expiry is compared as parsed instants rather
 than mixed-format strings. Invalid expiry values are refused. Login lockout and
@@ -179,7 +182,7 @@ See [verification and open boundaries](docs/audits/2026-09-20-auth-expiry.md).
 The follow-up WebSocket checkpoints above add revalidation for the shared `/ws`
 endpoint and the separate provider-console endpoint.
 
-## Account recovery hardening (pending deployment)
+## Account recovery hardening
 
 Reset and invitation emails use the configured `PUBLIC_URL`, falling back to
 `BASE_URL`. Configure the address users can reach, preferably HTTPS; the browser
@@ -201,12 +204,13 @@ generic response, so that response is not a delivery guarantee. Admin-triggered
 email remains authenticated and synchronous. This change does not certify the
 broader recovery flow or the deployment's transport security.
 
-## Audit 2026-09-19 (working tree, pending release)
+## Audit 2026-09-19 (historical baseline)
 
-See [the audit report](docs/audits/2026-09-19-project-security.md) for changes,
-validation evidence, dependency exceptions and deployment checks still required.
-The historical audit entries below describe their original releases, not the
-current vulnerability state. A clean dependency scan is not a security guarantee.
+See [the audit report](docs/audits/2026-09-19-project-security.md) for the baseline
+changes, validation evidence, dependency exceptions and original deployment checks.
+The historical audit entries below describe their original releases, not the current
+vulnerability state. Current evidence is in the 2026-10-07 refresh linked above. A
+clean dependency scan is not a security guarantee.
 
 Outbound HTTPS/SMTP connections now verify certificates. For internal PKI, set
 `NODE_EXTRA_CA_CERTS` to a PEM CA bundle readable inside the container; mount the
