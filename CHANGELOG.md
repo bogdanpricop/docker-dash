@@ -60,6 +60,8 @@ All notable changes to Docker Dash are documented here.
 - Align local, Docker and CI installs on npm 12.2.0 and require the reviewed
   lifecycle-script allowlist for every dependency install. Add an automated check
   that rejects drift in the Node.js, npm, Docker and CI pins.
+- Run Puppeteer smoke checks without Chromium's unavailable process sandbox only
+  on isolated CI runners; local browser checks keep the normal sandbox.
 - Upgrade the custom Caddy image to 2.11.7, pin all base images and nine DNS
   provider modules, and publish only after amd64/arm64 smoke tests plus Trivy and
   Grype gates. The 22 MB runtime supports a read-only filesystem, drops every

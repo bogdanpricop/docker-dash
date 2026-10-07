@@ -5,6 +5,7 @@ const path = require('node:path');
 const express = require('express');
 const helmet = require('helmet');
 const puppeteer = require('puppeteer');
+const puppeteerLaunchOptions = require('./puppeteer-launch-options');
 
 async function main() {
   const app = express();
@@ -19,7 +20,7 @@ async function main() {
   });
   let browser;
   try {
-    browser = await puppeteer.launch({ headless: true });
+    browser = await puppeteer.launch(puppeteerLaunchOptions());
     const page = await browser.newPage();
     const failures = [];
     page.on('pageerror', error => failures.push(error.message));

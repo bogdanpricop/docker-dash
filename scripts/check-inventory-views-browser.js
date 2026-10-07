@@ -14,6 +14,7 @@ Object.assign(process.env, {
 const express = require('express');
 const helmet = require('helmet');
 const puppeteer = require('puppeteer');
+const puppeteerLaunchOptions = require('./puppeteer-launch-options');
 const { getDb, closeDb } = require('../src/db');
 const { requireAuth } = require('../src/middleware/auth');
 const config = require('../src/config');
@@ -61,7 +62,7 @@ async function main() {
   });
   let browser;
   try {
-    browser = await puppeteer.launch({ headless: true });
+    browser = await puppeteer.launch(puppeteerLaunchOptions());
     const page = await browser.newPage();
     await page.setViewport({ width: 1500, height: 1000 });
     const errors = [];
