@@ -69,7 +69,9 @@ All notable changes to Docker Dash are documented here.
   provider modules, and publish only after amd64/arm64 smoke tests plus Trivy and
   Grype gates. The 22 MB runtime supports a read-only filesystem, drops every
   capability, uses `no-new-privileges`, and retains the minimal BusyBox command
-  surface required by Caddy's internal-CA bootstrap.
+  surface required by Caddy's internal-CA bootstrap. Cross-compile the Caddy
+  binary on the native builder architecture so arm64 verification does not spend
+  tens of minutes compiling Go under emulation.
 - Pin generated Caddy deployment recipes to the verified image and preserve the
   HA Redis `noeviction` policy when regenerating static examples.
 - Record dependency, image, reachability and deployment evidence in the

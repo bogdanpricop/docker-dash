@@ -3,7 +3,8 @@
   "images": {
     "dockerDash": {
       "tag": "docker-dash:8.96.13-secure",
-      "id": "sha256:6c4773456d1d9c89a9b6a75ed2d05cb54bef7836c1bb24cd858781d0ac631294",
+      "id": "sha256:77c46c0779bb2f57384c5156fdb9fcef3ab2b4187e3f8e1dec27724c815ee2cc",
+      "sourceCommit": "940ff1de3777a0527f28ddbf9b2e57ea1b647c42",
       "runtimeNpmPresent": false,
       "trivyActionableFindings": 0,
       "grypeActionableFindings": 0

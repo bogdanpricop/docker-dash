@@ -22,14 +22,17 @@ ARG CADDY_RUNTIME_DIGEST=sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f43
 ARG ALPINE_RUNTIME_VERSION=3.24
 ARG ALPINE_RUNTIME_DIGEST=sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
-FROM caddy:${CADDY_VERSION}-builder@${CADDY_BUILDER_DIGEST} AS builder
+FROM --platform=$BUILDPLATFORM caddy:${CADDY_VERSION}-builder@${CADDY_BUILDER_DIGEST} AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 # Allow auto-download of newer Go toolchain when plugins require a newer Go
 # than the builder's bundled version. Required for route53@v1.6.0 (needs Go 1.25)
 # and linode@v0.8.0 (also Go 1.25).
 ENV GOTOOLCHAIN=auto
 
-RUN xcaddy build \
+RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} xcaddy build \
   --with github.com/caddy-dns/cloudflare@v0.2.4 \
   --with github.com/caddy-dns/route53@v1.6.2 \
   --with github.com/caddy-dns/digitalocean@v0.0.0-20250606074528-04bde2867106 \
