@@ -87,9 +87,12 @@ const SystemPage = {
       : (hosts || []).find(host => host.isDefault);
     const isAdmin = App.user?.role === 'admin' || App.user?.roles?.includes('admin');
     const hostSshReady = !!selectedHost?.hasSsh;
+    const secureHostTerminal = window.isSecureContext && location.protocol === 'https:';
     const hostAccessAction = isAdmin
       ? (hostSshReady
-          ? `<button class="btn btn-sm btn-secondary" id="open-host-terminal"><i class="fas fa-terminal"></i> Host terminal</button>`
+          ? (secureHostTerminal
+              ? `<button class="btn btn-sm btn-secondary" id="open-host-terminal"><i class="fas fa-terminal"></i> Host terminal</button>`
+              : `<button class="btn btn-sm btn-secondary" disabled title="Open Docker Dash over HTTPS to use the host terminal"><i class="fas fa-lock"></i> HTTPS required</button>`)
           : `<a class="btn btn-sm btn-secondary" href="#/hosts" title="Configure pinned SSH access on this host"><i class="fas fa-key"></i> Configure SSH</a>`)
       : '';
     // Backend maps to lowercase: hostname, os, kernelVersion, dockerVersion, apiVersion, etc.
@@ -325,6 +328,10 @@ const SystemPage = {
 
   _openHostSshConsole(host) {
     if (!host) return;
+    if (!window.isSecureContext || location.protocol !== 'https:') {
+      Toast.error('Open Docker Dash over HTTPS to use the host terminal.');
+      return;
+    }
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `

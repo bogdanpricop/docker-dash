@@ -141,8 +141,12 @@ class WsServer {
 
       // v8.7.18 — capture connection IP so exec/audit events can attribute correctly.
       const ip = req.socket?.remoteAddress || 'unknown';
+      const origin = req.headers.origin || '';
       const client = {
         user, ip, sessionHash: sha256(token), subscriptions: new Set(), logStreams: new Map(),
+        // The Origin was checked against Host during the upgrade. It also
+        // reflects the browser-facing scheme when TLS terminates at a proxy.
+        secureTransport: Boolean(req.socket?.encrypted || origin.startsWith('https://')),
         isAlive: true, msgCount: 0, msgResetTime: Date.now(),
       };
       this.clients.set(ws, client);
@@ -776,6 +780,13 @@ class WsServer {
       || (Array.isArray(client.user.roles) && client.user.roles.includes('admin'));
     if (!isAdmin) {
       ws.send(JSON.stringify({ type: 'host-ssh:error', message: 'Administrator role required for the host terminal' }));
+      return;
+    }
+    if (!client.secureTransport) {
+      ws.send(JSON.stringify({
+        type: 'host-ssh:error', code: 'secure_transport_required',
+        message: 'HTTPS is required for the host terminal',
+      }));
       return;
     }
 

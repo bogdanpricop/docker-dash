@@ -67,7 +67,7 @@ test('ESXi terminal applies the verifier and never opens a shell on rejection', 
   const hostId = insertHost('vsphere');
   const socket = { send: jest.fn(), readyState: 1 };
   const validate = jest.spyOn(require('../services/auth'), 'validateSessionHash').mockReturnValue({ id: 1, username: 'admin', role: 'admin' });
-  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' } });
+  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' }, secureTransport: true });
   try {
     await ws.startVsphereSsh(socket, hostId);
     await new Promise(resolve => setImmediate(resolve));
@@ -80,12 +80,24 @@ test('Docker host terminal applies the verifier and never opens a shell on rejec
   const hostId = insertHost('docker');
   const socket = { send: jest.fn(), readyState: 1 };
   const validate = jest.spyOn(require('../services/auth'), 'validateSessionHash').mockReturnValue({ id: 1, username: 'admin', role: 'admin' });
-  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' } });
+  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' }, secureTransport: true });
   try {
     await ws.startHostSsh(socket, hostId);
     await new Promise(resolve => setImmediate(resolve));
     expect(mockConnect).toHaveBeenCalledTimes(1); expect(mockExec).not.toHaveBeenCalled();
     expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('Host denied'));
+  } finally { ws._cleanupClient(socket); validate.mockRestore(); }
+});
+
+test('Docker host terminal refuses an authenticated administrator over plaintext HTTP', async () => {
+  const hostId = insertHost('docker');
+  const socket = { send: jest.fn(), readyState: 1 };
+  const validate = jest.spyOn(require('../services/auth'), 'validateSessionHash').mockReturnValue({ id: 1, username: 'admin', role: 'admin' });
+  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' }, secureTransport: false });
+  try {
+    await ws.startHostSsh(socket, hostId);
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('secure_transport_required'));
   } finally { ws._cleanupClient(socket); validate.mockRestore(); }
 });
 

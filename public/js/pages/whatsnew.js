@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.15', date: '2026-10-07', title: 'HTTPS-protected host terminal', changes: [
+      { type: 'security', text: 'Host SSH terminals now open only from an HTTPS browser session; plaintext HTTP remains available for dashboard access.' },
+    ] },
     { version: '8.96.14', date: '2026-10-07', title: 'Secure Docker host terminal', changes: [
       { type: 'feature', text: 'Administrators can open the selected Docker or Podman host in an interactive SSH terminal directly from System → Info.' },
       { type: 'security', text: 'Host terminals require a pinned SSH server fingerprint, encrypted credentials and an administrator session. The emergency terminal lock closes both container and host sessions.' },
