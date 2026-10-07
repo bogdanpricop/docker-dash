@@ -517,6 +517,20 @@ Nu s-a publicat imaginea in registrul public, nu s-au dezactivat pragurile CI si
 nu s-a reconfigurat daemonul Docker LAN. Constatarile ramase ale auditului sunt
 in continuare deschise.
 
+## Închiderea accesului Docker neautentificat din LAN — 7 octombrie
+
+Listenerul `tcp://0.0.0.0:2375` a fost eliminat de pe `192.168.13.20` după
+revalidarea consumatorilor: Docker Dash folosește socketul Unix pentru hostul local
+și SSH pentru înregistrarea LAN, nu exista nicio sesiune activă pe 2375, iar
+configurațiile containerelor nu indicau un consumator al endpointului.
+
+Configurația anterioară a fost păstrată pe host și restartul a avut rollback
+automat. `live-restore` a păstrat toate cele 150 de containere inițiale. După
+restart, Docker 29.7.2 a răspuns pe socket, Docker Dash a fost `healthy`, nu a mai
+existat listener pe 2375/2376, iar conexiunea la 2375 din stația de audit a fost
+refuzată. Dovezile și hash-urile configurației sunt în
+[raportul de acces Docker](2026-09-20-docker-access.md).
+
 ## Reproducere
 
 ```sh

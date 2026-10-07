@@ -2,23 +2,34 @@
 
 Verified from the authorized audit workstation on 2026-09-20.
 
-## LAN: unauthenticated daemon API
+## LAN: unauthenticated daemon API (remediated 2026-10-07)
 
-`http://192.168.13.20:2375` accepts Docker API requests without a client
+`http://192.168.13.20:2375` accepted Docker API requests without a client
 certificate or another authentication mechanism. Read-only inventory succeeded;
 the explicitly authorized disposable build/smoke also succeeded through this
-endpoint. Anyone with the same network reachability can potentially administer
-the daemon. This is a critical unresolved infrastructure finding. Internet
-reachability was not established by this test.
+endpoint. Anyone with the same network reachability could potentially administer
+the daemon. Internet reachability was not established by this test.
 
 SSH is verified with the current user's `id_ed25519` key as
 `localadmin-a@192.168.13.20`, with strict known-host checking. This account belongs
 to the Docker group. Passwordless sudo is unavailable. Root SSH and the separate
 `id_ed25519_lan_docker` key were refused; no password authentication was attempted.
 
-Do not close the port until its current consumers have a working authenticated
-replacement and a separate recovery channel has been verified. The existing
-workloads and host firewall were not changed by this audit.
+The plaintext listener was removed on 2026-10-07 after the consumer inventory
+showed no active 2375 sessions and Docker Dash used the local Unix socket or SSH
+for the LAN host. The daemon configuration now exposes only
+`unix:///var/run/docker.sock`. The original configuration is preserved at
+`/etc/docker/daemon.json.codex-20261007-plaintext-2375.bak` on the host.
+
+The restart used the existing independent SSH channel and an automatic rollback
+if Docker did not return active. `live-restore` preserved all 150 pre-existing
+running containers. After the restart, Docker 29.7.2 responded through the Unix
+socket, Docker Dash was healthy, no listener existed on 2375/2376, and a request
+to `192.168.13.20:2375` from the audit workstation was refused. The installed
+configuration hash is
+`f1b672719f012d11a6b7da2da1a00ab95b2f18cfad1a4ef5a45d27422d910e48`;
+the backup hash is
+`105b06eba3a1d8bf1b672bc2818e671dee7c413c1a8a4602c55a202c37cafe94`.
 
 ## VPS: no daemon TCP listener observed
 
@@ -27,12 +38,12 @@ verification. `ss -lntp` showed no listener on 2375 or 2376. Docker 29.7.2 repor
 AppArmor, the built-in seccomp profile and cgroup namespaces. These observations
 do not establish the security of all published services or workloads.
 
-## Proposed LAN migration
+## LAN migration record
 
-The effective configuration has now been inspected. `daemon.json` contains
-`hosts`, `live-restore`, `log-driver` and `log-opts`; the systemd override resets
-`ExecStart` to `/usr/bin/dockerd` with no conflicting `-H` flags. Current listeners
-are the Unix socket and `tcp://0.0.0.0:2375`; `live-restore` is true.
+The effective configuration was inspected before remediation. `daemon.json`
+contained `hosts`, `live-restore`, `log-driver` and `log-opts`; the systemd override
+reset `ExecStart` to `/usr/bin/dockerd` with no conflicting `-H` flags. The listeners
+were the Unix socket and `tcp://0.0.0.0:2375`; `live-restore` was and remains true.
 
 The concrete proposed change is:
 
@@ -52,13 +63,9 @@ or port 2375 in either installed instance, no running-container environment
 variables mentioning 2375 on LAN, and no established TCP sessions at inspection
 time. External scheduled consumers have not been ruled out.
 
-Applying this requires backing up the original file, verifying its hash again,
-installing the validated candidate atomically and restarting the Docker daemon.
-Live restore preserves running containers, but daemon/API availability is briefly
-interrupted. Verify Unix/SSH access, absence of the TCP listener and the health of
-the pre-existing containers; restore the original file and restart through the
-independent SSH channel if validation fails. **Host mutation is awaiting explicit
-approval; no change or restart has been made.**
+The original file was backed up, the validated candidate was installed atomically,
+and Docker was restarted through the verified SSH channel. The post-restart checks
+described above passed, so rollback was not needed.
 
 For environments that still require TCP, the alternative migration remains:
 
@@ -83,7 +90,8 @@ For environments that still require TCP, the alternative migration remains:
    existing workloads and automation. Preserve a reviewed rollback that restores
    the previous service configuration through console/SSH if migration fails.
 
-This is a proposed migration, not an applied host change. Exact service edits
-depend on the effective LAN daemon configuration and the consumer inventory.
+The direct Unix socket and SSH are now the supported transports for this LAN host.
+If a future consumer requires TCP, use the mutual-TLS procedure above on 2376;
+do not restore the plaintext listener.
 
 Reference: [Docker daemon socket protection](https://docs.docker.com/engine/security/protect-access/).
