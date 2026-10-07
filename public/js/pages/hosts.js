@@ -1006,7 +1006,10 @@ const HostsPage = {
           <input type="text" id="h-socket" class="form-control" value="${esc(socketPath || '/var/run/docker.sock')}">
         </div>
       </div>
-      <div id="h-ssh-fields" ${type !== 'ssh' ? 'style="display:none"' : ''}>
+      <details id="h-ssh-fields" ${type === 'ssh' || sshHost ? 'open' : ''} style="margin:14px 0;border:1px solid var(--border);border-radius:var(--radius);padding:12px">
+        <summary style="cursor:pointer;font-weight:600"><i class="fas fa-terminal" style="margin-right:7px"></i>Host SSH access ${type === 'ssh' ? '(required for Docker tunnel)' : '(optional system terminal)'}</summary>
+        <div style="margin-top:12px">
+        <p class="text-muted text-sm" style="margin:0 0 12px">Used for the administrator-only host terminal. The server fingerprint is mandatory and credentials are encrypted at rest.</p>
         ${this._sshTrustField('h-ssh-host-key', sshHostKeySha256)}
         <div class="form-group">
           <label>SSH Host</label>
@@ -1028,11 +1031,14 @@ const HostsPage = {
           <label>SSH Private Key (${i18n.t('pages.hosts.optional')})</label>
           <textarea id="h-ssh-key" class="form-control" rows="3" placeholder="${i18n.t('pages.hosts.pastePem')}"></textarea>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="h-ssh-docker-group" ${type !== 'ssh' ? 'style="display:none"' : ''}>
           <label>Docker Socket Path (${i18n.t('pages.hosts.onRemote')})</label>
           <input type="text" id="h-ssh-docker" class="form-control" value="${esc(sshDockerSocket || '/var/run/docker.sock')}">
         </div>
-      </div>
+        <button type="button" class="btn btn-sm btn-secondary" id="h-ssh-test-btn"><i class="fas fa-plug"></i> Test SSH</button>
+        <span id="h-ssh-test-result" class="text-sm" style="margin-left:8px"></span>
+        </div>
+      </details>
       <div class="form-group">
         <label>Environment</label>
         <select id="h-environment" class="form-control">
@@ -1291,14 +1297,35 @@ const HostsPage = {
     const tcpFields = content.querySelector('#h-tcp-fields');
     const socketFields = content.querySelector('#h-socket-fields');
     const sshFields = content.querySelector('#h-ssh-fields');
+    const sshDockerGroup = content.querySelector('#h-ssh-docker-group');
 
     const toggle = () => {
       const v = typeSelect.value;
       tcpFields.style.display = v === 'tcp' ? '' : 'none';
       socketFields.style.display = v === 'socket' ? '' : 'none';
-      sshFields.style.display = v === 'ssh' ? '' : 'none';
+      if (v === 'ssh') sshFields.open = true;
+      sshDockerGroup.style.display = v === 'ssh' ? '' : 'none';
     };
     typeSelect.addEventListener('change', toggle);
+    toggle();
+
+    const sshTestBtn = content.querySelector('#h-ssh-test-btn');
+    const sshTestResult = content.querySelector('#h-ssh-test-result');
+    sshTestBtn?.addEventListener('click', async () => {
+      sshTestBtn.disabled = true;
+      sshTestResult.textContent = '';
+      try {
+        const data = this._collectSshData(content, true);
+        if (!data) return;
+        if (hostId) data.hostId = hostId;
+        const result = await Api.testHostConnection({ connectionType: 'ssh', ...data });
+        sshTestResult.innerHTML = result.ok
+          ? `<span style="color:var(--green)"><i class="fas fa-check"></i> SSH connected (${result.latency || 0}ms)</span>`
+          : `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(result.error || 'Failed')}</span>`;
+      } catch (err) {
+        sshTestResult.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(err.message)}</span>`;
+      } finally { sshTestBtn.disabled = false; }
+    });
 
     // Test button
     const testBtn = content.querySelector('#h-test-btn');
@@ -1350,22 +1377,41 @@ const HostsPage = {
       }
     } else if (type === 'socket') {
       data.socketPath = content.querySelector('#h-socket').value.trim();
-    } else if (type === 'ssh') {
-      data.sshHost = content.querySelector('#h-ssh-host').value.trim();
-      data.sshPort = parseInt(content.querySelector('#h-ssh-port').value) || 22;
-      data.sshUsername = content.querySelector('#h-ssh-user').value.trim();
-      data.sshHostKeySha256 = content.querySelector('#h-ssh-host-key').value.trim();
-      data.sshPassword = content.querySelector('#h-ssh-pass').value;
-      const key = content.querySelector('#h-ssh-key').value.trim();
-      if (key) data.sshPrivateKey = key;
-      data.sshDockerSocket = content.querySelector('#h-ssh-docker').value.trim() || '/var/run/docker.sock';
     }
+
+    const ssh = this._collectSshData(content, type === 'ssh');
+    if (ssh === false) return false;
+    if (ssh) Object.assign(data, ssh);
 
     // Environment tag
     const envEl = content.querySelector('#h-environment');
     if (envEl) data.environment = envEl.value;
 
     if (!data.name) { Toast.warning(i18n.t('pages.hosts.nameRequired')); return false; }
+    return data;
+  },
+
+  _collectSshData(content, required = false) {
+    const host = content.querySelector('#h-ssh-host')?.value.trim() || '';
+    const username = content.querySelector('#h-ssh-user')?.value.trim() || '';
+    const fingerprint = content.querySelector('#h-ssh-host-key')?.value.trim() || '';
+    const password = content.querySelector('#h-ssh-pass')?.value || '';
+    const privateKey = content.querySelector('#h-ssh-key')?.value.trim() || '';
+    const configured = required || host || username || fingerprint || password || privateKey;
+    if (!configured) return null;
+    if (!host || !username || !fingerprint) {
+      Toast.warning('SSH host, username, and verified server fingerprint are required.');
+      return false;
+    }
+    const data = {
+      sshHost: host,
+      sshPort: parseInt(content.querySelector('#h-ssh-port')?.value, 10) || 22,
+      sshUsername: username,
+      sshHostKeySha256: fingerprint,
+      sshPassword: password,
+      sshDockerSocket: content.querySelector('#h-ssh-docker')?.value.trim() || '/var/run/docker.sock',
+    };
+    if (privateKey) data.sshPrivateKey = privateKey;
     return data;
   },
 

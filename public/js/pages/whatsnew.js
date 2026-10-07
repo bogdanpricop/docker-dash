@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.14', date: '2026-10-07', title: 'Secure Docker host terminal', changes: [
+      { type: 'feature', text: 'Administrators can open the selected Docker or Podman host in an interactive SSH terminal directly from System → Info.' },
+      { type: 'security', text: 'Host terminals require a pinned SSH server fingerprint, encrypted credentials and an administrator session. The emergency terminal lock closes both container and host sessions.' },
+      { type: 'improvement', text: 'A local socket or TLS-connected Docker host can now keep separate optional SSH access without changing how Docker Dash reaches the daemon.' },
+    ] },
     { version: '8.96.10', date: '2026-09-20', title: 'External identities and personal credentials', changes: [
       { type: 'security', text: 'OIDC sign-in binds the browser and provider with PKCE and a verified nonce. Accounts use verified issuer/subject identities; matching usernames or emails cannot claim another account.' },
       { type: 'security', text: 'Missing or incomplete mapped groups refuse sign-in and revoke the bound account credentials. Empty groups apply the configured default role. Old personal API keys stay revoked after password, account or identity changes.' },

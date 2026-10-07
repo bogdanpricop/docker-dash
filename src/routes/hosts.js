@@ -347,7 +347,11 @@ router.post('/', requireAuth, requireRole('admin'), writeable, asyncHandler(asyn
     }
 
     let sshConfig = null;
-    if (connectionType === 'ssh') {
+    const hasOptionalSshAccess = !!(sshHost || sshUsername || sshPassword || sshPrivateKey || sshHostKeySha256);
+    if (connectionType === 'ssh' || hasOptionalSshAccess) {
+      if (!sshHost || !sshUsername || (!sshPassword && !sshPrivateKey)) {
+        return res.status(400).json({ error: 'SSH host, username, and password or private key are required' });
+      }
       sshConfig = encryptSshConfig({
         hostKeySha256: normalizeFingerprint(sshHostKeySha256),
         host: sshHost,
@@ -472,20 +476,27 @@ router.put('/:id', requireAuth, requireRole('admin'), writeable, asyncHandler(as
     }
 
     let sshConfig = existing.ssh_config;
-    if (connectionType === 'ssh' && sshHost !== undefined) {
+    if (sshHost !== undefined) {
       // Validate dockerSocket path (FIX #13)
       const effectiveDockerSocketPut = sshDockerSocket || '/var/run/docker.sock';
       if (!SOCKET_RE.test(effectiveDockerSocketPut)) {
         return res.status(400).json({ error: 'Invalid dockerSocket path' });
       }
       const stored = decryptSshConfig(existing.ssh_config) || {};
+      const nextSshHost = sshHost || stored.host;
+      const nextSshUsername = sshUsername || stored.username;
+      const nextSshPassword = sshPassword || (sshPrivateKey ? undefined : stored.password);
+      const nextSshPrivateKey = sshPrivateKey || (sshPassword ? undefined : stored.privateKey);
+      if (!nextSshHost || !nextSshUsername || (!nextSshPassword && !nextSshPrivateKey)) {
+        return res.status(400).json({ error: 'SSH host, username, and password or private key are required' });
+      }
       sshConfig = encryptSshConfig({
-        host: sshHost,
+        host: nextSshHost,
         port: sshPort || 22,
-        username: sshUsername || stored.username,
+        username: nextSshUsername,
         hostKeySha256: normalizeFingerprint(sshHostKeySha256 === undefined ? stored.hostKeySha256 : sshHostKeySha256),
-        password: sshPassword || (sshPrivateKey ? undefined : stored.password),
-        privateKey: sshPrivateKey || (sshPassword ? undefined : stored.privateKey),
+        password: nextSshPassword,
+        privateKey: nextSshPrivateKey,
         passphrase: sshPassphrase || stored.passphrase,
         dockerSocket: effectiveDockerSocketPut,
       });

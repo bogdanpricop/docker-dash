@@ -80,7 +80,18 @@ const SystemPage = {
   },
 
   async _renderInfo(el) {
-    const info = await Api.getSystemInfo();
+    const [info, hosts] = await Promise.all([Api.getSystemInfo(), Api.getHosts()]);
+    const selectedHostId = Number(Api.getHostId() || 0);
+    const selectedHost = selectedHostId
+      ? (hosts || []).find(host => Number(host.id) === selectedHostId)
+      : (hosts || []).find(host => host.isDefault);
+    const isAdmin = App.user?.role === 'admin' || App.user?.roles?.includes('admin');
+    const hostSshReady = !!selectedHost?.hasSsh;
+    const hostAccessAction = isAdmin
+      ? (hostSshReady
+          ? `<button class="btn btn-sm btn-secondary" id="open-host-terminal"><i class="fas fa-terminal"></i> Host terminal</button>`
+          : `<a class="btn btn-sm btn-secondary" href="#/hosts" title="Configure pinned SSH access on this host"><i class="fas fa-key"></i> Configure SSH</a>`)
+      : '';
     // Backend maps to lowercase: hostname, os, kernelVersion, dockerVersion, apiVersion, etc.
     const containersTotal = info.containers || info.Containers || 0;
     const containersRunning = info.containersRunning || info.ContainersRunning || 0;
@@ -172,7 +183,7 @@ const SystemPage = {
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>${i18n.t('pages.system.hostTitle')}</h3></div>
+          <div class="card-header"><h3>${i18n.t('pages.system.hostTitle')}</h3>${hostAccessAction}</div>
           <div class="card-body">
             <table class="info-table">
               <tr><td>${i18n.t('pages.system.hostname')}</td><td>${info.hostname || info.Name || '—'}</td></tr>
@@ -183,6 +194,9 @@ const SystemPage = {
               <tr><td>${i18n.t('pages.system.imagesLabel')}</td><td>${info.images || info.Images || 0}</td></tr>
               <tr><td>${i18n.t('pages.system.uptime')}</td><td>${info.uptime ? Utils.formatDuration(info.uptime) : '—'}</td></tr>
               <tr><td>${i18n.t('pages.system.serverTime')}</td><td>${info.serverTime ? Utils.formatDate(info.serverTime) : '—'}</td></tr>
+              <tr><td>System access</td><td>${hostSshReady
+                ? `<span class="badge badge-success">SSH configured</span> <span class="text-dim text-sm">${Utils.escapeHtml(selectedHost.sshHost || '')}</span>`
+                : '<span class="badge">Information only</span> <span class="text-dim text-sm">Configure pinned SSH for a host terminal</span>'}</td></tr>
             </table>
           </div>
         </div>
@@ -201,6 +215,7 @@ const SystemPage = {
       </div>
     `;
     el.querySelector('#check-updates-btn').addEventListener('click', () => this._loadUpdates());
+    el.querySelector('#open-host-terminal')?.addEventListener('click', () => this._openHostSshConsole(selectedHost));
     // Auto-check updates
     this._loadUpdates();
 
@@ -306,6 +321,81 @@ const SystemPage = {
       if (defaultBtn) { defaultBtn.style.borderColor = '#fff'; defaultBtn.style.boxShadow = '0 0 0 2px var(--text-bright)'; }
       if (picker) picker.value = '#388bfd';
     });
+  },
+
+  _openHostSshConsole(host) {
+    if (!host) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="width:950px;max-width:96vw;height:650px;max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header">
+          <h3><i class="fas fa-terminal"></i> Host terminal — ${Utils.escapeHtml(host.name || 'Host')}
+            <span id="host-ssh-status" style="font-size:12px;margin-left:10px;color:var(--text-dim)">connecting…</span></h3>
+          <button class="modal-close-btn" aria-label="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="alert alert-warning" style="margin:8px 8px 0;padding:8px 12px">
+          Commands run directly on the Docker host and are recorded as an audited terminal session.
+        </div>
+        <div class="modal-body" style="flex:1;padding:8px;background:#0d1117"><div id="host-ssh-term" style="width:100%;height:100%"></div></div>
+      </div>`;
+    document.body.appendChild(modal);
+    const statusEl = modal.querySelector('#host-ssh-status');
+    const termEl = modal.querySelector('#host-ssh-term');
+    if (typeof Terminal === 'undefined') {
+      termEl.innerHTML = '<div style="color:#eee;padding:16px">Terminal component not loaded.</div>';
+      modal.querySelector('.modal-close-btn').addEventListener('click', () => modal.remove());
+      return;
+    }
+
+    const term = new Terminal({
+      cursorBlink: true, fontSize: 13, scrollback: 5000,
+      fontFamily: "'JetBrains Mono','Fira Code','Courier New',monospace",
+      theme: { background: '#0d1117', foreground: '#c9d1d9', cursor: '#58a6ff', selectionBackground: '#264f78' },
+    });
+    let fit = null;
+    if (typeof FitAddon !== 'undefined') { fit = new FitAddon.FitAddon(); term.loadAddon(fit); }
+    term.open(termEl);
+    if (fit) setTimeout(() => fit.fit(), 30);
+    let active = false;
+    const resize = () => WS.send('host-ssh:resize', { rows: term.rows, cols: term.cols });
+    const observer = new ResizeObserver(() => { if (fit) fit.fit(); if (active) resize(); });
+    observer.observe(termEl);
+    const dataDisposable = term.onData(data => { if (active) WS.send('host-ssh:input', { data }); });
+    const unsubscribers = [
+      WS.on('host-ssh:ready', () => {
+        active = true;
+        statusEl.textContent = 'connected';
+        statusEl.style.color = 'var(--green)';
+        term.focus();
+        resize();
+      }),
+      WS.on('host-ssh:output', message => term.write(message.data || '')),
+      WS.on('host-ssh:end', () => {
+        active = false;
+        statusEl.textContent = 'disconnected';
+        statusEl.style.color = 'var(--red)';
+        term.write('\r\n\x1b[31m[Session ended]\x1b[0m\r\n');
+      }),
+      WS.on('host-ssh:error', message => {
+        active = false;
+        statusEl.textContent = 'error';
+        statusEl.style.color = 'var(--red)';
+        const safeMessage = String(message.message || 'Connection failed').replace(/[^\x20-\x7e]/g, '');
+        term.write(`\r\n\x1b[31m${safeMessage}\x1b[0m\r\n`);
+      }),
+    ];
+    const cleanup = () => {
+      try { WS.send('host-ssh:stop', {}); } catch { /* ignore */ }
+      unsubscribers.forEach(unsubscribe => { try { unsubscribe(); } catch { /* ignore */ } });
+      try { dataDisposable.dispose(); } catch { /* ignore */ }
+      try { observer.disconnect(); } catch { /* ignore */ }
+      try { term.dispose(); } catch { /* ignore */ }
+      modal.remove();
+    };
+    modal.querySelector('.modal-close-btn').addEventListener('click', cleanup);
+    modal.addEventListener('click', event => { if (event.target === modal) cleanup(); });
+    WS.send('host-ssh:start', { hostId: host.id, cols: term.cols, rows: term.rows });
   },
 
   _applyAccent(color) {
@@ -2474,11 +2564,11 @@ DB_PASS=secret"></textarea>
     el.innerHTML = `
       <div class="card">
         <div class="card-header">
-          <h3><i class="fas fa-user-shield" style="margin-right:8px;color:var(--yellow)"></i>Emergency container terminal control</h3>
+          <h3><i class="fas fa-user-shield" style="margin-right:8px;color:var(--yellow)"></i>Emergency terminal control</h3>
           <span class="badge ${effectiveClass}">${effectiveText}</span>
         </div>
         <div class="card-body">
-          <p class="text-muted text-sm" style="margin-bottom:12px">Locks apply to every user, including administrators. Enabling a lock immediately closes matching WebSocket exec sessions and blocks new ones; Docker Dash background operations are unaffected.</p>
+          <p class="text-muted text-sm" style="margin-bottom:12px">Locks apply to every user, including administrators. Enabling a lock immediately closes matching container and host SSH terminal sessions and blocks new ones; Docker Dash background operations are unaffected.</p>
           ${forced ? `<div class="alert ${override === 'deny' ? 'alert-danger' : 'alert-warning'}" style="margin-bottom:12px">
             <i class="fas fa-exclamation-triangle"></i>
             Environment override <code>DD_TERMINAL_ACCESS_OVERRIDE=${override}</code> is active. Database policy remains editable so recovery state can be prepared before removing the override and restarting.

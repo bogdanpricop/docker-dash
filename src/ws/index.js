@@ -420,6 +420,19 @@ class WsServer {
         this._handleSshResize(ws, msg);
         break;
 
+      case 'host-ssh:start':
+        this.startHostSsh(ws, msg.hostId || 0, msg.cols, msg.rows);
+        break;
+      case 'host-ssh:input':
+        this._handleHostSshInput(ws, msg);
+        break;
+      case 'host-ssh:resize':
+        this._handleHostSshResize(ws, msg);
+        break;
+      case 'host-ssh:stop':
+        this._stopHostSsh(ws);
+        break;
+
       case 'logs:subscribe': {
         const client2 = this.clients.get(ws);
         if (!client2) break;
@@ -727,6 +740,138 @@ class WsServer {
     try { conn.connect(opts); } catch (err) { ws.send(JSON.stringify({ type: 'ssh:error', message: err.message })); }
   }
 
+  _handleHostSshInput(ws, msg) {
+    const client = this.clients.get(ws);
+    if (!this._authorizeClient(ws, client) || !client.hostSshStream) return;
+    try { client.hostSshStream.write(String(msg.data || '')); } catch { /* ignore */ }
+  }
+
+  _handleHostSshResize(ws, msg) {
+    const client = this.clients.get(ws);
+    if (!this._authorizeClient(ws, client) || !client.hostSshStream) return;
+    const rows = Math.min(Math.max(Number.parseInt(msg.rows, 10) || 24, 2), 500);
+    const cols = Math.min(Math.max(Number.parseInt(msg.cols, 10) || 80, 2), 1000);
+    try { client.hostSshStream.setWindow(rows, cols, 0, 0); } catch { /* ignore */ }
+  }
+
+  _stopHostSsh(ws) {
+    const client = this.clients.get(ws);
+    if (!client) return;
+    const stream = client.hostSshStream;
+    const conn = client.hostSshConn;
+    client.hostSshStream = null;
+    client.hostSshConn = null;
+    client.hostSshHostId = null;
+    client.hostSshStartedAt = null;
+    try { stream?.write('\x03exit\n'); } catch { /* best effort */ }
+    try { stream?.close(); } catch { /* best effort */ }
+    try { conn?.end(); } catch { /* best effort */ }
+  }
+
+  /** Open an administrator-only, pinned-key SSH shell on a Docker/Podman host. */
+  async startHostSsh(ws, hostId, cols = 80, rows = 24) {
+    const client = this.clients.get(ws);
+    if (!this._authorizeClient(ws, client)) return;
+    const isAdmin = client.user.role === 'admin'
+      || (Array.isArray(client.user.roles) && client.user.roles.includes('admin'));
+    if (!isAdmin) {
+      ws.send(JSON.stringify({ type: 'host-ssh:error', message: 'Administrator role required for the host terminal' }));
+      return;
+    }
+
+    let resolvedHostId, row, sshConfig, identity;
+    try {
+      resolvedHostId = terminalAccess.normalizeHostId(hostId);
+      const access = terminalAccess.effective(resolvedHostId);
+      if (access.locked) throw Object.assign(new Error(access.reason || 'Terminal access is locked by an administrator'), { code: 'terminal_access_locked' });
+      const { getDb } = require('../db');
+      row = getDb().prepare('SELECT * FROM docker_hosts WHERE id = ?').get(resolvedHostId);
+      if (!row) throw new Error('Host not found');
+      const daemonType = row.daemon_type || 'docker';
+      if (!['docker', 'podman'].includes(daemonType)) throw new Error('The system terminal is available for Docker and Podman hosts');
+      sshConfig = require('../services/host-config-crypto').decryptSshConfig(row.ssh_config) || {};
+      identity = require('../utils/ssh-host-key').hostKeyOptions(sshConfig);
+      if (!sshConfig.host || !sshConfig.username || !(sshConfig.password || sshConfig.privateKey)) {
+        throw new Error('Configure SSH access for this host in Hosts → Edit');
+      }
+    } catch (err) {
+      ws.send(JSON.stringify({ type: 'host-ssh:error', code: err.code, message: err.message }));
+      return;
+    }
+
+    this._stopHostSsh(ws);
+    const { Client: SshClient } = require('ssh2');
+    const conn = new SshClient();
+    client.hostSshConn = conn;
+    client.hostSshHostId = resolvedHostId;
+    const safeCols = Math.min(Math.max(Number.parseInt(cols, 10) || 80, 2), 1000);
+    const safeRows = Math.min(Math.max(Number.parseInt(rows, 10) || 24, 2), 500);
+
+    conn.on('ready', () => {
+      if (!this._authorizeClient(ws, client) || client.hostSshConn !== conn) { conn.end(); return; }
+      const access = terminalAccess.effective(resolvedHostId);
+      if (access.locked) {
+        ws.send(JSON.stringify({ type: 'host-ssh:error', code: 'terminal_access_locked', message: access.reason || 'Terminal access is locked by an administrator' }));
+        this._stopHostSsh(ws);
+        return;
+      }
+      conn.shell({ term: 'xterm-256color', cols: safeCols, rows: safeRows }, (err, stream) => {
+        if (!this._authorizeClient(ws, client) || client.hostSshConn !== conn) {
+          try { stream?.close(); } catch {} try { conn.end(); } catch {} return;
+        }
+        if (err) {
+          ws.send(JSON.stringify({ type: 'host-ssh:error', message: err.message }));
+          this._stopHostSsh(ws);
+          return;
+        }
+        client.hostSshStream = stream;
+        client.hostSshStartedAt = new Date().toISOString();
+        ws.send(JSON.stringify({ type: 'host-ssh:ready', hostId: resolvedHostId }));
+        const send = data => {
+          if (ws.readyState === 1 && client.hostSshStream === stream) {
+            ws.send(JSON.stringify({ type: 'host-ssh:output', data: data.toString('utf8') }));
+          }
+        };
+        stream.on('data', send);
+        if (stream.stderr) stream.stderr.on('data', send);
+        stream.on('close', () => {
+          if (client.hostSshStream !== stream) return;
+          client.hostSshStream = null;
+          client.hostSshConn = null;
+          client.hostSshHostId = null;
+          client.hostSshStartedAt = null;
+          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'host-ssh:end' }));
+          try { conn.end(); } catch { /* ignore */ }
+        });
+        try {
+          require('../services/audit').log({
+            userId: client.user.id, username: client.user.username,
+            action: 'host_ssh_console', targetType: 'host', targetId: String(resolvedHostId),
+            details: { host: row.name }, ip: client.ip,
+          });
+        } catch { /* audit is best effort for an already authenticated session */ }
+      });
+    });
+    conn.on('error', err => {
+      if (client.hostSshConn !== conn) return;
+      client.hostSshConn = null;
+      client.hostSshStream = null;
+      client.hostSshHostId = null;
+      client.hostSshStartedAt = null;
+      let message = err.message || 'SSH connection failed';
+      if (/authentication|All configured authentication methods failed/i.test(message)) message = 'SSH authentication failed; update the host credentials';
+      ws.send(JSON.stringify({ type: 'host-ssh:error', message }));
+    });
+    const options = {
+      ...identity, host: sshConfig.host, port: sshConfig.port || 22,
+      username: sshConfig.username, passphrase: sshConfig.passphrase, readyTimeout: 20000,
+    };
+    if (sshConfig.privateKey) options.privateKey = sshConfig.privateKey;
+    else options.password = sshConfig.password;
+    try { conn.connect(options); }
+    catch (err) { ws.send(JSON.stringify({ type: 'host-ssh:error', message: err.message })); this._stopHostSsh(ws); }
+  }
+
   /** Start exec session for a client */
   async startExec(ws, containerId, shell = '/bin/sh', cols = 80, rows = 24, hostId = 0) {
     if (!config.features.exec) {
@@ -864,6 +1009,7 @@ class WsServer {
   _cleanupClient(ws) {
     const client = this.clients.get(ws);
     if (!client) return;
+    this._stopHostSsh(ws);
     // Detach first: destroying streams can synchronously emit output/close events.
     this.clients.delete(ws);
     if (client.execStream) {
@@ -897,14 +1043,26 @@ class WsServer {
   getActiveExecSessions() {
     const sessions = [];
     for (const client of this.clients.values()) {
-      if (!client.execStream) continue;
-      sessions.push({
-        username: client.user?.username || 'unknown',
-        userId: client.user?.id || null,
-        hostId: client.execHostId ?? 0,
-        containerId: client.execContainerId || null,
-        startedAt: client.execStartedAt || null,
-      });
+      if (client.execStream) {
+        sessions.push({
+          username: client.user?.username || 'unknown',
+          userId: client.user?.id || null,
+          hostId: client.execHostId ?? 0,
+          containerId: client.execContainerId || null,
+          startedAt: client.execStartedAt || null,
+          terminalType: 'container',
+        });
+      }
+      if (client.hostSshStream) {
+        sessions.push({
+          username: client.user?.username || 'unknown',
+          userId: client.user?.id || null,
+          hostId: client.hostSshHostId ?? 0,
+          containerId: null,
+          startedAt: client.hostSshStartedAt || null,
+          terminalType: 'host',
+        });
+      }
     }
     return { count: sessions.length, sessions };
   }
@@ -914,27 +1072,28 @@ class WsServer {
     const resolvedHostId = hostId === null ? null : terminalAccess.normalizeHostId(hostId);
     let terminated = 0;
     for (const [ws, client] of this.clients) {
-      if (!client.execStream) continue;
-      if (resolvedHostId !== null && client.execHostId !== resolvedHostId) continue;
-
-      const stream = client.execStream;
-      client.exec = null;
-      client.execStream = null;
-      client.execHostId = null;
-      client.execContainerId = null;
-      client.execStartedAt = null;
-      try { stream.write('\x03exit\n'); } catch { /* best effort */ }
-      try { stream.destroy(); } catch { /* best effort */ }
-      terminated++;
-
-      if (ws.readyState === 1) {
-        try {
-          ws.send(JSON.stringify({
-            type: 'exec:error',
-            code: 'terminal_access_locked',
-            message: reason,
-          }));
-        } catch { /* disconnected */ }
+      if (client.execStream && (resolvedHostId === null || client.execHostId === resolvedHostId)) {
+        const stream = client.execStream;
+        client.exec = null;
+        client.execStream = null;
+        client.execHostId = null;
+        client.execContainerId = null;
+        client.execStartedAt = null;
+        try { stream.write('\x03exit\n'); } catch { /* best effort */ }
+        try { stream.destroy(); } catch { /* best effort */ }
+        terminated++;
+        if (ws.readyState === 1) {
+          try { ws.send(JSON.stringify({ type: 'exec:error', code: 'terminal_access_locked', message: reason })); }
+          catch { /* disconnected */ }
+        }
+      }
+      if (client.hostSshConn && (resolvedHostId === null || client.hostSshHostId === resolvedHostId)) {
+        this._stopHostSsh(ws);
+        terminated++;
+        if (ws.readyState === 1) {
+          try { ws.send(JSON.stringify({ type: 'host-ssh:error', code: 'terminal_access_locked', message: reason })); }
+          catch { /* disconnected */ }
+        }
       }
     }
     return terminated;

@@ -76,6 +76,19 @@ test('ESXi terminal applies the verifier and never opens a shell on rejection', 
   } finally { ws._cleanupClient(socket); validate.mockRestore(); }
 });
 
+test('Docker host terminal applies the verifier and never opens a shell on rejection', async () => {
+  const hostId = insertHost('docker');
+  const socket = { send: jest.fn(), readyState: 1 };
+  const validate = jest.spyOn(require('../services/auth'), 'validateSessionHash').mockReturnValue({ id: 1, username: 'admin', role: 'admin' });
+  ws.clients.set(socket, { sessionHash: 'a'.repeat(64), user: { id: 1, username: 'admin', role: 'admin' } });
+  try {
+    await ws.startHostSsh(socket, hostId);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockConnect).toHaveBeenCalledTimes(1); expect(mockExec).not.toHaveBeenCalled();
+    expect(socket.send).toHaveBeenCalledWith(expect.stringContaining('Host denied'));
+  } finally { ws._cleanupClient(socket); validate.mockRestore(); }
+});
+
 test('remote secrets deploy decrypts SSH config and refuses a rejected server before upload', async () => {
   const response = await request(app).post('/system/secrets-wizard/deploy-remote').send({ hostId: insertHost('docker'), script: 'true' });
   expect(response.status).toBe(500);
