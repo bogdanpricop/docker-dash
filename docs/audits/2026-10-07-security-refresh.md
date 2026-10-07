@@ -24,6 +24,17 @@ isolated container before deployment.
 | Caddy | 2.11.7 with nine pinned DNS providers |
 | Go toolchain for rebuilt tools | 1.27.1 |
 
+The Compose 5.6.0 rebuild was reproduced independently by the deployed VPS
+image and the GitHub Actions candidate. Both produced binary SHA-256
+`1a4f23d47d8f771e46eebdd3899eccca657b872c5d0be9cb6e3fbd19cfe6e707`.
+The installed compiled-package, Go build-info and verified-module-source
+evidence hashes are respectively
+`b0b02a86a6eccd463f98a04732184c0c709f0463043e9b21739081ba16090a1f`,
+`b8949e2a804e02aa39bd3292e61b6990a9d3e04c0da2f5fc665912b2fc9db09b`,
+and `cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095`.
+The reviewed-artifact registry and the narrowly scoped OpenPGP applicability
+entry are bound to this exact binary; the prior 5.5.1 hash is historical only.
+
 The Go and Node base image indexes are pinned by digest. Docker CLI 29.8.2 is
 built from its verified module source using its upstream `vendor.mod` dependency
 set. `go mod verify` runs before every Go binary build.

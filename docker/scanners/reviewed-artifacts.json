@@ -3,7 +3,7 @@
   "scope": "Reviewed Linux amd64 source builds; evidence only, never a scan ignore policy",
   "basis": [
     "docs/audits/2026-09-20-scanner-rebuild-evidence.json",
-    "docs/audits/2026-09-20-compose-rebuild.md"
+    "docs/audits/2026-10-07-security-refresh.md"
   ],
   "artifacts": {
     "docker-cli": {
@@ -17,11 +17,11 @@
     },
     "docker-compose": {
       "path": "/usr/libexec/docker/cli-plugins/docker-compose",
-      "binarySha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+      "binarySha256": "1a4f23d47d8f771e46eebdd3899eccca657b872c5d0be9cb6e3fbd19cfe6e707",
       "metadata": {
-        "packages.txt": "b5ac0a6192590ec4ef06b0d8cc8dcdc19a22324e52733270bd003afc48c10cc2",
-        "build-info.txt": "46ee74f8b34b8ce8f23b2e642492142b22cfd345fd4374df4fe80b51b74655e0",
-        "source.json": "74cd67d1a3bfb276beeb856667c8c43ea89087f1a300d468e488934fc23bd657"
+        "packages.txt": "b0b02a86a6eccd463f98a04732184c0c709f0463043e9b21739081ba16090a1f",
+        "build-info.txt": "b8949e2a804e02aa39bd3292e61b6990a9d3e04c0da2f5fc665912b2fc9db09b",
+        "source.json": "cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095"
       }
     },
     "trivy": {
