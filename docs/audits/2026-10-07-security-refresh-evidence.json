@@ -61,7 +61,7 @@
     "staleBootstrapSecretBackupsRemoved": true,
     "auditRetentionDays": 90,
     "lanCaddyRuntime": "2.11.7; read-only; cap-drop ALL; no-new-privileges; port 8443",
-    "lanCaddyHostname": "YOUR_HOST placeholder; operator configuration required",
+    "lanCaddyHostname": "192.168.13.20; default SNI configured; CA-verified health response; certificate SAN IP Address:192.168.13.20",
     "vpsPublishedPorts": "loopback-only"
   },
   "nonActionableScannerRecords": {

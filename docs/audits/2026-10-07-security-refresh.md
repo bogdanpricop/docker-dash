@@ -119,8 +119,9 @@ days on both deployments.
 The LAN Caddy sidecar now runs the verified 2.11.7 image on port 8443 with its
 existing certificate volumes, a read-only root filesystem, every capability
 dropped, `no-new-privileges`, and bounded JSON logs. The internal CA no longer
-attempts to modify the container's read-only trust store. Its operator-owned
-Caddyfile still contains the `YOUR_HOST` placeholder, so a real LAN hostname
-remains an operator configuration requirement for a usable hostname-verified TLS
-endpoint.
+attempts to modify the container's read-only trust store. The deployed Caddyfile
+uses `192.168.13.20` as both the site address and default SNI, so clients which
+correctly omit SNI for an IP address still receive the IP certificate. A request
+validated with the Caddy root CA returned the 8.96.13 health response; the leaf
+certificate has the critical SAN `IP Address:192.168.13.20`.
 
