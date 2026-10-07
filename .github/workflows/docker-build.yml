@@ -88,24 +88,33 @@ jobs:
         env:
           CANDIDATE: docker-dash:ci-${{ github.sha }}
         # The npm lockfile does not cover npm's own bundle or embedded Go
-        # dependencies in scanners. Scan the actual candidate before registry login.
+        # dependencies in scanners. Generate both unfiltered reports, then apply only
+        # exact, expiring, artifact-bound applicability decisions.
         run: |
-          status=0
+          REPORT_DIR=$(mktemp -d)
+          trap 'rm -rf "$REPORT_DIR"' EXIT
           docker run --rm --cpus=2 --memory=2g \
             --cap-drop=ALL --security-opt=no-new-privileges \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
             --entrypoint trivy "$CANDIDATE" image \
-            --image-src docker --scanners vuln --timeout 10m \
-            --ignorefile /dev/null --severity HIGH,CRITICAL,UNKNOWN --exit-code 1 \
-            "$CANDIDATE" || status=1
+            --image-src docker --scanners vuln --timeout 10m --format json --quiet \
+            "$CANDIDATE" > "$REPORT_DIR/trivy.json"
           # Grype's database can contain advisories absent from Trivy's distro
           # feed. Run both gates, even if the first one reports findings.
           docker run --rm --cpus=2 --memory=2g \
             --cap-drop=ALL --security-opt=no-new-privileges \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
             --entrypoint grype "$CANDIDATE" \
-            --fail-on high "docker:$CANDIDATE" || status=1
-          exit "$status"
+            "docker:$CANDIDATE" --output json --quiet > "$REPORT_DIR/grype.json"
+          docker run --rm --network none --read-only --cpus=1 --memory=512m \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            -v "$PWD:/audit:ro" -v "$REPORT_DIR:/reports:ro" \
+            -e DD_TRIVY_REPORT=/reports/trivy.json \
+            -e DD_GRYPE_REPORT=/reports/grype.json \
+            -e DD_IMAGE_VULNERABILITY_POLICY=/audit/docker/scanners/image-vulnerability-policy.json \
+            -e DD_SCANNER_REVIEW=/audit/docker/scanners/reviewed-artifacts.json \
+            -e DD_REPOSITORY_ROOT=/audit \
+            --entrypoint node "$CANDIDATE" /audit/scripts/gate-image-vulnerabilities.js
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'

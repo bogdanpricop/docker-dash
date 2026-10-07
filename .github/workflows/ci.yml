@@ -52,6 +52,9 @@ jobs:
       - name: Verify toolchain pins and install policy
         run: npm run check:toolchain
 
+      - name: Validate image vulnerability policy
+        run: node scripts/gate-image-vulnerabilities.test.js
+
       - name: Audit all npm dependencies
         id: npm-audit
         run: npm run audit:dependencies

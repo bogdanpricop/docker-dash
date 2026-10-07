@@ -45,3 +45,9 @@ upstream release, rebuilding, and verifying image scanning and the security gate
 An absent function in the ELF pclntab is only supporting evidence because Go may
 inline functions. For code-not-present findings, also inspect the package graph
 from the same build. Do not apply an exception to a different binary hash.
+
+The final image gate uses the
+[reviewed applicability policy](../../docs/audits/2026-10-07-image-vulnerability-policy.md)
+for a small set of exact, expiring findings. It feeds unfiltered scanner reports
+to the gate and fails on artifact drift, stale policy entries or any unreviewed
+blocking finding.
