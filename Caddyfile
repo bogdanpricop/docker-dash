@@ -6,19 +6,23 @@
 #   - Domain: https://dash.example.com
 #
 # For domains, remove the `tls internal` block to get Let's Encrypt auto-certs.
+{
+	# Containers do not own the host trust store; clients import the CA explicitly.
+	skip_install_trust
+}
 
 https://YOUR_HOST {
-    reverse_proxy docker-dash:{$APP_PORT:8101}
+	reverse_proxy docker-dash:{$APP_PORT:8101}
 
-    tls internal {
-        on_demand
-    }
+	tls internal {
+		on_demand
+	}
 
-    header {
-        Strict-Transport-Security "max-age=31536000"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-    }
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
 
-    encode gzip zstd
+	encode gzip zstd
 }

@@ -118,7 +118,9 @@ days on both deployments.
 
 The LAN Caddy sidecar now runs the verified 2.11.7 image on port 8443 with its
 existing certificate volumes, a read-only root filesystem, every capability
-dropped, `no-new-privileges`, and bounded JSON logs. Its operator-owned Caddyfile
-still contains the `YOUR_HOST` placeholder, so a real LAN hostname remains an
-operator configuration requirement for a usable hostname-verified TLS endpoint.
+dropped, `no-new-privileges`, and bounded JSON logs. The internal CA no longer
+attempts to modify the container's read-only trust store. Its operator-owned
+Caddyfile still contains the `YOUR_HOST` placeholder, so a real LAN hostname
+remains an operator configuration requirement for a usable hostname-verified TLS
+endpoint.
 

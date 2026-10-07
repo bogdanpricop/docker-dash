@@ -71,7 +71,8 @@ All notable changes to Docker Dash are documented here.
   capability, uses `no-new-privileges`, and retains the minimal BusyBox command
   surface required by Caddy's internal-CA bootstrap. Cross-compile the Caddy
   binary on the native builder architecture so arm64 verification does not spend
-  tens of minutes compiling Go under emulation.
+  tens of minutes compiling Go under emulation. The containerized internal-CA
+  example also skips attempts to modify the image's read-only trust store.
 - Pin generated Caddy deployment recipes to the verified image and preserve the
   HA Redis `noeviction` policy when regenerating static examples.
 - Record dependency, image, reachability and deployment evidence in the
