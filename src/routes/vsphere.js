@@ -89,6 +89,7 @@ router.post('/reconnect', requireAuth, asyncHandler(async (req, res) => {
   const row = _getVSphereHost(req, res); if (!row) return;
   try {
     _invalidateClient(row.id);
+    require('../services/provider-sdk/registry').invalidateHost(row.id);
     const c = await _acquireClient(row);
     const info = await c.retrieveServiceContent();
     res.json({ ok: true, version: info.version || null, productFullName: info.productFullName || null });

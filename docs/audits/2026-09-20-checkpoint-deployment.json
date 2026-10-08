@@ -1,0 +1,77 @@
+{
+  "date": "2026-09-20",
+  "version": "8.96.2",
+  "codeCommit": "36fa8e66d2f084ed9a8bf166350ee8f8cff067fd",
+  "branch": "agent/advanced-compose-gitops",
+  "publicRegistryPublished": false,
+  "vulnerabilityGatesDisabled": false,
+  "targets": [
+    {
+      "target": "lan",
+      "version": "8.96.2",
+      "revision": "36fa8e66d2f084ed9a8bf166350ee8f8cff067fd",
+      "image": "sha256:41eb39119c9ef7557e4a5c9643403df2f17213f95fee51477db0e1e234e82395",
+      "containerId": "1cf83eb72a44ee6a20acc05dab51efc802198d49ca90b9c4902017916bc52548",
+      "at": "2026-09-20T02:02:27.381Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 5,
+      "hosts": 7,
+      "migration": "176_encrypt_rollback_snapshots.js",
+      "localDockerContainers": 148,
+      "backupDirectory": "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.2-36fa8e6/backup",
+      "composeFiles": [
+        "/home/localadmin-a/docker-dash/docker-compose.yml",
+        "/home/localadmin-a/.local/share/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "sha256": "10955a6b15668e6baa7831b28e016740378d9b44920425fd7f7b0cbdf6798217",
+        "bytes": 3942309888,
+        "fileMode": "0600",
+        "integrity": "ok"
+      },
+      "externalHealth": {
+        "status": 200,
+        "version": "8.96.2",
+        "statusText": "ok",
+        "verifiedAt": "2026-09-20T02:05:02Z"
+      }
+    },
+    {
+      "target": "vps",
+      "version": "8.96.2",
+      "revision": "36fa8e66d2f084ed9a8bf166350ee8f8cff067fd",
+      "image": "sha256:41eb39119c9ef7557e4a5c9643403df2f17213f95fee51477db0e1e234e82395",
+      "containerId": "607c37625b0620c9fc43a0f8e4ceaf6401fb8c88cc863ce14481379b3ff64617",
+      "at": "2026-09-20T02:04:52.683Z",
+      "healthy": true,
+      "keysPreserved": true,
+      "projectEnvUnchanged": true,
+      "sourceBindMounts": false,
+      "users": 2,
+      "hosts": 1,
+      "migration": "176_encrypt_rollback_snapshots.js",
+      "localDockerContainers": 89,
+      "backupDirectory": "/opt/docker-dash/checkpoints/8.96.2-36fa8e6/backup",
+      "composeFiles": [
+        "/opt/docker-dash/docker-compose.yml",
+        "/opt/docker-dash/docker-compose.override.yml",
+        "/opt/docker-dash/checkpoints/8.96.2-36fa8e6/compose.checkpoint.yml"
+      ],
+      "backup": {
+        "sha256": "f848b3bcff2d1f2d2f617621d66384b69040f93de65b5015aa4e4186a4a3ea3b",
+        "bytes": 615849984,
+        "fileMode": "0600",
+        "integrity": "ok"
+      },
+      "externalHealth": {
+        "status": 200,
+        "version": "8.96.2",
+        "statusText": "ok",
+        "verifiedAt": "2026-09-20T02:05:02Z"
+      }
+    }
+  ]
+}

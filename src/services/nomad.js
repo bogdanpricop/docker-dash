@@ -23,9 +23,8 @@
 // SCOPE OF THIS ALPHA: read-only jobs / allocations / nodes / deployments.
 // Job start/stop and eval submission deferred to alpha.2.
 
-const http = require('http');
 const https = require('https');
-const log = require('../utils/logger')('nomad');
+const { secureEndpoint, tlsOptions } = require('../utils/provider-tls');
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
@@ -36,20 +35,11 @@ class NomadClient {
       throw new Error('NomadClient: config object required');
     }
     if (!config.endpoint) throw new Error('NomadClient: config.endpoint required');
-    // v8.9.11-alpha.6 — normalize: prepend http:// if bare hostname (Nomad
-    // defaults to http on port 4646 unless the operator set up TLS).
-    if (!/^https?:\/\//i.test(config.endpoint)) {
-      config = { ...config, endpoint: 'http://' + config.endpoint };
-    }
+    // Remote management requires HTTPS, including for bare host names.
+    config = { ...config, endpoint: secureEndpoint(config.endpoint) };
     this._config = config;
-    const isHttps = /^https:/i.test(config.endpoint);
-    this._lib = isHttps ? https : http;
-    const agentOpts = { keepAlive: true };
-    if (isHttps) {
-      agentOpts.rejectUnauthorized = !config.skipTlsVerify;
-      if (config.caCert) agentOpts.ca = config.caCert;
-    }
-    this._agent = new this._lib.Agent(agentOpts);
+    this._lib = https;
+    this._agent = new https.Agent({ keepAlive: true, ...tlsOptions(config) });
   }
 
   get daemonType() { return 'nomad'; }
@@ -211,5 +201,3 @@ module.exports = {
   encryptDaemonConfig,
   _internals: { DEFAULT_TIMEOUT_MS, MAX_RESPONSE_BYTES },
 };
-
-if (false) log.info();

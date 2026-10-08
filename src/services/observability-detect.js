@@ -146,7 +146,7 @@ function _probe(urlString) {
     const req = lib.request(url, {
       method: 'GET',
       timeout: 2000,
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
     }, (res) => {
       // Drain to free the socket
       res.on('data', () => {});

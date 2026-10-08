@@ -67,7 +67,7 @@ class AiProvider {
    * Throws AiProviderError on auth failure, network error, timeout, malformed
    * response, or schema validation failure. Caller can trust .data is valid.
    */
-  async structured(req) {
+  async structured(_req) {
     throw new Error('AiProvider.structured() not implemented');
   }
 }

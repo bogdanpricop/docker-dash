@@ -25,6 +25,9 @@ scrape_configs:
   # `app:8101` below with a list of replica DNS names (or use DNS SD).
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     static_configs:
       - targets: ['app:8101']
         labels:

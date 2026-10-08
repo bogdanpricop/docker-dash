@@ -797,9 +797,16 @@ const ContainersPage = {
         const ids = containers.map(c => c.id);
         if (ids.length === 0) return;
 
+        // v8.94.0 — show the equivalent docker commands before a bulk action.
+        // Subjects are container names where known; the backend renders one line each.
+        const subjects = containers.map(c => ({
+          name: c.name || c.id, force: action === 'remove' ? true : undefined,
+        }));
+        const cliHtml = await CliPreview.html('container.bulk', { action, subjects });
+        const label = action.charAt(0).toUpperCase() + action.slice(1);
         const ok = await Modal.confirm(
-          i18n.t('pages.containers.stackConfirm', { action: action.charAt(0).toUpperCase() + action.slice(1), count: ids.length, stack: stackName }),
-          { confirmText: action.charAt(0).toUpperCase() + action.slice(1) }
+          `<p>${Utils.escapeHtml(i18n.t('pages.containers.stackConfirm', { action: label, count: ids.length, stack: stackName }))}</p>${cliHtml}`,
+          { html: true, confirmText: label, onMount: (root) => CliPreview.mount(root) }
         );
         if (!ok) return;
 
@@ -1465,6 +1472,7 @@ const ContainersPage = {
         <td class="text-sm text-muted">${created}</td>
         <td>
           <div class="action-btns">
+            <button class="action-btn" data-basket-container="${c.id}" data-name="${Utils.escapeHtml(c.name)}" title="Add to persistent selection basket"><i class="fas fa-basket-shopping"></i></button>
             <button class="action-btn" data-action="edit-meta" data-id="${c.id}" data-name="${Utils.escapeHtml(c.name)}" title="${i18n.t('pages.containers.meta.edit')}"><i class="fas fa-tag"></i></button>
             ${running
               ? `<button class="action-btn" data-action="stop" data-id="${c.id}" title="${i18n.t('common.stop')}"><i class="fas fa-stop"></i></button>
@@ -2008,7 +2016,7 @@ const ContainersPage = {
             { icon:'fa-cloud-download-alt', color:'var(--accent)', label:'Pull latest images', desc:'Runs <code>docker compose pull</code> for the stack — fetches updated images from the registry without recreating containers.' },
             { icon:'fa-arrow-circle-up', color:'var(--accent)', label:'Up (redeploy)', desc:'Runs <code>docker compose up -d</code> — recreates containers that have changed image or config. Running containers with no changes are left untouched.' },
             { icon:'fa-file-code', color:'var(--accent)', label:'View / Edit compose', desc:'Opens the docker-compose.yml for this stack. If no file is found on disk, a best-effort YAML is generated from container metadata. You can edit and save directly from the modal.' },
-            { icon:'fa-search-plus', color:'var(--yellow)', label:'Security scan', desc:'Scans all unique images in the stack for known CVEs using the auto-detected scanner (Trivy → Grype → Docker Scout). Results show Critical / High / Medium / Low counts per image.' },
+            { icon:'fa-search-plus', color:'var(--yellow)', label:'Security scan', desc:'Scans all unique images in the stack for known CVEs using the auto-detected scanner (Trivy → Grype). Docker Scout is temporarily excluded because its published binary contains vulnerable dependencies. Results show Critical / High / Medium / Low counts per image.' },
             { icon:'fa-clipboard-check', color:'var(--green)', label:'CIS Benchmark', desc:'Runs the CIS Docker Benchmark v1.6 and filters results to containers in this stack. Shows a stack security score, per-container findings, and a "Hardened compose" generator for failing containers.' },
           ].map(a => `
             <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
@@ -3414,6 +3422,13 @@ const ContainersPage = {
 // Handle action button clicks via event delegation (containers only)
 const _containerActions = new Set(['start', 'stop', 'restart', 'pause', 'unpause', 'remove', 'edit-meta']);
 document.addEventListener('click', (e) => {
+  const basket = e.target.closest('[data-basket-container]');
+  if (basket) {
+    e.stopPropagation();
+    SelectionBasket.add('container', Api.getHostId() || null, basket.dataset.basketContainer, basket.dataset.name || basket.dataset.basketContainer)
+      .catch(error => Toast.error(error.message));
+    return;
+  }
   const btn = e.target.closest('[data-action][data-id]');
   if (!btn) return;
   const action = btn.dataset.action;

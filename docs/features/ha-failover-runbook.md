@@ -4,16 +4,26 @@
 **Audience:** Operators running Docker Dash in multi-replica HA mode.
 **Companion doc:** [HA Mode reference](ha-mode.md) — read that first for architecture + when-not-to-use.
 
+**September 2026 correction:** lease renewal now compares the owner atomically;
+local validity uses a monotonic deadline with a one-second safety margin.
+The dedicated connection does not queue or replay lease commands. A connection
+failure or a three-second command deadline demotes the replica. This prevents
+stale ownership from authorizing new work, but does not cancel already-started
+Docker/provider operations. See the [real Redis validation](../audits/2026-09-20-ha-lease.md).
+Use `maxmemory-policy noeviction` for the coordination Redis. Data loss,
+asynchronous Redis failover and external deletion of the lease remain outside
+the single-server lease guarantee; jobs require their own durable deduplication.
+
 ---
 
 ## TL;DR
 
 | Event | What happens | Operator action |
 |-------|--------------|-----------------|
-| Leader dies ungracefully | TTL expires in ≤30s. A reader acquires via `SET NX PX`. | **None required.** Observe metrics. |
-| Leader is drained/stopped gracefully | Leader releases lock immediately via Lua `DEL-if-owned`. A reader acquires in milliseconds. | **None required.** Rolling restart is safe. |
-| Redis dies | Rate limiter fails open (warn log). Leader election stalls — all replicas degrade to "unknown" role. Cron stops on current leader. WS pub/sub stops. | **Restore Redis.** Replicas auto-recover within 10s heartbeat cycle. |
-| Split brain (network partition between replicas) | Each partition elects its own leader when its TTL expires. Both run cron until the partition heals. | **Prevent via shared Redis + network design.** See §5. |
+| Leader dies ungracefully | TTL expires within 30s; the next reader poll can acquire within another 10s. | Observe roles and reconcile interrupted jobs. |
+| Leader is drained/stopped gracefully | Compare-and-delete releases its own lock; an existing reader polls within 10s. | Drain and stop one replica at a time; verify takeover. |
+| Redis dies | Lease failures demote replicas to reader. New leader-gated work stops; pub/sub fails; rate-limited routes return HTTP 503. | Restore Redis and verify election and quota checks before resuming automation. |
+| Partition or Redis failover | A replica without Redis confirmation stops leading. Separate writable Redis histories can still grant conflicting leases. | Keep one coordination history; see §5 and review in-flight operations. |
 | All replicas dead | Service unavailable. | Standard recovery — restart via orchestrator. |
 
 ---
@@ -42,8 +52,8 @@
                                    └───────────┘
 ```
 
-- **One replica is "leader"** — runs the 13 cron jobs, owns the Docker event stream, owns git polling. Writes to SQLite.
-- **N-1 replicas are "readers"** — serve HTTP reads (list containers, inspect, logs, stats). Receive WS events via Redis pub/sub from whichever replica broadcast them. Do NOT run cron.
+- **One replica is "leader"** while its confirmed lease is valid; it may start leader-gated scheduled work, Docker event streaming and Git polling.
+- **Other replicas are "readers"** for scheduling. This role does not make all HTTP routes or SQLite access read-only; API authorization and writeable middleware apply separately.
 - **Every replica runs** the rate limiter (Redis-backed, shared), the WS server, the SSH tunnels (readers need them for HTTP reads).
 - **Sticky sessions** ensure a user's WebSocket connection sticks to one replica (reconnecting elsewhere works but drops subscriptions momentarily — minor UX hiccup, not data loss).
 
@@ -52,6 +62,13 @@
 Expose these paths to your monitoring:
 
 **`GET /api/cluster/status`** (authenticated; shape stable):
+
+Global monitoring requires an administrator or a global monitoring.read/api.read
+service token. `/api/health` stays public. For curl commands below, store the
+Authorization header in an owner-readable `/run/secrets/docker-dash-monitoring.curl`
+configuration file (`header = "Authorization: Bearer <token>"`); keep the raw token
+out of shell history and command arguments. Rotate before expiry. Separate SQLite
+instances need credentials valid for each target; see the [scraper setup](observability.md#2-enabling).
 ```json
 {
   "mode": "ha",
@@ -90,13 +107,13 @@ docker_dash_cluster_redis_connected 1
 **What happens:**
 1. Leader replica dies (OOM, node failure, `kill -9`).
 2. Leader lock in Redis stays for up to `LEADER_TTL_MS = 30000` (30s).
-3. Readers poll every `LEADER_HEARTBEAT_MS = 10000` (10s) — next poll after TTL expiry calls `SET NX PX` and wins.
+3. Readers poll every `LEADER_HEARTBEAT_MS = 10000` (10s). The next successful atomic acquisition after TTL expiry wins.
 4. New leader fires `onBecomeLeader` callbacks:
    - Starts Docker event streams
    - Starts git polling
    - Next cron tick runs on this replica (cron framework itself was running silently on all replicas; leader gate gates execution inside the wrapper)
 
-**Worst-case failover time: ~30s + next cron tick.**
+**Expected failover bound with responsive Redis/processes: up to 30s TTL + 10s reader poll + the next cron tick.**
 
 **Operator action:** None. Observe:
 ```
@@ -127,11 +144,11 @@ docker_dash_cluster_heartbeat_age_seconds 2  # should drop below 15
    - Cancels the leader-election heartbeat timer
    - Runs the Lua `DEL-if-owned` script → lock released immediately
    - Closes Redis subscriber + publisher connections
-4. Another replica polls within 10s (usually much sooner — heartbeat interval is 10s, but any request that touches `isLeader()` forces a re-poll), acquires the lock, transitions to leader.
+4. Another replica polls within 10s and can acquire. `isLeader()` checks local validity; it does not force a Redis request on every call.
 5. Start the new container with the updated image. It joins as reader.
 6. Repeat for the next replica.
 
-**Failover time during graceful shutdown: milliseconds to a few seconds.**
+**Existing readers normally take over within their next 10s poll after release.**
 
 **Operator action:** Standard orchestrator drain (Kubernetes `preStop` hook, Docker Swarm `stop_grace_period: 30s`, etc.). Let `shutdown()` complete before `SIGKILL`.
 
@@ -142,13 +159,14 @@ docker_dash_cluster_heartbeat_age_seconds 2  # should drop below 15
 ## 4. Scenario: Redis dies
 
 **What happens:**
-1. Leader heartbeat fails → logs `Redis subscriber error` / `Redis error`.
-2. Leader can't extend its lock → TTL expires after 30s → leader transitions to reader.
+1. The lease connection closes or renewal fails/times out.
+2. The replica transitions to reader immediately on the detected failure; a monotonic local deadline also prevents stale leadership after a process pause.
 3. All replicas are now readers. **No cron runs.** Docker event streams stopped.
-4. Rate limiter fails open (requests allowed with a warn log).
+4. Rate-limited routes fail closed with HTTP 503 and `Retry-After: 3`; no protected handler runs without a quota decision.
 5. WS broadcasts are in-process-only (pub/sub offline).
 
-**Degraded state — service still responds** but automation halts.
+**Degraded state:** automation halts and protected HTTP requests receive 503.
+Health endpoints outside the limiter still support diagnosis.
 
 **Operator action:**
 1. Restore Redis (restart, fix network, whatever's needed).
@@ -168,11 +186,12 @@ docker_dash_cluster_heartbeat_age_seconds > 30 # heartbeat stalled
 **What happens:**
 A network partition isolates replicas from each other AND from Redis. If replicas are split such that ONE group can reach a Redis and the other group can reach a DIFFERENT Redis (misconfigured, rare but catastrophic), both halves elect leaders, both run cron independently, potentially corrupting shared state.
 
-**Why this is our worst case:** SQLite is on a shared volume. Two leaders running `VACUUM` concurrently = DB corruption.
+**Risk:** conflicting schedulers may duplicate external mutations. SQLite locking and filesystem support must be validated independently; a lease is not a database lock or proof of corruption prevention.
 
 **Prevention (do NOT rely on post-hoc detection):**
-- **Single Redis instance** (or Sentinel-backed with quorum) — never allow two replica groups to talk to different Redis writers.
-- **Shared volume for SQLite** — every replica mounts the same Docker volume. Readers read, leader writes. A network partition can't split the volume without killing the underlying storage first (at which point the data is gone anyway).
+- **One Redis coordination history**: do not point replica groups at independent writable servers. Sentinel quorum alone does not make asynchronous lease replication safe; a promoted replica may lack an acknowledged lease.
+- **No lease eviction**: use `maxmemory-policy noeviction`. A full Redis must reject writes instead of silently discarding ownership.
+- **Shared SQLite storage**: validate locking, WAL behavior and backup consistency on the actual filesystem. The scheduling role does not serialize every API write.
 - **Network design** — put all replicas + Redis in the same L2 or same AZ. Don't stretch HA mode across regions. For geographic HA, you need Postgres + read replicas, not Docker Dash's SQLite single-writer model.
 
 **Detection (if it happens anyway):**
@@ -190,7 +209,7 @@ A network partition isolates replicas from each other AND from Redis. If replica
 ## 6. Scenario: Stuck leader (alive but unresponsive)
 
 **What happens:**
-A replica is still heartbeating to Redis but is otherwise broken (event loop stuck, DB locked, SSH tunnel pool exhausted). `SET XX PX` succeeds → lock stays. Readers never get a chance to take over.
+A replica may still renew its owned lease while some subsystem is stuck, such as a DB operation or an exhausted SSH tunnel pool. If the entire event loop stops, renewals stop too: the lease expires, and the resumed process checks its local deadline before allowing new work.
 
 **Detection:**
 - `docker_dash_http_request_duration_ms / docker_dash_http_requests_total` ratio spikes on the leader node.
@@ -201,11 +220,7 @@ A replica is still heartbeating to Redis but is otherwise broken (event loop stu
 1. Confirm the leader is unresponsive (symptoms above).
 2. `docker stop <leader-container>` — triggers graceful shutdown. Lock released.
 3. Next reader poll (within 10s) acquires. Service recovers.
-4. Alternatively, kill the leader lock directly from Redis:
-   ```bash
-   docker compose exec redis redis-cli DEL leader
-   ```
-   The stuck leader will NOT detect this (its `SET XX` at next heartbeat succeeds because it re-creates the key — but wait, the **current leader** still thinks it owns it; any other replica that reaches the NX path first between the DEL and the stuck leader's next heartbeat wins). This is a race. Prefer `docker stop`.
+4. Do not delete the lease while its process is still active. That cannot cancel its in-flight external work and may permit a second scheduler. Stop the old process, confirm it exited, then observe normal release/expiry and takeover.
 
 **Prevention:** 
 - Set reasonable `preStop` grace period so SIGTERM → graceful shutdown is clean.
@@ -218,7 +233,7 @@ A replica is still heartbeating to Redis but is otherwise broken (event loop stu
 
 After any failover event, verify:
 
-- [ ] **Exactly one leader** — `curl $app/api/metrics | grep cluster_role` shows one `role 1`, rest `role 2`.
+- [ ] **Exactly one leader** — `curl --config /run/secrets/docker-dash-monitoring.curl $app/api/metrics | grep cluster_role` shows one `role 1`, rest `role 2`.
 - [ ] **Heartbeat fresh** — `heartbeat_age_seconds < 15` on the leader.
 - [ ] **Redis connected** — `redis_connected 1` on all replicas.
 - [ ] **Last cron run recent** — check `docker_dash_background_job_runs_total{job="stats-aggregate-1m"}` should increment every 2 min.

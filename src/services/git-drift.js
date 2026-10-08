@@ -138,7 +138,7 @@ function detectDrift(desired, actual) {
  * @param {object} stack - git_stacks row ({ id, stack_name, host_id, compose_path })
  * @param {object} dockerService - injected (so this stays testable)
  */
-async function scanStack(stack, dockerService) {
+async function scanStack(stack, dockerService, hostId = stack.host_id || 0) {
   try {
     const repoDir = path.join(REPOS_BASE, String(stack.id));
     const composeFull = path.join(repoDir, stack.compose_path || 'docker-compose.yml');
@@ -149,7 +149,7 @@ async function scanStack(stack, dockerService) {
     const desired = parseComposeServices(composeYaml);
 
     // listContainers already returns all containers (running + stopped).
-    const all = await dockerService.listContainers(stack.host_id || 0);
+    const all = await dockerService.listContainers(hostId);
     const actual = all
       .filter(c => c.stack === stack.stack_name)
       .map(c => ({
@@ -164,6 +164,42 @@ async function scanStack(stack, dockerService) {
     log.warn('Drift scan failed', { stack: stack.stack_name, err: err.message });
     return { error: err.message, inSync: true, drifts: [], checkedAt: new Date().toISOString() };
   }
+}
+
+/** Scan every configured deployment target and retain host identity on drift rows. */
+async function scanStackTargets(stack, dockerService) {
+  let targets = Array.isArray(stack.targets) ? stack.targets : [];
+  if (!targets.length) {
+    try { targets = require('./git-multi-host').listTargets(stack.id); } catch { /* legacy schema */ }
+  }
+  if (!targets.length) {
+    targets = [{ host_id: stack.host_id || 0, host_name: `Host ${stack.host_id || 0}` }];
+  }
+
+  const drifts = [];
+  const targetResults = [];
+  for (const target of targets) {
+    const result = await scanStack(stack, dockerService, target.host_id);
+    if (result.error) {
+      drifts.push({
+        type: 'scan_error', hostId: target.host_id,
+        hostName: target.host_name, error: result.error,
+      });
+    } else {
+      drifts.push(...result.drifts.map(drift => ({
+        ...drift, hostId: target.host_id, hostName: target.host_name,
+      })));
+    }
+    targetResults.push({
+      hostId: target.host_id, hostName: target.host_name,
+      inSync: !result.error && result.inSync,
+      driftCount: result.drifts.length, error: result.error || null,
+    });
+  }
+  return {
+    inSync: drifts.length === 0, drifts, targetResults,
+    checkedAt: new Date().toISOString(), error: null,
+  };
 }
 
 // ─── Persistence + orchestration (DB-backed) ──────────────────────────
@@ -234,6 +270,7 @@ function buildDriftMessage(stack, result) {
       case 'extra': return `• extra: \`${d.container}\` (service ${d.service})`;
       case 'stopped': return `• stopped: \`${d.service}\` is ${d.state}`;
       case 'image_mismatch': return `• image: \`${d.service}\` runs ${d.actual}, git wants ${d.expected}`;
+      case 'scan_error': return `• scan failed on \`${d.hostName || d.hostId}\`: ${d.error}`;
       default: return `• ${d.type}: ${d.service || ''}`;
     }
   });
@@ -254,7 +291,7 @@ function buildDriftMessage(stack, result) {
  */
 async function scanAndStore(stack, dockerService) {
   const previous = getStoredDrift(stack.id);
-  const result = await scanStack(stack, dockerService);
+  const result = await scanStackTargets(stack, dockerService);
   _saveDrift(stack.id, result);
 
   if (!result.error && previous.inSync && !result.inSync) {
@@ -296,6 +333,6 @@ async function scanAll(dockerService) {
 }
 
 module.exports = {
-  normalizeImage, parseComposeServices, detectDrift, scanStack,
+  normalizeImage, parseComposeServices, detectDrift, scanStack, scanStackTargets,
   getStoredDrift, getAllStoredDrift, scanAndStore, scanAll, buildDriftMessage,
 };

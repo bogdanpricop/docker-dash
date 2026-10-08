@@ -552,7 +552,7 @@ const SwarmPage = {
             <div class="text-sm" style="white-space:pre-wrap;word-break:break-word">${Utils.escapeHtml(message)}</div>
             <div class="text-sm text-muted" style="margin-top:8px">${i18n.t('pages.swarm.initFailedHint')}</div>
           </div>
-          <button class="btn btn-sm btn-secondary" id="swarm-init-error-dismiss" title="${Utils.escapeHtml(i18n.t('common.dismiss'))}"><i class="fas fa-times"></i></button>
+          <button class="btn btn-sm btn-secondary" id="swarm-init-error-dismiss" title="${Utils.escapeHtml(i18n.t('errors.dismiss'))}"><i class="fas fa-times"></i></button>
         </div>
       </div>`;
     box.querySelector('#swarm-init-error-dismiss').addEventListener('click', () => this._clearInitError(el));

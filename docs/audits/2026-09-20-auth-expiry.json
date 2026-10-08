@@ -1,0 +1,63 @@
+{
+  "productionDeployed": false,
+  "results": [
+    {
+      "target": "lan",
+      "at": "2026-09-20T07:30:11.862Z",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "6b5a8520272ca7f8253f7234921bafbb7cda00693d1e0d2810125418d4e7e94b",
+        "src/services/auth.js": "2eb709007ac3219b8114ae0858bedfb04f702a106d34d17bc8e909c33fc405fd",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+        "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once"
+      ],
+      "emailMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4",
+      "ownedContainerRemoved": true
+    },
+    {
+      "target": "vps",
+      "at": "2026-09-20T07:30:12.686Z",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "6b5a8520272ca7f8253f7234921bafbb7cda00693d1e0d2810125418d4e7e94b",
+        "src/services/auth.js": "2eb709007ac3219b8114ae0858bedfb04f702a106d34d17bc8e909c33fc405fd",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+        "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once"
+      ],
+      "emailMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4",
+      "ownedContainerRemoved": true
+    }
+  ]
+}

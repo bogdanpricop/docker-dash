@@ -1,0 +1,4614 @@
+{
+  "scanner": "govulncheck v1.8.0",
+  "mode": "binary, symbol",
+  "note": "Binary-mode govulncheck findings include wildcard package records; these do not prove concrete functions are present. Concrete symbols also do not establish runtime exploitability.",
+  "tools": [
+    {
+      "tool": "trivy",
+      "sha256": "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791",
+      "advisories": [
+        {
+          "id": "GO-2026-6354",
+          "aliases": [
+            "CVE-2026-78662"
+          ],
+          "summary": "Prevent DoS on deadlocked undecided channel in golang.org/x/crypto/ssh",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Accept",
+              "receiver": "channel"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6355",
+          "aliases": [
+            "CVE-2026-56855"
+          ],
+          "summary": "Prevent DoS on deadlocked established channel in golang.org/x/crypto/ssh",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6348",
+          "aliases": [
+            "CVE-2026-84304",
+            "GHSA-vp52-pcj8-j9qc"
+          ],
+          "summary": "Heap Memory Exhaustion (OOM) via HTTP/2 DATA Frame Fragmentation in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Header",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewServerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "RecvCompress",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "serverHandlerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewHTTP2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewStream",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "IsBelowBufferPoolingThreshold"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "Stream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "GracefulClose",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "Copy"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "ReadAll"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "MaterializeToBuffer",
+              "receiver": "BufferSlice"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "TrailersOnly",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "NewBuffer"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "Write",
+              "receiver": "writer"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6441",
+          "aliases": [
+            "CVE-2026-84303",
+            "GHSA-qc2q-p7wx-3px3"
+          ],
+          "summary": "Bypass of xDS RBAC HTTP filter header matching in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/xds/httpfilter/rbac",
+              "function": "ParseFilterConfig",
+              "receiver": "builder"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/xds/httpfilter/rbac",
+              "function": "ParseFilterConfigOverride",
+              "receiver": "builder"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6443",
+          "aliases": [
+            "CVE-2026-84445",
+            "GHSA-2v4p-qf9q-27wj"
+          ],
+          "summary": "Server panic via missing authority or Host headers in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/xds/server",
+              "function": "RouteAndProcess"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.82.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5932",
+          "aliases": [],
+          "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp",
+              "function": "org/x/crypto/openpgp/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/armor",
+              "function": "org/x/crypto/openpgp/armor/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/packet",
+              "function": "org/x/crypto/openpgp/packet/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/errors",
+              "function": "org/x/crypto/openpgp/errors/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/s2k",
+              "function": "org/x/crypto/openpgp/s2k/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/elgamal",
+              "function": "org/x/crypto/openpgp/elgamal/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.55.0",
+              "package": "golang.org/x/crypto/openpgp/clearsign",
+              "function": "org/x/crypto/openpgp/clearsign/*",
+              "receiver": "golang"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tool": "grype",
+      "sha256": "e02ba25615668c6bae03473e3c6493b6dfffc2e4e419f65f9bd62555ac10cd0e",
+      "advisories": [
+        {
+          "id": "GO-2026-5856",
+          "aliases": [
+            "CVE-2026-42505"
+          ],
+          "summary": "Invoking Encrypted Client Hello privacy leak in crypto/tls",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "SendSessionTicket",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6091",
+          "aliases": [
+            "CVE-2026-56858"
+          ],
+          "summary": "Fix Javascript regexp context tracking in html/template",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "html/template",
+              "function": "Execute",
+              "receiver": "Template"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "html/template",
+              "function": "ExecuteTemplate",
+              "receiver": "Template"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4970",
+          "aliases": [
+            "CVE-2026-39822"
+          ],
+          "summary": "Root escape via symlink plus trailing slash in os",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadDir",
+              "receiver": "rootFS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Open",
+              "receiver": "rootFS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Create",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenRoot",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Open",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "WriteFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenInRoot"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadFile",
+              "receiver": "rootFS"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5026",
+          "aliases": [
+            "CVE-2026-39821"
+          ],
+          "summary": "Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "CloseIdleConnections",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Post"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Close",
+              "receiver": "http1ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Close",
+              "receiver": "ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Post",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Get",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Head",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Get"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "AddConn",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "PostForm"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Head"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "NewClientConn",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "RoundTripOpt",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http2RoundTripper"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http1ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Do",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "PostForm",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "RoundTrip",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "CloseIdleConnections",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http2ClientConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6089",
+          "aliases": [
+            "CVE-2026-56853"
+          ],
+          "summary": "Apply ReadHeaderTimeout when doing unencrypted HTTP/2 check in net/http",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ServeTLS",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Serve",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServe",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServeTLS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Serve"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServe"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ServeTLS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServeTLS",
+              "receiver": "Server"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6088",
+          "aliases": [
+            "CVE-2026-56859"
+          ],
+          "summary": "Add recursion depth guard during decode in encoding/xml",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "RawToken",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "DecodeElement",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Token",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Skip",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Decode",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Unmarshal"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6090",
+          "aliases": [
+            "CVE-2026-56862"
+          ],
+          "summary": "Limit handshake messages we are willing to accept post-handshake in crypto/tls",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5972",
+          "aliases": [
+            "CVE-2026-33818"
+          ],
+          "summary": "Enforce maximum recursion depth in encoding/asn1",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/asn1",
+              "function": "Unmarshal"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/asn1",
+              "function": "UnmarshalWithParams"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4887",
+          "aliases": [
+            "CVE-2026-34040",
+            "GHSA-x744-4wpc-v9h2"
+          ],
+          "summary": "Moby has AuthZ plugin bypass when provided oversized request bodies in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5942",
+          "aliases": [
+            "CVE-2026-46600"
+          ],
+          "summary": "Parsing an invalid SVCB or HTTPS RR can panic in golang.org/x/net/dns/dnsmessage",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net",
+              "function": "LookupCNAME"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net",
+              "function": "LookupCNAME",
+              "receiver": "Resolver"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5932",
+          "aliases": [],
+          "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/s2k",
+              "function": "org/x/crypto/openpgp/s2k/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/armor",
+              "function": "org/x/crypto/openpgp/armor/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/clearsign",
+              "function": "org/x/crypto/openpgp/clearsign/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp",
+              "function": "org/x/crypto/openpgp/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/elgamal",
+              "function": "org/x/crypto/openpgp/elgamal/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/errors",
+              "function": "org/x/crypto/openpgp/errors/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.56.0",
+              "package": "golang.org/x/crypto/openpgp/packet",
+              "function": "org/x/crypto/openpgp/packet/*",
+              "receiver": "golang"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4883",
+          "aliases": [
+            "CVE-2026-33997",
+            "GHSA-pxq6-2prw-chj9"
+          ],
+          "summary": "Moby has an Off-by-one error in its plugin privilege validation in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5039",
+          "aliases": [
+            "CVE-2026-42507"
+          ],
+          "summary": "Arbitrary inputs are included in errors without any escaping in net/textproto",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadCodeLine",
+              "receiver": "Reader"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadMIMEHeader",
+              "receiver": "Reader"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadResponse",
+              "receiver": "Reader"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "Error",
+              "receiver": "Error"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5668",
+          "aliases": [
+            "CVE-2026-41568",
+            "GHSA-vp62-88p7-qqf5"
+          ],
+          "summary": "Race condition in 'docker cp' in github.com/docker/docker allows creation of arbitrary files",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6218",
+          "aliases": [
+            "CVE-2026-56860"
+          ],
+          "summary": "Avoid quadratic complexity in resolvePath in net/url",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/url",
+              "function": "ResolveReference",
+              "receiver": "URL"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/url",
+              "function": "Parse",
+              "receiver": "URL"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5617",
+          "aliases": [
+            "CVE-2026-42306",
+            "GHSA-rg2x-37c3-w2rh"
+          ],
+          "summary": "Race condition in 'docker cp' in github.com/docker/docker allows bind mount redirection",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5037",
+          "aliases": [
+            "CVE-2026-27145"
+          ],
+          "summary": "Inefficient candidate hostname parsing in crypto/x509",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "Error",
+              "receiver": "HostnameError"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "VerifyHostname",
+              "receiver": "Certificate"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "Verify",
+              "receiver": "Certificate"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5038",
+          "aliases": [
+            "CVE-2026-42504"
+          ],
+          "summary": "Quadratic complexity in WordDecoder.DecodeHeader in mime",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "mime",
+              "function": "DecodeHeader",
+              "receiver": "WordDecoder"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5746",
+          "aliases": [
+            "CVE-2026-41567",
+            "GHSA-x86f-5xw2-fm2r"
+          ],
+          "summary": "Docker: 'PUT /containers/{id}/archive' executes container binary on the host in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "tool": "docker-scout",
+      "sha256": "1f83e9ed2f64a337e9af6a4b00f43244c37fcc851e5e3876a5dc459ba21424ce",
+      "advisories": [
+        {
+          "id": "GO-2026-6255",
+          "aliases": [
+            "CVE-2026-61711",
+            "GHSA-7236-3392-c5c6"
+          ],
+          "summary": "BuildKit: Custom frontend could bypass Seccomp/AppArmor in github.com/moby/buildkit",
+          "affectedSymbols": [
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "ExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "mergeOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "fileOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "fileOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewPassthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "SourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Mount",
+              "receiver": "staticEmulatorMount"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "mergeOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewBuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/executor/oci",
+              "function": "GetUser"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewMergeOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "diffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "BuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewDiffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "diffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Solve",
+              "receiver": "FileOpSolver"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "passthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "SourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "ExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "passthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewSourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "BuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewFileOp"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6218",
+          "aliases": [
+            "CVE-2026-56860"
+          ],
+          "summary": "Avoid quadratic complexity in resolvePath in net/url",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/url",
+              "function": "ResolveReference",
+              "receiver": "URL"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/url",
+              "function": "Parse",
+              "receiver": "URL"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4883",
+          "aliases": [
+            "CVE-2026-33997",
+            "GHSA-pxq6-2prw-chj9"
+          ],
+          "summary": "Moby has an Off-by-one error in its plugin privilege validation in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6061",
+          "aliases": [
+            "GHSA-hrxh-6v49-42gf"
+          ],
+          "summary": "Vulnerabilities in the xDS RBAC authorization engine and the HTTP/2 transport server implementation in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "WriteStatus",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewServerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewServerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Drain",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Header",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "RecvCompress",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewHTTP2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewStream",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "GracefulClose",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/xds/rbac",
+              "function": "IsAuthorized",
+              "receiver": "ChainEngine"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/xds/rbac",
+              "function": "NewChainEngine"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "SendHeader",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "Stream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "TrailersOnly",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Header",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewHTTP2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "Stream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Write",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "RecvCompress",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Write",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewStream",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "GracefulClose",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "TrailersOnly",
+              "receiver": "ClientStream"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6250",
+          "aliases": [
+            "CVE-2026-63328",
+            "GHSA-8rc5-4fr6-64pw"
+          ],
+          "summary": "Trivy Plugin Manager has Path Traversal that Allows Arbitrary File Write in github.com/aquasecurity/trivy",
+          "affectedSymbols": [
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/commands",
+              "function": "NewPluginCommand"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Install"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Uninstall",
+              "receiver": "Manager"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Information"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Uninstall"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Run"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "List"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Search"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Start"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Upgrade"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "Update"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "LoadAll",
+              "receiver": "Manager"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/plugin",
+              "function": "NewManager"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6354",
+          "aliases": [
+            "CVE-2026-78662"
+          ],
+          "summary": "Prevent DoS on deadlocked undecided channel in golang.org/x/crypto/ssh",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Accept",
+              "receiver": "channel"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5856",
+          "aliases": [
+            "CVE-2026-42505"
+          ],
+          "summary": "Invoking Encrypted Client Hello privacy leak in crypto/tls",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "SendSessionTicket",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6256",
+          "aliases": [
+            "CVE-2026-61712",
+            "GHSA-72x6-4j93-7w86"
+          ],
+          "summary": "BuildKit has a possible runtime DoS via unbounded group parsing in github.com/moby/buildkit",
+          "affectedSymbols": [
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "ExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "diffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Solve",
+              "receiver": "FileOpSolver"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "fileOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Mount",
+              "receiver": "staticEmulatorMount"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "SourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "mergeOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "BuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "SourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewDiffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "passthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewBuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "ExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "diffOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/executor/oci",
+              "function": "GetUser"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "fileOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "BuildOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewExecOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewFileOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewSourceOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "Exec",
+              "receiver": "passthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewPassthroughOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "CacheMap",
+              "receiver": "mergeOp"
+            },
+            {
+              "module": "github.com/moby/buildkit",
+              "version": "v0.29.0",
+              "package": "github.com/moby/buildkit/solver/llbsolver/ops",
+              "function": "NewMergeOp"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6091",
+          "aliases": [
+            "CVE-2026-56858"
+          ],
+          "summary": "Fix Javascript regexp context tracking in html/template",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "html/template",
+              "function": "ExecuteTemplate",
+              "receiver": "Template"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "html/template",
+              "function": "Execute",
+              "receiver": "Template"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4887",
+          "aliases": [
+            "CVE-2026-34040",
+            "GHSA-x744-4wpc-v9h2"
+          ],
+          "summary": "Moby has AuthZ plugin bypass when provided oversized request bodies in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6348",
+          "aliases": [
+            "CVE-2026-84304",
+            "GHSA-vp52-pcj8-j9qc"
+          ],
+          "summary": "Heap Memory Exhaustion (OOM) via HTTP/2 DATA Frame Fragmentation in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewHTTP2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "GracefulClose",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "TrailersOnly",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "MaterializeToBuffer",
+              "receiver": "BufferSlice"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "Stream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "GracefulClose",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "RecvCompress",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "Copy"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "IsBelowBufferPoolingThreshold"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewHTTP2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewServerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "Write",
+              "receiver": "writer"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "ServerStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Close",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "RecvCompress",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "serverHandlerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Header",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Read",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewStream",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "recvBufferReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "ReadAll"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "Header",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewServerTransport"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/mem",
+              "function": "NewBuffer"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "NewStream",
+              "receiver": "http2Client"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "TrailersOnly",
+              "receiver": "ClientStream"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "transportReader"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "ReadMessageHeader",
+              "receiver": "Stream"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5777",
+          "aliases": [
+            "GHSA-rjr7-jggh-pgcp"
+          ],
+          "summary": "Chi's RealIP Middleware allows IP spoofing via unvalidated X-Forwarded-For header in github.com/go-chi/chi",
+          "affectedSymbols": [
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5158",
+          "aliases": [
+            "CVE-2026-41178",
+            "GHSA-5wrp-cwcj-q835"
+          ],
+          "summary": "Opentelemetry-go's baggage parsing no longer caps raw header length in go.opentelemetry.io/otel",
+          "affectedSymbols": [
+            {
+              "module": "go.opentelemetry.io/otel",
+              "version": "v1.43.0",
+              "package": "go.opentelemetry.io/otel/baggage",
+              "function": "Parse"
+            },
+            {
+              "module": "go.opentelemetry.io/otel",
+              "version": "v1.43.0",
+              "package": "go.opentelemetry.io/otel/baggage",
+              "function": "New"
+            },
+            {
+              "module": "go.opentelemetry.io/otel",
+              "version": "v1.43.0",
+              "package": "go.opentelemetry.io/otel/propagation",
+              "function": "Extract",
+              "receiver": "Baggage"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5932",
+          "aliases": [],
+          "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/clearsign",
+              "function": "org/x/crypto/openpgp/clearsign/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/packet",
+              "function": "org/x/crypto/openpgp/packet/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/elgamal",
+              "function": "org/x/crypto/openpgp/elgamal/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp",
+              "function": "org/x/crypto/openpgp/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/errors",
+              "function": "org/x/crypto/openpgp/errors/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/s2k",
+              "function": "org/x/crypto/openpgp/s2k/*",
+              "receiver": "golang"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/openpgp/armor",
+              "function": "org/x/crypto/openpgp/armor/*",
+              "receiver": "golang"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5942",
+          "aliases": [
+            "CVE-2026-46600"
+          ],
+          "summary": "Parsing an invalid SVCB or HTTPS RR can panic in golang.org/x/net/dns/dnsmessage",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "Unpack",
+              "receiver": "Message"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "AllAuthorities",
+              "receiver": "Parser"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net",
+              "function": "LookupCNAME"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net",
+              "function": "LookupCNAME",
+              "receiver": "Resolver"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "Answer",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "SVCBResource",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "Additional",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "AllAnswers",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "Authority",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "AllAdditionals",
+              "receiver": "Parser"
+            },
+            {
+              "module": "golang.org/x/net",
+              "version": "v0.55.0",
+              "package": "golang.org/x/net/dns/dnsmessage",
+              "function": "HTTPSResource",
+              "receiver": "Parser"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6213",
+          "aliases": [
+            "CVE-2026-71556",
+            "GHSA-hc8v-wwc9-vgxm"
+          ],
+          "summary": "Worktree operations may follow symlinks in github.com/go-git/go-git",
+          "affectedSymbols": [
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "PullContext",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "StatusWithOptions",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "RemoveGlob",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "ResetSparsely",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Status",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Move",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Status",
+              "receiver": "Submodule"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Remove",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Commit",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Rename",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "UpdateContext",
+              "receiver": "Submodules"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "PlainClone"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Clean",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "AddWithOptions",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Remove",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Submodule",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "UpdateContext",
+              "receiver": "Submodule"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Reset",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Symlink",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Chroot",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Restore",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Submodules",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "MkdirAll",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Add",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Lstat",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Update",
+              "receiver": "Submodule"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "PlainCloneContext"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Checkout",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Stat",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Repository",
+              "receiver": "Submodule"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Open",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Update",
+              "receiver": "Submodules"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "OpenFile",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Clone"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "AddGlob",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "ReadDir",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "CloneContext"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Status",
+              "receiver": "Submodules"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Pull",
+              "receiver": "Worktree"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Blame"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Create",
+              "receiver": "worktreeFilesystem"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5",
+              "function": "Readlink",
+              "receiver": "worktreeFilesystem"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6090",
+          "aliases": [
+            "CVE-2026-56862"
+          ],
+          "summary": "Limit handshake messages we are willing to accept post-handshake in crypto/tls",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Write",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandshakeContext",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "HandleData",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialContext",
+              "receiver": "Dialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Start",
+              "receiver": "QUICConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Dial"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Read",
+              "receiver": "Conn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "DialWithDialer"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/tls",
+              "function": "Handshake",
+              "receiver": "Conn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4970",
+          "aliases": [
+            "CVE-2026-39822"
+          ],
+          "summary": "Root escape via symlink plus trailing slash in os",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Open",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenInRoot"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadFile",
+              "receiver": "rootFS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "WriteFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadFile",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Open",
+              "receiver": "rootFS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "ReadDir",
+              "receiver": "rootFS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "Create",
+              "receiver": "Root"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "os",
+              "function": "OpenRoot",
+              "receiver": "Root"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5972",
+          "aliases": [
+            "CVE-2026-33818"
+          ],
+          "summary": "Enforce maximum recursion depth in encoding/asn1",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/asn1",
+              "function": "UnmarshalWithParams"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/asn1",
+              "function": "Unmarshal"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5983",
+          "aliases": [
+            "CVE-2026-54448",
+            "GHSA-q3fv-x8vg-qqm4"
+          ],
+          "summary": "Trivy: Helm chart tar bomb causes OOM via unbounded io.ReadAll in parser in github.com/aquasecurity/trivy",
+          "affectedSymbols": [
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/iac/scanners/helm/parser",
+              "function": "ParseFS",
+              "receiver": "Parser"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/iac/scanners/helm/parser",
+              "function": "RenderedChartFiles",
+              "receiver": "Parser"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/iac/scanners/helm",
+              "function": "ScanFS",
+              "receiver": "Scanner"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/iac/scanners/helm/parser",
+              "function": "New"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/iac/detection",
+              "function": "IsArchive"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5970",
+          "aliases": [
+            "CVE-2026-56852"
+          ],
+          "summary": "Infinite loop on invalid input in golang.org/x/text",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Write",
+              "receiver": "normWriter"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Bytes",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "IsNormal",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Next",
+              "receiver": "Iter"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "FirstBoundaryInString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "NextBoundary",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "LastBoundary",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Seek",
+              "receiver": "Iter"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "FirstBoundary",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Properties",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "QuickSpanString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "InitString",
+              "receiver": "Iter"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "AppendString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "QuickSpan",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "IsNormalString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "SpanString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "PropertiesString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "String",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Append",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Span",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Init",
+              "receiver": "Iter"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "NextBoundaryInString",
+              "receiver": "Form"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Read",
+              "receiver": "normReader"
+            },
+            {
+              "module": "golang.org/x/text",
+              "version": "v0.38.0",
+              "package": "golang.org/x/text/unicode/norm",
+              "function": "Transform",
+              "receiver": "Form"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5026",
+          "aliases": [
+            "CVE-2026-39821"
+          ],
+          "summary": "Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "RoundTrip",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http2ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Close",
+              "receiver": "http1ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Post",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Get",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "RoundTripOpt",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Head"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http/internal/http2",
+              "function": "AddConn",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http1ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "PostForm"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Get"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Do",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Close",
+              "receiver": "ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "NewClientConn",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "http2RoundTripper"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "ClientConn"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Post"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "CloseIdleConnections",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "CloseIdleConnections",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "RoundTrip",
+              "receiver": "Transport"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Head",
+              "receiver": "Client"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "PostForm",
+              "receiver": "Client"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5037",
+          "aliases": [
+            "CVE-2026-27145"
+          ],
+          "summary": "Inefficient candidate hostname parsing in crypto/x509",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "Verify",
+              "receiver": "Certificate"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "VerifyHostname",
+              "receiver": "Certificate"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "crypto/x509",
+              "function": "Error",
+              "receiver": "HostnameError"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5774",
+          "aliases": [
+            "GHSA-3fxj-6jh8-hvhx"
+          ],
+          "summary": "Chi has an IP spoofing vulnerability in middleware.RealIP in github.com/go-chi/chi",
+          "affectedSymbols": [
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6443",
+          "aliases": [
+            "CVE-2026-84445",
+            "GHSA-2v4p-qf9q-27wj"
+          ],
+          "summary": "Server panic via missing authority or Host headers in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/xds/server",
+              "function": "RouteAndProcess"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/transport",
+              "function": "HandleStreams",
+              "receiver": "http2Server"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5841",
+          "aliases": [
+            "GHSA-259r-337f-4rfw"
+          ],
+          "summary": "OOB read in github.com/klauspost/compress/s2",
+          "affectedSymbols": [
+            {
+              "module": "github.com/klauspost/compress",
+              "version": "v1.18.5",
+              "package": "github.com/klauspost/compress/s2",
+              "function": "NewDict"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6089",
+          "aliases": [
+            "CVE-2026-56853"
+          ],
+          "summary": "Apply ReadHeaderTimeout when doing unencrypted HTTP/2 check in net/http",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServeTLS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ServeTLS"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServe"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ServeTLS",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Serve",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServe",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "ListenAndServeTLS",
+              "receiver": "Server"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/http",
+              "function": "Serve"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6303",
+          "aliases": [
+            "CVE-2026-56854"
+          ],
+          "summary": "Source-address critical option not enforced for non-public-key auth callbacks in golang.org/x/crypto/ssh",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6088",
+          "aliases": [
+            "CVE-2026-56859"
+          ],
+          "summary": "Add recursion depth guard during decode in encoding/xml",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "DecodeElement",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Token",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Decode",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Unmarshal"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "RawToken",
+              "receiver": "Decoder"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "encoding/xml",
+              "function": "Skip",
+              "receiver": "Decoder"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6180",
+          "aliases": [
+            "CVE-2026-56864"
+          ],
+          "summary": "Ignore unrelated, unauthenticated hashes in Lookup in golang.org/x/mod/sumdb",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/mod",
+              "version": "v0.36.0",
+              "package": "golang.org/x/mod/sumdb",
+              "function": "Lookup",
+              "receiver": "Client"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6441",
+          "aliases": [
+            "CVE-2026-84303",
+            "GHSA-qc2q-p7wx-3px3"
+          ],
+          "summary": "Bypass of xDS RBAC HTTP filter header matching in google.golang.org/grpc",
+          "affectedSymbols": [
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/xds/httpfilter/rbac",
+              "function": "ParseFilterConfigOverride",
+              "receiver": "builder"
+            },
+            {
+              "module": "google.golang.org/grpc",
+              "version": "v1.81.1",
+              "package": "google.golang.org/grpc/internal/xds/httpfilter/rbac",
+              "function": "ParseFilterConfig",
+              "receiver": "builder"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5746",
+          "aliases": [
+            "CVE-2026-41567",
+            "GHSA-x86f-5xw2-fm2r"
+          ],
+          "summary": "Docker: 'PUT /containers/{id}/archive' executes container binary on the host in github.com/docker/docker",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "containerExtractToDir",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5435",
+          "aliases": [
+            "CVE-2026-35206",
+            "GHSA-hr2v-4r36-88hr"
+          ],
+          "summary": "Helm Chart extraction output directory collapse via Chart.yaml name dot-segment in helm.sh/helm",
+          "affectedSymbols": [
+            {
+              "module": "helm.sh/helm/v3",
+              "version": "v3.19.0",
+              "package": "helm.sh/helm/v3/pkg/chartutil",
+              "function": "Expand"
+            },
+            {
+              "module": "helm.sh/helm/v3",
+              "version": "v3.19.0",
+              "package": "helm.sh/helm/v3/pkg/chartutil",
+              "function": "ExpandFile"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6355",
+          "aliases": [
+            "CVE-2026-56855"
+          ],
+          "summary": "Prevent DoS on deadlocked established channel in golang.org/x/crypto/ssh",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "Dial"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewClientConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewServerConn"
+            },
+            {
+              "module": "golang.org/x/crypto",
+              "version": "v0.53.0",
+              "package": "golang.org/x/crypto/ssh",
+              "function": "NewControlClientConn"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5320",
+          "aliases": [
+            "CVE-2026-5160",
+            "GHSA-c97m-vxhj-p7j6"
+          ],
+          "summary": "Cross-site Scripting (XSS) in github.com/yuin/goldmark",
+          "affectedSymbols": [
+            {
+              "module": "github.com/yuin/goldmark",
+              "version": "v1.7.13",
+              "package": "github.com/yuin/goldmark/renderer/html",
+              "function": "renderImage",
+              "receiver": "Renderer"
+            },
+            {
+              "module": "github.com/yuin/goldmark",
+              "version": "v1.7.13",
+              "package": "github.com/yuin/goldmark/renderer/html",
+              "function": "renderLink",
+              "receiver": "Renderer"
+            },
+            {
+              "module": "github.com/yuin/goldmark",
+              "version": "v1.7.13",
+              "package": "github.com/yuin/goldmark/renderer/html",
+              "function": "renderAutoLink",
+              "receiver": "Renderer"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6294",
+          "aliases": [
+            "CVE-2026-55092",
+            "GHSA-mcj4-mphf-j9ff"
+          ],
+          "summary": "Path traversal via crafted vulnerability database or other downloaded artifacts in github.com/aquasecurity/trivy",
+          "affectedSymbols": [
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/oci",
+              "function": "Download",
+              "receiver": "Artifact"
+            },
+            {
+              "module": "github.com/aquasecurity/trivy",
+              "version": "v0.66.0",
+              "package": "github.com/aquasecurity/trivy/pkg/oci",
+              "function": "Download",
+              "receiver": "Artifacts"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5668",
+          "aliases": [
+            "CVE-2026-41568",
+            "GHSA-vp62-88p7-qqf5"
+          ],
+          "summary": "Race condition in 'docker cp' in github.com/docker/docker allows creation of arbitrary files",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "createIfNotExists",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6179",
+          "aliases": [
+            "CVE-2026-56865"
+          ],
+          "summary": "Fix transparency log tile verification bypass in golang.org/x/mod/sumdb/tlog",
+          "affectedSymbols": [
+            {
+              "module": "golang.org/x/mod",
+              "version": "v0.36.0",
+              "package": "golang.org/x/mod/sumdb/tlog",
+              "function": "ReadHashes",
+              "receiver": "tileHashReader"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6225",
+          "aliases": [],
+          "summary": "Credential leakage to untrusted hosts in github.com/chrismellard/docker-credential-acr-env",
+          "affectedSymbols": [
+            {
+              "module": "github.com/chrismellard/docker-credential-acr-env",
+              "version": "v0.0.0-20230304212654-82a0ddb27589",
+              "package": "github.com/chrismellard/docker-credential-acr-env/pkg/credhelper",
+              "function": "Get",
+              "receiver": "ACRCredHelper"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5775",
+          "aliases": [
+            "GHSA-9g5q-2w5x-hmxf"
+          ],
+          "summary": "Chi Middleware vulnerable to IP spoofing via X-Forwarded-For header in github.com/go-chi/chi",
+          "affectedSymbols": [
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            },
+            {
+              "module": "github.com/go-chi/chi/v5",
+              "version": "v5.2.5",
+              "package": "github.com/go-chi/chi/v5/middleware",
+              "function": "RealIP"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6214",
+          "aliases": [
+            "CVE-2026-71557",
+            "GHSA-qgq7-7hm3-q39j"
+          ],
+          "summary": "Path traversal via crafted reference names in github.com/go-git/go-git",
+          "affectedSymbols": [
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5/storage/filesystem/dotgit",
+              "function": "RemoveRef",
+              "receiver": "DotGit"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5/storage/filesystem/dotgit",
+              "function": "SetRef",
+              "receiver": "DotGit"
+            },
+            {
+              "module": "github.com/go-git/go-git/v5",
+              "version": "v5.19.1",
+              "package": "github.com/go-git/go-git/v5/storage/filesystem/dotgit",
+              "function": "Ref",
+              "receiver": "DotGit"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5039",
+          "aliases": [
+            "CVE-2026-42507"
+          ],
+          "summary": "Arbitrary inputs are included in errors without any escaping in net/textproto",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadResponse",
+              "receiver": "Reader"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadMIMEHeader",
+              "receiver": "Reader"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "Error",
+              "receiver": "Error"
+            },
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "net/textproto",
+              "function": "ReadCodeLine",
+              "receiver": "Reader"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5617",
+          "aliases": [
+            "CVE-2026-42306",
+            "GHSA-rg2x-37c3-w2rh"
+          ],
+          "summary": "Race condition in 'docker cp' in github.com/docker/docker allows bind mount redirection",
+          "affectedSymbols": [
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            },
+            {
+              "module": "github.com/docker/docker",
+              "version": "v28.5.2+incompatible",
+              "package": "github.com/docker/docker/daemon",
+              "function": "openContainerFS",
+              "receiver": "Daemon"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5038",
+          "aliases": [
+            "CVE-2026-42504"
+          ],
+          "summary": "Quadratic complexity in WordDecoder.DecodeHeader in mime",
+          "affectedSymbols": [
+            {
+              "module": "stdlib",
+              "version": "v1.26.3",
+              "package": "mime",
+              "function": "DecodeHeader",
+              "receiver": "WordDecoder"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "openpgpVerification": [
+    {
+      "tool": "trivy",
+      "compiledFunctions": 193063,
+      "openpgpFunctions": 0
+    },
+    {
+      "tool": "grype",
+      "compiledFunctions": 100023,
+      "openpgpFunctions": 0
+    },
+    {
+      "tool": "docker-scout",
+      "compiledFunctions": 212328,
+      "openpgpFunctions": 198
+    }
+  ]
+}

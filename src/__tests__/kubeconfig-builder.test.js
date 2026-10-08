@@ -23,25 +23,25 @@ describe('buildKubeconfig (v8.9.7-alpha.1)', () => {
     const enc = encryptDaemonConfig({
       endpoint: 'https://k3s.example.com:6443',
       token: 'eyJhbG.SECRET',
-      caCert: '-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----',
+      caCert: require('fs').readFileSync(require('path').join(__dirname, 'fixtures/provider-tls/ca.pem'), 'utf8'),
     });
     const yaml = buildKubeconfig({ id: 5, name: 'homelab-k3s', daemon_type: 'kubernetes', daemon_config: enc });
     expect(yaml).toContain('apiVersion: v1');
     expect(yaml).toContain('kind: Config');
-    expect(yaml).toContain('server: https://k3s.example.com:6443');
+    expect(require('yaml').parse(yaml).clusters[0].cluster.server).toBe('https://k3s.example.com:6443');
     expect(yaml).toContain('token: eyJhbG.SECRET');
     expect(yaml).toContain('certificate-authority-data:');
     expect(yaml).toContain('name: homelab-k3s');
   });
 
-  it('falls back to insecure-skip-tls-verify when no CA', () => {
+  it('uses system CA trust when no custom CA is supplied', () => {
     const enc = encryptDaemonConfig({
       endpoint: 'https://k3s.local:6443',
       token: 'xxx',
-      skipTlsVerify: true,
+      skipTlsVerify: false,
     });
     const yaml = buildKubeconfig({ id: 6, name: 'lab', daemon_type: 'kubernetes', daemon_config: enc });
-    expect(yaml).toContain('insecure-skip-tls-verify: true');
+    expect(yaml).not.toContain('insecure-skip-tls-verify');
     expect(yaml).not.toContain('certificate-authority-data');
   });
 

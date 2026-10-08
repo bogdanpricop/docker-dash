@@ -36,6 +36,20 @@ let adminId = null;
 let operatorId = null;
 let viewerId = null;
 
+describe('LDAP configuration read-only protection', () => {
+  it.each(['put', 'delete'])('blocks %s while the system is read-only', async method => {
+    const config = require('../config');
+    const previous = config.features.readOnly;
+    config.features.readOnly = true;
+    try {
+      const res = await request(app)[method]('/api/auth/ldap')
+        .set('Authorization', `Bearer ${adminToken}`).send({ host: 'ldap.example.test' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/read-only/);
+    } finally { config.features.readOnly = previous; }
+  });
+});
+
 beforeAll(async () => {
   require('./helpers/seedTestAdmin').clearMustChange('admin');
   // Login as admin

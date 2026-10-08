@@ -179,7 +179,7 @@ function _httpPost(url, body, extraHeaders = {}, rawBody = false) {
       port: parsedUrl.port || (isHttps ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
       headers,
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
     }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);

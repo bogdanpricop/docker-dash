@@ -241,8 +241,10 @@ describe('howto-loader — loadAll (DB integration)', () => {
       expect(row.title_ro).toBe('Ghid Nginx');
       expect(row.summary).toBe('EN summary');
       expect(row.summary_ro).toBe('Sumar RO');
-      expect(row.content).toBe('EN body content');
-      expect(row.content_ro).toBe('RO body content');
+      // v8.94.2 — bodies are rendered to HTML on load. The frontend injects
+      // `content` as HTML, so storing raw markdown produced a wall of text.
+      expect(row.content).toBe('<p>EN body content</p>');
+      expect(row.content_ro).toBe('<p>RO body content</p>');
     });
   });
 
@@ -260,7 +262,7 @@ describe('howto-loader — loadAll (DB integration)', () => {
       expect(result.loaded).toBe(1);
       let row = db.prepare('SELECT * FROM howto_guides WHERE slug = ?').get(slug);
       expect(row.title).toBe('First');
-      expect(row.content).toBe('v1 body');
+      expect(row.content).toBe('<p>v1 body</p>');
 
       // Second load: UPDATE (same slug, new content)
       fs.writeFileSync(
@@ -273,7 +275,7 @@ describe('howto-loader — loadAll (DB integration)', () => {
       expect(result.loaded).toBe(1);
       row = db.prepare('SELECT * FROM howto_guides WHERE slug = ?').get(slug);
       expect(row.title).toBe('Second');
-      expect(row.content).toBe('v2 body');
+      expect(row.content).toBe('<p>v2 body</p>');
 
       // Still exactly one row
       const count = db.prepare('SELECT COUNT(*) as n FROM howto_guides').get().n;

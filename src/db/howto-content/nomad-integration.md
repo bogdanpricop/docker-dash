@@ -52,7 +52,7 @@ const fs = require("fs");
 const cfg = {
   endpoint: "https://nomad.example.com:4646",
   token: "SECRET-ID-UUID",              // omit if ACL disabled
-  caCert: fs.readFileSync("/data/nomad-ca.crt", "utf8"),   // omit if CA is trusted or ACL disabled
+  caCert: fs.readFileSync("/data/nomad-ca.crt", "utf8"),   // omit only if the server CA is already trusted
   skipTlsVerify: false,
 };
 getDb().prepare(`INSERT INTO docker_hosts (name, connection_type, daemon_type, daemon_config)
@@ -80,7 +80,7 @@ Namespace filter dropdown at the top (Enterprise). OSS returns `[]` from `/v1/na
 
 - ACL token is encrypted at rest via AES-256-GCM (`enc:` prefix on `daemon_config`)
 - Use a token with the **minimum policy** — `read` on `namespace`, `node`, `agent` covers this alpha's read paths
-- `X-Nomad-Token` header carries the token — TLS is strongly recommended (`skipTlsVerify: false` + valid `caCert`)
+- `X-Nomad-Token` carries the credential. Remote endpoints must use HTTPS with verified server identity; provide `caCert` for a private issuer. ACL configuration does not change server certificate verification.
 - Every read route requires docker-dash `requireAuth` — no unauthenticated proxying
 
 ## Alpha caveats

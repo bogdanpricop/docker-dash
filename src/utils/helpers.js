@@ -21,12 +21,10 @@ function sanitizeId(id) {
   return id.replace(/[^a-f0-9]/gi, '').substring(0, 64);
 }
 
-/** Get client IP from request */
+/** Express resolves proxy hops using the application's explicit trust policy.
+ * Raw forwarding headers are never an independent source of identity. */
 function getClientIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-    || req.headers['x-real-ip']
-    || req.socket?.remoteAddress
-    || 'unknown';
+  return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 /** Safe JSON parse */

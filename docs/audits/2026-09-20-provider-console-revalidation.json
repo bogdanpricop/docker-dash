@@ -1,0 +1,91 @@
+{
+  "productionDeployed": false,
+  "liveVersion": "8.96.8",
+  "tests": {
+    "suites": 370,
+    "passed": 4862,
+    "skipped": 1,
+    "newCases": 22,
+    "lint": "passed"
+  },
+  "native": [
+    {
+      "target": "lan",
+      "at": "2026-09-20T07:56:33.429Z",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "6b5a8520272ca7f8253f7234921bafbb7cda00693d1e0d2810125418d4e7e94b",
+        "src/services/auth.js": "16f2195ba57f1ff24458980bfb15b43f584131668ec3e37be2691fd8601dc9f0",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+        "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+        "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+        "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+        "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once",
+        "real-websocket-revocation-input",
+        "real-websocket-revocation-broadcast",
+        "real-websocket-revocation-idle-expiry",
+        "real-provider-console-revocation-input",
+        "real-provider-console-revocation-output",
+        "real-provider-console-revocation-idle",
+        "native-fragmented-console-read-allows-transport-progress"
+      ],
+      "emailMocked": true,
+      "providerMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4"
+    },
+    {
+      "target": "vps",
+      "at": "2026-09-20T07:56:33.637Z",
+      "image": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+      "mode": "source-overlay",
+      "sourceHashes": {
+        "src/routes/auth.js": "6b5a8520272ca7f8253f7234921bafbb7cda00693d1e0d2810125418d4e7e94b",
+        "src/services/auth.js": "16f2195ba57f1ff24458980bfb15b43f584131668ec3e37be2691fd8601dc9f0",
+        "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+        "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+        "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+        "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+        "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+        "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+        "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+        "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+      },
+      "checks": [
+        "identical-http-response-before-smtp-completes",
+        "configured-link-origin",
+        "account-quota-across-case-and-ip",
+        "native-sqlite-cross-process-single-redemption-and-audit",
+        "expired-iso-session-refused-by-real-http-auth",
+        "expired-iso-mfa-refused",
+        "production-login-timestamps-enforce-ip-lockout",
+        "native-cross-process-recovery-code-consumed-once",
+        "real-websocket-revocation-input",
+        "real-websocket-revocation-broadcast",
+        "real-websocket-revocation-idle-expiry",
+        "real-provider-console-revocation-input",
+        "real-provider-console-revocation-output",
+        "real-provider-console-revocation-idle",
+        "native-fragmented-console-read-allows-transport-progress"
+      ],
+      "emailMocked": true,
+      "providerMocked": true,
+      "externalNetwork": false,
+      "sqlite": "3.53.4"
+    }
+  ]
+}

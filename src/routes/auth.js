@@ -9,7 +9,8 @@ const { rateLimit } = require('../middleware/rateLimit');
 const config = require('../config');
 const { getClientIp } = require('../utils/helpers');
 const { getDb } = require('../db');
-const { generateToken, sha256 } = require('../utils/crypto');
+const { sha256 } = require('../utils/crypto');
+const resetTokens = require('../services/password-reset');
 const bcrypt = require('bcrypt');
 const log = require('../utils/logger')('auth');
 
@@ -17,7 +18,7 @@ const router = Router();
 
 // Login
 router.post('/login',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-login'),
   async (req, res) => {
     try {
       const { username, password } = req.body;
@@ -76,7 +77,7 @@ router.post('/login',
 
 // Verify TOTP code during login
 router.post('/mfa/verify',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-mfa-verify'),
   (req, res) => {
     try {
       const { mfaToken, code } = req.body;
@@ -120,7 +121,7 @@ router.post('/mfa/verify',
 
 // Verify recovery code during login
 router.post('/mfa/recovery',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-mfa-recovery'),
   (req, res) => {
     try {
       const { mfaToken, recoveryCode } = req.body;
@@ -163,7 +164,7 @@ router.post('/mfa/recovery',
 );
 
 // Setup MFA (generate secret, return otpauth URI)
-router.post('/mfa/setup', requireAuth, (req, res) => {
+router.post('/mfa/setup', requireAuth, writeable, (req, res) => {
   try {
     const result = authService.mfaSetup(req.user.id);
     if (result.error) return res.status(400).json({ error: result.error });
@@ -175,7 +176,7 @@ router.post('/mfa/setup', requireAuth, (req, res) => {
 });
 
 // Enable MFA (verify first code)
-router.post('/mfa/enable', requireAuth, (req, res) => {
+router.post('/mfa/enable', requireAuth, writeable, (req, res) => {
   try {
     const { code } = req.body;
     if (!code) return res.status(400).json({ error: 'TOTP code required' });
@@ -191,7 +192,7 @@ router.post('/mfa/enable', requireAuth, (req, res) => {
 });
 
 // Disable MFA (requires password confirmation)
-router.post('/mfa/disable', requireAuth, async (req, res) => {
+router.post('/mfa/disable', requireAuth, writeable, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password) return res.status(400).json({ error: 'Password required to disable MFA' });
@@ -207,7 +208,7 @@ router.post('/mfa/disable', requireAuth, async (req, res) => {
 });
 
 // Admin: force-disable MFA for any user
-router.delete('/users/:id/mfa', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/users/:id/mfa', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
     const db = getDb();
     const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(parseInt(req.params.id));
@@ -313,12 +314,13 @@ router.put('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
   }
 });
 
-router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/reset-password', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const { password } = req.body;
     const pwErr = authService.validatePassword(password);
     if (pwErr) return res.status(400).json({ error: pwErr });
-    await authService.resetPassword(parseInt(req.params.id), password);
+    const result = await authService.resetPassword(parseInt(req.params.id), password);
+    if (result.error) return res.status(400).json({ error: result.error });
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'reset_password',
       targetType: 'user', targetId: req.params.id, ip: getClientIp(req) });
     res.json({ ok: true });
@@ -341,34 +343,24 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 // ─── Email: Send Password Reset ──────────────────────────
-router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.auth_source !== 'local') return res.status(400).json({ error: 'Use the identity provider for account recovery' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    // Generate token (15 min expiry)
-    const token = generateToken(32);
-    const tokenHash = sha256(token);
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-    // Invalidate old tokens
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE user_id = ? AND used_at IS NULL').run(user.id);
-
-    db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-      .run(user.id, tokenHash, 'reset', expiresAt);
-
+    const issued = resetTokens.issue(db, user.id, 'reset', 15 * 60 * 1000, user.email);
     const lang = req.body.lang || 'en';
-    const baseUrl = req.body.origin || config.app.publicUrl || config.app.baseUrl;
-    const resetUrl = `${baseUrl}/reset-password.html?token=${token}`;
+    const resetUrl = issued.url;
 
     await emailService.sendPasswordReset({
       to: user.email,
       username: user.username,
       resetUrl,
       lang,
-    });
+    }).catch(error => { resetTokens.revoke(db, issued.tokenHash); throw error; });
 
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'send_password_reset',
       targetType: 'user', targetId: String(user.id), ip: getClientIp(req) });
@@ -380,27 +372,17 @@ router.post('/users/:id/send-reset', requireAuth, requireRole('admin'), async (r
 });
 
 // ─── Email: Send Invitation ──────────────────────────
-router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (req, res) => {
+router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), writeable, async (req, res) => {
   try {
     const db = getDb();
     const user = authService.getUser(parseInt(req.params.id));
     if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.auth_source !== 'local') return res.status(400).json({ error: 'Use the identity provider for account invitations' });
     if (!user.email) return res.status(400).json({ error: 'User has no email address' });
 
-    // Generate token (24h expiry)
-    const token = generateToken(32);
-    const tokenHash = sha256(token);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-    // Invalidate old tokens
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE user_id = ? AND used_at IS NULL').run(user.id);
-
-    db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-      .run(user.id, tokenHash, 'invite', expiresAt);
-
+    const issued = resetTokens.issue(db, user.id, 'invite', 1440 * 60 * 1000, user.email);
     const lang = req.body.lang || 'en';
-    const baseUrl = req.body.origin || config.app.publicUrl || config.app.baseUrl;
-    const inviteUrl = `${baseUrl}/reset-password.html?token=${token}&invite=1`;
+    const inviteUrl = issued.url;
 
     await emailService.sendInvitation({
       to: user.email,
@@ -408,7 +390,7 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
       inviteUrl,
       invitedBy: req.user.username,
       lang,
-    });
+    }).catch(error => { resetTokens.revoke(db, issued.tokenHash); throw error; });
 
     auditService.log({ userId: req.user.id, username: req.user.username, action: 'send_invitation',
       targetType: 'user', targetId: String(user.id), ip: getClientIp(req) });
@@ -420,85 +402,29 @@ router.post('/users/:id/send-invite', requireAuth, requireRole('admin'), async (
 });
 
 // ─── Public: Request Password Reset (self-service) ──────────
-// Rate-limited. Always returns generic 200 to prevent user enumeration.
+// Account lookup and SMTP begin only after the identical response is flushed.
 router.post('/request-password-reset',
-  rateLimit(5, 15 * 60 * 1000),
-  async (req, res) => {
-    const GENERIC_OK = { ok: true, message: 'If an account exists with that email, a reset link has been sent.' };
-    try {
-      const { email, origin, lang = 'en' } = req.body;
-      if (!email || typeof email !== 'string') {
-        // Still return generic 200 — don't leak validation info
-        return res.json(GENERIC_OK);
-      }
-
-      const db = getDb();
-      const user = db.prepare('SELECT id, username, email FROM users WHERE LOWER(email) = LOWER(?) AND is_active = 1')
-        .get(email.trim());
-
-      if (!user) {
-        // No account found — respond generically (no enumeration)
-        return res.json(GENERIC_OK);
-      }
-
-      // Generate a 32-byte random token; store the SHA-256 hash
-      const token = generateToken(32);
-      const tokenHash = sha256(token);
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
-
-      // Invalidate any existing unused tokens for this user
-      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL")
-        .run(user.id);
-
-      db.prepare('INSERT INTO password_reset_tokens (user_id, token_hash, type, expires_at) VALUES (?, ?, ?, ?)')
-        .run(user.id, tokenHash, 'reset', expiresAt);
-
-      const baseUrl = (origin || config.app.publicUrl || config.app.baseUrl || '').replace(/\/$/, '');
-      const resetUrl = `${baseUrl}/reset-password.html?token=${token}`;
-
-      // Attempt to send email; fall back to stderr log if unconfigured
-      try {
-        if (config.smtp && config.smtp.host) {
-          await emailService.sendPasswordReset({ to: user.email, username: user.username, resetUrl, lang });
-        } else {
-          console.warn(`[auth] No SMTP configured — password reset URL for ${user.username}: ${resetUrl}`);
-        }
-      } catch (emailErr) {
-        // Log the error but do NOT reveal it to the caller
-        log.error('Password reset email failed', { userId: user.id, error: emailErr.message });
-        console.warn(`[auth] Email send failed — password reset URL for ${user.username}: ${resetUrl}`);
-      }
-
-      auditService.log({
-        userId: user.id, username: user.username,
-        action: 'password_reset_requested',
-        ip: getClientIp(req),
-      });
-
-      res.json(GENERIC_OK);
-    } catch (err) {
-      log.error('request-password-reset', err);
-      // Always return generic 200 — never expose internals
-      res.json(GENERIC_OK);
-    }
+  rateLimit(5, 15 * 60 * 1000, 'auth-request-reset'),
+  (req, res) => {
+    const { email, lang } = req.body || {};
+    const ip = getClientIp(req);
+    res.once('finish', () => {
+      require('../services/password-reset-delivery').enqueue({ email, lang, ip });
+    });
+    res.json({ ok: true, message: 'If an account exists with that email, a reset link has been sent.' });
   }
 );
 
 // ─── Public: Validate Reset Token ──────────────────────────
 router.post('/validate-reset-token',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-validate-reset'),
   async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Token required' });
 
     const db = getDb();
-    const tokenHash = sha256(token);
-    const row = db.prepare(`
-      SELECT rt.*, u.username FROM password_reset_tokens rt
-      JOIN users u ON rt.user_id = u.id
-      WHERE rt.token_hash = ? AND rt.used_at IS NULL AND rt.expires_at > datetime('now')
-    `).get(tokenHash);
+    const row = resetTokens.find(db, token);
 
     if (!row) return res.status(400).json({ error: 'Invalid or expired token', valid: false });
 
@@ -510,7 +436,7 @@ router.post('/validate-reset-token',
 
 // ─── Public: Reset Password with Token ──────────────────────
 router.post('/reset-password-token',
-  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs),
+  rateLimit(config.rateLimit.loginMaxAttempts, config.rateLimit.loginWindowMs, 'auth-reset-password'),
   async (req, res) => {
   try {
     const { token, newPassword } = req.body;
@@ -519,27 +445,12 @@ router.post('/reset-password-token',
     if (pwErr) return res.status(400).json({ error: pwErr });
 
     const db = getDb();
-    const tokenHash = sha256(token);
-    const row = db.prepare(`
-      SELECT rt.*, u.id as uid, u.username FROM password_reset_tokens rt
-      JOIN users u ON rt.user_id = u.id
-      WHERE rt.token_hash = ? AND rt.used_at IS NULL AND rt.expires_at > datetime('now')
-    `).get(tokenHash);
-
-    if (!row) return res.status(400).json({ error: 'Invalid or expired token' });
-
-    // Set new password
+    if (!resetTokens.find(db, token)) return res.status(400).json({ error: 'Invalid or expired token' });
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
-    db.prepare('UPDATE users SET password_hash = ?, password_changed_at = datetime(\'now\'), failed_attempts = 0, is_locked = 0, locked_until = NULL, updated_at = datetime(\'now\') WHERE id = ?')
-      .run(hash, row.uid);
-
-    // Mark token as used
-    db.prepare('UPDATE password_reset_tokens SET used_at = datetime(\'now\') WHERE id = ?').run(row.id);
-
-    // Invalidate existing sessions
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(row.uid);
-
-    auditService.log({ userId: row.uid, username: row.username, action: 'password_reset_via_token' });
+    const row = resetTokens.consume(db, token, hash, current => auditService.log({
+      userId: current.uid, username: current.username, action: 'password_reset_via_token', ip: getClientIp(req),
+    }));
+    if (!row) return res.status(400).json({ error: 'Invalid or expired token' });
 
     res.json({ ok: true, username: row.username });
   } catch (err) {
@@ -549,40 +460,8 @@ router.post('/reset-password-token',
 
 // ─── OIDC / OAuth Flow ────────────────────────────────────
 
-const https = require('https');
 const crypto = require('crypto');
-
-/** Fetch JSON from a URL (for OIDC discovery, token exchange, userinfo) */
-function _oidcFetch(url, options = {}) {
-  // FIX #11: Only allow HTTPS for OIDC endpoints
-  if (!url.startsWith('https://')) {
-    return Promise.reject(new Error(`OIDC fetch rejected: only HTTPS URLs are allowed (got: ${url})`));
-  }
-  return new Promise((resolve, reject) => {
-    const mod = https;
-    const urlObj = new URL(url);
-    const reqOpts = {
-      hostname: urlObj.hostname,
-      port: urlObj.port,
-      path: urlObj.pathname + urlObj.search,
-      method: options.method || 'GET',
-      headers: { 'Accept': 'application/json', ...(options.headers || {}) },
-      timeout: 10000,
-    };
-    const req = mod.request(reqOpts, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch { resolve({ status: res.statusCode, body: data }); }
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('OIDC request timeout')); });
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
+const { fetchJson: _oidcFetch, endpoint: _oidcEndpoint } = require('../utils/oidc-http');
 
 // ─── OIDC JWT Signature Verification (FIX #11) ──────────────────────────────
 
@@ -607,18 +486,37 @@ function __fetch(url, opts) {
   return (_oidcFetchOverride || _oidcFetch)(url, opts);
 }
 
-async function _getDiscovery(issuer, { force = false } = {}) {
+const _discoveryPending = new Map(), _jwksPending = new Map();
+function _singleFlight(pending, issuer, load) {
+  if (pending.has(issuer)) return pending.get(issuer);
+  const promise = Promise.resolve().then(load).finally(() => {
+    if (pending.get(issuer) === promise) pending.delete(issuer);
+  });
+  pending.set(issuer, promise); return promise;
+}
+function _getDiscovery(issuer, options) {
+  return _singleFlight(_discoveryPending, issuer, () => _loadDiscovery(issuer, options));
+}
+function _getJwks(issuer, options) {
+  return _singleFlight(_jwksPending, issuer, () => _loadJwks(issuer, options));
+}
+
+async function _loadDiscovery(issuer, { force = false } = {}) {
   if (!force) {
     const cached = _discoCache.get(issuer);
     if (cached && (Date.now() - cached.fetchedAt) < DISCO_CACHE_TTL_MS) return cached.body;
   }
   const res = await __fetch(`${issuer}/.well-known/openid-configuration`);
-  if (!res.body) throw new Error('OIDC discovery returned no body');
+  const body = res.body;
+  if (res.status !== 200 || !body || typeof body !== 'object' || Array.isArray(body) || body.issuer !== issuer) throw new Error('Invalid OIDC discovery response');
+  if (_oidcEndpoint(issuer).search) throw new Error('Invalid OIDC issuer');
+  for (const key of ['authorization_endpoint','token_endpoint','jwks_uri']) _oidcEndpoint(body[key]);
+  if (body.userinfo_endpoint !== undefined) _oidcEndpoint(body.userinfo_endpoint);
   _discoCache.set(issuer, { body: res.body, fetchedAt: Date.now() });
   return res.body;
 }
 
-async function _getJwks(issuer, { force = false } = {}) {
+async function _loadJwks(issuer, { force = false } = {}) {
   if (!force) {
     const cached = _jwksCache.get(issuer);
     if (cached && (Date.now() - cached.fetchedAt) < JWKS_CACHE_TTL_MS) return cached.jwks;
@@ -637,7 +535,8 @@ async function _getJwks(issuer, { force = false } = {}) {
   const disco = await _getDiscovery(issuer);
   if (!disco.jwks_uri) throw new Error('OIDC discovery missing jwks_uri');
   const jwksRes = await __fetch(disco.jwks_uri);
-  if (!jwksRes.body?.keys) throw new Error('Invalid JWKS response');
+  if (jwksRes.status !== 200 || !Array.isArray(jwksRes.body?.keys) || !jwksRes.body.keys.length || jwksRes.body.keys.length > 100
+    || !jwksRes.body.keys.every(key => key && typeof key === 'object' && !Array.isArray(key))) throw new Error('Invalid JWKS response');
   _jwksCache.set(issuer, { jwks: jwksRes.body.keys, fetchedAt: Date.now() });
   return jwksRes.body.keys;
 }
@@ -647,7 +546,8 @@ async function _getJwks(issuer, { force = false } = {}) {
  * Checks: signature, exp, nbf, iss, aud.
  * Returns the verified payload or throws with a descriptive message.
  */
-async function _verifyIdToken(idToken, issuer, clientId) {
+async function _verifyIdToken(idToken, issuer, clientId, expectedNonce) {
+  if (typeof idToken !== 'string' || idToken.length > 65536) throw new Error('Invalid ID token');
   const parts = idToken.split('.');
   if (parts.length !== 3) throw new Error('Malformed JWT: expected 3 parts');
 
@@ -700,11 +600,11 @@ async function _verifyIdToken(idToken, issuer, clientId) {
   // Verify claims
   const now = Math.floor(Date.now() / 1000);
 
-  if (payload.exp === undefined || now >= payload.exp) {
+  if (!Number.isFinite(payload.exp) || now >= payload.exp) {
     throw new Error(`JWT expired at ${payload.exp}, now=${now}`);
   }
 
-  if (payload.nbf !== undefined && now < payload.nbf) {
+  if (payload.nbf !== undefined && (!Number.isFinite(payload.nbf) || now < payload.nbf)) {
     throw new Error(`JWT not yet valid (nbf=${payload.nbf}, now=${now})`);
   }
 
@@ -716,6 +616,14 @@ async function _verifyIdToken(idToken, issuer, clientId) {
   if (!audList.includes(clientId)) {
     throw new Error(`JWT audience mismatch: "${clientId}" not in [${audList.join(', ')}]`);
   }
+
+  if ((audList.length > 1 && payload.azp !== clientId) || (payload.azp !== undefined && payload.azp !== clientId)) {
+    throw new Error('JWT authorized party mismatch');
+  }
+  if (!Number.isFinite(payload.iat) || payload.iat > now + 60 || typeof payload.sub !== 'string' || !payload.sub) {
+    throw new Error('JWT missing or invalid identity claims');
+  }
+  if (typeof expectedNonce !== 'string' || payload.nonce !== expectedNonce) throw new Error('JWT nonce mismatch');
 
   return payload;
 }
@@ -733,12 +641,12 @@ function _resolveRoleFromGroups(claims, oidcCfg) {
     + (oidcCfg.operatorGroups?.length || 0)
     + (oidcCfg.viewerGroups?.length || 0) > 0;
   if (!hasAnyList) return null; // group mapping disabled — caller falls back
+  if (!_hasUsableGroupsClaim(claims, oidcCfg)) return null;
 
   const claimName = oidcCfg.groupClaim || 'groups';
   let raw = claims && claims[claimName];
-  if (raw == null) raw = [];
-  if (!Array.isArray(raw)) raw = [String(raw)];
-  const userGroups = new Set(raw.map(g => String(g).toLowerCase()));
+  if (!Array.isArray(raw)) raw = [raw];
+  const userGroups = new Set(raw.map(g => g.toLowerCase()));
 
   const has = (list) => (list || []).some(g => userGroups.has(String(g).toLowerCase()));
   if (has(oidcCfg.adminGroups)) return 'admin';
@@ -748,31 +656,22 @@ function _resolveRoleFromGroups(claims, oidcCfg) {
 }
 
 /**
- * v8.7.8 (security fix) — Did the IdP actually emit a groups claim we can act
- * on? Returns true ONLY when the claim is present AND non-empty AND not the
- * Entra-style "groups overage" indicator (which means the user has >200
- * groups and we'd need a Microsoft Graph API call we don't make).
- *
- * Used by the OIDC callback to gate `updateRole`. WITHOUT this guard, a
- * transient claim absence (Entra overage, app-registration regression,
- * id_token verification fallthrough to userinfo, scope strip by a broker)
- * was silently demoting an existing admin to viewer on their next login
- * because the resolver returned null and the caller fell back to
- * OIDC_DEFAULT_ROLE. The absence of evidence must NOT be treated as
- * evidence of demotion.
+ * A complete groups assertion is a bounded array of non-empty strings (the
+ * empty array explicitly means no groups), or one non-empty string. Missing,
+ * malformed and distributed/overage claims cannot authorize a mapped login.
  */
 function _hasUsableGroupsClaim(claims, oidcCfg) {
   if (!claims || !oidcCfg) return false;
   const claimName = oidcCfg.groupClaim || 'groups';
 
-  // Entra "groups overage": claim itself is missing; instead the token has
-  // `_claim_names: { groups: "src1" }` + `_claim_sources: { src1: { endpoint: <graph URL> } }`.
-  // Treat as no-usable-claim so we don't demote on every login.
-  if (claims._claim_names && claims._claim_names[claimName]) return false;
+  const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+  if (!owns(claims, claimName)) return false;
+  if ((claims._claim_names && owns(claims._claim_names, claimName)) || (claimName === 'groups' && claims.hasgroups === true)) return false;
 
   const raw = claims[claimName];
-  if (Array.isArray(raw)) return raw.length > 0;
-  if (typeof raw === 'string') return raw.length > 0;
+  const valid = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value);
+  if (Array.isArray(raw)) return raw.length <= 10000 && raw.every(valid);
+  if (typeof raw === 'string') return valid(raw);
   return false;
 }
 
@@ -781,9 +680,27 @@ router.get('/oidc/enabled', (req, res) => {
   res.json({ enabled: config.oidc?.enabled || false });
 });
 
+// The browser holds the random PKCE verifier in an HttpOnly cookie. Separate
+// domain-separated HMACs bind state and nonce to this browser and configuration;
+// neither value exposes the verifier. Only state is stored server-side, where
+// its expiring row gives callbacks atomic single-use semantics.
+function _oidcFlow(req, verifier) {
+  const secure = !!(config.security.isStrict || config.session.secureCookie || req.secure);
+  const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
+  const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
+  const context = JSON.stringify([issuer, config.oidc.clientId, redirectUri]);
+  const derive = label => crypto.createHmac('sha256', verifier).update(label + ':' + context).digest('hex');
+  return {
+    issuer, redirectUri, state: derive('state'), nonce: derive('nonce'),
+    cookieName: secure ? '__Host-dd_oidc_flow' : 'dd_oidc_flow',
+    cookieOptions: { httpOnly: true, secure, sameSite: 'lax', path: '/' },
+  };
+}
+
 // OIDC: Initiate login — redirect to provider
 router.get('/oidc/login', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     if (!config.oidc?.enabled) return res.status(400).json({ error: 'OIDC is not enabled' });
 
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
@@ -792,8 +709,9 @@ router.get('/oidc/login', async (req, res) => {
       return res.status(500).json({ error: 'Failed to discover OIDC endpoints' });
     }
 
-    // Generate state parameter for CSRF protection
-    const state = crypto.randomBytes(16).toString('hex');
+    const verifier = crypto.randomBytes(32).toString('base64url');
+    const flow = _oidcFlow(req, verifier);
+    const state = flow.state;
 
     // Store state in a short-lived DB entry (5 min TTL)
     const db = getDb();
@@ -805,7 +723,8 @@ router.get('/oidc/login', async (req, res) => {
       )`);
     } catch { /* table may already exist */ }
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    db.prepare('INSERT OR REPLACE INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
+    db.prepare("DELETE FROM oidc_states WHERE COALESCE(julianday(expires_at), 0) <= julianday('now')").run();
+    db.prepare('INSERT INTO oidc_states (state, expires_at) VALUES (?, ?)').run(state, expiresAt);
 
     const redirectUri = config.oidc.redirectUri || `${config.app.publicUrl || config.app.baseUrl}/api/auth/oidc/callback`;
     // If group-mapping is configured, ask the IdP to emit the groups claim
@@ -821,10 +740,16 @@ router.get('/oidc/login', async (req, res) => {
       response_type: 'code',
       scope,
       state,
+      nonce: flow.nonce,
+      code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'),
+      code_challenge_method: 'S256',
     });
 
-    const authUrl = `${disco.authorization_endpoint}?${params.toString()}`;
-    res.json({ url: authUrl });
+    const authUrl = new URL(disco.authorization_endpoint);
+    if (authUrl.protocol !== 'https:' || authUrl.username || authUrl.password) throw new Error('Invalid authorization endpoint');
+    for (const [key, value] of params) authUrl.searchParams.set(key, value);
+    res.cookie(flow.cookieName, verifier, { ...flow.cookieOptions, maxAge: 5 * 60 * 1000 });
+    res.json({ url: authUrl.toString() });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -833,17 +758,25 @@ router.get('/oidc/login', async (req, res) => {
 // OIDC: Callback — exchange code for tokens
 router.get('/oidc/callback', async (req, res) => {
   try {
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
     if (!config.oidc?.enabled) return res.status(400).send('OIDC is not enabled');
 
     const { code, state, error: authError } = req.query;
-    if (authError) return res.status(400).send(`OIDC error: ${authError}`);
-    if (!code || !state) return res.status(400).send('Missing code or state parameter');
+    const secure = !!(config.security.isStrict || config.session.secureCookie || req.secure);
+    const verifier = req.cookies?.[secure ? '__Host-dd_oidc_flow' : 'dd_oidc_flow'];
+    if (typeof state !== 'string' || !/^[a-f0-9]{64}$/.test(state) || typeof verifier !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(verifier)) {
+      return res.status(400).send('Invalid or expired state parameter');
+    }
+    const flow = _oidcFlow(req, verifier);
+    if (!crypto.timingSafeEqual(Buffer.from(state), Buffer.from(flow.state))) return res.status(400).send('Invalid or expired state parameter');
+    if (authError === undefined && (typeof code !== 'string' || !code || code.length > 8192)) return res.status(400).send('Missing or invalid code parameter');
 
     // Validate state
     const db = getDb();
-    const stateRow = db.prepare("SELECT * FROM oidc_states WHERE state = ? AND expires_at > datetime('now')").get(state);
+    const stateRow = db.prepare("DELETE FROM oidc_states WHERE state = ? AND julianday(expires_at) > julianday('now') RETURNING state").get(state);
     if (!stateRow) return res.status(400).send('Invalid or expired state parameter');
-    db.prepare('DELETE FROM oidc_states WHERE state = ?').run(state);
+    res.clearCookie(flow.cookieName, flow.cookieOptions);
+    if (authError !== undefined) return res.status(400).send('OIDC authorization failed');
 
     // Discover endpoints
     const issuer = config.oidc.issuerUrl.replace(/\/$/, '');
@@ -859,35 +792,39 @@ router.get('/oidc/callback', async (req, res) => {
       client_secret: config.oidc.clientSecret,
       code,
       redirect_uri: redirectUri,
+      code_verifier: verifier,
     }).toString();
 
-    const tokenRes = await _oidcFetch(disco.token_endpoint, {
+    const tokenRes = await __fetch(disco.token_endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenBody,
     });
 
     if (tokenRes.status !== 200 || !tokenRes.body?.access_token) {
-      return res.status(401).send('Token exchange failed: ' + (tokenRes.body?.error_description || tokenRes.body?.error || 'unknown'));
+      return res.status(401).send('OIDC token exchange failed');
     }
 
-    // Extract user info — try id_token first (with signature verification), then userinfo endpoint
-    let userInfo = null;
-    if (tokenRes.body.id_token) {
-      try {
-        userInfo = await _verifyIdToken(tokenRes.body.id_token, issuer, config.oidc.clientId);
-      } catch (err) {
-        log.warn('OIDC id_token verification failed', { error: err.message });
-        // Fall through to userinfo endpoint
-      }
+    // Never bypass ID-token/nonce verification through a userinfo fallback.
+    let userInfo;
+    try {
+      userInfo = await _verifyIdToken(tokenRes.body.id_token, issuer, config.oidc.clientId, flow.nonce);
+    } catch {
+      log.warn('OIDC id_token verification failed');
+      return res.status(401).send('OIDC identity verification failed');
     }
 
-    if ((!userInfo || !userInfo.email) && disco.userinfo_endpoint) {
-      const uiRes = await _oidcFetch(disco.userinfo_endpoint, {
+    if (!userInfo.email && disco.userinfo_endpoint) {
+      const uiRes = await __fetch(disco.userinfo_endpoint, {
         headers: { 'Authorization': `Bearer ${tokenRes.body.access_token}` },
       });
       if (uiRes.status === 200 && uiRes.body) {
-        userInfo = { ...userInfo, ...uiRes.body };
+        if (uiRes.body.sub !== userInfo.sub) return res.status(401).send('OIDC identity verification failed');
+        // Only enrich missing profile fields. Roles and identity claims come
+        // from the verified ID token, never from a second user's response.
+        for (const key of ['email', 'name', 'given_name', 'preferred_username']) {
+          if (!userInfo[key] && typeof uiRes.body[key] === 'string') userInfo[key] = uiRes.body[key];
+        }
       }
     }
 
@@ -896,18 +833,13 @@ router.get('/oidc/callback', async (req, res) => {
     }
 
     // Determine username and email
-    const email = userInfo.email || '';
-    const username = userInfo.preferred_username || email.split('@')[0] || userInfo.sub;
-    const displayName = userInfo.name || userInfo.given_name || username;
+    const email = typeof userInfo.email === 'string' ? userInfo.email : '';
+    const username = typeof userInfo.preferred_username === 'string' && userInfo.preferred_username
+      ? userInfo.preferred_username : email.split('@')[0] || userInfo.sub;
+    const displayName = [userInfo.name, userInfo.given_name, username].find(value => typeof value === 'string' && value);
 
-    // v8.7.6 / FIXED v8.7.8 — resolve role from the IdP groups claim when
-    // mapping is configured. CRITICAL: only OVERWRITE an existing user's
-    // role when the IdP actually emitted a usable groups claim. Without
-    // that guard, a transient claim absence (Entra "groups overage",
-    // app-registration regression, userinfo-endpoint fallback that drops
-    // groups, scope strip by an upstream broker) silently demotes an
-    // existing admin to viewer on their next login. Absence of evidence
-    // is NOT evidence of demotion.
+    // A mapped login requires a complete group assertion. An empty list is
+    // authoritative; absence or overage must not preserve usable privileges.
     const mappedRole = _resolveRoleFromGroups(userInfo, config.oidc);
     const groupMappingOn = (config.oidc.adminGroups?.length || 0)
       + (config.oidc.operatorGroups?.length || 0)
@@ -915,41 +847,50 @@ router.get('/oidc/callback', async (req, res) => {
     const groupsClaimUsable = _hasUsableGroupsClaim(userInfo, config.oidc);
     const assignedRole = mappedRole || (config.oidc.defaultRole || 'viewer');
 
-    // Update existing role ONLY when we have evidence: mapping configured
-    // AND the IdP actually sent groups. Otherwise preserve whatever role
-    // the user already has (new users get defaultRole on creation; existing
-    // users are untouched). warn-level so this is visible in ops/audit.
-    const updateRole = groupMappingOn && groupsClaimUsable;
-    if (groupMappingOn && !groupsClaimUsable) {
-      const claimName = config.oidc.groupClaim || 'groups';
-      log.warn('OIDC: groups claim absent or unusable — existing user role preserved (no demotion).', {
-        username,
-        claimName,
-        hasOverageIndicator: !!(userInfo._claim_names && userInfo._claim_names[claimName]),
-      });
-    }
-
-    const user = authService.findOrCreateSsoUser(username, assignedRole, email, { updateRole });
-    if (!user) return res.status(403).send('Account is disabled');
-
-    // Update display name if available
-    if (displayName && displayName !== username) {
-      db.prepare('UPDATE users SET display_name = ? WHERE id = ? AND (display_name IS NULL OR display_name = username)')
-        .run(displayName, user.id);
-    }
-
-    // Create session
     const ip = getClientIp(req);
     const ua = req.headers['user-agent'];
-    const session = authService._createSession(
-      { id: user.id, username: user.username, display_name: displayName, role: user.role },
-      ip, ua
-    );
-
-    auditService.log({ userId: user.id, username: user.username, action: 'oidc_login', ip, userAgent: ua });
+    const updateRole = groupMappingOn && groupsClaimUsable;
+    if (groupMappingOn && !groupsClaimUsable) {
+      authService.revokeOidcCredentials(userInfo.iss,userInfo.sub,'oidc_authorization_denied',ip,ua);
+      log.warn('OIDC authorization refused: groups claim missing, invalid or incomplete');
+      return res.status(403).send('OIDC group authorization is unavailable');
+    }
+    // Resolve the current role under the same write lock as revocation. A
+    // savepoint contains new grants: failure rolls them back while the outer
+    // transaction still commits revocation, without a gap for another writer.
+    let authorizationError;
+    const session = db.transaction(() => {
+      const existing = updateRole ? db.prepare("SELECT id,username,role FROM users WHERE auth_source='oidc' AND external_source='oidc' AND external_issuer=? AND external_subject=?")
+        .get(userInfo.iss,userInfo.sub) : null;
+      const changed = existing && existing.role !== assignedRole;
+      if (changed) authService._revokeUserCredentials(db,existing.id);
+      try {
+        if (changed) auditService.log({ userId:existing.id, username:existing.username, action:'oidc_authorization_changed',
+          targetType:'user', targetId:String(existing.id), ip, userAgent:ua });
+        return db.transaction(() => {
+          const user = authService.findOrCreateSsoUser(username, assignedRole, email, {
+            updateRole, emailVerified:userInfo.email_verified === true,
+            identity:{ source:'oidc', issuer:userInfo.iss, subject:userInfo.sub },
+          });
+          if (!user) return null;
+          if (displayName && displayName !== user.username) {
+            db.prepare('UPDATE users SET display_name=? WHERE id=? AND (display_name IS NULL OR display_name=username)')
+              .run(displayName,user.id);
+          }
+          const created = authService._createSession(user,ip,ua);
+          auditService.log({ userId:user.id, username:user.username, action:'oidc_login', ip, userAgent:ua });
+          return created;
+        }).immediate();
+      } catch (error) {
+        authorizationError = error;
+        return null;
+      }
+    }).immediate();
+    if (authorizationError) throw authorizationError;
+    if (!session) return res.status(403).send('External account is unavailable');
 
     // Set session cookie and redirect to app
-    const isHttps = config.security.isStrict || config.session.secureCookie || req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const isHttps = secure;
     res.cookie(config.session.cookieName, session.token, {
       httpOnly: true,
       secure: isHttps,
@@ -961,7 +902,7 @@ router.get('/oidc/callback', async (req, res) => {
     // Redirect to app root
     res.redirect('/');
   } catch (err) {
-    res.status(500).send('OIDC callback error: ' + err.message);
+    res.status(500).send('OIDC callback failed');
   }
 });
 
@@ -974,7 +915,7 @@ router.get('/sessions', requireAuth, requireRole('admin'), (req, res) => {
       SELECT s.id, s.user_id, u.username, s.token_hash, s.created_at, s.ip, s.user_agent
       FROM sessions s
       LEFT JOIN users u ON s.user_id = u.id
-      WHERE s.is_valid = 1 AND s.expires_at > datetime('now')
+      WHERE s.is_valid = 1 AND julianday(s.expires_at) > julianday('now')
       ORDER BY s.created_at DESC
     `).all();
 
@@ -1018,14 +959,14 @@ const ldapService = require('../services/ldap');
 router.get('/ldap', requireAuth, requireRole('admin'), (req, res) => {
   const cfg = ldapService.getConfig();
   if (!cfg) return res.json({ configured: false });
-  const safe = { ...cfg, bindPassword: cfg.bindPassword ? '••••••••' : '' };
+  const safe = { ...cfg, bindPassword: cfg.bindPassword ? '••••••••' : '', caCert: undefined, caCertPresent: !!cfg.caCert };
   res.json({ configured: true, ...safe });
 });
 
 // PUT /api/auth/ldap — save LDAP config
-router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+router.put('/ldap', requireAuth, requireRole('admin'), writeable, (req, res) => {
   try {
-    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn,
+    const { host, port, tls, tlsSkipVerify, caCert, bindDn, bindPassword, baseDn,
             userFilter, uidAttr, requiredGroup, defaultRole, enabled } = req.body;
     if (!host || !bindDn || !baseDn) {
       return res.status(400).json({ error: 'host, bindDn and baseDn are required' });
@@ -1035,9 +976,11 @@ router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
     const finalPassword = (bindPassword && bindPassword !== '••••••••')
       ? bindPassword
       : (existing?.bindPassword || '');
+    if (!finalPassword) return res.status(400).json({ error: 'LDAP service bind password is required' });
     ldapService.saveConfig({
-      host, port: parseInt(port) || (tls ? 636 : 389),
-      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
+      host, port: port === undefined || port === '' ? (tls ? 636 : 389) : port,
+      tls: tls === undefined ? false : tls, tlsSkipVerify: tlsSkipVerify === undefined ? false : tlsSkipVerify,
+      caCert: caCert === null ? null : (caCert || existing?.caCert || null),
       bindDn, bindPassword: finalPassword,
       baseDn, userFilter: userFilter || '',
       uidAttr: uidAttr || 'uid',
@@ -1052,12 +995,12 @@ router.put('/ldap', requireAuth, requireRole('admin'), (req, res) => {
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.status || 500).json({ error: err.status === 400 ? err.message : 'Internal server error' });
   }
 });
 
 // DELETE /api/auth/ldap — remove LDAP config
-router.delete('/ldap', requireAuth, requireRole('admin'), (req, res) => {
+router.delete('/ldap', requireAuth, requireRole('admin'), writeable, (req, res) => {
   ldapService.deleteConfig();
   auditService.log({
     userId: req.user.id, username: req.user.username,
@@ -1070,14 +1013,17 @@ router.delete('/ldap', requireAuth, requireRole('admin'), (req, res) => {
 // POST /api/auth/ldap/test — test LDAP connection with provided config
 router.post('/ldap/test', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const { host, port, tls, tlsSkipVerify, bindDn, bindPassword, baseDn, userFilter, uidAttr } = req.body;
-    if (!host || !bindDn || !bindPassword || !baseDn) {
+    const { host, port, tls, tlsSkipVerify, caCert, bindDn, bindPassword, baseDn, userFilter, uidAttr } = req.body;
+    const existing = ldapService.getConfig();
+    const finalPassword = bindPassword && bindPassword !== '••••••••' ? bindPassword : existing?.bindPassword;
+    if (!host || !bindDn || !finalPassword || !baseDn) {
       return res.status(400).json({ error: 'host, bindDn, bindPassword and baseDn are required' });
     }
     const result = await ldapService.testConnection({
-      host, port: parseInt(port) || (tls ? 636 : 389),
-      tls: !!tls, tlsSkipVerify: !!tlsSkipVerify,
-      bindDn, bindPassword, baseDn, userFilter, uidAttr,
+      host, port: port === undefined || port === '' ? (tls ? 636 : 389) : port,
+      tls: tls === undefined ? false : tls, tlsSkipVerify: tlsSkipVerify === undefined ? false : tlsSkipVerify,
+      caCert: caCert === null ? null : (caCert || existing?.caCert || null),
+      bindDn, bindPassword: finalPassword, baseDn, userFilter, uidAttr,
     });
     res.json({ ok: true, ...result });
   } catch (err) {
@@ -1110,6 +1056,6 @@ module.exports._oidcCacheInternals = {
   verifyIdToken: _verifyIdToken,
   setFetcher(fn) { _oidcFetchOverride = fn; },
   resetFetcher() { _oidcFetchOverride = null; },
-  clear() { _discoCache.clear(); _jwksCache.clear(); _jwksLastForcedRefresh.clear(); },
+  clear() { _discoCache.clear(); _jwksCache.clear(); _jwksLastForcedRefresh.clear(); _discoveryPending.clear(); _jwksPending.clear(); },
   cooldownMs: JWKS_FORCE_REFRESH_COOLDOWN_MS,
 };

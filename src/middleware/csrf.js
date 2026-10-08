@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const log = require('../utils/logger')('csrf');
+const config = require('../config');
 
 const TOKEN_NAME = 'XSRF-TOKEN';
 const HEADER_NAME = 'x-xsrf-token';
@@ -13,8 +14,8 @@ const EXEMPT_PATHS = [
   '/api/auth/request-password-reset',
   '/api/auth/reset-password-token',
   '/api/auth/validate-reset-token',
-  '/api/git/webhook',
-  '/api/status-page',
+  '/api/git/webhook/',
+  '/api/automation/webhooks/',
 ];
 
 // Safety bypass: if CSRF_DISABLED=true, skip middleware (for smoke-testing without frontend rewrite)
@@ -47,10 +48,13 @@ module.exports = function csrf(req, res, next) {
   ensureCookie(req, res);
 
   if (EXEMPT_METHODS.has(req.method)) return next();
-  if (EXEMPT_PATHS.some(p => req.path.startsWith(p))) return next();
+  if (EXEMPT_PATHS.some(p => p.endsWith('/') ? req.path.startsWith(p) : req.path === p)) return next();
 
-  // Bearer auth (API key clients) bypass CSRF — tokens are sensitive credentials not relayed by browsers
-  if (req.headers.authorization?.startsWith('Bearer ')) return next();
+  // Match authentication precedence: an arbitrary Authorization header must
+  // not exempt a request that actually authenticates using a browser cookie/SSO.
+  const ambientAuth = req.cookies?.[config.session.cookieName]
+    || req.headers['x-forwarded-user'] || req.headers['remote-user'];
+  if (!ambientAuth && /^(Bearer|ApiKey) \S+$/.test(req.headers.authorization || '')) return next();
 
   const cookieToken = req.cookies[TOKEN_NAME];
   const headerToken = req.headers[HEADER_NAME];

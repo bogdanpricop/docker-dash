@@ -416,6 +416,31 @@ const ImagesPage = {
     this._detailShell.mount(hostEl);
   },
 
+  // Loaded after render so the summary tab never waits on a daemon round trip.
+  // Silent unless it has something actionable to say: a non-Wasm image, or a
+  // Wasm image on a host that can run it, produces nothing.
+  async _loadWasmCompatibility(el, imageId) {
+    let r;
+    try { r = await Api.getImageWasm(imageId); }
+    catch { return; }
+    if (!r || !r.isWasm) return;
+    // null means we could not read the host's runtimes — unknown is not the same
+    // as incompatible, so we say nothing rather than guess.
+    if (r.hostHasWasmRuntime !== false) return;
+
+    const note = document.createElement('div');
+    note.className = 'card mt-md';
+    note.style.borderLeft = '4px solid var(--yellow)';
+    note.innerHTML = `
+      <div class="card-body" style="padding:12px 16px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <i class="fas fa-triangle-exclamation" style="color:var(--yellow);margin-top:2px"></i>
+          <div class="text-sm">${Utils.escapeHtml(i18n.t('pages.images.wasmNoRuntime'))}</div>
+        </div>
+      </div>`;
+    el.appendChild(note);
+  },
+
   _renderImgTab(tab, el) {
     const data = this._imgData;
     if (!el || !data) return;
@@ -437,7 +462,10 @@ const ImagesPage = {
                 <tr><td>ID</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(data.Id || '')}</td></tr>
                 <tr><td>Digest</td><td class="mono text-sm" style="word-break:break-all">${Utils.escapeHtml(digest)}</td></tr>
                 <tr><td>${i18n.t('pages.images.size')}</td><td>${data.Size != null ? Utils.formatBytes(data.Size) : '—'}</td></tr>
-                <tr><td>Architecture</td><td>${Utils.escapeHtml([data.Os, data.Architecture].filter(Boolean).join('/') || '—')}</td></tr>
+                <tr><td>Architecture</td><td>${Utils.escapeHtml([data.Os, data.Architecture].filter(Boolean).join('/') || '—')}
+                  ${String(data.Os || '').toLowerCase() === 'wasi' && String(data.Architecture || '').toLowerCase() === 'wasm'
+                    ? `<span class="badge badge-success" style="margin-left:6px" title="${Utils.escapeHtml(i18n.t('pages.images.wasmBadgeHint'))}">WASM</span>` : ''}
+                </td></tr>
                 <tr><td>${i18n.t('pages.images.created')}</td><td>${data.Created ? Utils.timeAgo(data.Created) : '—'}</td></tr>
               </table>
             </div>
@@ -450,6 +478,10 @@ const ImagesPage = {
           </div>
         </div>
       `;
+      // v8.95.0 — a Wasm image on a host with no Wasm runtime fails with
+      // `exec format error`, which explains nothing. We know both halves, so we
+      // say it here instead of letting the operator discover it at run time.
+      this._loadWasmCompatibility(el, data.Id || this._imgData.Id);
     } else if (tab === 'layers') {
       el.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin"></i> Loading layers...</div>';
       Api.getImageHistory(data.Id || this._imgData.Id).then(history => {
@@ -532,8 +564,8 @@ const ImagesPage = {
       <div class="scan-menu-item" data-scanner="grype">
         <i class="fas fa-shield-alt"></i> Grype
       </div>
-      <div class="scan-menu-item" data-scanner="docker-scout">
-        <i class="fab fa-docker"></i> Docker Scout
+      <div class="text-sm text-muted" role="note" style="max-width:280px;padding:8px 12px">
+        <strong>Docker Scout</strong>: ${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason'))}
       </div>
     `;
     menu.style.position = 'fixed';
@@ -1375,7 +1407,7 @@ const ImagesPage = {
           </div>
 
           ${[
-            { icon:'fa-shield-alt', color:'var(--yellow)', label:'Scan for vulnerabilities', desc:'Opens a scanner picker (Auto / Trivy / Grype / Docker Scout). Scans the image for known CVEs in OS packages and language dependencies. Results show Critical → Low counts with per-CVE detail and fix versions.' },
+            { icon:'fa-shield-alt', color:'var(--yellow)', label:'Scan for vulnerabilities', desc:'Opens a scanner picker (Auto / Trivy / Grype). Scans the image for known CVEs in OS packages and language dependencies. Results show Critical → Low counts with per-CVE detail and fix versions.' },
             { icon:'fa-tag', color:'var(--accent)', label:'Tag', desc:'Adds a new tag to the image locally (e.g. <code>myapp:stable</code>). Does not push to a registry — use the registry page for that.' },
             { icon:'fa-file-export', color:'var(--accent)', label:'Export', desc:'Exports the image as a <code>.tar</code> archive (<code>docker save</code>). Download it and import on another host with <code>docker load</code>.' },
             { icon:'fa-search', color:'var(--accent)', label:'Inspect', desc:'Shows the raw Docker inspect output: layers, environment variables, entrypoint, exposed ports, labels, and creation metadata.' },
@@ -1428,10 +1460,10 @@ const ImagesPage = {
           </div>
 
           ${[
-            { icon:'fa-magic', color:'var(--accent)', label:'Auto', desc:'Tries Trivy first, then Grype, then Docker Scout. Picks the first available scanner. Recommended for most users.' },
+            { icon:'fa-magic', color:'var(--accent)', label:'Auto', desc:'Tries Trivy first, then Grype. Picks the first available scanner. Recommended for most users.' },
             { icon:'fa-search', color:'#38bdf8', label:'Trivy', desc:'Open-source scanner by Aqua Security. Scans OS packages + language dependencies (npm, pip, gem, etc.). No authentication needed. <strong>Recommended.</strong>' },
             { icon:'fa-shield-alt', color:'#a855f7', label:'Grype', desc:'Open-source scanner by Anchore. Checks against NVD, GitHub Advisories, Alpine SecDB, and more. Fast and accurate. No authentication needed.' },
-            { icon:'fab fa-docker', color:'#388bfd', label:'Docker Scout', desc:'Official Docker tool. Requires Docker Hub authentication. Provides supply chain insights, base image recommendations, and CVE tracking with policy evaluation.' },
+            { icon:'fab fa-docker', color:'#388bfd', label:'Docker Scout', desc:Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason')) },
           ].map(a => `
             <div style="display:flex;gap:12px;padding:12px 14px;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
               <div style="width:32px;height:32px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;flex-shrink:0">

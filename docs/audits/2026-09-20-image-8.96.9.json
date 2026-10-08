@@ -1,0 +1,734 @@
+{
+  "at": "2026-09-20T08:33:44.071Z",
+  "build": {
+    "tag": "docker-dash:8.96.9-audit-cb492f1",
+    "id": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+    "host": "192.168.13.20",
+    "revision": "cb492f130837aed57079be8afe9fa050fe98376c",
+    "version": "8.96.9",
+    "helperImage": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5"
+  },
+  "identity": {
+    "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "configId": "sha256:d9325f70c9d794a9c11ded9e9813fc2ad7ef1e4983ef59f205e870bfc41ffa20",
+    "platform": "linux/amd64",
+    "manifestAndConfigSha256Verified": true,
+    "orderedRootfsLayersVerified": 20,
+    "trivyReportedIdentity": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+    "grypeReportedIdentity": "sha256:d9325f70c9d794a9c11ded9e9813fc2ad7ef1e4983ef59f205e870bfc41ffa20"
+  },
+  "trivy": {
+    "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+    "counts": {
+      "UNKNOWN": 3,
+      "HIGH": 4,
+      "MEDIUM": 2
+    },
+    "vulnerabilities": [
+      {
+        "target": "usr/libexec/docker/cli-plugins/docker-compose",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/docker",
+        "id": "CVE-2026-84445",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-41567",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-42306",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "HIGH"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-33997",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "fixed": "29.3.1",
+        "severity": "MEDIUM"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "CVE-2026-41568",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "severity": "MEDIUM"
+      },
+      {
+        "target": "usr/local/bin/grype",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/trivy",
+        "id": "GO-2026-5932",
+        "pkg": "golang.org/x/crypto",
+        "installed": "v0.57.0",
+        "severity": "UNKNOWN"
+      },
+      {
+        "target": "usr/local/bin/trivy",
+        "id": "CVE-2026-84445",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+        "severity": "HIGH"
+      }
+    ]
+  },
+  "grype": {
+    "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+    "counts": {
+      "High": 4,
+      "Medium": 5
+    },
+    "vulnerabilities": [
+      {
+        "id": "GO-2026-4887",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "locations": [
+          {
+            "path": "/usr/local/bin/grype",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/grype",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "locations": [
+          {
+            "path": "/usr/local/bin/docker",
+            "layerID": "sha256:1acb285aaf140b3e19d219f07b4533a3e7fdb7a4004666b5655736db3cddcf80",
+            "accessPath": "/usr/local/bin/docker",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [
+            "1.85.0-dev.0.20260825072537-93e31b48545e"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "1.85.0-dev.0.20260825072537-93e31b48545e",
+              "date": "2026-09-09",
+              "kind": "first-observed"
+            }
+          ]
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-2v4p-qf9q-27wj",
+        "pkg": "google.golang.org/grpc",
+        "installed": "v1.84.0",
+        "locations": [
+          {
+            "path": "/usr/local/bin/trivy",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/trivy",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [
+            "1.85.0-dev.0.20260825072537-93e31b48545e"
+          ],
+          "state": "fixed",
+          "available": [
+            {
+              "version": "1.85.0-dev.0.20260825072537-93e31b48545e",
+              "date": "2026-09-09",
+              "kind": "first-observed"
+            }
+          ]
+        },
+        "severity": "High"
+      },
+      {
+        "id": "CVE-2026-85091",
+        "pkg": "zlib",
+        "installed": "1.3.2-r0",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-pxq6-2prw-chj9",
+        "pkg": "github.com/docker/docker",
+        "installed": "v28.5.2+incompatible",
+        "locations": [
+          {
+            "path": "/usr/local/bin/grype",
+            "layerID": "sha256:574e1d295923a6ecafec6ea464ffe7e7ba7e11254b63eef1340cdb968942a07c",
+            "accessPath": "/usr/local/bin/grype",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": "not-fixed"
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "busybox",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "busybox-binsh",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "pkg": "ssl_client",
+        "installed": "1.37.0-r31",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2026-58055",
+        "pkg": "nghttp2-libs",
+        "installed": "1.69.0-r0",
+        "locations": [
+          {
+            "path": "/lib/apk/db/installed",
+            "layerID": "sha256:9fe2428e12ec1b3048fe754914e5ef67efdf26d7c884f50f16ef223abd4f4c2c",
+            "accessPath": "/lib/apk/db/installed",
+            "annotations": {
+              "evidence": "primary"
+            }
+          }
+        ],
+        "fixed": {
+          "versions": [],
+          "state": ""
+        },
+        "severity": "Medium"
+      }
+    ]
+  },
+  "canaries": {
+    "lan": {
+      "compose": {
+        "project": "dd-compose-smoke-5b0524de00202778",
+        "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "compose": "5.5.1+dd.1",
+        "sha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+        "checks": [
+          "provenance",
+          "config",
+          "up",
+          "health",
+          "exec",
+          "volume-persistence",
+          "restart",
+          "recreate",
+          "ps"
+        ]
+      },
+      "ha": {
+        "at": "2026-09-20T08:28:47.105Z",
+        "redisVersion": "8.10.1",
+        "ioredisVersion": "6.0.0",
+        "checks": [
+          "concurrent-processes-elect-one-leader",
+          "ioredis6-shared-lua-rate-limit-and-expiry",
+          "cross-process-pubsub-without-self-echo",
+          "stale-leader-heartbeat-cannot-overwrite-successor",
+          "old-owner-shutdown-preserves-successor-and-stays-closed",
+          "connection-loss-demotes-leader",
+          "reconnection-can-confirm-owned-lease",
+          "expired-process-resumes-as-reader-after-real-ttl-takeover",
+          "graceful-release-allows-immediate-new-process-election",
+          "memory-pressure-rejects-writes-without-evicting-lease"
+        ],
+        "independentNodeProcesses": true,
+        "productionDatabaseUsed": false,
+        "marker": "dd-ha-lease-b83be66e5920",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "sourceSha256": {
+          "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+          "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+          "scripts/fixtures/ha-lease-node.js": "40a9f088eab76b4a7a3226863e2a20e76053ff3f3fc36d172e095681e4fcf02d",
+          "scripts/fixtures/ha-lease-checks.js": "93326df84b649da00f2c7fcb3ce396d9aa23ec4a596fb7dfac450c6ab5ecf308"
+        },
+        "bundledSourceVerified": true,
+        "publishedPorts": false
+      },
+      "http": {
+        "at": "2026-09-20T08:28:54.796Z",
+        "redisVersion": "8.10.1",
+        "ioredisVersion": "6.0.0",
+        "checks": [
+          "real-redis-charges-one-request-once-across-router-fallthrough",
+          "shared-api-allowance-does-not-exempt-route-specific-quota",
+          "standalone-cleanup-retains-long-quota-and-removes-expired-short-quota",
+          "standalone-quota-resumes-only-at-configured-expiry",
+          "direct-client-cannot-forge-forwarding-identity",
+          "real-redis-quota-survives-url-case-and-header-rotation",
+          "trusted-proxy-stops-at-closest-untrusted-hop",
+          "stalled-redis-returns-bounded-503-before-mutation",
+          "late-quota-success-does-not-run-abandoned-mutation",
+          "quota-service-recovers-without-bypass",
+          "redis-noeviction-oom-blocks-protected-handler",
+          "clearing-memory-pressure-restores-verified-requests"
+        ],
+        "productionDatabaseUsed": false,
+        "onlyDisposableMutationHandler": true,
+        "marker": "dd-http-quota-8ae76e1b12fe",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "sourceSha256": {
+          "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+          "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+          "src/services/rate-limiter-memory.js": "856677e3b1474a36aa4a195d0dd188659fbd48d63a1abf5c6fb6499f7c5667fe",
+          "src/middleware/rateLimit.js": "8ad9fb41c5ced67391d9a1195593be39491f2041e4fe497c97525c3e7b05e079",
+          "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+          "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+          "scripts/fixtures/http-quota-checks.js": "85c094749311bdcde0c11e9a19d9b66eeca8da841e2434d6bf75a26ee017b9ff"
+        },
+        "bundledSourceVerified": true,
+        "publishedPorts": false
+      },
+      "prune": {
+        "at": "2026-09-20T08:30:24.249Z",
+        "marker": "dd-prune-smoke-7ba2b2176bab",
+        "checks": [
+          "daemon-name-reservation-blocks-operations-and-competing-prune",
+          "real-container-prune-keeps-guard-and-late-operation-reservations",
+          "real-image-prune-preserves-helper-referenced-only-by-guard",
+          "retained-original-blocks-prune-before-deletion",
+          "uncertain-outcome-retains-barrier"
+        ],
+        "fixtureImage": "sha256:4b1804b1a0ddcb38128165d407cb41f9e6806c7eb4b6715fa67754178721e040",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "bundledSourceVerified": true,
+        "bundledSources": {
+          "src/services/docker-prune-guard.js": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+          "src/services/docker.js": "94e4a7d0a1e95387ec76e9733bd44665da2614f4509864f87edcf80df91ec4f3",
+          "src/services/container-replacement.js": "f99d823b01976323e901ffcd43353b06f0318bdf2163bd644e11ba73aff20328",
+          "src/services/egress-runner.js": "a81bb9a61d983023fb30ffc80c98f27d5d92ab5c280ded079fab221eafc4bcd0",
+          "src/services/disk-pressure.js": "39ed6e49da483dcee946e67b372b67d464f177d89b09bdaa5f6fdf7988652cb2"
+        },
+        "sourceSha256": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+        "onlyLabeledTestResources": true,
+        "productionPruneCalled": false
+      },
+      "auth": {
+        "at": "2026-09-20T08:30:42.977Z",
+        "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "mode": "bundled-image",
+        "sourceHashes": {
+          "src/routes/auth.js": "580ff69ca3b168a954f60f7f7948f3b8f89326ef04b5b5552694dc46d03ee7ed",
+          "src/services/auth.js": "b5bd74f73eba2a53fa033e441c29356caab9c5d48204c5901450926afabd4718",
+          "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+          "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+          "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+          "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+          "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+          "src/db/migrations/179_auth_credential_version.js": "957bdef2c02ff178c8832a620c0bac4b2e7d6bcbda3e5c3970ccf875d0dcfd32",
+          "src/db/migrations/180_mfa_replay_and_attempts.js": "fb258719499bf70f27758e40777d777609c55325b7d40df44b139eafe2fc35bd",
+          "src/utils/totp.js": "3628b33e2d6d3947004db45789df3d72b1b1894e6f8be45cd4ed872862a5bbe1",
+          "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+          "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+          "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+        },
+        "checks": [
+          "identical-http-response-before-smtp-completes",
+          "configured-link-origin",
+          "account-quota-across-case-and-ip",
+          "native-sqlite-cross-process-single-redemption-and-audit",
+          "expired-iso-session-refused-by-real-http-auth",
+          "expired-iso-mfa-refused",
+          "production-login-timestamps-enforce-ip-lockout",
+          "native-cross-process-recovery-code-consumed-once",
+          "real-websocket-revocation-input",
+          "real-websocket-revocation-broadcast",
+          "real-websocket-revocation-idle-expiry",
+          "real-provider-console-revocation-input",
+          "real-provider-console-revocation-output",
+          "real-provider-console-revocation-idle",
+          "native-fragmented-console-read-allows-transport-progress",
+          "native-reset-revokes-outstanding-mfa-proof",
+          "native-cross-process-login-cannot-outlive-password-reset",
+          "native-cross-process-failures-enforce-account-lockout",
+          "native-cross-process-single-use-totp-login-login",
+          "native-cross-process-single-use-totp-login-stepup",
+          "native-cross-process-challenge-five-attempt-bound"
+        ],
+        "emailMocked": true,
+        "providerMocked": true,
+        "externalNetwork": false,
+        "sqlite": "3.53.4"
+      },
+      "upgrade": {
+        "marker": "dd-auth-upgrade-42e9126b7c88",
+        "at": "2026-09-20T08:31:57.538Z",
+        "beforeImage": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+        "afterImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "network": "none",
+        "migrations": 180,
+        "usersPreserved": 2,
+        "credentialsPreserved": true,
+        "existingSessionValid": true,
+        "unusedResetLinkValid": true,
+        "pendingMfaRevoked": true,
+        "replayBoundaryInitialized": true,
+        "integrity": "ok"
+      },
+      "productionChecks": [
+        "PASS production startup, native SQLite migrations and HTTP health",
+        "PASS built HTTP server shares API quota across paths/case while health remains available",
+        "PASS pinned Compose plugin parses configuration offline and curl health probe succeeds",
+        "PASS real Linux Git/OpenSSH verifies server identity before authentication and removes private session files",
+        "PASS Linux provider mTLS accepts verified private CA and rejects wrong CA before HTTP authentication",
+        "PASS Linux LDAP StartTLS and LDAPS verify certificates before bind and reject wrong CA without sending passwords",
+        "PASS Linux SQLite migration encrypts existing rollback snapshots and preserves recovery",
+        "PASS encrypted rollback snapshot survives restart and rejects another host identity",
+        "PASS generated secrets persist across restart with mode 0600 and no backup copy",
+        "PASS quoted persisted secrets are read without shell execution",
+        "PASS explicit environment secrets retain precedence",
+        "PASS concurrent-processes-elect-one-leader",
+        "PASS ioredis6-shared-lua-rate-limit-and-expiry",
+        "PASS cross-process-pubsub-without-self-echo",
+        "PASS stale-leader-heartbeat-cannot-overwrite-successor",
+        "PASS old-owner-shutdown-preserves-successor-and-stays-closed",
+        "PASS connection-loss-demotes-leader",
+        "PASS reconnection-can-confirm-owned-lease",
+        "PASS expired-process-resumes-as-reader-after-real-ttl-takeover",
+        "PASS graceful-release-allows-immediate-new-process-election",
+        "PASS memory-pressure-rejects-writes-without-evicting-lease"
+      ],
+      "ownedResourcesRemoved": true,
+      "upgradeHarnessFix": "Parse explicit report marker instead of dotenv startup banner; final isolated upgrade rerun passed."
+    },
+    "vps": {
+      "compose": {
+        "project": "dd-compose-smoke-f154ee6ce763900c",
+        "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "compose": "5.5.1+dd.1",
+        "sha256": "d8e47a8412129295947abc11b4725339d052ed7059a18141485f5ce12eba2fe7",
+        "checks": [
+          "provenance",
+          "config",
+          "up",
+          "health",
+          "exec",
+          "volume-persistence",
+          "restart",
+          "recreate",
+          "ps"
+        ]
+      },
+      "ha": {
+        "at": "2026-09-20T08:29:18.712Z",
+        "redisVersion": "8.10.1",
+        "ioredisVersion": "6.0.0",
+        "checks": [
+          "concurrent-processes-elect-one-leader",
+          "ioredis6-shared-lua-rate-limit-and-expiry",
+          "cross-process-pubsub-without-self-echo",
+          "stale-leader-heartbeat-cannot-overwrite-successor",
+          "old-owner-shutdown-preserves-successor-and-stays-closed",
+          "connection-loss-demotes-leader",
+          "reconnection-can-confirm-owned-lease",
+          "expired-process-resumes-as-reader-after-real-ttl-takeover",
+          "graceful-release-allows-immediate-new-process-election",
+          "memory-pressure-rejects-writes-without-evicting-lease"
+        ],
+        "independentNodeProcesses": true,
+        "productionDatabaseUsed": false,
+        "marker": "dd-ha-lease-ccfe4db0b131",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "sourceSha256": {
+          "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+          "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+          "scripts/fixtures/ha-lease-node.js": "40a9f088eab76b4a7a3226863e2a20e76053ff3f3fc36d172e095681e4fcf02d",
+          "scripts/fixtures/ha-lease-checks.js": "93326df84b649da00f2c7fcb3ce396d9aa23ec4a596fb7dfac450c6ab5ecf308"
+        },
+        "bundledSourceVerified": true,
+        "publishedPorts": false
+      },
+      "http": {
+        "at": "2026-09-20T08:29:27.045Z",
+        "redisVersion": "8.10.1",
+        "ioredisVersion": "6.0.0",
+        "checks": [
+          "real-redis-charges-one-request-once-across-router-fallthrough",
+          "shared-api-allowance-does-not-exempt-route-specific-quota",
+          "standalone-cleanup-retains-long-quota-and-removes-expired-short-quota",
+          "standalone-quota-resumes-only-at-configured-expiry",
+          "direct-client-cannot-forge-forwarding-identity",
+          "real-redis-quota-survives-url-case-and-header-rotation",
+          "trusted-proxy-stops-at-closest-untrusted-hop",
+          "stalled-redis-returns-bounded-503-before-mutation",
+          "late-quota-success-does-not-run-abandoned-mutation",
+          "quota-service-recovers-without-bypass",
+          "redis-noeviction-oom-blocks-protected-handler",
+          "clearing-memory-pressure-restores-verified-requests"
+        ],
+        "productionDatabaseUsed": false,
+        "onlyDisposableMutationHandler": true,
+        "marker": "dd-http-quota-2153a48f88e8",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+        "sourceSha256": {
+          "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+          "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+          "src/services/rate-limiter-memory.js": "856677e3b1474a36aa4a195d0dd188659fbd48d63a1abf5c6fb6499f7c5667fe",
+          "src/middleware/rateLimit.js": "8ad9fb41c5ced67391d9a1195593be39491f2041e4fe497c97525c3e7b05e079",
+          "src/utils/helpers.js": "d0a8f43e7e22c5e18f3e340734b5eebee3ad00b711777e49f28a001def25e23b",
+          "src/utils/proxy-trust.js": "0479420029df7fe00e494a4d19f4c0b4e7d46f02757bf6c88440878a5612d5ae",
+          "scripts/fixtures/http-quota-checks.js": "85c094749311bdcde0c11e9a19d9b66eeca8da841e2434d6bf75a26ee017b9ff"
+        },
+        "bundledSourceVerified": true,
+        "publishedPorts": false
+      },
+      "prune": {
+        "at": "2026-09-20T08:30:54.407Z",
+        "marker": "dd-prune-smoke-9960f4273546",
+        "checks": [
+          "daemon-name-reservation-blocks-operations-and-competing-prune",
+          "real-container-prune-keeps-guard-and-late-operation-reservations",
+          "real-image-prune-preserves-helper-referenced-only-by-guard",
+          "retained-original-blocks-prune-before-deletion",
+          "uncertain-outcome-retains-barrier"
+        ],
+        "fixtureImage": "sha256:e240e7ab5a3de2f661609bc7846e09b5e25853febac6f480b803fedc90a561b7",
+        "appImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "bundledSourceVerified": true,
+        "bundledSources": {
+          "src/services/docker-prune-guard.js": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+          "src/services/docker.js": "94e4a7d0a1e95387ec76e9733bd44665da2614f4509864f87edcf80df91ec4f3",
+          "src/services/container-replacement.js": "f99d823b01976323e901ffcd43353b06f0318bdf2163bd644e11ba73aff20328",
+          "src/services/egress-runner.js": "a81bb9a61d983023fb30ffc80c98f27d5d92ab5c280ded079fab221eafc4bcd0",
+          "src/services/disk-pressure.js": "39ed6e49da483dcee946e67b372b67d464f177d89b09bdaa5f6fdf7988652cb2"
+        },
+        "sourceSha256": "4935f73c1b54bb22f9356b47376698dd629988ac78cd5033b5df496bfd2840ac",
+        "onlyLabeledTestResources": true,
+        "productionPruneCalled": false
+      },
+      "auth": {
+        "at": "2026-09-20T08:31:13.169Z",
+        "image": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "mode": "bundled-image",
+        "sourceHashes": {
+          "src/routes/auth.js": "580ff69ca3b168a954f60f7f7948f3b8f89326ef04b5b5552694dc46d03ee7ed",
+          "src/services/auth.js": "b5bd74f73eba2a53fa033e441c29356caab9c5d48204c5901450926afabd4718",
+          "src/services/email.js": "d1522d8d44e8de55eb456ad4b5151d3049c4732c054ad10178a5fb5565ae053b",
+          "src/services/password-reset.js": "f7ca719b3e8826ec3890497ab49cf74506f00d8d19b2210d402fb84ae4a5a4a6",
+          "src/services/password-reset-delivery.js": "b32190f2f8a1f54214f9b61ed869e2338b9d1700f27d6fed98cfdf6c0b40d0b1",
+          "src/config/index.js": "eb8e7a9e0f772ceef152df333fcc2b435639c28a16fce140f49257e480badeb6",
+          "src/db/migrations/178_auth_time_indexes.js": "8bc918181e9f8d82e651c1e5b1a4469d138de64b469cf010549b6fd80dab1a00",
+          "src/db/migrations/179_auth_credential_version.js": "957bdef2c02ff178c8832a620c0bac4b2e7d6bcbda3e5c3970ccf875d0dcfd32",
+          "src/db/migrations/180_mfa_replay_and_attempts.js": "fb258719499bf70f27758e40777d777609c55325b7d40df44b139eafe2fc35bd",
+          "src/utils/totp.js": "3628b33e2d6d3947004db45789df3d72b1b1894e6f8be45cd4ed872862a5bbe1",
+          "src/ws/index.js": "93e3bde85119105fac950072cdadd5c88b56e53caf73f7926e086511cb1ae9e6",
+          "src/services/provider-console/gateway.js": "94cfc5b9b8eb7e99533ac776a9193529db512d4adc94218d8191b229dfa85aac",
+          "src/services/provider-console/byte-channel.js": "1d32effd0d751910c0240a7a50634710bd7fe2940cdad2a09342d7665fc4cc78"
+        },
+        "checks": [
+          "identical-http-response-before-smtp-completes",
+          "configured-link-origin",
+          "account-quota-across-case-and-ip",
+          "native-sqlite-cross-process-single-redemption-and-audit",
+          "expired-iso-session-refused-by-real-http-auth",
+          "expired-iso-mfa-refused",
+          "production-login-timestamps-enforce-ip-lockout",
+          "native-cross-process-recovery-code-consumed-once",
+          "real-websocket-revocation-input",
+          "real-websocket-revocation-broadcast",
+          "real-websocket-revocation-idle-expiry",
+          "real-provider-console-revocation-input",
+          "real-provider-console-revocation-output",
+          "real-provider-console-revocation-idle",
+          "native-fragmented-console-read-allows-transport-progress",
+          "native-reset-revokes-outstanding-mfa-proof",
+          "native-cross-process-login-cannot-outlive-password-reset",
+          "native-cross-process-failures-enforce-account-lockout",
+          "native-cross-process-single-use-totp-login-login",
+          "native-cross-process-single-use-totp-login-stepup",
+          "native-cross-process-challenge-five-attempt-bound"
+        ],
+        "emailMocked": true,
+        "providerMocked": true,
+        "externalNetwork": false,
+        "sqlite": "3.53.4"
+      },
+      "upgrade": {
+        "marker": "dd-auth-upgrade-3e313e80b734",
+        "at": "2026-09-20T08:31:58.584Z",
+        "beforeImage": "sha256:1085b24aa2d0531faa15b62ae32b3ef93f92532a47d237ef978654464570741b",
+        "afterImage": "sha256:92ccd1ee61927eedfbc697cacedd46de6ba355f2e82b298ebed571362da4c7f3",
+        "network": "none",
+        "migrations": 180,
+        "usersPreserved": 2,
+        "credentialsPreserved": true,
+        "existingSessionValid": true,
+        "unusedResetLinkValid": true,
+        "pendingMfaRevoked": true,
+        "replayBoundaryInitialized": true,
+        "integrity": "ok"
+      },
+      "productionChecks": [
+        "PASS production startup, native SQLite migrations and HTTP health",
+        "PASS built HTTP server shares API quota across paths/case while health remains available",
+        "PASS pinned Compose plugin parses configuration offline and curl health probe succeeds",
+        "PASS real Linux Git/OpenSSH verifies server identity before authentication and removes private session files",
+        "PASS Linux provider mTLS accepts verified private CA and rejects wrong CA before HTTP authentication",
+        "PASS Linux LDAP StartTLS and LDAPS verify certificates before bind and reject wrong CA without sending passwords",
+        "PASS Linux SQLite migration encrypts existing rollback snapshots and preserves recovery",
+        "PASS encrypted rollback snapshot survives restart and rejects another host identity",
+        "PASS generated secrets persist across restart with mode 0600 and no backup copy",
+        "PASS quoted persisted secrets are read without shell execution",
+        "PASS explicit environment secrets retain precedence",
+        "PASS concurrent-processes-elect-one-leader",
+        "PASS ioredis6-shared-lua-rate-limit-and-expiry",
+        "PASS cross-process-pubsub-without-self-echo",
+        "PASS stale-leader-heartbeat-cannot-overwrite-successor",
+        "PASS old-owner-shutdown-preserves-successor-and-stays-closed",
+        "PASS connection-loss-demotes-leader",
+        "PASS reconnection-can-confirm-owned-lease",
+        "PASS expired-process-resumes-as-reader-after-real-ttl-takeover",
+        "PASS graceful-release-allows-immediate-new-process-election",
+        "PASS memory-pressure-rejects-writes-without-evicting-lease"
+      ],
+      "ownedResourcesRemoved": true,
+      "upgradeHarnessFix": "Parse explicit report marker instead of dotenv startup banner; final isolated upgrade rerun passed."
+    }
+  },
+  "productionDeployed": false,
+  "publicImagePublished": false,
+  "sourceTests": {
+    "suites": 372,
+    "passed": 4910,
+    "skipped": 1,
+    "lint": true,
+    "pageHelp": "60/60"
+  },
+  "npm": {
+    "audit": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "dependencies": {
+        "prod": 165,
+        "dev": 510,
+        "optional": 99,
+        "peer": 3,
+        "peerOptional": 0,
+        "total": 677
+      }
+    },
+    "outdated": {}
+  },
+  "noScannerExceptionsAdded": true,
+  "noAdmissionGatesDisabled": true,
+  "priorScannerArtifactEvidence": "2026-09-20-installed-scanner-artifacts.json",
+  "priorHelperEvidence": "2026-09-20-egress-helper-runtime.json"
+}

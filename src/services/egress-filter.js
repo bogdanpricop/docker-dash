@@ -1,24 +1,15 @@
 'use strict';
 
-// Outbound Network Filter — v6.7 (alpha.1: config layer only)
-//
-// This ships the data model + CRUD + precondition checks. The actual
-// enforcement (sidecar + nftables + SNI peek) lands in rc2.
-//
-// See docs/planning/v6.7/outbound-filter/02-deep-spec.md §§1-4.
-//
-// Design notes graduated from preflight spikes:
-// - `canApplyFilter()` classification → P10 (9/9 unit tests PASS).
-// - Data model → matches §2 of the deep-spec verbatim.
-//
-// Policies in this alpha are persisted but have no runtime effect. The UI
-// must label them as "config only" until the sidecar ships. This lets users
-// configure + review allowlists ahead of enforcement landing.
+// Outbound Network Filter: persisted policies, preconditions and schema-2
+// sidecar configuration. Per-connection source authorization lives in
+// egress-authorization.js. Firewall installation is managed by egress-runner.
+// See docs/planning/v6.7/outbound-filter/03-scoped-authorization.md.
 
 const fs = require('fs');
 const path = require('path');
 const log = require('../utils/logger')('egress-filter');
 const { getDb } = require('../db');
+const { hasRawSocketCapability } = require('./egress-capabilities');
 
 // Where the sidecar reads its policy from. Both the app container and the
 // sidecar mount the same `docker-dash-egress` volume; this path is inside
@@ -92,6 +83,7 @@ const IMDS_ENDPOINTS = [
   '169.254.169.254',
   'metadata.google.internal',
   '169.254.170.2',  // ECS task role
+  'fd00:ec2::254', // AWS IPv6 metadata
 ];
 
 // ─── Precondition check ────────────────────────────────
@@ -100,9 +92,9 @@ const IMDS_ENDPOINTS = [
 // A container with NET_ADMIN / SYS_ADMIN / privileged can modify its own
 // netns's iptables rules, making the filter pointless. We refuse attach.
 
-const REFUSING_CAPS = new Set(['NET_ADMIN', 'SYS_ADMIN']);
+const REFUSING_CAPS = new Set(['ALL', 'NET_ADMIN', 'SYS_ADMIN']);
 
-function canApplyFilter(inspect) {
+function canInspectFilter(inspect) {
   const hc = inspect.HostConfig || {};
 
   if (hc.Privileged === true) {
@@ -113,7 +105,7 @@ function canApplyFilter(inspect) {
   }
 
   for (const cap of hc.CapAdd || []) {
-    if (REFUSING_CAPS.has(cap)) {
+    if (REFUSING_CAPS.has(String(cap).toUpperCase().replace(/^CAP_/, ''))) {
       return {
         ok: false,
         reason: `Container has capability ${cap} — it can modify its own iptables/nftables rules and bypass the filter. Drop this capability (via the Remediation Wizard or compose edit), then re-apply.`,
@@ -144,6 +136,19 @@ function canApplyFilter(inspect) {
   return { ok: true };
 }
 
+// NET_RAW is in Docker's default capability set. AF_PACKET traffic bypasses
+// the IP input/output firewall chains; absence from CapAdd is not proof of safety.
+// Keep inspection/removal available for legacy targets, but never apply or
+// authorize their connections until NET_RAW is explicitly dropped.
+function canApplyFilter(inspect) {
+  const namespace = canInspectFilter(inspect);
+  if (!namespace.ok) return namespace;
+  if (hasRawSocketCapability(inspect.HostConfig)) {
+    return { ok: false, reason: 'Container can use NET_RAW packet sockets, which bypass the egress OUTPUT firewall. Explicitly drop NET_RAW (cap_drop: [NET_RAW] or [ALL]), remove any NET_RAW/ALL cap_add, recreate the container, then apply its policy again.' };
+  }
+  return { ok: true };
+}
+
 // ─── Allowlist resolution ───────────────────────────────
 
 function resolvePreset(preset, customAllowlist) {
@@ -171,10 +176,13 @@ function validateAllowlistEntry(entry) {
   // Allow: hostname (with optional leading wildcard subdomain), IPs are explicitly rejected —
   // users should rely on DNS-resolved hostnames. IMDS endpoints also rejected (always implicitly blocked).
   if (!entry || typeof entry !== 'string') return 'Empty entry';
-  const e = entry.trim().toLowerCase();
+  const e = entry.trim().toLowerCase().replace(/\.$/, '');
   if (/^\d+\.\d+\.\d+\.\d+(\/\d+)?$/.test(e)) return 'IP addresses not allowed — use hostnames';
   if (IMDS_ENDPOINTS.includes(e)) return `${e} is always blocked regardless of policy — remove from allowlist`;
-  if (!/^\*?(\.?[a-z0-9][a-z0-9-]*)(\.[a-z0-9][a-z0-9-]*)+\.?$/i.test(e)) return `Invalid hostname: ${e}`;
+  const host = e.startsWith('*.') ? e.slice(2) : e;
+  const labels = host.split('.');
+  if (host.length > 253 || labels.length < 2 || labels.some(label => label.length > 63
+    || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label))) return `Invalid hostname: ${e}`;
   return null;  // OK
 }
 
@@ -229,12 +237,14 @@ function createPolicy({ scopeType, scopeKey, hostId = 0, preset, customAllowlist
   const effectiveMode = preset === 'audit-only' ? 'audit-only' : mode;
 
   const db = getDb();
-  // Upsert (replace existing active policy for this scope)
-  const existing = getPolicyForScope({ scopeType, scopeKey, hostId });
+  // The unique scope key also covers soft-deleted rows. Re-enable that row
+  // rather than attempting an INSERT that fails after a policy was removed.
+  const existing = db.prepare('SELECT id FROM egress_policies WHERE scope_type = ? AND scope_key = ? AND host_id = ?')
+    .get(scopeType, scopeKey, hostId);
   if (existing) {
     db.prepare(`
       UPDATE egress_policies
-      SET preset = ?, allowlist = ?, mode = ?, updated_at = datetime('now')
+      SET preset = ?, allowlist = ?, mode = ?, active = 1, updated_at = datetime('now')
       WHERE id = ?
     `).run(preset, JSON.stringify(resolved), effectiveMode, existing.id);
     log.info('Egress policy updated', { policyId: existing.id, scopeType, scopeKey, preset, mode: effectiveMode });
@@ -266,6 +276,7 @@ function updatePolicy(id, changes) {
   };
 
   if (!PRESETS[patched.preset]) throw new Error(`Unknown preset: ${patched.preset}`);
+  if (!['enforce', 'audit-only'].includes(patched.mode)) throw new Error(`Invalid mode: ${patched.mode}`);
   const resolved = resolvePreset(patched.preset, patched.customAllowlist || existing.allowlist);
   for (const entry of resolved) {
     const err = validateAllowlistEntry(entry);
@@ -373,25 +384,21 @@ function recordBlockedAttempt({ policyId, containerId, hostname, port, proto, re
 
 // ─── Sidecar policy.json writer (v6.7.0-alpha.2) ───────
 //
-// Alpha ships a single global policy.json for the sidecar. All active
-// policies' allowlists are merged (union). Mode = 'audit-only' only when
-// EVERY active policy is audit-only, else 'enforce'. Per-container policy
-// routing by source IP lands in rc1.
+// Schema 2 requires per-connection authorization over the local Unix socket.
+// The empty legacy fields deliberately deny all on an older sidecar, rather
+// than silently restoring the insecure union of unrelated container policies.
 
 function _buildAggregatePolicy() {
   const policies = listPolicies();
-  const union = new Set();
-  let anyEnforce = false;
   let maxUpdatedAt = '';
   for (const p of policies) {
-    for (const h of p.allowlist) union.add(h);
-    if (p.mode === 'enforce') anyEnforce = true;
     if (p.updatedAt > maxUpdatedAt) maxUpdatedAt = p.updatedAt;
   }
   return {
+    schema_version: 2,
     version: policies.length > 0 ? policies.reduce((max, p) => Math.max(max, p.id), 0) : 0,
-    mode: policies.length === 0 ? 'enforce' : (anyEnforce ? 'enforce' : 'audit-only'),
-    allowlist: Array.from(union).sort(),
+    mode: 'enforce',
+    allowlist: [],
     updated_at: maxUpdatedAt || new Date().toISOString(),
   };
 }
@@ -462,6 +469,7 @@ module.exports = {
   removePolicy,
   // Preconditions
   canApplyFilter,
+  canInspectFilter,
   // Block log
   getBlockLog,
   getBlockLogGrouped,

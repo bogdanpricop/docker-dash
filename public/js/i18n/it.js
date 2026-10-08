@@ -35,6 +35,8 @@ i18n.register('it', 'IT', "Italiano", {
     inactive: "Inattivo",
     enabled: "Abilitato",
     disabled: "Disabilitato",
+    yes: "Sì",
+    no: "No",
     test: "Test",
     prune: "Pulizia",
     unlimited: "illimitato",
@@ -84,6 +86,7 @@ i18n.register('it', 'IT', "Italiano", {
     "registry-browse": "Registri",
     onboarding: "Configurazione ambiente",
     posture: "Postura",
+    procedures: "Procedure",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alpha)",
@@ -91,7 +94,25 @@ i18n.register('it', 'IT', "Italiano", {
     "migration-vm": "Migrazione VM (alpha)",
     "kubernetes-resources": "Kubernetes (alpha)",
     "nomad-jobs": "Nomad (alpha)",
-    "vsphere-resources": "vSphere / ESXi (alpha)"
+    "vsphere-resources": "vSphere / ESXi (alpha)",
+    "virtual-machines": "Macchine virtuali",
+    "high-availability": "Alta disponibilità",
+    "storage-posture": "Stato dello storage",
+    "network-posture": "Stato della rete",
+    "provider-security-posture": "Sicurezza del provider",
+    "placement-advisor": "Consulente di posizionamento",
+    "recovery-points": "Punti di ripristino",
+    "backup-policies": "Criteri di backup",
+    "disaster-recovery": "Ripristino di emergenza",
+    "virtualization-catalog": "Catalogo VM",
+    activity: "Centro attività",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "Governance",
+    "self-service": "Self-service",
+    "governance-controls": "Identità e policy",
+    "edge-platform": "Edge e ambienti disconnessi",
+    "workstation-fleet": "Flotta workstation",
+    "compose-catalog": "Catalogo Compose"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('it', 'IT', "Italiano", {
     checkFailed: "Controllo fallito",
     upToDate: "Stai usando l'ultima versione",
     refreshed: "Controllo aggiornamenti aggiornato"
-  }
+  },
+  selfService: {
+    title: 'Self-service infrastruttura', requestQuota: 'Richiedi quota', acknowledge: 'Conferma', pause: 'Sospendi notifiche',
+    tabs: { catalog: 'Catalogo', project: 'Progetto', requests: 'Richieste', incidents: 'Incidenti', guidance: 'Guida' },
+    actions: { start: 'Avvia', shutdown: 'Arresta', reboot: 'Riavvia', snapshot: 'Snapshot', console: 'Console' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Ogni modifica infrastrutturale richiede una conferma protetta separata.', mobile: 'Vista mobile sicura:' },
+  },
 });

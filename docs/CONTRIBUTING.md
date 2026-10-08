@@ -1,6 +1,6 @@
 # Contributing to Docker Dash
 
-Thanks for your interest! This guide gets you from `git clone` to a merged PR in **about an hour**, assuming you have Node.js 20+ and Docker installed.
+Thanks for your interest! This guide gets you from `git clone` to a merged PR in **about an hour**, assuming you have Node.js 24.21+ and Docker installed.
 
 > **TL;DR for the impatient**: clone → `npm install` → `cp .env.example .env` → `npm run dev` → open `http://localhost:8101` → log in as `admin` / `admin` → start editing files. The page at `/sample-feature` (admin-only) is a working reference; copy it to start your own contribution.
 
@@ -29,7 +29,7 @@ Thanks for your interest! This guide gets you from `git clone` to a merged PR in
 
 ### Prerequisites
 
-- **Node.js 20+** (`node --version` must report `v20.x` or later)
+- **Node.js 24.21+** (`node --version` must report `v24.21.x` or later in the Node 24 LTS line)
 - **Docker** (engine + CLI; needed because Docker Dash *manages Docker* — most features need a real socket to talk to)
 - **Git** for cloning + branching
 

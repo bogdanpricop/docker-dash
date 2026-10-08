@@ -55,7 +55,7 @@ describe('encrypt / decrypt', () => {
   it('should throw on tampered ciphertext', () => {
     const encrypted = encrypt('secret');
     const parts = encrypted.split(':');
-    parts[2] = 'ff' + parts[2].substring(2); // tamper with ciphertext
+    parts[2] = `${parts[2][0] === 'f' ? 'e' : 'f'}${parts[2].substring(1)}`; // always tamper
     expect(() => decrypt(parts.join(':'))).toThrow();
   });
 });

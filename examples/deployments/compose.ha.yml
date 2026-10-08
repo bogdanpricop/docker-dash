@@ -1,5 +1,6 @@
 # Docker Dash in HA mode (2 replicas + Redis leader election).
-# Cron jobs, drift scans, image pulls etc. run only on the leader — safe to scale.
+# Scheduled work checks a Redis lease; already-started external work is not fenced.
+# Review docs/features/ha-mode.md and validate shared SQLite storage before scaling.
 # Put your reverse proxy (Caddy / Traefik / NPM / nginx) IN FRONT of dd-1 and dd-2.
 # Both replicas serve all read + write requests on host port 8101/8102.
 
@@ -8,7 +9,7 @@ services:
     image: redis:7-alpine
     container_name: dd-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "changeme-redis-strong-secret"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--requirepass", "changeme-redis-strong-secret"]
     volumes:
       - dd-redis-data:/data
 

@@ -21,6 +21,14 @@ const router = Router();
 // Enforcement became real in v6.7.0-alpha.3 — opt-in via `apply` API.
 const ENFORCEMENT_ACTIVE = true;
 
+async function recordEnforcementFailure(req, action, error) {
+  try {
+    await auditService.log({ userId: req.user?.id, username: req.user?.username, ip: getClientIp(req), action,
+      details: { policyId: req.params.id, operationId: error.operationId, recoveryRequired: !!error.recoveryRequired,
+        recoveryHelpers: error.recoveryHelpers || [], rollback: error.rollback } });
+  } catch { log.error('Cannot record egress failure audit', { action }); }
+}
+
 // ─── Presets ────────────────────────────────────────────
 
 // GET /presets — return the catalog of preset allowlists
@@ -201,6 +209,9 @@ router.post('/policies/:id/apply', requireAuth, requireRole('admin'), writeable,
     if (!policy) return res.status(404).json({ error: 'Policy not found' });
     if (!policy.active) return res.status(400).json({ error: 'Policy is soft-deleted — recreate to re-apply' });
 
+    await auditService.log({ userId: req.user?.id, username: req.user?.username, ip: getClientIp(req),
+      action: 'egress_policy_apply_started', details: { policyId: id, scopeType: policy.scopeType, scopeKey: policy.scopeKey, hostId: policy.hostId } });
+
     if (policy.scopeType === 'stack') {
       // Stack scope: runner does precondition check + transactional apply internally.
       const result = await egressRunner.applyToStack({
@@ -247,7 +258,9 @@ router.post('/policies/:id/apply', requireAuth, requireRole('admin'), writeable,
       return res.status(503).json({ error: msg });
     }
     log.error('apply egress policy', err);
-    res.status(500).json({ error: msg });
+    await recordEnforcementFailure(req, 'egress_policy_apply_failed', err);
+    res.status(500).json({ error: msg + (err.recoveryHelpers?.length ? ` Recovery helpers: ${err.recoveryHelpers.join(', ')}` : ''), operationId: err.operationId,
+      recoveryRequired: !!err.recoveryRequired, recoveryHelpers: err.recoveryHelpers || [], rollback: err.rollback });
   }
 });
 
@@ -258,38 +271,47 @@ router.post('/policies/:id/unapply', requireAuth, requireRole('admin'), writeabl
     const policy = egressFilter.getPolicy(id);
     if (!policy) return res.status(404).json({ error: 'Policy not found' });
 
+    await auditService.log({ userId: req.user?.id, username: req.user?.username, ip: getClientIp(req),
+      action: 'egress_policy_unapply_started', details: { policyId: id, scopeType: policy.scopeType, scopeKey: policy.scopeKey, hostId: policy.hostId } });
+
     if (policy.scopeType === 'stack') {
       const result = await egressRunner.removeFromStack({
         stackName: policy.scopeKey,
         hostId: policy.hostId || 0,
+        policyId: id,
       });
       await auditService.log({
         userId: req.user?.id,
         username: req.user?.username,
         ip: getClientIp(req),
-        action: 'egress_policy_unapplied',
-        details: { policyId: id, stackName: policy.scopeKey, hostId: policy.hostId, removedCount: result.removed.length },
+        action: result.failed.length ? 'egress_policy_unapply_failed' : result.retained?.length ? 'egress_filter_retained' : 'egress_policy_unapplied',
+        details: { policyId: id, stackName: policy.scopeKey, hostId: policy.hostId, removedCount: result.removed.length, retainedCount: result.retained?.length || 0, failedCount: result.failed.length },
       });
-      return res.json({ ok: true, scope: 'stack', ...result });
+      return res.status(result.failed.length ? 500 : 200).json({ ok: result.failed.length === 0, scope: 'stack', ...result,
+        ...(result.failed.length ? { error: `Filter removal failed for ${result.failed.length} container(s); policy retained.`,
+          recoveryHelpers: result.failed.flatMap(f => f.recoveryHelpers || []) } : {}) });
     }
 
     const result = await egressRunner.removeFromContainer({
       containerId: policy.scopeKey,
       hostId: policy.hostId || 0,
+        policyId: id,
     });
 
     await auditService.log({
       userId: req.user?.id,
       username: req.user?.username,
       ip: getClientIp(req),
-      action: 'egress_policy_unapplied',
-      details: { policyId: id, containerId: policy.scopeKey, hostId: policy.hostId },
+      action: result.retained ? 'egress_filter_retained' : 'egress_policy_unapplied',
+      details: { policyId: id, containerId: policy.scopeKey, hostId: policy.hostId, retained: !!result.retained, retainedFor: result.retainedFor || [] },
     });
 
-    res.json({ ok: true, scope: 'container', applied: false, output: result.output });
+    res.json({ ok: true, scope: 'container', ...result });
   } catch (err) {
     log.error('unapply egress policy', err);
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    await recordEnforcementFailure(req, 'egress_policy_unapply_failed', err);
+    res.status(500).json({ error: (err.message || 'Internal server error') + (err.recoveryHelpers?.length ? ` Recovery helpers: ${err.recoveryHelpers.join(', ')}` : ''), operationId: err.operationId,
+      recoveryRequired: !!err.recoveryRequired, recoveryHelpers: err.recoveryHelpers || [] });
   }
 });
 
@@ -310,7 +332,8 @@ router.get('/policies/:id/status', requireAuth, requireRole('admin'), async (req
       containerId: policy.scopeKey,
       hostId: policy.hostId || 0,
     });
-    res.json({ policyId: id, scope: 'container', applied: result.applied, details: result.details });
+    res.json({ policyId: id, scope: 'container', applied: result.applied, details: result.details,
+      safeToFilter: result.safeToFilter, safetyError: result.safetyError });
   } catch (err) {
     log.error('status egress policy', err);
     res.status(500).json({ error: err.message || 'Internal server error' });

@@ -2,8 +2,8 @@
 
 // Tests for src/services/cluster.js (v6.17.0)
 //
-// Two describe blocks — standalone and HA. The HA block uses `ioredis-mock`
-// via jest.mock('ioredis') so we don't need a real Redis running.
+// Two describe blocks — standalone and HA. The HA block uses the focused
+// in-repo Redis double so the unit suite does not need a Redis server.
 
 describe('cluster — standalone (DD_MODE unset)', () => {
   let cluster;
@@ -67,12 +67,12 @@ describe('cluster — standalone (DD_MODE unset)', () => {
   });
 });
 
-describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
+describe('cluster — HA mode (in-repo Redis mock)', () => {
   let cluster;
 
   beforeAll(() => {
-    // Map ioredis → ioredis-mock so no real Redis needed.
-    jest.doMock('ioredis', () => require('ioredis-mock'));
+    // Map ioredis to the commands exercised by this service only.
+    jest.doMock('ioredis', () => require('./helpers/redis-mock'));
     process.env.DD_MODE = 'ha';
     process.env.REDIS_URL = 'redis://localhost:6379';
     jest.resetModules();
@@ -96,7 +96,7 @@ describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
-  it('redis() returns an ioredis-mock client (not null)', async () => {
+  it('redis() returns a Redis-compatible client (not null)', async () => {
     const r = await cluster.redis();
     expect(r).not.toBeNull();
     expect(typeof r.incr).toBe('function');
@@ -123,9 +123,7 @@ describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
     expect(allowedY.allowed).toBe(true);
   });
 
-  it('isLeader() returns true in HA v6.17.1 (election stubbed until v7.0.0-rc.1)', async () => {
-    // Documented limitation — every node claims leader. Users are instructed
-    // NOT to run multi-replica in HA mode until leader election ships.
+  it('isLeader() elects a single node against the Redis mock', async () => {
     expect(await cluster.isLeader()).toBe(true);
   });
 
@@ -148,8 +146,7 @@ describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
   it('subscribe filters out self-published messages', async () => {
     let received = null;
     cluster.subscribe('self-loop-test', (p) => { received = p; });
-    // Wait for subscriber connection to settle (ioredis-mock is synchronous
-    // but the subscribe()+publish() cycle still needs a microtask tick)
+    // Wait for the subscribe()+publish() cycle to settle.
     await new Promise(r => setTimeout(r, 50));
     await cluster.publish('self-loop-test', { test: 'self' });
     await new Promise(r => setTimeout(r, 100));
@@ -229,7 +226,7 @@ describe('cluster — HA mode (DD_MODE=ha, ioredis-mock)', () => {
     // We hold it (first call)
     await cluster.isLeader();
     // Simulate a second replica trying to acquire by manipulating the SET NX path
-    // directly through the same Redis client (ioredis-mock uses a shared state).
+    // directly through the same Redis client (the test double shares state).
     const r = await cluster.redis();
     const attempt = await r.set('leader', 'other-node-id', 'NX', 'PX', 30000);
     expect(attempt).toBeNull();  // NX fails because key exists

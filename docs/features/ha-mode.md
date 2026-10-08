@@ -1,9 +1,11 @@
 # HA Mode — Optional Redis-backed High Availability
 
-**Introduced:** v6.17.0 (foundation — rate limiter + cluster abstraction)
-**Feature-complete:** v6.17.2 (pub/sub + leader election)
-**Production-grade:** v7.0.0 stable (planned — failover runbook + staging multi-replica soak)
-**Status:** v6.17.2 ships **multi-replica safe HA**. Safe to run 2-3 replicas behind a sticky-session load balancer. Full production-grade promotion (with automated failover docs + soak test results) comes in v7.0.0.
+**Status, September 2026:** optional Redis coordination provides shared rate
+limits, pub/sub and a lease for scheduled work. The ownership/expiry correction
+has passed [real Redis canaries](../audits/2026-09-20-ha-lease.md) on LAN and VPS.
+It is not proof of complete application HA, safe asynchronous Redis failover or
+exactly-once Docker/provider execution. Validate the shared SQLite filesystem,
+load balancer and job recovery before enabling multiple replicas.
 
 ---
 
@@ -17,7 +19,9 @@ Some deployments need redundancy:
 - **On-prem Kubernetes clusters** that mandate ≥2 replicas by policy
 - **Always-on infrastructure panels** behind a load balancer
 
-For those environments, v6.17.0 introduces **opt-in HA mode**: a designated "writer" replica + N read/serve replicas, sharing a Redis instance for hot state.
+For those environments, **opt-in HA mode** selects a scheduling leader and shares
+rate-limit counters and notifications through Redis. The scheduling role is not
+a global writer lock for every HTTP route or SQLite transaction.
 
 > **This is not Kubernetes-grade active-active scale-out.** It's "HA-ready with redundancy". True multi-writer horizontal scale requires a Postgres backend (out of scope for v6.x / v7.0 — tracked in BACKLOG F30 follow-up).
 
@@ -29,14 +33,27 @@ For those environments, v6.17.0 introduces **opt-in HA mode**: a designated "wri
 |-----------|:----------:|:-----------------:|
 | Rate limiter | In-memory sliding window | **Redis INCR fixed window** |
 | WebSocket broadcasts | In-process | **Redis pub/sub on `ddash:pubsub` channel** (loop-safe via nodeId filter) |
-| Cron jobs | Single process runs them | **Leader-only** (Redis SET NX PX, 30s TTL + 10s heartbeat) |
+| Cron jobs | Single process runs them | **Lease-gated** (atomic ownership check, 30s TTL + 10s heartbeat) |
 | Docker event stream | Per-process | **Leader-only** (start on become-leader, stop on become-reader) |
 | Git polling | Single process | **Leader-only** |
 | SSH tunnels | Per-process | **Per-replica** (readers need them to serve HTTP reads; documented acceptable cost) |
 | Sessions | DB-backed | DB-backed (works across replicas) |
-| DB | Local SQLite | Shared SQLite (single-writer — leader holds writes; readers proxy via internal API in v7.0) |
+| DB | Local SQLite | Shared SQLite; filesystem locking/WAL requirements still apply |
 
-**v6.17.2 is multi-replica-safe.** Deploy 2-3 replicas behind a sticky-session LB. One replica holds the leader lock and runs all cron + Docker event stream + git polling. Readers serve HTTP, have WS events delivered via pub/sub. On leader death, a reader acquires the lock within ~30s (TTL). Graceful shutdown releases the lock immediately (Lua DEL-if-owned).
+A confirmed lease permits a replica to start leader-gated work. Renewal and
+release compare the stored owner atomically. A dedicated Redis connection has
+no offline command queue or automatic command replay. Connection errors and
+three-second lease-command timeouts demote the replica; a monotonic local
+deadline expires one second before the conservative TTL budget. Concurrent
+initial callers share one heartbeat loop. Shutdown closes that loop before
+releasing ownership, so delayed replies cannot restore leadership.
+
+A responsive reader normally takes over within 30s TTL plus its next 10s poll.
+Graceful release avoids waiting for the TTL, but does not force an immediate
+reader poll. Already-started external work needs its own deduplication and
+recovery. Redis data loss, lease eviction or independent writable Redis servers
+can violate the coordination assumptions. See the
+[Redis locking guidance](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/).
 
 ---
 
@@ -61,11 +78,11 @@ curl http://localhost:8101/api/health
 # → { "status": "ok", "version": "6.17.0", ... }
 
 # Redis is reachable from the app container
-docker compose exec app sh -c 'echo PING | redis-cli -h redis'
+docker compose exec redis redis-cli PING
 # → PONG
 
-# Prometheus metrics still work (rate-limit keys now live in Redis)
-curl http://localhost:8101/api/metrics | grep docker_dash
+# Global monitoring uses a private curl config with an Authorization header.
+curl --config /run/secrets/docker-dash-monitoring.curl http://localhost:8101/api/metrics | grep docker_dash
 ```
 
 ### 3. Disable HA mode
@@ -100,11 +117,11 @@ await cluster.redis();       // → null in standalone, ioredis client in HA
 await cluster.rateLimitTick(key, maxReqs, windowMs);
   // → { allowed, remaining, retryAfterSec }
 
-// Phase 3 (v7.0.0-alpha.1) — currently no-ops in v6.17.0:
+// Cross-replica notifications in HA; no-op in standalone:
 await cluster.publish(channel, payload);
 cluster.subscribe(channel, handler);
 
-// Phase 4 (v7.0.0-rc.1) — currently returns true for every node in v6.17.0:
+// Checks valid local leadership in HA; always true in standalone:
 await cluster.isLeader();
 ```
 
@@ -128,11 +145,10 @@ rl:<route>:<ip>:<bucketEpoch>    # rate-limit counter, TTL=windowMs+1s
 
 Low cardinality — each route × client IP × time bucket. Bounded by request rate, cleaned automatically by TTL.
 
-Future HA keys (v7.0.0):
+Coordination key and channel:
 ```
-leader                            # SET NX PX — current leader nodeId
-leader:heartbeat                  # leader's last heartbeat timestamp
-broadcast:<channel>               # pub/sub channels for WS broadcasts
+leader                            # owned lease with 30s TTL
+ddash:pubsub                       # channel, envelope contains nodeId/appChannel
 ```
 
 ---
@@ -142,23 +158,28 @@ broadcast:<channel>               # pub/sub channels for WS broadcasts
 ### Memory footprint
 
 - Standalone: unchanged.
-- HA mode: Redis 7-alpine ~30MB image, ~5-15MB RAM idle, bounded at 128MB via `--maxmemory` with LRU eviction.
+- HA mode: the bundled profile sets Redis `maxmemory` to 128MB and uses
+  `noeviction`. Size the container above that limit for Redis process overhead.
+  Rejecting writes at capacity is preferable to evicting an active leader lease.
 
-### Rate-limit failure mode (fail-open)
+### Rate-limit failure mode (fail-closed)
 
-If Redis becomes unreachable mid-request:
+If a quota cannot be confirmed within three seconds, the rate-limited route
+returns HTTP 503 and `Retry-After: 3` before authentication or mutation handlers
+run. This includes Redis outages, memory-capacity errors and malformed responses.
+Late replies cannot resume the abandoned request. HTTP 429 means the backend
+confirmed that the quota was exhausted. Health endpoints outside this middleware
+remain available for diagnostics; restore Redis before retrying protected work.
 
-```
-[warn] Rate limiter failure, allowing request { message: "Redis connection lost" }
-```
-
-Docker Dash chooses **availability over strict rate enforcement**. The request proceeds. Consider this when sizing DDoS protection — the rate limiter is a fair-use tool, not a security boundary.
+Scopes are stable across URLs and replicas. The shared API limiter is one
+per-client quota across its mounts; login, MFA and password reset have their own
+named quotas. Client identity follows Express's explicit trusted-proxy policy.
 
 ### Persistence
 
 The compose `redis` service is configured with:
 ```
---save 60 1000 --maxmemory 128mb --maxmemory-policy allkeys-lru
+--save 60 1000 --maxmemory 128mb --maxmemory-policy noeviction
 ```
 
 Translations: snapshot to `/data/dump.rdb` every 60s if ≥1000 writes. Survives container restart. Rate-limit counters persist (not ideal but harmless — TTL cleans them up quickly).
@@ -176,11 +197,12 @@ docker_dash_ws_connections_active
 
 Redis itself doesn't expose its internal metrics via the app endpoint. Scrape Redis separately with [redis_exporter](https://github.com/oliver006/redis_exporter) if you want Grafana dashboards on Redis.
 
-### Failover (v6.17.0)
+### Failover
 
-**Not automatic.** If the app process dies, Docker's restart policy brings it back. If Redis dies, the rate limiter fails open (warn log, requests allowed). No leader election means nothing to fail over — every replica is equal.
-
-Full failover story lands in v7.0.0.
+Leader election is automatic while a single authoritative Redis remains
+available. Failure to confirm a lease stops new leader-gated work. Pub/sub is
+best effort and rate-limited routes fail closed with HTTP 503. Follow the
+[failover runbook](ha-failover-runbook.md) to inspect roles and reconcile work.
 
 ---
 
@@ -194,7 +216,10 @@ Full failover story lands in v7.0.0.
 
 ## Rollback
 
-Single-commit revert on the v6.17.0 release tag. `ioredis` becomes an unused `optionalDependencies` entry (harmless). `docker-compose --profile ha` becomes a no-op profile (no `redis` service defined yet).
+Drain and stop extra replicas before returning the remaining instance to
+`DD_MODE=standalone`; otherwise each standalone process schedules work. Preserve
+the database and encryption keys and verify health, data and scheduled work
+after the change. Do not revert the lease ownership fix as an HA recovery step.
 
 ---
 

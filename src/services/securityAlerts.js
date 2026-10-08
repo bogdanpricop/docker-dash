@@ -127,8 +127,8 @@ class SecurityAlertService {
 
     const results = db.prepare(`
       SELECT ip, COUNT(*) as cnt, GROUP_CONCAT(DISTINCT username) as usernames
-      FROM login_attempts
-      WHERE success = 0 AND attempted_at > ?
+      FROM login_attempts INDEXED BY idx_login_failed_instant
+      WHERE success = 0 AND julianday(attempted_at) > julianday(?)
       GROUP BY ip
       HAVING cnt >= ?
     `).all(windowStart, rule.threshold);
@@ -157,7 +157,7 @@ class SecurityAlertService {
     // Map event type back to action for counting
     const count = db.prepare(`
       SELECT COUNT(*) as cnt FROM audit_log
-      WHERE action = ? AND created_at > ?
+      WHERE action = ? AND julianday(created_at) > julianday(?)
     `).get(auditEntry.action, windowStart).cnt;
 
     if (count >= rule.threshold) {

@@ -56,7 +56,9 @@ Un UI bun pentru Docker rezolvă vizual #1, #2, #5 — nu mai trebuie să-ți am
 
 ### Docker Dash
 
-- **Tot ce paywall-uiește Portainer Business, free, în același pachet:** OIDC, LDAP, SSO via header, audit log cu hash chain SHA-256 (compliance-friendly), RBAC pe trei niveluri, MFA cu cod de recuperare, scanare imagini cu Trivy / Grype / Docker Scout, CIS Docker Benchmark integrat.
+Docker Scout este exclus temporar din motive de securitate; [explicatia si conditiile de revenire](../audits/2026-09-20-scout-exclusion.md).
+
+- **Tot ce paywall-uiește Portainer Business, free, în același pachet:** OIDC, LDAP, SSO via header, audit log cu hash chain SHA-256 (compliance-friendly), RBAC pe trei niveluri, MFA cu cod de recuperare, scanare imagini cu Trivy / Grype, CIS Docker Benchmark integrat.
 - **Multi-host prin tunel SSH** — fără agent pe serverul remote. Adaugi un host nou cu cheie SSH, gata.
 - **Stack-urile Compose pleacă din git repo:** conectezi un repo, alegi branch, deploy-ul rulează `docker compose up -d` cu webhook auto-pull. Rollback un click.
 - **Secrets Wizard** — paste un `.env` complet, primește un script bash hardenat care creează fișiere `*_FILE` cu permisiuni `600`, owner `root:docker`, opțional cu deploy SSH automat. Plus un **Rotation Tracker** care te bate la cap când expiră secretele.

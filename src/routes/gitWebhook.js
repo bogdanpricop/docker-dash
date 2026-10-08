@@ -4,6 +4,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const express = require('express');
 const gitService = require('../services/git');
+const previews = require('../services/preview-environments');
 const { hmacSign } = require('../utils/crypto');
 const log = require('../utils/logger')('git-webhook');
 
@@ -26,6 +27,7 @@ router.post('/:token', rawBodyParser, async (req, res) => {
     const rawBody = req.rawBody || JSON.stringify(req.body);
     const provider = stack.webhook_provider || 'github';
     const secret = stack.webhook_secret;
+    const eventType = String(req.headers['x-github-event'] || '').toLowerCase();
 
     // v8.7.37 SECURITY — fail closed when no secret is configured AND the
     // stack will deploy on push. Pre-fix: `if (secret)` skipped signature
@@ -36,9 +38,9 @@ router.post('/:token', rawBodyParser, async (req, res) => {
     // mandatory; otherwise (notification-only mode) we keep the old
     // behavior since the worst case is an unwanted "update available"
     // broadcast — informational, not destructive.
-    if (!secret && stack.deploy_on_push) {
-      log.warn('Webhook rejected: deploy_on_push is enabled but no webhook_secret is configured', { stackId: stack.id });
-      return res.status(401).json({ error: 'Webhook secret required when deploy_on_push is enabled' });
+    if (!secret && (stack.deploy_on_push || eventType === 'pull_request')) {
+      log.warn('Webhook rejected: mutating webhook event has no configured secret', { stackId: stack.id, eventType });
+      return res.status(401).json({ error: 'Webhook secret required for deploy or preview events' });
     }
 
     if (secret) {
@@ -49,16 +51,41 @@ router.post('/:token', rawBodyParser, async (req, res) => {
       }
     }
 
-    // 3. Parse payload
+    // 3. Pull-request preview lifecycle. This path is GitHub-only for the
+    // first safe slice and still uses the same fail-closed HMAC validation.
+    if (provider === 'github' && eventType === 'pull_request') {
+      const action = req.body?.action;
+      if (['opened', 'reopened', 'synchronize'].includes(action)) {
+        try {
+          const queued = previews.queuePullRequest(stack, req.body);
+          queued.completion.catch(() => {});
+          return res.status(202).json({
+            status: 'preview_deploying', previewId: queued.environment.id,
+            pullRequest: queued.environment.pr_number,
+          });
+        } catch (err) {
+          return res.status(err.status || 400).json({ error: err.message, code: err.code });
+        }
+      }
+      if (action === 'closed') {
+        previews.closePullRequest(stack.id, req.body?.number).catch(err => {
+          log.error('Preview cleanup failed', { stackId: stack.id, prNumber: req.body?.number, error: err.message });
+        });
+        return res.status(202).json({ status: 'preview_deleting', pullRequest: req.body?.number });
+      }
+      return res.status(200).json({ status: 'ignored', reason: 'unsupported_pull_request_action' });
+    }
+
+    // 4. Parse push payload
     const payload = parsePayload(provider, req.body);
 
-    // 4. Branch filtering
+    // 5. Branch filtering
     if (payload.branch !== stack.branch) {
       log.debug('Webhook ignored: branch mismatch', { stackId: stack.id, expected: stack.branch, received: payload.branch });
       return res.status(200).json({ status: 'ignored', reason: 'branch_mismatch' });
     }
 
-    // 5. Deploy or notify
+    // 6. Deploy or notify
     if (stack.deploy_on_push) {
       try {
         const deploymentId = await gitService.triggerDeploy(stack.id, 'webhook');

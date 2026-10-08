@@ -39,7 +39,7 @@ Looking for where to start? These are great first contributions:
    ```
 4. **Install dependencies**:
    ```bash
-   npm install
+   npm ci --strict-allow-scripts
    ```
 5. **Configure environment**:
    ```bash
@@ -272,3 +272,30 @@ Use [GitHub Discussions](https://github.com/bogdanpricop/docker-dash/discussions
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+
+## Dependency and browser asset updates
+
+Use the latest patched Node.js 24 LTS (`.nvmrc`). After changing npm dependencies,
+run `npm install --strict-allow-scripts`, `npm run build:vendor`, and
+`npm ci --strict-allow-scripts` to verify the lockfile.
+Commit the generated browser assets and `public/vendor/versions.json`; production
+still serves plain JavaScript with no build step.
+
+Run `npm run check:vendor`, `npm run check:browser`, `npm run check:inventory-browser`, `npm run check:syntax`,
+`npm run lint`, `npm test -- --runInBand`, and `npm run audit:dependencies`.
+CodeMirror 6 is bundled from `scripts/vendor/codemirror.mjs`. Browser checks cover
+YAML validation, keyboard editing, forms, read-only and modal disposal. The inventory
+browser gate uses real view routes, auth, CSRF and an ephemeral DB with fixture
+provider data; it does not replace the live-provider release smoke.
+The focused in-repo Redis test double is validated by the cluster regression suite;
+production uses ioredis 6 with `protocol: 2` for wire compatibility.
+
+Use npm 12.2.0 (`npm install --global npm@12.2.0 --ignore-scripts`), matching CI
+and the Docker image. The package manager is pinned because its bundled dependencies
+are included in production image scans. Run installs with
+`npm ci --strict-allow-scripts`; npm blocks dependency lifecycle scripts unless they
+are listed in `package.json#allowScripts`. Approvals are pinned to reviewed versions.
+Review a changed script before running `npm install-scripts approve <package>` during
+an upgrade.
+`better-sqlite3` uses its packaged native prebuilds; its implicit node-gyp fallback
+and protobufjs's advisory-only postinstall are explicitly denied.

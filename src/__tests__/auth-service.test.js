@@ -289,7 +289,7 @@ describe('AuthService — MFA / TOTP setup flow', () => {
 
   it('mfaEnable rejects an invalid TOTP code', () => {
     const result = authService.mfaEnable(mfaUserId, '000000');
-    expect(result.error).toMatch(/Invalid TOTP/i);
+    expect(result.error).toMatch(/Invalid.*TOTP/i);
     const row = db.prepare('SELECT totp_enabled FROM users WHERE id = ?').get(mfaUserId);
     expect(row.totp_enabled).toBe(0);
   });
@@ -308,6 +308,20 @@ describe('AuthService — MFA / TOTP setup flow', () => {
     expect(row.totp_enabled).toBe(1);
     expect(row.recovery_codes).toBeTruthy();
     expect(row.mfa_enrolled_at).toBeTruthy();
+  });
+
+  it('verifyStepUpMfa validates enrolled local TOTP without creating a session', () => {
+    const enrolled = db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(mfaUserId);
+    const validCode = totp.generateTOTP(require('../utils/crypto').decrypt(enrolled.totp_secret), Date.now() + 30000);
+    const sessionsBefore = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
+      .get(mfaUserId).count;
+    expect(authService.verifyStepUpMfa(mfaUserId, validCode)).toEqual(expect.objectContaining({
+      success: true, verifiedAt: expect.any(String),
+    }));
+    expect(authService.verifyStepUpMfa(mfaUserId, 'not-a-code')).toEqual({ error: 'Invalid or already used TOTP code' });
+    const sessionsAfter = db.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
+      .get(mfaUserId).count;
+    expect(sessionsAfter).toBe(sessionsBefore);
   });
 
   // v8.7.11 — recovery-code lookup is now constant-time (was vulnerable to
@@ -402,15 +416,9 @@ describe('AuthService — IP rate limiting', () => {
     db.prepare('DELETE FROM login_attempts WHERE ip = ?').run(ip);
     expect(authService.isIpLocked(ip)).toBe(false);
 
-    // Insert explicit ISO timestamps so the windowStart comparison matches.
-    // (The default `datetime('now')` produces a SQLite format that lex-sorts
-    // differently than `.toISOString()`, which can hide rate-limit hits in tests.)
-    const stmt = db.prepare(
-      'INSERT INTO login_attempts (ip, username, user_id, success, user_agent, attempted_at) VALUES (?, ?, ?, 0, ?, ?)'
-    );
-    const nowIso = new Date().toISOString();
+    // Exercise the production writer and its SQLite-default timestamp.
     for (let i = 0; i < config.rateLimit.loginMaxAttempts; i++) {
-      stmt.run(ip, 'attacker', null, 'jest', nowIso);
+      authService.logAttempt(ip, 'attacker', null, false, 'jest');
     }
     expect(authService.isIpLocked(ip)).toBe(true);
   });

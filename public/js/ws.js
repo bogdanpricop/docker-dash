@@ -75,6 +75,14 @@ const WS = {
       this._connected = false;
       if (window._ddDebug) console.log('[WS] Disconnected', evt.code);
       this._emit('_disconnected');
+      if (evt.code === 4003) {
+        // Revoked/changed sessions must not trigger token-in-URL fallback.
+        this._intentionalClose = true;
+        this._useTokenFallback = false;
+        clearTimeout(this._reconnectTimer);
+        if (typeof App !== 'undefined') App.handleUnauthorized();
+        return;
+      }
       if (evt.code === 4001) {
         // v7.3.5: cookie auth failed. If we haven't tried token-in-query yet
         // and we have a Bearer token, retry once with the fallback. This

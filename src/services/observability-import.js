@@ -139,6 +139,9 @@ function scrapeConfigSnippet(targetName = 'docker-dash', port = 8101) {
   return `scrape_configs:
   - job_name: docker-dash
     metrics_path: /api/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/monitoring_token
     scrape_interval: 15s
     static_configs:
       - targets: ['${targetName}:${port}']

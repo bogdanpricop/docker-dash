@@ -123,6 +123,8 @@ class AuthService {
   _provisionLdapUser(db, ldapUser) {
     const existing = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(ldapUser.username);
     if (existing) {
+      // A directory account must never take over a local account with the same name.
+      if (existing.auth_source !== 'ldap') throw new Error('Username belongs to a local account');
       // Update email/displayName if changed
       db.prepare("UPDATE users SET display_name = ?, email = ?, auth_source = 'ldap' WHERE id = ?")
         .run(ldapUser.displayName, ldapUser.email, existing.id);
@@ -141,6 +143,9 @@ class AuthService {
   }
 
   async login(username, password, ip, userAgent) {
+    if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
+      return { error: 'Invalid credentials' };
+    }
     const db = getDb();
 
     // Check rate limiting
@@ -149,6 +154,7 @@ class AuthService {
       return { error: 'Too many attempts. Try again later.', locked: true };
     }
 
+    let ldapVerified = false;
     let user = db.prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE').get(username);
     if (!user) {
       // Try LDAP authentication if configured
@@ -156,6 +162,7 @@ class AuthService {
       if (ldapUser) {
         // Provision or update local user record for LDAP user
         user = this._provisionLdapUser(db, ldapUser);
+        ldapVerified = true;
       }
       if (!user) {
         // FIX #18: Run dummy bcrypt compare to prevent user-enumeration via timing side-channel.
@@ -175,50 +182,76 @@ class AuthService {
       return { error: 'Account is locked. Try again later.' };
     }
 
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      const fails = user.failed_attempts + 1;
-      if (fails >= config.security.lockoutAttempts) {
-        const lockUntil = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
-        db.prepare('UPDATE users SET failed_attempts = ?, is_locked = 1, locked_until = ? WHERE id = ?')
-          .run(fails, lockUntil, user.id);
-        log.warn('Account locked', { username, attempts: fails });
-      } else {
-        db.prepare('UPDATE users SET failed_attempts = ? WHERE id = ?').run(fails, user.id);
-      }
+    if (!['local', 'ldap'].includes(user.auth_source)) {
       this.logAttempt(ip, username, user.id, false, userAgent);
-      return { error: 'Invalid credentials' };
+      return { error: 'Use your identity provider to sign in' };
     }
+    // LDAP accounts have deliberately unusable local hashes. Revalidate with
+    // the directory on every login so password/group revocations take effect.
+    const valid = user.auth_source === 'ldap'
+      ? ldapVerified || !!(await this._tryLdapLogin(username, password))
+      : await bcrypt.compare(password, user.password_hash);
+    // Password/directory verification is asynchronous. Serialize its result with
+    // credential changes and read fresh account state before issuing any token.
+    return db.transaction(() => {
+      const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+      if (!current || !current.is_active || current.auth_version !== user.auth_version) {
+        this.logAttempt(ip, username, current?.id || null, false, userAgent);
+        return { error: 'Invalid credentials' };
+      }
+      user = current;
+      if (this.isIpLocked(ip)) {
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Too many attempts. Try again later.', locked: true };
+      }
+      if (user.is_locked && user.locked_until && new Date(user.locked_until) > new Date()) {
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Account is locked. Try again later.' };
+      }
+      if (!valid) {
+        const fails = user.failed_attempts + 1;
+        if (fails >= config.security.lockoutAttempts) {
+          const lockUntil = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
+          db.prepare('UPDATE users SET failed_attempts = ?, is_locked = 1, locked_until = ? WHERE id = ?')
+            .run(fails, lockUntil, user.id);
+          log.warn('Account locked', { username, attempts: fails });
+        } else {
+          db.prepare('UPDATE users SET failed_attempts = ? WHERE id = ?').run(fails, user.id);
+        }
+        this.logAttempt(ip, username, user.id, false, userAgent);
+        return { error: 'Invalid credentials' };
+      }
 
-    // Success - reset failed attempts
-    db.prepare('UPDATE users SET failed_attempts = 0, is_locked = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
-      .run(now(), user.id);
+      // Success - reset failed attempts
+      db.prepare('UPDATE users SET failed_attempts = 0, is_locked = 0, locked_until = NULL, last_login_at = ? WHERE id = ?')
+        .run(now(), user.id);
 
-    // Check if MFA is enabled for this user
-    if (user.totp_enabled) {
-      // Create a temporary MFA token (5 min TTL)
-      const mfaToken = generateToken(32);
-      const mfaTokenHash = sha256(mfaToken);
-      const mfaExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      // Check if MFA is enabled for this user
+      if (user.totp_enabled) {
+        // Create a temporary MFA token (5 min TTL)
+        const mfaToken = generateToken(32);
+        const mfaTokenHash = sha256(mfaToken);
+        const mfaExpiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-      db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
-        .run(mfaTokenHash, user.id, ip, userAgent, mfaExpiresAt);
+        db.prepare('INSERT INTO mfa_tokens (token_hash, user_id, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)')
+          .run(mfaTokenHash, user.id, ip, userAgent, mfaExpiresAt);
 
-      this.logAttempt(ip, username, user.id, true, userAgent);
-      log.info('Login pending MFA', { username, ip });
+        this.logAttempt(ip, username, user.id, true, userAgent);
+        log.info('Login pending MFA', { username, ip });
 
-      return {
-        mfaRequired: true,
-        mfaToken,
-        user: {
-          id: user.id, username: user.username, displayName: user.display_name, role: user.role,
-          mustChangePassword: !!user.must_change_password,
-        },
-      };
-    }
+        return {
+          mfaRequired: true,
+          mfaToken,
+          user: {
+            id: user.id, username: user.username, displayName: user.display_name, role: user.role,
+            mustChangePassword: !!user.must_change_password,
+          },
+        };
+      }
 
-    // No MFA — create full session
-    return this._createSession(user, ip, userAgent);
+      // No MFA — create full session
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Create a full session for a user (shared by login and MFA verify) */
@@ -246,153 +279,216 @@ class AuthService {
 
   // ─── MFA / TOTP Methods ────────────────────────────────────
 
+  // Call only inside the factor's immediate transaction.
+  _mfaAllowed(db, user) {
+    if (!user.mfa_locked_until) return true;
+    const expired = db.prepare("SELECT julianday(?) <= julianday('now') AS expired").get(user.mfa_locked_until)?.expired;
+    if (!expired) return false;
+    db.prepare('UPDATE users SET mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(user.id);
+    return true;
+  }
+
+  _mfaFailed(db, user) {
+    const until = new Date(Date.now() + config.security.lockoutDurationMs).toISOString();
+    db.prepare('UPDATE users SET mfa_failed_attempts=mfa_failed_attempts+1, mfa_locked_until=CASE WHEN mfa_failed_attempts+1>=? THEN ? ELSE mfa_locked_until END WHERE id=?')
+      .run(config.security.lockoutAttempts, until, user.id);
+    log.warn('MFA verification rejected', { userId: user.id });
+  }
+
+  _mfaSucceeded(db, user) {
+    db.prepare('UPDATE users SET mfa_failed_attempts=0,mfa_locked_until=NULL WHERE id=?').run(user.id);
+  }
+
+  _consumeTotp(db, user, secret, code) {
+    const counter = totp.matchTOTPCounter(secret, code);
+    if (counter === null) return false;
+    return db.prepare('UPDATE users SET totp_last_counter=? WHERE id=? AND (totp_last_counter IS NULL OR totp_last_counter<?)').run(counter, user.id, counter).changes === 1;
+  }
+
   /** Verify MFA token and TOTP code, create full session */
   verifyMfa(mfaToken, code, ip, userAgent) {
     const db = getDb();
-    const tokenHash = sha256(mfaToken);
+    if (typeof mfaToken !== 'string' || !mfaToken) return { error: 'Invalid or expired MFA token' };
+    return db.transaction(() => {
+      const tokenHash = sha256(mfaToken);
 
-    const row = db.prepare(`
-      SELECT * FROM mfa_tokens
-      WHERE token_hash = ? AND used = 0 AND expires_at > datetime('now')
-    `).get(tokenHash);
+      const row = db.prepare(`
+        SELECT * FROM mfa_tokens
+        WHERE token_hash = ? AND used = 0 AND attempts < 5 AND julianday(expires_at) > julianday('now')
+      `).get(tokenHash);
 
-    if (!row) return { error: 'Invalid or expired MFA token' };
+      if (!row) return { error: 'Invalid or expired MFA token' };
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-    if (!user) return { error: 'User not found' };
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
+      if (!user || !user.totp_enabled) return { error: 'MFA is not enabled' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      db.prepare('UPDATE mfa_tokens SET attempts=attempts+1,used=CASE WHEN attempts+1>=5 THEN 1 ELSE used END WHERE id=?').run(row.id);
 
-    // Decrypt TOTP secret and verify code
-    let secret;
-    try {
-      secret = decrypt(user.totp_secret);
-    } catch {
-      return { error: 'MFA configuration error' };
-    }
+      // Decrypt TOTP secret and verify code
+      let secret;
+      try {
+        secret = decrypt(user.totp_secret);
+      } catch {
+        return { error: 'MFA configuration error' };
+      }
 
-    if (!totp.verifyTOTP(secret, code)) {
-      return { error: 'Invalid TOTP code' };
-    }
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code' };
+      }
+      this._mfaSucceeded(db, user);
 
-    // Mark MFA token as used
-    db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
+      // Mark MFA token as used
+      db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
 
-    return this._createSession(user, ip, userAgent);
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Verify MFA using a recovery code */
   verifyMfaRecovery(mfaToken, recoveryCode, ip, userAgent) {
     const db = getDb();
-    const tokenHash = sha256(mfaToken);
+    if (typeof mfaToken !== 'string' || !mfaToken) return { error: 'Invalid or expired MFA token' };
+    return db.transaction(() => {
+      const tokenHash = sha256(mfaToken);
 
-    const row = db.prepare(`
-      SELECT * FROM mfa_tokens
-      WHERE token_hash = ? AND used = 0 AND expires_at > datetime('now')
-    `).get(tokenHash);
+      const row = db.prepare(`
+        SELECT * FROM mfa_tokens
+        WHERE token_hash = ? AND used = 0 AND attempts < 5 AND julianday(expires_at) > julianday('now')
+      `).get(tokenHash);
 
-    if (!row) return { error: 'Invalid or expired MFA token' };
+      if (!row) return { error: 'Invalid or expired MFA token' };
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
-    if (!user || !user.recovery_codes) return { error: 'No recovery codes available' };
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
+      if (!user || !user.totp_enabled || !user.recovery_codes) return { error: 'No recovery codes available' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      db.prepare('UPDATE mfa_tokens SET attempts=attempts+1,used=CASE WHEN attempts+1>=5 THEN 1 ELSE used END WHERE id=?').run(row.id);
 
-    // Decrypt recovery codes and check
-    let codes;
-    try {
-      codes = JSON.parse(decrypt(user.recovery_codes));
-    } catch {
-      return { error: 'Recovery code configuration error' };
-    }
-
-    // v8.7.11 (security fix) — constant-time lookup. The previous
-    // `codes.indexOf(normalizedInput)` did short-circuit string equality, so
-    // an attacker with a valid mfaToken (e.g. obtained via stolen username
-    // +password) could use response timing to determine prefix matches of
-    // recovery codes — meaningfully accelerating brute force against the
-    // small recovery-code search space. Now we always iterate ALL codes
-    // (no early-break) and use crypto.timingSafeEqual per comparison.
-    const normalizedInput = recoveryCode.toLowerCase().trim();
-    const inputBuf = Buffer.from(normalizedInput, 'utf8');
-    let codeIndex = -1;
-    for (let i = 0; i < codes.length; i++) {
-      const candidateBuf = Buffer.from(String(codes[i]), 'utf8');
-      // timingSafeEqual throws on mismatched length; recovery codes are
-      // fixed-length so a length-mismatch is structurally impossible for
-      // well-formed input — the guard is defensive only.
-      if (candidateBuf.length === inputBuf.length
-          && crypto.timingSafeEqual(candidateBuf, inputBuf)) {
-        codeIndex = i;
-        // do NOT break — total time must be independent of match position
+      // Decrypt recovery codes and check
+      let codes;
+      try {
+        codes = JSON.parse(decrypt(user.recovery_codes));
+      } catch {
+        return { error: 'Recovery code configuration error' };
       }
-    }
-    if (codeIndex === -1) return { error: 'Invalid recovery code' };
 
-    // Remove used code, re-encrypt and store
-    codes.splice(codeIndex, 1);
-    db.prepare('UPDATE users SET recovery_codes = ? WHERE id = ?')
-      .run(encrypt(JSON.stringify(codes)), user.id);
+      // v8.7.11 (security fix) — constant-time lookup. The previous
+      // `codes.indexOf(normalizedInput)` did short-circuit string equality, so
+      // an attacker with a valid mfaToken (e.g. obtained via stolen username
+      // +password) could use response timing to determine prefix matches of
+      // recovery codes — meaningfully accelerating brute force against the
+      // small recovery-code search space. Now we always iterate ALL codes
+      // (no early-break) and use crypto.timingSafeEqual per comparison.
+      if (typeof recoveryCode !== 'string' || recoveryCode.length > 128) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid recovery code' };
+      }
+      const normalizedInput = recoveryCode.toLowerCase().trim();
+      const inputBuf = Buffer.from(normalizedInput, 'utf8');
+      let codeIndex = -1;
+      for (let i = 0; i < codes.length; i++) {
+        const candidateBuf = Buffer.from(String(codes[i]), 'utf8');
+        // timingSafeEqual throws on mismatched length; recovery codes are
+        // fixed-length so a length-mismatch is structurally impossible for
+        // well-formed input — the guard is defensive only.
+        if (candidateBuf.length === inputBuf.length
+            && crypto.timingSafeEqual(candidateBuf, inputBuf)) {
+          codeIndex = i;
+          // do NOT break — total time must be independent of match position
+        }
+      }
+      if (codeIndex === -1) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid recovery code' };
+      }
+      this._mfaSucceeded(db, user);
 
-    // Mark MFA token as used
-    db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
+      // Remove used code, re-encrypt and store
+      codes.splice(codeIndex, 1);
+      db.prepare('UPDATE users SET recovery_codes = ? WHERE id = ?')
+        .run(encrypt(JSON.stringify(codes)), user.id);
 
-    log.warn('Recovery code used for MFA', { username: user.username, codesRemaining: codes.length });
+      // Mark MFA token as used
+      db.prepare('UPDATE mfa_tokens SET used = 1 WHERE id = ?').run(row.id);
 
-    return this._createSession(user, ip, userAgent);
+      log.warn('Recovery code used for MFA', { username: user.username, codesRemaining: codes.length });
+
+      return this._createSession(user, ip, userAgent);
+    }).immediate();
   }
 
   /** Setup MFA: generate secret and return otpauth URI */
   mfaSetup(userId) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, totp_enabled FROM users WHERE id = ?').get(userId);
-    if (!user) return { error: 'User not found' };
-
-    const secret = totp.generateSecret();
-    const otpauthUri = totp.generateOtpauthURI(secret, user.username);
-
-    // Store encrypted secret (not yet enabled)
-    db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?')
-      .run(encrypt(secret), user.id);
-
-    return { secret, otpauthUri };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT id, username, totp_enabled FROM users WHERE id = ? AND is_active = 1').get(userId);
+      if (!user) return { error: 'User not found' };
+      if (user.totp_enabled) return { error: 'Disable existing MFA before enrolling a new authenticator' };
+      const secret = totp.generateSecret();
+      const otpauthUri = totp.generateOtpauthURI(secret, user.username);
+      db.prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(encrypt(secret), user.id);
+      return { secret, otpauthUri };
+    }).immediate();
   }
 
   /** Enable MFA after verifying first code */
   mfaEnable(userId, code) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, totp_secret FROM users WHERE id = ?').get(userId);
-    if (!user || !user.totp_secret) return { error: 'MFA not set up. Call /mfa/setup first.' };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(userId);
+      if (!user || !user.totp_secret) return { error: 'MFA not set up. Call /mfa/setup first.' };
+      if (user.totp_enabled) return { error: 'MFA is already enabled' };
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      let secret;
+      try { secret = decrypt(user.totp_secret); }
+      catch { return { error: 'MFA configuration error' }; }
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code. Wait for the next authenticator code.' };
+      }
+      this._mfaSucceeded(db, user);
+      const recoveryCodes = totp.generateRecoveryCodes();
+      db.prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, mfa_enrolled_at = ? WHERE id = ?')
+        .run(encrypt(JSON.stringify(recoveryCodes)), now(), user.id);
+      log.info('MFA enabled', { username: user.username });
+      return { success: true, recoveryCodes };
+    }).immediate();
+  }
 
-    let secret;
-    try {
-      secret = decrypt(user.totp_secret);
-    } catch {
-      return { error: 'MFA configuration error' };
-    }
-
-    if (!totp.verifyTOTP(secret, code)) {
-      return { error: 'Invalid TOTP code. Make sure your authenticator app is synced.' };
-    }
-
-    // Generate recovery codes
-    const recoveryCodes = totp.generateRecoveryCodes();
-
-    db.prepare('UPDATE users SET totp_enabled = 1, recovery_codes = ?, mfa_enrolled_at = ? WHERE id = ?')
-      .run(encrypt(JSON.stringify(recoveryCodes)), now(), user.id);
-
-    log.info('MFA enabled', { username: user.username });
-
-    return { success: true, recoveryCodes };
+  /** Verify a local TOTP as a fresh step-up factor without creating a session. */
+  verifyStepUpMfa(userId, code) {
+    const db = getDb();
+    return db.transaction(() => {
+      const user = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(Number(userId));
+      if (!user || !user.totp_enabled || !user.totp_secret) {
+        return { error: 'Local TOTP enrollment is required for privileged step-up' };
+      }
+      if (!this._mfaAllowed(db, user)) return { error: 'Too many MFA attempts. Try again later.' };
+      let secret;
+      try { secret = decrypt(user.totp_secret); }
+      catch { return { error: 'MFA configuration error' }; }
+      if (!this._consumeTotp(db, user, secret, code)) {
+        this._mfaFailed(db, user);
+        return { error: 'Invalid or already used TOTP code' };
+      }
+      this._mfaSucceeded(db, user);
+      log.info('Privileged step-up MFA verified', { username: user.username });
+      return { success: true, verifiedAt: now() };
+    }).immediate();
   }
 
   /** Disable MFA (requires password confirmation) */
   async mfaDisable(userId, password) {
     const db = getDb();
-    const user = db.prepare('SELECT id, username, password_hash FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT id, username, password_hash, auth_version FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return { error: 'User not found' };
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return { error: 'Invalid password' };
 
-    db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = NULL, mfa_enrolled_at = NULL WHERE id = ?')
-      .run(user.id);
+    const changed = db.prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL, recovery_codes = NULL, mfa_enrolled_at = NULL WHERE id = ? AND auth_version = ? AND password_hash = ? AND is_active = 1')
+      .run(user.id, user.auth_version, user.password_hash);
+    if (changed.changes !== 1) return { error: 'Account changed; sign in again before disabling MFA' };
 
     log.info('MFA disabled', { username: user.username });
 
@@ -403,34 +499,31 @@ class AuthService {
   cleanMfaTokens() {
     const db = getDb();
     try {
-      db.prepare("DELETE FROM mfa_tokens WHERE expires_at < datetime('now') OR used = 1").run();
+      db.prepare("DELETE FROM mfa_tokens WHERE COALESCE(julianday(expires_at),0) <= julianday('now') OR used = 1").run();
     } catch { /* table may not exist yet */ }
   }
 
   /** Validate session token, return user */
   validateSession(token) {
-    if (!token) return null;
+    if (typeof token !== 'string' || !token) return null;
+    return this.validateSessionHash(sha256(token));
+  }
+
+  // Long-lived transports retain the digest, never the reusable bearer token.
+  validateSessionHash(tokenHash) {
+    if (typeof tokenHash !== 'string' || !/^[a-f0-9]{64}$/.test(tokenHash)) return null;
     const db = getDb();
-    const tokenHash = sha256(token);
     const row = db.prepare(`
       SELECT s.*, u.id as uid, u.username, u.display_name, u.role, u.is_active, u.must_change_password,
-             u.password_changed_at, u.totp_enabled
+             u.password_changed_at, u.totp_enabled, u.auth_source,
+             (julianday(COALESCE(u.password_changed_at,u.created_at))-2440587.5)*86400000 AS passwordChangedAtMs
       FROM sessions s JOIN users u ON s.user_id = u.id
-      WHERE s.token_hash = ? AND s.is_valid = 1 AND s.expires_at > datetime('now')
+      WHERE s.token_hash = ? AND s.is_valid = 1 AND julianday(s.expires_at) > julianday('now')
     `).get(tokenHash);
 
     if (!row || !row.is_active) return null;
 
-    let mustChangePassword = !!row.must_change_password;
-
-    // In strict mode: reject login if password older than passwordMaxAgeDays
-    if (config.security.passwordMaxAgeDays > 0 && row.password_changed_at) {
-      const ageMs = Date.now() - new Date(row.password_changed_at).getTime();
-      const maxAgeMs = config.security.passwordMaxAgeDays * 24 * 3600 * 1000;
-      if (ageMs > maxAgeMs) {
-        mustChangePassword = true;
-      }
-    }
+    const mustChangePassword = require('../utils/account-password-policy').mustChangePassword(row);
 
     return {
       id: row.uid, username: row.username, displayName: row.display_name, role: row.role,
@@ -450,7 +543,7 @@ class AuthService {
     const db = getDb();
     const windowStart = new Date(Date.now() - config.rateLimit.loginWindowMs).toISOString();
     const count = db.prepare(
-      'SELECT COUNT(*) as c FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+      'SELECT COUNT(*) as c FROM login_attempts WHERE ip = ? AND success = 0 AND julianday(attempted_at) > julianday(?)'
     ).get(ip, windowStart).c;
     return count >= config.rateLimit.loginMaxAttempts;
   }
@@ -465,7 +558,7 @@ class AuthService {
   /** Clean expired sessions */
   cleanSessions() {
     const db = getDb();
-    const result = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now') OR is_valid = 0").run();
+    const result = db.prepare("DELETE FROM sessions WHERE COALESCE(julianday(expires_at),0) <= julianday('now') OR is_valid = 0").run();
     if (result.changes > 0) log.debug('Cleaned sessions', { count: result.changes });
   }
 
@@ -479,40 +572,89 @@ class AuthService {
   findOrCreateSsoUser(username, role, email, opts = {}) {
     const db = getDb();
     const resolvedRole = role || 'viewer';
-    let user = db.prepare('SELECT id, username, role, is_active FROM users WHERE username = ?').get(username);
-    if (user) {
-      if (!user.is_active) return null;
-      if (opts.updateRole && resolvedRole && resolvedRole !== user.role) {
-        db.prepare('UPDATE users SET role = ?, updated_at = ? WHERE id = ?').run(resolvedRole, now(), user.id);
-        log.info('SSO user role updated from IdP', { username, from: user.role, to: resolvedRole });
-        user = { ...user, role: resolvedRole };
-      }
-      return { id: user.id, username: user.username, role: user.role, sso: true };
+    const identity = opts.identity || { source: 'proxy', issuer: process.env.SSO_IDENTITY_NAMESPACE || 'trusted-proxy', subject: username };
+    const { source, issuer, subject } = identity;
+    const validText = (value, max) => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
+    if (!['oidc','proxy'].includes(source) || !validText(issuer,2048) || !validText(subject,255)
+      || !validText(username,255) || !['admin','operator','viewer'].includes(resolvedRole)) return null;
+    if (source === 'oidc') {
+      try { const url = new URL(issuer); if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null; } catch { return null; }
     }
-    // Auto-create SSO user (no password — SSO-only)
-    const r = db.prepare(
-      'INSERT INTO users (username, email, password_hash, role, is_active) VALUES (?, ?, ?, ?, 1)'
-    ).run(username, email || null, 'SSO_NO_PASSWORD', resolvedRole);
-    log.info('SSO user created', { username, role: resolvedRole });
-    return { id: Number(r.lastInsertRowid), username, role: resolvedRole, sso: true };
+    return db.transaction(() => {
+      let user = db.prepare('SELECT * FROM users WHERE external_source=? AND external_issuer=? AND external_subject=?').get(source,issuer,subject);
+      if (user) {
+        if (!user.is_active || user.auth_source !== source) return null;
+        if (opts.updateRole && resolvedRole !== user.role) {
+          db.prepare('UPDATE users SET role=?,updated_at=? WHERE id=?').run(resolvedRole,now(),user.id);
+          require('./audit').log({ userId:user.id, username:user.username, action:'sso_role_updated', targetType:'user', targetId:String(user.id), details:{ source, from:user.role, to:resolvedRole } });
+          user = { ...user, role:resolvedRole };
+        }
+      } else {
+        // Names and email addresses are display/contact data, never proof of
+        // ownership of another account. Resolve collisions to a separate name.
+        let localName = username;
+        if (db.prepare('SELECT id FROM users WHERE username=?').get(localName)) {
+          localName = username.slice(0,80) + '~' + source + '-' + sha256(JSON.stringify([source,issuer,subject]));
+          if (db.prepare('SELECT id FROM users WHERE username=?').get(localName)) return null;
+        }
+        let contact = (source === 'proxy' || opts.emailVerified === true) && validText(email,254) ? email : null;
+        if (contact && db.prepare('SELECT id FROM users WHERE email=?').get(contact)) contact = null;
+        const id = Number(db.prepare(`INSERT INTO users(username,display_name,email,password_hash,role,is_active,auth_source,
+          external_source,external_issuer,external_subject,must_change_password) VALUES (?,?,?,'EXTERNAL_NO_PASSWORD',?,1,?,?,?,?,0)`)
+          .run(localName,username,contact,resolvedRole,source,source,issuer,subject).lastInsertRowid);
+        require('./audit').log({ userId:id, username:localName, action:'sso_user_created', targetType:'user', targetId:String(id), details:{ source, role:resolvedRole } });
+        user = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+      }
+      return { id:user.id, username:user.username, display_name:user.display_name, role:user.role, sso:true, mustChangePassword:!!user.must_change_password };
+    }).immediate();
+  }
+
+  /** Caller holds the write transaction and has already resolved the user. */
+  _revokeUserCredentials(db, userId) {
+    if (!db.inTransaction) throw new Error('Credential revocation requires a write transaction');
+    db.prepare('UPDATE sessions SET is_valid=0 WHERE user_id=?').run(userId);
+    db.prepare('UPDATE api_keys SET is_active=0 WHERE user_id=?').run(userId);
+    db.prepare('DELETE FROM mfa_tokens WHERE user_id=?').run(userId);
+    db.prepare("UPDATE password_reset_tokens SET used_at=datetime('now') WHERE user_id=? AND used_at IS NULL").run(userId);
+  }
+
+  /** Revoke a verified OIDC subject's credentials when authorization is denied. */
+  revokeOidcCredentials(issuer, subject, action, ip, userAgent) {
+    const db = getDb();
+    if (db.inTransaction) throw new Error('OIDC revocation requires an independent transaction');
+    const user = db.transaction(() => {
+      const current = db.prepare("SELECT id,username FROM users WHERE auth_source='oidc' AND external_source='oidc' AND external_issuer=? AND external_subject=?").get(issuer,subject);
+      if (!current) return null;
+      this._revokeUserCredentials(db,current.id);
+      return current;
+    }).immediate();
+    // Logging failure refuses this login but cannot undo credential revocation.
+    if (user) require('./audit').log({ userId:user.id, username:user.username, action,
+      targetType:'user', targetId:String(user.id), ip, userAgent });
+    return !!user;
   }
 
   /** Change password */
   async changePassword(userId, currentPassword, newPassword) {
     const db = getDb();
-    const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+    const user = db.prepare('SELECT password_hash, auth_version, auth_source FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return { error: 'User not found' };
+    if (user.auth_source !== 'local') return { error: 'Only local accounts support password changes' };
 
     const valid = await bcrypt.compare(currentPassword, user.password_hash);
     if (!valid) return { error: 'Current password is incorrect' };
 
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
     const timestamp = now();
-    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ?').run(hash, timestamp, timestamp, userId);
-
-    // Invalidate all sessions (user must re-login with new password)
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
-    return { success: true };
+    return db.transaction(() => {
+      // A reset/deactivation during bcrypt must invalidate this authorization.
+      const changed = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = ?, updated_at = ? WHERE id = ? AND password_hash = ? AND auth_version = ? AND is_active = 1')
+        .run(hash, timestamp, timestamp, userId, user.password_hash, user.auth_version);
+      if (changed.changes !== 1) return { error: 'Account changed; sign in again before changing your password' };
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(userId);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(userId);
+      return { success: true };
+    }).immediate();
   }
 
   // ─── User Management (Admin) ──────────────────────────────
@@ -520,7 +662,7 @@ class AuthService {
   listUsers() {
     const db = getDb();
     return db.prepare(`
-      SELECT id, username, display_name, email, role, is_active, is_locked,
+      SELECT id, username, display_name, email, role, is_active, is_locked, auth_source,
              last_login_at, created_at, updated_at, totp_enabled, mfa_enrolled_at
       FROM users ORDER BY username
     `).all();
@@ -529,7 +671,7 @@ class AuthService {
   getUser(id) {
     const db = getDb();
     return db.prepare(`
-      SELECT id, username, display_name, email, role, is_active, is_locked,
+      SELECT id, username, display_name, email, role, is_active, is_locked, auth_source,
              last_login_at, created_at, updated_at
       FROM users WHERE id = ?
     `).get(id);
@@ -564,7 +706,12 @@ class AuthService {
     sets.push('updated_at = ?'); params.push(now());
     params.push(id);
 
-    db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    db.transaction(() => {
+      db.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+      if (email !== undefined || (isActive !== undefined && !isActive)) {
+        db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+      }
+    }).immediate();
     return { success: true };
   }
 
@@ -572,17 +719,26 @@ class AuthService {
     const db = getDb();
     const hash = await bcrypt.hash(newPassword, config.security.bcryptRounds);
     const timestamp = now();
-    db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, password_changed_at = ?, updated_at = ? WHERE id = ?')
-      .run(hash, timestamp, timestamp, id);
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
-    return { success: true };
+    return db.transaction(() => {
+      const user = db.prepare('SELECT auth_source FROM users WHERE id=?').get(id);
+      if (!user) return { error: 'User not found' };
+      if (user.auth_source !== 'local') return { error: 'Only local accounts support password resets' };
+      db.prepare('UPDATE users SET password_hash = ?, failed_attempts = 0, is_locked = 0, locked_until = NULL, password_changed_at = ?, updated_at = ? WHERE id = ?')
+        .run(hash, timestamp, timestamp, id);
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+      return { success: true };
+    }).immediate();
   }
 
   deleteUser(id) {
     const db = getDb();
     // Don't actually delete, just deactivate
-    db.prepare('UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?').run(now(), id);
-    db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+    db.transaction(() => {
+      db.prepare('UPDATE users SET is_active = 0, updated_at = ? WHERE id = ?').run(now(), id);
+      db.prepare('UPDATE sessions SET is_valid = 0 WHERE user_id = ?').run(id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL").run(id);
+    }).immediate();
     return { success: true };
   }
 }

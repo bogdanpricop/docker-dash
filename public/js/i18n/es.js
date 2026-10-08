@@ -35,6 +35,8 @@ i18n.register('es', 'ES', "Español", {
     inactive: "Inactivo",
     enabled: "Habilitado",
     disabled: "Deshabilitado",
+    yes: "Sí",
+    no: "No",
     test: "Probar",
     prune: "Limpiar",
     unlimited: "ilimitado",
@@ -84,6 +86,7 @@ i18n.register('es', 'ES', "Español", {
     "registry-browse": "Registros",
     onboarding: "Configuración del Entorno",
     posture: "Postura",
+    procedures: "Procedimientos",
     blueprints: "Reconciler",
     copilot: "Copilot",
     "incus-instances": "Incus / LXD (alfa)",
@@ -91,7 +94,25 @@ i18n.register('es', 'ES', "Español", {
     "migration-vm": "Migración de VM (alfa)",
     "kubernetes-resources": "Kubernetes (alfa)",
     "nomad-jobs": "Nomad (alfa)",
-    "vsphere-resources": "vSphere / ESXi (alfa)"
+    "vsphere-resources": "vSphere / ESXi (alfa)",
+    "virtual-machines": "Máquinas virtuales",
+    "high-availability": "Alta disponibilidad",
+    "storage-posture": "Estado del almacenamiento",
+    "network-posture": "Estado de la red",
+    "provider-security-posture": "Seguridad del proveedor",
+    "placement-advisor": "Asesor de ubicación",
+    "recovery-points": "Puntos de recuperación",
+    "backup-policies": "Políticas de copia de seguridad",
+    "disaster-recovery": "Recuperación ante desastres",
+    "virtualization-catalog": "Catálogo de VM",
+    activity: "Centro de actividad",
+    "xen-resources": "Xen / XCP-ng",
+    governance: "Gobernanza",
+    "self-service": "Autoservicio",
+    "governance-controls": "Identidad y políticas",
+    "edge-platform": "Edge y entornos desconectados",
+    "workstation-fleet": "Flota de estaciones",
+    "compose-catalog": "Catálogo Compose"
   },
   login: {
     title: "Docker Dash",
@@ -1930,5 +1951,12 @@ i18n.register('es', 'ES', "Español", {
     checkFailed: "Error en la verificación",
     upToDate: "Está en la última versión",
     refreshed: "Verificación de actualización actualizada"
-  }
+  },
+  selfService: {
+    title: 'Autoservicio de infraestructura', requestQuota: 'Solicitar cuota', acknowledge: 'Reconocer', pause: 'Pausar notificaciones',
+    tabs: { catalog: 'Catálogo', project: 'Proyecto', requests: 'Solicitudes', incidents: 'Incidentes', guidance: 'Guía' },
+    actions: { start: 'Iniciar', shutdown: 'Apagar', reboot: 'Reiniciar', snapshot: 'Instantánea', console: 'Consola' },
+    providers: { proxmox: 'Proxmox VE', vsphere: 'VMware vSphere', xen: 'Xen' },
+    safety: { confirm: 'Cada cambio de infraestructura requiere una confirmación protegida independiente.', mobile: 'Vista móvil segura:' },
+  },
 });

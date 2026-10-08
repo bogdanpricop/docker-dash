@@ -45,6 +45,7 @@ npm-debug.log*
 *.zip
 
 # Temporary
+.secrets/
 tmp/
 temp/
 

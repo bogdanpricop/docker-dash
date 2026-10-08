@@ -395,7 +395,7 @@ Please:
       <div class="scan-menu-item" data-scanner="auto"><i class="fas fa-magic" style="width:16px;text-align:center"></i> Auto-detect</div>
       <div class="scan-menu-item" data-scanner="trivy"><i class="fas fa-search" style="width:16px;text-align:center"></i> Trivy</div>
       <div class="scan-menu-item" data-scanner="grype"><i class="fas fa-shield-alt" style="width:16px;text-align:center"></i> Grype</div>
-      <div class="scan-menu-item" data-scanner="docker-scout"><i class="fab fa-docker" style="width:16px;text-align:center"></i> Docker Scout</div>
+      <div class="text-sm text-muted" role="note" style="max-width:280px;padding:8px 12px">Docker Scout: ${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason'))}</div>
     `;
     menu.style.position = 'fixed';
     menu.style.top = (rect.bottom + 4) + 'px';
@@ -635,7 +635,6 @@ Please:
     const data = await Api.getScanners();
     const scanners = data.scanners || [];
 
-    const scoutNotAuth = scanners.some(s => s.includes('not authenticated'));
 
     el.innerHTML = `
       <div class="info-grid">
@@ -682,22 +681,7 @@ Please:
                   <p class="text-muted" style="margin:0 0 10px"><strong>Option 1: Docker (recommended)</strong> — rebuild the Docker Dash image:</p>
                   <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)">docker compose build --no-cache
 docker compose up -d</pre>
-                  <p class="text-muted" style="margin:0 0 10px"><strong>Option 2: Install into running container</strong> (temporary, lost on restart):</p>
-                  <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)">docker exec -u root docker-dash sh -c '\\
-  wget -qO /tmp/grype.tar.gz \\
-    https://github.com/anchore/grype/releases/download/v0.92.0/grype_0.92.0_linux_amd64.tar.gz \\
-  && tar -xzf /tmp/grype.tar.gz -C /usr/local/bin grype \\
-  && chmod +x /usr/local/bin/grype \\
-  && rm -f /tmp/grype.tar.gz'</pre>
-                  <p class="text-muted" style="margin:0 0 10px"><strong>Option 3: Native install</strong> (Linux/macOS, if running without Docker):</p>
-                  <pre class="mono" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:10px;margin:0 0 14px;overflow-x:auto;font-size:11px;color:var(--text)"># One-line install (official script)
-curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-
-# Or via Homebrew (macOS/Linux)
-brew install grype
-
-# Verify installation
-grype version</pre>
+                  <p class="text-muted" style="margin:0 0 10px">Use the scanner included in the Docker Dash image. For a custom installation, follow the <a href="https://github.com/bogdanpricop/docker-dash/tree/main/docker/scanners" target="_blank" rel="noopener">verified scanner build instructions</a>, including source checksums and security validation.</p>
                   <p class="text-muted" style="margin:0 0 6px"><strong>First scan note:</strong> Grype downloads its vulnerability database (~150MB) on the first scan. This is a one-time operation and takes 1-2 minutes. Subsequent scans are fast.</p>
                   <p class="text-muted" style="margin:0"><i class="fas fa-sync-alt" style="margin-right:4px"></i>After installing, refresh this page to see the updated status.</p>
                 </div>
@@ -713,14 +697,14 @@ grype version</pre>
               </div>
               <div style="flex:1">
                 <div style="font-weight:600;font-size:14px">Docker Scout</div>
-                <div class="text-sm text-muted" style="margin:2px 0 6px">Docker's official image analysis tool. Provides vulnerability detection, base image recommendations, and supply chain insights.</div>
+                <div class="text-sm text-muted" style="margin:2px 0 6px">${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason'))}</div>
                 <div style="display:flex;gap:12px;flex-wrap:wrap">
                   <a href="https://docs.docker.com/scout/" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fas fa-home" style="margin-right:4px"></i>docs.docker.com/scout</a>
                   <a href="https://github.com/docker/scout-cli" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fab fa-github" style="margin-right:4px"></i>GitHub</a>
                   <a href="https://hub.docker.com" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none"><i class="fab fa-docker" style="margin-right:4px"></i>Docker Hub</a>
                 </div>
               </div>
-              <span class="badge ${scoutNotAuth ? 'badge-warning' : scanners.some(s => s === 'docker-scout') ? 'badge-running' : 'badge-stopped'}" style="flex-shrink:0">${scoutNotAuth ? '<i class="fas fa-exclamation-triangle" style="margin-right:4px"></i>Not Authenticated' : scanners.some(s => s === 'docker-scout') ? '<i class="fas fa-check" style="margin-right:4px"></i>Ready' : 'Not Installed'}</span>
+              <span class="badge badge-warning" style="flex-shrink:0">${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledLabel'))}</span>
             </div>
           </div>
         </div>
@@ -732,7 +716,7 @@ grype version</pre>
             <table class="info-table">
               <tr><td>Trivy</td><td>Free, no authentication needed. Scans OS packages + language dependencies. <strong>Recommended.</strong></td></tr>
               <tr><td>Grype</td><td>Free, no authentication needed. Fast scanning by Anchore against multiple vulnerability databases (NVD, GitHub Advisories, etc.).</td></tr>
-              <tr><td>Docker Scout</td><td>Requires Docker Hub account. Provides supply chain insights and base image recommendations.</td></tr>
+              <tr><td>Docker Scout</td><td>${Utils.escapeHtml(i18n.t('pages.images.scoutDisabledReason'))}</td></tr>
               <tr><td>Scan frequency</td><td>Manual per image. Recommended: weekly or after each build.</td></tr>
               <tr><td>Data retention</td><td>All scan results are stored in the database with full history.</td></tr>
             </table>
@@ -740,72 +724,8 @@ grype version</pre>
         </div>
       </div>
 
-      ${scoutNotAuth ? `
-      <div class="card" style="margin-top:16px;border-left:3px solid var(--yellow)">
-        <div class="card-header">
-          <h3><i class="fab fa-docker" style="margin-right:8px;color:var(--yellow)"></i>Authenticate Docker Scout</h3>
-        </div>
-        <div class="card-body">
-          <p class="text-muted text-sm" style="margin-bottom:12px">Docker Scout requires authentication with Docker Hub to scan images. Enter your Docker Hub credentials below to enable it.</p>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-            <div class="form-group" style="flex:1;min-width:200px;margin:0">
-              <label style="font-size:12px">Docker Hub Username</label>
-              <input type="text" id="scout-username" class="form-control" placeholder="your-dockerhub-username">
-            </div>
-            <div class="form-group" style="flex:1;min-width:200px;margin:0">
-              <label style="font-size:12px">Password or Access Token <a href="https://hub.docker.com/settings/security" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px">(create token)</a></label>
-              <input type="password" id="scout-password" class="form-control" placeholder="dckr_pat_xxxxx or password">
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <button class="btn btn-sm btn-primary" id="scout-login-btn"><i class="fas fa-sign-in-alt"></i> Authenticate</button>
-            <span id="scout-login-status" class="text-sm"></span>
-          </div>
-          <div style="margin-top:12px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius-sm)">
-            <div class="text-sm" style="margin-bottom:6px"><strong>How to get a Docker Hub Access Token:</strong></div>
-            <ol class="text-sm text-muted" style="margin:0;padding-left:20px;line-height:1.8">
-              <li>Go to <a href="https://hub.docker.com/settings/security" target="_blank" rel="noopener" style="color:var(--accent)">hub.docker.com/settings/security</a></li>
-              <li>Click <strong>"New Access Token"</strong></li>
-              <li>Name it (e.g., "docker-dash-scanner"), select <strong>Read-only</strong> permissions</li>
-              <li>Copy the token and paste it above</li>
-            </ol>
-          </div>
-        </div>
-      </div>` : ''}
     `;
 
-    // Docker Scout login handler
-    const loginBtn = el.querySelector('#scout-login-btn');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', async () => {
-        const username = el.querySelector('#scout-username').value.trim();
-        const password = el.querySelector('#scout-password').value;
-        const statusEl = el.querySelector('#scout-login-status');
-
-        if (!username || !password) {
-          statusEl.innerHTML = '<span style="color:var(--red)">Username and password/token required</span>';
-          return;
-        }
-
-        loginBtn.disabled = true;
-        loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating...';
-        statusEl.innerHTML = '';
-
-        try {
-          const result = await Api.post('/images/scout-login', { username, password });
-          if (result.ok) {
-            statusEl.innerHTML = '<span style="color:var(--green)"><i class="fas fa-check"></i> Docker Scout authenticated successfully!</span>';
-            setTimeout(() => this._renderScanners(el), 2000);
-          } else {
-            statusEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(result.error || 'Authentication failed')}</span>`;
-          }
-        } catch (err) {
-          statusEl.innerHTML = `<span style="color:var(--red)"><i class="fas fa-times"></i> ${Utils.escapeHtml(err.message)}</span>`;
-        }
-        loginBtn.disabled = false;
-        loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Authenticate';
-      });
-    }
   },
 
   _scanIds: [],

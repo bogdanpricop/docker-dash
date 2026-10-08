@@ -1,0 +1,63 @@
+{
+  "image": "sha256:a64f40b88ce0d1bafa8c4119c61e10754fb66bc78b61c32c7709f4aad2937e2c",
+  "counts": {
+    "HIGH": 3,
+    "MEDIUM": 2,
+    "UNKNOWN": 2
+  },
+  "vulnerabilities": [
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-41567",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "HIGH"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-42306",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "HIGH"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-33997",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "fixed": "29.3.1",
+      "severity": "MEDIUM"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "CVE-2026-41568",
+      "pkg": "github.com/docker/docker",
+      "installed": "v28.5.2+incompatible",
+      "severity": "MEDIUM"
+    },
+    {
+      "target": "usr/local/bin/grype",
+      "id": "GO-2026-5932",
+      "pkg": "golang.org/x/crypto",
+      "installed": "v0.57.0",
+      "severity": "UNKNOWN"
+    },
+    {
+      "target": "usr/local/bin/trivy",
+      "id": "GO-2026-5932",
+      "pkg": "golang.org/x/crypto",
+      "installed": "v0.57.0",
+      "severity": "UNKNOWN"
+    },
+    {
+      "target": "usr/local/bin/trivy",
+      "id": "CVE-2026-84445",
+      "pkg": "google.golang.org/grpc",
+      "installed": "v1.84.0",
+      "fixed": "1.82.2, 1.83.2, 1.85.0-dev.0.20260825072537-93e31b48545e",
+      "severity": "HIGH"
+    }
+  ],
+  "scanner": "Trivy 0.74.0+dd.1",
+  "scope": "Rebuilt candidate with Docker Scout excluded; raw findings without suppressions"
+}

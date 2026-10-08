@@ -7,7 +7,6 @@
 // NEVER re-implements rule execution and NEVER touches manual/system rules.
 
 const { assertSafe } = require('../firewall/validate');
-const log = require('../../utils/logger')('reconciler');
 
 function _db() { return require('../../db').getDb(); }
 function _fw() { return require('../firewall'); }
@@ -52,7 +51,7 @@ function create({ name, description, doc, user }) {
     .run(name || 'blueprint', description || null, JSON.stringify(norm), (user && user.username) || 'system');
   return get(info.lastInsertRowid);
 }
-function update(id, { name, description, doc, user }) {
+function update(id, { name, description, doc }) {
   const row = _db().prepare('SELECT id FROM blueprints WHERE id = ?').get(id);
   if (!row) throw new Error('Blueprint not found');
   const norm = doc !== undefined ? validateDoc(doc) : undefined;
@@ -146,8 +145,8 @@ async function plan(doc) {
     result.summary.hosts++;
     const hostResult = { hostName: hostRow.name };
 
-    // Firewall (only if the blueprint declares any for this host).
-    if ((block.firewall || []).length || true) {
+    // Compare even an empty desired firewall so obsolete managed rules appear.
+    {
       try {
         const info = await _fw().listRules(hostId);
         const actual = (info && info.rules) || [];

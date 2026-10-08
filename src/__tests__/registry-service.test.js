@@ -259,6 +259,19 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
   // ── deleteTag ────────────────────────────────────────────────────────
 
   describe('deleteTag', () => {
+    it('refuses to delete a tag retargeted after a retention plan', async () => {
+      const id = makeRegistry();
+      const spy = jest.spyOn(registryService, '_apiCall').mockResolvedValue({
+        status: 200, headers: { 'docker-content-digest': 'sha256:new' },
+      });
+      try {
+        await expect(registryService.deleteTag(id, 'team/app', 'nightly', { expectedDigest: 'sha256:old' }))
+          .rejects.toThrow(/Manifest changed/);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy.mock.calls[0][2].method).toBe('HEAD');
+      } finally { spy.mockRestore(); }
+    });
+
     it('resolves tag→digest via HEAD then DELETEs by digest', async () => {
       const id = makeRegistry();
       const spy = jest.spyOn(registryService, '_apiCall').mockImplementation(async (reg, path, opts) => {
@@ -338,6 +351,30 @@ describe('registry service — service layer (v8.2.0 audit)', () => {
       } finally {
         spy.mockRestore();
       }
+    });
+  });
+
+  describe('deleteManifest', () => {
+    it('deletes the exact immutable digest and accepts an already-absent manifest', async () => {
+      const id = makeRegistry();
+      const digest = `sha256:${'a'.repeat(64)}`;
+      const spy = jest.spyOn(registryService, '_apiCall').mockResolvedValue({ status: 404, headers: {} });
+      try {
+        await expect(registryService.deleteManifest(id, 'team/app', digest))
+          .resolves.toEqual({ ok: true, digest });
+        expect(spy).toHaveBeenCalledWith(expect.any(Object), `/v2/team/app/manifests/${digest}`,
+          { method: 'DELETE' });
+      } finally { spy.mockRestore(); }
+    });
+
+    it('rejects a non-sha256 digest without contacting the registry', async () => {
+      const id = makeRegistry();
+      const spy = jest.spyOn(registryService, '_apiCall');
+      try {
+        await expect(registryService.deleteManifest(id, 'team/app', 'sha256:not-a-digest'))
+          .rejects.toThrow(/Valid sha256/);
+        expect(spy).not.toHaveBeenCalled();
+      } finally { spy.mockRestore(); }
     });
   });
 

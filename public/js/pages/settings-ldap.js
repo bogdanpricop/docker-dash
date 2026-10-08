@@ -70,12 +70,18 @@ const SettingsPageLdap = {
               </select>
             </div>
             <div class="form-group">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                <input id="ldap-tls" type="checkbox" ${cfg.tls ? 'checked' : ''}> Use LDAPS (TLS, port 636)
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
-                <input id="ldap-skip-verify" type="checkbox" ${cfg.tlsSkipVerify ? 'checked' : ''}> Skip TLS certificate verification
-              </label>
+              <label for="ldap-tls">${i18n.t('pages.settings.ldapTransportLabel')}</label>
+              <select id="ldap-tls" class="form-control">
+                <option value="starttls" ${!cfg.tls ? 'selected' : ''}>StartTLS (389)</option>
+                <option value="ldaps" ${cfg.tls ? 'selected' : ''}>LDAPS (636)</option>
+              </select>
+              <small class="text-muted">${i18n.t('pages.settings.ldapTlsHint')}</small>
+              <small><a href="#/howto/ldap-tls">${i18n.t('pages.settings.ldapTlsGuide')}</a></small>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+              <label for="ldap-ca">${i18n.t('pages.hosts.providerCaLabel')}</label>
+              <textarea id="ldap-ca" class="form-control" rows="4" spellcheck="false" placeholder="${cfg.caCertPresent ? i18n.t('pages.settings.ldapCaUnchanged') : '-----BEGIN CERTIFICATE-----'}"></textarea>
+              <label><input id="ldap-ca-clear" type="checkbox"> ${i18n.t('pages.hosts.providerCaClear')}</label>
             </div>
           </div>
 
@@ -101,16 +107,21 @@ const SettingsPageLdap = {
       uidAttr: el.querySelector('#ldap-uid-attr').value.trim() || 'uid',
       requiredGroup: el.querySelector('#ldap-group').value.trim(),
       defaultRole: el.querySelector('#ldap-role').value,
-      tls: el.querySelector('#ldap-tls').checked,
-      tlsSkipVerify: el.querySelector('#ldap-skip-verify').checked,
+      tls: el.querySelector('#ldap-tls').value === 'ldaps',
+      tlsSkipVerify: false,
+      caCert: el.querySelector('#ldap-ca-clear').checked ? null : el.querySelector('#ldap-ca').value.trim() || undefined,
       enabled: true,
     });
 
+    el.querySelector('#ldap-tls').addEventListener('change', () => {
+      const port = el.querySelector('#ldap-port');
+      if (!port.value || ['389', '636'].includes(port.value)) port.value = el.querySelector('#ldap-tls').value === 'ldaps' ? '636' : '389';
+    });
     const resultDiv = el.querySelector('#ldap-result');
 
     el.querySelector('#ldap-test')?.addEventListener('click', async () => {
       const data = collect();
-      if (!data.host || !data.bindDn || !data.bindPassword || !data.baseDn) {
+      if (!data.host || !data.bindDn || (!data.bindPassword && !cfg.configured) || !data.baseDn) {
         resultDiv.innerHTML = `<div class="tip-box" style="color:var(--yellow)"><i class="fas fa-exclamation-triangle"></i> Fill in host, bind DN, bind password and base DN first.</div>`;
         return;
       }

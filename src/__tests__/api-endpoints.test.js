@@ -195,9 +195,9 @@ describe('GET /api/search', () => {
 });
 
 describe('GET /api/metrics', () => {
-  // 📚 PUBLIC: Prometheus metrics accessible without auth
+  // Monitoring is global data and requires administrator authentication.
   it('should return Prometheus-format metrics', async () => {
-    const res = await request(app).get('/api/metrics').expect(200);
+    const res = await request(app).get('/api/metrics').set('Authorization','Bearer '+authToken).expect(200);
 
     expect(res.text).toContain('docker_dash_');
     expect(res.headers['content-type']).toContain('text/plain');

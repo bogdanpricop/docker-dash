@@ -31,6 +31,7 @@ jest.mock('ldapts', () => {
       const inst = {
         _opts: opts,
         bind: jest.fn().mockResolvedValue(undefined),
+        startTLS: jest.fn().mockResolvedValue(undefined),
         search: jest.fn().mockResolvedValue({ searchEntries: [], searchReferences: [] }),
         unbind: jest.fn().mockResolvedValue(undefined),
       };
@@ -110,7 +111,10 @@ describe('LdapService — config CRUD', () => {
     // Persisted as JSON in settings table — verify the row exists.
     const row = db.prepare("SELECT value FROM settings WHERE key = 'ldap_config'").get();
     expect(row).toBeTruthy();
-    expect(JSON.parse(row.value)).toEqual(cfg);
+    expect(row.value).not.toContain(cfg.bindPassword);
+    const stored = JSON.parse(row.value);
+    expect(stored.bindPassword).toBeUndefined();
+    expect(require('../utils/crypto').decrypt(stored.bindPasswordEncrypted)).toBe(cfg.bindPassword);
   });
 
   it('getConfig returns null when no config has been saved', () => {
@@ -141,6 +145,24 @@ describe('LdapService — config CRUD', () => {
 // ─── 2. authenticate() ───────────────────────────────────────────────────
 
 describe('LdapService — authenticate', () => {
+  it.each(['', null, undefined])('rejects empty password %p before creating a client', async password => {
+    saveCfg();
+    await expect(ldap.authenticate('alice', password)).resolves.toBeNull();
+    expect(Client).not.toHaveBeenCalled();
+  });
+
+  it('rejects group names that only contain the required group DN', async () => {
+    saveCfg({ requiredGroup: 'CN=DockerAdmins,OU=Groups,DC=test,DC=local' });
+    Client.mockImplementationOnce(opts => {
+      const c = makeClient(opts);
+      c.search.mockResolvedValue({ searchEntries: [{
+        dn: 'uid=alice,dc=test,dc=local',
+        memberOf: ['CN=NotDockerAdmins,CN=DockerAdmins,OU=Groups,DC=test,DC=local'],
+      }] });
+      return c;
+    });
+    await expect(ldap.authenticate('alice', 'password')).rejects.toThrow(/required LDAP group/);
+  });
   it('returns null when no config is saved', async () => {
     const result = await ldap.authenticate('alice', 'pw');
     expect(result).toBeNull();
@@ -462,7 +484,7 @@ describe('LdapService — authenticate', () => {
 // ─── 3. Client construction (URL + TLS) ──────────────────────────────────
 
 describe('LdapService — client construction (URL + TLS opts)', () => {
-  it('builds an ldap:// URL with the configured port for plain LDAP', async () => {
+  it('requires StartTLS before binding on an ldap:// endpoint', async () => {
     saveCfg({ tls: false, port: 1389 });
     Client.mockImplementationOnce((opts) => {
       ldaptsCtorCalls.push(opts);
@@ -472,21 +494,16 @@ describe('LdapService — client construction (URL + TLS opts)', () => {
     });
     await ldap.testConnection(ldap.getConfig());
     expect(ldaptsCtorCalls[0].url).toBe('ldap://ad.test.local:1389');
-    // No tlsOptions on a plain-LDAP client.
+    expect(clientInstances[0].startTLS).toHaveBeenCalledWith(expect.objectContaining({ rejectUnauthorized: true }));
+    expect(clientInstances[0].startTLS.mock.invocationCallOrder[0]).toBeLessThan(clientInstances[0].bind.mock.invocationCallOrder[0]);
+    // tlsOptions on the constructor would incorrectly select immediate TLS.
     expect(ldaptsCtorCalls[0].tlsOptions).toBeUndefined();
   });
 
-  it('LDAPS with self-signed cert sets rejectUnauthorized=false (tlsSkipVerify=true)', async () => {
-    saveCfg({ tls: true, port: 636, tlsSkipVerify: true });
-    Client.mockImplementationOnce((opts) => {
-      ldaptsCtorCalls.push(opts);
-      const c = makeClient(opts);
-      c.search.mockResolvedValue({ searchEntries: [], searchReferences: [] });
-      return c;
-    });
-    await ldap.testConnection(ldap.getConfig());
-    expect(ldaptsCtorCalls[0].url).toBe('ldaps://ad.test.local:636');
-    expect(ldaptsCtorCalls[0].tlsOptions).toEqual({ rejectUnauthorized: false });
+  it('rejects certificate bypass on save and on legacy runtime settings', async () => {
+    expect(() => saveCfg({ tls: true, tlsSkipVerify: true })).toThrow(/certificate verification/);
+    await expect(ldap.testConnection({ ...BASE_CFG, tls: true, tlsSkipVerify: true })).rejects.toThrow(/certificate verification/);
+    expect(Client).not.toHaveBeenCalled();
   });
 
   it('LDAPS with valid CA leaves rejectUnauthorized at the secure default (tlsSkipVerify=false)', async () => {
@@ -499,8 +516,8 @@ describe('LdapService — client construction (URL + TLS opts)', () => {
     });
     await ldap.testConnection(ldap.getConfig());
     expect(ldaptsCtorCalls[0].url).toBe('ldaps://ad.test.local:636');
-    // Service must NOT downgrade TLS verification when skip is false.
-    expect(ldaptsCtorCalls[0].tlsOptions).toBeUndefined();
+    expect(ldaptsCtorCalls[0].tlsOptions).toMatchObject({ rejectUnauthorized: true, minVersion: 'TLSv1.2' });
+    expect(clientInstances[0].startTLS).not.toHaveBeenCalled();
   });
 
   it('defaults port to 389 (LDAP) and 636 (LDAPS) when port is omitted', async () => {

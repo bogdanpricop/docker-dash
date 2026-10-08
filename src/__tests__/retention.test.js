@@ -435,9 +435,9 @@ describe('execute — calls registryService', () => {
     expect(result.deleted.length).toBe(2);
     expect(result.errors).toEqual([]);
     expect(fakeRegistry.deleteTag).toHaveBeenCalledTimes(2);
-    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(1, 1, 'lib/foo', 'a');
-    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(2, 1, 'lib/foo', 'b');
-    expect(auditService.log).toHaveBeenCalledTimes(1);
+    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(1, 1, 'lib/foo', 'a', { expectedDigest: 'sha256:a' });
+    expect(fakeRegistry.deleteTag).toHaveBeenNthCalledWith(2, 1, 'lib/foo', 'b', { expectedDigest: 'sha256:b' });
+    expect(auditService.log).toHaveBeenCalledTimes(3);
     expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
       action: 'retention_executed',
       targetType: 'registry-repo',
@@ -485,9 +485,10 @@ describe('execute — calls registryService', () => {
     expect(result.errors[0].error).toMatch(/500 Internal/);
   });
 
-  it('untagged manifest in plan → ends up in errors with "not implemented" message', async () => {
+  it('untagged manifest in plan is deleted directly by digest', async () => {
     const fakeRegistry = {
       deleteTag: jest.fn().mockResolvedValue({ ok: true }),
+      deleteManifest: jest.fn().mockResolvedValue({ ok: true }),
     };
     const plan = {
       toDelete: [
@@ -505,12 +506,23 @@ describe('execute — calls registryService', () => {
       dryRun: false,
       auditCtx: {},
     });
-    // Tagged one is deleted; untagged one ends up in errors.
-    expect(result.deleted.length).toBe(1);
-    expect(result.deleted[0].tag).toBe('a');
-    expect(result.errors.length).toBe(1);
-    expect(result.errors[0]).toMatchObject({ digest: 'sha256:untagged' });
-    expect(result.errors[0].error).toMatch(/not implemented/i);
+    expect(result.deleted.length).toBe(2);
+    expect(result.errors).toEqual([]);
     expect(fakeRegistry.deleteTag).toHaveBeenCalledTimes(1);
+    expect(fakeRegistry.deleteManifest).toHaveBeenCalledWith(1, 'lib/foo', 'sha256:untagged');
+    expect(auditService.log).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'registry_manifest_delete',
+      details: expect.objectContaining({ digest: 'sha256:untagged', tag: null }),
+    }));
   });
+});
+
+test('retention preserves all aliases of a kept manifest', () => {
+  const plan = evaluate({ tags: [
+    tag({ tag: 'latest', digest: 'sha256:shared' }),
+    tag({ tag: 'temporary', digest: 'sha256:shared' }),
+    tag({ tag: 'disposable', digest: 'sha256:other' }),
+  ], rule: { minTagsToKeep: 1, deleteTagPatterns: ['*'] } });
+  expect(plan.toDelete.map(t => t.tag)).toEqual(['disposable']);
+  expect(plan.toKeep).toContainEqual(expect.objectContaining({ tag: 'temporary', reason: 'shared-kept-digest' }));
 });

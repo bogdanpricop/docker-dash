@@ -1,0 +1,289 @@
+{
+  "date": "2026-09-20",
+  "scope": "Final Linux amd64 candidate: scanner binary hashes and package graphs match the cross-compiled binaries analyzed by govulncheck. No vulnerability suppressions applied.",
+  "scanners": {
+    "grype": {
+      "sha256": "91a46ba37aa0fe5b40fd619adc7d450a8d8d942c3f935d0771aa54b00e542542",
+      "packagesSha256": "5418687f61799848fcc89a3cb7adf31459d7b3217934b23e30845f30ab883e8e",
+      "go": "1.27.1",
+      "findings": [
+        {
+          "id": "GO-2026-4883",
+          "aliases": [
+            "CVE-2026-33997",
+            "GHSA-pxq6-2prw-chj9"
+          ],
+          "reportedPackages": [],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-pxq6-2prw-chj9"
+            },
+            {
+              "type": "FIX",
+              "url": "https://github.com/moby/moby/commit/f4d6f25bf0c3fa12d4968320a45685947756a22a"
+            },
+            {
+              "type": "WEB",
+              "url": "https://docs.docker.com/engine/extend/legacy_plugins"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/moby/moby/releases/tag/docker-v29.3.1"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-4887",
+          "aliases": [
+            "CVE-2026-34040",
+            "GHSA-x744-4wpc-v9h2"
+          ],
+          "reportedPackages": [],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2"
+            },
+            {
+              "type": "FIX",
+              "url": "https://github.com/moby/moby/commit/e89edb19ad7de0407a5d31e3111cb01aa10b5a38"
+            },
+            {
+              "type": "WEB",
+              "url": "https://docs.docker.com/engine/extend/plugins_authorization"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-v23v-6jw2-98fq"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5617",
+          "aliases": [
+            "CVE-2026-42306",
+            "GHSA-rg2x-37c3-w2rh"
+          ],
+          "reportedPackages": [
+            "github.com/docker/docker/daemon",
+            "github.com/moby/moby/daemon",
+            "github.com/moby/moby/v2/daemon"
+          ],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-rg2x-37c3-w2rh"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5668",
+          "aliases": [
+            "CVE-2026-41568",
+            "GHSA-vp62-88p7-qqf5"
+          ],
+          "reportedPackages": [
+            "github.com/docker/docker/daemon",
+            "github.com/moby/moby/daemon",
+            "github.com/moby/moby/v2/daemon"
+          ],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-vp62-88p7-qqf5"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5746",
+          "aliases": [
+            "CVE-2026-41567",
+            "GHSA-x86f-5xw2-fm2r"
+          ],
+          "reportedPackages": [
+            "github.com/docker/docker/daemon",
+            "github.com/moby/moby/daemon",
+            "github.com/moby/moby/v2/daemon"
+          ],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/moby/moby/security/advisories/GHSA-x86f-5xw2-fm2r"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5932",
+          "aliases": [],
+          "reportedPackages": [
+            "golang.org/x/crypto/openpgp",
+            "golang.org/x/crypto/openpgp/armor",
+            "golang.org/x/crypto/openpgp/clearsign",
+            "golang.org/x/crypto/openpgp/elgamal",
+            "golang.org/x/crypto/openpgp/errors",
+            "golang.org/x/crypto/openpgp/packet",
+            "golang.org/x/crypto/openpgp/s2k"
+          ],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "REPORT",
+              "url": "https://go.dev/issue/44226"
+            }
+          ]
+        }
+      ],
+      "linuxBuildPackagesSha256": "5418687f61799848fcc89a3cb7adf31459d7b3217934b23e30845f30ab883e8e",
+      "compiledPackageCount": 1797,
+      "crossCompilationMatchesLinuxBuild": true
+    },
+    "trivy": {
+      "sha256": "d8cb4257ac73dcb262def30c2bbad7303a5b7d55059693288c4f840cd73a3874",
+      "packagesSha256": "bb492c4f950314fc57ae31338d1ab30b940c631750138fc1b38bb882d0e3677b",
+      "go": "1.27.1",
+      "findings": [
+        {
+          "id": "GO-2026-4919",
+          "aliases": [
+            "CVE-2026-33634",
+            "GHSA-69fq-xp46-6x23"
+          ],
+          "reportedPackages": [],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23"
+            },
+            {
+              "type": "WEB",
+              "url": "https://docs.litellm.ai/blog/security-update-march-2026"
+            },
+            {
+              "type": "WEB",
+              "url": "https://futuresearch.ai/blog/litellm-pypi-supply-chain-attack"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/BerriAI/litellm/issues/24518"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/BerriAI/litellm/issues/24518#issuecomment-4127436387"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/aquasecurity/trivy/discussions/10425"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/pypa/advisory-database/tree/main/vulns/litellm/PYSEC-2026-2.yaml"
+            },
+            {
+              "type": "WEB",
+              "url": "https://github.com/team-telnyx/telnyx-python/security/advisories/GHSA-955r-262c-33jc"
+            },
+            {
+              "type": "WEB",
+              "url": "https://inspector.pypi.io/project/litellm/1.82.7/packages/79/5f/b6998d42c6ccd32d36e12661f2734602e72a576d52a51f4245aef0b20b4d/litellm-1.82.7-py3-none-any.whl/litellm/proxy/proxy_server.py#line.130"
+            },
+            {
+              "type": "WEB",
+              "url": "https://inspector.pypi.io/project/litellm/1.82.8/packages/f6/2c/731b614e6cee0bca1e010a36fd381fba69ee836fe3cb6753ba23ef2b9601/litellm-1.82.8.tar.gz/litellm-1.82.8/litellm_init.pth#line.1"
+            },
+            {
+              "type": "WEB",
+              "url": "https://rosesecurity.dev/2026/03/20/typosquatting-trivy.html"
+            },
+            {
+              "type": "WEB",
+              "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2026-33634"
+            },
+            {
+              "type": "WEB",
+              "url": "https://www.microsoft.com/en-us/security/blog/2026/03/24/detecting-investigating-defending-against-trivy-supply-chain-compromise"
+            },
+            {
+              "type": "WEB",
+              "url": "https://www.wiz.io/blog/teampcp-attack-kics-github-action"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-5932",
+          "aliases": [],
+          "reportedPackages": [
+            "golang.org/x/crypto/openpgp",
+            "golang.org/x/crypto/openpgp/armor",
+            "golang.org/x/crypto/openpgp/clearsign",
+            "golang.org/x/crypto/openpgp/elgamal",
+            "golang.org/x/crypto/openpgp/errors",
+            "golang.org/x/crypto/openpgp/packet",
+            "golang.org/x/crypto/openpgp/s2k"
+          ],
+          "compiledPackages": [],
+          "references": [
+            {
+              "type": "REPORT",
+              "url": "https://go.dev/issue/44226"
+            }
+          ]
+        },
+        {
+          "id": "GO-2026-6443",
+          "aliases": [
+            "CVE-2026-84445",
+            "GHSA-2v4p-qf9q-27wj"
+          ],
+          "reportedPackages": [
+            "google.golang.org/grpc/internal/transport",
+            "google.golang.org/grpc/internal/xds/server"
+          ],
+          "compiledPackages": [
+            "google.golang.org/grpc/internal/transport",
+            "google.golang.org/grpc/internal/xds/server"
+          ],
+          "references": [
+            {
+              "type": "ADVISORY",
+              "url": "https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj"
+            },
+            {
+              "type": "REPORT",
+              "url": "https://github.com/grpc/grpc-go/issues/9354"
+            },
+            {
+              "type": "FIX",
+              "url": "https://github.com/grpc/grpc-go/pull/9365"
+            }
+          ]
+        }
+      ],
+      "linuxBuildPackagesSha256": "bb492c4f950314fc57ae31338d1ab30b940c631750138fc1b38bb882d0e3677b",
+      "compiledPackageCount": 3130,
+      "crossCompilationMatchesLinuxBuild": true
+    }
+  },
+  "validatedImages": [
+    "sha256:a64f40b88ce0d1bafa8c4119c61e10754fb66bc78b61c32c7709f4aad2937e2c",
+    "sha256:85bb9f5e662c7877b062a894b1b951590b35a602f0090fada2395e228439cd33"
+  ],
+  "dockerCli": {
+    "version": "29.7.2+dd.1",
+    "go": "1.27.1",
+    "sha256": "7e54c86884f89d4e08881648a25c2abbce0e206231974990ce8c49e91a84d0c9",
+    "sourceModule": "github.com/docker/cli@v29.7.2+incompatible",
+    "sourceSum": "h1:dlkwallR8XqfeVnA2ELEhdwvb4lsSwuB4IgsG8Q9cLY=",
+    "sourceCommit": "a7dcaa6fdb6ed04aacbfdc76357fdae01605609e",
+    "rawGovulnAdvisories": [
+      "GO-2026-6443"
+    ],
+    "assessment": "Selected gRPC 1.84.0 contains the upstream missing-authority fix; see source checksum and regression test in the audit document. No suppressions applied."
+  }
+}

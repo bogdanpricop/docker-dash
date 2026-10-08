@@ -33,7 +33,19 @@ function decryptSshConfig(stored) {
     // Not plain JSON — must be encrypted
   }
   // Case 3: AES-GCM encrypted blob
-  return JSON.parse(decrypt(stored));
+  try {
+    return JSON.parse(decrypt(stored));
+  } catch (err) {
+    // AES-GCM authentication failed. By far the most common cause is that
+    // ENCRYPTION_KEY changed after this row was written — the ciphertext is
+    // intact, we simply no longer hold the key that opens it. Raw crypto errors
+    // ("Unsupported state or unable to authenticate data") tell an operator
+    // nothing, so tag it and let callers report something actionable.
+    const wrapped = new Error('SSH credentials cannot be decrypted with the current ENCRYPTION_KEY');
+    wrapped.code = 'HOST_CREDENTIAL_UNDECRYPTABLE';
+    wrapped.cause = err;
+    throw wrapped;
+  }
 }
 
 module.exports = { encryptSshConfig, decryptSshConfig };

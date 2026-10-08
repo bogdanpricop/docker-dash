@@ -17,10 +17,30 @@ const { extractHostId } = require('../middleware/hostId');
 const { requireHostAccessForMethod } = require('../middleware/hostAccess');
 const asyncHandler = require('../utils/asyncHandler');
 
+const cliTransparency = require('../services/cli-transparency');
+const isolationPosture = require('../services/isolation-posture');
+const imageAdmission = require('../services/image-admission');
+const containerHistory = require('../services/container-history');
+const containerReplacement = require('../services/container-replacement');
+const { imageReference } = require('../utils/container-config');
+const requireContainerAccess = require('../middleware/containerAccess');
+
 const router = Router();
 router.use(requireAuth);
 router.use(extractHostId);
 router.use(requireHostAccessForMethod());
+
+// v8.94.0 — CLI Transparency. Attach the equivalent command to an audit entry so
+// an incident review reads like a shell history instead of a list of verbs.
+// Secret redaction happens inside the service, so every caller inherits it.
+// Best-effort by design: a transparency feature must never break the action it
+// describes, so a derivation failure yields no `cli` key rather than an error.
+function _cliDetails(action, params) {
+  try {
+    const r = cliTransparency.describe(action, params);
+    return r.available ? { cli: r.command, cliRedacted: r.redacted } : {};
+  } catch { return {}; }
+}
 
 // List containers (filtered by per-stack permissions)
 router.get('/', requireAuth, asyncHandler(async (req, res) => {
@@ -52,17 +72,29 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
     const docker = dockerService.getDocker(req.hostId);
 
     // If no containers specified, get all running
-    let targetIds = containerIds ? containerIds.split(',') : [];
+    let targetIds = containerIds
+      ? [...new Set(String(containerIds).split(',')
+        .map(value => value.trim())
+        .filter(value => value && value.length <= 128 && !/[\x00-\x1f]/.test(value)))]
+      : [];
+    if (targetIds.length > 25) {
+      return res.status(400).json({ error: 'Select at most 25 containers' });
+    }
     if (targetIds.length === 0) {
       const all = await docker.listContainers();
       targetIds = all.slice(0, 20).map(c => c.Id.substring(0, 12)); // max 20
     }
+    const parsedTail = Number.parseInt(tail, 10);
+    const safeTail = Number.isInteger(parsedTail) ? Math.min(Math.max(parsedTail, 0), 2_000) : 100;
 
     const results = await Promise.allSettled(targetIds.map(async (id) => {
       const container = docker.getContainer(id);
       const inspect = await container.inspect();
+      const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+      const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+      if (!permService.hasPermission(effectiveRole, 'view')) return [];
       const name = inspect.Name.replace(/^\//, '');
-      const opts = { stdout: true, stderr: true, tail: parseInt(tail) || 100, timestamps: true };
+      const opts = { stdout: true, stderr: true, tail: safeTail, timestamps: true };
       if (since) opts.since = Math.floor(new Date(since).getTime() / 1000);
 
       const logBuffer = await container.logs(opts);
@@ -96,8 +128,9 @@ router.get('/logs/multi', requireAuth, asyncHandler(async (req, res) => {
       allLogs = allLogs.filter(l => l.severity === level);
     }
     if (search) {
-      const regex = new RegExp(search, 'i');
-      allLogs = allLogs.filter(l => regex.test(l.msg) || regex.test(l.container));
+      const needle = String(search).toLocaleLowerCase();
+      allLogs = allLogs.filter(l => l.msg.toLocaleLowerCase().includes(needle)
+        || l.container.toLocaleLowerCase().includes(needle));
     }
 
     // Limit output
@@ -196,7 +229,7 @@ router.get('/dependency-graph', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Get metadata for a single container by name
-router.get('/:name/meta', requireAuth, asyncHandler((req, res) => {
+router.get('/:name/meta', requireAuth, requireContainerAccess('view', 'name'), asyncHandler((req, res) => {
   const db = getDb();
     const row = db.prepare('SELECT * FROM container_meta WHERE container_name = ?').get(req.params.name);
     if (!row) {
@@ -212,7 +245,7 @@ router.get('/:name/meta', requireAuth, asyncHandler((req, res) => {
 }));
 
 // Update (upsert) metadata for a container
-router.put('/:name/meta', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler((req, res) => {
+router.put('/:name/meta', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate', 'name'), asyncHandler((req, res) => {
   const db = getDb();
     const { app_name, description, lan_link, web_link, docs_url,
             category, owner, icon, color, notes, custom_fields } = req.body;
@@ -242,7 +275,7 @@ router.put('/:name/meta', requireAuth, requireRole('admin', 'operator'), writeab
 }));
 
 // Inspect container
-router.get('/:id/inspect', requireAuth, async (req, res) => {
+router.get('/:id/inspect', requireAuth, requireContainerAccess('view'), async (req, res) => {
   try {
     const data = await dockerService.inspectContainer(req.params.id, req.hostId);
     res.json(data);
@@ -254,6 +287,12 @@ router.get('/:id/inspect', requireAuth, async (req, res) => {
 // Container logs (enhanced with regex, level filter, stats)
 router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
   const { tail, since, until, search, regex, level, download } = req.query;
+    const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+    const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
+    const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+    if (!permService.hasPermission(effectiveRole, 'view')) {
+      return res.status(403).json({ error: 'Insufficient stack permissions for logs' });
+    }
     let lines = await dockerService.getContainerLogs(req.params.id, {
       tail: parseInt(tail) || 100,
       since, until,
@@ -313,24 +352,53 @@ router.get('/:id/logs', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // Container stats (one-shot)
-router.get('/:id/stats', requireAuth, asyncHandler(async (req, res) => {
+// v8.94.0 — isolation assessment for one container. Read-only. Combines the
+// container's own HostConfig with the host's registered OCI runtimes so the
+// frontend never has to know which runtime names count as sandboxed — that
+// taxonomy lives in one place (docker.js `_categorizeRuntimes`).
+router.get('/:id/isolation', requireAuth, requireContainerAccess('view'), async (req, res) => {
+  try {
+    const insp = await dockerService.inspectContainer(req.params.id, req.hostId);
+    let info = null;
+    try { info = await dockerService.getInfo(req.hostId); }
+    catch { /* runtime list is best-effort; assessment degrades, it doesn't fail */ }
+    const categories = (info && info.runtimeCategories) || {};
+    res.json(isolationPosture.assess(insp, {
+      sandboxed: categories.sandboxed || [],
+      wasm: categories.wasm || [],
+      default: info && info.defaultRuntime,
+    }));
+  } catch (err) {
+    // Same mapping as /:id/inspect above — a missing container is a 404, not a
+    // server error. Without this, asking about a container that has just been
+    // removed reads as "Docker Dash is broken".
+    res.status(err.statusCode === 404 ? 404 : 500).json({ error: err.message });
+  }
+});
+
+router.get('/:id/stats', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const stats = await dockerService.getContainerStats(req.params.id, req.hostId);
   res.json(stats);
 }));
 
 // Container actions (start/stop/restart/pause/unpause/kill)
-router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
-  const validActions = ['start', 'stop', 'restart', 'pause', 'unpause', 'kill'];
+const CONTAINER_ACTIONS = new Set(['start', 'stop', 'restart', 'pause', 'unpause', 'kill']);
+router.post('/:id/:action', (req, res, next) => {
+  // Named endpoints below (safe-update, rename, etc.) must reach their own
+  // handlers and authorization rather than being swallowed by this broad path.
+  if (!CONTAINER_ACTIONS.has(req.params.action)) return next('route');
+  next();
+}, requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
   const { id, action } = req.params;
-
-  if (!validActions.includes(action)) {
-    return res.status(400).json({ error: `Invalid action: ${action}` });
-  }
 
   try {
     // Check per-stack permission: actions require at least 'operate'
     const inspect = await dockerService.inspectContainer(id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'operate')) {
       return res.status(403).json({ error: 'Insufficient stack permissions for this action' });
@@ -340,6 +408,7 @@ router.post('/:id/:action', requireAuth, requireRole('admin', 'operator'), write
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: `container_${action}`, targetType: 'container', targetId: id,
+      details: _cliDetails(`container.${action}`, { name: inspect.name || id }),
       ip: getClientIp(req),
     });
     res.json({ ok: true, action });
@@ -353,7 +422,11 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
   try {
     // Check per-stack permission: remove requires 'admin' on the stack
     const inspect = await dockerService.inspectContainer(req.params.id, req.hostId);
-    const stack = inspect.Config?.Labels?.['com.docker.compose.project'] || '_standalone';
+    // v8.95.1 — `inspectContainer` returns a NORMALIZED object exposing `labels`,
+    // not Docker's raw `Config.Labels`. Reading the wire shape here meant the
+    // optional chain always yielded undefined, so every container resolved to
+    // '_standalone' and per-stack permission overrides were silently ignored.
+    const stack = inspect.labels?.['com.docker.compose.project'] || '_standalone';
     const effectiveRole = permService.getEffectiveRole(req.user.id, stack, req.user.role);
     if (!permService.hasPermission(effectiveRole, 'admin')) {
       return res.status(403).json({ error: 'Insufficient stack permissions to remove this container' });
@@ -366,7 +439,13 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
     auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_remove', targetType: 'container', targetId: req.params.id,
-      details: { force, removeVolumes: v }, ip: getClientIp(req),
+      details: {
+        force, removeVolumes: v,
+        ..._cliDetails('container.remove', {
+          name: inspect.name || req.params.id, force: force === 'true', volumes: v === 'true',
+        }),
+      },
+      ip: getClientIp(req),
     });
     res.json({ ok: true });
   } catch (err) {
@@ -375,14 +454,21 @@ router.delete('/:id', requireAuth, requireRole('admin'), writeable, requireFeatu
 });
 
 // Rename container
-router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.put('/:id/rename', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+  const before = await dockerService.inspectContainer(req.params.id, req.hostId).catch(() => null);
   await dockerService.renameContainer(req.params.id, name, req.hostId);
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: 'container_rename', targetType: 'container', targetId: req.params.id,
-    details: { newName: name }, ip: getClientIp(req),
+    details: {
+      newName: name,
+      ..._cliDetails('container.rename', {
+        name: (before && before.name) || req.params.id, newName: name,
+      }),
+    },
+    ip: getClientIp(req),
   });
   res.json({ ok: true });
 }));
@@ -443,13 +529,13 @@ async function _downloadGithubTarball(owner, repo, branch = 'main') {
 function _detectStack(fileList) {
   const files = fileList.map(f => f.split('/').pop());
   if (files.includes('package.json')) {
-    return { stack: 'node', image: 'node:20-alpine', installCmd: 'cd /app && npm install --ignore-scripts --production', startCmd: 'cd /app && npm start', port: 3000 };
+    return { stack: 'node', image: 'node:24-alpine', installCmd: 'cd /app && npm install --ignore-scripts --omit=dev', startCmd: 'cd /app && npm start', port: 3000 };
   }
   if (files.includes('requirements.txt') || files.includes('pyproject.toml')) {
     return { stack: 'python', image: 'python:3.12-alpine', installCmd: 'cd /app && pip install --no-cache-dir -r requirements.txt', startCmd: 'cd /app && python app.py', port: 5000 };
   }
   if (files.includes('go.mod')) {
-    return { stack: 'go', image: 'golang:1.22-alpine', installCmd: 'cd /app && go mod download', startCmd: 'cd /app && go run .', port: 8080 };
+    return { stack: 'go', image: 'golang:1.27-alpine', installCmd: 'cd /app && go mod download', startCmd: 'cd /app && go run .', port: 8080 };
   }
   if (files.includes('Gemfile')) {
     return { stack: 'ruby', image: 'ruby:3.3-alpine', installCmd: 'cd /app && bundle install', startCmd: 'cd /app && ruby app.rb', port: 3000 };
@@ -713,7 +799,7 @@ router.get('/sandbox/active', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 // DELETE /sandbox/:id — stop & remove a sandbox container
-router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -740,7 +826,7 @@ router.delete('/sandbox/:id', requireAuth, requireRole('admin', 'operator'), wri
 }));
 
 // POST /sandbox/:id/extend — extend TTL by 1 hour
-router.post('/sandbox/:id/extend', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/sandbox/:id/extend', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
   const container = docker.getContainer(req.params.id);
   const inspect = await container.inspect();
@@ -773,7 +859,7 @@ router.post('/sandbox/:id/extend', requireAuth, requireRole('admin', 'operator')
 }));
 
 // Clone/duplicate container
-router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireFeature('create'), asyncHandler(async (req, res) => {
+router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireFeature('create'), requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
 
@@ -827,11 +913,22 @@ router.post('/:id/clone', requireAuth, requireRole('admin'), writeable, requireF
 // Bulk actions
 router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, async (req, res) => {
   const { ids, action } = req.body;
-  if (!ids?.length || !action) return res.status(400).json({ error: 'ids and action required' });
+  if (!Array.isArray(ids) || !ids.length || ids.length > 100 || ids.some(id => typeof id !== 'string' || !id || id.length > 128)
+    || ![...CONTAINER_ACTIONS, 'remove'].includes(action)) {
+    return res.status(400).json({ error: 'Provide up to 100 container IDs and a supported action' });
+  }
+  if (action === 'remove' && req.user.role !== 'admin') return res.status(403).json({ error: 'Administrator role required to remove containers' });
 
   const results = [];
-  for (const id of ids) {
+  for (const id of [...new Set(ids)]) {
     try {
+      const inspection = await dockerService.inspectContainer(id, req.hostId);
+      const stack = inspection.labels?.['com.docker.compose.project'] || '_standalone';
+      const role = permService.getEffectiveRole(req.user.id, stack, req.user.role);
+      if (!permService.hasPermission(role, action === 'remove' ? 'admin' : 'operate')) {
+        results.push({ id, ok: false, error: 'Insufficient stack permissions for this container' });
+        continue;
+      }
       if (action === 'remove') {
         await dockerService.removeContainer(id, { force: true }, req.hostId);
       } else {
@@ -843,111 +940,44 @@ router.post('/bulk', requireAuth, requireRole('admin', 'operator'), writeable, a
     }
   }
 
+  // Render only what actually ran — a failed subject never produced a command,
+  // and the audit entry should read as history, not intent.
+  const applied = results.filter(r => r.ok)
+    .map(r => (action === 'remove' ? { name: r.id, force: true } : { name: r.id }));
+
   auditService.log({
     userId: req.user.id, username: req.user.username,
     action: `bulk_${action}`, targetType: 'container',
-    details: { ids, results: results.filter(r => !r.ok) }, ip: getClientIp(req),
+    details: {
+      ids, results: results.filter(r => !r.ok),
+      ..._cliDetails('container.bulk', { action, subjects: applied }),
+    },
+    ip: getClientIp(req),
   });
 
   res.json({ results });
 });
 
-// Update container (pull latest + recreate)
-router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
-  const { id } = req.params;
+// Update one container on the selected daemon; stack changes use the stack workflow.
+router.post('/:id/update', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
-    const container = docker.getContainer(id);
-    const inspect = await container.inspect();
-    const image = inspect.Config.Image;
-    const name = inspect.Name.replace(/^\//, '');
-
-    if (dockerService.isSelf(inspect.Id)) {
-      return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
-    }
-
-    // Record current state for rollback history
-    try {
-      const db = getDb();
-      db.prepare(`
-        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
-        VALUES (?, ?, ?, ?, ?, 'update', ?, ?, ?)
-      `).run(
-        name, inspect.Id, req.hostId || 0,
-        image, inspect.Image,
-        req.user.username, inspect.State.Running ? 1 : 0,
-        JSON.stringify({ Image: image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
-      );
-    } catch { /* table may not exist yet */ }
-
-    // Check if part of compose project
-    const project = inspect.Config.Labels?.['com.docker.compose.project'];
-    const workingDir = inspect.Config.Labels?.['com.docker.compose.project.working_dir'];
-
-    if (project && workingDir) {
-      // Use docker compose for stack containers — sanitize labels to prevent injection
-      const safeDir = sanitizeShellArg(workingDir);
-      const service = sanitizeShellArg(inspect.Config.Labels?.['com.docker.compose.service'] || '');
-
-      if (!safeDir || !fs.existsSync(safeDir)) {
-        return res.status(400).json({ error: 'Invalid compose working directory' });
-      }
-
-      const pullArgs = service
-        ? ['compose', 'pull', service]
-        : ['compose', 'pull'];
-      const upArgs = service
-        ? ['compose', 'up', '-d', service]
-        : ['compose', 'up', '-d'];
-
-      execFileSync('docker', pullArgs, { cwd: safeDir, timeout: 120000, encoding: 'utf8' });
-      const output = execFileSync('docker', upArgs, { cwd: safeDir, timeout: 60000, encoding: 'utf8' });
-
-      auditService.log({
-        userId: req.user.id, username: req.user.username,
-        action: 'container_update', targetType: 'container', targetId: name,
-        details: { image, method: 'compose', project }, ip: getClientIp(req),
-      });
-      return res.json({ ok: true, method: 'compose', output });
-    }
-
-    // Manual pull + recreate for standalone containers — v8.7.28 timeout
-    await require('../utils/docker-pull').pullImage(docker, image);
-
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    const createOpts = {
-      name,
-      Image: inspect.Config.Image,
-      Cmd: inspect.Config.Cmd,
-      Env: inspect.Config.Env,
-      ExposedPorts: inspect.Config.ExposedPorts,
-      Labels: inspect.Config.Labels,
-      WorkingDir: inspect.Config.WorkingDir,
-      Entrypoint: inspect.Config.Entrypoint,
-      Volumes: inspect.Config.Volumes,
-      Hostname: inspect.Config.Hostname,
-      User: inspect.Config.User,
-      HostConfig: inspect.HostConfig,
-      NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-    };
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
+  const inspect = await docker.getContainer(req.params.id).inspect();
+  const image = imageReference(inspect), name = inspect.Name.replace(/^\//, '');
+  if (dockerService.isSelf(inspect.Id)) return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
+  await require('../utils/docker-pull').pullImage(docker, image);
+  const candidate = await docker.getImage(image).inspect();
+  const result = await containerReplacement.replace({ docker, inspect, imageId: candidate.Id,
+    hostId: req.hostId || 0, action: 'update', username: req.user.username,
+    commit: (newId, operationId) => auditService.log({
       userId: req.user.id, username: req.user.username,
       action: 'container_update', targetType: 'container', targetId: name,
-      details: { image, method: 'recreate', newId: newContainer.id },
-      ip: getClientIp(req),
-    });
-
-  res.json({ ok: true, method: 'recreate', newId: newContainer.id });
+      details: { image, method: 'recreate', newId, operationId }, ip: getClientIp(req),
+    }),
+  });
+  res.json({ ok: true, method: 'recreate', newId: result.id, operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // Export container config
-router.get('/:id/export', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/export', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const data = await dockerService.inspectContainer(req.params.id, req.hostId);
     const { format } = req.query;
 
@@ -968,9 +998,16 @@ function generateCompose(data) {
   if (rp && rp.Name && rp.Name !== 'no') {
     lines.push(`    restart: ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`);
   }
+  // v8.95.1 — same redaction as the run command: an exported compose file is a
+  // recipe, not a credential store.
+  let redacted = false;
   if (data.env?.length) {
     lines.push('    environment:');
-    data.env.forEach(e => lines.push(`      - ${e}`));
+    data.env.forEach(e => {
+      const r = cliTransparency.redactEnvPair(e);
+      if (r.redacted) redacted = true;
+      lines.push(`      - ${r.text}`);
+    });
   }
   const ports = data.ports || {};
   const portEntries = Object.entries(ports).filter(([, v]) => v?.length);
@@ -997,51 +1034,82 @@ function generateCompose(data) {
   const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
   if (labels.length) {
     lines.push('    labels:');
-    labels.forEach(([k, v]) => lines.push(`      ${k}: "${v}"`));
+    labels.forEach(([k, v]) => {
+      const r = cliTransparency.redactEnvPair(`${k}=${v}`);
+      if (r.redacted) redacted = true;
+      lines.push(`      ${k}: ${JSON.stringify(r.text.slice(String(k).length + 1))}`);
+    });
   }
   if (nets.length) {
     lines.push('');
     lines.push('networks:');
     nets.forEach(n => lines.push(`  ${n}:\n    external: true`));
   }
+  if (redacted) {
+    lines.push('');
+    lines.push('# Secret-shaped values were replaced with <redacted>. Fill them in before deploying.');
+  }
   return lines.join('\n');
 }
 
-function generateRunCommand(data) {
-  let cmd = `docker run -d \\\n  --name ${data.name}`;
+// v8.95.1 — delegates to cli-transparency rather than interpolating inspect data
+// into a command by hand. The previous implementation emitted env vars as
+// `-e "KEY=VALUE"` and labels as `--label k="v"` with no escaping and no
+// redaction: a container's secrets were exported verbatim into a command
+// operators paste into tickets, and any value containing a quote produced a
+// broken — potentially injectable — string.
+//
+// Redaction is the point, not a side effect. An exported command is a recipe, and
+// a recipe should not carry credentials; the note makes the omission visible
+// instead of silent.
+function _toRunParams(data) {
   const rp = data.restartPolicy;
-  if (rp && rp.Name && rp.Name !== 'no') {
-    cmd += ` \\\n  --restart ${rp.Name}${rp.MaximumRetryCount ? `:${rp.MaximumRetryCount}` : ''}`;
+  const restart = rp && rp.Name && rp.Name !== 'no'
+    ? rp.Name + (rp.MaximumRetryCount ? ':' + rp.MaximumRetryCount : '')
+    : undefined;
+
+  const ports = [];
+  for (const [portProto, bindings] of Object.entries(data.ports || {})) {
+    if (!bindings || !bindings.length) continue;
+    const [containerPort, proto] = portProto.split('/');
+    for (const b of bindings) ports.push({ host: b.HostPort || '', container: containerPort, proto });
   }
-  if (data.env?.length) data.env.forEach(e => cmd += ` \\\n  -e "${e}"`);
-  const ports = data.ports || {};
-  Object.entries(ports).filter(([, v]) => v?.length).forEach(([container, bindings]) => {
-    bindings.forEach(b => {
-      cmd += ` \\\n  -p ${b.HostPort || ''}:${container.replace('/tcp', '')}`;
-    });
-  });
-  if (data.mounts?.length) {
-    data.mounts.forEach(m => {
-      const ro = m.RW === false ? ':ro' : '';
-      cmd += ` \\\n  -v ${m.Source || m.Name}:${m.Destination}${ro}`;
-    });
+
+  const volumes = (data.mounts || []).map(m => ({
+    source: m.Source || m.Name, target: m.Destination, readOnly: m.RW === false,
+  })).filter(v => v.source && v.target);
+
+  // `docker run` accepts a single --network, matching the previous behaviour.
+  const networks = Object.keys(data.networks || {}).filter(n => n !== 'bridge').slice(0, 1);
+
+  const labels = {};
+  for (const [k, v] of Object.entries(data.labels || {})) {
+    if (!k.startsWith('com.docker.compose')) labels[k] = v;
   }
-  const nets = Object.keys(data.networks || {}).filter(n => n !== 'bridge');
-  if (nets.length) cmd += ` \\\n  --network ${nets[0]}`;
-  if (data.resources?.memory) cmd += ` \\\n  --memory ${data.resources.memory}`;
-  if (data.resources?.cpuQuota && data.resources?.cpuPeriod) {
-    const cpus = (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1);
-    cmd += ` \\\n  --cpus ${cpus}`;
-  }
-  const labels = Object.entries(data.labels || {}).filter(([k]) => !k.startsWith('com.docker.compose'));
-  labels.forEach(([k, v]) => cmd += ` \\\n  --label ${k}="${v}"`);
-  cmd += ` \\\n  ${data.image}`;
-  return cmd;
+
+  const cpus = data.resources && data.resources.cpuQuota && data.resources.cpuPeriod
+    ? (data.resources.cpuQuota / data.resources.cpuPeriod).toFixed(1)
+    : undefined;
+
+  return {
+    image: data.image, name: data.name, restart,
+    env: data.env || [], ports, volumes, networks, labels,
+    memory: (data.resources && data.resources.memory) || undefined, cpus,
+    runtime: (data.isolation && data.isolation.runtime) || undefined,
+  };
+}
+
+const REDACTION_NOTE = '# Secret-shaped values were replaced with <redacted>. Fill them in before running.';
+
+function generateRunCommand(data) {
+  const r = cliTransparency.describe('container.run', _toRunParams(data));
+  if (!r.available) return '# Could not derive a run command for this container.';
+  return r.redacted ? r.command + '\n\n' + REDACTION_NOTE : r.command;
 }
 
 // ─── Smart Restart with Backoff ───────────────────────
 
-router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(id);
@@ -1106,7 +1174,7 @@ router.post('/:id/smart-restart', requireAuth, requireRole('admin', 'operator'),
 
 // ─── Deploy Preview ───────────────────────────────────
 
-router.get('/:id/deploy-preview', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/deploy-preview', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -1159,110 +1227,54 @@ router.get('/:id/deploy-preview', requireAuth, asyncHandler(async (req, res) => 
 
 // ─── Safe-Pull Update ─────────────────────────────────
 
-router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/safe-update', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const docker = dockerService.getDocker(req.hostId);
   const container = docker.getContainer(id);
   const inspect = await container.inspect();
-    const image = inspect.Config.Image;
+    const image = imageReference(inspect);
     const name = inspect.Name.replace(/^\//, '');
 
     if (dockerService.isSelf(inspect.Id)) {
       return res.status(403).json({ error: 'Cannot update Docker Dash itself' });
     }
 
-    // Record current state for rollback history
-    try {
-      const db = getDb();
-      db.prepare(`
-        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
-        VALUES (?, ?, ?, ?, ?, 'safe-update', ?, ?, ?)
-      `).run(
-        name, inspect.Id, req.hostId || 0,
-        image, inspect.Image,
-        req.user.username, inspect.State.Running ? 1 : 0,
-        JSON.stringify({ Image: image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
-      );
-    } catch { /* table may not exist yet */ }
-
     // Step 1: Pull new image — v8.7.28 shared 10-min timeout
     await require('../utils/docker-pull').pullImage(docker, image);
 
-    // Step 2: Get new image digest (retained for future use by Trivy step)
-    await docker.getImage(image).inspect();
+    // Export and scan this exact image from the selected daemon, including
+    // remote hosts. The mutable tag is never used for the subsequent create.
+    const candidate = await docker.getImage(image).inspect();
+    const scanSummary = await imageAdmission.scanImage(docker, candidate.Id);
 
-    // Step 3: Scan with Trivy (if available)
-    let scanPassed = true;
-    let scanSummary = null;
-    try {
-      const safeImg = sanitizeShellArg(image);
-      const scanResult = execFileSync('trivy', ['image', '--severity', 'CRITICAL,HIGH', '--format', 'json', '--quiet', safeImg], {
-        timeout: 120000, encoding: 'utf8',
-      });
-      const parsed = JSON.parse(scanResult);
-      const results = parsed.Results || [];
-      let critical = 0, high = 0;
-      for (const r of results) {
-        for (const v of (r.Vulnerabilities || [])) {
-          if (v.Severity === 'CRITICAL') critical++;
-          if (v.Severity === 'HIGH') high++;
-        }
-      }
-      scanSummary = { critical, high, passed: critical === 0 };
-      scanPassed = critical === 0; // Block on critical vulns only
-    } catch {
-      // Trivy not available — skip scan, allow update
-      scanSummary = { scanner: 'unavailable', passed: true };
-    }
-
-    if (!scanPassed) {
+    if (scanSummary.passed !== true) {
+      auditService.log({ userId: req.user.id, username: req.user.username,
+        action: 'container_safe_update_blocked', targetType: 'container', targetId: name,
+        details: { image, scan: scanSummary }, ip: getClientIp(req) });
       return res.json({
         ok: false,
         blocked: true,
-        reason: 'Vulnerability scan found critical issues',
+        reason: scanSummary.reason || 'Vulnerability scan found critical, high or unknown-severity issues',
         scan: scanSummary,
         image,
-        message: 'Update blocked. New image has critical vulnerabilities. Use regular update to override.',
+        message: 'Update blocked. The required scan did not approve this image.',
       });
     }
 
-    // Step 4: Safe — recreate container with new image
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    const createOpts = {
-      name,
-      Image: image,
-      Cmd: inspect.Config.Cmd,
-      Env: inspect.Config.Env,
-      ExposedPorts: inspect.Config.ExposedPorts,
-      Labels: inspect.Config.Labels,
-      WorkingDir: inspect.Config.WorkingDir,
-      Entrypoint: inspect.Config.Entrypoint,
-      Volumes: inspect.Config.Volumes,
-      Hostname: inspect.Config.Hostname,
-      User: inspect.Config.User,
-      HostConfig: inspect.HostConfig,
-      NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-    };
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
-      userId: req.user.id, username: req.user.username,
-      action: 'container_safe_update', targetType: 'container', targetId: name,
-      details: JSON.stringify({ image, scan: scanSummary, newId: newContainer.id }),
-      ip: getClientIp(req),
+    const result = await containerReplacement.replace({ docker, inspect, imageId: candidate.Id,
+      hostId: req.hostId || 0, action: 'safe-update', username: req.user.username,
+      commit: (newId, operationId) => auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'container_safe_update', targetType: 'container', targetId: name,
+        details: { image, scan: scanSummary, newId, operationId }, ip: getClientIp(req),
+      }),
     });
-
-  res.json({ ok: true, method: 'safe-pull', scan: scanSummary, newId: newContainer.id });
+  res.json({ ok: true, method: 'safe-pull', scan: scanSummary, newId: result.id,
+    operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // ─── Troubleshooting Wizard ───────────────────────────
 
-router.get('/:id/diagnose', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/diagnose', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -1377,7 +1389,7 @@ router.get('/:id/diagnose', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Container Doctor ────────────────────────────────
 
-router.get('/:id/doctor', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/doctor', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -1496,7 +1508,7 @@ router.get('/:id/doctor', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Dependency Analysis ──────────────────────────────
 
-router.get('/:id/dependencies', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/dependencies', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -1597,7 +1609,7 @@ router.get('/:id/dependencies', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Deploy with Dependencies ─────────────────────────
 
-router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/deploy-with-deps', requireAuth, requireRole('admin'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { destHostId } = req.body;
     if (destHostId === undefined) return res.status(400).json({ error: 'destHostId required' });
 
@@ -1707,7 +1719,7 @@ function validateFilePath(p) {
 //      pick the right slice() offset for the name.
 //   3. Fallback retry without --time-style when first attempt yields zero
 //      entries — covers BusyBox boxes where the flag itself bombed.
-router.get('/:id/files', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/files', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const filePath = req.query.path || '/';
   if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
@@ -1773,7 +1785,7 @@ router.get('/:id/files', requireAuth, asyncHandler(async (req, res) => {
   res.json({ path: filePath, entries });
 }));
 
-router.get('/:id/files/content', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/files/content', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const filePath = req.query.path;
     if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
@@ -1793,7 +1805,7 @@ router.get('/:id/files/content', requireAuth, asyncHandler(async (req, res) => {
   });
 }));
 
-router.get('/:id/files/download', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/files/download', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const filePath = req.query.path;
     if (!validateFilePath(filePath)) return res.status(400).json({ error: 'Invalid path' });
 
@@ -1810,7 +1822,7 @@ router.get('/:id/files/download', requireAuth, asyncHandler(async (req, res) => 
 // ─── Container File Upload ─────────────────────────────
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
 
-router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, requireRole('operator'), asyncHandler(async (req, res) => {
+router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, requireRole('operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { path: destPath, content, filename } = req.body || {};
 
     if (!destPath || typeof destPath !== 'string') {
@@ -1897,7 +1909,7 @@ router.post('/:id/files/upload', express.json({ limit: '75mb' }), requireAuth, r
 
 // ─── Container Diff ─────────────────────────────────
 
-router.get('/:id/diff', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/diff', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const changes = await dockerService.containerDiff(req.params.id, req.hostId);
     const summary = {
       modified: changes.filter(c => c.kind === 0).length,
@@ -1910,7 +1922,7 @@ router.get('/:id/diff', requireAuth, asyncHandler(async (req, res) => {
 
 // ─── Container Image History & Rollback ──────────────
 
-router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/history', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();
@@ -1928,6 +1940,9 @@ router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
 
     // Check if images still exist
     for (const entry of entries) {
+      // Rollback configuration includes environment secrets and host mounts;
+      // the history UI only needs image/deployment metadata.
+      delete entry.config_snapshot;
       try {
         await docker.getImage(entry.image_id).inspect();
         entry.imageAvailable = true;
@@ -1944,7 +1959,7 @@ router.get('/:id/history', requireAuth, asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { historyId } = req.body;
   if (!historyId) return res.status(400).json({ error: 'historyId required' });
@@ -1958,6 +1973,28 @@ router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writ
     const inspect = await container.inspect();
     const name = inspect.Name.replace(/^\//, '');
 
+    if (Number(entry.host_id) !== Number(req.hostId || 0) || entry.container_name !== name) {
+      return res.status(404).json({ error: 'History entry not found' });
+    }
+    if (dockerService.isSelf(inspect.Id)) {
+      return res.status(403).json({ error: 'Cannot roll back Docker Dash itself' });
+    }
+    let historicalConfig;
+    if (entry.config_snapshot) {
+      try {
+        historicalConfig = containerHistory.readSnapshot(entry);
+      } catch {
+        return res.status(400).json({ error: 'Rollback configuration is invalid' });
+      }
+    }
+    if (req.user.role !== 'admin') {
+      const historicalStack = historicalConfig?.Labels?.['com.docker.compose.project'] || '_standalone';
+      if (!historicalConfig || !permService.hasPermission(
+        permService.getEffectiveRole(req.user.id, historicalStack, req.user.role), 'operate')) {
+        return res.status(403).json({ error: 'Insufficient stack permissions for this rollback configuration' });
+      }
+    }
+
     // Verify old image still exists
     try {
       await docker.getImage(entry.image_id).inspect();
@@ -1965,104 +2002,55 @@ router.post('/:id/rollback', requireAuth, requireRole('admin', 'operator'), writ
       return res.status(400).json({ error: 'Previous image no longer exists locally. Re-pull the tag first.' });
     }
 
-    // Record current state before rollback
-    try {
-      db.prepare(`
-        INSERT INTO container_image_history (container_name, container_id, host_id, image_name, image_id, action, deployed_by, was_running, config_snapshot)
-        VALUES (?, ?, ?, ?, ?, 'rollback', ?, ?, ?)
-      `).run(
-        name, inspect.Id, req.hostId || 0,
-        inspect.Config.Image, inspect.Image,
-        req.user.username, inspect.State.Running ? 1 : 0,
-        JSON.stringify({ Image: inspect.Config.Image, Cmd: inspect.Config.Cmd, Env: inspect.Config.Env, ExposedPorts: inspect.Config.ExposedPorts, Labels: inspect.Config.Labels, WorkingDir: inspect.Config.WorkingDir, Entrypoint: inspect.Config.Entrypoint, Volumes: inspect.Config.Volumes, Hostname: inspect.Config.Hostname, User: inspect.Config.User, HostConfig: inspect.HostConfig })
-      );
-    } catch { /* table may not exist */ }
-
-    // Recreate with old image
-    const wasRunning = inspect.State.Running;
-    if (wasRunning) await container.stop();
-    await container.remove();
-
-    // Parse config from history or rebuild from current
-    let createOpts;
-    if (entry.config_snapshot) {
-      try {
-        const cfg = JSON.parse(entry.config_snapshot);
-        createOpts = {
-          name,
-          Image: entry.image_id,
-          Cmd: cfg.Cmd,
-          Env: cfg.Env,
-          ExposedPorts: cfg.ExposedPorts,
-          Labels: cfg.Labels,
-          WorkingDir: cfg.WorkingDir,
-          Entrypoint: cfg.Entrypoint,
-          Volumes: cfg.Volumes,
-          Hostname: cfg.Hostname,
-          User: cfg.User,
-          HostConfig: cfg.HostConfig,
-          NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-        };
-      } catch {
-        createOpts = null;
-      }
-    }
-
-    if (!createOpts) {
-      createOpts = {
-        name,
-        Image: entry.image_id,
-        Cmd: inspect.Config.Cmd,
-        Env: inspect.Config.Env,
-        ExposedPorts: inspect.Config.ExposedPorts,
-        Labels: inspect.Config.Labels,
-        WorkingDir: inspect.Config.WorkingDir,
-        Entrypoint: inspect.Config.Entrypoint,
-        Volumes: inspect.Config.Volumes,
-        Hostname: inspect.Config.Hostname,
-        User: inspect.Config.User,
-        HostConfig: inspect.HostConfig,
-        NetworkingConfig: { EndpointsConfig: inspect.NetworkSettings?.Networks || {} },
-      };
-    }
-
-    const newContainer = await docker.createContainer(createOpts);
-    if (wasRunning) await newContainer.start();
-
-    auditService.log({
-      userId: req.user.id, username: req.user.username,
-      action: 'container_rollback', targetType: 'container', targetId: name,
-      details: { fromImage: inspect.Config.Image, toImage: entry.image_name, toImageId: entry.image_id },
-      ip: getClientIp(req),
+    const result = await containerReplacement.replace({ docker, inspect, imageId: entry.image_id,
+      hostId: req.hostId || 0, action: 'rollback', username: req.user.username, saved: historicalConfig,
+      commit: (newId, operationId) => auditService.log({
+        userId: req.user.id, username: req.user.username,
+        action: 'container_rollback', targetType: 'container', targetId: name,
+        details: { fromImage: imageReference(inspect), toImage: entry.image_name, toImageId: entry.image_id, newId, operationId },
+        ip: getClientIp(req),
+      }),
     });
-
-  res.json({ ok: true, newId: newContainer.id, rolledBackTo: entry.image_name });
+  res.json({ ok: true, newId: result.id, rolledBackTo: entry.image_name,
+    operationId: result.operationId, cleanupRequired: result.cleanupRequired });
 }));
-
 // ─── Deployment Pipeline ─────────────────────────────
 
-router.post('/:id/pipeline/start', requireAuth, requireRole('admin', 'operator'), writeable, asyncHandler(async (req, res) => {
+router.post('/:id/pipeline/start', requireAuth, requireRole('admin', 'operator'), writeable, requireContainerAccess('operate'), asyncHandler(async (req, res) => {
   const pipelineService = require('../services/pipeline');
     const { skipScan, skipVerify } = req.body;
+    if ([skipScan, skipVerify].some(value => value !== undefined && typeof value !== 'boolean')) {
+      return res.status(400).json({ error: 'skipScan and skipVerify must be booleans' });
+    }
     const result = await pipelineService.start({
       containerId: req.params.id,
       hostId: req.hostId || 0,
       user: req.user,
-      skipScan: !!skipScan,
-      skipVerify: !!skipVerify,
+      skipScan: skipScan === true,
+      skipVerify: skipVerify === true,
       clientIp: getClientIp(req),
     });
   res.json(result);
 }));
 
-router.get('/:id/pipeline/status/:executionId', requireAuth, asyncHandler((req, res) => {
+router.get('/:id/pipeline/status/:executionId', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const pipelineService = require('../services/pipeline');
-  const result = pipelineService.getStatus(parseInt(req.params.executionId));
-  if (!result) return res.status(404).json({ error: 'Pipeline not found' });
+  const executionId = Number(req.params.executionId);
+  if (!/^[1-9][0-9]*$/.test(req.params.executionId) || !Number.isSafeInteger(executionId)) {
+    return res.status(404).json({ error: 'Pipeline not found' });
+  }
+  const result = pipelineService.getStatus(executionId);
+  if (!result || Number(result.host_id) !== Number(req.hostId || 0)) {
+    return res.status(404).json({ error: 'Pipeline not found' });
+  }
+  const inspection = await dockerService.inspectContainer(req.params.id, req.hostId);
+  if (!inspection?.id || result.container_id !== inspection.id) {
+    return res.status(404).json({ error: 'Pipeline not found' });
+  }
   res.json(result);
 }));
 
-router.get('/:id/pipeline/history', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/pipeline/history', requireAuth, requireContainerAccess('view'), asyncHandler(async (req, res) => {
   const docker = dockerService.getDocker(req.hostId);
     const container = docker.getContainer(req.params.id);
     const inspect = await container.inspect();

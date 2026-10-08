@@ -37,7 +37,7 @@ If you need any of these → use the native vSphere client. That is the design.
    - Standalone ESXi: `root` (or a dedicated user)
    - vCenter: `administrator@vsphere.local` (or a dedicated user)
 6. Password: (your password)
-7. Skip TLS verification: ☑ **checked by default** — ESXi ships with a self-signed cert
+7. TLS verification is mandatory. For a private CA or self-signed ESXi certificate, paste the verified issuer CA or server certificate into **Provider CA certificate**. The certificate must match the endpoint host and be valid.
 8. Submit
 
 Sidebar → **vSphere / ESXi (alpha)** appears.
@@ -75,7 +75,7 @@ For standalone ESXi you'll see 1 ESXi host in the "ESXi Hosts" tab (itself). For
 - **Password is encrypted at rest** via AES-256-GCM (`enc:` prefix on `daemon_config`) — same helper used for git credentials / Docker registry auth / K8s tokens
 - **Session cookie cached in-memory** for 20 minutes per host — reduces SOAP login round-trips. Cleared on daemon restart
 - **All routes require authentication** in Docker Dash (session cookie); no unauthenticated pass-through to ESXi
-- `skipTlsVerify: true` is the default because ESXi ships with a self-signed cert. **In production**, either add the ESXi CA to your trust store OR install a valid cert on ESXi and untick the box
+- Server chain, validity and hostname are verified on every TLS connection. Supply the verified private CA/server certificate or install a certificate issued by a trusted CA. Old `skipTlsVerify: true` configurations refuse to connect until migrated.
 
 ## Alpha caveats
 
@@ -97,7 +97,7 @@ Endpoint unreachable, or vCenter under heavy load. Test manually: `curl -sk -o /
 
 **"vSphere connect error: certificate has expired"**
 
-`skipTlsVerify` was unchecked but the ESXi/vCenter cert is expired or self-signed. Re-check the box, or fix the cert.
+Check certificate expiry, its endpoint hostname and the configured CA. Obtain the correct CA through a trusted management channel. An expired certificate must be renewed; verification cannot be bypassed.
 
 **"vSphere SOAP error: Permission to perform this operation was denied"**
 

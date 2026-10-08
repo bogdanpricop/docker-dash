@@ -4,25 +4,45 @@
 // to src/services/rate-limiter-memory.js (standalone) or Redis INCR (HA mode,
 // v6.17.0+). See plans/deep-spec-ha-mode.md §4 for the split rationale.
 //
-// Fail-open on Redis errors: a rate-limiter failure in HA mode allows the
-// request through with a log warning, prioritizing user-facing availability
-// over strict quota enforcement. Standalone path cannot fail this way.
+// A missing, invalid or late quota decision must not bypass login/MFA or
+// mutation limits. Return 503 on uncertainty; reserve 429 for confirmed quota.
 
 const { getClientIp } = require('../utils/helpers');
 const cluster = require('../services/cluster');
 const log = require('../utils/logger')('ratelimit');
 
-function middleware(maxRequests, windowMs) {
+function middleware(maxRequests, windowMs, scope = `quota:${maxRequests}:${windowMs}`) {
+  if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || !Number.isSafeInteger(windowMs) || windowMs < 1) {
+    throw new Error('Rate-limit count and window must be positive integers');
+  }
+  if (typeof scope !== 'string' || !scope || scope.length > 128) throw new Error('Invalid rate-limit scope');
+  // The same limiter can be mounted on several routers traversed by one HTTP
+  // request. Charge it once, without exempting other limiter instances/scopes.
+  // Weak references avoid retaining completed requests or trusting input headers.
+  const allowedRequests = new WeakSet();
   return async (req, res, next) => {
+    if (res.destroyed || res.writableEnded) return;
+    if (allowedRequests.has(req)) return next();
     const ip = getClientIp(req);
-    const key = `${req.route?.path || req.path}:${ip}`;
-    let result;
+    // Scope belongs to the configured limiter, never a caller-controlled URL,
+    // parameter, capitalization, forwarding header or query string.
+    const key = JSON.stringify([scope, ip]);
+    let result, timer;
     try {
-      result = await cluster.rateLimitTick(key, maxRequests, windowMs);
-    } catch (err) {
-      log.warn('Rate limiter failure, allowing request', { message: err.message });
-      return next();
-    }
+      result = await Promise.race([cluster.rateLimitTick(key, maxRequests, windowMs), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Rate-limit deadline exceeded')), 3000);
+      })]);
+      if (!result || typeof result.allowed !== 'boolean' || !Number.isSafeInteger(result.remaining) || result.remaining < 0
+        || (!result.allowed && (!Number.isSafeInteger(result.retryAfterSec) || result.retryAfterSec < 1))) {
+        throw new Error('Invalid rate-limit decision');
+      }
+    } catch {
+      log.warn('Rate limiter unavailable; request blocked', { scope });
+      if (res.destroyed || res.writableEnded) return;
+      res.set('Retry-After', '3');
+      return res.status(503).json({ error: 'Rate limit verification temporarily unavailable', retryAfter: 3 });
+    } finally { clearTimeout(timer); }
+    if (res.destroyed || res.writableEnded) return;
     if (!result.allowed) {
       res.set('Retry-After', String(result.retryAfterSec));
       res.set('X-RateLimit-Remaining', '0');
@@ -32,6 +52,7 @@ function middleware(maxRequests, windowMs) {
       });
     }
     res.set('X-RateLimit-Remaining', String(result.remaining));
+    allowedRequests.add(req);
     next();
   };
 }

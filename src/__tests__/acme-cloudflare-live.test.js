@@ -52,6 +52,11 @@ runOrSkip('Cloudflare live API — credential validation (requires CLOUDFLARE_TE
     expect(result.ok).toBe(true);
   }, 15_000);
 
+});
+
+describe('Cloudflare credential validation — offline rejection', () => {
+  const dnsProviders = require('../services/dns-providers');
+
   it('rejects a deliberately malformed token without hitting the API', async () => {
     // 37 hex chars = old Cloudflare Global API Key format. We reject these
     // client-side before calling CF. This test runs even with a valid

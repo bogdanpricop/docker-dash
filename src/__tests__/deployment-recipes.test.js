@@ -95,6 +95,7 @@ describe('DeploymentConfigurator recipes', () => {
     expect(out).toMatch(/9000:8101/);
     expect(out).toMatch(/9001:8101/); // dd-2 on port+1
     expect(out).toMatch(/strong-secret-xyz/);
+    expect(out).toMatch(/--maxmemory-policy", "noeviction"/);
   });
 
   it('synology recipe uses bind mount under the configured stack path', () => {

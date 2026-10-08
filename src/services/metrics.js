@@ -35,6 +35,17 @@ let _wsConnectionsTotal = 0;                 // counter: lifetime connects
 const _backgroundJobRuns = new Map();
 const _backgroundJobErrors = new Map();
 
+// Provider SDK v2 — deliberately low-cardinality labels. Provider type and
+// coarse status/cache result are bounded enums; endpoint IDs/names never
+// become labels.
+const _providerProbeTotal = new Map();
+const _providerProbeDurationMs = new Map();
+const _providerCapabilityCacheTotal = new Map();
+const _providerCapabilityUnknown = new Map();
+const _providerConformanceTotal = new Map();
+const _vmMetricIngestTotal = new Map();
+const _vmMetricFreshness = new Map();
+
 /** Record an HTTP request after it has finished. */
 function recordRequest(method, statusCode, durationMs) {
   if (typeof statusCode !== 'number' || statusCode < 100) return;  // drop invalid
@@ -69,6 +80,46 @@ function recordJobRun(jobName, isError = false) {
   }
 }
 
+function recordProviderProbe(provider, status, durationMs) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(provider || '')) return;
+  if (!['reachable', 'unreachable'].includes(status)) return;
+  const key = `${provider}|${status}`;
+  _providerProbeTotal.set(key, (_providerProbeTotal.get(key) || 0) + 1);
+  if (Number.isFinite(durationMs) && durationMs >= 0) {
+    _providerProbeDurationMs.set(key, (_providerProbeDurationMs.get(key) || 0) + durationMs);
+  }
+}
+
+function recordProviderCapabilityCache(result) {
+  if (!['hit', 'miss', 'stale'].includes(result)) return;
+  _providerCapabilityCacheTotal.set(result, (_providerCapabilityCacheTotal.get(result) || 0) + 1);
+}
+
+function setProviderCapabilityUnknown(provider, count) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(provider || '')) return;
+  if (!Number.isFinite(count) || count < 0) return;
+  _providerCapabilityUnknown.set(provider, Math.floor(count));
+}
+
+function recordProviderConformance(provider, grade) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(provider || '')) return;
+  if (!['certified', 'conditional', 'failed'].includes(grade)) return;
+  const key = `${provider}|${grade}`;
+  _providerConformanceTotal.set(key, (_providerConformanceTotal.get(key) || 0) + 1);
+}
+
+function recordVmMetricIngest(adapter, result, count = 1) {
+  if (!/^[a-z][a-z0-9_-]{1,39}$/.test(adapter || '') || !['accepted', 'dropped'].includes(result)) return;
+  if (!Number.isSafeInteger(count) || count < 0) return;
+  const key = `${adapter}|${result}`;
+  _vmMetricIngestTotal.set(key, (_vmMetricIngestTotal.get(key) || 0) + count);
+}
+
+function setVmMetricFreshness(status, count) {
+  if (!['fresh', 'stale', 'error', 'never'].includes(status) || !Number.isFinite(count) || count < 0) return;
+  _vmMetricFreshness.set(status, Math.floor(count));
+}
+
 function getUptimeSeconds() {
   return Math.floor((Date.now() - _startTime) / 1000);
 }
@@ -84,6 +135,13 @@ function snapshot() {
     wsConnectionsTotal: _wsConnectionsTotal,
     backgroundJobRuns: Object.fromEntries(_backgroundJobRuns),
     backgroundJobErrors: Object.fromEntries(_backgroundJobErrors),
+    providerProbeTotal: Object.fromEntries(_providerProbeTotal),
+    providerProbeDurationMs: Object.fromEntries(_providerProbeDurationMs),
+    providerCapabilityCacheTotal: Object.fromEntries(_providerCapabilityCacheTotal),
+    providerCapabilityUnknown: Object.fromEntries(_providerCapabilityUnknown),
+    providerConformanceTotal: Object.fromEntries(_providerConformanceTotal),
+    vmMetricIngestTotal: Object.fromEntries(_vmMetricIngestTotal),
+    vmMetricFreshness: Object.fromEntries(_vmMetricFreshness),
   };
 }
 
@@ -96,6 +154,13 @@ function _reset() {
   _wsConnectionsTotal = 0;
   _backgroundJobRuns.clear();
   _backgroundJobErrors.clear();
+  _providerProbeTotal.clear();
+  _providerProbeDurationMs.clear();
+  _providerCapabilityCacheTotal.clear();
+  _providerCapabilityUnknown.clear();
+  _providerConformanceTotal.clear();
+  _vmMetricIngestTotal.clear();
+  _vmMetricFreshness.clear();
 }
 
 /** Render accumulated metrics as Prometheus text format. */
@@ -146,6 +211,52 @@ function renderPrometheus() {
     lines.push(`docker_dash_background_job_errors_total{job="${job}"} ${count}`);
   }
 
+  lines.push('# HELP docker_dash_provider_probe_total Provider capability probes by provider and result');
+  lines.push('# TYPE docker_dash_provider_probe_total counter');
+  for (const [key, count] of _providerProbeTotal) {
+    const [provider, status] = key.split('|');
+    lines.push(`docker_dash_provider_probe_total{provider="${provider}",status="${status}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_provider_probe_duration_ms Summed provider capability probe duration in milliseconds');
+  lines.push('# TYPE docker_dash_provider_probe_duration_ms counter');
+  for (const [key, total] of _providerProbeDurationMs) {
+    const [provider, status] = key.split('|');
+    lines.push(`docker_dash_provider_probe_duration_ms{provider="${provider}",status="${status}"} ${total}`);
+  }
+
+  lines.push('# HELP docker_dash_provider_capability_cache_total Provider capability cache outcomes');
+  lines.push('# TYPE docker_dash_provider_capability_cache_total counter');
+  for (const [result, count] of _providerCapabilityCacheTotal) {
+    lines.push(`docker_dash_provider_capability_cache_total{result="${result}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_provider_capability_unknown Unknown capability count by provider');
+  lines.push('# TYPE docker_dash_provider_capability_unknown gauge');
+  for (const [provider, count] of _providerCapabilityUnknown) {
+    lines.push(`docker_dash_provider_capability_unknown{provider="${provider}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_provider_conformance_total Provider conformance runs by provider and grade');
+  lines.push('# TYPE docker_dash_provider_conformance_total counter');
+  for (const [key, count] of _providerConformanceTotal) {
+    const [provider, grade] = key.split('|');
+    lines.push(`docker_dash_provider_conformance_total{provider="${provider}",grade="${grade}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_vm_metric_ingest_total Unified VM metric samples accepted or dropped by adapter');
+  lines.push('# TYPE docker_dash_vm_metric_ingest_total counter');
+  for (const [key, count] of _vmMetricIngestTotal) {
+    const [adapter, result] = key.split('|');
+    lines.push(`docker_dash_vm_metric_ingest_total{adapter="${adapter}",result="${result}"} ${count}`);
+  }
+
+  lines.push('# HELP docker_dash_vm_metric_resources VM resources by metric freshness state');
+  lines.push('# TYPE docker_dash_vm_metric_resources gauge');
+  for (const [status, count] of _vmMetricFreshness) {
+    lines.push(`docker_dash_vm_metric_resources{status="${status}"} ${count}`);
+  }
+
   return lines.join('\n') + '\n';
 }
 
@@ -153,6 +264,12 @@ module.exports = {
   recordRequest,
   recordWsConnection,
   recordJobRun,
+  recordProviderProbe,
+  recordProviderCapabilityCache,
+  setProviderCapabilityUnknown,
+  recordProviderConformance,
+  recordVmMetricIngest,
+  setVmMetricFreshness,
   getUptimeSeconds,
   snapshot,
   renderPrometheus,

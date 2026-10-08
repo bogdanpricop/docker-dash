@@ -550,7 +550,7 @@ async function _openPr(jobId, plan) {
   const db = getDb();
   const path = require('path');
   const os = require('os');
-  const simpleGit = require('simple-git');
+  const { simpleGit } = require('simple-git');
 
   const output = [];
   const appendLog = (line) => {

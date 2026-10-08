@@ -144,7 +144,7 @@ router.post('/cleanup', requireAuth, requireRole('admin'), writeable, (req, res)
 
     // Expired tokens
     try {
-      const r = db.prepare(`DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')`).run();
+      const r = db.prepare(`DELETE FROM password_reset_tokens WHERE COALESCE(julianday(expires_at),0) <= julianday('now')`).run();
       if (r.changes) deleted.password_reset_tokens = r.changes;
     } catch (err) { /* table may not exist */ }
 

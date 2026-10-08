@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "productionDeployed": true,
+  "validation": {
+    "suites": 358,
+    "passed": 4704,
+    "skipped": 1,
+    "lint": true,
+    "syntax": true,
+    "npmAuditVulnerabilities": 0,
+    "npmOutdatedDirect": 0
+  },
+  "hosts": {
+    "lan": {
+      "at": "2026-09-20T05:34:00.323Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "concurrent-processes-elect-one-leader",
+        "ioredis6-shared-lua-rate-limit-and-expiry",
+        "cross-process-pubsub-without-self-echo",
+        "stale-leader-heartbeat-cannot-overwrite-successor",
+        "old-owner-shutdown-preserves-successor-and-stays-closed",
+        "connection-loss-demotes-leader",
+        "reconnection-can-confirm-owned-lease",
+        "expired-process-resumes-as-reader-after-real-ttl-takeover",
+        "graceful-release-allows-immediate-new-process-election",
+        "memory-pressure-rejects-writes-without-evicting-lease"
+      ],
+      "independentNodeProcesses": true,
+      "productionDatabaseUsed": false,
+      "marker": "dd-ha-lease-d5969b33d832",
+      "appImage": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "scripts/fixtures/ha-lease-node.js": "40a9f088eab76b4a7a3226863e2a20e76053ff3f3fc36d172e095681e4fcf02d",
+        "scripts/fixtures/ha-lease-checks.js": "93326df84b649da00f2c7fcb3ce396d9aa23ec4a596fb7dfac450c6ab5ecf308"
+      },
+      "publishedPorts": false,
+      "cleanupVerified": true
+    },
+    "vps": {
+      "at": "2026-09-20T05:34:10.752Z",
+      "redisVersion": "8.10.1",
+      "ioredisVersion": "6.0.0",
+      "checks": [
+        "concurrent-processes-elect-one-leader",
+        "ioredis6-shared-lua-rate-limit-and-expiry",
+        "cross-process-pubsub-without-self-echo",
+        "stale-leader-heartbeat-cannot-overwrite-successor",
+        "old-owner-shutdown-preserves-successor-and-stays-closed",
+        "connection-loss-demotes-leader",
+        "reconnection-can-confirm-owned-lease",
+        "expired-process-resumes-as-reader-after-real-ttl-takeover",
+        "graceful-release-allows-immediate-new-process-election",
+        "memory-pressure-rejects-writes-without-evicting-lease"
+      ],
+      "independentNodeProcesses": true,
+      "productionDatabaseUsed": false,
+      "marker": "dd-ha-lease-e1796c5d723f",
+      "appImage": "sha256:8bb32b9be7ca066e21fbe1fa09c302c7c5545548d7a226664cecbf6dbb43e5fb",
+      "redisImage": "redis@sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "redisImageId": "sha256:bd999b5cfee25fb24b8320a31fddbd69f462df44c8138c66e369582937beebc0",
+      "sourceSha256": {
+        "src/services/cluster.js": "bb95be252378875a5099296ceaa9ee0276d1fae1bae3764229a2a7a6e7420645",
+        "src/services/cluster-lease.js": "020456f6e5445237a218015db09335d2f3b469c962ecffd3811368e998541fd8",
+        "scripts/fixtures/ha-lease-node.js": "40a9f088eab76b4a7a3226863e2a20e76053ff3f3fc36d172e095681e4fcf02d",
+        "scripts/fixtures/ha-lease-checks.js": "93326df84b649da00f2c7fcb3ce396d9aa23ec4a596fb7dfac450c6ab5ecf308"
+      },
+      "publishedPorts": false,
+      "cleanupVerified": true
+    }
+  },
+  "deploymentEvidence": "2026-09-20-deployment-8.96.7.json",
+  "bundledImageCanaries": "2026-09-20-image-8.96.7.json",
+  "liveMode": "standalone"
+}

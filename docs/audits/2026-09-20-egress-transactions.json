@@ -1,0 +1,105 @@
+{
+  "at": "2026-09-20T04:02:37.918Z",
+  "liveApplicationVersion": "8.96.4",
+  "applicationDeploymentPending": true,
+  "sourceSha256": {
+    "src/services/egress-runner.js": "c77f4bc9ca4a1415415a37ee1c6421f84ad3c6e06638c50f35abc4c23ce59b73",
+    "src/services/egress-nft.js": "640620a9bd7d4a75ecff704efab0cbbd38c4e0e1487448068e3036238e256480",
+    "src/routes/egress-filter.js": "acf5b53c47349f5696c5aa10aefb94d7943d3f70b2ad8c7b8e71a5fb35ce4679",
+    "public/js/pages/system-egress.js": "221f5d26f49c6431039f1922a7d51307a5cb98bac89e3154dcdfbcdba0c96ae2",
+    "docker/egress-helper/Dockerfile": "7a99b6c9ae58679256c1f005116ab1411b4c16ff79d70c6435ee03d3d97efc18",
+    "scripts/smoke-egress-transactions.js": "83fb97a83630609ec9ecf7b9132c5442ca7d21559c2dbd66f1853aa589f9e8cc"
+  },
+  "tests": {
+    "fullSuites": 355,
+    "fullPassed": 4613,
+    "fullSkipped": 1,
+    "finalFocusedPassed": 48,
+    "lintPassed": true,
+    "pageHelp": "60/60",
+    "i18nPassed": true
+  },
+  "canaries": {
+    "lan": {
+      "marker": "dd-egress-atomic-0ec0fc8463e9",
+      "helperImage": "sha256:e35bb0e3321e5470a56398d303c5642d64221caab78341b66cc7f4d45656867b",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "legacy-alpine-preparation-before-mutation",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "allOwnedResourcesRemoved": true
+    },
+    "vps": {
+      "marker": "dd-egress-atomic-76cc761e5e84",
+      "helperImage": "sha256:e35bb0e3321e5470a56398d303c5642d64221caab78341b66cc7f4d45656867b",
+      "nft": "nftables v1.1.6 (Commodore Bullmoose #7)",
+      "checks": [
+        "kernel-reject-preserves-original-table",
+        "stack-failure-restores-preexisting-tables",
+        "apply-reapply-and-status-preserve-unrelated-tables",
+        "daemon-reservation-refuses-concurrent-operation",
+        "rollback-restores-absent-table",
+        "failed-recovery-retains-stopped-reservation-and-original-snapshot"
+      ],
+      "modifiedOnlyDisposableNamespaces": true,
+      "allOwnedResourcesRemoved": true
+    }
+  },
+  "helperImageAudit": {
+    "image": "sha256:e35bb0e3321e5470a56398d303c5642d64221caab78341b66cc7f4d45656867b",
+    "configId": "sha256:e81e8fe7653026143785468b5c5f6e5b47d5fa8ea0ed08f59e0f8e650d0954d5",
+    "manifestConfigSha256Verified": true,
+    "orderedRootfsLayersVerified": 2,
+    "platform": "linux/amd64",
+    "trivy": {
+      "scanner": "trivy",
+      "image": "sha256:e35bb0e3321e5470a56398d303c5642d64221caab78341b66cc7f4d45656867b",
+      "findings": []
+    },
+    "grype": {
+      "scanner": "grype",
+      "image": "sha256:e81e8fe7653026143785468b5c5f6e5b47d5fa8ea0ed08f59e0f8e650d0954d5",
+      "findings": [
+        {
+          "id": "CVE-2026-85091",
+          "package": "zlib",
+          "severity": "High"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "busybox-binsh",
+          "severity": "Medium"
+        },
+        {
+          "id": "CVE-2025-60876",
+          "package": "ssl_client",
+          "severity": "Medium"
+        }
+      ]
+    },
+    "packages": "UPGRADEABLE\nInstalled:                                Available:\nINSTALLED\nalpine-baselayout-3.7.2-r1 x86_64 {alpine-baselayout} (GPL-2.0-only) [installed]\nalpine-baselayout-data-3.7.2-r1 x86_64 {alpine-baselayout} (GPL-2.0-only) [installed]\nalpine-keys-2.6-r0 x86_64 {alpine-keys} (MIT) [installed]\nalpine-release-3.24.2-r0 x86_64 {alpine-base} (MIT) [installed]\napk-tools-3.0.8-r0 x86_64 {apk-tools} (GPL-2.0-only) [installed]\nbusybox-1.37.0-r31 x86_64 {busybox} (GPL-2.0-only) [installed]\nbusybox-binsh-1.37.0-r31 x86_64 {busybox} (GPL-2.0-only) [installed]\nca-certificates-bundle-20260909-r0 x86_64 {ca-certificates} (MPL-2.0 AND MIT) [installed]\ngmp-6.3.0-r4 x86_64 {gmp} (LGPL-3.0-or-later OR GPL-2.0-or-later) [installed]\njansson-2.15.0-r0 x86_64 {jansson} (MIT) [installed]\nlibapk-3.0.8-r0 x86_64 {apk-tools} (GPL-2.0-only) [installed]\nlibcrypto3-3.5.8-r0 x86_64 {openssl} (Apache-2.0) [installed]\nlibmnl-1.0.5-r2 x86_64 {libmnl} (LGPL-2.1-or-later) [installed]\nlibncursesw-6.6_p20260516-r0 x86_64 {ncurses} (X11) [installed]\nlibnftnl-1.3.1-r0 x86_64 {libnftnl} (GPL-2.0-or-later) [installed]\nlibssl3-3.5.8-r0 x86_64 {openssl} (Apache-2.0) [installed]\nmusl-1.2.6-r2 x86_64 {musl} (MIT) [installed]\nmusl-utils-1.2.6-r2 x86_64 {musl} (MIT AND BSD-2-Clause AND GPL-2.0-or-later) [installed]\nncurses-terminfo-base-6.6_p20260516-r0 x86_64 {ncurses} (X11) [installed]\nnftables-1.1.6-r1 x86_64 {nftables} (GPL-2.0-or-later) [installed]\nreadline-8.3.3-r1 x86_64 {readline} (GPL-3.0-or-later) [installed]\nscanelf-1.3.9-r1 x86_64 {pax-utils} (GPL-2.0-only) [installed]\nssl_client-1.37.0-r31 x86_64 {busybox} (GPL-2.0-only) [installed]\nzlib-1.3.2-r0 x86_64 {zlib} (Zlib) [installed]\n"
+  },
+  "remaining": [
+    "IPv6 and non-TCP coverage",
+    "broad DNS/RFC1918 exceptions",
+    "existing connection revocation",
+    "log attribution",
+    "overlapping policy removal",
+    "restart reconciliation and assisted recovery",
+    "helper zlib/BusyBox scanner findings"
+  ],
+  "noHostFirewallChanges": true,
+  "noAdmissionGatesDisabled": true
+}

@@ -1,0 +1,44 @@
+{
+  "at": "2026-09-20T04:52:54.473Z",
+  "version": "8.96.6",
+  "tests": {
+    "suites": 356,
+    "passed": 4668,
+    "skipped": 1,
+    "lint": true
+  },
+  "canaries": {
+    "lan": {
+      "marker": "dd-egress-overlap-42bf6cb1ff93",
+      "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "checks": [
+        "container-unapply-retains-stack-table-across-default-host-alias",
+        "container-disable-preserves-stack-filter",
+        "stack-unapply-retains-container-filter-and-removes-exclusive-member",
+        "stack-disable-preserves-container-filter",
+        "foreign-policy-cannot-be-excluded-to-remove-rules",
+        "unscoped-removal-protects-all-active-policies",
+        "last-policy-removal-ignores-other-host-and-inactive-policies"
+      ],
+      "usedInMemoryPolicyDatabase": true,
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    },
+    "vps": {
+      "marker": "dd-egress-overlap-2e8307a40fdf",
+      "image": "sha256:386bdd5b2c87f4b04867083eb9d771aab0a9446d531c05ae08212f8bb123a8d5",
+      "checks": [
+        "container-unapply-retains-stack-table-across-default-host-alias",
+        "container-disable-preserves-stack-filter",
+        "stack-unapply-retains-container-filter-and-removes-exclusive-member",
+        "stack-disable-preserves-container-filter",
+        "foreign-policy-cannot-be-excluded-to-remove-rules",
+        "unscoped-removal-protects-all-active-policies",
+        "last-policy-removal-ignores-other-host-and-inactive-policies"
+      ],
+      "usedInMemoryPolicyDatabase": true,
+      "modifiedOnlyDisposableNamespaces": true,
+      "ownedResourcesRemoved": true
+    }
+  }
+}
