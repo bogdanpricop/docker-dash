@@ -1244,7 +1244,7 @@ i18n.register('ro', 'RO', "Română", {
       runningCount: "{{count}} active",
       updatesTitle: "Actualizari",
       checkUpdates: "Verifica Actualizari",
-      updatesClickCheck: "Apasa \"Verifica Actualizari\" pentru a verifica Docker si actualizarile OS.",
+      updatesClickCheck: "Apasa \"Verifica Actualizari\" pentru a citi prin SSH securizat pachetele disponibile pe hostul selectat. Nu se instaleaza nimic si nu se actualizeaza catalogul de pachete.",
       updatesChecking: "Se verifica actualizarile...",
       updateAvailable: "Actualizare disponibila",
       upToDate: "La zi",

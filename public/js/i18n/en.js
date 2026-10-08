@@ -904,7 +904,7 @@ i18n.register('en', 'EN', 'English', {
       runningCount: '{{count}} running',
       // Updates
       updatesTitle: 'Updates', checkUpdates: 'Check Updates',
-      updatesClickCheck: 'Click "Check Updates" to verify Docker and OS updates.',
+      updatesClickCheck: 'Click "Check Updates" to read available packages from the selected host over pinned SSH. Nothing is installed and repository metadata is not refreshed.',
       updatesChecking: 'Checking for updates...',
       updateAvailable: 'Update available', upToDate: 'Up to date',
       osUpdatesCount: '{{count}} updates available',

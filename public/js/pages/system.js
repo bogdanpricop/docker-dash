@@ -217,10 +217,8 @@ const SystemPage = {
         </div>
       </div>
     `;
-    el.querySelector('#check-updates-btn').addEventListener('click', () => this._loadUpdates());
+    el.querySelector('#check-updates-btn').addEventListener('click', event => this._loadUpdates(event.currentTarget));
     el.querySelector('#open-host-terminal')?.addEventListener('click', () => this._openHostSshConsole(selectedHost));
-    // Auto-check updates
-    this._loadUpdates();
 
     // MOTD editor (admin only) — simple: one textarea, one message per line, checkbox for random
     const motdCard = document.createElement('div');
@@ -413,9 +411,14 @@ const SystemPage = {
     Api.saveUserPreference('accent', color).catch(() => {});
   },
 
-  async _loadUpdates() {
+  async _loadUpdates(button = null) {
     const el = document.getElementById('updates-content');
     if (!el) return;
+    const originalButtonHtml = button?.innerHTML;
+    if (button) {
+      button.disabled = true;
+      button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.system.updatesChecking')}`;
+    }
     el.innerHTML = `<div class="text-muted text-sm"><i class="fas fa-spinner fa-spin"></i> ${i18n.t('pages.system.updatesChecking')}</div>`;
     try {
       const data = await Api.checkUpdates();
@@ -427,21 +430,24 @@ const SystemPage = {
         ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.updateAvailable')}</span>`
         : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`;
 
-      const osBadge = o.updateAvailable
-        ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.osUpdatesCount', { count: o.total })}</span>`
-        : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`;
+      const osBadge = o.error
+        ? `<span class="badge badge-warning"><i class="fas fa-exclamation-triangle"></i> ${Utils.escapeHtml(o.error)}</span>`
+        : (o.updateAvailable
+            ? `<span class="badge badge-warning"><i class="fas fa-arrow-up"></i> ${i18n.t('pages.system.osUpdatesCount', { count: o.total })}</span>`
+            : `<span class="badge badge-running"><i class="fas fa-check"></i> ${i18n.t('pages.system.upToDate')}</span>`);
 
       let osPackageList = '';
       if (o.packages && o.packages.length > 0) {
         osPackageList = `
           <details style="margin-top:8px">
-            <summary class="text-sm" style="cursor:pointer;color:var(--accent)">${i18n.t('pages.system.showPackages', { count: o.total })}</summary>
+            <summary class="text-sm" style="cursor:pointer;color:var(--accent)">${i18n.t('pages.system.showPackages', { count: o.total })}${o.truncated ? ` (${o.packages.length}/${o.total})` : ''}</summary>
             <div style="max-height:200px;overflow-y:auto;margin-top:6px">
               <table class="data-table compact">
-                <thead><tr><th>${i18n.t('pages.system.packageName')}</th><th>${i18n.t('pages.system.packageNew')}</th></tr></thead>
+                <thead><tr><th>${i18n.t('pages.system.packageName')}</th><th>${i18n.t('pages.system.version')}</th><th>${i18n.t('pages.system.packageNew')}</th></tr></thead>
                 <tbody>${o.packages.map(p => `
                   <tr>
                     <td class="mono text-sm">${Utils.escapeHtml(p.name)}</td>
+                    <td class="mono text-sm text-dim">${Utils.escapeHtml(p.oldVersion || '?')}</td>
                     <td class="mono text-sm">${Utils.escapeHtml(p.newVersion)}</td>
                   </tr>
                 `).join('')}</tbody>
@@ -462,7 +468,13 @@ const SystemPage = {
           </tr>
           <tr>
             <td><i class="fas fa-server" style="margin-right:6px"></i> ${i18n.t('pages.system.osUpdatesLabel')}</td>
-            <td>${osBadge}</td>
+            <td>
+              ${osBadge}
+              ${o.packageManager && o.packageManager !== 'unsupported' && o.packageManager !== 'unknown'
+                ? `<span class="badge" style="margin-left:8px">${Utils.escapeHtml(o.packageManager.toUpperCase())}</span>` : ''}
+              ${o.hostName ? `<span class="text-dim text-sm" style="margin-left:8px">${Utils.escapeHtml(o.hostName)}</span>` : ''}
+              ${o.checkedAt ? `<span class="text-dim text-sm" style="margin-left:8px">${Utils.formatDate(o.checkedAt)}</span>` : ''}
+            </td>
           </tr>
           <tr>
             <td><i class="fas fa-code-branch" style="margin-right:6px"></i> ${i18n.t('pages.system.appVersionLabel')}</td>
@@ -492,6 +504,11 @@ const SystemPage = {
       });
     } catch (err) {
       el.innerHTML = `<div class="text-muted text-sm"><i class="fas fa-exclamation-triangle" style="color:var(--yellow)"></i> ${i18n.t('pages.system.updatesError', { message: err.message })}</div>`;
+    } finally {
+      if (button?.isConnected) {
+        button.disabled = false;
+        button.innerHTML = originalButtonHtml;
+      }
     }
   },
 

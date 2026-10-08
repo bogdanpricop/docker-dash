@@ -113,6 +113,7 @@ function fetchJSON(url) {
 
 router.get('/check-updates', requireAuth, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const result = { docker: null, os: null, app: null };
 
     // ── Docker Engine update check ──
@@ -138,23 +139,25 @@ router.get('/check-updates', requireAuth, async (req, res) => {
       result.docker = { current: '?', latest: null, updateAvailable: false, error: e.message };
     }
 
-    // ── OS update check (apt-based) ──
+    // ── Host OS package update check ──
+    // Run a fixed, read-only probe over the host's pinned SSH connection.
+    // Checking inside the Docker Dash container would report the image's
+    // packages, not the packages installed on the selected Docker host.
     try {
-      const raw = execFileSync('apt', ['list', '--upgradable'], { timeout: 15000, encoding: 'utf8', stdio: 'pipe' }).trim();
-      const lines = raw ? raw.split('\n').filter(l => l.includes('upgradable')) : [];
-      const packages = lines.map(l => {
-        const name = l.split('/')[0];
-        const versions = l.match(/\[upgradable from: (.*?)\]/);
-        const newVer = l.match(/\s(\S+)\s/)?.[1];
-        return { name, newVersion: newVer || '?', oldVersion: versions?.[1] || '?' };
-      });
-      result.os = {
-        total: packages.length,
-        packages: packages.slice(0, 30), // limit to 30
-        updateAvailable: packages.length > 0,
-      };
-    } catch {
-      result.os = { total: 0, packages: [], updateAvailable: false, error: 'apt not available' };
+      result.os = await require('../services/host-package-updates').checkHostPackageUpdates(req.hostId);
+      try {
+        auditService.log({
+          userId: req.user.id, username: req.user.username,
+          action: 'host_package_updates_checked', targetType: 'host',
+          targetId: String(result.os.hostId || req.hostId), ip: getClientIp(req),
+          details: { packageManager: result.os.packageManager || null, total: result.os.total || 0,
+            available: result.os.available !== false, truncated: !!result.os.truncated },
+        });
+      } catch { /* a read-only check must still return if audit storage is unavailable */ }
+    } catch (error) {
+      log.warn('Host package update check failed', { hostId: req.hostId, code: error.code || 'HOST_UPDATE_CHECK_FAILED' });
+      result.os = { total: 0, packages: [], updateAvailable: false, available: false,
+        error: 'Could not check packages on the selected host over SSH' };
     }
 
     // ── Docker Dash app version ──

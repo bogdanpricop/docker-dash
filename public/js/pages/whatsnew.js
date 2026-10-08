@@ -9,6 +9,11 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.16', date: '2026-10-08', title: 'Host package update inventory', changes: [
+      { type: 'feature', text: 'System → Info can now list packages with available updates on the selected Docker host, including installed and candidate versions.' },
+      { type: 'security', text: 'The manual check runs a fixed read-only command through pinned SSH, installs nothing, does not refresh repositories, bounds output and records the result in the audit log.' },
+      { type: 'improvement', text: 'APT, DNF/YUM, Zypper, APK and Pacman hosts are supported. Hosts without configured SSH show an explicit configuration requirement instead of container package results.' },
+    ] },
     { version: '8.96.15', date: '2026-10-07', title: 'HTTPS-protected host terminal', changes: [
       { type: 'security', text: 'Host SSH terminals now open only from an HTTPS browser session; plaintext HTTP remains available for dashboard access.' },
     ] },

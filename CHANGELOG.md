@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Check operating-system package updates on the selected Docker host through its
+  pinned SSH connection. The manual, read-only check supports APT, DNF/YUM,
+  Zypper, APK and Pacman; it shows installed and candidate versions without
+  refreshing repositories or installing packages. Results are bounded and the
+  check is recorded in the audit log.
+
 - Add audited Prometheus 3.14.0 dependency-rebuild and Grafana 13.2.2 Alpine-patch
   candidates. Native restored-data tests and two-scanner findings are recorded
   [here](docs/audits/2026-09-20-observability-candidates.md). These candidates do
