@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 export CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=2GiB
-test "$(go env GOVERSION)" = 'go1.27.1'
+test "$(go env GOVERSION)" = 'go1.27.3'
 module=github.com/docker/compose/v5
 version=v5.6.0
 mkdir -p /out

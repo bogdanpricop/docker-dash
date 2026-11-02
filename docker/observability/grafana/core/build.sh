@@ -2,7 +2,7 @@
 set -eu
 
 export GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=4GiB CGO_ENABLED=1
-test "$(go env GOVERSION)" = 'go1.27.1'
+test "$(go env GOVERSION)" = 'go1.27.3'
 test "$(sed -n 's/.*\"version\": *\"\([^\"]*\)\".*/\1/p' package.json | head -1)" = '13.2.3'
 
 mkdir -p /out/provenance

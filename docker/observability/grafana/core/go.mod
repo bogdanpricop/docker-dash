@@ -68,7 +68,7 @@ require (
 	github.com/fullstorydev/grpchan v1.1.2 // @grafana/grafana-backend-group
 	github.com/gchaincl/sqlhooks v1.3.0 // @grafana/grafana-search-and-storage
 	github.com/getkin/kin-openapi v0.144.0 // @grafana/grafana-app-platform-squad
-	github.com/go-jose/go-jose/v4 v4.1.4 // @grafana/identity-access-team
+	github.com/go-jose/go-jose/v4 v4.1.6 // @grafana/identity-access-team
 	github.com/go-kit/log v0.2.1 //  @grafana/grafana-backend-group
 	github.com/go-ldap/ldap/v3 v3.4.4 // @grafana/identity-access-team
 	github.com/go-openapi/loads v0.25.0 // @grafana/alerting-backend
@@ -203,7 +203,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // @grafana/alerting-backend
 	gocloud.dev v0.45.0 // @grafana/grafana-app-platform-squad
 	gocloud.dev/secrets/hashivault v0.45.0 // @grafana/grafana-operator-experience-squad
-	golang.org/x/net v0.59.0 // @grafana/data-sources-plugins
+	golang.org/x/net v0.62.0 // @grafana/data-sources-plugins
 	golang.org/x/oauth2 v0.36.0 // @grafana/identity-access-team
 	golang.org/x/sync v0.23.0 // @grafana/alerting-backend
 	golang.org/x/text v0.42.0 // @grafana/grafana-backend-group

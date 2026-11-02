@@ -3,6 +3,85 @@ module docker-dash.local/security/grype
 go 1.27.1
 
 require (
+	github.com/CycloneDX/cyclonedx-go v0.12.0
+	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/Masterminds/sprig/v3 v3.3.0
+	github.com/OneOfOne/xxhash v1.2.8
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
+	github.com/adrg/xdg v0.5.3
+	github.com/anchore/bubbly v0.2.2
+	github.com/anchore/clio v0.1.1
+	github.com/anchore/fangs v0.1.1
+	github.com/anchore/go-collections v0.1.1
+	github.com/anchore/go-homedir v0.1.1
+	github.com/anchore/go-logger v0.2.0
+	github.com/anchore/go-version v1.2.2-0.20210903204242-51efa5b487c4
+	github.com/anchore/grype v0.120.1
+	github.com/anchore/packageurl-go v0.2.0
+	github.com/anchore/stereoscope v0.3.4
+	github.com/anchore/syft v1.54.1
+	github.com/aquasecurity/go-pep440-version v0.0.1
+	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
+	github.com/bitnami/go-version v0.0.0-20250505154626-452e8c5ee607
+	github.com/bmatcuk/doublestar/v2 v2.0.4
+	github.com/bmatcuk/doublestar/v4 v4.10.2
+	github.com/charmbracelet/bubbletea v1.3.10
+	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/dave/jennifer v1.7.1
+	github.com/docker/docker v28.5.2+incompatible
+	github.com/dustin/go-humanize v1.1.0
+	github.com/facebookincubator/nvdtools v0.1.5
+	github.com/gabriel-vasile/mimetype v1.4.15
+	github.com/gkampitakis/go-snaps v0.5.23
+	github.com/glebarez/sqlite v1.11.0
+	github.com/go-test/deep v1.1.1
+	github.com/go-viper/mapstructure/v2 v2.5.0
+	github.com/gocsaf/csaf/v3 v3.5.1
+	github.com/gohugoio/hashstructure v0.6.0
+	github.com/google/go-cmp v0.7.0
+	github.com/google/go-containerregistry v0.22.1
+	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
+	github.com/google/uuid v1.6.0
+	github.com/gookit/color v1.6.1
+	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
+	github.com/hashicorp/go-cleanhttp v0.5.2
+	github.com/hashicorp/go-getter v1.8.9
+	github.com/hashicorp/go-multierror v1.1.1
+	github.com/iancoleman/strcase v0.3.0
+	github.com/invopop/jsonschema v0.14.0
+	github.com/jinzhu/copier v0.4.0
+	github.com/klauspost/compress v1.20.1
+	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f
+	github.com/knqyf263/go-deb-version v0.0.0-20241115132648-6f4aee6ccd23
+	github.com/masahiro331/go-mvn-version v0.0.0-20250131095131-f4974fa13b8a
+	github.com/mholt/archives v0.1.5
+	github.com/muesli/termenv v0.16.0
+	github.com/olekukonko/tablewriter v1.1.5
+	github.com/openvex/go-vex v0.2.9
+	github.com/owenrumney/go-sarif v1.1.2-0.20231003122901-1000f5e05554
+	github.com/pandatix/go-cvss v0.6.4
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	// pinned to pull in 386 arch fix: https://github.com/scylladb/go-set/commit/cc7b2070d91ebf40d233207b633e28f5bd8f03a5
+	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e
+	github.com/sergi/go-diff v1.4.0
+	github.com/spf13/afero v1.15.0
+	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.12.1
+	github.com/ulikunitz/xz v0.5.17
+	github.com/umisama/go-cpe v0.0.0-20190323060751-cdd6c3c28a23
+	github.com/wagoodman/go-partybus v0.0.0-20230516145632-8ccac152c651
+	github.com/wagoodman/go-presenter v0.0.0-20211015174752-f9c01afc824b
+	github.com/wagoodman/go-progress v0.0.0-20260303201901-10176f79b2c0
+	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
+	golang.org/x/text v0.43.0
+	golang.org/x/time v0.16.0
+	golang.org/x/tools v0.51.0
+	gopkg.in/yaml.v3 v3.0.1
+	gorm.io/gorm v1.31.2
+)
+
+require (
 	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.23.2 // indirect
@@ -108,7 +187,7 @@ require (
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.1 // indirect
 	github.com/go-git/go-git/v5 v5.19.2 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-restruct/restruct v1.2.0-alpha // indirect
@@ -239,13 +318,13 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	go4.org v0.0.0-20230225012048-214862532bf5 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/api v0.294.0 // indirect
@@ -260,83 +339,4 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.59.0 // indirect
-)
-
-require (
-	github.com/CycloneDX/cyclonedx-go v0.12.0
-	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/OneOfOne/xxhash v1.2.8
-	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
-	github.com/adrg/xdg v0.5.3
-	github.com/anchore/bubbly v0.2.2
-	github.com/anchore/clio v0.1.1
-	github.com/anchore/fangs v0.1.1
-	github.com/anchore/go-collections v0.1.1
-	github.com/anchore/go-homedir v0.1.1
-	github.com/anchore/go-logger v0.2.0
-	github.com/anchore/go-version v1.2.2-0.20210903204242-51efa5b487c4
-	github.com/anchore/grype v0.120.1
-	github.com/anchore/packageurl-go v0.2.0
-	github.com/anchore/stereoscope v0.3.4
-	github.com/anchore/syft v1.54.1
-	github.com/aquasecurity/go-pep440-version v0.0.1
-	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-	github.com/bitnami/go-version v0.0.0-20250505154626-452e8c5ee607
-	github.com/bmatcuk/doublestar/v2 v2.0.4
-	github.com/bmatcuk/doublestar/v4 v4.10.2
-	github.com/charmbracelet/bubbletea v1.3.10
-	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/dave/jennifer v1.7.1
-	github.com/docker/docker v28.5.2+incompatible
-	github.com/dustin/go-humanize v1.1.0
-	github.com/facebookincubator/nvdtools v0.1.5
-	github.com/gabriel-vasile/mimetype v1.4.15
-	github.com/gkampitakis/go-snaps v0.5.23
-	github.com/glebarez/sqlite v1.11.0
-	github.com/go-test/deep v1.1.1
-	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/gocsaf/csaf/v3 v3.5.1
-	github.com/gohugoio/hashstructure v0.6.0
-	github.com/google/go-cmp v0.7.0
-	github.com/google/go-containerregistry v0.22.1
-	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/google/uuid v1.6.0
-	github.com/gookit/color v1.6.1
-	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
-	github.com/hashicorp/go-cleanhttp v0.5.2
-	github.com/hashicorp/go-getter v1.8.9
-	github.com/hashicorp/go-multierror v1.1.1
-	github.com/iancoleman/strcase v0.3.0
-	github.com/invopop/jsonschema v0.14.0
-	github.com/jinzhu/copier v0.4.0
-	github.com/klauspost/compress v1.20.1
-	github.com/knqyf263/go-apk-version v0.0.0-20200609155635-041fdbb8563f
-	github.com/knqyf263/go-deb-version v0.0.0-20241115132648-6f4aee6ccd23
-	github.com/masahiro331/go-mvn-version v0.0.0-20250131095131-f4974fa13b8a
-	github.com/mholt/archives v0.1.5
-	github.com/muesli/termenv v0.16.0
-	github.com/olekukonko/tablewriter v1.1.5
-	github.com/openvex/go-vex v0.2.9
-	github.com/owenrumney/go-sarif v1.1.2-0.20231003122901-1000f5e05554
-	github.com/pandatix/go-cvss v0.6.4
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	// pinned to pull in 386 arch fix: https://github.com/scylladb/go-set/commit/cc7b2070d91ebf40d233207b633e28f5bd8f03a5
-	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e
-	github.com/sergi/go-diff v1.4.0
-	github.com/spf13/afero v1.15.0
-	github.com/spf13/cobra v1.10.2
-	github.com/stretchr/testify v1.12.1
-	github.com/ulikunitz/xz v0.5.17
-	github.com/umisama/go-cpe v0.0.0-20190323060751-cdd6c3c28a23
-	github.com/wagoodman/go-partybus v0.0.0-20230516145632-8ccac152c651
-	github.com/wagoodman/go-presenter v0.0.0-20211015174752-f9c01afc824b
-	github.com/wagoodman/go-progress v0.0.0-20260303201901-10176f79b2c0
-	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
-	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
-	golang.org/x/text v0.42.0
-	golang.org/x/time v0.16.0
-	golang.org/x/tools v0.50.0
-	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/gorm v1.31.2
 )

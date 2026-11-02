@@ -1,4 +1,4 @@
-FROM golang:1.27.1-alpine@sha256:4cb7ac979db5fcc41cae44b2227ba5ab8a51e8807f40d9ba4dee20a0ad960b5b AS build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 RUN apk add --no-cache bash gzip
 WORKDIR /build
 COPY docker/observability/prometheus/go.mod docker/observability/prometheus/go.sum ./
@@ -24,7 +24,7 @@ RUN sh /build-busybox.sh
 COPY docker/observability/prometheus/busybox/asan-check.sh /asan-check.sh
 RUN sh /asan-check.sh
 
-FROM golang:1.27.1-alpine@sha256:4cb7ac979db5fcc41cae44b2227ba5ab8a51e8807f40d9ba4dee20a0ad960b5b AS busybox-build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS busybox-build
 RUN apk add --no-cache build-base linux-headers curl bzip2 patch diffutils
 COPY --from=upstream /bin/busybox /reference/busybox
 COPY --from=busybox-test /out/busybox/ /out/busybox/

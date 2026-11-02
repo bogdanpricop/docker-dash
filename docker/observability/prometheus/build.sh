@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 export CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2 GOMEMLIMIT=3GiB
-test "$(go env GOVERSION)" = 'go1.27.1'
+test "$(go env GOVERSION)" = 'go1.27.3'
 module=github.com/prometheus/prometheus
 version=v0.315.0
 mkdir -p /out/provenance

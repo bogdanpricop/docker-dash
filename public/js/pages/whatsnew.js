@@ -9,6 +9,9 @@ const WhatsNewPage = {
   // Add new releases at the TOP of this array.
   // Types: feature, fix, improvement, security, breaking
   _releases: [
+    { version: '8.96.17', date: '2026-11-02', title: 'Dependency security patches', changes: [
+      { type: 'security', text: 'Patch request parsing, email address parsing, browser test tooling and filesystem matching dependencies. Update Node.js and rebuild bundled Go tools with security patches.' },
+    ] },
     { version: '8.96.16', date: '2026-10-08', title: 'Host package update inventory', changes: [
       { type: 'feature', text: 'System → Info can now list packages with available updates on the selected Docker host, including installed and candidate versions.' },
       { type: 'security', text: 'The manual check runs a fixed read-only command through pinned SSH, installs nothing, does not refresh repositories, bounds output and records the result in the audit log.' },

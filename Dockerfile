@@ -1,4 +1,4 @@
-FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS scanner-build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS scanner-build
 COPY docker/scanners/build.sh /build.sh
 WORKDIR /src/grype
 COPY docker/scanners/grype/go.mod docker/scanners/grype/go.sum ./
@@ -17,10 +17,10 @@ RUN sh /build-compose.sh
 
 
 ### Base ###
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS base
+FROM node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85 AS base
 
 # Keep the package manager itself pinned and audited alongside application code.
-RUN npm install --global npm@12.2.0 --ignore-scripts
+RUN npm install --global npm@12.2.1 --ignore-scripts
 
 # SECURITY: Upgrade all Alpine packages to get latest security patches
 RUN apk update && apk upgrade --no-cache

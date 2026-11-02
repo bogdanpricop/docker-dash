@@ -2,7 +2,7 @@
 # bundled backend-plugin surface to the Prometheus datasource used here.
 FROM grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572 AS upstream
 
-FROM golang:1.27.1-alpine@sha256:4cb7ac979db5fcc41cae44b2227ba5ab8a51e8807f40d9ba4dee20a0ad960b5b AS busybox-build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS busybox-build
 RUN apk add --no-cache build-base linux-headers curl bzip2 patch diffutils
 COPY --from=upstream /bin/busybox /reference/busybox
 COPY docker/observability/prometheus/busybox/patches/ /patches/
@@ -12,7 +12,7 @@ COPY docker/observability/prometheus/busybox/build.sh /build-busybox.sh
 COPY docker/observability/prometheus/busybox/regression.sh /regression.sh
 RUN BUSYBOX_REFERENCE_PROFILE=grafana BUSYBOX_STATIC=1 sh /build-busybox.sh
 
-FROM golang:1.27.1-alpine@sha256:4cb7ac979db5fcc41cae44b2227ba5ab8a51e8807f40d9ba4dee20a0ad960b5b AS grafana-build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS grafana-build
 RUN apk add --no-cache build-base curl
 WORKDIR /build
 RUN curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \

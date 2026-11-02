@@ -22,7 +22,7 @@ esac
 
 export CGO_ENABLED=0 GOTOOLCHAIN=local
 export GOMAXPROCS=2 GOMEMLIMIT=2GiB
-test "$(go env GOVERSION)" = 'go1.27.1'
+test "$(go env GOVERSION)" = 'go1.27.3'
 mkdir -p /out
 go mod download -json "$module@$version" > "/out/$1.source.json"
 actual=$(sed -n 's/^[[:space:]]*"Sum": "\([^"]*\)",*$/\1/p' "/out/$1.source.json")

@@ -4,6 +4,12 @@ All notable changes to Docker Dash are documented here.
 
 ## [Unreleased]
 
+- Security refresh 8.96.17: patch Express/body-parser, Nodemailer, qs, Puppeteer/Zod,
+  glob and minimatch; pin Node.js 24.22.2, npm 12.2.1 and Go 1.27.3. Rebuild Go
+  tools with x/net 0.62.0 and go-jose 4.1.6 and refresh Alpine security packages.
+  Production npm dependencies must remain advisory-free. The unpatched low
+  deepmerge advisory in Jest is explicitly reviewed until 2026-12-02.
+
 - Check operating-system package updates on the selected Docker host through its
   pinned SSH connection. The manual, read-only check supports APT, DNF/YUM,
   Zypper, APK and Pacman; it shows installed and candidate versions without
