@@ -1,0 +1,217 @@
+{
+  "date": "2026-11-02",
+  "npm": {
+    "before": {
+      "low": 3,
+      "moderate": 21,
+      "high": 5,
+      "total": 29
+    },
+    "productionAfter": {
+      "total": 0
+    },
+    "developmentAfter": {
+      "low": 5,
+      "rootAdvisory": "GHSA-gcqx-w48m-w2h4"
+    }
+  },
+  "trivy": {
+    "after": {
+      "imageId": "sha256:66a70ee9c4882f8c7ef21ef8d1cf66d70686713f3c01cdc34c9d38e42c7d5cc1",
+      "findings": [
+        {
+          "target": "usr/libexec/docker/cli-plugins/docker-compose",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/local/bin/docker",
+          "id": "CVE-2026-85747",
+          "package": "github.com/docker/distribution",
+          "version": "v2.8.3+incompatible",
+          "fixedVersion": null,
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/local/bin/grype",
+          "id": "CVE-2026-41567",
+          "package": "github.com/docker/docker",
+          "version": "v28.5.2+incompatible",
+          "fixedVersion": null,
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/local/bin/grype",
+          "id": "CVE-2026-42306",
+          "package": "github.com/docker/docker",
+          "version": "v28.5.2+incompatible",
+          "fixedVersion": null,
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/local/bin/grype",
+          "id": "CVE-2026-33997",
+          "package": "github.com/docker/docker",
+          "version": "v28.5.2+incompatible",
+          "fixedVersion": "29.3.1",
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/local/bin/grype",
+          "id": "CVE-2026-41568",
+          "package": "github.com/docker/docker",
+          "version": "v28.5.2+incompatible",
+          "fixedVersion": null,
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/local/bin/grype",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/local/bin/trivy",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    "grafana-after": {
+      "imageId": "sha256:a81c36f0114b3f21ea2a37cdc4f0493cfb3e188798f6f39ae462e6fd4f47c353",
+      "findings": [
+        {
+          "target": "usr/share/grafana/bin/grafana",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+          "id": "CVE-2026-78661",
+          "package": "golang.org/x/net",
+          "version": "v0.61.0",
+          "fixedVersion": "0.62.0",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/prometheus/gpx_grafana-prometheus-datasource_linux_amd64",
+          "id": "CVE-2026-97045",
+          "package": "golang.org/x/net",
+          "version": "v0.61.0",
+          "fixedVersion": "0.62.0",
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    "prometheus-after": {
+      "imageId": "sha256:68d1a19a2e6fcc934a3234191e5a6ede6b575a0cd4fcb432318ae70eff52df12",
+      "findings": [
+        {
+          "target": "bin/prometheus",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "bin/promtool",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    "caddy-after": {
+      "imageId": "sha256:a4f2b80b820e0f4c31ef8b1c5c76af3c1dfa64b13e2393ae0030b85586be2cf4",
+      "findings": [
+        {
+          "target": "usr/bin/caddy",
+          "id": "CVE-2026-116587",
+          "package": "github.com/go-jose/go-jose/v3",
+          "version": "v3.0.5",
+          "fixedVersion": null,
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/bin/caddy",
+          "id": "CVE-2026-116585",
+          "package": "github.com/go-jose/go-jose/v3",
+          "version": "v3.0.5",
+          "fixedVersion": null,
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/bin/caddy",
+          "id": "CVE-2026-116586",
+          "package": "github.com/go-jose/go-jose/v3",
+          "version": "v3.0.5",
+          "fixedVersion": null,
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/bin/caddy",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "version": "v0.58.0",
+          "fixedVersion": null,
+          "severity": "UNKNOWN"
+        }
+      ]
+    }
+  },
+  "grype": {
+    "imageId": "sha256:57a9abb6db5d70cdab90e108d6ace7a274d4f0400ec9ce5b07c44dde99c6a0c9",
+    "findings": [
+      {
+        "id": "GO-2026-4887",
+        "package": "github.com/docker/docker",
+        "version": "v28.5.2+incompatible",
+        "severity": "High"
+      },
+      {
+        "id": "GHSA-pxq6-2prw-chj9",
+        "package": "github.com/docker/docker",
+        "version": "v28.5.2+incompatible",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox",
+        "version": "1.37.0-r31",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "busybox-binsh",
+        "version": "1.37.0-r31",
+        "severity": "Medium"
+      },
+      {
+        "id": "CVE-2025-60876",
+        "package": "ssl_client",
+        "version": "1.37.0-r31",
+        "severity": "Medium"
+      },
+      {
+        "id": "GHSA-685w-q87j-wqw3",
+        "package": "github.com/docker/distribution",
+        "version": "v2.8.3+incompatible",
+        "severity": "Medium"
+      }
+    ]
+  }
+}

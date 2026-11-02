@@ -1,5 +1,8 @@
 # Dependency security refresh — 2026-11-02
 
+Final image IDs and unfiltered finding summaries are recorded in
+[the scan results](2026-11-02-security-results.json).
+
 Docker Dash uses Node.js/CommonJS, vanilla browser JavaScript and embedded Go
 tools. There is no PHP runtime, Composer manifest or PHP source to migrate.
 The direct JavaScript dependency inventory, including development scope, is in
