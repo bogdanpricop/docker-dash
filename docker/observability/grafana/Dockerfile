@@ -33,18 +33,18 @@ ARG TARGETARCH
 USER root
 RUN set -eu; \
     case "$TARGETARCH" in \
-      amd64) digest='8bdd6583e398f84d497dabec0287563b9eee471d711dea08a21482db5cd5a294' ;; \
-      arm64) digest='a49bb6a6fe6e79578dc78841ce7f437a50d294a0fdb74bf25214cd6ce75d85db' ;; \
-      s390x) digest='8149689c8d10b8a4ce05c4a985adabd24cebc853a6e2a44bf82ad5386d40d468' ;; \
+      amd64) digest='d24df3eaff9ae61f00d7e857f508fc306912dcf50d657150d1e472e851799fc4' ;; \
+      arm64) digest='24db8e4d28c836b8f61da6addce0d8f3d498ae1759ca419938f995323e359342' ;; \
+      s390x) digest='4fa587d2ca8f0f49242a89d55a7db846099a4f528d0b1d25f458d249122a3bf4' ;; \
       *) echo "Unsupported Grafana plugin architecture: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    asset="prometheus-13.2.3.linux_${TARGETARCH}.zip"; \
-    url="https://github.com/grafana/grafana-prometheus-datasource/releases/download/v13.2.3/${asset}"; \
+    asset="prometheus-13.2.5.linux_${TARGETARCH}.zip"; \
+    url="https://github.com/grafana/grafana-prometheus-datasource/releases/download/v13.2.5/${asset}"; \
     wget -q -O /tmp/prometheus.zip "$url"; \
     echo "$digest  /tmp/prometheus.zip" | sha256sum -c -; \
     mkdir -p /tmp/plugin /tmp/provenance; \
     unzip -q /tmp/prometheus.zip -d /tmp/plugin; \
-    test "$(sed -n 's/.*\"version\": \"\([^\"]*\)\".*/\1/p' /tmp/plugin/prometheus/plugin.json | head -1)" = '13.2.3'; \
+    test "$(sed -n 's/.*\"version\": \"\([^\"]*\)\".*/\1/p' /tmp/plugin/prometheus/plugin.json | head -1)" = '13.2.5'; \
     test -x /tmp/plugin/prometheus/gpx_grafana-prometheus-datasource_linux_${TARGETARCH}; \
     printf '%s  %s\n' "$digest" "$asset" > /tmp/provenance/prometheus-plugin-asset.sha256; \
     printf '%s\n' "$url" > /tmp/provenance/prometheus-plugin-source.txt; \
@@ -73,6 +73,8 @@ RUN chmod 755 /usr/share/grafana/bin/grafana \
     && chmod -R a+rX /usr/share/docker-dash/grafana/core \
     && /tmp/busybox sh -ec '/tmp/busybox cp /tmp/busybox /bin/busybox; for applet in $(/bin/busybox --list); do /bin/busybox ln -sf /bin/busybox "/bin/$applet"; done; /bin/busybox rm /tmp/busybox'
 USER 472
+ENV GF_PLUGINS_PREINSTALL_DISABLED=true \
+    GF_PATHS_PLUGINS=/var/lib/grafana/reviewed-plugins
 LABEL org.opencontainers.image.version="13.2.3+dd.4" \
       com.docker-dash.security-patch="grafana-dependencies-busybox-and-bundled-plugin-refresh" \
       com.docker-dash.bundled-datasources="prometheus"
