@@ -1,6 +1,6 @@
 module docker-dash.local/security/prometheus
 
-go 1.27.1
+go 1.27.3
 
 require github.com/prometheus/prometheus v0.315.0
 

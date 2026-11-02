@@ -4,7 +4,7 @@ module github.com/docker/cli
 // There is no 'go.mod' file, as that would imply opting in for all the rules
 // around SemVer, which this repo cannot abide by as it uses CalVer.
 
-go 1.27.1
+go 1.27.3
 
 tool (
 	github.com/cpuguy83/go-md2man/v2 // for scripts/docs/generate-man.sh
