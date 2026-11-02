@@ -81,7 +81,8 @@ findings; the recorded binary contains only the Docker client/API packages.
 - Caddy 2.11.7: rebuilt with Go 1.27.3, x/net 0.62.0, chi/v5 5.4.0 and go-jose/v4
   4.1.6. Its transitive go-jose/v3 branch has no published fix for
   CVE-2026-116587 (High), CVE-2026-116585 and CVE-2026-116586 (Medium).
-  This remains open alongside the absent-OpenPGP module record. The VPS public
+  This remains open alongside the OpenPGP module record; Caddy has no
+  artifact-bound applicability exception in the application's image gate. The VPS public
   HTTPS endpoint uses its existing Traefik proxy, not this optional Caddy helper.
 
 Grafana's automatic plugin preinstallation is disabled. Both live databases have
