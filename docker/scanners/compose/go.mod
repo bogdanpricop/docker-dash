@@ -1,6 +1,6 @@
 module docker-dash.local/security/compose
 
-go 1.27.3
+go 1.27.1
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7

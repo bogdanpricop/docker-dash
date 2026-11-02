@@ -1,6 +1,6 @@
 module docker-dash.local/security/trivy
 
-go 1.27.3
+go 1.27.1
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1

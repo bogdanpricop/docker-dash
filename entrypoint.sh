@@ -15,6 +15,13 @@ export SQLITE_TMPDIR="${SQLITE_TMPDIR:-/data/sqlite-tmp}"
 mkdir -p "$SQLITE_TMPDIR"
 chmod 700 "$SQLITE_TMPDIR"
 
+# Image scanners download databases larger than the hardened /tmp tmpfs and
+# cannot write caches under a read-only root filesystem.
+export TMPDIR="${TMPDIR:-/data/tmp}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/data/cache}"
+mkdir -p "$TMPDIR" "$XDG_CACHE_HOME"
+chmod 700 "$TMPDIR" "$XDG_CACHE_HOME"
+
 is_placeholder() {
   case "$1" in
     ''|'generate-a-random-string-here'|'change-me'|'CHANGE_ME'|'change-me-to-a-random-32-char-hex') return 0 ;;

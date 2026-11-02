@@ -3,42 +3,43 @@
   "scope": "Reviewed Linux amd64 source builds; evidence only, never a scan ignore policy",
   "basis": [
     "docs/audits/2026-09-20-scanner-rebuild-evidence.json",
-    "docs/audits/2026-10-07-security-refresh.md"
+    "docs/audits/2026-10-07-security-refresh.md",
+    "docs/audits/2026-11-02-security-refresh.md"
   ],
   "artifacts": {
     "docker-cli": {
       "path": "/usr/local/bin/docker",
-      "binarySha256": "ce66dc156c240d9d64cbba1e7d983f26be3a15b627277f8bb0755773fe5fad35",
+      "binarySha256": "df1de054f5b003895c30fda4c25ae5124e07e3d6884d3aa1303be0cea9bb7481",
       "metadata": {
         "packages.txt": "fbffc2613761f9714f55cd553bd35feaab85891eed1cb99c2c372d83453cb28c",
-        "build-info.txt": "7790a574bfe7e65a071cd4fc5cbfb01cf85fdc3a556e8fedfec5e8daa6e5207a",
+        "build-info.txt": "8a3b1574fe2f16dd9cfdb8b1f2b4ad565cfd69e5242309d7f2bbf222f837bcc1",
         "source.json": "24e4a575747c60fbd260ebbc5e605debf6f65211d3b25cadfc7dbcdb66ae3a3a"
       }
     },
     "docker-compose": {
       "path": "/usr/libexec/docker/cli-plugins/docker-compose",
-      "binarySha256": "1a4f23d47d8f771e46eebdd3899eccca657b872c5d0be9cb6e3fbd19cfe6e707",
+      "binarySha256": "ddea192dbd8b9345c8a7dcac1f027d87e4e86e4d29ffe31ec1e07807d0b7df00",
       "metadata": {
         "packages.txt": "b0b02a86a6eccd463f98a04732184c0c709f0463043e9b21739081ba16090a1f",
-        "build-info.txt": "b8949e2a804e02aa39bd3292e61b6990a9d3e04c0da2f5fc665912b2fc9db09b",
+        "build-info.txt": "e9c609129138c816b00b90e5b0dac8a5a3f112754548aace78ad99270a4e8597",
         "source.json": "cd74496e5abb0316bdb94f6b6829be9bea7ce9acb84517f8ee61b5f7520b5095"
       }
     },
     "trivy": {
       "path": "/usr/local/bin/trivy",
-      "binarySha256": "a613fc946626628b6e62bf682c89527f2acfd5eb4d5249a0ab68c88702bf20a7",
+      "binarySha256": "7a18c0f29a526b2c59a991aaaf74d8cffb2a80eb65bbd13fb24754a50e15394b",
       "metadata": {
         "packages.txt": "bdc7f4197d3c0352f7ddd5f8bbe66925e04b12604c802359406a4b2e9bfe6ebe",
-        "build-info.txt": "b5055a4d98edd4fba776358684837c8660082f5e37d8db88971861d02d1ed809",
+        "build-info.txt": "c0d7142c7c2b2aaca75f3d89f277ed469144ecd8b0cba52c121730b111d13a03",
         "source.json": "ce8a2bb29e0b27e0688f99f058441d0425ae3ceddd62c89b9dd59568dceb34be"
       }
     },
     "grype": {
       "path": "/usr/local/bin/grype",
-      "binarySha256": "42affbaa745caadd72e2827a13a130968eed4311147fa7b216328e783082fb89",
+      "binarySha256": "77fdded75c71b5c878bae2df861347ef5a4427752a7f06caadf429414a7a9f4a",
       "metadata": {
-        "packages.txt": "69766394df9a85ea58d288fe125f224a37706892d0e83485c5809213bedb3d86",
-        "build-info.txt": "5e1eab546c7c93f4a696f2fb297369c16e957e39be7fdca5c961cb14a5ec3fcd",
+        "packages.txt": "6ef37243392ea1f58457b7e17e432f6dfa64d7574ee301eb55be347601ab2e44",
+        "build-info.txt": "3fe51f35e6ff5d981859ec82715831e9c983babf29e85c7063f04af6f259f606",
         "source.json": "ec012233813b1cd8ce25d4009ce09e0655a586e25b1483964100bd0d01031862"
       }
     }

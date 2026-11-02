@@ -30,7 +30,7 @@ ARG TARGETARCH
 # Allow auto-download of newer Go toolchain when plugins require a newer Go
 # than the builder's bundled version. Required for route53@v1.6.0 (needs Go 1.25)
 # and linode@v0.8.0 (also Go 1.25).
-ENV GOTOOLCHAIN=auto
+ENV GOTOOLCHAIN=go1.27.3
 
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} xcaddy build \
   --with github.com/caddy-dns/cloudflare@v0.2.4 \
@@ -41,7 +41,10 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} xcaddy build \
   --with github.com/caddy-dns/namecheap@v1.0.0 \
   --with github.com/caddy-dns/gandi@v1.1.0 \
   --with github.com/caddy-dns/porkbun@v0.3.1 \
-  --with github.com/caddy-dns/ovh@v1.1.0
+  --with github.com/caddy-dns/ovh@v1.1.0 \
+  --with github.com/go-chi/chi/v5@v5.4.0 \
+  --with github.com/go-jose/go-jose/v4@v4.1.6 \
+  --replace golang.org/x/net=golang.org/x/net@v0.62.0
 
 # xcaddy grants cap_net_bind_service to its output. Remove the file capability
 # so the binary remains executable when operators drop every container capability.
